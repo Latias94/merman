@@ -11,7 +11,6 @@ import {
   MERMAN_WASM_URL,
   packageVersion,
   parseJson,
-  presentationCatalog,
   renderAscii,
   renderSvg,
   renderSvgWithTextMeasurer,
@@ -19,6 +18,7 @@ import {
   supportedDiagrams,
   supportedThemes,
   svgPlanJson,
+  themeCatalog,
   UNAVAILABLE_DIAGRAM_DETECTION,
   validate,
   type HostTextMeasurer,
@@ -64,16 +64,13 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
   return {
     packageVersion: packageVersion(),
 
-    presentationCatalog,
     runtimeCatalog,
+    themeCatalog,
 
     detectDiagram(input) {
       if (input.configurationError) return UNAVAILABLE_DIAGRAM_DETECTION;
       try {
-        return detectDiagramFacts(
-          input.configuredSource,
-          input.bindingOptions,
-        );
+        return detectDiagramFacts(input.configuredSource, input.bindingOptions);
       } catch {
         return UNAVAILABLE_DIAGRAM_DETECTION;
       }
@@ -181,7 +178,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
 }
 
 function assertConfiguredOperation(
-  input: Parameters<MermanDomainFacade["render"]>[0]
+  input: Parameters<MermanDomainFacade["render"]>[0],
 ): void {
   if (input.configurationError) throw input.configurationError;
 }

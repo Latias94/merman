@@ -30,13 +30,11 @@ export interface AppState {
   editorMode: EditorMode;
   setEditorMode: (mode: EditorMode) => void;
 
-  // Diagram presentation
+  // Diagram rendering
   diagramTheme: Theme;
   setDiagramTheme: (theme: Theme) => void;
-  presentationThemePresetId: string | null;
-  setPresentationThemePresetId: (presetId: string | null) => void;
-  presentationProfileId: string | null;
-  setPresentationProfileId: (profileId: string | null) => void;
+  themePresetId: string | null;
+  setThemePresetId: (presetId: string | null) => void;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -58,14 +56,13 @@ export interface AppState {
 }
 
 export function selectWorkspaceSnapshot(
-  state: Pick<AppState, keyof WorkspaceSnapshot>
+  state: Pick<AppState, keyof WorkspaceSnapshot>,
 ): WorkspaceSnapshot {
   return {
     code: state.code,
     mermaidConfig: state.mermaidConfig,
     diagramTheme: state.diagramTheme,
-    presentationThemePresetId: state.presentationThemePresetId,
-    presentationProfileId: state.presentationProfileId,
+    themePresetId: state.themePresetId,
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
@@ -87,7 +84,7 @@ function getInitialUITheme(): UITheme {
 
 function resolveUITheme(
   uiTheme: UITheme,
-  systemDark = systemPrefersDark()
+  systemDark = systemPrefersDark(),
 ): ResolvedUITheme {
   return uiTheme === "system" ? (systemDark ? "dark" : "light") : uiTheme;
 }
@@ -130,16 +127,11 @@ export const useAppStore = create<AppState>((set) => ({
   editorMode: "code",
   setEditorMode: (editorMode) => set({ editorMode }),
 
-  // Diagram presentation
+  // Diagram rendering
   diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
   setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
-  presentationThemePresetId:
-    DEFAULT_WORKSPACE_SNAPSHOT.presentationThemePresetId,
-  setPresentationThemePresetId: (presentationThemePresetId) =>
-    set({ presentationThemePresetId }),
-  presentationProfileId: DEFAULT_WORKSPACE_SNAPSHOT.presentationProfileId,
-  setPresentationProfileId: (presentationProfileId) =>
-    set({ presentationProfileId }),
+  themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
+  setThemePresetId: (themePresetId) => set({ themePresetId }),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
   textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,

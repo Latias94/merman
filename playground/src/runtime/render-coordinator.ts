@@ -166,7 +166,9 @@ export type RenderFailedState = CompletedBatchBase &
   );
 
 export type CompletedRenderBatch =
-  RenderSuccessState | RenderPartialState | RenderFailedState;
+  | RenderSuccessState
+  | RenderPartialState
+  | RenderFailedState;
 
 export type RenderCoordinatorState =
   | { readonly status: "empty" }
@@ -529,7 +531,7 @@ function collectSvgPlan(
   facade: MermanDomainFacade,
   operation: FrozenRenderOperation,
 ): SvgPlanResult | null {
-  if (!operation.presentationProfileId) {
+  if (!operation.themePresetId) {
     return null;
   }
 
@@ -800,17 +802,12 @@ function freezeDetection(
 }
 
 function freezeSvgPlan(plan: SvgPlanResult): SvgPlanResult {
-  const presentationAspects = plan.presentation_aspects.map((aspect) =>
-    Object.freeze({ ...aspect }),
-  );
   const requiredCapabilityIds = [...plan.required_capability_ids];
   const missingCapabilityIds = [...plan.missing_capability_ids];
-  Object.freeze(presentationAspects);
   Object.freeze(requiredCapabilityIds);
   Object.freeze(missingCapabilityIds);
   return Object.freeze({
     ...plan,
-    presentation_aspects: presentationAspects,
     required_capability_ids: requiredCapabilityIds,
     missing_capability_ids: missingCapabilityIds,
   });

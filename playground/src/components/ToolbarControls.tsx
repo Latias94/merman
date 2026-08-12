@@ -1,8 +1,4 @@
-import {
-  useCallback,
-  useMemo,
-  type ReactNode,
-} from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -13,7 +9,6 @@ import {
   type UITheme,
 } from "@/src/store";
 import {
-  selectCompletedRenderBatch,
   selectCurrentMermanRenderTime,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
@@ -26,16 +21,12 @@ import {
   selectMermanFacade,
   useMermanRuntime,
 } from "@/src/runtime/use-merman-runtime";
-import { presentationProfileStatus } from "@/src/runtime/presentation-status";
 import {
   isMermanSvgPipeline,
   MERMAN_SVG_PIPELINES,
 } from "@/src/runtime/merman-core";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
-import {
-  SUPPORTED_THEMES,
-  normalizeThemeName,
-} from "@mermanjs/web";
+import { SUPPORTED_THEMES, normalizeThemeName } from "@mermanjs/web";
 import {
   ToolbarArtifactActions,
   useToolbarArtifactActions,
@@ -76,8 +67,7 @@ const TEXT_MEASUREMENT_VALUES: readonly TextMeasurementMode[] = [
   "browser",
   "headless",
 ];
-const NO_PRESENTATION_SELECTION = "__none__";
-const PRESENTATION_STATUS_ID = "presentation-profile-status";
+const NO_THEME_PRESET = "__none__";
 
 function openIdOptions(
   ids: readonly string[],
@@ -93,11 +83,8 @@ export function ToolbarControls() {
   const { t } = useTranslation();
   const {
     diagramTheme,
-    presentationProfileId,
-    presentationThemePresetId,
     setDiagramTheme,
-    setPresentationProfileId,
-    setPresentationThemePresetId,
+    setThemePresetId,
     setSvgPipeline,
     svgPipeline,
     textMeasurementMode,
@@ -106,32 +93,30 @@ export function ToolbarControls() {
     setDiagramFont,
     uiTheme,
     setUITheme,
+    themePresetId,
   } = useAppStore(
     useShallow((state) => ({
       diagramFont: state.diagramFont,
       diagramTheme: state.diagramTheme,
-      presentationProfileId: state.presentationProfileId,
-      presentationThemePresetId: state.presentationThemePresetId,
       setDiagramFont: state.setDiagramFont,
       setDiagramTheme: state.setDiagramTheme,
-      setPresentationProfileId: state.setPresentationProfileId,
-      setPresentationThemePresetId: state.setPresentationThemePresetId,
+      setThemePresetId: state.setThemePresetId,
       setSvgPipeline: state.setSvgPipeline,
       setTextMeasurementMode: state.setTextMeasurementMode,
       setUITheme: state.setUITheme,
       svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
+      themePresetId: state.themePresetId,
       uiTheme: state.uiTheme,
-    }))
+    })),
   );
   const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
-  const currentBatch = useRenderCoordinator(selectCompletedRenderBatch);
   const facade = useMermanRuntime(selectMermanFacade);
   const artifactActions = useToolbarArtifactActions();
   const currentLang = getCurrentLanguage();
-  const presentationCatalog = useMemo(() => {
+  const themeCatalog = useMemo(() => {
     try {
-      return facade?.presentationCatalog() ?? null;
+      return facade?.themeCatalog() ?? null;
     } catch {
       return null;
     }
@@ -152,54 +137,16 @@ export function ToolbarControls() {
       }));
   }, [facade, t]);
 
-  const presentationThemeOptions = useMemo(
+  const themePresetOptions = useMemo(
     () =>
       openIdOptions(
-        presentationCatalog?.theme_presets.map((preset) => preset.id) ?? [],
-        presentationThemePresetId,
-        (id) => t(`presentationThemes.${id}`, { defaultValue: id }),
+        themeCatalog?.presets.map((preset) => preset.id) ?? [],
+        themePresetId,
+        (id) => t(`themePresets.${id}`, { defaultValue: id }),
       ),
-    [presentationCatalog, presentationThemePresetId, t],
+    [themeCatalog, themePresetId, t],
   );
-  const presentationProfileOptions = useMemo(
-    () =>
-      openIdOptions(
-        presentationCatalog?.profiles.map((profile) => profile.id) ?? [],
-        presentationProfileId,
-        (id) => t(`presentationProfiles.${id}`, { defaultValue: id }),
-      ),
-    [presentationCatalog, presentationProfileId, t],
-  );
-  const currentProfileStatus = useMemo(() => {
-    if (!presentationCatalog || !presentationProfileId) return null;
-    const catalogProfile = presentationCatalog.profiles.find(
-      (profile) => profile.id === presentationProfileId,
-    );
-    if (!catalogProfile?.fully_available && !currentBatch) return null;
-    return presentationProfileStatus({
-      catalog: presentationCatalog,
-      detection:
-        currentBatch?.detection ?? {
-          status: "unavailable",
-          validity: "unknown",
-          diagramType: null,
-          syntaxId: null,
-          effectiveLayoutId: null,
-        },
-      plan: currentBatch?.svgPlan ?? null,
-      selectedProfileId: presentationProfileId,
-    });
-  }, [currentBatch, presentationCatalog, presentationProfileId]);
-  const presentationStatusText = !presentationProfileId
-    ? t("presentationStatus.none")
-    : currentProfileStatus
-      ? t(`presentationStatus.${currentProfileStatus.kind}`, {
-          capabilities:
-            currentProfileStatus.missingCapabilityIds.join(", ") || "—",
-          profile: presentationProfileId,
-        })
-      : t("presentationStatus.pending", { profile: presentationProfileId });
-  const renderThemeLabel = t("toolbar.presentation");
+  const renderThemeLabel = t("toolbar.theme");
   const renderSettingsLabel = t("toolbar.renderSettings");
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
     { value: "light", label: t("uiThemes.light") },
@@ -207,20 +154,20 @@ export function ToolbarControls() {
     { value: "system", label: t("uiThemes.system") },
   ];
 
-  const normalizePresentationId = useCallback(
+  const normalizeThemePresetId = useCallback(
     (value: string): string | null =>
-      value === NO_PRESENTATION_SELECTION ? null : value,
+      value === NO_THEME_PRESET ? null : value,
     [],
   );
   const normalizeTextMeasurementValue = useCallback(
     (value: string): TextMeasurementMode =>
       value === "headless" ? "headless" : "browser",
-    []
+    [],
   );
   const normalizeDiagramFontValue = useCallback(
     (value: string): DiagramFont =>
       isDiagramFont(value) ? value : "trebuchet",
-    []
+    [],
   );
   const normalizeSvgPipeline = useCallback(
     (value: string): SvgPipeline =>
@@ -248,44 +195,22 @@ export function ToolbarControls() {
         ))}
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuLabel>{t("toolbar.presentationTheme")}</DropdownMenuLabel>
+      <DropdownMenuLabel>{t("toolbar.themePreset")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
-        value={presentationThemePresetId ?? NO_PRESENTATION_SELECTION}
+        value={themePresetId ?? NO_THEME_PRESET}
         onValueChange={(value) =>
-          setPresentationThemePresetId(normalizePresentationId(value))
+          setThemePresetId(normalizeThemePresetId(value))
         }
       >
-        <DropdownMenuRadioItem value={NO_PRESENTATION_SELECTION}>
-          {t("presentationThemes.none")}
+        <DropdownMenuRadioItem value={NO_THEME_PRESET}>
+          {t("themePresets.none")}
         </DropdownMenuRadioItem>
-        {presentationThemeOptions.map((option) => (
+        {themePresetOptions.map((option) => (
           <DropdownMenuRadioItem key={option.value} value={option.value}>
             {option.label}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>{t("toolbar.presentationProfile")}</DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        aria-describedby={PRESENTATION_STATUS_ID}
-        value={presentationProfileId ?? NO_PRESENTATION_SELECTION}
-        onValueChange={(value) =>
-          setPresentationProfileId(normalizePresentationId(value))
-        }
-      >
-        <DropdownMenuRadioItem value={NO_PRESENTATION_SELECTION}>
-          {t("presentationProfiles.none")}
-        </DropdownMenuRadioItem>
-        {presentationProfileOptions.map((option) => (
-          <DropdownMenuRadioItem key={option.value} value={option.value}>
-            {option.label}
-          </DropdownMenuRadioItem>
-        ))}
-      </DropdownMenuRadioGroup>
-      <DropdownMenuSeparator />
-      <p className="max-w-72 px-2 py-1 text-xs text-muted-foreground">
-        {presentationStatusText}
-      </p>
     </DropdownMenuContent>
   );
 
@@ -386,187 +311,182 @@ export function ToolbarControls() {
 
   return (
     <>
-      <span
-        id={PRESENTATION_STATUS_ID}
-        className="sr-only"
-        aria-live="polite"
-      >
-        {presentationStatusText}
-      </span>
+      <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 xl:hidden">
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t("toolbar.theme")}
+                >
+                  <Palette className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{t("toolbar.theme")}</TooltipContent>
+          </Tooltip>
+          {renderThemeMenuContent()}
+        </DropdownMenu>
 
-        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 xl:hidden">
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={renderSettingsLabel}
+                >
+                  <Type className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{renderSettingsLabel}</TooltipContent>
+          </Tooltip>
+          {renderRenderSettingsMenuContent()}
+        </DropdownMenu>
+
+        <ToolbarArtifactActions compact owner={artifactActions} />
+        {renderRepositoryLink()}
+      </div>
+
+      {/* Desktop theme and artifact controls. */}
+      <div className="ml-auto hidden min-w-0 items-center gap-2 xl:flex">
+        {/* Latest completed Merman render duration. */}
+        {lastRenderTime > 0 && (
+          <span className="text-xs text-muted-foreground hidden md:inline">
+            {lastRenderTime.toFixed(1)}ms
+          </span>
+        )}
+
+        {/* Mermaid and compiled diagram themes. */}
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-8 px-0 sm:w-auto sm:px-2.5"
+                  aria-label={t("toolbar.theme")}
+                >
+                  <Palette className="size-4" />
+                  <span className="hidden sm:inline">{renderThemeLabel}</span>
+                  <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{t("toolbar.theme")}</TooltipContent>
+          </Tooltip>
+          {renderThemeMenuContent()}
+        </DropdownMenu>
+
+        {/* Render settings. */}
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-8 px-0 sm:w-auto sm:px-2.5"
+                  aria-label={renderSettingsLabel}
+                >
+                  <Type className="size-4" />
+                  <span className="hidden sm:inline">
+                    {renderSettingsLabel}
+                  </span>
+                  <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{renderSettingsLabel}</TooltipContent>
+          </Tooltip>
+          {renderRenderSettingsMenuContent()}
+        </DropdownMenu>
+
+        <ToolbarArtifactActions compact={false} owner={artifactActions} />
+
+        <div className="hidden h-6 w-px shrink-0 bg-border sm:block" />
+
+        {/* Language selection. */}
+        <div className="hidden sm:block">
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon-sm"
-                    aria-label={t("toolbar.theme")}
-                    aria-describedby={PRESENTATION_STATUS_ID}
+                    aria-label={t("toolbar.language")}
                   >
-                    <Palette className="size-4" />
+                    <Languages className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>{t("toolbar.theme")}</TooltipContent>
+              <TooltipContent>{t("toolbar.language")}</TooltipContent>
             </Tooltip>
-            {renderThemeMenuContent()}
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={currentLang}
+                onValueChange={handleLanguageChange}
+              >
+                {languages.map((lang) => (
+                  <DropdownMenuRadioItem key={lang.code} value={lang.code}>
+                    <span className="mr-2">{lang.flag}</span>
+                    {lang.name}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
           </DropdownMenu>
-
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label={renderSettingsLabel}
-                  >
-                    <Type className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{renderSettingsLabel}</TooltipContent>
-            </Tooltip>
-            {renderRenderSettingsMenuContent()}
-          </DropdownMenu>
-
-          <ToolbarArtifactActions compact owner={artifactActions} />
-          {renderRepositoryLink()}
         </div>
 
-        {/* Desktop presentation and artifact controls. */}
-        <div className="ml-auto hidden min-w-0 items-center gap-2 xl:flex">
-          {/* Latest completed Merman render duration. */}
-          {lastRenderTime > 0 && (
-            <span className="text-xs text-muted-foreground hidden md:inline">
-              {lastRenderTime.toFixed(1)}ms
-            </span>
-          )}
-
-          {/* Diagram and presentation themes. */}
+        {/* Application theme selection. */}
+        <div className="hidden sm:block">
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-8 px-0 sm:w-auto sm:px-2.5"
-                    aria-label={t("toolbar.theme")}
-                    aria-describedby={PRESENTATION_STATUS_ID}
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("toolbar.toggleTheme")}
                   >
-                    <Palette className="size-4" />
-                    <span className="hidden sm:inline">{renderThemeLabel}</span>
-                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                    {UI_THEME_ICONS[uiTheme]}
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>{t("toolbar.theme")}</TooltipContent>
+              <TooltipContent>{t("toolbar.toggleTheme")}</TooltipContent>
             </Tooltip>
-            {renderThemeMenuContent()}
-          </DropdownMenu>
-
-          {/* Render settings. */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-8 px-0 sm:w-auto sm:px-2.5"
-                    aria-label={renderSettingsLabel}
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={uiTheme}
+                onValueChange={(v) => setUITheme(v as UITheme)}
+              >
+                {UI_THEME_OPTIONS.map((option) => (
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
                   >
-                    <Type className="size-4" />
-                    <span className="hidden sm:inline">{renderSettingsLabel}</span>
-                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{renderSettingsLabel}</TooltipContent>
-            </Tooltip>
-            {renderRenderSettingsMenuContent()}
+                    {UI_THEME_ICONS[option.value]}
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
           </DropdownMenu>
-
-          <ToolbarArtifactActions compact={false} owner={artifactActions} />
-
-          <div className="hidden h-6 w-px shrink-0 bg-border sm:block" />
-
-          {/* Language selection. */}
-          <div className="hidden sm:block">
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("toolbar.language")}
-                    >
-                      <Languages className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>{t("toolbar.language")}</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={currentLang}
-                  onValueChange={handleLanguageChange}
-                >
-                  {languages.map((lang) => (
-                    <DropdownMenuRadioItem key={lang.code} value={lang.code}>
-                      <span className="mr-2">{lang.flag}</span>
-                      {lang.name}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Application theme selection. */}
-          <div className="hidden sm:block">
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("toolbar.toggleTheme")}
-                    >
-                      {UI_THEME_ICONS[uiTheme]}
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent>{t("toolbar.toggleTheme")}</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={uiTheme}
-                  onValueChange={(v) => setUITheme(v as UITheme)}
-                >
-                  {UI_THEME_OPTIONS.map((option) => (
-                    <DropdownMenuRadioItem key={option.value} value={option.value}>
-                      {UI_THEME_ICONS[option.value]}
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Repository link. */}
-          {renderRepositoryLink()}
         </div>
+
+        {/* Repository link. */}
+        {renderRepositoryLink()}
+      </div>
     </>
   );
 }

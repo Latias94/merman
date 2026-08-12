@@ -57,7 +57,7 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   assert.equal(state.snapshot.operation.source, "second");
 });
 
-test("request identity includes all presentation axes and stores the same-snapshot SVG plan", async () => {
+test("request identity includes the compiled theme and stores the same-snapshot SVG plan", async () => {
   const planCalls: {
     operation: FrozenRenderOperation;
     result: ReturnType<MermanDomainFacade["svgPlan"]>;
@@ -66,10 +66,7 @@ test("request identity includes all presentation axes and stores the same-snapsh
     ...facade(),
     svgPlan(input) {
       const operation = input as FrozenRenderOperation;
-      const result = svgPlan({
-        diagramType: operation.source,
-        profileId: operation.presentationProfileId,
-      });
+      const result = svgPlan({ diagramType: operation.source });
       planCalls.push({ operation, result });
       return result;
     },
@@ -77,29 +74,19 @@ test("request identity includes all presentation axes and stores the same-snapsh
   const workspaceCases: Array<Partial<WorkspaceSnapshot>> = [
     {
       diagramFont: "trebuchet",
-      presentationProfileId: null,
-      presentationThemePresetId: null,
+      themePresetId: null,
       svgPipeline: "parity",
       textMeasurementMode: "browser",
     },
     {
       diagramFont: "trebuchet",
-      presentationProfileId: null,
-      presentationThemePresetId: "future-theme",
+      themePresetId: "future-theme",
       svgPipeline: "parity",
       textMeasurementMode: "browser",
     },
     {
       diagramFont: "trebuchet",
-      presentationProfileId: "future-profile",
-      presentationThemePresetId: "future-theme",
-      svgPipeline: "parity",
-      textMeasurementMode: "browser",
-    },
-    {
-      diagramFont: "trebuchet",
-      presentationProfileId: "future-profile",
-      presentationThemePresetId: "future-theme",
+      themePresetId: "future-theme",
       svgPipeline: "readable",
       textMeasurementMode: "browser",
     },
@@ -118,9 +105,12 @@ test("request identity includes all presentation axes and stores the same-snapsh
     assert.equal(state.status, "success");
     if (state.status !== "success") continue;
     assert.equal(Object.isFrozen(state.snapshot.operation), true);
-    assert.equal(Object.isFrozen(state.snapshot.operation.bindingOptions), true);
+    assert.equal(
+      Object.isFrozen(state.snapshot.operation.bindingOptions),
+      true,
+    );
 
-    if (!workspace.presentationProfileId) {
+    if (!workspace.themePresetId) {
       assert.equal(planCalls.length, previousPlanCallCount);
       assert.equal(state.svgPlan, null);
       continue;
@@ -132,7 +122,6 @@ test("request identity includes all presentation axes and stores the same-snapsh
     assert.equal(planCall.operation, state.snapshot.operation);
     assert.deepEqual(state.svgPlan, planCall.result);
     assert.equal(Object.isFrozen(state.svgPlan), true);
-    assert.equal(Object.isFrozen(state.svgPlan?.presentation_aspects), true);
     planCall.result.required_capability_ids.push("late-capability");
     assert.deepEqual(state.svgPlan?.required_capability_ids, []);
   }
@@ -187,14 +176,14 @@ test("passes one frozen operation to every Merman projection", async () => {
       return facade().detectDiagram(input);
     },
     svgPlan(input) {
-      const operation = capture(input);
-      return svgPlan({ profileId: operation.presentationProfileId });
+      capture(input);
+      return svgPlan();
     },
     render(input) {
       const operation = capture(input);
       return {
         artifact: projectNavigableInlineSvg(
-          `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`
+          `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`,
         ),
         error: null,
         renderTime: 1,
@@ -222,8 +211,8 @@ test("passes one frozen operation to every Merman projection", async () => {
   coordinator.setFeatures({ compareEnabled: false, diagnosticsEnabled: true });
   coordinator.setInput(
     input("one-operation", domainFacade, {
-      presentationProfileId: "future-profile",
-    })
+      themePresetId: "future-theme",
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
 
@@ -231,7 +220,9 @@ test("passes one frozen operation to every Merman projection", async () => {
   assert.equal(state.status, "success");
   if (state.status !== "success") return;
   assert.equal(operations.length, 6);
-  assert.ok(operations.every((operation) => operation === state.snapshot.operation));
+  assert.ok(
+    operations.every((operation) => operation === state.snapshot.operation),
+  );
   assert.equal(Object.isFrozen(state), true);
   assert.equal(Object.isFrozen(state.detection), true);
   assert.equal(Object.isFrozen(state.diagnostics), true);
@@ -249,7 +240,7 @@ test("freezes browser layout geometry into each render snapshot", async () => {
       renderOperations.push(operation);
       return {
         artifact: projectNavigableInlineSvg(
-          `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`
+          `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`,
         ),
         error: null,
         renderTime: 2,
@@ -280,7 +271,10 @@ test("freezes browser layout geometry into each render snapshot", async () => {
   screenAvailableWidth = 1440;
   coordinator.setInput(input("layout-environment", domainFacade));
   await waitFor(() => renderOperations.length === 2);
-  assert.equal(renderOperations[1].layoutEnvironment.screenAvailableWidth, 1440);
+  assert.equal(
+    renderOperations[1].layoutEnvironment.screenAvailableWidth,
+    1440,
+  );
 });
 
 test("keeps a successful render when SVG plan collection fails", async () => {
@@ -290,14 +284,18 @@ test("keeps a successful render when SVG plan collection fails", async () => {
     debounceMs: 0,
   });
   coordinator.setInput(
-    input("plan-failure", {
-      ...facade(),
-      svgPlan() {
-        throw new Error("SVG plan unavailable.");
+    input(
+      "plan-failure",
+      {
+        ...facade(),
+        svgPlan() {
+          throw new Error("SVG plan unavailable.");
+        },
       },
-    }, {
-      presentationProfileId: "future-profile",
-    })
+      {
+        themePresetId: "future-theme",
+      },
+    ),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
 
@@ -309,7 +307,7 @@ test("keeps a successful render when SVG plan collection fails", async () => {
 
 test("publishes the producer-owned Merman artifact without reprojecting it", async () => {
   const artifact = projectNavigableInlineSvg(
-    '<svg xmlns="http://www.w3.org/2000/svg"><text>owned</text></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg"><text>owned</text></svg>',
   );
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
@@ -325,7 +323,7 @@ test("publishes the producer-owned Merman artifact without reprojecting it", asy
         renderTime: 2,
         status: "success",
       }),
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
 
@@ -353,7 +351,7 @@ test("preserves producer SVG validation failures", async () => {
         stage: "svg-validation",
         status: "failure",
       }),
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "failed");
 
@@ -385,7 +383,7 @@ test("publishes ASCII independently when SVG validation fails", async () => {
         error: null,
         status: "success",
       }),
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "failed");
 
@@ -419,7 +417,7 @@ test("publishes an explicit unsupported ASCII result without invoking the render
         asciiRenderCalls += 1;
         return facade().renderAscii(operation);
       },
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
 
@@ -445,7 +443,7 @@ test("contains ASCII capability failures without failing the SVG publication", a
       getAsciiSupportedDiagrams: () => {
         throw new Error("ASCII capability lookup failed.");
       },
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
 
@@ -476,7 +474,8 @@ test("keeps the visible diagram type while a replacement render is updating", as
     previous,
     snapshot: Object.freeze({
       ...previous.snapshot,
-      publicationId: (previous.snapshot.publicationId + 1) as typeof previous.snapshot.publicationId,
+      publicationId: (previous.snapshot.publicationId +
+        1) as typeof previous.snapshot.publicationId,
     }),
   });
 
@@ -485,7 +484,7 @@ test("keeps the visible diagram type while a replacement render is updating", as
 
 test("rejects a facade artifact that was not created by the projector", async () => {
   const artifact = projectNavigableInlineSvg(
-    '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>',
   );
   const forgedArtifact = {
     ...artifact,
@@ -505,7 +504,7 @@ test("rejects a facade artifact that was not created by the projector", async ()
         renderTime: 2,
         status: "success",
       }),
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "failed");
 
@@ -543,7 +542,7 @@ test("updating disables old pair and partial replaces the failed pane", async ()
         previousMermaid.artifact.kind === "navigable-inline-svg"
         ? previousMermaid.artifact.svg
         : "",
-      /stable/
+      /stable/,
     );
   }
 
@@ -560,7 +559,7 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   assert.equal(partial.merman.status, "success");
   assert.match(
     partial.merman.status === "success" ? partial.merman.artifact.svg : "",
-    /partial/
+    /partial/,
   );
   assert.equal(partial.mermaid.status, "failure");
   assert.equal(partial.mermaid.message, "Mermaid parse failed");
@@ -827,7 +826,7 @@ test("render failures retain binding details in the completed batch", async () =
 test("normalizes raw Merman Error and object payloads before publication", async () => {
   const nativeFailure = Object.assign(
     new Error("Native Merman render failure."),
-    { code: "MERMAN_RENDER_ERROR" }
+    { code: "MERMAN_RENDER_ERROR" },
   );
   const structuredFailure = {
     message: "Structured Merman render failure.",
@@ -880,7 +879,7 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
           status: "failure",
         } as unknown as ReturnType<MermanDomainFacade["renderAscii"]>;
       },
-    })
+    }),
   );
   await waitFor(() => coordinator.store.getState().status === "success");
 
@@ -889,10 +888,7 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
   if (state.status !== "success") return;
   assert.equal(state.ascii.status, "failure");
   if (state.ascii.status !== "failure") return;
-  assert.equal(
-    state.ascii.error.summary,
-    "Structured Merman ASCII failure."
-  );
+  assert.equal(state.ascii.error.summary, "Structured Merman ASCII failure.");
   assert.match(state.ascii.error.detail ?? "", /MERMAN_ASCII_ERROR/);
   assert.doesNotMatch(state.ascii.error.detail ?? "", /\[object Object\]/);
 });
@@ -921,13 +917,19 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
           return facade().renderAscii(operation);
         },
       },
-      { mermaidConfig: "{" }
-    )
+      { mermaidConfig: "{" },
+    ),
   );
-  await waitFor(() => !/pending|updating/.test(coordinator.store.getState().status));
+  await waitFor(
+    () => !/pending|updating/.test(coordinator.store.getState().status),
+  );
 
   const state = coordinator.store.getState();
-  if (state.status === "empty" || state.status === "pending" || state.status === "updating") {
+  if (
+    state.status === "empty" ||
+    state.status === "pending" ||
+    state.status === "updating"
+  ) {
     assert.fail(`Expected a completed render, received ${state.status}.`);
   }
   assert.equal(state.ascii.status, "failure");
@@ -939,7 +941,7 @@ test("publishes invalid configuration as an ASCII failure before detection", asy
 function input(
   source: string,
   domainFacade: MermanDomainFacade = facade(),
-  workspace: Partial<WorkspaceSnapshot> = {}
+  workspace: Partial<WorkspaceSnapshot> = {},
 ): RenderCoordinatorInput {
   return {
     facade: domainFacade,
@@ -996,10 +998,18 @@ function rawFailureFacade(error: unknown): MermanDomainFacade {
 function facade(packageVersion = "test-merman"): MermanDomainFacade {
   return {
     packageVersion,
-    presentationCatalog: () => ({
-      schema_version: 1,
-      theme_presets: [],
-      profiles: [],
+    themeCatalog: () => ({
+      schema_version: 2,
+      structured_spec_available: true,
+      supported_output_ids: ["svg"],
+      presets: [],
+      known_capability_ids: [],
+      known_text_capability_ids: [],
+      known_font_container_ids: [],
+      known_font_source_ids: [],
+      known_semantic_target_ids: [],
+      known_variant_ids: [],
+      resource_limits: [],
     }),
     detectDiagram: () => ({
       status: "available",
@@ -1011,7 +1021,7 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
     getAsciiSupportedDiagrams: () => ["flowchart"],
     render: (input: ConfiguredMermanOperationInput) => ({
       artifact: projectNavigableInlineSvg(
-        `<svg xmlns="http://www.w3.org/2000/svg"><text>${input.source}</text></svg>`
+        `<svg xmlns="http://www.w3.org/2000/svg"><text>${input.source}</text></svg>`,
       ),
       error: null,
       renderTime: 2,
@@ -1023,27 +1033,19 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
       status: "success",
     }),
     svgPlan: (input: ConfiguredMermanOperationInput) =>
-      svgPlan({
-        diagramType: input.source,
-        profileId:
-          (input as FrozenRenderOperation).presentationProfileId ?? null,
-      }),
+      svgPlan({ diagramType: input.source }),
   } as unknown as MermanDomainFacade;
 }
 
 function svgPlan({
   diagramType = "flowchart-v2",
-  profileId = null,
 }: {
   diagramType?: string;
-  profileId?: string | null;
 } = {}): ReturnType<MermanDomainFacade["svgPlan"]> {
   return {
     schema_version: 1,
     planned_operation_id: "svg",
     diagram_type: diagramType,
-    presentation_profile_id: profileId,
-    presentation_aspects: [],
     required_capability_ids: [],
     missing_capability_ids: [],
     ready: true,
@@ -1051,14 +1053,12 @@ function svgPlan({
 }
 
 function fakeCompare(
-  results: Promise<MermaidRealmRenderResult>[]
+  results: Promise<MermaidRealmRenderResult>[],
 ): MermaidRealmController & {
   calls: Parameters<MermaidRealmController["render"]>[0][];
   resetCalls: number;
 } {
-  let activeCancel:
-    | ((result: MermaidRealmRenderResult) => void)
-    | null = null;
+  let activeCancel: ((result: MermaidRealmRenderResult) => void) | null = null;
   const controller: MermaidRealmController & {
     calls: Parameters<MermaidRealmController["render"]>[0][];
     resetCalls: number;
@@ -1091,7 +1091,7 @@ function fakeCompare(
 }
 
 function mermaidSuccess(
-  label: string
+  label: string,
 ): Extract<MermaidRealmRenderResult, { status: "success" }> {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`;
   return {

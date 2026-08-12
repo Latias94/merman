@@ -20,8 +20,7 @@ const COMPLETE_SNAPSHOT: WorkspaceSnapshot = {
   mermaidConfig: '{"look":"neo"}',
   diagramTheme: "forest",
   diagramFont: "arial",
-  presentationProfileId: "future-profile",
-  presentationThemePresetId: "future-theme",
+  themePresetId: "future-theme",
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -30,7 +29,10 @@ test("round-trips one complete workspace snapshot", () => {
   const hash = encodeShareHash(COMPLETE_SNAPSHOT);
   assert.deepEqual(decodeShareHash(hash), COMPLETE_SNAPSHOT);
 
-  const raw = JSON.parse(decodeURIComponent(atob(hash))) as Record<string, unknown>;
+  const raw = JSON.parse(decodeURIComponent(atob(hash))) as Record<
+    string,
+    unknown
+  >;
   assert.equal("hostThemePreset" in raw, false);
 });
 
@@ -45,28 +47,26 @@ test("round-trips Unicode without changing byte-oriented validation", () => {
 
 test("migrates legacy host theme values into a complete defaulted snapshot", () => {
   const cases = [
-    ["editor-light", "editor-light", null, "resvg-safe"],
-    ["merman-modern", null, "merman-modern", "parity"],
-    ["none", null, null, "parity"],
-    ["mermaid", null, null, "parity"],
-    ["future-theme", "future-theme", null, "parity"],
+    ["editor-light", "editor-light", "resvg-safe"],
+    ["merman-modern", null, "parity"],
+    ["none", null, "parity"],
+    ["mermaid", null, "parity"],
+    ["future-theme", "future-theme", "parity"],
   ] as const;
 
-  for (const [legacy, themePreset, profile, pipeline] of cases) {
+  for (const [legacy, themePresetId, pipeline] of cases) {
     assert.deepEqual(decodeShareHash(legacyHash(legacy)), {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
       code: "flowchart TD\nA",
-      presentationProfileId: profile,
-      presentationThemePresetId: themePreset,
+      themePresetId,
       svgPipeline: pipeline,
     });
   }
 });
 
-test("keeps the legacy presentation migration callable as a pure contract", () => {
+test("keeps the legacy host-theme migration callable as a pure contract", () => {
   assert.deepEqual(migrateLegacyHostTheme("editor-light"), {
-    presentationProfileId: null,
-    presentationThemePresetId: "editor-light",
+    themePresetId: "editor-light",
     svgPipeline: "resvg-safe",
   });
 });
@@ -78,30 +78,29 @@ test("prefers present current fields and defaults omitted optional fields", () =
         code: "flowchart TD\nA",
         theme: "default",
         hostThemePreset: "editor-light",
-        presentationProfileId: "future-profile",
-      })
+        themePresetId: "future-theme",
+      }),
     ),
     {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
       code: "flowchart TD\nA",
-      presentationProfileId: "future-profile",
-    }
+      themePresetId: "future-theme",
+    },
   );
 });
 
-test("inherits caller defaults when every optional presentation field is absent", () => {
+test("inherits caller defaults when every optional render field is absent", () => {
   const defaults: WorkspaceSnapshot = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
-    presentationProfileId: "default-profile",
-    presentationThemePresetId: "default-theme",
+    themePresetId: "default-theme",
     svgPipeline: "readable",
   };
   assert.deepEqual(
     decodeShareHash(
       encodedPayload({ code: "flowchart TD\nA", theme: "forest" }),
-      defaults
+      defaults,
     ),
-    { ...defaults, code: "flowchart TD\nA", diagramTheme: "forest" }
+    { ...defaults, code: "flowchart TD\nA", diagramTheme: "forest" },
   );
 });
 
@@ -117,8 +116,7 @@ test("rejects an invalid required or present optional field as one payload", () 
     { ...valid, svgPipeline: "future-pipeline" },
     { ...valid, textMeasurementMode: "approximate" },
     { ...valid, diagramFont: "comic-sans" },
-    { ...valid, presentationProfileId: "" },
-    { ...valid, presentationThemePresetId: false },
+    { ...valid, themePresetId: false },
     { ...valid, hostThemePreset: "" },
   ];
 
@@ -133,9 +131,9 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
       encodedPayload({
         code: "x".repeat(SHARE_LIMITS.sourceBytes + 1),
         theme: "default",
-      })
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     decodeShareHash(
@@ -143,9 +141,9 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
         code: "flowchart TD\nA",
         config: "x".repeat(SHARE_LIMITS.configBytes + 1),
         theme: "default",
-      })
+      }),
     ),
-    null
+    null,
   );
   assert.equal(
     decodeShareHash(
@@ -154,23 +152,23 @@ test("rejects source, config, and total payloads beyond shared byte budgets", ()
         config: "{}",
         theme: "default",
         ignored: "x".repeat(SHARE_LIMITS.jsonBytes),
-      })
+      }),
     ),
-    null
+    null,
   );
 });
 
-test("rejects oversized current and legacy presentation IDs", () => {
+test("rejects oversized current and legacy theme preset IDs", () => {
   const oversizedId = "x".repeat(SHARE_LIMITS.idBytes + 1);
   assert.equal(
     decodeShareHash(
       encodedPayload({
         code: "flowchart TD\nA",
         theme: "default",
-        presentationProfileId: oversizedId,
-      })
+        themePresetId: oversizedId,
+      }),
     ),
-    null
+    null,
   );
   assert.equal(decodeShareHash(legacyHash(oversizedId)), null);
 });
@@ -182,7 +180,7 @@ test("refuses to serialize a workspace that cannot be decoded", () => {
         ...COMPLETE_SNAPSHOT,
         code: "x".repeat(SHARE_LIMITS.sourceBytes + 1),
       }),
-    /share URL contract/u
+    /share URL contract/u,
   );
 });
 
@@ -208,7 +206,10 @@ test("copy is a pure supplied-snapshot command and updates history after clipboa
   unsubscribe();
 
   assert.equal(events.length, 4);
-  assert.match(events[0] ?? "", /^clipboard:https:\/\/example\.test\/merman\/#/u);
+  assert.match(
+    events[0] ?? "",
+    /^clipboard:https:\/\/example\.test\/merman\/#/u,
+  );
   assert.equal(events[1], events[0]?.replace("clipboard:", "history:"));
   assert.equal(events[2], events[0]);
   assert.equal(events[3], events[1]);
@@ -228,7 +229,7 @@ test("does not update history when clipboard permission fails", async () => {
         historyUpdates += 1;
       },
     }),
-    /denied/u
+    /denied/u,
   );
   assert.equal(historyUpdates, 0);
 });
@@ -241,7 +242,7 @@ test("malformed Base64, URI encoding, and JSON fail closed", () => {
 
 function legacyHash(
   hostThemePreset: string,
-  extra: Record<string, unknown> = {}
+  extra: Record<string, unknown> = {},
 ): string {
   return encodedPayload({
     code: "flowchart TD\nA",

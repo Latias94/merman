@@ -26,14 +26,13 @@ export interface MermanLayoutEnvironment {
 export interface MermanOperationOptions {
   readonly diagramFont?: DiagramFont;
   readonly layoutEnvironment?: MermanLayoutEnvironment;
-  readonly presentationProfileId?: string | null;
-  readonly presentationThemePresetId?: string | null;
+  readonly themePresetId?: string | null;
   readonly svgPipeline?: MermanSvgPipeline;
   readonly textMeasurementMode?: MermanTextMeasurementMode;
 }
 
 export function isMermanSvgPipeline(
-  value: unknown
+  value: unknown,
 ): value is MermanSvgPipeline {
   return (
     typeof value === "string" &&
@@ -54,15 +53,13 @@ export interface RenderOperationVersions {
   readonly mermaid: string;
 }
 
-export interface FrozenRenderOperation
-  extends ConfiguredMermanOperationInput {
+export interface FrozenRenderOperation extends ConfiguredMermanOperationInput {
   readonly compareEnabled: boolean;
   readonly configJson: string;
   readonly diagnosticsEnabled: boolean;
   readonly diagramFont: DiagramFont;
   readonly layoutEnvironment: Readonly<MermanLayoutEnvironment>;
-  readonly presentationProfileId: string | null;
-  readonly presentationThemePresetId: string | null;
+  readonly themePresetId: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly theme: WorkspaceSnapshot["diagramTheme"];
   readonly versions: Readonly<RenderOperationVersions>;
@@ -82,17 +79,13 @@ export function configuredMermanOperationInput(
   source: string,
   theme: string,
   configJson: string,
-  options: MermanOperationOptions | undefined
+  options: MermanOperationOptions | undefined,
 ): ConfiguredMermanOperationInput {
   return freezeConfiguredInput(source, theme, configJson, {
     diagramFont: options?.diagramFont ?? DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
     layoutEnvironment: options?.layoutEnvironment,
-    presentationProfileId:
-      options?.presentationProfileId ??
-      DEFAULT_WORKSPACE_SNAPSHOT.presentationProfileId,
-    presentationThemePresetId:
-      options?.presentationThemePresetId ??
-      DEFAULT_WORKSPACE_SNAPSHOT.presentationThemePresetId,
+    themePresetId:
+      options?.themePresetId ?? DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
     svgPipeline: options?.svgPipeline ?? DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
     textMeasurementMode:
       options?.textMeasurementMode ??
@@ -116,11 +109,10 @@ export function freezeRenderOperation({
     {
       diagramFont: workspace.diagramFont,
       layoutEnvironment: frozenLayout,
-      presentationProfileId: workspace.presentationProfileId,
-      presentationThemePresetId: workspace.presentationThemePresetId,
+      themePresetId: workspace.themePresetId,
       svgPipeline: workspace.svgPipeline,
       textMeasurementMode: workspace.textMeasurementMode,
-    }
+    },
   );
   return Object.freeze({
     ...configured,
@@ -129,8 +121,7 @@ export function freezeRenderOperation({
     diagnosticsEnabled,
     diagramFont: workspace.diagramFont,
     layoutEnvironment: frozenLayout,
-    presentationProfileId: workspace.presentationProfileId,
-    presentationThemePresetId: workspace.presentationThemePresetId,
+    themePresetId: workspace.themePresetId,
     svgPipeline: workspace.svgPipeline,
     theme: workspace.diagramTheme,
     versions: Object.freeze({ ...versions }),
@@ -140,7 +131,7 @@ export function freezeRenderOperation({
 
 export function renderOperationWithSvgPipeline(
   operation: FrozenRenderOperation,
-  svgPipeline: MermanSvgPipeline
+  svgPipeline: MermanSvgPipeline,
 ): FrozenRenderOperation {
   if (operation.svgPipeline === svgPipeline) return operation;
   const { svg: _svg, ...bindingOptions } = operation.bindingOptions;
@@ -158,14 +149,13 @@ export function renderOperationWithSvgPipeline(
 
 export function sameRenderOperation(
   left: FrozenRenderOperation,
-  right: FrozenRenderOperation
+  right: FrozenRenderOperation,
 ): boolean {
   return (
     left.source === right.source &&
     left.theme === right.theme &&
     left.configJson === right.configJson &&
-    left.presentationProfileId === right.presentationProfileId &&
-    left.presentationThemePresetId === right.presentationThemePresetId &&
+    left.themePresetId === right.themePresetId &&
     left.textMeasurementMode === right.textMeasurementMode &&
     left.diagramFont === right.diagramFont &&
     left.layoutEnvironment.containerWidth ===
@@ -187,8 +177,7 @@ export function sameRenderOperation(
 interface NormalizedMermanOptions {
   readonly diagramFont: DiagramFont;
   readonly layoutEnvironment?: Readonly<MermanLayoutEnvironment>;
-  readonly presentationProfileId: string | null;
-  readonly presentationThemePresetId: string | null;
+  readonly themePresetId: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
 }
@@ -197,7 +186,7 @@ function freezeConfiguredInput(
   source: string,
   theme: string,
   configJson: string,
-  options: NormalizedMermanOptions
+  options: NormalizedMermanOptions,
 ): ConfiguredMermanOperationInput {
   let configuredSource = source;
   let configurationError: ErrorProjection | null = null;
@@ -218,23 +207,11 @@ function freezeConfiguredInput(
 }
 
 function bindingOptionsForRender(
-  options: NormalizedMermanOptions
+  options: NormalizedMermanOptions,
 ): Readonly<SvgBindingOptions> {
-  const presentation =
-    options.presentationProfileId || options.presentationThemePresetId
-      ? Object.freeze({
-          ...(options.presentationProfileId
-            ? { profile: options.presentationProfileId }
-            : {}),
-          ...(options.presentationThemePresetId
-            ? {
-                theme: Object.freeze({
-                  preset: options.presentationThemePresetId,
-                }),
-              }
-            : {}),
-        })
-      : undefined;
+  const theme = options.themePresetId
+    ? Object.freeze({ preset: options.themePresetId })
+    : undefined;
   const svg =
     options.svgPipeline === "parity"
       ? undefined
@@ -253,14 +230,14 @@ function bindingOptionsForRender(
     : undefined;
   return Object.freeze({
     version: 2,
-    ...(presentation ? { presentation } : {}),
+    ...(theme ? { theme } : {}),
     ...(svg ? { svg } : {}),
     ...(layout ? { layout } : {}),
   });
 }
 
 function freezeLayoutEnvironment(
-  value: MermanLayoutEnvironment
+  value: MermanLayoutEnvironment,
 ): Readonly<MermanLayoutEnvironment> {
   return Object.freeze({
     containerHeight: value.containerHeight,

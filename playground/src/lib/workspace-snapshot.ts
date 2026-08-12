@@ -11,8 +11,7 @@ export interface WorkspaceSnapshot {
   readonly code: string;
   readonly mermaidConfig: string;
   readonly diagramTheme: ThemeName;
-  readonly presentationThemePresetId: string | null;
-  readonly presentationProfileId: string | null;
+  readonly themePresetId: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
   readonly diagramFont: DiagramFont;
@@ -27,8 +26,7 @@ export const DEFAULT_WORKSPACE_SNAPSHOT: Readonly<WorkspaceSnapshot> =
     C --> D`,
     mermaidConfig: DEFAULT_MERMAID_CONFIG,
     diagramTheme: "default",
-    presentationThemePresetId: null,
-    presentationProfileId: null,
+    themePresetId: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "trebuchet",

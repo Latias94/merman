@@ -7,43 +7,31 @@ import {
   type WorkspaceSnapshot,
 } from "./index.ts";
 
-test("presentation setters update only their own axis", () => {
+test("diagram rendering setters update only their own axis", () => {
   useAppStore.setState({
     diagramTheme: "forest",
-    presentationProfileId: null,
-    presentationThemePresetId: null,
+    themePresetId: null,
     svgPipeline: "parity",
   });
 
-  useAppStore.getState().setPresentationThemePresetId("future-theme");
-  assert.deepEqual(presentationState(), {
+  useAppStore.getState().setThemePresetId("future-theme");
+  assert.deepEqual(renderingState(), {
     diagramTheme: "forest",
-    presentationProfileId: null,
-    presentationThemePresetId: "future-theme",
-    svgPipeline: "parity",
-  });
-
-  useAppStore.getState().setPresentationProfileId("future-profile");
-  assert.deepEqual(presentationState(), {
-    diagramTheme: "forest",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "parity",
   });
 
   useAppStore.getState().setSvgPipeline("readable");
-  assert.deepEqual(presentationState(), {
+  assert.deepEqual(renderingState(), {
     diagramTheme: "forest",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "readable",
   });
 
   useAppStore.getState().setDiagramTheme("dark");
-  assert.deepEqual(presentationState(), {
+  assert.deepEqual(renderingState(), {
     diagramTheme: "dark",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "readable",
   });
 });
@@ -53,8 +41,7 @@ test("applies one complete workspace snapshot with one coherent notification", (
     code: "sequenceDiagram\nA->>B: hello",
     mermaidConfig: '{"look":"neo"}',
     diagramTheme: "forest",
-    presentationProfileId: "future-profile",
-    presentationThemePresetId: "future-theme",
+    themePresetId: "future-theme",
     svgPipeline: "readable",
     textMeasurementMode: "headless",
     diagramFont: "arial",
@@ -71,12 +58,11 @@ test("applies one complete workspace snapshot with one coherent notification", (
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
 });
 
-function presentationState() {
+function renderingState() {
   const state = useAppStore.getState();
   return {
     diagramTheme: state.diagramTheme,
-    presentationProfileId: state.presentationProfileId,
-    presentationThemePresetId: state.presentationThemePresetId,
+    themePresetId: state.themePresetId,
     svgPipeline: state.svgPipeline,
   };
 }

@@ -86,8 +86,7 @@ test("freezes one configured input for detection, parse, layout, and render", ()
         containerHeight: 600,
         screenAvailableWidth: 1280,
       },
-      presentationProfileId: "merman-modern",
-      presentationThemePresetId: "editor-light",
+      themePresetId: "editor-light",
       svgPipeline: "resvg-safe",
     },
   );
@@ -101,12 +100,7 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.match(input.configuredSource, /flowchart TD/);
   assert.deepEqual(input.bindingOptions, {
     version: 2,
-    presentation: {
-      profile: "merman-modern",
-      theme: {
-        preset: "editor-light",
-      },
-    },
+    theme: { preset: "editor-light" },
     layout: {
       container_width: 800,
       container_height: 600,
@@ -136,7 +130,7 @@ test("keeps headless layout distinct from an observed browser screen", () => {
   });
 });
 
-test("keeps the default font in Mermaid config without enabling a presentation theme", () => {
+test("keeps the default font in Mermaid config without enabling a compiled theme preset", () => {
   const input = configuredMermanOperationInput(
     "flowchart TD\nA",
     "default",
@@ -148,33 +142,40 @@ test("keeps the default font in Mermaid config without enabling a presentation t
   assert.deepEqual(input.bindingOptions, { version: 2 });
 });
 
-test("keeps presentation theme, profile, and SVG pipeline independent", () => {
-  const plain = configuredMermanOperationInput("flowchart TD\nA", "default", "{}", undefined);
-  const themeOnly = configuredMermanOperationInput("flowchart TD\nA", "dark", "{}", {
-    presentationThemePresetId: "future-theme",
-  });
-  const profileOnly = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
-    presentationProfileId: "future-profile",
-  });
-  const pipelineOnly = configuredMermanOperationInput("flowchart TD\nA", "neutral", "{}", {
-    svgPipeline: "readable",
-  });
+test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent", () => {
+  const plain = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "default",
+    "{}",
+    undefined,
+  );
+  const themeOnly = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "dark",
+    "{}",
+    {
+      themePresetId: "future-theme",
+    },
+  );
+  const pipelineOnly = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "neutral",
+    "{}",
+    {
+      svgPipeline: "readable",
+    },
+  );
 
   assert.deepEqual(plain.bindingOptions, { version: 2 });
   assert.deepEqual(themeOnly.bindingOptions, {
     version: 2,
-    presentation: { theme: { preset: "future-theme" } },
-  });
-  assert.deepEqual(profileOnly.bindingOptions, {
-    version: 2,
-    presentation: { profile: "future-profile" },
+    theme: { preset: "future-theme" },
   });
   assert.deepEqual(pipelineOnly.bindingOptions, {
     version: 2,
     svg: { pipeline: "readable" },
   });
   assert.match(themeOnly.configuredSource, /"theme":"dark"/);
-  assert.match(profileOnly.configuredSource, /"theme":"forest"/);
   assert.match(pipelineOnly.configuredSource, /"theme":"neutral"/);
 });
 
@@ -204,11 +205,12 @@ test("identity covers every render-operation axis", () => {
     operation({ workspace: { mermaidConfig: '{"layout":"elk"}' } }),
     operation({ workspace: { diagramTheme: "dark" } }),
     operation({ workspace: { diagramFont: "arial" } }),
-    operation({ workspace: { presentationProfileId: "profile" } }),
-    operation({ workspace: { presentationThemePresetId: "preset" } }),
+    operation({ workspace: { themePresetId: "preset" } }),
     operation({ workspace: { svgPipeline: "readable" } }),
     operation({ workspace: { textMeasurementMode: "headless" } }),
-    operation({ layoutEnvironment: { containerWidth: 801, containerHeight: 600 } }),
+    operation({
+      layoutEnvironment: { containerWidth: 801, containerHeight: 600 },
+    }),
     operation({ compareEnabled: false }),
     operation({ diagnosticsEnabled: true }),
     operation({ viewport: { width: 801, height: 600 } }),
