@@ -2021,29 +2021,38 @@ mod tests {
 
     #[test]
     fn family_theme_and_source_style_residuals_remain_independent() {
+        let gradient = crate::svg::LinearGradient::new(
+            90.0,
+            [
+                crate::svg::GradientStop::new(
+                    0.0,
+                    crate::svg::ThemeColorValue::parse("#0f172a")
+                        .expect("valid gradient start color"),
+                )
+                .expect("valid gradient start"),
+                crate::svg::GradientStop::new(
+                    1.0,
+                    crate::svg::ThemeColorValue::parse("#22d3ee")
+                        .expect("valid gradient end color"),
+                )
+                .expect("valid gradient end"),
+            ],
+        )
+        .expect("valid gradient");
         let theme = crate::svg::DiagramThemeCompiler::new()
             .compile(
                 crate::svg::DiagramThemeSpec::new().with_styles(
                     crate::svg::ThemeRuleSet::default().with_rule(
                         crate::svg::ThemeRule::new(
                             crate::svg::ThemeTarget::Node,
-                            crate::svg::ThemeStylePatch {
-                                geometry: crate::svg::ThemeGeometryPatch {
-                                    radius: crate::svg::Specified::Value(8.0),
-                                    ..Default::default()
-                                },
-                                ..Default::default()
-                            }
-                            .with_fill(
-                                crate::svg::CanvasPaint::solid("#ef4444")
-                                    .expect("valid test color"),
-                            ),
+                            crate::svg::ThemeStylePatch::default()
+                                .with_stroke(crate::svg::CanvasPaint::LinearGradient(gradient)),
                         )
                         .for_family(crate::svg::RenderFamilyKind::Flowchart),
                     ),
                 ),
             )
-            .expect("compile partially unsupported Flowchart theme");
+            .expect("compile unsupported Flowchart gradient theme");
         let document = crate::svg::HeadlessRenderer::new()
             .with_theme(theme)
             .render_document_sync(

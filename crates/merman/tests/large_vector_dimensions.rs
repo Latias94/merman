@@ -14,19 +14,6 @@ xychart-beta
   line [1, 9]
 "#;
 
-#[cfg(feature = "png")]
-const EXTREME_VECTOR_SOURCE: &str = r#"---
-config:
-  xyChart:
-    width: 1000000000000
-    height: 1000000000000
----
-xychart-beta
-  x-axis [a, b]
-  y-axis 0 --> 10
-  line [1, 9]
-"#;
-
 #[test]
 fn huge_mermaid_dimensions_remain_compact_vector_svg() {
     let svg = HeadlessRenderer::new()
@@ -95,16 +82,14 @@ fn raster_limits_apply_before_integer_encoder_dimensions() {
 
     let svg = HeadlessRenderer::new()
         .render_resvg_compatible_svg_with_pipeline_sync(
-            EXTREME_VECTOR_SOURCE,
+            HUGE_VECTOR_SOURCE,
             &SvgPipeline::resvg_safe(),
         )
         .unwrap()
-        .expect("extreme XYChart should remain valid vector SVG");
-    let bounded = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
-        Some(512),
-        Some(512),
-        Some(512 * 512),
-    ));
+        .expect("large XYChart should remain valid vector SVG");
+    let bounded = RasterOptions::default()
+        .with_scale(50_000.0)
+        .with_size_limit(RasterSizeLimit::new(Some(512), Some(512), Some(512 * 512)));
     let plan = svg.raster_plan(&bounded).unwrap();
 
     assert!(plan.requested_width_px > f64::from(u32::MAX), "{plan:?}");
@@ -113,7 +98,11 @@ fn raster_limits_apply_before_integer_encoder_dimensions() {
     assert!(plan.limited, "{plan:?}");
 
     let err = svg
-        .raster_plan(&RasterOptions::default().with_unbounded_size())
+        .raster_plan(
+            &RasterOptions::default()
+                .with_scale(50_000.0)
+                .with_unbounded_size(),
+        )
         .unwrap_err();
     assert!(err.to_string().contains("u32 encoder capability"), "{err}");
 }

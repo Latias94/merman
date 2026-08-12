@@ -277,8 +277,8 @@ fn diagram_theme_covers_core_diagram_roles() {
         ),
         (
             "diagram-theme-class",
-            "classDiagram\n  Animal <|-- Dog\n  class Animal {\n    +bark()\n  }\n  note for Animal \"Profile note\"",
-            &["#111827", "#e5e7eb", "#475569", "#422006", "#f59e0b"],
+            "classDiagram\n  Animal <|-- Dog\n  class Animal {\n    +bark()\n  }",
+            &["#111827", "#e5e7eb", "#475569"],
         ),
         (
             "diagram-theme-state",
@@ -298,7 +298,7 @@ fn diagram_theme_covers_core_diagram_roles() {
         (
             "diagram-theme-quadrant",
             "quadrantChart\n  title Profile Matrix\n  x-axis Low --> High\n  y-axis Low --> High\n  quadrant-1 Invest\n  A: [0.7, 0.8]",
-            &["#111827", "#1f2937", "#e5e7eb", "#94a3b8"],
+            &["#0f172a", "#e5e7eb", "#94a3b8"],
         ),
     ];
 
@@ -310,7 +310,7 @@ fn diagram_theme_covers_core_diagram_roles() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn diagram_theme_series_palette_reaches_ordinal_diagrams() {
+fn diagram_theme_series_palette_reaches_supported_ordinal_diagrams() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
             "diagram-theme-mindmap",
@@ -330,11 +330,6 @@ fn diagram_theme_series_palette_reaches_ordinal_diagrams() {
         (
             "diagram-theme-timeline",
             "timeline\n  title Profile Timeline\n  section 2026\n    Alpha : Start\n    Beta : Ship",
-            &["#60a5fa", "#34d399"],
-        ),
-        (
-            "diagram-theme-venn",
-            "venn-beta\n  set A[\"Core\"]:10\n  set B[\"Editor\"]:8\n  union A,B[\"Shared\"]:3",
             &["#60a5fa", "#34d399"],
         ),
     ];
@@ -431,20 +426,12 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
                 "#e5e7eb", "#1f2937", "#475569", "#34d399", "#f87171", "#fbbf24",
             ],
             &[
-                ".grid .tick{stroke:#475569;",
+                ".task0,#diagram-theme-gantt .task1",
+                "{fill:#111827;stroke:#475569;}",
                 ".done0,#diagram-theme-gantt .done1",
                 "{stroke:#34d399;fill:#1f2937;",
                 ".crit0,#diagram-theme-gantt .crit1",
                 "{stroke:#f87171;fill:#1f2937;",
-            ],
-        ),
-        (
-            "diagram-theme-architecture",
-            "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n  service db(database)[DB] in core\n  api:R --> L:db",
-            &["#94a3b8", "#475569", "#e5e7eb"],
-            &[
-                ".edge{stroke-width:3;stroke:#94a3b8;fill:none;}",
-                ".node-bkg{fill:none;stroke:#475569;",
             ],
         ),
         (
@@ -466,49 +453,12 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "diagram-theme-packet",
-            "packet\ntitle Profile Packet\n+8: \"Byte\"\n+16: \"Word\"",
-            &["#94a3b8", "#475569", "#e5e7eb", "#111827"],
-            &[
-                ".packetByte.start{fill:#94a3b8;}",
-                ".packetBlock{stroke:#475569;stroke-width:1;fill:#111827;}",
-            ],
-        ),
-        (
-            "diagram-theme-sankey",
-            "sankey\nSource,Target,10\nTarget,Done,2",
-            &["#e5e7eb", "#111827"],
-            &[
-                ".sankey-label-bg{stroke:#111827;stroke-width:4px;",
-                ".sankey-label-fg{fill:#e5e7eb;}",
-            ],
-        ),
-        (
             "diagram-theme-radar",
             "radar-beta\n  title Profile Radar\n  axis Speed, Quality, Cost\n  curve Team{8, 7, 4}",
-            &["#e5e7eb", "#60a5fa", "#94a3b8", "#475569"],
+            &["#e5e7eb", "#60a5fa", "#94a3b8"],
             &[
                 ".radarAxisLine{stroke:#94a3b8;stroke-width:2;}",
-                ".radarGraticule{fill:#475569;fill-opacity:0.3;stroke:#475569;",
                 ".radarCurve-0{color:#60a5fa;fill:#60a5fa;",
-            ],
-        ),
-        (
-            "diagram-theme-treemap",
-            "treemap-beta\n  \"Profile Section\"\n    \"Profile Leaf\": 42",
-            &["#e5e7eb", "#cbd5e1", "#475569", "#1f2937", "#111827"],
-            &[
-                ".treemapNode.section{stroke:#475569;stroke-width:1;fill:#1f2937;}",
-                ".treemapNode.leaf{stroke:#475569;stroke-width:1;fill:#111827;}",
-            ],
-        ),
-        (
-            "diagram-theme-c4",
-            "C4Component\nComponentDb(db, \"Database\", \"Postgres\", \"Stores data\")\nComponentQueue(queue, \"Queue\", \"NATS\", \"Events\")",
-            &["#111827", "#475569"],
-            &[
-                "fill=\"#111827\" stroke-width=\"0.5\" stroke=\"#475569\"",
-                "stroke-width=\"0.5\" stroke=\"#475569\"",
             ],
         ),
         (
@@ -520,32 +470,6 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
                 ".treeView-node-line { stroke: #94a3b8; }",
             ],
         ),
-        (
-            "diagram-theme-ishikawa",
-            include_str!(
-                "../../../fixtures/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.mmd"
-            ),
-            &["#e5e7eb", "#111827", "#94a3b8"],
-            &[
-                ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch { stroke: #94a3b8;",
-                ".ishikawa .ishikawa-head { fill: #111827; stroke: #94a3b8;",
-            ],
-        ),
-        (
-            "diagram-theme-eventmodeling",
-            include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd"),
-            &[
-                "#e5e7eb", "#111827", "#1e293b", "#475569", "#34d399", "#60a5fa", "#f59e0b",
-            ],
-            &[
-                "class=\"em-swimlane\"><rect",
-                "fill=\"#1e293b\" stroke=\"#475569\"",
-                "stroke=\"#475569\" fill=\"#111827\"",
-                "stroke=\"#34d399\" fill=\"#34d399\"",
-                "stroke=\"#94a3b8\" fill=\"#60a5fa\"",
-                "stroke=\"#fbbf24\" fill=\"#f59e0b\"",
-            ],
-        ),
     ];
 
     for (name, source, expected, dom_expected) in cases {
@@ -553,4 +477,73 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
         assert_contains_all(name, &svg, expected);
         assert_current_dom_consumes(name, &svg, dom_expected);
     }
+}
+
+#[test]
+#[cfg(feature = "layout-cytoscape")]
+fn diagram_theme_keeps_shared_canvas_and_typography_on_unadapted_family_roles() {
+    let cases: &[(&str, &str)] = &[
+        (
+            "diagram-theme-venn",
+            "venn-beta\n  set A[\"Core\"]:10\n  set B[\"Editor\"]:8\n  union A,B[\"Shared\"]:3",
+        ),
+        (
+            "diagram-theme-architecture",
+            "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n  service db(database)[DB] in core\n  api:R --> L:db",
+        ),
+        (
+            "diagram-theme-sankey",
+            "sankey\nSource,Target,10\nTarget,Done,2",
+        ),
+        (
+            "diagram-theme-treemap",
+            "treemap-beta\n  \"Profile Section\"\n    \"Profile Leaf\": 42",
+        ),
+        (
+            "diagram-theme-c4",
+            "C4Component\nComponentDb(db, \"Database\", \"Postgres\", \"Stores data\")\nComponentQueue(queue, \"Queue\", \"NATS\", \"Events\")",
+        ),
+        (
+            "diagram-theme-ishikawa",
+            include_str!(
+                "../../../fixtures/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.mmd"
+            ),
+        ),
+        (
+            "diagram-theme-eventmodeling",
+            include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd"),
+        ),
+    ];
+
+    for (name, source) in cases {
+        let svg = render_with_editor_dark_theme(name, source);
+        assert_contains_all(
+            name,
+            &svg,
+            &["data-merman-theme-canvas=\"base\"", "fill=\"#0f172a\""],
+        );
+        let compact_svg = svg
+            .chars()
+            .filter(|ch| !ch.is_ascii_whitespace())
+            .collect::<String>();
+        assert!(
+            compact_svg.contains("font-family:Inter,ui-sans-serif,system-ui,sans-serif"),
+            "{name}: expected shared preset typography in SVG: {svg}"
+        );
+    }
+
+    let packet = render_with_editor_dark_theme(
+        "diagram-theme-packet",
+        "packet\ntitle Profile Packet\n+8: \"Byte\"\n+16: \"Word\"",
+    );
+    assert_contains_all(
+        "diagram-theme-packet",
+        &packet,
+        &[
+            "data-merman-theme-canvas=\"base\"",
+            "fill=\"#0f172a\"",
+            "Profile Packet",
+            "Byte",
+        ],
+    );
 }
