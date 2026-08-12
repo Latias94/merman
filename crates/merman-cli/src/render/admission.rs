@@ -1,6 +1,8 @@
 use crate::error::CliError;
 use crate::resources::{CheckedSchedulingWeight, ResolvedResourcePolicy, ResourceLedgerError};
 use std::sync::{Arc, Condvar, Mutex};
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use std::time::Duration;
 
 const MIB: u64 = 1024 * 1024;
 #[cfg(feature = "svg")]
@@ -205,6 +207,24 @@ impl BackendAdmission {
         self.budget.acquire(self.weight)
     }
 
+    /// Admits one backend operation while observing its cooperative control at the blocking
+    /// boundary. The short timed waits keep cancellation and deadlines responsive without
+    /// introducing an asynchronous executor into the synchronous CLI path.
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    pub(super) fn acquire_controlled(
+        &self,
+        control: &merman::OperationControl,
+    ) -> Result<BackendPermit, CliError> {
+        self.budget
+            .acquire_controlled(self.weight, control)
+            .map_err(|error| match error {
+                ControlledAcquireError::Cancelled(error) => {
+                    CliError::Render(merman::RenderError::Cancelled(error))
+                }
+                ControlledAcquireError::Resource(error) => CliError::Resource(error),
+            })
+    }
+
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(super) fn ensure_actual_weight(&self, actual_encoding: u64) -> Result<(), CliError> {
         let actual = checked_sum(&[self.actual_prefix_weight, actual_encoding])?;
@@ -262,6 +282,12 @@ struct BackendAdmissionBudget {
     capacity_changed: Condvar,
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
+enum ControlledAcquireError {
+    Cancelled(merman::OperationCancelled),
+    Resource(ResourceLedgerError),
+}
+
 impl BackendAdmissionBudget {
     fn new(in_flight: CheckedSchedulingWeight) -> Self {
         Self {
@@ -305,6 +331,44 @@ impl BackendAdmissionBudget {
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                 }
                 Err(error) => return Err(error),
+            }
+        }
+        Ok(BackendPermit {
+            budget: Arc::clone(self),
+            weight: requested,
+        })
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn acquire_controlled(
+        self: &Arc<Self>,
+        requested: u64,
+        control: &merman::OperationControl,
+    ) -> Result<BackendPermit, ControlledAcquireError> {
+        let mut in_flight = self
+            .in_flight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        in_flight
+            .check_single(requested)
+            .map_err(ControlledAcquireError::Resource)?;
+        loop {
+            control
+                .checkpoint_at(merman::OperationPhase::Admission)
+                .map_err(ControlledAcquireError::Cancelled)?;
+            match in_flight.try_acquire(requested) {
+                Ok(()) => break,
+                Err(
+                    ResourceLedgerError::LimitExceeded { .. }
+                    | ResourceLedgerError::ArithmeticOverflow { .. },
+                ) if in_flight.max().is_some() => {
+                    let (next, _) = self
+                        .capacity_changed
+                        .wait_timeout(in_flight, Duration::from_millis(25))
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    in_flight = next;
+                }
+                Err(error) => return Err(ControlledAcquireError::Resource(error)),
             }
         }
         Ok(BackendPermit {

@@ -5,6 +5,7 @@ use crate::markdown::{MarkdownChart, MarkdownImage};
 use crate::resources::CheckedBytes;
 use crate::runtime::SharedWriter;
 use crate::transaction::StageSlot;
+use merman::OperationControl;
 #[cfg(feature = "parallel-markdown")]
 use rayon::prelude::*;
 use std::sync::Mutex;
@@ -80,7 +81,8 @@ fn render_chart(
     chart_index: u64,
 ) -> Result<MarkdownImage, CliError> {
     let rendered = (|| {
-        let artifact = execute_graphical(renderer, chart.definition(), stderr)?;
+        let control = OperationControl::new();
+        let artifact = execute_graphical(renderer, chart.definition(), &control, stderr)?;
         let ExecutedMetadata { title, desc } = artifact.stage_into(slot, staged_bytes)?;
         Ok(MarkdownImage {
             url,
