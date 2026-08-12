@@ -2,6 +2,7 @@ use merman::svg::{
     LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
     sanitize_svg_id,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use merman_core::{Engine, ParseOptions};
 use std::env;
 use std::fs;
@@ -281,25 +282,34 @@ fn run_end_to_end(
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
-    merman::svg::render_svg_sync(
-        case.engine,
+    let renderer = Renderer::new()
+        .with_engine(case.engine.clone())
+        .with_parse_options(case.parse_options);
+    let request = || SvgRequest {
+        environment: case.environment.clone(),
+        layout: case.layout_options.clone(),
+        options: case.svg_options.clone(),
+        ..Default::default()
+    };
+    let output = renderer.render(RenderRequest::svg(
         case.source,
-        case.parse_options,
-        case.layout_options,
-        case.svg_options,
-    )?
-    .ok_or("no Mermaid diagram detected")?;
+        OperationControl::new(),
+        request(),
+    ))?;
+    let RenderOutput::Svg(Some(_)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
 
     run_for_duration(duration, batch_size, || {
-        let svg = merman::svg::render_svg_sync(
-            case.engine,
+        let output = renderer.render(RenderRequest::svg(
             black_box(case.source),
-            case.parse_options,
-            case.layout_options,
-            case.svg_options,
-        )?
-        .ok_or("no Mermaid diagram detected")?;
-        Ok(svg.len())
+            OperationControl::new(),
+            request(),
+        ))?;
+        let RenderOutput::Svg(Some(svg)) = output else {
+            return Err("no Mermaid diagram detected".into());
+        };
+        Ok(svg.svg().len())
     })
 }
 

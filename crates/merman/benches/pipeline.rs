@@ -647,6 +647,9 @@ fn bench_end_to_end(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout = headless_layout_options();
+    let renderer = merman::Renderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(parse_opts);
 
     let mut group = c.benchmark_group("end_to_end");
     for (name, input) in fixtures() {
@@ -657,28 +660,41 @@ fn bench_end_to_end(c: &mut Criterion) {
             diagram_id: Some(merman::svg::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
+        let request = || merman::SvgRequest {
+            layout: layout.clone(),
+            options: svg_opts.clone(),
+            ..Default::default()
+        };
 
         let output_identity = || {
-            let svg = merman::svg::render_svg_sync(&engine, input, parse_opts, &layout, &svg_opts)
-                .unwrap_or_else(|error| panic!("end_to_end/{name} preflight failed: {error}"))
-                .unwrap_or_else(|| panic!("end_to_end/{name} preflight returned no SVG"));
-            svg_output_identity(&svg)
+            let output = renderer
+                .render(merman::RenderRequest::svg(
+                    input,
+                    merman::OperationControl::new(),
+                    request(),
+                ))
+                .unwrap_or_else(|error| panic!("end_to_end/{name} preflight failed: {error}"));
+            let merman::RenderOutput::Svg(Some(svg)) = output else {
+                panic!("end_to_end/{name} preflight returned no SVG");
+            };
+            svg_output_identity(svg.svg())
         };
         let preflight = output_identity();
         emit_preflight("end_to_end", name, &preflight);
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let svg = merman::svg::render_svg_sync(
-                    &engine,
-                    black_box(data),
-                    parse_opts,
-                    &layout,
-                    &svg_opts,
-                )
-                .expect("end-to-end benchmark render")
-                .expect("end-to-end benchmark SVG");
-                black_box(svg.len());
+                let output = renderer
+                    .render(merman::RenderRequest::svg(
+                        black_box(data),
+                        merman::OperationControl::new(),
+                        request(),
+                    ))
+                    .expect("end-to-end benchmark render");
+                let merman::RenderOutput::Svg(Some(svg)) = output else {
+                    panic!("end-to-end benchmark SVG");
+                };
+                black_box(svg.svg().len());
             });
         });
         verify_postflight("end_to_end", name, &preflight, output_identity);
