@@ -17,6 +17,7 @@ mod graph;
 mod journey;
 mod kanban;
 mod mindmap;
+mod operation;
 mod options;
 mod packet;
 mod relation_graph;
@@ -35,6 +36,7 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
+pub use operation::{AsciiExecution, AsciiResourcePolicy};
 pub use options::{
     ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCharset, AsciiDirection, AsciiRenderOptions,
     AsciiResourceLimitDescriptor, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
@@ -75,10 +77,134 @@ impl AsciiRenderer {
     pub fn render_model(&self, model: &RenderSemanticModel) -> Result<String> {
         render_model(model, &self.options)
     }
+
+    /// Renders a typed model using caller-owned operation control and runtime context.
+    pub fn render_model_with_operation(
+        &self,
+        model: &RenderSemanticModel,
+        control: &merman_core::OperationControl,
+        context: &merman_core::runtime::OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<String> {
+        render_model_with_operation(model, &self.options, control, context, resources)
+    }
 }
 
 pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
     render_model_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
+}
+
+/// Renders a typed model through the shared operation projection.
+///
+/// This is the model-level backend seam used by the canonical facade.  It never creates a new
+/// control, runtime context, or engine operation; callers retain ownership of all three.
+pub fn render_model_with_operation(
+    model: &RenderSemanticModel,
+    options: &AsciiRenderOptions,
+    control: &merman_core::OperationControl,
+    context: &merman_core::runtime::OperationContext,
+    resources: AsciiResourcePolicy,
+) -> Result<String> {
+    let execution = AsciiExecution::new(control, context, resources);
+    execution.checkpoint(merman_core::OperationPhase::Admission)?;
+    options.validate()?;
+
+    // Keep presentation options on the caller's value while projecting only the target-local
+    // budget into legacy family helpers that still read `AsciiRenderOptions::max_grid_cells`.
+    // The controlled graph/sequence/chart paths consume `resources` directly.
+    let mut target_options = *options;
+    target_options.max_grid_cells = resources.max_grid_cells.unwrap_or(usize::MAX);
+
+    let rendered = (|| -> Result<String> {
+        match model {
+            RenderSemanticModel::Class(model) => {
+                class::render_class_diagram_with_execution(model, &target_options, execution)
+            }
+            RenderSemanticModel::Er(model) => {
+                er::render_er_diagram_with_execution(model, &target_options, execution)
+            }
+            RenderSemanticModel::Flowchart(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+                let graph = graph::from_flowchart_model(model, &target_options)?;
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                graph::render_graph_with_execution(&graph, &target_options, execution)
+            }
+            RenderSemanticModel::Gantt(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_gantt_with_local_time_zone(model, &target_options, context.local_time_zone())
+            }
+            RenderSemanticModel::GitGraph(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_git_graph(model, &target_options)
+            }
+            RenderSemanticModel::Journey(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_journey(model, &target_options)
+            }
+            RenderSemanticModel::Kanban(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_kanban(model, &target_options)
+            }
+            RenderSemanticModel::Mindmap(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_mindmap(model, &target_options)
+            }
+            RenderSemanticModel::Packet(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_packet(model, &target_options)
+            }
+            RenderSemanticModel::Sequence(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+                let diagram = sequence::from_sequence_model(model)?;
+                sequence::render_sequence_diagram_with_execution(
+                    &diagram,
+                    &target_options,
+                    execution,
+                )
+            }
+            RenderSemanticModel::State(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+                let graph = state::from_state_model(model)?;
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                graph::render_graph_with_execution(&graph, &target_options, execution)
+            }
+            RenderSemanticModel::Timeline(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_timeline(model, &target_options)
+            }
+            RenderSemanticModel::XyChart(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+                xychart::render_xychart_diagram_with_execution(model, &target_options, execution)
+            }
+            RenderSemanticModel::TreeView(model) => {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+                render_tree_view(model, &target_options)
+            }
+            other => Err(AsciiError::UnsupportedDiagram {
+                diagram_type: other.kind().to_string(),
+            }),
+        }
+    })()
+    .map_err(map_controlled_error)?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
+}
+
+fn map_controlled_error(error: AsciiError) -> AsciiError {
+    match error {
+        AsciiError::RenderLimitExceeded { actual, limit } => {
+            AsciiError::ResourceLimitExceeded(merman_core::OperationResourceLimitExceeded {
+                id: MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+                phase: merman_core::OperationPhase::Layout,
+                limit: limit as u64,
+                consumed: 0,
+                requested: actual as u64,
+            })
+        }
+        AsciiError::Cancelled(cancelled) => AsciiError::Cancelled(cancelled),
+        AsciiError::ResourceLimitExceeded(resource) => AsciiError::ResourceLimitExceeded(resource),
+        other => other,
+    }
 }
 
 /// Renders a typed model with one explicitly captured local-time resolver.

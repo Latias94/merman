@@ -1,4 +1,5 @@
 use crate::color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::terminal::{
     CanvasStyle, ResolvedCanvasStyle, TerminalCell, char_display_width, write_primary_cell_style,
@@ -119,6 +120,54 @@ impl Canvas {
         self.finish_with_options_internal(options, true)
     }
 
+    pub(crate) fn finish_trimmed_with_options_with_execution(
+        self,
+        options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<String> {
+        self.finish_with_options_controlled(options, true, execution)
+    }
+
+    pub(crate) fn finish_with_options_with_execution(
+        self,
+        options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<String> {
+        self.finish_with_options_controlled(options, false, execution)
+    }
+
+    fn finish_with_options_controlled(
+        self,
+        options: &AsciiRenderOptions,
+        trim: bool,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<String> {
+        match options.color_mode {
+            AsciiColorMode::Plain => self.finish_plain_controlled(trim, execution),
+            AsciiColorMode::Ansi16 => self.finish_ansi_controlled(
+                options.color_theme,
+                AsciiColorMode::Ansi16,
+                trim,
+                execution,
+            ),
+            AsciiColorMode::Ansi256 => self.finish_ansi_controlled(
+                options.color_theme,
+                AsciiColorMode::Ansi256,
+                trim,
+                execution,
+            ),
+            AsciiColorMode::TrueColor => self.finish_ansi_controlled(
+                options.color_theme,
+                AsciiColorMode::TrueColor,
+                trim,
+                execution,
+            ),
+            AsciiColorMode::Html => {
+                self.finish_html_controlled(options.color_theme, trim, execution)
+            }
+        }
+    }
+
     pub(crate) fn into_styled_lines_trimmed(self) -> Vec<crate::text::StyledLine> {
         if self.width == 0 || self.height == 0 {
             return Vec::new();
@@ -154,6 +203,33 @@ impl Canvas {
             out.push('\n');
         }
         out
+    }
+
+    fn finish_plain_controlled(
+        self,
+        trim: bool,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<String> {
+        if self.width == 0 || self.height == 0 {
+            return Ok(String::new());
+        }
+
+        let mut out = String::new();
+        for row_start in (0..self.cells.len()).step_by(self.width) {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            let row_end = if trim {
+                self.trimmed_row_end(row_start, row_start + self.width, false)
+            } else {
+                row_start + self.width
+            };
+            for cell in &self.cells[row_start..row_end] {
+                if let Some(ch) = cell.output_char() {
+                    out.push(ch);
+                }
+            }
+            out.push('\n');
+        }
+        Ok(out)
     }
 
     fn finish_with_options_internal(self, options: &AsciiRenderOptions, trim: bool) -> String {
@@ -223,6 +299,50 @@ impl Canvas {
         out
     }
 
+    fn finish_ansi_controlled(
+        self,
+        theme: AsciiColorTheme,
+        mode: AsciiColorMode,
+        trim: bool,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<String> {
+        if self.width == 0 || self.height == 0 {
+            return Ok(String::new());
+        }
+
+        let mut out = String::new();
+        for row_start in (0..self.cells.len()).step_by(self.width) {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            let row_end = if trim {
+                self.trimmed_row_end(row_start, row_start + self.width, true)
+            } else {
+                row_start + self.width
+            };
+            let mut active_style = ResolvedCanvasStyle::default();
+            for cell in &self.cells[row_start..row_end] {
+                let Some(ch) = cell.output_char() else {
+                    continue;
+                };
+                let desired_style = cell.raw_style().resolve(theme);
+                if desired_style != active_style {
+                    if !active_style.is_plain() {
+                        out.push_str("\u{1b}[0m");
+                    }
+                    if !desired_style.is_plain() {
+                        push_ansi_start(&mut out, mode, desired_style);
+                    }
+                    active_style = desired_style;
+                }
+                out.push(ch);
+            }
+            if !active_style.is_plain() {
+                out.push_str("\u{1b}[0m");
+            }
+            out.push('\n');
+        }
+        Ok(out)
+    }
+
     fn finish_html(self, theme: AsciiColorTheme, trim: bool) -> String {
         if self.width == 0 || self.height == 0 {
             return String::new();
@@ -258,6 +378,49 @@ impl Canvas {
             out.push('\n');
         }
         out
+    }
+
+    fn finish_html_controlled(
+        self,
+        theme: AsciiColorTheme,
+        trim: bool,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<String> {
+        if self.width == 0 || self.height == 0 {
+            return Ok(String::new());
+        }
+
+        let mut out = String::new();
+        for row_start in (0..self.cells.len()).step_by(self.width) {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            let row_end = if trim {
+                self.trimmed_row_end(row_start, row_start + self.width, true)
+            } else {
+                row_start + self.width
+            };
+            let mut active_style = ResolvedCanvasStyle::default();
+            for cell in &self.cells[row_start..row_end] {
+                let Some(ch) = cell.output_char() else {
+                    continue;
+                };
+                let desired_style = cell.raw_style().resolve(theme);
+                if desired_style != active_style {
+                    if !active_style.is_plain() {
+                        out.push_str("</span>");
+                    }
+                    if !desired_style.is_plain() {
+                        push_html_span_start(&mut out, desired_style);
+                    }
+                    active_style = desired_style;
+                }
+                push_html_escaped_char(&mut out, ch);
+            }
+            if !active_style.is_plain() {
+                out.push_str("</span>");
+            }
+            out.push('\n');
+        }
+        Ok(out)
     }
 
     fn trimmed_row_end(&self, row_start: usize, mut row_end: usize, preserve_roles: bool) -> usize {

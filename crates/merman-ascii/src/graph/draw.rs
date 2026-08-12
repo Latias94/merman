@@ -8,20 +8,54 @@ use super::routing;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::terminal::char_display_width;
 use crate::text::display_width;
 use std::collections::HashSet;
 
 pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Result<String> {
+    render_graph_inner(graph, options, None)
+}
+
+pub(crate) fn render_graph_with_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    render_graph_inner(graph, options, Some(execution))
+}
+
+fn render_graph_inner(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
     options.validate()?;
     if graph.nodes.is_empty() {
         return Ok(String::new());
     }
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     let charset = GraphCharset::for_options(options);
-    let graph_layout = layout_graph(graph, options);
-    let route_scene = routing::prepare_route_scene(graph, &graph_layout, &graph.edges, &charset)?;
+    let graph_layout = if let Some(execution) = execution {
+        super::layout::layout_graph_with_execution(graph, options, execution)?
+    } else {
+        layout_graph(graph, options)
+    };
+    let route_scene = if let Some(execution) = execution {
+        routing::prepare_route_scene_with_execution(
+            graph,
+            &graph_layout,
+            &graph.edges,
+            &charset,
+            execution,
+        )?
+    } else {
+        routing::prepare_route_scene(graph, &graph_layout, &graph.edges, &charset)?
+    };
     let (edge_width, edge_height) = route_scene.canvas_extent();
     let width = graph_layout
         .nodes
@@ -50,24 +84,39 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         .max()
         .unwrap_or_default();
     let actual_cells = width.saturating_mul(height);
-    if actual_cells > options.max_grid_cells {
+    if let Some(execution) = execution {
+        execution.admit_grid(actual_cells)?;
+    } else if actual_cells > options.max_grid_cells {
         return Err(AsciiError::RenderLimitExceeded {
             actual: actual_cells,
             limit: options.max_grid_cells,
         });
     }
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
     let mut canvas = Canvas::new(width, height);
     let mut route_cells = HashSet::new();
     for group in &graph_layout.groups {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         draw_group(&mut canvas, group, &charset);
     }
     for layout in &graph_layout.nodes {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         draw_node(&mut canvas, layout, &charset, options);
     }
     {
         let mut route_drawing = routing::RouteDrawing::new(&mut canvas, &mut route_cells);
-        route_scene.paint_routes(&mut route_drawing);
+        if let Some(execution) = execution {
+            route_scene.paint_routes_with_execution(&mut route_drawing, execution)?;
+        } else {
+            route_scene.paint_routes(&mut route_drawing);
+        }
     }
 
     let output_transform = OutputTransform::for_direction(graph.direction);
@@ -79,17 +128,40 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
             width,
             height,
         );
-        route_scene.draw_labels(
-            &mut canvas,
-            output_transform.route_label_transform(width, height),
-        );
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            route_scene.draw_labels_with_execution(
+                &mut canvas,
+                output_transform.route_label_transform(width, height),
+                execution,
+            )?;
+        } else {
+            route_scene.draw_labels(
+                &mut canvas,
+                output_transform.route_label_transform(width, height),
+            );
+        }
         for group in &graph_layout.groups {
+            if let Some(execution) = execution {
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            }
             draw_group_title(&mut canvas, group);
         }
-        return Ok(canvas.finish_with_options(options));
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
+        return if let Some(execution) = execution {
+            canvas.finish_with_options_with_execution(options, execution)
+        } else {
+            Ok(canvas.finish_with_options(options))
+        };
     }
 
-    let mut canvas = output_transform.transform_canvas(canvas, width, height);
+    let mut canvas = if let Some(execution) = execution {
+        output_transform.transform_canvas_with_execution(canvas, width, height, execution)?
+    } else {
+        output_transform.transform_canvas(canvas, width, height)
+    };
     redraw_transformed_node_labels(
         &mut canvas,
         &graph_layout.nodes,
@@ -97,15 +169,34 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         width,
         height,
     );
-    route_scene.draw_labels(
-        &mut canvas,
-        output_transform.route_label_transform(width, height),
-    );
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        route_scene.draw_labels_with_execution(
+            &mut canvas,
+            output_transform.route_label_transform(width, height),
+            execution,
+        )?;
+    } else {
+        route_scene.draw_labels(
+            &mut canvas,
+            output_transform.route_label_transform(width, height),
+        );
+    }
     for group in &graph_layout.groups {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         draw_transformed_group_title(&mut canvas, group, output_transform, width, height);
     }
 
-    Ok(canvas.finish_with_options(options))
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
+    if let Some(execution) = execution {
+        canvas.finish_with_options_with_execution(options, execution)
+    } else {
+        Ok(canvas.finish_with_options(options))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,6 +250,32 @@ impl OutputTransform {
             }
         }
         canvas
+    }
+
+    fn transform_canvas_with_execution(
+        self,
+        source: Canvas,
+        width: usize,
+        height: usize,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Canvas> {
+        let mut canvas = Canvas::new(width, height);
+        for y in 0..height {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            for x in 0..width {
+                let Some(ch) = source.get(x, y) else {
+                    continue;
+                };
+                let coord = self.coord_for_char(CanvasCoord { x, y }, ch, width, height);
+                let ch = self.map_char(ch);
+                if let Some(style) = source.get_style(x, y) {
+                    canvas.set_style(coord.x, coord.y, ch, style);
+                } else {
+                    canvas.set(coord.x, coord.y, ch);
+                }
+            }
+        }
+        Ok(canvas)
     }
 
     fn coord_for_char(

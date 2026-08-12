@@ -1,6 +1,7 @@
 use crate::AsciiError;
 use crate::Result;
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
@@ -171,6 +172,50 @@ pub(crate) fn render_class_diagram(
     }
 
     render_class_components(&boxes, &layouts, options, charset)
+}
+
+pub(crate) fn render_class_diagram_with_execution(
+    model: &ClassDiagram,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    let charset = ClassCharset::for_options(options);
+    let namespace_facade_aliases = namespace_facade_aliases(model);
+    if has_renderable_namespaces(model) {
+        let rendered =
+            render_namespaced_class_diagram(model, options, charset, &namespace_facade_aliases)?;
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        return Ok(rendered);
+    }
+
+    let boxes = render_class_boxes(model, options, charset, &namespace_facade_aliases);
+    if boxes.is_empty() {
+        let rendered = relation_graph::render_stacked_boxes_with_options(&boxes, options);
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        return Ok(rendered);
+    }
+
+    let mut layouts = model
+        .relations
+        .iter()
+        .map(|relation| relation_layout(model, relation, &namespace_facade_aliases))
+        .collect::<Result<Vec<_>>>()?;
+    layouts.extend(note_relation_layouts(
+        model,
+        &namespace_facade_aliases,
+        &boxes,
+    ));
+    if layouts.is_empty() {
+        let rendered = relation_graph::render_stacked_boxes_with_options(&boxes, options);
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        return Ok(rendered);
+    }
+
+    let adapter = ClassRelationComponentAdapter { charset };
+    relation_graph::render_relation_components_with_execution(
+        &boxes, &layouts, options, &adapter, execution,
+    )
 }
 
 fn has_renderable_namespaces(model: &ClassDiagram) -> bool {

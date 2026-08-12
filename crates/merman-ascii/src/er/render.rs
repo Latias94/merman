@@ -1,4 +1,5 @@
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
@@ -110,6 +111,45 @@ pub(crate) fn render_er_diagram(
         options,
         charset,
     )
+}
+
+pub(crate) fn render_er_diagram_with_execution(
+    model: &ErDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    if model.entities.is_empty() {
+        return Ok(String::new());
+    }
+    let charset = ErCharset::for_options(options);
+    let boxes = model
+        .entities
+        .values()
+        .map(|entity| render_entity_box(entity, options, charset))
+        .collect::<Vec<_>>();
+    let entity_labels = model
+        .entities
+        .values()
+        .map(|entity| (entity.id.clone(), entity_display_label(entity).to_string()))
+        .collect::<HashMap<_, _>>();
+    let rendered = if model.relationships.is_empty() {
+        relation_graph::render_stacked_boxes_with_options(&boxes, options)
+    } else {
+        let adapter = ErRelationComponentAdapter {
+            charset,
+            entity_labels: &entity_labels,
+        };
+        relation_graph::render_relation_components_with_execution(
+            &boxes,
+            &model.relationships,
+            options,
+            &adapter,
+            execution,
+        )?
+    };
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
 }
 
 fn render_er_components(

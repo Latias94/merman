@@ -1,5 +1,6 @@
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{StyledLine, display_width, split_label_lines};
 use crate::{AsciiError, Result};
@@ -475,6 +476,25 @@ where
     )
 }
 
+pub(crate) fn render_relation_components_with_execution<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+    execution: AsciiExecution<'_>,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+    R: Clone,
+{
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    let lines = render_relation_component_lines_with_execution(
+        boxes, relations, options, adapter, execution,
+    )?
+    .unwrap_or_default();
+    render_lines_with_options_with_execution(&lines, options, execution)
+}
+
 pub(crate) fn render_relation_component_lines<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -522,6 +542,56 @@ where
             &component_relations,
             options,
             adapter,
+        )?);
+    }
+
+    Ok(Some(join_component_line_groups(rendered)))
+}
+
+pub(crate) fn render_relation_component_lines_with_execution<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<Vec<RelationGraphLine>>>
+where
+    A: RelationComponentAdapter<R>,
+    R: Clone,
+{
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let layered_error = |error| adapter.layered_error(error);
+    let components = relation_components(boxes, &edges).map_err(layered_error)?;
+    if components.len() == 1 {
+        return render_relation_component_with_execution(
+            boxes, relations, options, adapter, execution,
+        )
+        .map(Some);
+    }
+
+    let mut rendered = Vec::new();
+    for component in components {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        let component_boxes = component
+            .boxes()
+            .iter()
+            .map(|relation_box| (*relation_box).clone())
+            .collect::<Vec<_>>();
+        let component_relations = component
+            .edge_indices()
+            .iter()
+            .map(|index| relations[*index].clone())
+            .collect::<Vec<_>>();
+        rendered.push(render_relation_component_with_execution(
+            &component_boxes,
+            &component_relations,
+            options,
+            adapter,
+            execution,
         )?);
     }
 
@@ -697,6 +767,33 @@ where
     )
 }
 
+fn render_relation_component_with_execution<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationGraphLine>>
+where
+    A: RelationComponentAdapter<R>,
+{
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    if relations.is_empty() {
+        return Ok(stacked_box_lines(boxes));
+    }
+    if relations.len() == 1 {
+        return adapter.render_vertical(boxes, &relations[0], options);
+    }
+    render_layered_relation_component_lines_with_execution(
+        boxes,
+        relations,
+        options,
+        adapter.layered_horizontal_gap(),
+        execution,
+        adapter,
+    )
+}
+
 #[cfg(test)]
 pub(crate) fn render_layered_relation_component<R, A>(
     boxes: &[RelationGraphBox],
@@ -761,6 +858,85 @@ where
             Ok(lines)
         }
     }
+}
+
+fn render_layered_relation_component_lines_with_execution<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    _options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    execution: AsciiExecution<'_>,
+    adapter: &A,
+) -> Result<Vec<RelationGraphLine>>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let max_grid_cells = execution.resources().max_grid_cells().unwrap_or(usize::MAX);
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let scene = match plan_layered_relation_scene(boxes, edges, horizontal_gap, max_grid_cells)
+        .map_err(|error| adapter.layered_error(error))?
+    {
+        LayeredRelationScenePlan::Routed(scene) => scene,
+        LayeredRelationScenePlan::Summary(LayeredRelationSummaryReason::GridBudget {
+            actual,
+            limit,
+        }) => {
+            execution.admit_grid(actual)?;
+            return Err(AsciiError::ResourceLimitExceeded(
+                merman_core::OperationResourceLimitExceeded {
+                    id: crate::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+                    phase: merman_core::OperationPhase::Layout,
+                    limit: limit as u64,
+                    consumed: 0,
+                    requested: actual as u64,
+                },
+            ));
+        }
+        LayeredRelationScenePlan::Summary(_) => {
+            return Ok(stacked_box_lines(boxes));
+        }
+    };
+
+    let mut canvas = scene.canvas_with_boxes();
+    let box_snapshot = scene.capture_box_snapshot(&canvas);
+    let mut route_plans = Vec::new();
+    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        let relation = &relations[edge_index];
+        let style = adapter.layered_route_style(relation)?;
+        let Some(route_plan) =
+            scene.plan_edge_draw(edge_index, lane_offset, style, |geometry| {
+                adapter.layered_relation_overlays(relation, geometry)
+            })?
+        else {
+            continue;
+        };
+        route_plans.push(route_plan);
+    }
+
+    for route_plan in &route_plans {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        route_plan.draw_route_at(&mut canvas);
+    }
+    if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
+        return Ok(stacked_box_lines(boxes));
+    }
+    for route_plan in &route_plans {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        route_plan.draw_overlays_at(&mut canvas);
+    }
+    if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
+        return Ok(stacked_box_lines(boxes));
+    }
+
+    Ok(canvas
+        .into_styled_lines_trimmed()
+        .into_iter()
+        .map(RelationGraphLine::from_styled)
+        .collect())
 }
 
 fn render_layered_relation_component_result<R, A>(
@@ -1147,6 +1323,27 @@ fn render_lines_with_options(lines: &[RelationGraphLine], options: &AsciiRenderO
     }
 
     canvas.finish_trimmed_with_options(options)
+}
+
+pub(crate) fn render_lines_with_options_with_execution(
+    lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    if lines.is_empty() {
+        return Ok(String::new());
+    }
+    let width = lines.iter().map(line_char_width).max().unwrap_or(0);
+    execution.admit_grid(width.saturating_mul(lines.len()))?;
+    if width == 0 {
+        return Ok("\n".repeat(lines.len()));
+    }
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        line.draw_at(&mut canvas, 0, y);
+    }
+    canvas.finish_trimmed_with_options_with_execution(options, execution)
 }
 
 fn line_char_width(line: &RelationGraphLine) -> usize {

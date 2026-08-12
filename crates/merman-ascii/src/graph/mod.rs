@@ -11,6 +11,7 @@ mod topology;
 
 pub(crate) use adapter::from_flowchart_model;
 pub(crate) use draw::render_graph;
+pub(crate) use draw::render_graph_with_execution;
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
     GraphNodeShape, GraphNodeStyle,
