@@ -463,13 +463,14 @@ known stale generated packages or unsafe request lanes until final rollout.
   native missing-glyph fallback; cmap-positive but shaped-`.notdef` rejection; variation selector,
   ZWJ, and complex-script positive/negative coverage; linear-work wrapping; the same per-label
   run/face/source ledger (including source/visible ranges) retained by layout and SVG, with the
-  native exporter validating the token-associated emitted line-text digest, request digest, ordered
-  source/visible runs, and final face/source evidence. Include negative cases where text or run order
-  changes while the line count and face set remain unchanged.
+  native exporter validating the exact token-associated artifact, emitted line-text digest, and
+  final face/source evidence while the renderer seals request and ordered-range identity. Include
+  negative cases where text or run order changes while the line count and face set remain unchanged;
+  exact multi-face terminal range observation remains a C6b responsibility.
 - **Done when:** No geometry reaches layout without basic request admission, the native path can
-  produce `Portable` evidence from one retained catalog only after final shaping has rejected every
-  `.notdef` cluster/run, native target admission verifies the actual token-associated emitted text,
-  request identity, ordered ranges, and face/source evidence against the prepared per-label ledger,
+  produce single-face `Portable` evidence from one retained catalog only after final shaping has
+  rejected every `.notdef` cluster/run, native target admission verifies the exact token-associated
+  artifact, emitted text, renderer-sealed request/ordered-range identity, and face/source evidence,
   and at least a second crate-private family consumer can use the result without widening its
   interface. Exact multi-face fallback byte-range evidence remains a C6b follow-up requiring a
   maintained `usvg` hook; it is not inferred from resolver callback order or glyph text search.
