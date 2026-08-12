@@ -1,21 +1,27 @@
 use super::normalization::visit_normalized_segments;
 use crate::Result;
 use crate::error::AsciiError;
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NormalizedTrimmedTextMetrics {
+    pub(crate) materialized_bytes: usize,
+    pub(crate) document_cells: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NormalizedTrimmedTextPlan<'a> {
     source: &'a str,
     start: usize,
     end: usize,
-    retained_bytes: usize,
+    metrics: NormalizedTrimmedTextMetrics,
     materialization_work_units: usize,
 }
 
 impl NormalizedTrimmedTextPlan<'_> {
-    #[cfg(test)]
-    pub(crate) fn retained_bytes(self) -> usize {
-        self.retained_bytes
+    pub(crate) const fn metrics(self) -> NormalizedTrimmedTextMetrics {
+        self.metrics
     }
 
     pub(crate) fn materialization_work_units(self) -> usize {
@@ -26,7 +32,7 @@ impl NormalizedTrimmedTextPlan<'_> {
     pub(crate) fn materialize_after_admission(self) -> Result<String> {
         let mut output = String::new();
         output
-            .try_reserve_exact(self.retained_bytes)
+            .try_reserve_exact(self.metrics.materialized_bytes)
             .map_err(|_| layout_allocation_failed())?;
 
         let mut offset = 0usize;
@@ -45,7 +51,7 @@ impl NormalizedTrimmedTextPlan<'_> {
             Ok::<(), AsciiError>(())
         })?;
 
-        debug_assert_eq!(output.len(), self.retained_bytes);
+        debug_assert_eq!(output.len(), self.metrics.materialized_bytes);
         Ok(output)
     }
 }
@@ -53,6 +59,7 @@ impl NormalizedTrimmedTextPlan<'_> {
 /// Plans terminal normalization and `str::trim` semantics without retaining the normalized text.
 pub(crate) fn try_plan_normalized_trimmed_text<'a>(
     value: &'a str,
+    width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Option<NormalizedTrimmedTextPlan<'a>>> {
     let mut offset = 0usize;
@@ -85,15 +92,85 @@ pub(crate) fn try_plan_normalized_trimmed_text<'a>(
     let retained_bytes = end
         .checked_sub(start)
         .ok_or_else(layout_allocation_failed)?;
+    let document_cells = measure_normalized_range(value, start, end, width_profile, resources)?;
     let materialization_work_units =
         resources.checked_work_add(value.len().max(1), retained_bytes)?;
     Ok(Some(NormalizedTrimmedTextPlan {
         source: value,
         start,
         end,
-        retained_bytes,
+        metrics: NormalizedTrimmedTextMetrics {
+            materialized_bytes: retained_bytes,
+            document_cells,
+        },
         materialization_work_units,
     }))
+}
+
+fn measure_normalized_range(
+    value: &str,
+    start: usize,
+    end: usize,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    let mut offset = 0usize;
+    let mut document_cells = 0usize;
+
+    resources.charge_layout_work(1)?;
+    visit_normalized_segments(value, |segment| {
+        segment.check_grapheme_budget(resources)?;
+        resources.charge_layout_work(segment.layout_work())?;
+        let mut buffer = [0u8; 10];
+        let text = segment.text(&mut buffer);
+        resources.charge_layout_work(text.len().max(1))?;
+        let segment_end = resources.checked_work_add(offset, text.len())?;
+        let kept_start = start.max(offset);
+        let kept_end = end.min(segment_end);
+        if kept_start < kept_end {
+            let relative_start = kept_start - offset;
+            let relative_end = kept_end - offset;
+            let width = if relative_start == 0 && relative_end == text.len() {
+                segment.display_width(width_profile)
+            } else {
+                measure_normalized_fragment(
+                    &text[relative_start..relative_end],
+                    width_profile,
+                    resources,
+                )?
+            };
+            document_cells = checked_document_add(resources, document_cells, width)?;
+        }
+        offset = segment_end;
+        Ok::<(), AsciiError>(())
+    })?;
+
+    Ok(document_cells)
+}
+
+fn measure_normalized_fragment(
+    value: &str,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    let mut document_cells = 0usize;
+    resources.charge_layout_work(value.len().max(1))?;
+    visit_normalized_segments(value, |segment| {
+        segment.check_grapheme_budget(resources)?;
+        resources.charge_layout_work(segment.layout_work())?;
+        document_cells = checked_document_add(
+            resources,
+            document_cells,
+            segment.display_width(width_profile),
+        )?;
+        Ok::<(), AsciiError>(())
+    })?;
+    Ok(document_cells)
+}
+
+fn checked_document_add(resources: &ResourceContext, left: usize, right: usize) -> Result<usize> {
+    left.checked_add(right)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))
 }
 
 pub(crate) fn try_concat_layout_text(
@@ -168,8 +245,9 @@ mod tests {
             "  边\u{7}  ",
         ] {
             let resources = ResourceContext::new(policy);
-            let plan = try_plan_normalized_trimmed_text(raw, &resources)
-                .expect("optional text normalization should be measurable");
+            let plan =
+                try_plan_normalized_trimmed_text(raw, TerminalWidthProfile::Unicode, &resources)
+                    .expect("optional text normalization should be measurable");
             let actual = match plan {
                 Some(plan) => {
                     resources
@@ -184,6 +262,27 @@ mod tests {
             };
             assert_eq!(actual, normalize_optional_text(Some(raw)), "raw={raw:?}");
         }
+    }
+
+    #[test]
+    fn normalized_trimmed_plan_reports_retained_output_metrics_without_materializing() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        let plan = try_plan_normalized_trimmed_text(
+            "  边\u{7}  ",
+            TerminalWidthProfile::Unicode,
+            &resources,
+        )
+        .expect("trimmed text metrics should be measurable")
+        .expect("the normalized label should remain non-empty");
+
+        assert_eq!(
+            plan.metrics(),
+            NormalizedTrimmedTextMetrics {
+                materialized_bytes: "边\\u{7}".len(),
+                document_cells: 7,
+            }
+        );
     }
 
     #[test]

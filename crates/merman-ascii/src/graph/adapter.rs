@@ -6,7 +6,7 @@ use super::shape::resolve_flowchart_node_shape;
 use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
     NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_trimmed_text,
@@ -30,7 +30,7 @@ fn from_flowchart_model_impl(
     model: &FlowchartModel,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
-    before_projection_materialize: impl FnOnce(),
+    before_edge_label_allocation: impl FnOnce(),
 ) -> Result<AsciiGraph> {
     debug_assert_eq!(resources.policy(), options.resources);
     let memberships = preflight_flowchart_projection(model, resources)?;
@@ -50,10 +50,14 @@ fn from_flowchart_model_impl(
             message: "must be greater than 0",
         },
     )?;
-    let projection_plan =
-        FlowchartProjectionPlan::try_new(model, &memberships, direction, resources)?;
-    projection_plan.admit_before_materialize(resources)?;
-    before_projection_materialize();
+    let projection_plan = FlowchartProjectionPlan::try_new(
+        model,
+        &memberships,
+        direction,
+        options.terminal_width_profile,
+        resources,
+        before_edge_label_allocation,
+    )?;
 
     let mut graph = AsciiGraph::new(direction);
     graph.wrap_node_labels_at(wrap_width);
@@ -365,9 +369,8 @@ fn preflight_subgraph_nesting(
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 struct FlowchartProjectionPlan<'a> {
-    work_units: usize,
     edge_labels: Vec<Option<NormalizedTrimmedTextPlan<'a>>>,
 }
 
@@ -376,13 +379,13 @@ impl<'a> FlowchartProjectionPlan<'a> {
         model: &'a FlowchartModel,
         memberships: &FlowchartMembershipIndex<'_>,
         direction: GraphDirection,
+        width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
+        before_edge_label_allocation: impl FnOnce(),
     ) -> Result<Self> {
         let mut work_units = 0usize;
-        let mut edge_labels = Vec::new();
-        edge_labels
-            .try_reserve_exact(model.edges.len())
-            .map_err(|_| projection_allocation_failed())?;
+        let mut document_cells = 0usize;
+        let mut output_bytes = 0usize;
         for node in &model.nodes {
             if memberships.is_group_id(&node.id) {
                 continue;
@@ -398,16 +401,33 @@ impl<'a> FlowchartProjectionPlan<'a> {
             work_units = resources.checked_work_add(work_units, edge.from.len())?;
             work_units = resources.checked_work_add(work_units, edge.to.len())?;
             work_units = resources.checked_work_add(work_units, edge.id.len())?;
-            let label_plan = match edge.label.as_deref() {
-                Some(label) => try_plan_normalized_trimmed_text(label, resources)?,
-                None => None,
-            };
-            if let Some(label_plan) = label_plan {
-                work_units = resources
-                    .checked_work_add(work_units, label_plan.materialization_work_units())?;
+            if let Some(label) = edge.label.as_deref() {
+                let scratch = ResourceContext::new(resources.policy());
+                let label_plan = try_plan_normalized_trimmed_text(label, width_profile, &scratch)?;
+                work_units = resources.checked_work_add(
+                    work_units,
+                    resources.checked_work_mul(scratch.layout_work_used(), 2)?,
+                )?;
+                if let Some(label_plan) = label_plan {
+                    work_units = resources
+                        .checked_work_add(work_units, label_plan.materialization_work_units())?;
+                    let metrics = label_plan.metrics();
+                    document_cells = checked_projection_metric_add(
+                        resources,
+                        AsciiResourceLimitId::MaxDocumentCells,
+                        document_cells,
+                        metrics.document_cells,
+                    )?;
+                    output_bytes = checked_projection_metric_add(
+                        resources,
+                        AsciiResourceLimitId::MaxOutputBytes,
+                        output_bytes,
+                        metrics.materialized_bytes,
+                    )?;
+                }
             }
-            edge_labels.push(label_plan);
         }
+        work_units = resources.checked_work_add(work_units, model.edges.len())?;
         for subgraph in &model.subgraphs {
             work_units = resources.checked_work_add(work_units, subgraph.id.len())?;
             work_units = resources.checked_work_add(work_units, subgraph.title.len())?;
@@ -415,15 +435,39 @@ impl<'a> FlowchartProjectionPlan<'a> {
                 work_units = resources.checked_work_add(work_units, member.len())?;
             }
         }
-        Ok(Self {
-            work_units,
-            edge_labels,
-        })
-    }
 
-    fn admit_before_materialize(&self, resources: &ResourceContext) -> Result<()> {
-        resources.charge_layout_work(self.work_units)
+        resources.check_usage(work_units, document_cells)?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+        resources.charge_usage(work_units, document_cells)?;
+
+        before_edge_label_allocation();
+        let mut edge_labels = Vec::new();
+        edge_labels
+            .try_reserve_exact(model.edges.len())
+            .map_err(|_| projection_allocation_failed())?;
+        for edge in &model.edges {
+            let label_plan = match edge.label.as_deref() {
+                Some(label) => {
+                    let scratch = ResourceContext::new(resources.policy());
+                    try_plan_normalized_trimmed_text(label, width_profile, &scratch)?
+                }
+                None => None,
+            };
+            edge_labels.push(label_plan);
+        }
+
+        Ok(Self { edge_labels })
     }
+}
+
+fn checked_projection_metric_add(
+    resources: &ResourceContext,
+    limit: AsciiResourceLimitId,
+    left: usize,
+    right: usize,
+) -> Result<usize> {
+    left.checked_add(right)
+        .ok_or_else(|| resources.policy().overflow(limit))
 }
 
 fn try_clone_projection_string(value: &str) -> Result<String> {
@@ -612,100 +656,6 @@ mod tests {
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }
-    }
-
-    #[test]
-    fn projection_copy_plan_accepts_exact_work_and_rejects_before_materializing() {
-        const PRIOR_WORK: usize = 11;
-        const REQUIRED_WORK: usize = 47;
-        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let mut edge = flow_edge("A", "B");
-        edge.label = Some("  边\u{7}  ".to_string());
-        let mut model = model_with_edge(edge);
-        model.nodes[0].label = Some("节点".to_string());
-        model.nodes[1].label = Some("🧭".to_string());
-        model.subgraphs.push(FlowSubgraph {
-            id: "G".to_string(),
-            title: "组🧭".to_string(),
-            dir: None,
-            has_explicit_dir: false,
-            label_type: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            nodes: vec!["A".to_string()],
-        });
-        let mut planning_resources = ResourceContext::new(unbounded);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &mut planning_resources)
-            .expect("projection-copy fixture should have valid memberships");
-        let plan = FlowchartProjectionPlan::try_new(
-            &model,
-            &memberships,
-            GraphDirection::LeftRight,
-            &planning_resources,
-        )
-        .expect("projection-copy work should be measurable without materializing strings");
-        assert_eq!(plan.work_units, REQUIRED_WORK);
-        assert_eq!(
-            plan.edge_labels[0]
-                .expect("non-empty edge label should have a normalization plan")
-                .retained_bytes(),
-            "边\\u{7}".len()
-        );
-
-        let exact_policy = unbounded
-            .with_limit(
-                AsciiResourceLimitId::MaxLayoutWorkUnits,
-                PRIOR_WORK + REQUIRED_WORK,
-            )
-            .expect("exact projection-copy work limit should be valid");
-        let exact_resources = ResourceContext::new(exact_policy);
-        exact_resources
-            .charge_layout_work(PRIOR_WORK)
-            .expect("prior layout work should fit the exact cumulative budget");
-        let exact_materialized = Cell::new(false);
-        (|| -> Result<()> {
-            plan.admit_before_materialize(&exact_resources)?;
-            let normalized = plan.edge_labels[0]
-                .expect("non-empty edge label should have a normalization plan")
-                .materialize_after_admission()?;
-            assert_eq!(normalized, "边\\u{7}");
-            exact_materialized.set(true);
-            Ok(())
-        })()
-        .expect("exact projection-copy work should permit materialization");
-        assert!(exact_materialized.get());
-        assert_eq!(
-            exact_resources.layout_work_used(),
-            PRIOR_WORK + REQUIRED_WORK
-        );
-
-        let below_policy = unbounded
-            .with_limit(
-                AsciiResourceLimitId::MaxLayoutWorkUnits,
-                PRIOR_WORK + REQUIRED_WORK - 1,
-            )
-            .expect("max-minus-one projection-copy work limit should be valid");
-        let below_resources = ResourceContext::new(below_policy);
-        below_resources
-            .charge_layout_work(PRIOR_WORK)
-            .expect("prior layout work should fit below the combined boundary");
-        let below_materialized = Cell::new(false);
-        let error = (|| -> Result<()> {
-            plan.admit_before_materialize(&below_resources)?;
-            below_materialized.set(true);
-            Ok(())
-        })()
-        .expect_err("max-minus-one work should fail before projection materialization");
-
-        assert!(!below_materialized.get());
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-                    && details.actual == PRIOR_WORK + REQUIRED_WORK
-                    && details.max == PRIOR_WORK + REQUIRED_WORK - 1
-        ));
-        assert_eq!(below_resources.layout_work_used(), PRIOR_WORK);
     }
 
     #[test]
