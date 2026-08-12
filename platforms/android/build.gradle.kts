@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "io.merman"
-version = "0.8.0-alpha.4"
+version = "0.8.0-alpha.5"
 
 android {
     namespace = "io.merman"

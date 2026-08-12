@@ -581,7 +581,10 @@ fn render_class_split_edges_for_namespace(
         marker_url_prefix: edge_ctx.marker_url_prefix,
         diagram_id: edge_ctx.diagram_id,
         content_tx: if in_namespace_root {
-            edge_ctx.content_tx - root_dx
+            // The recursive Class root's x origin already folds in Dagre's fixed graph margin.
+            // Adding the top-level content translation again moves only the edge route 8px to the
+            // right of nodes rendered in the same local coordinate frame.
+            -root_dx
         } else {
             edge_ctx.content_tx
         },

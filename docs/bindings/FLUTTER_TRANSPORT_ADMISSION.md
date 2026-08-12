@@ -165,12 +165,12 @@ already fails callback, streaming, package, and target-CI requirements.
 | --- | --- | --- |
 | Android arm64/x86_64 | Gradle plugin plus packaged `libmerman_ffi.so` slices | Not integrated or tested |
 | iOS device/simulator | CocoaPods metadata plus `MermanFFI.xcframework` | Not integrated or tested |
-| macOS arm64/x86_64 | CocoaPods metadata plus dylib/XCFramework artifacts | Host dylib only; no package integration |
+| macOS arm64/x86_64 | One XCFramework shared by CocoaPods and SwiftPM | Host dylib only; no package integration |
 | Linux x86_64/arm64 | CMake metadata plus packaged `.so` artifacts | Not integrated or tested |
 | Windows x86_64 | CMake metadata plus packaged `.dll` artifact | Not integrated or tested |
 
 The baseline release workflow installs the Rust targets, builds and injects
-every artifact, runs Flutter analysis and a dry-run publish, then tests the
+every artifact, runs Flutter analysis and a size-gated dry-run publish, then tests the
 packed package. The Flutter owner has distinct `flutter-android-native`,
 `flutter-ios-native`, and `flutter-desktop-native` target-set recipes. The Android recipe remains
 on the `merman-ffi` C ABI transport; the Kotlin AAR's JNI implementation is structurally isolated

@@ -55,12 +55,12 @@ let options = try resourceOptionsJson(profile: .constrained, overrides: [])
 let svg = try merman.renderSvg(source: source, optionsJson: options)
 
 let request = MermanOperationRequest(
-    operationId: "png",
+    operationId: "ascii",
     source: source,
     uri: nil,
     optionsJson: options
 )
-let png = try merman.execute(request: request).data
+let ascii = try merman.execute(request: request).data
 ```
 
 `Merman` owns discovery, metadata, and one-shot operations. Construct `MermanEngine` directly when
@@ -69,7 +69,7 @@ a group of operations shares baseline options or constructor services:
 ```swift
 let engine = try MermanEngine(optionsJson: options, services: nil)
 defer { try? engine.close() }
-let pdf = try engine.renderPdf(source: source, optionsJson: nil)
+let diagnostics = try engine.analyzeJson(source: source, optionsJson: nil)
 ```
 
 The generic `execute` operation is the authoritative dispatch path. Its stable `operationId`
@@ -78,6 +78,11 @@ methods such as `renderSvg`, `renderPng`, `renderJpeg`, and `renderPdf` are gene
 methods over that path. One-shot request options may select `runtime_policy`; reusable request
 options deeply merge over the construction baseline but cannot replace its constructor-owned
 runtime policy.
+
+The default XCFramework supports SVG, ASCII, semantic/layout operations, analysis, validation, and
+document analysis. It omits math and the PNG, JPEG, and PDF exporters. The generated export helpers
+remain valid for custom current-contract libraries; the default artifact returns
+`.missingCapability` with the required descriptor ID.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
 and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID;

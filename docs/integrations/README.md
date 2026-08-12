@@ -42,7 +42,7 @@ merman-cli lint --format json diagram.mmd
 merman-cli lint --markdown --format json README.md
 ```
 
-The in-process `@mermanjs/node` workspace is a private transport candidate, not an admitted package. Do not depend on it until its installation, target, parity, lifecycle, and footprint gates pass. See the [CLI guide](../../crates/merman-cli/README.md) for installation and for a slim analysis-only build.
+`@mermanjs/node` is an experimental alpha package for in-process deterministic SVG and static-site rendering. Install only the root package; it selects an exact-version native platform package for macOS arm64/x64, Linux x64 glibc/musl, or Windows x64 MSVC. It intentionally omits browser fallback, postinstall downloads, math, binary export, analysis, and ASCII. See the [Node package guide](../../platforms/node/README.md) for its lifecycle and capability boundary, or use the [CLI guide](../../crates/merman-cli/README.md) when a subprocess integration fits better.
 
 ## Editors
 

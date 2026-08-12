@@ -299,7 +299,7 @@ test("creates an owned authoritative receipt", () => {
   );
   assert.equal(
     CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH,
-    "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json",
+    "playground/editor-artifact-receipt-v2.json",
   );
 });
 
@@ -856,7 +856,7 @@ function validReceiptInput() {
       },
       coldDefinition: "fresh process and context",
       equivalenceDefinition: "35 families by 11 queries",
-      equivalenceEvidence: "editor-language/token-equivalence-v1.json",
+      equivalenceEvidence: "contracts/editor-language/token-equivalence-v1.json",
       equivalenceEvidenceSha256: digest("evidence"),
       memoryDefinition: "user-agent-specific-memory",
       order: "AB/BA",

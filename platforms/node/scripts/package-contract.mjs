@@ -4,8 +4,8 @@ import path from "node:path";
 const LIFECYCLE_SCRIPTS = ["preinstall", "install", "postinstall"];
 
 export async function inspectPackageManifests(nodeRoot, descriptor) {
-  if (descriptor?.schema_version !== 1 || descriptor?.admission_status !== "candidate") {
-    throw new Error("Node package surface descriptor must remain a schema-1 private candidate.");
+  if (descriptor?.schema_version !== 1 || descriptor?.admission_status !== "public-alpha") {
+    throw new Error("Node package surface descriptor must define the schema-1 public alpha group.");
   }
   const root = await inspectManifest(nodeRoot, descriptor.root, "loader");
   const targets = [];
@@ -35,6 +35,21 @@ export async function inspectPackageManifests(nodeRoot, descriptor) {
     if (root.manifest.optionalDependencies?.[item.manifest.name] !== descriptor.version) {
       throw new Error(`${item.manifest.name} must be an exact-version optional dependency.`);
     }
+    if (
+      item.manifest.os?.length !== 1 ||
+      item.manifest.os[0] !== item.descriptor.os ||
+      item.manifest.cpu?.length !== 1 ||
+      item.manifest.cpu[0] !== item.descriptor.cpu ||
+      JSON.stringify(item.manifest.libc ?? []) !==
+        JSON.stringify(item.descriptor.libc ? [item.descriptor.libc] : [])
+    ) {
+      throw new Error(`${item.manifest.name} platform constraints must match its descriptor.`);
+    }
+  }
+  const optionalNames = Object.keys(root.manifest.optionalDependencies ?? {}).sort();
+  const targetNames = targets.map((item) => item.manifest.name).sort();
+  if (JSON.stringify(optionalNames) !== JSON.stringify(targetNames)) {
+    throw new Error("Node loader optional dependencies must exactly match the target package set.");
   }
   return { root, targets };
 }
@@ -60,8 +75,14 @@ export function verifyPackedFileOwnership({ packageName, role, files }) {
 async function inspectManifest(nodeRoot, descriptor, role) {
   const manifestPath = path.join(nodeRoot, descriptor.directory, "package.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  if (manifest.name !== descriptor.name || manifest.private !== true) {
-    throw new Error(`${descriptor.name} must remain private until U14 admission.`);
+  if (manifest.name !== descriptor.name || manifest.private === true) {
+    throw new Error(`${descriptor.name} must be a public npm package.`);
+  }
+  if (
+    manifest.publishConfig?.access !== "public" ||
+    manifest.repository?.url !== "git+https://github.com/Latias94/merman.git"
+  ) {
+    throw new Error(`${descriptor.name} must retain public npm and repository metadata.`);
   }
   if (manifest.scripts && LIFECYCLE_SCRIPTS.some((name) => name in manifest.scripts)) {
     throw new Error(`${descriptor.name} must not download artifacts from npm lifecycle scripts.`);

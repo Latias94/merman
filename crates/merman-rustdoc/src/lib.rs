@@ -13,7 +13,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = "=0.8.0-alpha.4"
+//! merman-rustdoc = "=0.8.0-alpha.5"
 //! ```
 //!
 //! This works for local `cargo doc` and for docs.rs because the examples below use
@@ -30,7 +30,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = { version = "=0.8.0-alpha.4", default-features = false, features = ["svg"], optional = true }
+//! merman-rustdoc = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"], optional = true }
 //!
 //! [features]
 //! doc-diagrams = ["dep:merman-rustdoc"]

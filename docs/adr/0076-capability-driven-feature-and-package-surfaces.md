@@ -1,6 +1,6 @@
 # ADR 0076: Capability-Driven Feature And Package Surfaces
 
-- Status: accepted
+- Status: accepted; native prebuilt SKU policy superseded by ADR-0079
 - Date: 2026-07-22
 - Descriptor: `capabilities/feature-surface-v1.json`, schema `1`
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
@@ -55,13 +55,11 @@ leaves owned by their package. `complete-svg` is a convenience compile aggregate
 or runtime-policy contract. Runtime environment selection and resource profiles remain independent
 from the compiled capability set.
 
-Source consumers may select `complete-svg` or individual leaves, but the published Python, Apple,
-Android, and Flutter binaries intentionally remain one full native SDK SKU per surface. The C ABI
-is a source-only crate; its full native artifact profile produces host reference libraries for
-verification rather than a prebuilt release bundle. Artifact profiles still describe those
-products with direct leaves so their closure is auditable; they do not imply that every useful
-source feature set must become a prebuilt product. A second native SKU requires surface-specific
-demand and measured final-artifact evidence, not only a smaller Cargo dependency graph.
+The original decision kept one complete native SKU per published language surface. ADR-0079
+supersedes that product choice with a shared default prebuilt capability set while retaining this
+ADR's feature vocabulary, artifact-profile authority, and source-build rules. The C ABI remains a
+source-only crate whose complete native artifact profile produces host reference libraries for
+verification rather than a prebuilt release bundle.
 
 Evidence for a second native SKU belongs to the proposal that introduces it. The proposal must set
 its threshold before measuring same-revision, same-target final artifacts and must use existing

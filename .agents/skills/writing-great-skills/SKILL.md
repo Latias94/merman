@@ -55,7 +55,7 @@ Compare these authorities instead of inferring behavior from names:
 - ASCII support: `docs/rendering/ASCII_SUPPORT_MATRIX.md` and runtime
   `ascii_capabilities`; never infer ASCII support from SVG admission.
 - Distribution channels: package manifests, platform-owned descriptors, owning publish workflows, and direct GitHub or registry evidence. `docs/release/PACKAGE_SURFACES.md` is a guide, not a release-state database. An artifact profile proves a build closure, not that a registry channel is live; use direct registry or GitHub evidence before describing an untagged candidate version as published.
-- Typst: `packages/typst/merman/README.md`, `typst.toml`, and the `typst-wasm` artifact profile.
+- Typst: `distribution/typst/merman/README.md`, `typst.toml`, and the `typst-wasm` artifact profile.
   Record the independent package-to-Merman version mapping and do not infer browser or math
   capabilities.
 

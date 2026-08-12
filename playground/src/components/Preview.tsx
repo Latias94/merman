@@ -560,6 +560,15 @@ export function Preview({ className }: PreviewProps) {
               artifact={svgArtifact}
               presentationKey={currentPublicationId}
               controller={svgViewport}
+              renderMountError={(mountError) => (
+                <RenderError
+                  engine={t("preview.mermanEngine")}
+                  stage="svg-mount"
+                  message={mountError.message}
+                  detail={mountError.stack}
+                  t={t}
+                />
+              )}
               onPresentationReady={(at) => {
                 if (currentBatch) {
                   markRenderCoordinatorPresented(

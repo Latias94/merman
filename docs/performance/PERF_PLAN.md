@@ -10,7 +10,7 @@ host; they are not rolling sources of truth.
 The release-range baseline and latest committed checkpoints were measured on 2026-07-27 and
 2026-07-28:
 
-- [Alpha.3 to Alpha.4 Refactoring Report](../release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md)
+- [Alpha.3 to Alpha.5 Refactoring Report](../release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md)
   compares `v0.8.0-alpha.3` with `d2698d0a3`.
 - [Three-runner checkpoint](renderer_comparison_2026-07-27.md) compares that historical candidate
   with Mermaid.js 11.16.0 and `mermaid-rs-renderer` at `7ff1196`.

@@ -1,8 +1,7 @@
 # ZenUML Upstream Coverage (Mermaid 11.16)
 
-This file maps the local ZenUML corpus to the selected compatible companion source. Mermaid's
-workspace lock at 3.47.8 remains the behavior oracle; the complete admission matrix selected
-3.50.1 after classifying every oracle-to-candidate delta.
+This file maps the local ZenUML corpus to the selected `@zenuml/core@3.50.1` source. The historical
+`3.47.8` comparison is retained by the selection receipt, not as a second standing package graph.
 
 ## Source mapping
 
@@ -45,6 +44,6 @@ snapshot command so generated provenance remains reproducible.
 ## Admission rule
 
 Parser acceptance alone does not admit a version or claim browser parity. A future companion
-update must run the oracle/candidate corpus, compare semantic topology and source ranges, render
-structural SVG, exercise invalid recovery and resource limits, and classify every delta from the
-pinned source. Selection changes only when all required admission gates pass.
+update must run the manual Mermaid upgrade admission workflow, compare selected/candidate behavior,
+render structural SVG, exercise browser security probes and resource limits, and classify every
+delta from pinned source. Selection changes only after review and an exact base-bound receipt.

@@ -14,7 +14,6 @@ pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
     ScopedDomEvidenceCatalog,
-    RootParityExact,
 }
 
 impl AcceptedResidualPolicy {
@@ -24,7 +23,6 @@ impl AcceptedResidualPolicy {
             Self::ScopedDomEvidenceCatalog => {
                 "source-backed family- and fixture-scoped DOM evidence catalog"
             }
-            Self::RootParityExact => "exact fail-closed root residual registry",
         }
     }
 }
@@ -140,7 +138,6 @@ pub(crate) struct CompareRequest {
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
     pub(crate) flowchart_text_measurer: Option<String>,
     pub(crate) accepted_residual_policy: AcceptedResidualPolicy,
-    pub(crate) defer_root_residual_policy_to_caller: bool,
 }
 
 impl Default for CompareRequest {
@@ -155,20 +152,11 @@ impl Default for CompareRequest {
             root_report_limit: None,
             flowchart_text_measurer: None,
             accepted_residual_policy: AcceptedResidualPolicy::None,
-            defer_root_residual_policy_to_caller: false,
         }
     }
 }
 
 impl CompareRequest {
-    fn applies_direct_root_residual_policy(&self, dom_mode: &str, dom_decimals: u32) -> bool {
-        self.check_dom
-            && self.filter.is_none()
-            && svgdom::DomMode::parse(dom_mode) == svgdom::DomMode::ParityRoot
-            && dom_decimals == 3
-            && !self.defer_root_residual_policy_to_caller
-    }
-
     pub(crate) fn parse_for_fact(
         args: Vec<String>,
         fact: DiagramVerificationFact,
@@ -920,19 +908,7 @@ pub(crate) fn run_canonical_svg_compare(
         observed_operations,
     };
 
-    let direct_root_residual_policy = if request
-        .applies_direct_root_residual_policy(dom_mode, dom_decimals)
-    {
-        Some(
-            super::RootParityResidualPolicy::verify(&[fact.diagram], dom_decimals).map_err(
-                |error| CompareRunFailure::without_evidence(XtaskError::SvgCompareFailed(error)),
-            )?,
-        )
-    } else {
-        None
-    };
-    let report_path = request.out_path.clone();
-    let result = run_svg_compare(
+    run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
             out_path: request.out_path.clone(),
@@ -1155,61 +1131,7 @@ pub(crate) fn run_canonical_svg_compare(
                 write_notes_section(report, notes);
             }
         },
-    );
-
-    match direct_root_residual_policy {
-        Some(policy) => {
-            apply_direct_root_residual_policy(fact.diagram, report_path.as_deref(), result, policy)
-        }
-        None => result,
-    }
-}
-
-fn apply_direct_root_residual_policy(
-    diagram: &str,
-    report_path: Option<&Path>,
-    result: CompareRunResult,
-    mut policy: super::RootParityResidualPolicy,
-) -> CompareRunResult {
-    let (evidence, error) = match result {
-        Ok(evidence) => (evidence, None),
-        Err(failure) => (failure.evidence(), Some(failure.into_error())),
-    };
-    let mut failures = Vec::new();
-
-    match error {
-        Some(XtaskError::SvgCompareFailed(message)) => {
-            if let Some(failure) =
-                policy.accept_or_summarize_failure(diagram, &message, report_path)
-            {
-                failures.push(failure);
-            }
-        }
-        Some(error) => return Err(CompareRunFailure::with_evidence(evidence, error)),
-        None => {}
-    }
-
-    match policy.finish() {
-        Ok(finish) => {
-            if !finish.accepted_summaries.is_empty() {
-                println!("\n== accepted root parity residuals ==");
-                for line in finish.accepted_summaries {
-                    println!("{line}");
-                }
-            }
-            failures.extend(finish.failures);
-        }
-        Err(error) => failures.push(error),
-    }
-
-    if failures.is_empty() {
-        Ok(evidence)
-    } else {
-        Err(CompareRunFailure::with_evidence(
-            evidence,
-            XtaskError::SvgCompareFailed(failures.join("\n")),
-        ))
-    }
+    )
 }
 
 pub(crate) fn write_verification_policy_metadata(
@@ -1230,9 +1152,11 @@ pub(crate) fn write_verification_policy_metadata(
             svgdom::DomMode::Structure => "svgdom/structure",
             svgdom::DomMode::Parity => "svgdom/parity",
             svgdom::DomMode::ParityRoot if browser_math_root_policy => {
-                "svgdom/parity-root; browser-measured math uses descendant parity plus a structural root gate"
+                "svgdom/parity descendants; browser-measured math uses a structural root contract"
             }
-            svgdom::DomMode::ParityRoot => "svgdom/parity-root",
+            svgdom::DomMode::ParityRoot => {
+                "svgdom/parity descendants plus the root viewport contract"
+            }
         }
     } else {
         "disabled (DOM check not requested)"
@@ -1241,9 +1165,9 @@ pub(crate) fn write_verification_policy_metadata(
         (false, _) => "disabled (DOM check not requested)",
         (true, svgdom::DomMode::Strict) => "checked (svgdom/strict root attributes)",
         (true, svgdom::DomMode::ParityRoot) if browser_math_root_policy => {
-            "fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)"
+            "contract-checked (browser-measured math dimensions remain diagnostic after structural validation)"
         }
-        (true, svgdom::DomMode::ParityRoot) => "checked (svgdom/parity-root viewport)",
+        (true, svgdom::DomMode::ParityRoot) => "checked (root viewport contract)",
         (true, svgdom::DomMode::Structure | svgdom::DomMode::Parity) => {
             "not-checked (selected DOM mode omits root viewport)"
         }
@@ -1258,17 +1182,10 @@ pub(crate) fn write_verification_policy_metadata(
     };
 
     let _ = writeln!(report, "- Normalization policy: `{normalization}`");
-    let accepted_residual_policy = if request
-        .applies_direct_root_residual_policy(dom_mode, request.dom_decimals.unwrap_or(3))
-    {
-        AcceptedResidualPolicy::RootParityExact
-    } else {
-        request.accepted_residual_policy
-    };
     let _ = writeln!(
         report,
         "- Accepted residual policy: `{}`",
-        accepted_residual_policy.label()
+        request.accepted_residual_policy.label()
     );
     let _ = writeln!(report, "- Root coverage: `{root_coverage}`");
     let _ = writeln!(report, "- Root-delta diagnostics: `{root_diagnostics}`");
@@ -1620,6 +1537,17 @@ fn write_rendered_fixture(
                 "DOM evidence for {diagram}/{stem}: accepted residual profile applied ({reason})"
             ));
         }
+        if profile.validates_root_contract()
+            && let Err(error) = super::validate_root_viewport_contract(
+                diagram,
+                stem,
+                input_text,
+                upstream_svg,
+                local_svg,
+            )
+        {
+            failures.push(error);
+        }
         if let Err(err) = compare_dom_signatures(
             stem,
             upstream_svg,
@@ -1678,7 +1606,7 @@ pub(crate) fn fixture_dom_profile(
             ) =>
         {
             profile = if requested == svgdom::DomMode::ParityRoot {
-                svgdom::DomComparisonProfile::with_root_viewport(svgdom::DomMode::Structure)
+                svgdom::DomComparisonProfile::with_root_contract(svgdom::DomMode::Structure)
             } else {
                 svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::Structure)
             };
@@ -1730,23 +1658,9 @@ fn compare_dom_signatures(
         .map_err(|err| format!("local dom parse failed for {stem}: {err}"))?;
 
     if upstream != local {
-        let detail = if profile.compares_root_viewport() {
-            let mismatch = svgdom::diagnose_root_viewport_mismatch(
-                upstream_svg,
-                local_svg,
-                &upstream,
-                &local,
-                profile,
-                dom_decimals,
-            )
-            .map_err(|err| format!("parity-root diagnosis failed for {stem}: {err}"))?
-            .ok_or_else(|| format!("parity-root diagnosis unexpectedly matched for {stem}"))?;
-            format!(" ({mismatch})")
-        } else {
-            svgdom::format_dom_diffs(&svgdom::dom_diffs(&upstream, &local))
-                .map(|d| format!(" ({d})"))
-                .unwrap_or_default()
-        };
+        let detail = svgdom::format_dom_diffs(&svgdom::dom_diffs(&upstream, &local))
+            .map(|d| format!(" ({d})"))
+            .unwrap_or_default();
         return Err(format!(
             "dom mismatch for {stem}: upstream={} local={}{}",
             upstream_path.display(),
@@ -2017,7 +1931,6 @@ mod tests {
             .expect("Flowchart verification fact");
         let request = CompareRequest {
             check_dom: true,
-            accepted_residual_policy: AcceptedResidualPolicy::RootParityExact,
             ..CompareRequest::default()
         };
         let mut report = String::new();
@@ -2025,61 +1938,13 @@ mod tests {
         write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
 
         assert!(report.contains(
-            "Normalization policy: `svgdom/parity-root; browser-measured math uses descendant parity plus a structural root gate`"
+            "Normalization policy: `svgdom/parity descendants; browser-measured math uses a structural root contract`"
         ));
-        assert!(report.contains("exact fail-closed root residual registry"));
+        assert!(report.contains("Accepted residual policy: `none`"));
         assert!(report.contains(
-            "Root coverage: `fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)`"
+            "Root coverage: `contract-checked (browser-measured math dimensions remain diagnostic after structural validation)`"
         ));
         assert!(report.contains("Root-delta diagnostics: `reported`"));
-    }
-
-    #[test]
-    fn direct_root_residual_policy_requires_the_complete_deterministic_profile() {
-        let request = CompareRequest {
-            check_dom: true,
-            dom_mode: Some("parity-root".to_string()),
-            dom_decimals: Some(3),
-            ..CompareRequest::default()
-        };
-        assert!(request.applies_direct_root_residual_policy("parity-root", 3));
-
-        let filtered = CompareRequest {
-            filter: Some("basic".to_string()),
-            ..request.clone()
-        };
-        assert!(!filtered.applies_direct_root_residual_policy("parity-root", 3));
-
-        let delegated = CompareRequest {
-            defer_root_residual_policy_to_caller: true,
-            ..request.clone()
-        };
-        assert!(!delegated.applies_direct_root_residual_policy("parity-root", 3));
-        assert!(!request.applies_direct_root_residual_policy("parity", 3));
-        assert!(!request.applies_direct_root_residual_policy("parity-root", 6));
-
-        let disabled = CompareRequest {
-            check_dom: false,
-            ..request
-        };
-        assert!(!disabled.applies_direct_root_residual_policy("parity-root", 3));
-    }
-
-    #[test]
-    fn direct_root_policy_metadata_reports_the_effective_exact_registry() {
-        let fact = super::super::diagram_verification_fact("state")
-            .copied()
-            .expect("State verification fact");
-        let request = CompareRequest {
-            check_dom: true,
-            dom_decimals: Some(3),
-            ..CompareRequest::default()
-        };
-        let mut report = String::new();
-
-        write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
-
-        assert!(report.contains("exact fail-closed root residual registry"));
     }
 
     #[test]
@@ -2127,13 +1992,13 @@ mod tests {
             svgdom::DomMode::Parity,
         );
         assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
-        assert!(!profile.compares_root_viewport());
+        assert!(!profile.validates_root_contract());
         assert!(note.expect("rough residual note").contains("RoughJS"));
 
         let (profile, note) =
             fixture_dom_profile("ishikawa", "new_handdrawn_fixture", svgdom::DomMode::Parity);
         assert_eq!(profile.descendants(), svgdom::DomMode::Parity);
-        assert!(!profile.compares_root_viewport());
+        assert!(!profile.validates_root_contract());
         assert_eq!(note, None);
 
         let (profile, note) = fixture_dom_profile(
@@ -2142,7 +2007,7 @@ mod tests {
             svgdom::DomMode::ParityRoot,
         );
         assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
-        assert!(profile.compares_root_viewport());
+        assert!(profile.validates_root_contract());
         assert!(note.expect("rough residual note").contains("RoughJS"));
     }
 
@@ -2164,7 +2029,7 @@ mod tests {
             );
             assert!(profile.normalizes_browser_text_wrapping());
             assert_eq!(
-                profile.compares_root_viewport(),
+                profile.validates_root_contract(),
                 requested == svgdom::DomMode::ParityRoot
             );
             assert!(
@@ -2200,7 +2065,7 @@ mod tests {
             let (profile, note) = fixture_dom_profile("c4", "any_fixture", requested);
             assert!(profile.normalizes_browser_text_length());
             assert_eq!(
-                profile.compares_root_viewport(),
+                profile.validates_root_contract(),
                 requested == svgdom::DomMode::ParityRoot
             );
             assert!(
@@ -2239,11 +2104,11 @@ mod tests {
     }
 
     #[test]
-    fn parity_root_failure_marks_normalized_descendant_match() {
+    fn parity_root_treats_browser_owned_bbox_numbers_as_diagnostic() {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
         let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
 
-        let failure = compare_dom_signatures(
+        compare_dom_signatures(
             "root-only",
             upstream,
             local,
@@ -2252,17 +2117,11 @@ mod tests {
             svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::ParityRoot),
             3,
         )
-        .expect_err("root viewport mismatch should fail");
-
-        assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER));
-        assert!(failure.contains("svg: attr `style` mismatch"));
-        assert!(failure.contains(svgdom::ADDITIONAL_DOM_DIFFS_MARKER));
-        assert!(failure.contains("svg: attr `viewBox` mismatch"));
-        assert_eq!(failure.lines().count(), 1);
+        .expect("numeric root movement is governed by the root contract and browser diagnostics");
     }
 
     #[test]
-    fn parity_root_failure_prioritizes_hidden_parity_visible_mismatch() {
+    fn parity_root_still_rejects_parity_visible_descendant_mismatch() {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
         let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="scale(10,20)"/></svg>"#;
 
@@ -2277,8 +2136,6 @@ mod tests {
         )
         .expect_err("parity-visible subtree mismatch should fail");
 
-        assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER));
-        assert!(failure.contains("root-viewport-also-differs=true"));
         assert!(failure.contains("svg/g[0]: attr `transform` mismatch"));
         assert!(!failure.contains("max-width: 100px"));
         assert_eq!(failure.lines().count(), 1);

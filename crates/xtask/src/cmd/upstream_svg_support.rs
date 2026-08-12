@@ -22,11 +22,12 @@ mod windows_process_tree {
         TH32CS_SNAPPROCESS,
     };
     use windows_sys::Win32::System::Threading::{
-        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
-        TerminateProcess,
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
     };
 
     const MAX_REFRESH_PASSES: usize = 4;
+    const PROCESS_TERMINATION_WAIT_MILLIS: u32 = 5_000;
 
     struct OwnedHandle(HANDLE);
 
@@ -228,7 +229,7 @@ mod windows_process_tree {
             graph.discover_descendants(processes, &self.protected, |identity| {
                 let Some(handle) = OwnedHandle::open(
                     identity.pid,
-                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
                 ) else {
                     return false;
                 };
@@ -251,6 +252,18 @@ mod windows_process_tree {
                 // SAFETY: process is the retained handle for the exact creation-time identity that
                 // was classified as a descendant and was opened with PROCESS_TERMINATE access.
                 let _ = unsafe { TerminateProcess(process.0, 1) };
+            }
+            for &(identity, _) in &self.live_descendants {
+                if self.protected.contains(&identity) {
+                    continue;
+                }
+                let Some(process) = self.handles.get(&identity) else {
+                    continue;
+                };
+                // SAFETY: process is the retained handle for the exact descendant identity and
+                // was opened with PROCESS_SYNCHRONIZE access. TerminateProcess is asynchronous for
+                // another process, so wait until its handles, including listening sockets, close.
+                let _ = unsafe { WaitForSingleObject(process.0, PROCESS_TERMINATION_WAIT_MILLIS) };
             }
         }
     }

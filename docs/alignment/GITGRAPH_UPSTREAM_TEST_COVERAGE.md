@@ -95,6 +95,7 @@ These fixtures are extracted from Cypress browser rendering specs (`renderGraph`
 parity-gated against upstream SVG baselines:
 
 - Imported fixtures: `fixtures/gitgraph/upstream_cypress_*.mmd` (30 fixtures)
-- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram gitgraph --with-baselines --complex --limit 30`
+- Import provenance: these fixtures predate the retired broad Cypress importer. A future refresh
+  must first add an explicit executable collector scope and reviewed manifest.
 - Baselines: `fixtures/upstream-svgs/gitgraph/upstream_cypress_*.svg`
 - SVG DOM compare: `cargo run --release -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

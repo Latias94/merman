@@ -18,7 +18,7 @@ from typing import Any, Literal
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DESCRIPTOR = REPO_ROOT / "capabilities" / "artifact-profiles-v1.json"
 CargoBuildTool = Literal["cargo", "cargo-zigbuild"]
-NATIVE_SDK_CARGO_PROFILE = "native-sdk"
+EXACT_NATIVE_CARGO_PROFILES = frozenset({"native-distribution", "native-sdk"})
 PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
 
@@ -97,12 +97,13 @@ def reject_cargo_profile_environment_overrides(
     recipe: CargoArtifactRecipe,
     environment: Mapping[str, str] | None = None,
 ) -> None:
-    """Keep the repository-owned native SDK profile exact at execution time."""
-    if recipe.cargo_profile != NATIVE_SDK_CARGO_PROFILE:
+    """Keep repository-owned native profiles exact at execution time."""
+    if recipe.cargo_profile not in EXACT_NATIVE_CARGO_PROFILES:
         return
 
     values = os.environ if environment is None else environment
-    prefix = "CARGO_PROFILE_NATIVE_SDK_"
+    profile_key = recipe.cargo_profile.upper().replace("-", "_")
+    prefix = f"CARGO_PROFILE_{profile_key}_"
     overrides = sorted(key for key in values if key.startswith(prefix))
     if overrides:
         raise RuntimeError(

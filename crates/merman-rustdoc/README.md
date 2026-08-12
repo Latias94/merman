@@ -6,7 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> Installation snippets use the repository's default branch. Use the crates.io package page to select a published version for a released integration.
+> Dependency snippets pin the prerelease version because APIs can change between alpha releases.
 
 ## Quick Start
 
@@ -14,7 +14,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = { git = "https://github.com/Latias94/merman", optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.5", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -56,7 +56,7 @@ Use a smaller closure when the documented diagrams need only the base SVG render
 
 ```toml
 [dependencies]
-merman-rustdoc = { git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"], optional = true }
 ```
 
 | Feature | Adds |

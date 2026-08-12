@@ -120,6 +120,14 @@ class AndroidToolchainTests(unittest.TestCase):
         )
         self.assertEqual(recipe.package, "merman-ffi")
         self.assertEqual(recipe.target_name, "merman_ffi")
+        self.assertEqual(recipe.cargo_profile, "native-distribution")
+        self.assertIn("analysis", recipe.features)
+        self.assertIn("ascii", recipe.features)
+        self.assertNotIn("jpeg", recipe.features)
+        self.assertNotIn("math", recipe.features)
+        self.assertNotIn("native-runtime", recipe.features)
+        self.assertNotIn("pdf", recipe.features)
+        self.assertNotIn("png", recipe.features)
 
     def test_android_and_flutter_recipes_have_separate_library_destinations(self) -> None:
         self.assertEqual(
@@ -202,11 +210,14 @@ class AndroidToolchainTests(unittest.TestCase):
                 (destination / "arm64-v8a" / "libmerman_android_jni.so").exists()
             )
 
-    def test_native_sdk_build_arguments_are_fully_recipe_owned(self) -> None:
+    def test_native_build_arguments_are_fully_recipe_owned(self) -> None:
         target = "aarch64-linux-android"
         args = build_android.cargo_build_args(target)
 
-        self.assertEqual(args[:4], ["cargo", "build", "--profile", "native-sdk"])
+        self.assertEqual(
+            args[:4],
+            ["cargo", "build", "--profile", "native-distribution"],
+        )
         self.assertIn("--package", args)
         self.assertEqual(
             args[args.index("--package") + 1], build_android.ANDROID_NATIVE_RECIPE.package

@@ -47,6 +47,7 @@ ANDROID_ARTIFACT_PROFILE_IDS = (
 class AndroidArtifactPackaging(NamedTuple):
     package: str
     manifest: str
+    cargo_profile: str
     target_name: str
     target_contract: tuple[str, ...]
     output_root: Path
@@ -58,6 +59,7 @@ ANDROID_ARTIFACT_PACKAGING = {
     ANDROID_NATIVE_RECIPE.profile_id: AndroidArtifactPackaging(
         package="merman-android-jni",
         manifest="crates/merman-android-jni/Cargo.toml",
+        cargo_profile="native-distribution",
         target_name="merman_android_jni",
         target_contract=("cdylib",),
         output_root=ANDROID_JNI_LIBS,
@@ -67,6 +69,7 @@ ANDROID_ARTIFACT_PACKAGING = {
     FLUTTER_ANDROID_NATIVE_RECIPE.profile_id: AndroidArtifactPackaging(
         package="merman-ffi",
         manifest="crates/merman-ffi/Cargo.toml",
+        cargo_profile="native-distribution",
         target_name="merman_ffi",
         target_contract=("cdylib", "rlib", "staticlib"),
         output_root=FLUTTER_JNI_LIBS,
@@ -89,7 +92,7 @@ def validate_android_native_recipe(
     if (
         recipe.package != packaging.package
         or recipe.manifest != packaging.manifest
-        or recipe.cargo_profile != "native-sdk"
+        or recipe.cargo_profile != packaging.cargo_profile
         or recipe.default_features
         or recipe.target_name != packaging.target_name
         or recipe.target_kinds != packaging.target_contract
@@ -97,7 +100,7 @@ def validate_android_native_recipe(
         or recipe.build_target_kind != "target-set"
     ):
         raise RuntimeError(
-            f"{recipe.profile_id} must remain its exact native-sdk transport recipe"
+            f"{recipe.profile_id} must remain its exact repository-owned transport recipe"
         )
     if set(recipe.build_targets) != set(TARGET_TO_ABI):
         raise RuntimeError(

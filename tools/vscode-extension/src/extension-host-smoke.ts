@@ -32,7 +32,7 @@ interface TokenEquivalenceEvidence {
 
 const tokenEquivalenceEvidence = JSON.parse(
   fs.readFileSync(
-    path.resolve(__dirname, "..", "..", "..", "editor-language", "token-equivalence-v1.json"),
+    path.resolve(__dirname, "../../../contracts/editor-language", "token-equivalence-v1.json"),
     "utf8",
   ),
 ) as TokenEquivalenceEvidence;

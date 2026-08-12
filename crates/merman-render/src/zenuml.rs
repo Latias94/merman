@@ -2165,8 +2165,8 @@ mod tests {
 
     #[test]
     fn endpoint_fallbacks_are_statement_kind_specific() {
-        // Both selected @zenuml/core 3.47.8 and candidate 3.50.1 keep missing-target
-        // `_STARTER_` coordinates without adding it to OrderedParticipants.
+        // Selected @zenuml/core 3.50.1 keeps missing-target `_STARTER_` coordinates without
+        // adding it to OrderedParticipants.
         let synchronous = layout("zenuml\n@Starter(A)\nmethod()\n");
         assert_eq!(
             synchronous

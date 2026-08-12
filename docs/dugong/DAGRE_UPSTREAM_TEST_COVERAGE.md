@@ -390,10 +390,10 @@ Source: `repo-ref/dagre/test/position/bk-test.js`
   before its parent. Parent assignment must not silently reorder either node.
 - BK Type-2 conflict detection follows the pinned single suffix scan. There is no alternate
   monotonic or legacy production contract.
-- `xtask compare-dagre-layout` captures the production State or Class graph before layout, writes
-  one Graphlib JSON input, and runs both Dugong and pinned `dagre-d3-es` from that input. It compares
-  graph dimensions, node positions, edge-label anchors, routed points, and stable node/edge sets;
-  drift above `1e-6` or any identity difference is a command failure.
+- Historical same-input differential audits ran production State and Class graphs through Dugong
+  and pinned `dagre-d3-es`, establishing parity for graph dimensions, node positions, edge-label
+  anchors, routed points, and stable node/edge sets. The temporary JS differential command was
+  retired after that evidence was encoded in focused Dugong tests and signed family canaries.
 - The Class many-relations and nested-namespace fixtures and the State parallel-label fixture are
   retained as family canaries. They complement the algorithm-level ordering, normalization,
   self-loop, rank-direction, and transient-node retirement tests in `crates/dugong/tests`.

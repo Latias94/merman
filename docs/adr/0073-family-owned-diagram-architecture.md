@@ -254,7 +254,7 @@ computed bounds and general measurement facts.
 
 - ADR-0010: Semantic Model Boundary
 - ADR-0014: Upstream Parity Policy
-- ADR-0050: Release Quality Gates
+- ADR-0081: Release Quality Gates
 - ADR-0057: Headless SVG Text `getBBox()` Approximation
 - ADR-0062: No Production Fixture Overrides
 - ADR-0071: Editor-Facing Parser and Semantic Seam

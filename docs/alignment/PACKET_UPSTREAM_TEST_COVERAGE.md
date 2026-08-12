@@ -44,6 +44,7 @@ These fixtures are extracted from Cypress browser rendering specs (`imgSnapshotT
 parity-gated against upstream SVG baselines:
 
 - Imported fixtures: `fixtures/packet/upstream_cypress_*.mmd` (5 fixtures)
-- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram packet --with-baselines --complex --limit 30`
+- Import provenance: these fixtures predate the retired broad Cypress importer. A future refresh
+  must first add an explicit executable collector scope and reviewed manifest.
 - Baselines: `fixtures/upstream-svgs/packet/upstream_cypress_*.svg`
 - SVG DOM compare: `cargo run --release -p xtask -- compare-packet-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

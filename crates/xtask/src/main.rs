@@ -1,6 +1,5 @@
 mod cmd;
 mod generated;
-mod state_svgdump;
 mod svgdom;
 mod util;
 
@@ -118,13 +117,11 @@ fn print_help(topic: Option<&str>) {
     println!("  wasm-size-matrix");
     println!("  build-typst-package");
     println!("  typst-package-smoke");
-    println!("  typst-plugin-smoke");
     println!("  audit-gaps");
     println!("  import-upstream-docs");
     println!("  import-upstream-examples");
     println!("  import-upstream-html");
-    println!("  import-upstream-cypress");
-    println!("  import-upstream-pkg-tests");
+    println!("  project-upstream-cypress-collection");
     println!("  update-snapshots");
     println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
     println!("  gen-upstream-svgs");
@@ -132,18 +129,9 @@ fn print_help(topic: Option<&str>) {
     println!("  adopt-upstream-svg-provenance");
     println!("  check-upstream-svgs");
     println!("  compare-all-svgs");
-    println!("  accept-root-residual-candidate");
     println!("  compare-svg-xml");
-    println!("  canon-svg-xml");
     println!("  debug-svg-bbox");
     println!("  debug-svg-data-points");
-    println!("  debug-architecture-delta");
-    println!("  debug-architecture-fcose-probe");
-    println!("  debug-architecture-render-path-probe");
-    println!("  summarize-architecture-deltas");
-    println!("  compare-dagre-layout");
-    println!("  analyze-state-fixture");
-    println!("  debug-mindmap-svg-positions");
     println!("  gen-font-metrics");
     println!("  measure-text");
     println!("  gen-theme-snapshot");
@@ -245,12 +233,12 @@ fn main() -> Result<(), XtaskError> {
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),
         "build-typst-package" => cmd::build_typst_package(args.collect()),
         "typst-package-smoke" => cmd::typst_package_smoke(args.collect()),
-        "typst-plugin-smoke" => cmd::typst_plugin_smoke(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),
-        "import-upstream-cypress" => cmd::import_upstream_cypress(args.collect()),
-        "import-upstream-pkg-tests" => cmd::import_upstream_pkg_tests(args.collect()),
+        "project-upstream-cypress-collection" => {
+            cmd::project_upstream_cypress_collection(args.collect())
+        }
         "update-snapshots" => cmd::update_snapshots(args.collect()),
         "update-layout-snapshots" | "gen-layout-goldens" => {
             cmd::update_layout_snapshots(args.collect())
@@ -258,11 +246,6 @@ fn main() -> Result<(), XtaskError> {
         "check-alignment" => cmd::check_alignment(args.collect()),
         "audit-gaps" => cmd::audit_gaps(args.collect()),
         "gen-debug-svgs" => cmd::gen_debug_svgs(args.collect()),
-        "gen-er-svgs" => cmd::gen_er_svgs(args.collect()),
-        "gen-flowchart-svgs" => cmd::gen_flowchart_svgs(args.collect()),
-        "gen-state-svgs" => cmd::gen_state_svgs(args.collect()),
-        "gen-class-svgs" => cmd::gen_class_svgs(args.collect()),
-        "gen-c4-svgs" => cmd::gen_c4_svgs(args.collect()),
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),
@@ -273,28 +256,10 @@ fn main() -> Result<(), XtaskError> {
         "audit-flowchart-elk-parity-coverage" => {
             cmd::audit_flowchart_elk_parity_coverage(args.collect())
         }
-        "debug-flowchart-layout" => cmd::debug_flowchart_layout(args.collect()),
-        "debug-flowchart-elk-source-phase" => cmd::debug_flowchart_elk_source_phase(args.collect()),
-        "debug-flowchart-svg-roots" => cmd::debug_flowchart_svg_roots(args.collect()),
-        "debug-flowchart-svg-positions" => cmd::debug_flowchart_svg_positions(args.collect()),
-        "debug-flowchart-svg-diff" => cmd::debug_flowchart_svg_diff(args.collect()),
-        "debug-flowchart-data-points" => cmd::debug_flowchart_data_points(args.collect()),
-        "debug-flowchart-edge-trace" => cmd::debug_flowchart_edge_trace(args.collect()),
-        "debug-mindmap-svg-positions" => cmd::debug_mindmap_svg_positions(args.collect()),
         "debug-svg-bbox" => cmd::debug_svg_bbox(args.collect()),
         "debug-svg-data-points" => cmd::debug_svg_data_points(args.collect()),
-        "debug-architecture-delta" => cmd::debug_architecture_delta(args.collect()),
-        "debug-architecture-fcose-probe" => cmd::debug_architecture_fcose_probe(args.collect()),
-        "debug-architecture-render-path-probe" => {
-            cmd::debug_architecture_render_path_probe(args.collect())
-        }
-        "summarize-architecture-deltas" => cmd::summarize_architecture_deltas(args.collect()),
-        "compare-dagre-layout" => cmd::compare_dagre_layout(args.collect()),
-        "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
         "compare-all-svgs" => cmd::compare_all_svgs(args.collect()),
-        "accept-root-residual-candidate" => cmd::accept_root_residual_candidate(args.collect()),
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
-        "canon-svg-xml" => cmd::canon_svg_xml(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }

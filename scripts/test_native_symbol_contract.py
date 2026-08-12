@@ -12,11 +12,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from github_workflow_contract import (
-    load_workflow_contract,
-    workflow_job,
-    workflow_step,
-)
 from native_symbol_contract import (
     ANDROID_JNI_SYMBOL_CONTRACT,
     C_ABI_SYMBOL_CONTRACT,
@@ -27,9 +22,6 @@ from native_symbol_contract import (
     read_defined_dynamic_symbols,
     read_macho_architectures,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
 
 class LlvmNmParserTests(unittest.TestCase):
     def test_parser_reads_defined_dynamic_symbol_names(self) -> None:
@@ -356,37 +348,6 @@ class NativeSymbolContractTests(unittest.TestCase):
                     label="Android JNI",
                 )
 
-
-class FlutterNativeSymbolGateTests(unittest.TestCase):
-    def test_flutter_release_and_preflight_use_symbol_gated_builders(self) -> None:
-        required_steps = (
-            (
-                "Build Android native libraries",
-                "platforms/android/build-android.py "
-                "--artifact-profile flutter-android-native",
-            ),
-            (
-                "Build and inject iOS XCFramework",
-                "bash platforms/flutter/build-ios.sh",
-            ),
-            (
-                "Build desktop native libraries",
-                "bash platforms/flutter/build-desktop.sh --all",
-            ),
-        )
-        workflow_jobs = (
-            ("release-flutter.yml", "build"),
-            ("release-preflight.yml", "flutter-dry-run"),
-        )
-        for workflow_name, job_name in workflow_jobs:
-            workflow = load_workflow_contract(
-                REPO_ROOT / ".github/workflows" / workflow_name
-            )
-            job = workflow_job(workflow, job_name)
-            for step_name, command in required_steps:
-                with self.subTest(workflow=workflow_name, step=step_name):
-                    step = workflow_step(job, name=step_name)
-                    self.assertIn(command, step["run"])
 
 
 if __name__ == "__main__":

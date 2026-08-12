@@ -173,6 +173,7 @@ describe("generated semantic-token contract", () => {
       process.cwd(),
       "..",
       "..",
+      "contracts",
       "editor-language",
       "token-equivalence-v1.json",
     );

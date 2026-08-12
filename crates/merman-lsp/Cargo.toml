@@ -16,7 +16,14 @@ categories = ["development-tools", "text-editors"]
 [package.metadata.dist]
 auto-includes = false
 default-features = false
-include = ["README.md"]
+include = [
+    "../../CHANGELOG.md",
+    "../../LICENSE-APACHE",
+    "../../LICENSE-MIT",
+    "../../THIRD_PARTY_NOTICES.md",
+    "../../THIRD_PARTY_LICENSES/",
+    "README.md",
+]
 features = ["stdio"]
 
 [package.metadata.merman]

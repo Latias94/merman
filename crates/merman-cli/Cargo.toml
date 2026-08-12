@@ -18,6 +18,11 @@ exclude = ["tests/**"]
 auto-includes = false
 default-features = false
 include = [
+    "../../CHANGELOG.md",
+    "../../LICENSE-APACHE",
+    "../../LICENSE-MIT",
+    "../../THIRD_PARTY_NOTICES.md",
+    "../../THIRD_PARTY_LICENSES/",
     "README.md",
     "assets/completions/",
     "assets/man/",

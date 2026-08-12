@@ -9,17 +9,14 @@
   "profiles": [
     {
       "id": "android-native",
-      "description": "Full native SDK JNI library slices for the published Android targets.",
+      "description": "Default native binding JNI library slices for the published Android targets.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-android-jni",
         "manifest": "crates/merman-android-jni/Cargo.toml",
-        "profile": "native-sdk",
+        "profile": "native-distribution",
         "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
-          "pdf", "png", "svg"
-        ],
+        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_android_jni",
           "kinds": ["cdylib"],
@@ -35,30 +32,21 @@
         }
       },
       "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "svg"]
       }
     },
     {
       "id": "apple-uniffi-native",
-      "description": "Full native SDK UniFFI static libraries for the published Apple XCFramework slices.",
+      "description": "Default native binding UniFFI static libraries for the published Apple XCFramework slices.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-uniffi",
         "manifest": "crates/merman-uniffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
-          "pdf", "png", "svg"
-        ],
+        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -77,20 +65,14 @@
         }
       },
       "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "svg"]
       }
     },
     {
       "id": "c-abi-native",
-      "description": "Full native SDK C library build for host consumers.",
+      "description": "Complete C ABI host reference build for contract verification and custom source embedders.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-ffi",
@@ -198,17 +180,14 @@
     },
     {
       "id": "flutter-android-native",
-      "description": "Full native SDK C ABI library slices for the Flutter Android targets.",
+      "description": "Default native binding C ABI library slices for the Flutter Android targets.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-ffi",
         "manifest": "crates/merman-ffi/Cargo.toml",
-        "profile": "native-sdk",
+        "profile": "native-distribution",
         "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
-          "pdf", "png", "svg"
-        ],
+        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -224,30 +203,21 @@
         }
       },
       "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "svg"]
       }
     },
     {
       "id": "flutter-desktop-native",
-      "description": "Full native SDK C libraries for the Flutter desktop target set.",
+      "description": "Default native binding C libraries for the Flutter desktop target set.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-ffi",
         "manifest": "crates/merman-ffi/Cargo.toml",
-        "profile": "native-sdk",
+        "profile": "native-distribution",
         "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
-          "pdf", "png", "svg"
-        ],
+        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -266,30 +236,21 @@
         }
       },
       "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "svg"]
       }
     },
     {
       "id": "flutter-ios-native",
-      "description": "Full native SDK C libraries for the Flutter iOS device and simulator slices.",
+      "description": "Default native binding C libraries for the Flutter iOS device and simulator slices.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-ffi",
         "manifest": "crates/merman-ffi/Cargo.toml",
-        "profile": "native-sdk",
+        "profile": "native-distribution",
         "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
-          "pdf", "png", "svg"
-        ],
+        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -306,15 +267,9 @@
         }
       },
       "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "svg"]
       }
     },
     {
@@ -381,17 +336,14 @@
     },
     {
       "id": "python-uniffi-native",
-      "description": "Full native SDK UniFFI dynamic library for the published Python wheel.",
+      "description": "Default native binding UniFFI dynamic library for the published Python wheel.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-uniffi",
         "manifest": "crates/merman-uniffi/Cargo.toml",
-        "profile": "native-sdk",
+        "profile": "native-distribution",
         "default_features": false,
-        "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
-          "pdf", "png", "svg"
-        ],
+        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -408,15 +360,9 @@
         }
       },
       "expected": {
-        "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
-        ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "svg"]
       }
     },
     {
@@ -876,7 +822,7 @@
     },
     {
       "id": "typst-wasm",
-      "description": "Current published Typst WASM build without math.",
+      "description": "Published Typst WASM build for SVG and canonical analysis without uncallable export or math closures.",
       "semantic_target": "typst",
       "cargo": {
         "package": "merman-typst-plugin",

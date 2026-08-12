@@ -17,7 +17,11 @@ pub(crate) use gantt::{
     gantt_baseline_local_offset_minutes, gantt_calibrated_runtime_policy, gantt_compare_environment,
 };
 
-pub(crate) use flowchart::{audit_flowchart_elk_parity_coverage, check_flowchart_elk_parity};
+pub(crate) use flowchart::{
+    audit_flowchart_elk_parity_coverage, check_flowchart_elk_parity,
+    flowchart_elk_fixture_identity, flowchart_elk_requested, flowchart_elk_source_identities,
+    flowchart_elk_source_slug,
+};
 macro_rules! verification_fact {
     (
         $diagram:literal, $command:literal, $title:literal, $mode:literal, $source:literal,

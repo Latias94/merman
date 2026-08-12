@@ -11,6 +11,7 @@ import {
   collectLocalInputEntries,
   resolveCandidateRuntimeContract,
   resolveCandidateRecipe,
+  validateCandidateBuildHost,
   validateCandidateCargoMetadata,
   validateCandidatePackageVersions,
 } from "../scripts/build-candidate.mjs";
@@ -66,6 +67,39 @@ test("candidate builds project its private capability recipe plus one transport"
     assert.equal(invocation.args.includes("-j1"), true);
     assert.equal(invocation.args.join(" ").includes("rust-static-svg"), false);
   }
+});
+
+test("Windows native candidates request reproducible MSVC linking", () => {
+  const windows = candidateBuildInvocation(
+    resolveCandidateRecipe("napi", "win32-x64-msvc"),
+    "/tmp/merman-node-candidate",
+  );
+  const configIndex = windows.args.indexOf("--config");
+
+  assert.notEqual(configIndex, -1);
+  assert.equal(
+    windows.args[configIndex + 1],
+    'target.x86_64-pc-windows-msvc.rustflags=["-C","link-arg=/Brepro"]',
+  );
+
+  const darwin = candidateBuildInvocation(
+    resolveCandidateRecipe("napi", "darwin-arm64"),
+    "/tmp/merman-node-candidate",
+  );
+  assert.equal(darwin.args.includes("/Brepro"), false);
+  assert.equal(darwin.args.includes("--config"), false);
+});
+
+test("native candidate builds require their matching runtime host", () => {
+  const recipe = resolveCandidateRecipe("napi", "linux-x64-musl");
+
+  assert.doesNotThrow(() =>
+    validateCandidateBuildHost(recipe, "linux-x64-musl")
+  );
+  assert.throws(
+    () => validateCandidateBuildHost(recipe, "linux-x64-gnu"),
+    /matching runtime host/i,
+  );
 });
 
 test("candidate runtime outputs follow explicit binding operation ownership", () => {
@@ -190,7 +224,7 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     "0.8.0-alpha.3";
   assert.throws(
     () => validateCandidatePackageVersions(staleCandidate),
-    /merman-node-candidate.*0\.8\.0-alpha\.4/i,
+    /merman-node-candidate.*0\.8\.0-alpha\.5/i,
   );
 
   const staleBindings = structuredClone(metadata);
@@ -198,7 +232,7 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     "0.8.0-alpha.3";
   assert.throws(
     () => validateCandidatePackageVersions(staleBindings),
-    /merman-bindings-core.*0\.8\.0-alpha\.4/i,
+    /merman-bindings-core.*0\.8\.0-alpha\.5/i,
   );
 });
 

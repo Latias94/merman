@@ -1,54 +1,19 @@
 name: GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - ".github/workflows/pages.yml"
-      - "abi/**"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "docs/release/WASM_SIZE_BUDGETS.json"
-      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
-      - "platforms/web/**"
-      - "playground/**"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
-  pull_request:
-    paths:
-      - ".github/workflows/pages.yml"
-      - "abi/**"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "docs/release/WASM_SIZE_BUDGETS.json"
-      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
-      - "platforms/web/**"
-      - "playground/**"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ci_only:
+        description: Build and test without entering the Pages deployment path
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -58,7 +23,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -68,10 +33,10 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -84,13 +49,15 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@wasm-tools
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: wasm-tools
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify deployable browser projections
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
         run: |
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-capability-surface
@@ -148,7 +115,7 @@ jobs:
 
       - name: Upload browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: playground-browser-failure-${{ github.run_attempt }}
           path: |
@@ -158,28 +125,11 @@ jobs:
           retention-days: 7
 
       - name: Configure Pages
-        if: github.event_name != 'pull_request'
-        uses: actions/configure-pages@v6
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        uses: actions/configure-pages@v6.0.0
 
       - name: Upload Pages artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v5
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: playground/dist
-
-  deploy:
-    name: Deploy playground
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5

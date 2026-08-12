@@ -26,11 +26,11 @@ numeric rounding.
 1. Ensure local `.svg` exists under `target/compare/flowchart` using the vendored text measurer:
    - `cargo run -p xtask -- compare-flowchart-svgs --text-measurer vendored --filter <fixture> --out target/compare/flowchart_report.md`
 2. Decode and compare `data-points` for a single edge:
-   - `cargo run -p xtask -- debug-flowchart-data-points --fixture <fixture> --edge <edge-id>`
-3. Compare node/labelRect/clusters positional deltas (3-decimal debug view):
-   - `cargo run -p xtask -- debug-flowchart-svg-positions --fixture <fixture>`
+   - `cargo run -p xtask -- debug-svg-data-points --svg <local.svg> --other <upstream.svg> --id <edge-id>`
+3. Compare normalized node, label, and cluster structure:
+   - `git diff --no-index target/compare/xml/flowchart/<fixture>.upstream.xml target/compare/xml/flowchart/<fixture>.local.xml`
 
 Notes:
 
-- `debug-flowchart-svg-diff` is useful to compare transforms/bboxes at 3-decimal granularity, but it
-  intentionally does not print full-precision `data-points` values.
+- `debug-svg-data-points` preserves full-precision values unless `--decimals` is supplied. The XML
+  diff remains the canonical structure-level diagnostic.

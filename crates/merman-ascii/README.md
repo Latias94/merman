@@ -18,7 +18,7 @@ Most applications should use the `merman` facade so parsing and text rendering s
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["ascii"] }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["ascii"] }
 ```
 
 ```rust

@@ -57,14 +57,15 @@ The parser returns a headless semantic model:
 ## Layout And SVG Admission
 
 - The production graph preserves Mermaid's interleaved child/parent insertion order and compound
-  extraction order. `compare-dagre-layout --diagram state` compares the same serialized input in
-  Dugong and pinned `dagre-d3-es`, including edge-label anchors and routed points.
+  extraction order. Historical direct comparison against pinned `dagre-d3-es` established parity
+  for the serialized input, edge-label anchors, and routed points; standing coverage now lives in
+  Dugong algorithm tests and the signed State SVG and semantic canaries below.
 - Updated-path edge labels use the shared source-backed geometry helper. Leaf self-loops retain the
   Dagre anchor, while composite self-loops move only after cluster path updates.
 - `classDef` shape styles, text styles, CSSOM color serialization, HTML-label selectors, and SVG
   `tspan` selectors are emitted separately like Mermaid.
 - `stress_state_batch5_parallel_edges_labels_styles_067` is the signed semantic-label canary. Root
-  browser-measurement residuals remain owned by the exact root residual catalog.
+  browser-measurement movement remains visible through the browser root diagnostic artifact.
 
 ## Known gaps (to be closed)
 

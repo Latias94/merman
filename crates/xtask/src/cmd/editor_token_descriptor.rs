@@ -14,8 +14,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const DESCRIPTOR_PATH: &str = "editor-language/token-descriptor-v1.json";
-const EQUIVALENCE_PATH: &str = "editor-language/token-equivalence-v1.json";
+const DESCRIPTOR_PATH: &str = "contracts/editor-language/token-descriptor-v1.json";
+const EQUIVALENCE_PATH: &str = "contracts/editor-language/token-equivalence-v1.json";
 const EXAMPLE_MANIFEST_PATH: &str = "playground/examples/manifest.json";
 const VSCODE_MANIFEST_PATH: &str = "tools/vscode-extension/package.json";
 const VSCODE_LANGUAGE_ID: &str = "mermaid";

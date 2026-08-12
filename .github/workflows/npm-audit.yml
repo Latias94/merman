@@ -1,27 +1,7 @@
 name: npm Dependency Audit
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - playground/package.json
-      - playground/package-lock.json
-      - playground/tests/package.json
-      - playground/tests/package-lock.json
-      - tools/mermaid-cli/package.json
-      - tools/mermaid-cli/package-lock.json
-      - .github/workflows/npm-audit.yml
-  pull_request:
-    paths:
-      - playground/package.json
-      - playground/package-lock.json
-      - playground/tests/package.json
-      - playground/tests/package-lock.json
-      - tools/mermaid-cli/package.json
-      - tools/mermaid-cli/package-lock.json
-      - .github/workflows/npm-audit.yml
+  workflow_call:
   schedule:
     - cron: "53 4 * * 1"
   workflow_dispatch:
@@ -30,37 +10,58 @@ permissions:
   contents: read
 
 concurrency:
-  group: npm-audit-${{ github.ref }}
+  group: npm-audit-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  audit:
-    name: npm dependency audit
+  audit-plan:
+    name: discover tracked audit locks
     runs-on: ubuntu-24.04
+    outputs:
+      npm: ${{ steps.plan.outputs.npm }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build tracked lockfile matrices
+        id: plan
+        run: python3 scripts/audit_plan.py --github-output "$GITHUB_OUTPUT"
+
+  audit:
+    name: npm dependency audit (${{ matrix.directory }})
+    needs: audit-plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.audit-plan.outputs.npm) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: |
-            playground/package-lock.json
-            playground/tests/package-lock.json
-            tools/mermaid-cli/package-lock.json
+          cache-dependency-path: ${{ matrix.lockfile }}
 
       - name: Install npm toolchain
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
 
       - name: Verify package manifests match lockfiles
-        run: |
-          npm ci --ignore-scripts --no-audit --dry-run --prefix playground
-          npm ci --ignore-scripts --no-audit --dry-run --prefix playground/tests
-          npm ci --ignore-scripts --no-audit --dry-run --prefix tools/mermaid-cli
+        env:
+          AUDIT_PACKAGE_DIRECTORY: ${{ matrix.directory }}
+        run: npm ci --ignore-scripts --no-audit --dry-run --prefix "$AUDIT_PACKAGE_DIRECTORY"
 
       - name: Audit production and tooling dependencies
+        env:
+          AUDIT_PACKAGE_DIRECTORY: ${{ matrix.directory }}
         run: |
-          npm run verify:security --prefix playground
-          npm run audit:tooling --prefix playground
-          npm audit --package-lock-only --audit-level=high --prefix tools/mermaid-cli
+          npm audit --package-lock-only --omit=dev --audit-level=low \
+            --registry=https://registry.npmjs.org \
+            --prefix "$AUDIT_PACKAGE_DIRECTORY"
+          npm audit --package-lock-only --audit-level=high \
+            --registry=https://registry.npmjs.org \
+            --prefix "$AUDIT_PACKAGE_DIRECTORY"

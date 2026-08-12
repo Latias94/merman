@@ -320,11 +320,13 @@ mod tests {
         assert!(payload.get("payload_schema_version").is_none());
 
         let capabilities = &payload["capabilities"];
-        assert!(!capabilities["capability_ids"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|id| id == "ascii" || id == "math"));
+        let capability_ids = capabilities["capability_ids"].as_array().unwrap();
+        for omitted in ["ascii", "jpeg", "math", "pdf", "png"] {
+            assert!(
+                !capability_ids.iter().any(|id| id == omitted),
+                "Typst must not advertise uncallable capability {omitted}"
+            );
+        }
         assert!(capabilities["system_adapter_ids"]
             .as_array()
             .unwrap()

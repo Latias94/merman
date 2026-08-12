@@ -1,0 +1,22 @@
+ARG RUST_IMAGE=rust:1.95-alpine3.22
+ARG NODE_IMAGE=node:24-alpine3.22
+
+FROM ${RUST_IMAGE} AS rust-toolchain
+
+FROM ${NODE_IMAGE}
+
+RUN apk add --no-cache build-base git
+
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+
+ENV CARGO_HOME=/usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV PATH=/usr/local/cargo/bin:${PATH}
+
+RUN node --version \
+    && npm --version \
+    && rustc --version \
+    && cargo --version
+
+WORKDIR /work

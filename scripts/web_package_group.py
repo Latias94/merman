@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build, verify, and reconcile the lockstep browser npm package group.
+"""Build, verify, and publish the lockstep browser npm package group.
 
 The Web workspace owns package layout. This helper intentionally owns only the
 release artifact boundary: it reads the workspace's closed package descriptor,
-packs public packages, verifies their tarballs, and reconciles npm publication
-without assuming that a group publish is transactional.
+packs public packages, verifies their tarballs, and publishes each verified
+version through npm Trusted Publisher.
 """
 
 from __future__ import annotations
@@ -19,9 +19,31 @@ import re
 import subprocess
 import sys
 import tarfile
-from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Protocol
+from typing import Any
+
+try:
+    from scripts.npm_package_group import (
+        DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+        DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
+        DryRunNpmClient,
+        NpmCli,
+        NpmClient,
+        PackageGroupError,
+        ReconciliationError,
+        reconcile_group as reconcile_registry_group,
+    )
+except ModuleNotFoundError:
+    from npm_package_group import (
+        DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+        DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
+        DryRunNpmClient,
+        NpmCli,
+        NpmClient,
+        PackageGroupError,
+        ReconciliationError,
+        reconcile_group as reconcile_registry_group,
+    )
 
 
 GROUP_MANIFEST_SCHEMA_VERSION = 2
@@ -84,18 +106,6 @@ MAX_LEGAL_MEMBER_BYTES = 8 * 1024 * 1024
 FULL_PACKAGE_ID = "full"
 COMPLETE_SVG_PACKAGE_ID = "render"
 MIN_PUBLIC_SLIM_UNPACKED_SIZE_SAVINGS_PERCENT = 15
-
-
-class PackageGroupError(ValueError):
-    """The package group descriptor, artifact, or registry state is invalid."""
-
-
-class ReconciliationError(PackageGroupError):
-    """A registry mutation failed after a reportable reconciliation state existed."""
-
-    def __init__(self, message: str, report: dict[str, Any]) -> None:
-        super().__init__(message)
-        self.report = report
 
 
 def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -966,7 +976,11 @@ def build_manifest(
 
     package_records: list[dict[str, Any]] = []
     inspected_records: list[dict[str, Any]] = []
-    for entry in public_entries:
+    publication_entries = sorted(
+        public_entries,
+        key=lambda entry: entry["id"] == descriptor["default_package"],
+    )
+    for entry in publication_entries:
         package_dir = root / "platforms" / "web" / descriptor_package_path(entry)
         validate_package_manifest(entry, package_dir, expected_version=version)
         tarball, record = records_by_name[entry["name"]]
@@ -1089,6 +1103,10 @@ def validate_group_manifest(data: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise PackageGroupError(f"{owner}: {key} must be a positive integer")
     validate_public_package_size_admission(packages, "Web package group manifest")
+    if packages[-1]["id"] != "full":
+        raise PackageGroupError(
+            "Web package group manifest: the default @mermanjs/web package must publish last"
+        )
     return data
 
 
@@ -1252,229 +1270,21 @@ def pack_group(
     return manifest
 
 
-class NpmClient(Protocol):
-    def version_integrity(self, package: str, version: str) -> str | None: ...
-
-    def dist_tag(self, package: str, tag: str) -> str | None: ...
-
-    def publish(self, tarball: Path, tag: str) -> None: ...
-
-    def add_tag(self, package: str, version: str, tag: str) -> None: ...
-
-    def remove_tag(self, package: str, tag: str) -> None: ...
-
-
-@dataclass
-class NpmCli:
-    registry: str | None = None
-
-    def _command(self, *args: str) -> list[str]:
-        command = ["npm", *args]
-        if self.registry:
-            command.extend(["--registry", self.registry])
-        return command
-
-    def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(
-            self._command(*args),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            diagnostic = result.stderr.strip() or result.stdout.strip() or "npm command failed"
-            raise PackageGroupError(f"npm {' '.join(args)} failed: {diagnostic}")
-        return result
-
-    def version_integrity(self, package: str, version: str) -> str | None:
-        result = subprocess.run(
-            self._command("view", f"{package}@{version}", "dist.integrity", "--json"),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            diagnostic = result.stderr.strip() or result.stdout.strip()
-            if "E404" in diagnostic or "404" in diagnostic:
-                return None
-            raise PackageGroupError(f"npm view {package}@{version} failed: {diagnostic or 'unknown error'}")
-        try:
-            value = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise PackageGroupError(f"npm view {package}@{version} returned invalid JSON") from exc
-        if not isinstance(value, str) or not INTEGRITY_RE.fullmatch(value):
-            raise PackageGroupError(f"npm view {package}@{version} returned invalid dist.integrity")
-        return value
-
-    def dist_tag(self, package: str, tag: str) -> str | None:
-        result = subprocess.run(
-            self._command("view", package, "dist-tags", "--json"),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            diagnostic = result.stderr.strip() or result.stdout.strip()
-            if "E404" in diagnostic or "404" in diagnostic:
-                return None
-            raise PackageGroupError(f"npm view {package} dist-tags failed: {diagnostic or 'unknown error'}")
-        try:
-            value = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise PackageGroupError(f"npm view {package} dist-tags returned invalid JSON") from exc
-        if not isinstance(value, dict):
-            raise PackageGroupError(f"npm view {package} dist-tags returned invalid JSON")
-        observed = value.get(tag)
-        if observed is not None and not isinstance(observed, str):
-            raise PackageGroupError(f"npm view {package} dist-tag {tag!r} is not a version string")
-        return observed
-
-    def publish(self, tarball: Path, tag: str) -> None:
-        self._run("publish", str(tarball), "--ignore-scripts", "--access", "public", "--tag", tag)
-
-    def add_tag(self, package: str, version: str, tag: str) -> None:
-        self._run("dist-tag", "add", f"{package}@{version}", tag)
-
-    def remove_tag(self, package: str, tag: str) -> None:
-        self._run("dist-tag", "rm", package, tag)
-
-
-@dataclass
-class DryRunNpmClient:
-    manifest: dict[str, Any]
-    versions: dict[tuple[str, str], str] = field(default_factory=dict)
-    tags: dict[tuple[str, str], str] = field(default_factory=dict)
-    operations: list[str] = field(default_factory=list)
-
-    def version_integrity(self, package: str, version: str) -> str | None:
-        return self.versions.get((package, version))
-
-    def dist_tag(self, package: str, tag: str) -> str | None:
-        return self.tags.get((package, tag))
-
-    def publish(self, tarball: Path, tag: str) -> None:
-        record = next(item for item in self.manifest["packages"] if item["tarball"] == tarball.name)
-        self.operations.append(f"publish {record['name']}@{self.manifest['version']} --tag {tag}")
-        self.versions[(record["name"], self.manifest["version"])] = record["integrity"]
-
-    def add_tag(self, package: str, version: str, tag: str) -> None:
-        self.operations.append(f"dist-tag add {package}@{version} {tag}")
-        self.tags[(package, tag)] = version
-
-    def remove_tag(self, package: str, tag: str) -> None:
-        self.operations.append(f"dist-tag rm {package} {tag}")
-        self.tags.pop((package, tag), None)
-
-
-def staging_tag(version: str) -> str:
-    return "staging-v" + re.sub(r"[^a-z0-9]+", "-", version.lower()).strip("-")
-
-
-def restore_tags(
+def reconcile_group(
+    manifest: dict[str, Any],
+    artifact_dir: Path,
     client: NpmClient,
-    changed: list[dict[str, Any]],
-    previous: dict[str, str | None],
-    tag: str,
-) -> list[str]:
-    failures: list[str] = []
-    for record in reversed(changed):
-        name = record["name"]
-        prior = previous[name]
-        try:
-            if prior is None:
-                client.remove_tag(name, tag)
-                observed = client.dist_tag(name, tag)
-                if observed is not None:
-                    raise PackageGroupError(f"tag still points to {observed!r}")
-            else:
-                client.add_tag(name, prior, tag)
-                observed = client.dist_tag(name, tag)
-                if observed != prior:
-                    raise PackageGroupError(f"tag points to {observed!r}, expected {prior!r}")
-        except PackageGroupError as exc:
-            failures.append(f"{name}: {exc}")
-    return failures
-
-
-def reconcile_group(manifest: dict[str, Any], artifact_dir: Path, client: NpmClient) -> dict[str, Any]:
-    manifest = validate_group_manifest(manifest)
-    version = manifest["version"]
-    target_tag = manifest["target_dist_tag"]
-    stage = staging_tag(version)
-    report: dict[str, Any] = {
-        "schema_version": 1,
-        "version": version,
-        "target_dist_tag": target_tag,
-        "staging_dist_tag": stage,
-        "published": [],
-        "promoted": [],
-        "previous_tags": {},
-        "status": "running",
-    }
-    for record in manifest["packages"]:
-        try:
-            observed_integrity = client.version_integrity(record["name"], version)
-        except PackageGroupError as exc:
-            report["status"] = "failed-before-promotion"
-            report["error"] = str(exc)
-            raise ReconciliationError(str(exc), report) from exc
-        if observed_integrity is None:
-            try:
-                client.publish(artifact_dir / record["tarball"], stage)
-            except PackageGroupError as exc:
-                report["status"] = "failed-before-promotion"
-                report["error"] = str(exc)
-                raise ReconciliationError(str(exc), report) from exc
-            report["published"].append(record["name"])
-            try:
-                observed_integrity = client.version_integrity(record["name"], version)
-            except PackageGroupError as exc:
-                report["status"] = "failed-before-promotion"
-                report["error"] = str(exc)
-                raise ReconciliationError(str(exc), report) from exc
-        if observed_integrity != record["integrity"]:
-            message = f"{record['name']}@{version}: registry integrity differs from the verified tarball"
-            report["status"] = "failed-before-promotion"
-            report["error"] = message
-            raise ReconciliationError(message, report)
-
-    try:
-        previous = {
-            record["name"]: client.dist_tag(record["name"], target_tag)
-            for record in manifest["packages"]
-        }
-    except PackageGroupError as exc:
-        report["status"] = "failed-before-promotion"
-        report["error"] = str(exc)
-        raise ReconciliationError(str(exc), report) from exc
-    report["previous_tags"] = previous
-    changed: list[dict[str, Any]] = []
-    try:
-        for record in manifest["packages"]:
-            if previous[record["name"]] == version:
-                continue
-            # Treat a completed request as potentially visible even if the
-            # client reports an error. Compensation must cover it.
-            changed.append(record)
-            client.add_tag(record["name"], version, target_tag)
-            observed_tag = client.dist_tag(record["name"], target_tag)
-            if observed_tag != version:
-                raise PackageGroupError(
-                    f"{record['name']}: dist-tag {target_tag!r} points to {observed_tag!r} after promotion"
-                )
-    except PackageGroupError as exc:
-        rollback_failures = restore_tags(client, changed, previous, target_tag)
-        detail = str(exc)
-        if rollback_failures:
-            detail += "; rollback failed: " + "; ".join(rollback_failures)
-        report["status"] = "failed-during-promotion"
-        report["error"] = detail
-        report["promoted"] = [record["name"] for record in changed]
-        report["rollback_failures"] = rollback_failures
-        raise ReconciliationError(detail, report) from exc
-    report["status"] = "reconciled"
-    report["promoted"] = [record["name"] for record in changed]
-    return report
+    *,
+    observation_attempts: int = DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+    observation_delay_seconds: float = DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
+) -> dict[str, Any]:
+    return reconcile_registry_group(
+        validate_group_manifest(manifest),
+        artifact_dir,
+        client,
+        observation_attempts=observation_attempts,
+        observation_delay_seconds=observation_delay_seconds,
+    )
 
 
 def cli() -> argparse.ArgumentParser:

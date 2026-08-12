@@ -59,7 +59,7 @@ test and tooling text cannot mutate the measured CSS.
 
 The equivalence probe uses the production `WorkerClient` and the emitted
 `merman-language.worker` as an explicit module Worker. Its input is the generated
-`editor-language/token-equivalence-v1.json` evidence, which contains exactly one
+`contracts/editor-language/token-equivalence-v1.json` evidence, which contains exactly one
 family-baseline source for each of the 35 supported families. For both the
 `full` and `editor` variants, the probe unconditionally executes all 11 query
 kinds against every family. Request-local query errors are evidence too; fatal

@@ -2,8 +2,17 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
+import { GENERATED_EXAMPLES } from "../src/generated/examples.ts";
+
 let sourceServer: ViteDevServer | null = null;
 let sourceOrigin = "";
+
+const EVENT_MODEL_EXAMPLE = GENERATED_EXAMPLES.find(
+  (example) => example.id === "event-model",
+);
+if (!EVENT_MODEL_EXAMPLE) {
+  throw new Error("Missing the Event Model Playground example.");
+}
 
 test.beforeAll(async () => {
   sourceServer = await createServer({
@@ -224,6 +233,58 @@ test("preview hardens external anchors without mutating the export source", asyn
     ],
     exportSourceHasHardening: false,
     exportSourceUnchanged: true,
+  });
+});
+
+test("Event Model payload SVG survives responsive preview mount", async ({
+  page,
+}) => {
+  await page.goto(sourceOrigin);
+  const result = await page.evaluate(async (source) => {
+    const { ensureMermanReady } = await import(
+      "/src/runtime/" + "merman.ts"
+    );
+    const { configuredMermanOperationInput } = await import(
+      "/src/runtime/" + "merman-operation-input.ts"
+    );
+    const { prepareSvgForResponsivePreview } = await import(
+      "/src/lib/" + "svg-geometry.ts"
+    );
+    const facade = await ensureMermanReady();
+    const rendered = facade.render(
+      configuredMermanOperationInput(source, "default", "{}", {
+        textMeasurementMode: "headless",
+      }),
+    );
+    if (rendered.status === "failure") {
+      throw new Error(rendered.error.message);
+    }
+    const preview = prepareSvgForResponsivePreview(
+      rendered.artifact,
+      document,
+    );
+    if (!preview) return null;
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = host.attachShadow({ mode: "open" });
+    root.replaceChildren(preview.takeNode());
+    const svg = root.querySelector("svg");
+    const mounted = {
+      foreignObjectCount: svg?.querySelectorAll("foreignObject").length ?? 0,
+      lineBreakCount: svg?.querySelectorAll("foreignObject br").length ?? 0,
+      isSvg: svg instanceof SVGSVGElement,
+      text: svg?.textContent ?? null,
+    };
+    host.remove();
+    return mounted;
+  }, EVENT_MODEL_EXAMPLE.source);
+
+  expect(result).toEqual({
+    foreignObjectCount: 5,
+    lineBreakCount: 5,
+    isSvg: true,
+    text: expect.stringContaining("ItemAdded"),
   });
 });
 

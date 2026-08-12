@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,39 +12,13 @@ const playgroundRoot = path.resolve(path.dirname(scriptPath), "..");
 const defaultWorkspaceRoot = path.resolve(playgroundRoot, "..");
 const probeContractRelativePath =
   "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json";
-const evidenceRelativePath =
-  "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json";
 const reporterPath = path.join(
   playgroundRoot,
   "scripts",
   "zenuml-admission-reporter.mjs"
 );
-export async function loadVerifiedBrowserAdmissionEvidence(
-  workspaceRoot = defaultWorkspaceRoot
-) {
-  const contract = await readJson(
-    path.join(workspaceRoot, probeContractRelativePath)
-  );
-  validateContract(contract);
-  const evidencePath = path.join(workspaceRoot, evidenceRelativePath);
-  const serialized = await readFile(evidencePath, "utf8");
-  const evidence = JSON.parse(serialized);
-  validateEvidence(evidence, contract);
-  assert.equal(serialized, canonicalJson(evidence));
-  return {
-    evidence,
-    relativePath: evidenceRelativePath,
-    sha256: sha256(serialized),
-    summaries: Object.fromEntries(
-      Object.keys(contract.categories).map((category) => [
-        category,
-        categorySummary(evidence, category),
-      ])
-    ),
-  };
-}
 
-function validateContract(contract) {
+export function validateContract(contract) {
   assert.equal(contract.schemaVersion, 1);
   assert.deepEqual(Object.keys(contract.categories).sort(), [
     "execution-isolation",
@@ -65,19 +39,16 @@ function validateContract(contract) {
   }
 }
 
-function validateEvidence(evidence, contract) {
-  assert.equal(evidence.schemaVersion, 2);
-  assert.equal(evidence.command, "npm run test:zenuml-browser-admission");
+export function validateEvidence(evidence, contract) {
+  assert.equal(evidence.schemaVersion, 1);
+  assert.equal(evidence.artifactKind, "zenuml-browser-admission-report");
   assert.equal(
     evidence.generatedBy,
     "playground/scripts/zenuml-browser-admission.mjs"
   );
   assert.deepEqual(evidence.projects, contract.projects);
   assert.equal(evidence.probeContract.path, probeContractRelativePath);
-  assert.equal(
-    evidence.probeContract.sha256,
-    sha256(canonicalJson(contract))
-  );
+  assert.equal(evidence.probeContract.sha256, sha256(canonicalJson(contract)));
   for (const category of Object.keys(contract.categories)) {
     validateCategoryEvidence(
       evidence[camelCategory(category)],
@@ -113,19 +84,9 @@ function validateCategoryEvidence(value, category, requiredProbes, projects) {
   }
 }
 
-function categorySummary(evidence, category) {
-  const value = evidence[camelCategory(category)];
-  return {
-    artifact: evidenceRelativePath,
-    probeContract: probeContractRelativePath,
-    projectCount: value.projectCount,
-    probeCount: value.probeCount,
-    observationCount: value.observationCount,
-    passedObservationCount: value.passedObservationCount,
-  };
-}
-
-async function runBrowserAdmission(workspaceRoot) {
+export async function runBrowserAdmission(
+  workspaceRoot = defaultWorkspaceRoot
+) {
   const temporaryReport = path.join(
     tmpdir(),
     `merman-zenuml-browser-admission-${process.pid}.json`
@@ -151,7 +112,13 @@ async function runBrowserAdmission(workspaceRoot) {
       stdio: "inherit",
     }
   );
-  assert.equal(child.status, 0, "ZenUML browser admission Playwright run failed");
+  if (child.error || child.status !== 0) {
+    throw new Error(
+      `ZenUML browser admission failed with status ${String(child.status)}: ${
+        child.error?.message ?? "Playwright reported a failing probe"
+      }`
+    );
+  }
   try {
     const report = await readJson(temporaryReport);
     assert.equal(report.status, "passed");
@@ -159,7 +126,9 @@ async function runBrowserAdmission(workspaceRoot) {
       path.join(workspaceRoot, probeContractRelativePath)
     );
     validateContract(contract);
-    return buildEvidence(report, contract);
+    const evidence = buildEvidence(report, contract);
+    validateEvidence(evidence, contract);
+    return evidence;
   } finally {
     await rm(temporaryReport, { force: true });
   }
@@ -199,9 +168,9 @@ function buildEvidence(report, contract) {
   }
 
   const evidence = {
-    schemaVersion: 2,
+    schemaVersion: 1,
+    artifactKind: "zenuml-browser-admission-report",
     generatedBy: "playground/scripts/zenuml-browser-admission.mjs",
-    command: "npm run test:zenuml-browser-admission",
     probeContract: {
       path: probeContractRelativePath,
       sha256: sha256(canonicalJson(contract)),
@@ -215,9 +184,10 @@ function buildEvidence(report, contract) {
       description,
       observations: byId
         .get(id)
-        .sort((left, right) =>
-          contract.projects.indexOf(left.project) -
-          contract.projects.indexOf(right.project)
+        .sort(
+          (left, right) =>
+            contract.projects.indexOf(left.project) -
+            contract.projects.indexOf(right.project)
         ),
     }));
     const observationCount = probes.reduce(
@@ -236,7 +206,6 @@ function buildEvidence(report, contract) {
       probes,
     };
   }
-  validateEvidence(evidence, contract);
   return evidence;
 }
 
@@ -256,44 +225,26 @@ async function readJson(target) {
   return JSON.parse(await readFile(target, "utf8"));
 }
 
-async function writeAtomically(target, contents) {
-  await mkdir(path.dirname(target), { recursive: true });
-  const temporary = `${target}.${process.pid}.tmp`;
-  try {
-    await writeFile(temporary, contents, { flag: "wx" });
-    await rename(temporary, target);
-  } finally {
-    await rm(temporary, { force: true });
+function parseArguments(arguments_) {
+  if (arguments_.length === 0) return { output: null };
+  if (arguments_.length === 2 && arguments_[0] === "--output" && arguments_[1]) {
+    return { output: arguments_[1] };
   }
+  throw new Error(
+    "usage: node zenuml-browser-admission.mjs [--output <path>]"
+  );
 }
 
 async function main() {
-  const arguments_ = new Set(process.argv.slice(2));
-  for (const argument of arguments_) {
-    assert(
-      argument === "--run" || argument === "--write",
-      "usage: node zenuml-browser-admission.mjs [--run [--write]]"
-    );
+  const { output } = parseArguments(process.argv.slice(2));
+  const serialized = canonicalJson(await runBrowserAdmission());
+  if (output) {
+    const target = path.resolve(output);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, serialized, { flag: "wx" });
+  } else {
+    process.stdout.write(serialized);
   }
-  const run = arguments_.has("--run");
-  const write = arguments_.has("--write");
-  assert(!write || run, "--write requires --run");
-  if (!run) {
-    await loadVerifiedBrowserAdmissionEvidence();
-    return;
-  }
-  const evidence = await runBrowserAdmission(defaultWorkspaceRoot);
-  const serialized = canonicalJson(evidence);
-  const target = path.join(defaultWorkspaceRoot, evidenceRelativePath);
-  if (write) {
-    await writeAtomically(target, serialized);
-    return;
-  }
-  assert.equal(
-    await readFile(target, "utf8"),
-    serialized,
-    "ZenUML browser admission evidence is stale; rerun with --run --write"
-  );
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {

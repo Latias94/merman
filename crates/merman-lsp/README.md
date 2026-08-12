@@ -11,7 +11,7 @@ Local Mermaid language intelligence for `.mmd`, `.mermaid`, Markdown, and MDX do
 The crate defaults to a protocol-neutral Rust library. Enable `stdio` when installing the bundled language-server executable:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-lsp \
+cargo install merman-lsp --version 0.8.0-alpha.5 --locked \
   --no-default-features --features stdio
 ```
 
@@ -62,7 +62,7 @@ The session refactor removes the direct `MermanLanguageServer::rule_catalog()` a
 
 ```toml
 [dependencies]
-merman-lsp = { git = "https://github.com/Latias94/merman", default-features = false }
+merman-lsp = { version = "=0.8.0-alpha.5", default-features = false }
 ```
 
 The embedding boundary deliberately uses the same JSON-RPC and service types as `tower-lsp-server`. Declare those transport dependencies directly so Cargo resolves the traits and request types used by the host:

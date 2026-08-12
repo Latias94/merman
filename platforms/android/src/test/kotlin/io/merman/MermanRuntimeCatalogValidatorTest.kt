@@ -317,7 +317,13 @@ class MermanRuntimeCatalogValidatorTest {
     private fun validCatalog(): JSONObject {
         val artifact = MERMAN_ANDROID_ARTIFACT_EXPECTATION
         val capabilityIds = artifact.capabilityIds
+        val hasSvgPipeline = "svg" in capabilityIds
         val optionIds = MERMAN_BINDING_OPTION_GROUP_SPECS.values
+            .filter { spec ->
+                spec.alwaysAvailable ||
+                    (spec.requiresSvgPipeline && hasSvgPipeline) ||
+                    spec.anyCapabilityIds.any(capabilityIds::contains)
+            }
             .map(MermanBindingOptionGroupSpec::id)
             .sorted()
         val serviceIds = MERMAN_BINDING_TRANSPORT_EXPOSURE_SPECS.getValue("android-jni")

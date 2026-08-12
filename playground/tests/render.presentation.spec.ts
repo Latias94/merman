@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   monitorBrowserErrors,
   openPlayground,
+  previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
@@ -56,6 +57,133 @@ const C4_DYNAMIC_EXAMPLE = GENERATED_EXAMPLES.find(
 if (!C4_DYNAMIC_EXAMPLE) {
   throw new Error("Missing the C4 dynamic Playground example.");
 }
+
+const ZENUML_INTERACTION_EXAMPLE = GENERATED_EXAMPLES.find(
+  (example) => example.id === "zenuml-interaction"
+);
+if (!ZENUML_INTERACTION_EXAMPLE) {
+  throw new Error("Missing the ZenUML interaction Playground example.");
+}
+
+test("SVG mount failures stay inside the preview pane", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+  await page.evaluate(() => {
+    Object.defineProperty(window, "XMLSerializer", {
+      configurable: true,
+      value: class FailingXmlSerializer {
+        serializeToString(): string {
+          throw new Error("forced SVG mount failure");
+        }
+      },
+    });
+  });
+  await page.getByRole("button", { name: "View SVG source" }).click();
+  await page.getByRole("button", { name: "View SVG preview" }).click();
+
+  const failure = page.locator(
+    '[data-merman-render-error="true"][data-merman-error-stage="svg-mount"]',
+  );
+  await expect(failure).toBeVisible();
+  await expect(failure).toContainText("forced SVG mount failure");
+  await expect(
+    page.getByRole("button", { name: "Examples", exact: true }),
+  ).toBeVisible();
+  errors.assertNone();
+});
+
+test("Event Model keeps Mermaid HTML labels readable in a dark Playground", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await openPlayground(page);
+  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Example Gallery" });
+  await dialog
+    .getByRole("searchbox", { name: "Search examples" })
+    .fill("Event Model");
+  const eventModelCard = dialog.getByRole("button", {
+    name: /^Event Model Flow/u,
+  });
+  await expect(eventModelCard).toHaveCount(1);
+  await eventModelCard.click();
+
+  await waitForPreviewSvg(page);
+  await expect
+    .poll(() => previewSvgText(page))
+    .toContain("ItemAdded");
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
+  const mermaidHost = mermaidPane.locator(".preview-container > div");
+  await expect(mermaidPane).toBeVisible();
+  await expect
+    .poll(() =>
+      mermaidHost.evaluate((host) =>
+        Boolean(host.shadowRoot?.querySelector("svg")),
+      ),
+    )
+    .toBe(true);
+  const colors = await mermaidHost.evaluate((host) => {
+    const svg = host.shadowRoot?.querySelector("svg");
+    if (!(svg instanceof SVGSVGElement)) {
+      throw new Error("Missing mounted Mermaid SVG.");
+    }
+    const labels = svg.querySelectorAll("foreignObject b, foreignObject code");
+    return {
+      host: getComputedStyle(host).color,
+      labels: [...new Set([...labels].map((label) => getComputedStyle(label).color))],
+      svgFill: getComputedStyle(svg).fill,
+    };
+  });
+  expect(colors.host).not.toBe(colors.svgFill);
+  expect(colors.labels).toEqual([colors.svgFill]);
+  await expect(
+    page.getByRole("button", { name: "Examples", exact: true }),
+  ).toBeVisible();
+  errors.assertNone();
+});
+
+test("ZenUML Mermaid comparison remains self-contained", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const zenUmlFontRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (url.includes("MS%20Sans%20Serif.ttf") || url.includes("MS Sans Serif.ttf")) {
+      zenUmlFontRequests.push(request.url());
+    }
+  });
+
+  await openPlayground(page);
+  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Example Gallery" });
+  await dialog
+    .getByRole("searchbox", { name: "Search examples" })
+    .fill(ZENUML_INTERACTION_EXAMPLE.title);
+  const exampleCard = dialog.getByRole("button", {
+    name: /^ZenUML Interaction/u,
+  });
+  await expect(exampleCard).toHaveCount(1);
+  await exampleCard.click();
+  await waitForPreviewSvg(page);
+  await expect.poll(() => previewSvgText(page)).toContain("Alice");
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+  const mermaidHost = page.locator(
+    '[data-merman-compare-engine="mermaid"] .preview-container > div'
+  );
+  await expect
+    .poll(() =>
+      mermaidHost.evaluate((host) =>
+        Boolean(host.shadowRoot?.querySelector("svg"))
+      )
+    )
+    .toBe(true);
+  expect(zenUmlFontRequests).toEqual([]);
+  errors.assertNone();
+});
 
 test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({ page }) => {
   const errors = monitorBrowserErrors(page);

@@ -44,6 +44,27 @@ RustSec exception coverage follows the same authority boundary. Every verifier h
 
 Artifact profiles describe compiled components, not every package that redistributes one. Wheels, AARs, XCFrameworks, npm packages, and other release bundles keep their package manifests and release checks at the owning surface. A bundle may compose one or more artifact profiles without inventing another Cargo root or copying an ABI definition.
 
+## Default Native Prebuilt SKU
+
+The Android, Apple, Python, and Flutter artifact profiles select one shared default native
+capability set:
+
+```text
+analysis,ascii,layout-cytoscape,layout-elk,svg
+```
+
+Those prebuilt packages omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. Their generated
+language APIs retain the complete operation vocabulary; the loaded runtime catalog reports the
+actual subset, and an unavailable valid operation returns a typed `missing-capability` error.
+Custom source builds may select any valid direct leaves. The `c-abi-native` profile remains a
+complete host reference build for ABI verification rather than a downloadable default package.
+See [ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) for the product decision.
+
+Other cross-language artifacts are interface-shaped rather than forced into that native SKU.
+Typst publishes SVG plus canonical analysis and both layout backends. The private Node candidates
+compile SVG plus both layout backends only. Browser WASM keeps package-specific full and slim
+profiles because npm package identity is its capability-selection mechanism.
+
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
 
 ## Admitting A Public Leaf

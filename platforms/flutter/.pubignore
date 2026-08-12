@@ -26,8 +26,7 @@ __pycache__/
 !ios/MermanFFI.xcframework/**
 !macos/MermanFFI.xcframework/
 !macos/MermanFFI.xcframework/**
-!macos/Libraries/
-!macos/Libraries/**
+/macos/Libraries/
 !windows/merman_ffi.dll
 !linux/lib/
 !linux/lib/**

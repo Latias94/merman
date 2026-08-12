@@ -17,7 +17,7 @@ const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), ".."
 const repoRoot = path.join(packageRoot, "..", "..");
 const tokenEquivalenceEvidence = JSON.parse(
   await readFile(
-    path.join(repoRoot, "editor-language", "token-equivalence-v1.json"),
+    path.join(repoRoot, "contracts", "editor-language", "token-equivalence-v1.json"),
     "utf8"
   )
 );

@@ -39,8 +39,9 @@ val svg = result.data.toString(Charsets.UTF_8)
 `MermanOperationResult` contains `operationId`, `mediaType`, `data`, and typed operation metadata
 that retains its original JSON. `Merman` also exposes convenience methods for SVG, ASCII, PNG,
 JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, document analysis, and
-validation. Binary methods retain byte-returning conveniences and add `*Result` forms that preserve
-the effective output plan.
+validation. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation,
+and document analysis. Binary methods remain in the generated API for custom artifacts and return
+typed missing-capability errors against the default AAR.
 
 Use the direct `MermanEngine(optionsJson, services)` constructor when calls share base options or
 host services. Its `execute` method accepts per-call `optionsJson` overlays and uses the same
@@ -59,23 +60,24 @@ validates:
 - Android transport API version `1`;
 - non-empty native package metadata;
 - Options JSON schema `2` and both binding payload schemas;
-- the generated full-native Android capability/output/operation/metadata identity and capability
+- the generated default-native Android capability/output/operation/metadata identity and capability
   implication closure;
 - output media/resource policies, constructor-service ownership, and resource profile relations;
   and
 - the independent text-measurement protocol version and provider ownership.
 
-The published Android AAR is a complete native SKU, so known IDs must match the generated Android
-artifact contract in sorted order. This prevents a Kotlin facade from advertising methods whose
-native implementation was omitted. Unknown future IDs and fields are accepted only as additive
-values and must retain the catalog's sorted-ID rules. Legacy schema-1 producers may omit the
-option-group and constructor-service sections; if either section is present, its known entries are
-validated. Exact package-version equality is intentionally not required.
+The published Android AAR uses the default native SKU, so known IDs must match the generated
+Android artifact contract in sorted order. This prevents package documentation from drifting from
+the native library that it redistributes. Unknown future IDs and fields are accepted only as
+additive values and must retain the catalog's sorted-ID rules. Legacy schema-1 producers may omit
+the option-group and constructor-service sections; if either section is present, its known entries
+are validated. Exact package-version equality is intentionally not required. A custom SKU must
+regenerate and package the matching Kotlin contract.
 
-The internal `merman-android-jni` crate compiles native runtime support through the atomic
-`native-runtime` feature; it does not expose separate clock, time-zone, or random Cargo switches.
-The catalog deliberately retains the concrete adapter IDs because those IDs describe callable
-runtime services rather than the artifact assembly feature.
+The default AAR does not compile native runtime adapters. A custom `merman-android-jni` build may
+enable the atomic `native-runtime` feature; it does not expose separate clock, time-zone, or random
+Cargo switches. The catalog reports the concrete adapter IDs only when those callable services are
+present rather than exposing the artifact assembly feature.
 
 Read the validated catalog with `Merman.runtimeCatalogJson()`:
 
@@ -93,8 +95,8 @@ Read the validated catalog with `Merman.runtimeCatalogJson()`:
   "capabilities": {
     "capability_ids": ["analysis", "ascii", "...", "svg"],
     "operation_ids": ["analysis-json", "...", "svg"],
-    "output_ids": ["ascii", "...", "svg"],
-    "system_adapter_ids": ["system-clock", "system-random", "system-timezone"],
+    "output_ids": ["ascii", "svg"],
+    "system_adapter_ids": [],
     "text_measurement": { "protocol_version": 1, "provider_ids": ["host-callback", "vendored"] }
   },
   "output_contracts": [{ "id": "ascii", "media_type": "text/plain; charset=utf-8" }, "..."],
@@ -181,7 +183,7 @@ python3 platforms/android/build-android.py --targets aarch64-linux-android x86_6
 ```
 
 The platform verifier compiles the Kotlin declarations against an Android SDK `android.jar` and
-cross-checks both Android target recipes with their complete feature sets. The build and AAR gates
+cross-checks both Android target recipes with their exact feature sets. The build and AAR gates
 inspect the actual shared objects with the pinned NDK's `llvm-nm`: the Kotlin library must export
 `JNI_OnLoad` and must not export `merman_get_native_api`; Flutter's C ABI library enforces the
 inverse contract. A connected device or emulator is still required for runtime JNI registration

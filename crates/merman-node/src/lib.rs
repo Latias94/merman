@@ -1,11 +1,11 @@
 #![cfg_attr(not(feature = "transport-napi"), forbid(unsafe_code))]
 #![cfg_attr(feature = "transport-napi", deny(unsafe_code))]
 
-//! Private Node/SSG transport candidates.
+//! Native `@mermanjs/node` transport and internal comparison transport.
 //!
-//! Both transports delegate every operation, option, resource profile, and typed error to
-//! `merman-bindings-core`. This crate is intentionally not a member of the repository workspace
-//! until U14 evidence selects or rejects a transport.
+//! The public npm package selects the N-API transport. The Node-targeted WASM transport remains an
+//! internal comparison implementation. Both delegate every operation, option, resource profile,
+//! and typed error to `merman-bindings-core`.
 
 #[cfg(not(feature = "svg"))]
 compile_error!("the Node candidates must be built with the direct static SVG feature set");
@@ -15,9 +15,6 @@ compile_error!("the Node candidates require the static layout-cytoscape capabili
 
 #[cfg(not(feature = "layout-elk"))]
 compile_error!("the Node candidates require the static layout-elk capability recipe");
-
-#[cfg(not(feature = "math"))]
-compile_error!("the Node candidates require the static math capability recipe");
 
 #[cfg(all(feature = "transport-napi", feature = "transport-wasm"))]
 compile_error!("select exactly one Node transport candidate");

@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-02-10
-- Last amended: 2026-07-19
+- Last amended: 2026-08-11
 
 ## Context
 
@@ -12,16 +12,17 @@ Treating ZenUML as Sequence syntax discarded participant annotations, starters, 
 assignments, creation, expressions, source ranges, and ZenUML's own layout topology. It also split
 detection, editor behavior, and rendering across unrelated implementations.
 
-The selected Mermaid reference bundle records three distinct dependency facts:
+The current selected graph uses ZenUML Core `3.50.1`. The mandatory selection receipt records the
+historical transition from the Mermaid-workspace `3.47.8` graph to `3.50.1`, including the exact
+package/source identity changes, official npm verification command, and passing behavior outcome.
+That completed candidate evidence is historical decision context, not part of the live reference
+graph.
 
-- the exact ZenUML Core version resolved by the Mermaid workspace is the behavior oracle;
-- the highest stable version satisfying the plugin's published range is an admission candidate;
-- a newer stable release outside that range is only a separately scoped port candidate.
-
-For the current reference graph, the compatibility matrix in
-`tools/upstreams/ZENUML_CORE_ADMISSION.json` selects ZenUML Core `3.50.1`. The matrix retains the
-workspace oracle and records parser, renderer, security, resource, host-integration, and corpus
-evidence. A semver range alone is never sufficient evidence for selecting a candidate.
+The selected Mermaid reference bundle therefore records one current ZenUML Core package only.
+Candidate discovery, outside-range majors, official signature verification, behavior comparison,
+and browser security probes run through the explicit manual Mermaid upgrade admission workflow.
+A semver range alone is never sufficient evidence for selection, but a future candidate also cannot
+break ordinary CI before maintainers deliberately start admission.
 
 The selected Mermaid plugin calls ZenUML Core's `renderToSvg` and returns native SVG. Executable
 corpus evidence shows that this SVG can pass the same strict inline publication boundary used for
@@ -39,25 +40,29 @@ ZenUML is a first-class, family-owned Merman diagram:
 3. `merman-render` owns typed ZenUML layout and SVG topology for participants, lifelines, messages,
    creation, returns, occurrences, groups, references, dividers, comments, and fragment sections.
    Source-backed ZenUML assets are vendored with their license.
-4. Browser comparison registers the exact plugin graph from the generated Mermaid reference
-   bundle in an opaque-origin execution realm. The parent accepts output only after the shared
-   strict SVG validator succeeds; rejection is terminal for that operation.
+4. Browser comparison registers the exact selected plugin graph from the generated Mermaid
+   reference bundle in an opaque-origin execution realm. The parent accepts output only after the
+   shared strict SVG validator succeeds; rejection is terminal for that operation.
 5. The Rust implementation ports observable headless behavior, not incidental JavaScript
    containers, framework state, or browser caches. No separate Cargo feature is introduced merely
    because Mermaid loads the browser plugin lazily.
 
 ## Evidence Contract
 
-An admitted ZenUML graph must prove all of the following before selection:
+An admitted ZenUML graph must prove all of the following before selection through the manual
+upgrade workflow:
 
 - positive and malformed grammar corpus behavior with recoverable diagram identity;
 - family-owned semantic, editor, completion, rename, and structure behavior;
 - headless topology, labels, colors, geometry, and resource limits;
 - cold and reused browser registration, strict native-SVG publication, and failure recovery;
-- exact oracle/candidate package provenance and an explained result for every matrix delta.
+- official npm signature verification of the exact selected/candidate packages and an explained
+  result for every behavior delta.
 
-The generated bundle, package locks, source checkouts, and admission report must agree. Updating a
-package constant without regenerating and verifying this graph is an invalid upgrade.
+After review, the generated bundle, package locks, selected source checkout, and decision receipt
+must agree. `verify-mermaid-reference --base <sha>` rejects a selected identity change whose
+previous/current digests and changed fields do not match the trusted base. The standing verifier
+does not read candidate, deferred-major, browser-result, DSSE, SLSA, or certificate artifacts.
 
 ## Consequences
 
@@ -65,8 +70,9 @@ package constant without regenerating and verifying this graph is an invalid upg
 - Parser, LSP, headless rendering, and Playground support report the same capability identity.
 - Browser execution still carries third-party-code risk; opaque execution and strict parent-side
   publication are both required, and neither is described as absolute network isolation.
-- Future ZenUML Core releases must pass the same admission workflow. An outside-range major is not
-  selected under the label "latest" without explicit behavior-port work.
+- Future ZenUML Core releases must pass the same explicit admission workflow. An outside-range
+  major is not selected under the label "latest" without explicit behavior-port work, and no
+  deferred-major file is needed to keep the current graph valid.
 
 ## Rejected Alternatives
 

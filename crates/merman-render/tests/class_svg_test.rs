@@ -837,6 +837,99 @@ fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() 
 }
 
 #[test]
+fn class_svg_nested_namespace_relation_endpoints_share_node_coordinate_frame() {
+    use base64::Engine as _;
+
+    let svg = render_class_fixture(
+        "upstream_namespaces_and_generics.mmd",
+        &LayoutOptions::default(),
+        &SvgRenderOptions::default(),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("data-id") == Some("id_Admin_User_1")
+        })
+        .expect("Admin to User relation path");
+    let encoded = edge.attribute("data-points").expect("relation data-points");
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .expect("base64 Class edge points");
+    let points: Vec<merman_render::model::LayoutPoint> =
+        serde_json::from_slice(&decoded).expect("JSON Class edge points");
+
+    let owning_root = |node: roxmltree::Node<'_, '_>| {
+        node.ancestors()
+            .find(|ancestor| {
+                ancestor.has_tag_name("g")
+                    && ancestor.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "root")
+                    })
+            })
+            .expect("recursive Class root")
+            .id()
+    };
+    let node_bounds = |class_id: &str| {
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.contains(&format!("classId-{class_id}-")))
+            })
+            .unwrap_or_else(|| panic!("missing {class_id} node"));
+        let transform = node.attribute("transform").expect("node transform");
+        let center_x = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .and_then(|value| value.split_once(','))
+            .map(|(x, _)| x.trim().parse::<f64>().expect("node x"))
+            .expect("translate(x, y)");
+        let outer = node
+            .descendants()
+            .find(|descendant| {
+                descendant.has_tag_name("g")
+                    && descendant.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "outer-path")
+                    })
+            })
+            .and_then(|group| group.children().find(|child| child.has_tag_name("path")))
+            .expect("class outer path");
+        let xs = outer
+            .attribute("d")
+            .expect("class outer path data")
+            .split_whitespace()
+            .filter_map(|component| {
+                component
+                    .strip_prefix('M')
+                    .or_else(|| component.strip_prefix('L'))
+            })
+            .map(|x| x.parse::<f64>().expect("class outer path x"))
+            .collect::<Vec<_>>();
+        let min_x = xs.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_x = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        (node, center_x + min_x, center_x + max_x)
+    };
+    let (admin, _admin_left, admin_right) = node_bounds("Admin");
+    let (user, user_left, _user_right) = node_bounds("User");
+
+    assert_eq!(owning_root(edge), owning_root(admin));
+    assert_eq!(owning_root(edge), owning_root(user));
+    assert!(
+        (points.first().expect("source endpoint").x - admin_right).abs() <= 0.01,
+        "Admin relation endpoint must touch the rendered node boundary"
+    );
+    assert!(
+        (points.last().expect("target endpoint").x - user_left).abs() <= 0.01,
+        "User relation endpoint must touch the rendered node boundary before marker shortening"
+    );
+}
+
+#[test]
 fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
     let svg = render_class_fixture(
         "stress_class_comments_inside_namespaces_024.mmd",

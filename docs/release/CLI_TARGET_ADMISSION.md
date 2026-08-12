@@ -41,9 +41,9 @@ x86_64-pc-windows-msvc
 x86_64-unknown-linux-gnu
 ```
 
-`scripts/test_release_artifact_workflow.py` checks that the cargo-dist runner matrix and the exact
-`cli-release` and `lsp-stdio-release` target sets remain equal. The release bundle contract also
-rejects a CLI/LSP target-set mismatch.
+The artifact-profile verifier checks that the exact `cli-release` and `lsp-stdio-release` target
+sets remain equal. Cargo-dist validates its own plan, and the release bundle contract rejects a
+CLI/LSP target-set mismatch before publication.
 
 ## Retry conditions
 

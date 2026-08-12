@@ -112,6 +112,27 @@ def response_frame(request_id: int, result: object) -> bytes:
     return f"Content-Length: {len(body)}\r\n\r\n".encode() + body
 
 
+def response_frame_with_headers(
+    request_id: int,
+    result: object,
+    *headers: str,
+) -> bytes:
+    body = json.dumps(
+        {"jsonrpc": "2.0", "id": request_id, "result": result},
+        separators=(",", ":"),
+    ).encode()
+    lines = [*headers, f"content-length:{len(body)}"]
+    return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii") + body
+
+
+def notification_frame(method: str, params: object) -> bytes:
+    body = json.dumps(
+        {"jsonrpc": "2.0", "method": method, "params": params},
+        separators=(",", ":"),
+    ).encode()
+    return f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+
+
 def valid_session_output() -> bytes:
     return response_frame(1, {"capabilities": {}}) + response_frame(2, None)
 
@@ -378,6 +399,82 @@ class LspRuntimeTests(unittest.TestCase):
 
         self.assertEqual(len(observed), 1)
         self.assertEqual(observed[0], verifier.lifecycle_frames())
+
+    def test_runtime_contract_accepts_notifications_around_shutdown_response(self) -> None:
+        initialize = response_frame(1, {"capabilities": {}})
+        shutdown = response_frame(2, None)
+        initialized_log = notification_frame(
+            "window/logMessage",
+            {"type": 3, "message": "merman-lsp initialized"},
+        )
+
+        for output in (
+            initialize + initialized_log + shutdown,
+            initialize + shutdown + initialized_log,
+        ):
+            with self.subTest(output=output):
+                verifier.verify_runtime_contract(
+                    Path("merman-lsp"),
+                    target=LINUX_TARGET,
+                    runner=lambda _binary, _frames, output=output: subprocess.CompletedProcess(
+                        ["merman-lsp"], 0, stdout=output, stderr=b""
+                    ),
+                    host_target_checker=lambda _target: True,
+                )
+
+    def test_runtime_contract_accepts_legal_header_representations(self) -> None:
+        output = response_frame_with_headers(
+            1,
+            {"capabilities": {}},
+            "Content-Type: application/vscode-jsonrpc; charset=utf-8",
+            "X-Trace-Id: smoke",
+        ) + response_frame_with_headers(2, None)
+
+        verifier.verify_runtime_contract(
+            Path("merman-lsp"),
+            target=LINUX_TARGET,
+            runner=lambda _binary, _frames: subprocess.CompletedProcess(
+                ["merman-lsp"], 0, stdout=output, stderr=b""
+            ),
+            host_target_checker=lambda _target: True,
+        )
+
+    def test_runtime_contract_rejects_duplicate_content_length(self) -> None:
+        body = b'{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}'
+        output = (
+            f"Content-Length: {len(body)}\r\ncontent-length: {len(body)}\r\n\r\n".encode()
+            + body
+            + response_frame(2, None)
+        )
+
+        with self.assertRaisesRegex(
+            verifier.ArchiveVerificationError,
+            "more than one Content-Length",
+        ):
+            verifier.verify_runtime_contract(
+                Path("merman-lsp"),
+                target=LINUX_TARGET,
+                runner=lambda _binary, _frames: subprocess.CompletedProcess(
+                    ["merman-lsp"], 0, stdout=output, stderr=b""
+                ),
+                host_target_checker=lambda _target: True,
+            )
+
+    def test_runtime_contract_rejects_duplicate_shutdown_response(self) -> None:
+        output = valid_session_output() + response_frame(2, None)
+
+        with self.assertRaisesRegex(
+            verifier.ArchiveVerificationError,
+            "more than one shutdown response",
+        ):
+            verifier.verify_runtime_contract(
+                Path("merman-lsp"),
+                target=LINUX_TARGET,
+                runner=lambda _binary, _frames: subprocess.CompletedProcess(
+                    ["merman-lsp"], 0, stdout=output, stderr=b""
+                ),
+                host_target_checker=lambda _target: True,
+            )
 
     @unittest.skipUnless(os.name == "posix", "native process fixture requires POSIX shebangs")
     def test_native_process_driver_completes_the_stdio_lifecycle(self) -> None:

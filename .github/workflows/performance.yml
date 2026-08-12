@@ -108,13 +108,14 @@ concurrency:
 jobs:
   contracts:
     name: perf-contracts
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
     runs-on: ubuntu-24.04
     env:
       CARGO_BUILD_JOBS: "1"
       CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
@@ -126,6 +127,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Check Python performance scripts
+        if: github.event_name != 'pull_request'
         working-directory: head
         run: |
           python3 -m py_compile \
@@ -147,6 +149,7 @@ jobs:
             tools/bench/verify_pipeline_bench_list.py
 
       - name: Check performance helper contracts
+        if: github.event_name != 'pull_request'
         working-directory: head
         run: |
           python3 tools/bench/test_perf_baseline_manifest.py
@@ -171,19 +174,94 @@ jobs:
           python3 tools/bench/test_native_memory_driver_contracts.py \
             --verify-smoke-report target/bench/native_memory_smoke.json
 
-  regression:
-    name: perf-regression
+  measurement-plan:
+    name: perf-measurement-plan
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf') || contains(github.event.pull_request.labels.*.name, 'perf-frontmatter')
     runs-on: ubuntu-24.04
-    if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'regression' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf'))
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      selected: ${{ steps.plan.outputs.selected }}
+    steps:
+      - name: Select performance descriptors
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RUN: ${{ inputs.run }}
+          HAS_REGRESSION_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf') }}
+          HAS_FRONTMATTER_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+        run: |
+          set -euo pipefail
+          lanes=()
+          case "$EVENT_NAME" in
+            pull_request)
+              [[ "$HAS_REGRESSION_LABEL" == "true" ]] && lanes+=(regression)
+              [[ "$HAS_FRONTMATTER_LABEL" == "true" ]] && lanes+=(frontmatter)
+              ;;
+            schedule)
+              lanes=(regression frontmatter)
+              ;;
+            workflow_dispatch)
+              case "$DISPATCH_RUN" in
+                regression) lanes=(regression) ;;
+                frontmatter) lanes=(frontmatter) ;;
+                full) lanes=(regression frontmatter) ;;
+                contracts|reference) lanes=() ;;
+                *)
+                  echo "unsupported performance lane: $DISPATCH_RUN" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "unsupported performance event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          matrix='{"include":['
+          separator=''
+          for lane in "${lanes[@]}"; do
+            case "$lane" in
+              regression)
+                descriptor='{"id":"regression","suite":"canary","group":"","artifact":"perf-regression","title":"Merman Performance Regression","marker":"<!-- merman-perf -->"}'
+                ;;
+              frontmatter)
+                descriptor='{"id":"frontmatter","suite":"frontmatter","group":"frontmatter_preprocess","artifact":"perf-frontmatter","title":"Merman Frontmatter Performance Regression","marker":"<!-- merman-perf-frontmatter -->"}'
+                ;;
+              *)
+                echo "unsupported selected performance lane: $lane" >&2
+                exit 1
+                ;;
+            esac
+            matrix+="$separator$descriptor"
+            separator=','
+          done
+          matrix+=']}'
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          if [[ ${#lanes[@]} -gt 0 ]]; then
+            echo 'selected=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'selected=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  measurement:
+    name: perf-${{ matrix.id }}
+    needs: measurement-plan
+    if: needs.measurement-plan.outputs.selected == 'true'
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.measurement-plan.outputs.matrix) }}
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
@@ -192,408 +270,135 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Checkout base
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           path: base
-          fetch-depth: 1
+          fetch-depth: ${{ github.event_name == 'schedule' && 2 || 1 }}
           persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'schedule' && github.sha || inputs.base_ref || 'main' }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
+
+      - name: Select previous main revision for scheduled comparison
+        if: github.event_name == 'schedule'
+        working-directory: base
+        run: git checkout --detach HEAD^
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
-      - name: Run self regression comparison
-        id: regression_comparison
+      - name: Measure descriptor and write receipt
+        id: comparison
         working-directory: head
         env:
-          PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}
-          SUITE: ${{ github.event_name == 'pull_request' && 'canary' || inputs.suite }}
+          PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset || 'long' }}
+          SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || matrix.suite }}
+          GROUP: ${{ matrix.group }}
           EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
           RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
           ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
-          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}
+          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.event_name == 'schedule' && 'main~1' || inputs.base_ref || 'main' }}
           HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
+          args=(
+            --base-dir ../base
+            --head-dir .
+            --base-target-dir target/performance/base
+            --head-target-dir target/performance/head
+            --base-features svg
+            --head-features svg
+            --base-label "$BASE_LABEL"
+            --head-label "$HEAD_LABEL"
+            --preset "$PRESET"
+            --suite "$SUITE"
+            --evidence-mode "$EVIDENCE_MODE"
+            --relative-threshold-percent "$RELATIVE_THRESHOLD_PERCENT"
+            --absolute-threshold-ns "$ABSOLUTE_THRESHOLD_NS"
+            --out target/performance/comparison.md
+            --json-out target/performance/comparison.json
+          )
+          if [[ -n "$GROUP" ]]; then
+            args+=(--group "$GROUP")
+          fi
           set +e
-          python3 tools/bench/compare_self.py \
-            --base-dir ../base \
-            --head-dir . \
-            --base-target-dir target/performance/base \
-            --head-target-dir target/performance/head \
-            --base-features svg \
-            --head-features svg \
-            --base-label "$BASE_LABEL" \
-            --head-label "$HEAD_LABEL" \
-            --preset "$PRESET" \
-            --suite "$SUITE" \
-            --evidence-mode "$EVIDENCE_MODE" \
-            --relative-threshold-percent "$RELATIVE_THRESHOLD_PERCENT" \
-            --absolute-threshold-ns "$ABSOLUTE_THRESHOLD_NS" \
-            --out target/performance/self_comparison.md \
-            --json-out target/performance/self_comparison.json
+          python3 tools/bench/compare_self.py "${args[@]}"
           comparison_exit=$?
           set -e
           echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
 
-      - name: Render regression PR comment
-        id: regression_comment_render
+      - name: Render receipt summary
+        id: render
         if: ${{ always() }}
         working-directory: head
         run: |
           set -euo pipefail
           set +e
           python3 tools/bench/render_perf_comment.py \
-            --json target/performance/self_comparison.json \
-            --out target/performance/pr_comment.md \
+            --json target/performance/comparison.json \
+            --out target/performance/summary.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --artifact perf-regression \
-            --process-exit-code "${{ steps.regression_comparison.outputs.comparison_exit || '2' }}"
-          comment_render_exit=$?
+            --artifact "${{ matrix.artifact }}" \
+            --marker "${{ matrix.marker }}" \
+            --title "${{ matrix.title }}" \
+            --process-exit-code "${{ steps.comparison.outputs.comparison_exit || '2' }}"
+          render_exit=$?
           set -e
-          echo "comment_render_exit=$comment_render_exit" >> "$GITHUB_OUTPUT"
+          echo "render_exit=$render_exit" >> "$GITHUB_OUTPUT"
 
-      - name: Upload regression artifacts
+      - name: Upload measurement receipt
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
-          name: perf-regression
+          name: ${{ matrix.artifact }}
           path: |
-            head/target/performance/self_comparison.md
-            head/target/performance/self_comparison.json
-            head/target/performance/pr_comment.md
+            head/target/performance/comparison.md
+            head/target/performance/comparison.json
+            head/target/performance/summary.md
 
-      - name: Write regression job summary
+      - name: Write pull-request job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: head
+        env:
+          TITLE: ${{ matrix.title }}
         run: |
           set -euo pipefail
-          body_file="target/performance/pr_comment.md"
-          if [ -s "$body_file" ]; then
-            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -s target/performance/summary.md ]]; then
+            cat target/performance/summary.md >> "$GITHUB_STEP_SUMMARY"
           else
-            {
-              echo "## Merman Performance Regression"
-              echo
-              echo "The performance comment body was not generated. Check the job logs and artifact upload step."
-            } >> "$GITHUB_STEP_SUMMARY"
+            printf '## %s\n\nThe performance summary was not generated. Check the job logs and retained artifact.\n' \
+              "$TITLE" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Enforce regression performance result
+      - name: Enforce measurement result
         if: ${{ always() }}
         env:
-          REGRESSION_COMPARISON_EXIT: ${{ steps.regression_comparison.outputs.comparison_exit || '2' }}
-          REGRESSION_COMMENT_RENDER_EXIT: ${{ steps.regression_comment_render.outputs.comment_render_exit || '2' }}
+          COMPARISON_EXIT: ${{ steps.comparison.outputs.comparison_exit || '2' }}
+          RENDER_EXIT: ${{ steps.render.outputs.render_exit || '2' }}
         run: |
           set -euo pipefail
-          if [ "$REGRESSION_COMMENT_RENDER_EXIT" -ne 0 ]; then
+          if [[ "$RENDER_EXIT" -ne 0 ]]; then
             echo "::error::The performance report consumer rejected the evidence contract."
             exit 2
           fi
-          case "$REGRESSION_COMPARISON_EXIT" in
-            0)
-              exit 0
-              ;;
+          case "$COMPARISON_EXIT" in
+            0) exit 0 ;;
             1)
               echo "::error::Decision-grade evidence confirmed a performance regression."
-              exit "$REGRESSION_COMPARISON_EXIT"
+              exit 1
               ;;
             2)
               echo "::error::The performance comparison evidence contract failed."
-              exit "$REGRESSION_COMPARISON_EXIT"
+              exit 2
               ;;
             3)
               echo "::error::The performance comparison was statistically inconclusive."
-              exit "$REGRESSION_COMPARISON_EXIT"
+              exit 3
               ;;
             *)
-              echo "::error::Unexpected performance comparison exit code: $REGRESSION_COMPARISON_EXIT"
+              echo "::error::Unexpected performance comparison exit code: $COMPARISON_EXIT"
               exit 2
               ;;
           esac
-
-  regression-comment:
-    name: perf-regression-comment
-    runs-on: ubuntu-24.04
-    needs:
-      - regression
-    if: ${{ always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf') }}
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Download regression artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: perf-regression
-          path: perf-regression
-
-      - name: Write regression job summary
-        run: |
-          set -euo pipefail
-          body_file="perf-regression/pr_comment.md"
-          if [ -s "$body_file" ]; then
-            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Merman Performance Regression"
-              echo
-              echo "The performance comment body was not generated. Check the perf-regression artifact."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Comment regression summary
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          marker="<!-- merman-perf-regression -->"
-          body_file="perf-regression/pr_comment.md"
-          if [ ! -s "$body_file" ]; then
-            echo "::warning title=Performance comment unavailable::Performance comment body is missing; see the job summary and uploaded artifacts."
-            exit 0
-          fi
-          if ! comment_ids="$(
-            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
-          )"; then
-            echo "::warning title=Performance comment unavailable::Could not read existing PR comments; see the job summary and perf-regression artifact."
-            exit 0
-          fi
-          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
-          python3 - "$body_file" <<'PY' > comment_payload.json
-          import json
-          import sys
-
-          body_path = sys.argv[1]
-          body = open(body_path, encoding="utf-8").read()
-          print(json.dumps({"body": body}))
-          PY
-          if [ -n "$comment_id" ]; then
-            if ! gh api --silent --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json; then
-              echo "::warning title=Performance comment unavailable::Could not update the PR performance comment; see the job summary and perf-regression artifact."
-            fi
-          else
-            if ! gh api --silent --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json; then
-              echo "::warning title=Performance comment unavailable::Could not create the PR performance comment; see the job summary and perf-regression artifact."
-            fi
-          fi
-
-  frontmatter:
-    name: perf-frontmatter
-    runs-on: ubuntu-24.04
-    if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'frontmatter' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter'))
-    permissions:
-      contents: read
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-    steps:
-      - name: Checkout head
-        uses: actions/checkout@v6
-        with:
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
-
-      - name: Checkout base
-        uses: actions/checkout@v6
-        with:
-          path: base
-          fetch-depth: 1
-          persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Run frontmatter regression comparison
-        id: frontmatter_comparison
-        working-directory: head
-        env:
-          PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}
-          EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
-          RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
-          ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
-          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}
-          HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
-        run: |
-          set -euo pipefail
-          set +e
-          python3 tools/bench/compare_self.py \
-            --base-dir ../base \
-            --head-dir . \
-            --base-target-dir target/performance/base \
-            --head-target-dir target/performance/head \
-            --base-features svg \
-            --head-features svg \
-            --base-label "$BASE_LABEL" \
-            --head-label "$HEAD_LABEL" \
-            --preset "$PRESET" \
-            --suite frontmatter \
-            --group frontmatter_preprocess \
-            --evidence-mode "$EVIDENCE_MODE" \
-            --relative-threshold-percent "$RELATIVE_THRESHOLD_PERCENT" \
-            --absolute-threshold-ns "$ABSOLUTE_THRESHOLD_NS" \
-            --out target/performance/frontmatter_comparison.md \
-            --json-out target/performance/frontmatter_comparison.json
-          comparison_exit=$?
-          set -e
-          echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
-
-      - name: Render frontmatter PR comment
-        id: frontmatter_comment_render
-        if: ${{ always() }}
-        working-directory: head
-        run: |
-          set -euo pipefail
-          set +e
-          python3 tools/bench/render_perf_comment.py \
-            --json target/performance/frontmatter_comparison.json \
-            --out target/performance/frontmatter_pr_comment.md \
-            --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --artifact perf-frontmatter \
-            --marker "<!-- merman-perf-frontmatter -->" \
-            --title "Merman Frontmatter Performance Regression" \
-            --process-exit-code "${{ steps.frontmatter_comparison.outputs.comparison_exit || '2' }}"
-          comment_render_exit=$?
-          set -e
-          echo "comment_render_exit=$comment_render_exit" >> "$GITHUB_OUTPUT"
-
-      - name: Upload frontmatter artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: perf-frontmatter
-          path: |
-            head/target/performance/frontmatter_comparison.md
-            head/target/performance/frontmatter_comparison.json
-            head/target/performance/frontmatter_pr_comment.md
-
-      - name: Write frontmatter job summary
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        working-directory: head
-        run: |
-          set -euo pipefail
-          body_file="target/performance/frontmatter_pr_comment.md"
-          if [ -s "$body_file" ]; then
-            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Merman Frontmatter Performance Regression"
-              echo
-              echo "The frontmatter performance comment body was not generated. Check the job logs and artifact upload step."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Enforce frontmatter performance result
-        if: ${{ always() }}
-        env:
-          FRONTMATTER_COMPARISON_EXIT: ${{ steps.frontmatter_comparison.outputs.comparison_exit || '2' }}
-          FRONTMATTER_COMMENT_RENDER_EXIT: ${{ steps.frontmatter_comment_render.outputs.comment_render_exit || '2' }}
-        run: |
-          set -euo pipefail
-          if [ "$FRONTMATTER_COMMENT_RENDER_EXIT" -ne 0 ]; then
-            echo "::error::The frontmatter performance report consumer rejected the evidence contract."
-            exit 2
-          fi
-          case "$FRONTMATTER_COMPARISON_EXIT" in
-            0)
-              exit 0
-              ;;
-            1)
-              echo "::error::Decision-grade evidence confirmed a frontmatter performance regression."
-              exit "$FRONTMATTER_COMPARISON_EXIT"
-              ;;
-            2)
-              echo "::error::The frontmatter performance comparison evidence contract failed."
-              exit "$FRONTMATTER_COMPARISON_EXIT"
-              ;;
-            3)
-              echo "::error::The frontmatter performance comparison was statistically inconclusive."
-              exit "$FRONTMATTER_COMPARISON_EXIT"
-              ;;
-            *)
-              echo "::error::Unexpected frontmatter performance comparison exit code: $FRONTMATTER_COMPARISON_EXIT"
-              exit 2
-              ;;
-          esac
-
-  frontmatter-comment:
-    name: perf-frontmatter-comment
-    runs-on: ubuntu-24.04
-    needs:
-      - frontmatter
-    if: ${{ always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Download frontmatter artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: perf-frontmatter
-          path: perf-frontmatter
-
-      - name: Write frontmatter job summary
-        run: |
-          set -euo pipefail
-          body_file="perf-frontmatter/frontmatter_pr_comment.md"
-          if [ -s "$body_file" ]; then
-            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Merman Frontmatter Performance Regression"
-              echo
-              echo "The frontmatter performance comment body was not generated. Check the perf-frontmatter artifact."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Comment frontmatter summary
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          marker="<!-- merman-perf-frontmatter -->"
-          body_file="perf-frontmatter/frontmatter_pr_comment.md"
-          if [ ! -s "$body_file" ]; then
-            echo "::warning title=Frontmatter performance comment unavailable::Frontmatter performance comment body is missing; see the job summary and uploaded artifacts."
-            exit 0
-          fi
-          if ! comment_ids="$(
-            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
-          )"; then
-            echo "::warning title=Frontmatter performance comment unavailable::Could not read existing PR comments; see the job summary and perf-frontmatter artifact."
-            exit 0
-          fi
-          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
-          python3 - "$body_file" <<'PY' > comment_payload.json
-          import json
-          import sys
-
-          body_path = sys.argv[1]
-          body = open(body_path, encoding="utf-8").read()
-          print(json.dumps({"body": body}))
-          PY
-          if [ -n "$comment_id" ]; then
-            if ! gh api --silent --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json; then
-              echo "::warning title=Frontmatter performance comment unavailable::Could not update the PR frontmatter performance comment; see the job summary and perf-frontmatter artifact."
-            fi
-          else
-            if ! gh api --silent --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json; then
-              echo "::warning title=Frontmatter performance comment unavailable::Could not create the PR frontmatter performance comment; see the job summary and perf-frontmatter artifact."
-            fi
-          fi
 
   reference:
     name: perf-reference
@@ -605,7 +410,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
@@ -614,7 +419,7 @@ jobs:
           repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
 
       - name: Checkout mermaid-rs-renderer
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           repository: 1jehuang/mermaid-rs-renderer
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e' }}
@@ -641,7 +446,7 @@ jobs:
 
       - name: Setup Node for Mermaid JS
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -701,7 +506,7 @@ jobs:
           python3 tools/bench/compare_mermaid_renderers.py "${args[@]}"
 
       - name: Upload reference artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: perf-reference
           path: |

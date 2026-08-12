@@ -12,6 +12,22 @@ import {
 } from "../native-loader.mjs";
 import { wrapCandidateEngine } from "./wrap-engine.mjs";
 
+const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
+const URL_SCHEME = /^[a-zA-Z][a-zA-Z+.-]*:/;
+
+export function nodeWasmModuleSpecifier(
+  modulePath,
+  { cwd = process.cwd() } = {},
+) {
+  if (WINDOWS_DRIVE_PATH.test(modulePath)) {
+    if (process.platform === "win32") return pathToFileURL(modulePath).href;
+    const normalized = path.win32.normalize(modulePath).replaceAll("\\", "/");
+    return pathToFileURL(`/${normalized}`).href;
+  }
+  if (URL_SCHEME.test(modulePath)) return modulePath;
+  return pathToFileURL(path.resolve(cwd, modulePath)).href;
+}
+
 export async function loadNodeWasmTransport(
   optionsJson,
   {
@@ -29,9 +45,7 @@ export async function loadNodeWasmTransport(
       "Browser WASM packages cannot be used as the Node-targeted WASM candidate.",
     );
   }
-  const specifier = /^[a-zA-Z][a-zA-Z+.-]*:/.test(modulePath)
-    ? modulePath
-    : pathToFileURL(path.resolve(modulePath)).href;
+  const specifier = nodeWasmModuleSpecifier(modulePath);
   const binding = await loadModule(specifier);
   const WasmEngine = binding?.WasmEngine ?? binding?.default?.WasmEngine;
   if (typeof WasmEngine !== "function") {

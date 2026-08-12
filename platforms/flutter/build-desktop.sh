@@ -12,9 +12,9 @@ recipe_field() {
     python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" --field "$1"
 }
 
-NATIVE_SDK_PROFILE="$(recipe_field profile)"
-NATIVE_SDK_TARGET="$(recipe_field target)"
-NATIVE_SDK_LIBRARY_STEM="${NATIVE_SDK_TARGET//-/_}"
+NATIVE_CARGO_PROFILE="$(recipe_field profile)"
+NATIVE_LIBRARY_TARGET="$(recipe_field target)"
+NATIVE_LIBRARY_STEM="${NATIVE_LIBRARY_TARGET//-/_}"
 
 MODE="host"
 
@@ -98,6 +98,17 @@ verify_macho_c_abi() {
         --all-macho-architectures \
         --label "$RECIPE_PROFILE $library" \
         "$library"
+}
+
+verify_macos_install_name() {
+    local library="$1"
+    local install_name
+    require_tool otool
+    install_name="$(otool -D "$library" | sed -n '2p')"
+    if [[ "$install_name" != "@rpath/libmerman_ffi.dylib" ]]; then
+        echo "unexpected macOS install name for $library: $install_name" >&2
+        exit 1
+    fi
 }
 
 verify_windows_dll_c_abi() {
@@ -200,23 +211,20 @@ build_host() {
 
     case "$system" in
         Darwin)
-            built_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib"
-            packaged_library="$FLUTTER_ROOT/macos/Libraries/libmerman_ffi.dylib"
-            mkdir -p "$FLUTTER_ROOT/macos/Libraries"
-            cp "$built_library" "$packaged_library"
-            verify_macho_c_abi "$packaged_library"
-            write_macos_xcframework "$packaged_library"
+            built_library="$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dylib"
+            verify_macho_c_abi "$built_library"
+            write_macos_xcframework "$built_library"
             ;;
         Linux)
-            built_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.so"
+            built_library="$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.so"
             packaged_library="$FLUTTER_ROOT/linux/lib/$arch/libmerman_ffi.so"
             mkdir -p "$FLUTTER_ROOT/linux/lib/$arch"
             cp "$built_library" "$packaged_library"
             verify_dynamic_c_abi "$packaged_library"
             ;;
         MINGW*|MSYS*|CYGWIN*)
-            built_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/$NATIVE_SDK_LIBRARY_STEM.dll"
-            import_library="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dll.a"
+            built_library="$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/$NATIVE_LIBRARY_STEM.dll"
+            import_library="$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dll.a"
             packaged_library="$FLUTTER_ROOT/windows/merman_ffi.dll"
             cp "$built_library" "$packaged_library"
             verify_windows_dll_c_abi "$packaged_library" "$import_library"
@@ -236,12 +244,15 @@ write_macos_xcframework() {
 
     require_tool xcodebuild
     require_tool xcrun
+    require_tool install_name_tool
 
     rm -rf "$out_dir" "$MACOS_XCFRAMEWORK_OUT"
     mkdir -p "$headers_dir"
     cp "$FFI_INCLUDE_DIR"/*.h "$headers_dir/"
-
     verify_public_headers "$headers_dir"
+    install_name_tool -id '@rpath/libmerman_ffi.dylib' "$dylib"
+    verify_macho_c_abi "$dylib"
+    verify_macos_install_name "$dylib"
 
     xcodebuild -create-xcframework \
         -library "$dylib" \
@@ -258,8 +269,9 @@ module MermanFFI {
 EOF
     done
 
-    for library in "$MACOS_XCFRAMEWORK_OUT"/*/"lib$NATIVE_SDK_LIBRARY_STEM.dylib"; do
+    for library in "$MACOS_XCFRAMEWORK_OUT"/*/"lib$NATIVE_LIBRARY_STEM.dylib"; do
         verify_macho_c_abi "$library"
+        verify_macos_install_name "$library"
     done
 }
 
@@ -280,6 +292,9 @@ build_target_with_zigbuild() {
 }
 
 build_macos_universal() {
+    local universal_dir="$REPO_ROOT/target/flutter-macos-universal"
+    local universal_library="$universal_dir/lib$NATIVE_LIBRARY_STEM.dylib"
+
     if [[ "$(uname -s)" != "Darwin" ]]; then
         echo "==> Skipping macOS universal dylib; requires a macOS host"
         return
@@ -289,12 +304,13 @@ build_macos_universal() {
     build_target_with_cargo aarch64-apple-darwin
     build_target_with_cargo x86_64-apple-darwin
 
-    mkdir -p "$FLUTTER_ROOT/macos/Libraries"
+    rm -rf "$universal_dir"
+    mkdir -p "$universal_dir"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-darwin/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
-        "$REPO_ROOT/target/x86_64-apple-darwin/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
-        -output "$FLUTTER_ROOT/macos/Libraries/libmerman_ffi.dylib"
-    write_macos_xcframework "$FLUTTER_ROOT/macos/Libraries/libmerman_ffi.dylib"
+        "$REPO_ROOT/target/aarch64-apple-darwin/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dylib" \
+        "$REPO_ROOT/target/x86_64-apple-darwin/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dylib" \
+        -output "$universal_library"
+    write_macos_xcframework "$universal_library"
 }
 
 build_linux() {
@@ -304,9 +320,9 @@ build_linux() {
     build_target_with_zigbuild aarch64-unknown-linux-gnu
 
     mkdir -p "$FLUTTER_ROOT/linux/lib/x86_64" "$FLUTTER_ROOT/linux/lib/aarch64"
-    cp "$REPO_ROOT/target/x86_64-unknown-linux-gnu/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.so" \
+    cp "$REPO_ROOT/target/x86_64-unknown-linux-gnu/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.so" \
         "$FLUTTER_ROOT/linux/lib/x86_64/libmerman_ffi.so"
-    cp "$REPO_ROOT/target/aarch64-unknown-linux-gnu/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.so" \
+    cp "$REPO_ROOT/target/aarch64-unknown-linux-gnu/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.so" \
         "$FLUTTER_ROOT/linux/lib/aarch64/libmerman_ffi.so"
     verify_dynamic_c_abi "$FLUTTER_ROOT/linux/lib/x86_64/libmerman_ffi.so"
     verify_dynamic_c_abi "$FLUTTER_ROOT/linux/lib/aarch64/libmerman_ffi.so"
@@ -317,8 +333,8 @@ build_windows() {
     require_tool zig
     build_target_with_zigbuild x86_64-pc-windows-gnu
 
-    local built_library="$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_SDK_PROFILE/$NATIVE_SDK_LIBRARY_STEM.dll"
-    local import_library="$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dll.a"
+    local built_library="$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_CARGO_PROFILE/$NATIVE_LIBRARY_STEM.dll"
+    local import_library="$REPO_ROOT/target/x86_64-pc-windows-gnu/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dll.a"
     local packaged_library="$FLUTTER_ROOT/windows/merman_ffi.dll"
     cp "$built_library" "$packaged_library"
     verify_windows_dll_c_abi "$packaged_library" "$import_library"

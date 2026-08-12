@@ -1,61 +1,13 @@
 name: Security Audit
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - Cargo.lock
-      - Cargo.toml
-      - rust-toolchain.toml
-      - about.toml
-      - capabilities/artifact-profiles-v1.json
-      - deny.toml
-      - docs/security/RUSTSEC_EXCEPTIONS.json
-      - "LICENSE-*"
-      - THIRD_PARTY_NOTICES.md
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**/Cargo.toml"
-      - fuzz/Cargo.lock
-      - fuzz/Cargo.toml
-      - crates/merman-node/Cargo.lock
-      - platforms/node/candidate-builds.json
-      - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
-      - "platforms/python/legal/rust-cargo-dependencies/*.json"
-      - scripts/generate-rust-license-report.py
-      - scripts/python_wheel_licenses.py
-      - scripts/artifact_profile_recipe.py
-      - scripts/strict_json.py
-      - scripts/verify_artifact_dependency_closures.py
-      - scripts/verify_rustsec_exceptions.py
-      - ".github/workflows/security-audit.yml"
-  pull_request:
-    paths:
-      - Cargo.lock
-      - Cargo.toml
-      - rust-toolchain.toml
-      - about.toml
-      - capabilities/artifact-profiles-v1.json
-      - deny.toml
-      - docs/security/RUSTSEC_EXCEPTIONS.json
-      - "LICENSE-*"
-      - THIRD_PARTY_NOTICES.md
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**/Cargo.toml"
-      - fuzz/Cargo.lock
-      - fuzz/Cargo.toml
-      - crates/merman-node/Cargo.lock
-      - platforms/node/candidate-builds.json
-      - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
-      - "platforms/python/legal/rust-cargo-dependencies/*.json"
-      - scripts/generate-rust-license-report.py
-      - scripts/python_wheel_licenses.py
-      - scripts/artifact_profile_recipe.py
-      - scripts/strict_json.py
-      - scripts/verify_artifact_dependency_closures.py
-      - scripts/verify_rustsec_exceptions.py
-      - ".github/workflows/security-audit.yml"
+  workflow_call:
+    inputs:
+      representative_targets:
+        description: Limit dependency closure probes to representative PR targets
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
@@ -64,45 +16,67 @@ permissions:
   contents: read
 
 concurrency:
-  group: security-audit-${{ github.ref }}
+  group: security-audit-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  audit-plan:
+    name: discover tracked audit locks
+    runs-on: ubuntu-24.04
+    outputs:
+      cargo: ${{ steps.plan.outputs.cargo }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build tracked lockfile matrices
+        id: plan
+        run: python3 scripts/audit_plan.py --github-output "$GITHUB_OUTPUT"
+
   cargo-audit:
     name: cargo-audit (${{ matrix.lockfile }})
+    needs: audit-plan
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        lockfile:
-          - Cargo.lock
-          - fuzz/Cargo.lock
+      matrix: ${{ fromJSON(needs.audit-plan.outputs.cargo) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@cargo-audit
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: cargo-audit
 
       - name: Audit Rust dependencies
-        run: cargo audit --file "${{ matrix.lockfile }}"
+        env:
+          AUDIT_LOCKFILE: ${{ matrix.lockfile }}
+        run: cargo audit --file "$AUDIT_LOCKFILE"
 
   cargo-dependency-policy:
     name: cargo-deny dependency policy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@cargo-deny
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: cargo-deny
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.11
         with:
           tool: cargo-about@0.9.1
 
@@ -116,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" || "${{ inputs.representative_targets }}" == "true" ]]; then
             python3 scripts/verify_artifact_dependency_closures.py \
               --representative-targets
           else

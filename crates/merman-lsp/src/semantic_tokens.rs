@@ -423,7 +423,7 @@ mod tests {
     fn all_family_and_recovery_sequences_match_the_generated_cross_surface_evidence() {
         let evidence_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
-            .join("editor-language/token-equivalence-v1.json");
+            .join("contracts/editor-language/token-equivalence-v1.json");
         let evidence: TokenEquivalenceEvidence = serde_json::from_str(
             &fs::read_to_string(&evidence_path).expect("generated token equivalence evidence"),
         )

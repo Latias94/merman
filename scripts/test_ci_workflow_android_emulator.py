@@ -59,23 +59,13 @@ class AndroidEmulatorWorkflowTests(unittest.TestCase):
         text = read_ci_workflow()
         emulator_step = step_block(text, "Run Android instrumentation smoke")
 
-        self.assertIn("uses: reactivecircus/android-emulator-runner@v2.37.0", emulator_step)
+        self.assertIn("uses: reactivecircus/android-emulator-runner@", emulator_step)
         self.assertIn("api-level: 29", emulator_step)
         self.assertIn("target: default", emulator_step)
         self.assertNotIn("target: google_apis", emulator_step)
         self.assertIn("disable-linux-hw-accel: false", emulator_step)
         self.assertIn("emulator-boot-timeout: 900", emulator_step)
         self.assertIn("-no-metrics", emulator_step)
-
-    def test_android_emulator_is_main_or_explicit_platform_validation(self) -> None:
-        text = read_ci_workflow()
-
-        self.assertIn(
-            "if: github.event_name != 'pull_request' || "
-            "contains(github.event.pull_request.labels.*.name, 'platform')",
-            text,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

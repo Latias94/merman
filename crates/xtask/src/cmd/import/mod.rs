@@ -10,18 +10,16 @@ mod docs;
 mod examples;
 mod fixture_files;
 mod html;
-mod pkg_tests;
 
 pub(crate) use baseline::{
     acquire_imported_fixture_family_locks, acquire_imported_fixture_transaction_locks,
     acquire_imported_fixture_workspace_lock, candidate_snapshot_failure,
-    candidate_svg_compare_failure, candidate_upstream_svg_failure,
-    defer_imported_fixture_transaction, load_existing_imported_fixtures,
-    record_imported_fixture_content, reject_imported_fixture_transaction,
+    candidate_upstream_svg_failure, defer_imported_fixture_transaction,
+    load_existing_imported_fixtures, reject_imported_fixture_transaction,
     rollback_imported_fixture_snapshots, should_revalidate_deferred_fixture,
     validate_exact_import_candidate_filter,
 };
-pub(crate) use cypress::{import_upstream_cypress, materialize_cypress_fixture_source};
+pub(crate) use cypress::{CypressRenderHelper, materialize_cypress_fixture_source};
 pub(crate) use docs::import_upstream_docs;
 pub(crate) use examples::import_upstream_examples;
 pub(crate) use fixture_files::{
@@ -30,14 +28,9 @@ pub(crate) use fixture_files::{
     write_imported_fixture,
 };
 pub(crate) use html::import_upstream_html;
-pub(crate) use pkg_tests::import_upstream_pkg_tests;
 
 fn normalize_imported_diagram_dir(detected: &str) -> Option<&'static str> {
     merman_core::diagram_type_metadata_id(detected)
-}
-
-fn source_addressed_active_overwrite(overwrite: bool, out_path: &Path) -> bool {
-    overwrite && out_path.is_file()
 }
 
 pub(crate) fn imported_fixture_content_id(body: &str) -> String {
@@ -90,7 +83,7 @@ pub(crate) fn canonicalize_imported_config_value(value: &mut serde_json::Value) 
 mod tests {
     use super::{
         canonicalize_imported_config_value, imported_fixture_content_id,
-        normalize_imported_diagram_dir, source_addressed_active_overwrite,
+        normalize_imported_diagram_dir,
     };
 
     #[test]
@@ -104,20 +97,6 @@ mod tests {
                 capability.diagram_type
             );
         }
-    }
-
-    #[test]
-    fn overwrite_targets_the_active_source_identity_even_when_content_is_duplicated() {
-        let temp = tempfile::tempdir().expect("temporary fixture root");
-        let exact = temp.path().join("source_case_001.mmd");
-        std::fs::write(&exact, "flowchart LR\nA-->B\n").expect("write exact fixture");
-
-        assert!(source_addressed_active_overwrite(true, &exact));
-        assert!(!source_addressed_active_overwrite(false, &exact));
-        assert!(!source_addressed_active_overwrite(
-            true,
-            &temp.path().join("source_case_002.mmd")
-        ));
     }
 
     #[test]

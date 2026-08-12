@@ -30,6 +30,7 @@ fn main() {
 
 #[derive(Debug)]
 struct Args {
+    metadata_library: Option<PathBuf>,
     cdylib: Option<PathBuf>,
     package_dir: PathBuf,
     help: bool,
@@ -37,6 +38,7 @@ struct Args {
 
 impl Args {
     fn parse(values: impl Iterator<Item = OsString>) -> Result<Self, String> {
+        let mut metadata_library = None;
         let mut cdylib = None;
         let mut package_dir = default_package_dir();
         let mut help = false;
@@ -48,6 +50,9 @@ impl Args {
             };
 
             match value {
+                "--metadata-library" => {
+                    metadata_library = Some(next_path(&mut values, "--metadata-library")?);
+                }
                 "--cdylib" => {
                     cdylib = Some(next_path(&mut values, "--cdylib")?);
                 }
@@ -62,6 +67,7 @@ impl Args {
         }
 
         Ok(Self {
+            metadata_library,
             cdylib,
             package_dir,
             help,
@@ -80,6 +86,16 @@ fn next_path(
 }
 
 fn generate(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    let metadata_library = args
+        .metadata_library
+        .unwrap_or_else(default_metadata_library_path);
+    if !metadata_library.is_file() {
+        return Err(format!(
+            "metadata library not found at {}. Build an explicit merman-uniffi artifact profile first, or pass --metadata-library.",
+            metadata_library.display()
+        )
+        .into());
+    }
     let cdylib = args.cdylib.unwrap_or_else(default_cdylib_path);
     if !cdylib.is_file() {
         return Err(format!(
@@ -94,7 +110,7 @@ fn generate(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
     uniffi::generate(uniffi::GenerateOptions {
         languages: vec![uniffi::TargetLanguage::Python],
-        source: utf8_path(&cdylib).into(),
+        source: utf8_path(&metadata_library).into(),
         out_dir: utf8_path(&module_dir).into(),
         config_override: None,
         format: false,
@@ -184,6 +200,13 @@ fn default_package_dir() -> PathBuf {
         .join("merman")
 }
 
+fn default_metadata_library_path() -> PathBuf {
+    cargo_target_dir()
+        .unwrap_or_else(|_| workspace_root().join("target"))
+        .join("debug")
+        .join("libmerman_uniffi.rlib")
+}
+
 fn default_cdylib_path() -> PathBuf {
     cargo_target_dir()
         .unwrap_or_else(|_| workspace_root().join("target"))
@@ -240,13 +263,37 @@ fn utf8_path(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "usage: cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- [--cdylib PATH] [--package-dir PATH]"
+        "usage: cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- [--metadata-library PATH] [--cdylib PATH] [--package-dir PATH]"
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arguments_separate_metadata_source_from_runtime_library() {
+        let args = Args::parse(
+            [
+                "--metadata-library",
+                "/tmp/libmerman_uniffi.rlib",
+                "--cdylib",
+                "/tmp/libmerman_uniffi.so",
+                "--package-dir",
+                "/tmp/merman-package",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )
+        .expect("parse generator arguments");
+
+        assert_eq!(
+            args.metadata_library,
+            Some(PathBuf::from("/tmp/libmerman_uniffi.rlib"))
+        );
+        assert_eq!(args.cdylib, Some(PathBuf::from("/tmp/libmerman_uniffi.so")));
+        assert_eq!(args.package_dir, PathBuf::from("/tmp/merman-package"));
+    }
 
     #[test]
     fn ensure_init_file_refreshes_owned_files() {

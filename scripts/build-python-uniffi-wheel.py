@@ -57,14 +57,30 @@ def production_cdylib_path(recipe: CargoArtifactRecipe, target: str) -> Path:
     return REPO_ROOT / "target" / target / recipe.cargo_profile / filename
 
 
+def production_metadata_library_path(
+    recipe: CargoArtifactRecipe,
+    target: str,
+) -> Path:
+    library_stem = recipe.target_name.replace("-", "_")
+    return (
+        REPO_ROOT
+        / "target"
+        / target
+        / recipe.cargo_profile
+        / f"lib{library_stem}.rlib"
+    )
+
+
 def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
     if (
         recipe.profile_id != "python-uniffi-native"
         or "cdylib" not in recipe.crate_types
+        or "rlib" not in recipe.crate_types
         or not recipe.build_targets
     ):
         raise RuntimeError(
-            "python-uniffi-native must publish a cdylib for at least one target"
+            "python-uniffi-native must build a cdylib and metadata-bearing rlib "
+            "for at least one target"
         )
     manifest = REPO_ROOT / recipe.manifest
     if not manifest.is_file():
@@ -83,6 +99,7 @@ def select_python_wheel_target(recipe: CargoArtifactRecipe) -> str:
 
 def python_generator_args(
     recipe: CargoArtifactRecipe,
+    metadata_library: Path,
     cdylib: Path,
     package_dir: Path,
 ) -> list[str]:
@@ -101,6 +118,8 @@ def python_generator_args(
         "generate_python_package",
         "--",
         *(
+            "--metadata-library",
+            str(metadata_library),
             "--cdylib",
             str(cdylib),
             "--package-dir",
@@ -258,12 +277,18 @@ def main() -> int:
     validate_python_native_recipe(recipe)
     target = select_python_wheel_target(recipe)
     run(cargo_build_args(recipe, locked=True, target=target))
+    metadata_library = production_metadata_library_path(recipe, target)
+    if not metadata_library.is_file():
+        raise RuntimeError(
+            "expected production UniFFI metadata library not found: "
+            f"{metadata_library}"
+        )
     cdylib = production_cdylib_path(recipe, target)
     if not cdylib.is_file():
         raise RuntimeError(f"expected production UniFFI library not found: {cdylib}")
     with staged_python_package(package_source) as package_dir:
         run(
-            python_generator_args(recipe, cdylib, package_dir),
+            python_generator_args(recipe, metadata_library, cdylib, package_dir),
         )
         verify_generated_python_support_files(package_source, package_dir)
         install_target_report(REPO_ROOT, package_dir, target)

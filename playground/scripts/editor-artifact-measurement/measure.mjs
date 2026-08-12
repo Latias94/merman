@@ -47,7 +47,7 @@ const measurementConfig = path.join(
 const viteCli = path.join(playgroundRoot, "node_modules/vite/bin/vite.js");
 const equivalenceEvidencePath = path.join(
   repositoryRoot,
-  "editor-language/token-equivalence-v1.json",
+  "contracts/editor-language/token-equivalence-v1.json",
 );
 const measurementPaths = {
   buildsRoot,
@@ -189,7 +189,7 @@ const receipt = createEditorArtifactReceipt({
     coldDefinition: "fresh Chromium process and browser context",
     equivalenceDefinition: `one generated family-baseline source for each of ${EDITOR_ARTIFACT_FAMILY_COUNT} families; all ${EDITOR_ARTIFACT_QUERY_KINDS.length} production WorkerClient queries execute in an explicit module Worker and each canonical result or request-local error is SHA-256 bound`,
     equivalenceEvidence:
-      "editor-language/token-equivalence-v1.json generated from playground/examples/manifest.json",
+      "contracts/editor-language/token-equivalence-v1.json generated from playground/examples/manifest.json",
     equivalenceEvidenceSha256: generatedEquivalenceEvidence.sha256,
     memoryDefinition:
       "maximum sampled startup bytes from performance.measureUserAgentSpecificMemory in cross-origin-isolated Chromium; the measurement fails instead of substituting a narrower heap scope",

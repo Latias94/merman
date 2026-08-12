@@ -63,7 +63,7 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
     ),
   ]);
   const equivalenceEvidence = readFileSync(
-    path.join(repositoryRoot, "editor-language/token-equivalence-v1.json"),
+    path.join(repositoryRoot, "contracts/editor-language/token-equivalence-v1.json"),
   );
 
   return Object.freeze({

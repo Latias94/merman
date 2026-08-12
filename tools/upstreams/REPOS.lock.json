@@ -100,12 +100,6 @@
     "zenuml-core": {
       "path": "repo-ref/zenuml-core",
       "url": "https://github.com/mermaid-js/zenuml-core.git",
-      "ref": "v3.47.8",
-      "commit": "c81406671c0833baebb9fac08a0cbcdc99b3907d"
-    },
-    "zenuml-core-candidate": {
-      "path": "repo-ref/zenuml-core-3.50.1",
-      "url": "https://github.com/mermaid-js/zenuml-core.git",
       "ref": "v3.50.1",
       "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36"
     }

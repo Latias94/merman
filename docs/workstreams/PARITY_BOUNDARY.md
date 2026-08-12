@@ -16,8 +16,8 @@ merman should optimize for:
   layout;
 - deterministic Rust implementation: no runtime browser dependency and no fixture-answer logic in
   core rendering code;
-- explicit parity debt: browser-only residuals stay visible in verification reports and narrow
-  accepted-residual policy rather than changing production output.
+- explicit parity debt: browser-only movement stays visible in attributable diagnostics rather
+  than changing production output.
 
 merman should not optimize for:
 
@@ -33,7 +33,7 @@ merman should not optimize for:
 | Mermaid semantics or layout rules | Required derivation | parser fields, config precedence, DOM order, rank/spacing, edge routing, label wrapper structure |
 | Shared deterministic browser-like behavior | Required derivation when the rule is explainable | HTML line boxes, whitespace around inline elements, CSS inheritance rules, stable quantization |
 | Browser/font measurement fact | General generated fact or host measurement | glyph overhang, kerning, fallback font width, `getBBox()`, `getComputedTextLength()` |
-| Upstream export-root difference | Required derivation or accepted residual | root `viewBox`, root `max-width`, emitted-bounds drift after DOM insertion |
+| Upstream export-root difference | Required derivation or browser diagnostic | root `viewBox`, root `max-width`, emitted-bounds drift after DOM insertion |
 | Strict serialization or tiny browser lattice noise | Accepted drift when narrowly documented | 1/64px root drift, attribute serialization order already canonicalized elsewhere |
 | Fixture-answer literal without source | Reject | per-icon widths from root drift, one-off label width match arms, broad renderer-local constants |
 
@@ -84,18 +84,16 @@ Generated data must not encode:
 - hand-curated glyph or icon tables derived from root drift;
 - fixture ids, complete source strings, or complete label strings.
 
-## Exact Verification Catalogs
+## Exact Semantic Verification Catalogs
 
 An admission catalog may use fixture id, semantic key, and exact text only as a verification index
 when every entry is also bound to the baseline version, source commit, comparator revision, input
 hash, signed upstream artifact hash, and complete upstream/local signature. Such a catalog must
 reject stale, missing, changed, or newly observed entries and must never be read by production
-rendering. This narrow exception is what makes a reviewed browser residual auditable; it does not
-permit fixture-keyed layout behavior or broad comparator tolerance.
-
-Root viewport and semantic edge-label catalogs remain separate because they protect different
-contracts. A root residual cannot suppress a label identity, geometry, path, or presentation
-failure.
+rendering. This narrow exception is reserved for semantic or deterministic contracts; it does not
+permit fixture-keyed layout behavior or broad comparator tolerance. Browser-owned root bbox
+numbers belong in attributable diagnostics, not an acceptance catalog. A root diagnostic can never
+suppress a label identity, geometry, path, or presentation failure.
 
 ## Accepted Drift
 
@@ -105,16 +103,27 @@ would harm the Rust library boundary.
 Accept drift when:
 
 - the difference is strict-XML serialization noise with no meaningful visual or semantic impact;
-- the difference is small browser float/lattice drift and is isolated by a narrow verification
-  residual;
+- the difference is small browser float/lattice drift and remains visible in an attributable
+  browser diagnostic;
 - exact parity would require per-browser or per-font behavior that is not available without a
   browser engine;
 - exact parity would add broad special cases that are harder to explain than the observed
   difference;
 - the fixture remains useful as a guard but the core model should stay clean.
 
-Accepted drift must still be visible in a parity report, narrow accepted-residual policy, or a
-changelog/TODO note explaining why exact modeling is intentionally out of scope.
+Accepted drift must still be visible in a parity report, browser diagnostic, or a changelog/TODO
+note explaining why exact modeling is intentionally out of scope.
+
+## Root viewport transition
+
+Root viewport verification now separates blocking contracts from browser diagnostics. The shared
+`parity-root` comparator rejects malformed or non-positive viewports, changed width/height
+strategy, changed non-numeric style, and changed `max-width`/`viewBox` policy. A small hash-bound
+deterministic fixture set provides exact root examples, including origin policy. Browser-owned bbox movement is
+reported by the scheduled/release browser oracle instead of becoming a per-fixture numeric
+acceptance row. The same oracle independently mounts the local SVG, including HTML in
+`foreignObject`, and rejects painted descendants that escape the final viewport using one
+coordinate-quantization epsilon.
 
 ## FontAwesome And Icon Labels
 
@@ -127,7 +136,7 @@ Allowed:
 - use a clean nominal inline width when that keeps the renderer predictable;
 - treat unregistered custom-pack examples as empty inline elements when upstream emits no usable
   icon font;
-- accept a bounded root residual when exact width depends on an unavailable FontAwesome font.
+- report bounded root movement when exact width depends on an unavailable FontAwesome font.
 
 Not allowed:
 
