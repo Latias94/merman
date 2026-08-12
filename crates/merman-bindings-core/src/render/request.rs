@@ -9,18 +9,19 @@ use crate::common::{
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions,
-    MeasurementProfileId, Presentation, PresentationProfile, RenderCapability,
-    RenderCapabilityPolicy, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
-    TextMeasurementProfileIdentity, ThemeRole,
+    HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions, MeasurementProfileId,
+    Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy, RenderEnvironment,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
-    renderer: HeadlessRenderer,
-    pipeline: merman::svg::SvgPipeline,
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    export_resource_profile: merman::resources::ResourceProfile,
+    renderer: Renderer,
+    svg: SvgRequest,
+    parse_options: merman::ParseOptions,
+    input_resources: merman::resources::InputResourcePolicy,
+    resource_profile: merman::resources::ResourceProfile,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -35,8 +36,6 @@ pub(super) struct RenderOperationConfig {
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
     output: merman::svg::SvgOutputPolicy,
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    export_resource_profile: merman::resources::ResourceProfile,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -45,33 +44,38 @@ pub(super) struct RenderOperationConfig {
 
 impl RenderRequestPlan {
     pub(super) fn render_svg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        let svg = self
+        let output = self
             .renderer
-            .render_svg_with_pipeline_sync(source, &self.pipeline)
-            .map_err(classify_render_error)?;
-
-        match svg {
-            Some(svg) => Ok(svg.into_bytes()),
-            None => Err(no_diagram_error()),
-        }
+            .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone())))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::Svg(svg) = output else {
+            return Err(unexpected_render_output("svg"));
+        };
+        svg.map(String::into_bytes).ok_or_else(no_diagram_error)
     }
 
     pub(super) fn layout_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        let layout_json = self
+        let output = self
             .renderer
-            .layout_json_sync(source)
-            .map_err(classify_render_error)?
-            .ok_or_else(no_diagram_error)?;
+            .render(self.request(source, merman::RenderTarget::LayoutJson(self.svg.clone())))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::LayoutJson(layout_json) = output else {
+            return Err(unexpected_render_output("layout-json"));
+        };
+        let layout_json = layout_json.ok_or_else(no_diagram_error)?;
 
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }
 
     pub(super) fn svg_plan_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        let plan = self
+        let output = self
             .renderer
-            .plan_svg_sync(source)
-            .map_err(classify_render_error)?
-            .ok_or_else(no_diagram_error)?;
+            .render(self.request(source, merman::RenderTarget::SvgPlan(self.svg.clone())))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::SvgPlan(plan) = output else {
+            return Err(unexpected_render_output("svg-plan"));
+        };
+        let plan = plan.ok_or_else(no_diagram_error)?;
 
         crate::SvgPlanPayload::from_render_plan(&plan)?.to_json_bytes()
     }
@@ -81,12 +85,24 @@ impl RenderRequestPlan {
         &self,
         source: &str,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let (data, plan) = self
+        let output = self
             .renderer
-            .render_png_with_plan_sync(source, &self.raster_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)?;
-        Ok(crate::operation::BindingOperationOutput::raster(data, plan))
+            .render(self.request(
+                source,
+                merman::RenderTarget::Png(merman::PngRequest {
+                    svg: self.svg.clone(),
+                    options: self.raster_options.clone(),
+                }),
+            ))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::Png(output) = output else {
+            return Err(unexpected_render_output("png"));
+        };
+        let output = output.ok_or_else(no_diagram_error)?;
+        Ok(crate::operation::BindingOperationOutput::raster(
+            output.bytes,
+            output.plan,
+        ))
     }
 
     #[cfg(feature = "jpeg")]
@@ -94,12 +110,24 @@ impl RenderRequestPlan {
         &self,
         source: &str,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let (data, plan) = self
+        let output = self
             .renderer
-            .render_jpeg_with_plan_sync(source, &self.raster_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)?;
-        Ok(crate::operation::BindingOperationOutput::raster(data, plan))
+            .render(self.request(
+                source,
+                merman::RenderTarget::Jpeg(merman::JpegRequest {
+                    svg: self.svg.clone(),
+                    options: self.raster_options.clone(),
+                }),
+            ))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::Jpeg(output) = output else {
+            return Err(unexpected_render_output("jpeg"));
+        };
+        let output = output.ok_or_else(no_diagram_error)?;
+        Ok(crate::operation::BindingOperationOutput::raster(
+            output.bytes,
+            output.plan,
+        ))
     }
 
     #[cfg(feature = "pdf")]
@@ -107,12 +135,34 @@ impl RenderRequestPlan {
         &self,
         source: &str,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let (data, plan) = self
+        let output = self
             .renderer
-            .render_pdf_with_plan_sync(source, &self.pdf_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)?;
-        Ok(crate::operation::BindingOperationOutput::pdf(data, plan))
+            .render(self.request(
+                source,
+                merman::RenderTarget::Pdf(merman::PdfRequest {
+                    svg: self.svg.clone(),
+                    options: self.pdf_options.clone(),
+                }),
+            ))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::Pdf(output) = output else {
+            return Err(unexpected_render_output("pdf"));
+        };
+        let output = output.ok_or_else(no_diagram_error)?;
+        Ok(crate::operation::BindingOperationOutput::pdf(
+            output.bytes,
+            output.plan,
+        ))
+    }
+
+    fn request<'a>(&self, source: &'a str, target: merman::RenderTarget) -> RenderRequest<'a> {
+        RenderRequest {
+            source,
+            target,
+            control: OperationControl::new(),
+            parse_options: self.parse_options,
+            resources: self.input_resources,
+        }
     }
 }
 
@@ -283,8 +333,6 @@ impl RenderOperationConfig {
             layout,
             svg: svg_options,
             output,
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            export_resource_profile: export_resources.profile,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options,
             #[cfg(feature = "pdf")]
@@ -293,12 +341,11 @@ impl RenderOperationConfig {
     }
 
     pub(super) fn materialize(self, services: &crate::BindingEngineServices) -> RenderRequestPlan {
-        let environment = if let Some(registry) = services.icon_registry() {
+        let mut environment = if let Some(registry) = services.icon_registry() {
             self.environment.with_icon_registry(registry)
         } else {
             self.environment
         };
-        let mut renderer = HeadlessRenderer::new().with_environment(environment);
         if let Some(measurer) = services.host_text_measurer() {
             let identity = TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
@@ -307,26 +354,44 @@ impl RenderOperationConfig {
             .expect("static profile identity");
             let policy =
                 TextMeasurementPolicy::host_display(identity, measurer, TextMeasurementPhase::ALL);
-            renderer = renderer.with_text_measurement_policy(policy);
+            environment = environment.with_text_measurement_policy(policy);
         }
-        renderer = if self.lenient_parsing {
-            renderer.with_lenient_parsing()
+        let parse_options = if self.lenient_parsing {
+            merman::ParseOptions::lenient()
         } else {
-            renderer.with_strict_parsing()
+            merman::ParseOptions::strict()
         };
+
+        let input_resources = *environment.resource_policy().input_policy();
+        let resource_profile = input_resources.profile();
+        let mut engine =
+            merman::Engine::new().with_runtime_policy(environment.runtime_policy().clone());
+        let mut presentation_policy = merman::svg::PresentationRenderPolicy::default();
         if let Some(presentation) = self.presentation {
-            renderer = renderer.with_presentation(presentation);
+            let presentation = presentation.resolve();
+            presentation_policy = presentation.render_policy();
+            engine = presentation.materialize_engine(engine);
         }
         if let Some(site_config) = self.site_config {
-            renderer = renderer.with_site_config(site_config);
+            engine = engine.with_site_config(site_config);
         }
-        renderer = renderer.with_layout_options(self.layout);
-        renderer = renderer.with_svg_options(self.svg);
+
         RenderRequestPlan {
-            renderer,
-            pipeline: self.output.pipeline(),
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            export_resource_profile: self.export_resource_profile,
+            renderer: Renderer::new()
+                .with_engine(engine)
+                .with_parse_options(parse_options)
+                .with_resource_policy(input_resources),
+            svg: SvgRequest {
+                environment,
+                layout: self.layout,
+                options: self.svg,
+                debug: Default::default(),
+                pipeline: Some(self.output.pipeline()),
+                presentation: presentation_policy,
+            },
+            parse_options,
+            input_resources,
+            resource_profile,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options: self.raster_options,
             #[cfg(feature = "pdf")]
@@ -548,58 +613,52 @@ fn binding_presentation_error(error: merman::svg::PresentationError) -> BindingE
     )
 }
 
-fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
+fn classify_render_error(
+    err: merman::RenderError,
+    profile: merman::resources::ResourceProfile,
+) -> BindingError {
     match err {
-        merman::svg::HeadlessError::Parse(err) => {
+        merman::RenderError::Cancelled(err) => {
+            BindingError::new(BindingStatus::RenderError, err.to_string())
+        }
+        merman::RenderError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
-        merman::svg::HeadlessError::Render(merman::svg::RenderError::ResourceLimitExceeded(
-            err,
-        )) => BindingError::resource_limit_with_cause(
+        merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
-                merman::svg::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
-                merman::svg::ResourceLimitCause::ArithmeticOverflow => {
+                merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
+                merman::render::ResourceLimitCause::ArithmeticOverflow => {
                     BindingResourceLimitCause::ArithmeticOverflow
                 }
                 _ => BindingResourceLimitCause::Unknown,
             },
-            err.phase.as_str(),
-            err.limit,
-            err.actual as u64,
-            err.max as u64,
-            err.profile.id(),
+            err.phase,
+            err.id,
+            err.actual,
+            err.maximum,
+            profile.id(),
             err.to_string(),
         ),
-        merman::svg::HeadlessError::Render(
-            err @ merman::svg::RenderError::MissingCapability { .. },
-        ) => BindingError::missing_capability(
-            err.missing_capability()
-                .expect("matched missing render capability")
-                .id(),
-            err.to_string(),
-        ),
-        merman::svg::HeadlessError::Render(
-            err @ merman::svg::RenderError::InvalidIconOutput { .. },
-        ) => BindingError::new(BindingStatus::InvalidArgument, err.to_string()),
-        merman::svg::HeadlessError::Render(
-            err @ merman::svg::RenderError::IconProcessing { .. },
-        ) => BindingError::internal(err.to_string()),
-        merman::svg::HeadlessError::Render(err) => {
+        merman::RenderError::Svg(err @ merman::svg::RenderError::MissingCapability { .. }) => {
+            BindingError::missing_capability(
+                err.missing_capability()
+                    .expect("matched missing render capability")
+                    .id(),
+                err.to_string(),
+            )
+        }
+        merman::RenderError::Svg(err @ merman::svg::RenderError::InvalidIconOutput { .. }) => {
+            BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+        }
+        merman::RenderError::Svg(err @ merman::svg::RenderError::IconProcessing { .. }) => {
+            BindingError::internal(err.to_string())
+        }
+        merman::RenderError::Svg(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
-        merman::svg::HeadlessError::RuntimePolicy(err) => runtime_policy_error(err),
-        _ => BindingError::internal("unknown headless renderer failure"),
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn classify_output_error(
-    err: merman::svg::OutputError,
-    profile: merman::resources::ResourceProfile,
-) -> BindingError {
-    match err {
-        merman::svg::OutputError::Headless(err) => classify_render_error(err),
-        merman::svg::OutputError::Export(err) => match err.resource_limit_details() {
+        merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        merman::RenderError::Export(err) => match err.resource_limit_details() {
             Some(details) => BindingError::resource_limit(
                 details.phase,
                 details.limit_id,
@@ -610,8 +669,17 @@ fn classify_output_error(
             ),
             None => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },
-        _ => BindingError::internal("unknown SVG output failure"),
+        merman::RenderError::UnsupportedTarget(target) => BindingError::internal(format!(
+            "renderer returned unsupported target `{target}` for an admitted binding operation"
+        )),
+        _ => BindingError::internal("unknown canonical renderer failure"),
     }
+}
+
+fn unexpected_render_output(target: &str) -> BindingError {
+    BindingError::internal(format!(
+        "canonical renderer returned the wrong output variant for `{target}`"
+    ))
 }
 
 #[cfg(test)]
@@ -744,14 +812,12 @@ mod tests {
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
     fn export_resource_failures_keep_stable_structured_metadata() {
-        let error = classify_output_error(
-            merman::svg::OutputError::Export(
-                merman::svg::export::ExportError::EmbeddedImageLimit {
-                    limit_name: "max_bytes_per_image",
-                    actual: 5,
-                    max: 4,
-                },
-            ),
+        let error = classify_render_error(
+            merman::RenderError::Export(merman::svg::export::ExportError::EmbeddedImageLimit {
+                limit_name: "max_bytes_per_image",
+                actual: 5,
+                max: 4,
+            }),
             merman::resources::ResourceProfile::Constrained,
         );
         let details = error.resource_details().expect("resource details");
@@ -765,10 +831,11 @@ mod tests {
         assert_eq!(details.profile, "constrained");
         assert_eq!(details.cause.as_str(), "ceiling");
 
-        let error = classify_output_error(
-            merman::svg::OutputError::Export(
-                merman::svg::export::ExportError::PdfFilterImageLimit { actual: 5, max: 4 },
-            ),
+        let error = classify_render_error(
+            merman::RenderError::Export(merman::svg::export::ExportError::PdfFilterImageLimit {
+                actual: 5,
+                max: 4,
+            }),
             merman::resources::ResourceProfile::Constrained,
         );
         let details = error.resource_details().expect("PDF resource details");
