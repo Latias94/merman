@@ -58,38 +58,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     };
     let d = rough_d.as_deref().unwrap_or(d);
 
-    let mut marker_color: Option<&str> = None;
-    for raw in ctx.default_edge_style.iter().chain(edge.style.iter()) {
-        // Mirror Mermaid: handDrawn passes the full `stroke:...` style token to edgeMarker,
-        // while classic/neo passes the captured color value from final pathStyle.
-        let s = raw.trim_start();
-        let Some(rest) = s.strip_prefix("stroke:") else {
-            continue;
-        };
-        if !rest.trim().is_empty() {
-            marker_color = Some(if hand_drawn { s } else { rest });
-            break;
-        }
-    }
-
-    // If no inline `stroke:` exists, Mermaid still colors markers based on class-derived stroke
-    // styles (see `edges.js` `stylesFromClasses` + `edgeMarker.ts` `strokeColor` extraction).
-    // We approximate this by compiling the edge styles using class defs and reusing the resulting
-    // `stroke` value for the marker id suffix.
-    let compiled_marker_color = if !hand_drawn && marker_color.is_none() && !edge.classes.is_empty()
-    {
-        flowchart_resolve_stroke_for_marker(
-            ctx.class_defs,
-            &edge.classes,
-            &ctx.default_edge_style,
-            &edge.style,
-        )
-    } else {
-        None
-    };
-    if marker_color.is_none() {
-        marker_color = compiled_marker_color.as_deref();
-    }
+    let marker_color = flowchart_resolve_edge_marker_color(
+        ctx.class_defs,
+        &edge.classes,
+        &ctx.default_edge_style,
+        &edge.style,
+        edge.id.as_str(),
+        hand_drawn,
+    );
+    let marker_color_value = marker_color.as_ref().map(FlowchartEdgeMarkerColor::value);
 
     fn write_style_joined(out: &mut String, a: &[String], b: &[String]) {
         let mut first = true;
@@ -154,15 +131,58 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);
-        write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
+        write_flowchart_marker_id_xml(
+            out,
+            ctx.diagram_id,
+            ctx.diagram_type,
+            base,
+            marker_color_value,
+        );
         out.push_str(r#")""#);
     }
     if let Some(base) = flowchart_edge_marker_end_base(edge) {
         out.push_str(r#" marker-end="url(#"#);
-        write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
+        write_flowchart_marker_id_xml(
+            out,
+            ctx.diagram_id,
+            ctx.diagram_type,
+            base,
+            marker_color_value,
+        );
         out.push_str(r#")""#);
     }
     out.push_str(" />");
+
+    let emitted_styles = flowchart_compile_styles(
+        ctx.class_defs,
+        &edge.classes,
+        &ctx.default_edge_style,
+        &edge.style,
+    );
+    ctx.theme_evidence.record_source_residuals(
+        &emitted_styles.emitted_shape_source_residuals(edge.id.as_str(), true),
+    );
+    let inline_declaration_ordinal_base = edge
+        .classes
+        .iter()
+        .filter_map(|class_id| ctx.class_defs.get(class_id))
+        .flatten()
+        .map(|style| crate::flowchart::flowchart_split_mermaid_style_decls(style).count())
+        .sum();
+    ctx.theme_evidence
+        .record_source_residuals(&raw_emitted_edge_path_residuals(
+            edge.id.as_str(),
+            &ctx.default_edge_style,
+            &edge.style,
+            inline_declaration_ordinal_base,
+        ));
+    if let Some(residual) = marker_color
+        .as_ref()
+        .and_then(FlowchartEdgeMarkerColor::residual)
+    {
+        ctx.theme_evidence
+            .record_source_residuals(std::slice::from_ref(residual));
+    }
 
     if let Some(emitted_d_for_label) = rough_d
         && let Some(cache_entry) = edge_cache.get_mut(edge.id.as_str())

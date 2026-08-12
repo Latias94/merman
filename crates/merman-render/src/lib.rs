@@ -37,6 +37,7 @@ pub mod math;
 mod mermaid_style;
 pub mod mindmap;
 pub mod model;
+mod native_filter_receipt;
 pub mod packet;
 pub mod pie;
 pub mod quadrantchart;
@@ -67,6 +68,172 @@ pub use render_family::RenderFamilyKind;
 /// Workspace-internal facade seams that are scheduled for deletion after family cutover.
 #[doc(hidden)]
 pub mod __private {
+    use crate::family::{FamilyRenderReport, FamilyStyleVerification};
+
+    pub use crate::native_filter_receipt::{NativeSvgFilterReceipt, NativeSvgHardShadow};
+
+    pub use crate::text::__private::{
+        PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
+        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+    };
+
+    /// Coarse family-evidence state used by the workspace facade.
+    ///
+    /// This type is intentionally isolated from the stable renderer surface. It carries only the
+    /// terminal projection needed to build document admission and must not grow family mechanism
+    /// keys, selectors, contribution identifiers, or per-element evidence.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum FamilyEvidenceStatus {
+        NotApplicable,
+        Verified,
+        Unverified,
+        Unadapted,
+        Incomplete,
+    }
+
+    impl FamilyEvidenceStatus {
+        pub(crate) const fn from_verification(verification: FamilyStyleVerification) -> Self {
+            match verification {
+                FamilyStyleVerification::NotApplicable => Self::NotApplicable,
+                FamilyStyleVerification::Verified => Self::Verified,
+                FamilyStyleVerification::Unverified => Self::Unverified,
+                FamilyStyleVerification::Unadapted => Self::Unadapted,
+                FamilyStyleVerification::Incomplete => Self::Incomplete,
+            }
+        }
+    }
+
+    /// Bounded terminal family evidence projected for the workspace facade.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct FamilyEvidenceSummary {
+        family_kind: crate::RenderFamilyKind,
+        status: FamilyEvidenceStatus,
+        required_count: usize,
+        accounted_count: usize,
+        theme_residual_count: usize,
+        source_residual_count: usize,
+        compatibility_residual_count: usize,
+        mermaid_compatibility_residual_count: usize,
+        output_mutated: bool,
+    }
+
+    impl FamilyEvidenceSummary {
+        #[allow(clippy::too_many_arguments)]
+        pub(crate) const fn new(
+            family_kind: crate::RenderFamilyKind,
+            status: FamilyEvidenceStatus,
+            required_count: usize,
+            accounted_count: usize,
+            theme_residual_count: usize,
+            source_residual_count: usize,
+            compatibility_residual_count: usize,
+            mermaid_compatibility_residual_count: usize,
+            output_mutated: bool,
+        ) -> Self {
+            Self {
+                family_kind,
+                status,
+                required_count,
+                accounted_count,
+                theme_residual_count,
+                source_residual_count,
+                compatibility_residual_count,
+                mermaid_compatibility_residual_count,
+                output_mutated,
+            }
+        }
+
+        pub const fn family_kind(self) -> crate::RenderFamilyKind {
+            self.family_kind
+        }
+
+        pub const fn status(self) -> FamilyEvidenceStatus {
+            self.status
+        }
+
+        pub const fn required_count(self) -> usize {
+            self.required_count
+        }
+
+        pub const fn accounted_count(self) -> usize {
+            self.accounted_count
+        }
+
+        pub const fn incomplete_count(self) -> usize {
+            self.required_count.saturating_sub(self.accounted_count)
+        }
+
+        pub const fn theme_residual_count(self) -> usize {
+            self.theme_residual_count
+        }
+
+        pub const fn source_residual_count(self) -> usize {
+            self.source_residual_count
+        }
+
+        pub const fn compatibility_residual_count(self) -> usize {
+            self.compatibility_residual_count
+        }
+
+        pub const fn mermaid_compatibility_residual_count(self) -> usize {
+            self.mermaid_compatibility_residual_count
+        }
+
+        pub const fn output_mutated(self) -> bool {
+            self.output_mutated
+        }
+    }
+
+    /// Projects renderer-private family evidence into the bounded workspace facade summary.
+    pub fn family_evidence(report: &FamilyRenderReport) -> FamilyEvidenceSummary {
+        report.evidence_summary()
+    }
+
+    /// Returns coarse capabilities actually emitted by the selected family adapter.
+    pub fn family_applied_theme_capabilities(
+        report: &FamilyRenderReport,
+    ) -> impl ExactSizeIterator<Item = crate::diagram_theme::ThemeCapability> + '_ {
+        report.applied_theme_capabilities()
+    }
+
+    /// Returns the exact State hard-shadow receipt frozen after SVG emission.
+    pub fn family_native_filter_receipt(
+        report: &FamilyRenderReport,
+    ) -> Option<NativeSvgFilterReceipt> {
+        report.native_filter_receipt()
+    }
+
+    /// Returns prepared labels consumed by one completed family renderer.
+    pub fn family_prepared_text_label_ledger(
+        report: &FamilyRenderReport,
+    ) -> &[PreparedTextLabelLedgerEntry] {
+        report.prepared_text_label_ledger()
+    }
+
+    /// Returns the terminal SVG carrying renderer-owned prepared-label locators.
+    pub fn native_export_svg(svg: &crate::svg::ResvgCompatibleSvg) -> &str {
+        svg.native_export_svg()
+    }
+
+    /// Returns per-label native-export evidence retained by the sealed SVG.
+    pub fn prepared_text_label_ledger(
+        svg: &crate::svg::ResvgCompatibleSvg,
+    ) -> &[PreparedTextLabelLedgerEntry] {
+        svg.prepared_text_label_ledger()
+    }
+
+    /// Reports whether the terminal pipeline preserved prepared-label locators.
+    pub const fn prepared_text_evidence_valid(svg: &crate::svg::ResvgCompatibleSvg) -> bool {
+        svg.prepared_text_evidence_valid()
+    }
+
+    /// Reports whether terminal SVG text is fully resolved by a renderer-owned font seal.
+    pub const fn svg_text_fonts_are_self_contained(
+        report: &crate::svg::SvgFinalizationReport,
+    ) -> bool {
+        report.font_seal().is_complete()
+    }
+
     /// Installs a compiled theme's explicit Mermaid compatibility and selected-family bridge.
     pub fn install_parse_compatibility(
         theme: &crate::diagram_theme::DiagramTheme,
@@ -198,21 +365,23 @@ pub enum Error {
         diagram_type: String,
     },
     #[error(
-        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_kind}`; first residual: {first_residual}"
+        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_kind}`"
     )]
     UnverifiedFamilyStyle {
         family_kind: RenderFamilyKind,
         residual_count: usize,
-        first_residual: crate::family::FamilyStyleResidual,
     },
     #[error(
-        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_kind}`; first residual: {first_residual}"
+        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_kind}`"
     )]
     UnverifiedFamilyTheme {
         family_kind: RenderFamilyKind,
         residual_count: usize,
-        first_residual: crate::family::FamilyThemeResidual,
     },
+    #[error(
+        "portable theme rendering rejected SVG output mutation after family `{family_kind}` emitted its evidence"
+    )]
+    UnverifiedFamilyOutputMutation { family_kind: RenderFamilyKind },
     #[error(
         "portable theme rendering rejected {residual_count} legacy Mermaid compatibility contribution(s) for `{family_kind}`"
     )]
@@ -322,15 +491,12 @@ impl Error {
         }
     }
 
-    pub const fn unverified_family_style(
-        &self,
-    ) -> Option<(RenderFamilyKind, usize, &crate::family::FamilyStyleResidual)> {
+    pub const fn unverified_family_style(&self) -> Option<(RenderFamilyKind, usize)> {
         match self {
             Self::UnverifiedFamilyStyle {
                 family_kind,
                 residual_count,
-                first_residual,
-            } => Some((*family_kind, *residual_count, first_residual)),
+            } => Some((*family_kind, *residual_count)),
             _ => None,
         }
     }
@@ -353,15 +519,12 @@ impl Error {
         }
     }
 
-    pub const fn unverified_family_theme(
-        &self,
-    ) -> Option<(RenderFamilyKind, usize, &crate::family::FamilyThemeResidual)> {
+    pub const fn unverified_family_theme(&self) -> Option<(RenderFamilyKind, usize)> {
         match self {
             Self::UnverifiedFamilyTheme {
                 family_kind,
                 residual_count,
-                first_residual,
-            } => Some((*family_kind, *residual_count, first_residual)),
+            } => Some((*family_kind, *residual_count)),
             _ => None,
         }
     }

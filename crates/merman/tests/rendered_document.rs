@@ -1,13 +1,17 @@
 use merman::svg::{
-    BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler,
-    DiagramThemeSpec, DocumentResidualReason, DocumentResidualStage, FontAssetSpec,
-    FontCatalogSpec, FontSource, FontStack, GradientStop, HeadlessError, HeadlessRenderer,
+    CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
+    DiagramThemeSpec, DocumentResidualReason, DocumentResidualStage, EffectBinding, EffectGraph,
+    EffectInput, EffectPrimitive, FilterRegion, FontAssetSpec, FontCatalogSpec,
+    FontEmbeddingRequirement, FontSource, FontStack, GradientStop, HeadlessError, HeadlessRenderer,
     LinearGradient, RenderEnvironment, RenderError, RenderExecutionPath, RenderFamilyKind,
     SvgPipeline, SvgPipelinePreset, TargetAdmissionReason, TargetAdmissionStatus,
     TextLayoutFailure, ThemeAssets, ThemeColorValue, ThemePreset, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeTextStyle, TrustedThemeLane, TypographySpec,
 };
 use merman::{Engine, MermaidConfig};
+
+#[cfg(all(feature = "png", feature = "pdf"))]
+use merman::svg::BlendMode;
 
 fn compile_preset(preset: ThemePreset) -> DiagramTheme {
     DiagramThemeCompiler::new()
@@ -40,6 +44,53 @@ fn embedded_font_theme() -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(embedded_font_theme_spec())
         .expect("embedded font theme should compile")
+}
+
+fn full_embedded_font_theme() -> DiagramTheme {
+    let latin = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let catalog = FontCatalogSpec::new([FontAssetSpec::new("excalifont", latin)])
+        .with_available_sources([FontSource::Embedded])
+        .with_embedding_requirement(FontEmbeddingRequirement::FullFont);
+    let typography = ThemeTextStyle::default().with_font_stack(
+        FontStack::single("Excalifont").expect("fixture font family should be valid"),
+    );
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_default(typography))
+                .with_assets(ThemeAssets::default().with_font_catalog(catalog)),
+        )
+        .expect("full embedded font theme should compile")
+}
+
+fn embedded_font_state_hard_shadow_theme() -> DiagramTheme {
+    let graph = EffectGraph::new(
+        "state-hard-shadow",
+        FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x: 5.0,
+            offset_y: 5.0,
+            blur_radius: 0.0,
+            spread: 0.0,
+            color: ThemeColorValue::parse("#111827").expect("valid shadow color"),
+        }],
+    )
+    .expect("valid hard-shadow graph");
+    let effects = DiagramEffectSet::default()
+        .with_graph(graph)
+        .expect("unique effect graph")
+        .with_binding(
+            EffectBinding::new(ThemeTarget::State, "state-hard-shadow")
+                .expect("valid State effect binding"),
+        )
+        .expect("unique State effect binding");
+    DiagramThemeCompiler::new()
+        .compile(embedded_font_theme_spec().with_effects(effects))
+        .expect("embedded-font State hard-shadow theme should compile")
 }
 
 #[test]
@@ -82,6 +133,79 @@ fn rendered_document_keeps_svg_resources_and_operation_evidence_correlated() {
     assert_eq!(
         admitted.target_admission().status(),
         TargetAdmissionStatus::HostDependent
+    );
+}
+
+#[test]
+fn standalone_svg_with_a_full_embedded_font_is_portable() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Portable label" as Ready"#;
+    let environment = RenderEnvironment::deterministic().with_theme_portability_requirement(
+        merman::svg::ThemePortabilityRequirement::RequirePortable,
+    );
+    let document = HeadlessRenderer::from_engine_and_environment(Engine::new(), environment)
+        .with_theme(full_embedded_font_theme())
+        .render_document_sync(SOURCE)
+        .expect("full-font State document should render")
+        .expect("State diagram should be detected");
+
+    let admission = document.svg_target_admission();
+    assert_eq!(
+        admission.status(),
+        TargetAdmissionStatus::Portable,
+        "reasons={:?}, residuals={:?}",
+        admission.reasons(),
+        document.document_report().residuals(),
+    );
+    assert!(
+        !admission
+            .reasons()
+            .contains(&TargetAdmissionReason::ExternalSvgFontResolution)
+    );
+
+    let admitted = document
+        .admit_svg()
+        .expect("strict standalone SVG should pass terminal admission");
+    assert!(
+        admitted
+            .as_str()
+            .contains(r#"data-merman-typed-fonts="v1""#),
+        "{}",
+        admitted.as_str(),
+    );
+    assert!(admitted.as_str().contains("data:font/ttf;base64,"));
+    assert!(!admitted.as_str().contains("merman-prepared-"));
+}
+
+#[test]
+fn standalone_svg_without_a_complete_font_seal_remains_host_dependent() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Host-resolved label" as Ready"#;
+    let document = HeadlessRenderer::from_engine_and_environment(
+        Engine::new(),
+        RenderEnvironment::deterministic(),
+    )
+    .with_theme(embedded_font_theme())
+    .render_document_sync(SOURCE)
+    .expect("embedded-font State document should render")
+    .expect("State diagram should be detected");
+
+    let admission = document.svg_target_admission();
+    assert_eq!(admission.status(), TargetAdmissionStatus::HostDependent);
+    assert!(
+        admission
+            .reasons()
+            .contains(&TargetAdmissionReason::ExternalSvgFontResolution)
+    );
+    let admitted = document
+        .admit_svg()
+        .expect("host-dependent SVG remains available under best-effort admission");
+    assert!(
+        !admitted
+            .as_str()
+            .contains(r#"data-merman-typed-fonts="v1""#)
     );
 }
 
@@ -662,7 +786,7 @@ Ready --> Done : Native targets"#;
         !png_report
             .target_admission()
             .reasons()
-            .contains(&TargetAdmissionReason::UnsupportedRootCapability)
+            .contains(&TargetAdmissionReason::UnsupportedThemeCapability)
     );
 
     let (_, pdf_report) = HeadlessRenderer::new()
@@ -681,8 +805,192 @@ Ready --> Done : Native targets"#;
         !pdf_report
             .target_admission()
             .reasons()
-            .contains(&TargetAdmissionReason::UnsupportedRootCapability)
+            .contains(&TargetAdmissionReason::UnsupportedThemeCapability)
     );
+}
+
+#[test]
+fn state_hard_shadow_capability_remains_admitted_for_svg() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Filtered state" as Ready"#;
+    let theme = embedded_font_state_hard_shadow_theme();
+
+    let report = HeadlessRenderer::new()
+        .with_theme(theme)
+        .render_svg_report_sync(SOURCE)
+        .expect("State hard-shadow SVG should render")
+        .expect("State diagram should be detected");
+
+    assert!(
+        !report
+            .target_admission()
+            .reasons()
+            .contains(&TargetAdmissionReason::UnsupportedThemeCapability)
+    );
+    assert!(
+        report
+            .target_admission()
+            .reasons()
+            .contains(&TargetAdmissionReason::UnsealedSvg),
+        "reasons={:?}",
+        report.target_admission().reasons(),
+    );
+    let document = roxmltree::Document::parse(report.svg()).expect("valid State SVG");
+    let typed_filter_ids = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("filter")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-theme-effect-state-hard-shadow"))
+        })
+        .map(|node| node.attribute("id").expect("typed filter id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(typed_filter_ids.len(), 1, "{}", report.svg());
+    let referenced_filter_ids = document
+        .descendants()
+        .filter_map(|node| node.attribute("filter"))
+        .filter_map(|value| value.strip_prefix("url(#"))
+        .filter_map(|value| value.strip_suffix(')'))
+        .filter(|id| id.contains("-theme-effect-state-hard-shadow"))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(referenced_filter_ids, typed_filter_ids, "{}", report.svg());
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn state_hard_shadow_capability_is_admitted_by_png_target() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Filtered state" as Ready"#;
+
+    let (png, png_report) = HeadlessRenderer::new()
+        .with_theme(embedded_font_state_hard_shadow_theme())
+        .render_png_with_report_sync(SOURCE, &merman::svg::export::RasterOptions::default())
+        .expect("State hard-shadow PNG should render")
+        .expect("State diagram should be detected");
+    assert_eq!(
+        png_report.target_admission().status(),
+        TargetAdmissionStatus::Portable
+    );
+    assert!(
+        png_report
+            .target_admission()
+            .reasons()
+            .iter()
+            .all(|reason| *reason != TargetAdmissionReason::UnsupportedThemeCapability)
+    );
+    assert!(png_report.export_report().conversion().filtered_groups > 0);
+    assert!(png_report.export_report().conversion().filter_primitives > 0);
+    assert_png_contains_quantized_rgb(&png, [0x11, 0x18, 0x27], 64);
+}
+
+#[cfg(feature = "png")]
+fn assert_png_contains_quantized_rgb(bytes: &[u8], expected: [u8; 3], minimum_pixel_count: usize) {
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    let mut reader = decoder.read_info().expect("hard-shadow PNG header");
+    let mut pixels = vec![
+        0;
+        reader
+            .output_buffer_size()
+            .expect("hard-shadow PNG output buffer size")
+    ];
+    let frame = reader
+        .next_frame(&mut pixels)
+        .expect("hard-shadow PNG frame");
+    assert_eq!(frame.color_type, png::ColorType::Rgba);
+    assert_eq!(frame.bit_depth, png::BitDepth::Eight);
+    let quantized = expected.map(srgb_u8_linear_roundtrip);
+    let matching_pixel_count = pixels[..frame.buffer_size()]
+        .chunks_exact(4)
+        .filter(|pixel| pixel[3] == u8::MAX && (pixel[..3] == expected || pixel[..3] == quantized))
+        .count();
+    assert!(
+        matching_pixel_count >= minimum_pixel_count,
+        "encoded PNG must contain at least {minimum_pixel_count} opaque hard-shadow pixels in source color #{:02x}{:02x}{:02x} or its 8-bit linearRGB quantization #{:02x}{:02x}{:02x}; found {matching_pixel_count} in {}x{}",
+        expected[0],
+        expected[1],
+        expected[2],
+        quantized[0],
+        quantized[1],
+        quantized[2],
+        frame.width,
+        frame.height,
+    );
+}
+
+#[cfg(feature = "png")]
+fn srgb_u8_linear_roundtrip(channel: u8) -> u8 {
+    let srgb = f64::from(channel) / 255.0;
+    let linear = if srgb <= 0.04045 {
+        srgb / 12.92
+    } else {
+        ((srgb + 0.055) / 1.055).powf(2.4)
+    };
+    let quantized_linear = (linear * 255.0).round().clamp(0.0, 255.0) / 255.0;
+    let roundtrip = if quantized_linear <= 0.0031308 {
+        quantized_linear * 12.92
+    } else {
+        1.055 * quantized_linear.powf(1.0 / 2.4) - 0.055
+    };
+    (roundtrip * 255.0).round().clamp(0.0, 255.0) as u8
+}
+
+#[cfg(feature = "jpeg")]
+#[test]
+fn state_hard_shadow_capability_is_admitted_by_jpeg_target() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Filtered state" as Ready"#;
+
+    let (_, jpeg_report) = HeadlessRenderer::new()
+        .with_theme(embedded_font_state_hard_shadow_theme())
+        .render_jpeg_with_report_sync(SOURCE, &merman::svg::export::RasterOptions::default())
+        .expect("State hard-shadow JPEG should render")
+        .expect("State diagram should be detected");
+    assert_eq!(
+        jpeg_report.target_admission().status(),
+        TargetAdmissionStatus::Portable
+    );
+    assert!(
+        jpeg_report
+            .target_admission()
+            .reasons()
+            .iter()
+            .all(|reason| *reason != TargetAdmissionReason::UnsupportedThemeCapability)
+    );
+    assert!(jpeg_report.export_report().conversion().filtered_groups > 0);
+    assert!(jpeg_report.export_report().conversion().filter_primitives > 0);
+}
+
+#[cfg(feature = "pdf")]
+#[test]
+fn state_hard_shadow_capability_is_admitted_by_pdf_target() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Filtered state" as Ready"#;
+
+    let (_, pdf_report) = HeadlessRenderer::new()
+        .with_theme(embedded_font_state_hard_shadow_theme())
+        .render_pdf_with_report_sync(SOURCE, &merman::svg::export::PdfOptions::default())
+        .expect("State hard-shadow PDF should render")
+        .expect("State diagram should be detected");
+    assert_eq!(
+        pdf_report.target_admission().status(),
+        TargetAdmissionStatus::Portable
+    );
+    assert!(
+        pdf_report
+            .target_admission()
+            .reasons()
+            .iter()
+            .all(|reason| *reason != TargetAdmissionReason::UnsupportedThemeCapability)
+    );
+    assert!(pdf_report.export_report().conversion().filtered_groups > 0);
+    assert!(pdf_report.export_report().conversion().filter_primitives > 0);
+    assert!(pdf_report.export_report().filters().filtered_groups > 0);
+    assert!(pdf_report.export_report().filters().effective_image_pixels > 0);
 }
 
 #[test]

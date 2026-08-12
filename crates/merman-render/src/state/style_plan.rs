@@ -8,16 +8,22 @@ use std::sync::Arc;
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeMechanismKey, FontStyle, PreparedSourceStyleDeclaration,
-    ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty, ResolvedThemeStyle,
-    SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin, SourceStyleProvenance,
-    SourceStyleResidual, SourceStyleResidualReason, Specified, TextStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeTypographyProperty, ThemeVariant,
+    ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty, ResolvedThemeEffect,
+    ResolvedThemeStyle, SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin,
+    SourceStyleProvenance, SourceStyleResidual, SourceStyleResidualReason, Specified,
+    TextStylePatch, ThemeCapability, ThemeRule, ThemeTarget, ThemeTextStyle,
+    ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities, paint_capability,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
-use crate::mermaid_style::{CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value};
+use crate::mermaid_style::{
+    CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value,
+    is_supported_css_font_style_value, is_supported_css_font_weight_value,
+};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitExceeded};
 use crate::text::TextStyle;
 use crate::theme::MermaidThemeAdapter;
+
+use super::{StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect};
 
 /// One immutable typography decision shared by State layout, prepared-text measurement and SVG
 /// emission.
@@ -195,6 +201,7 @@ pub(crate) struct StateNodeStylePlan {
     stroke_width_override: Option<f64>,
     radius_override: Option<f64>,
     padding_override: Option<f64>,
+    effect: Option<StateNodeEffectPlan>,
     cluster_label_typography: ResolvedLabelTypography,
     label_typography: ResolvedLabelTypography,
 }
@@ -378,6 +385,10 @@ impl StateNodeStylePlan {
     pub(crate) const fn resolved_cluster_label_typography(&self) -> &ResolvedLabelTypography {
         &self.cluster_label_typography
     }
+
+    pub(crate) const fn effect(&self) -> Option<&StateNodeEffectPlan> {
+        self.effect.as_ref()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -395,6 +406,7 @@ pub(crate) struct StateStylePlan {
     classes: IndexMap<String, StateClassStylePlan>,
     nodes: BTreeMap<String, StateNodeStylePlan>,
     edges: BTreeMap<String, StateEdgeStylePlan>,
+    effects: StateEffectPlan,
     residuals: Vec<SourceStyleResidual>,
 }
 
@@ -405,6 +417,9 @@ struct StateThemeEvidenceBuilder<'a> {
     observed_targets: BTreeSet<ThemeTarget>,
     available_palettes: BTreeSet<ThemeTarget>,
     consumed_palettes: BTreeSet<ThemeTarget>,
+    applied_effect_bindings: BTreeSet<StateEffectBindingKey>,
+    residual_effect_bindings: BTreeSet<StateEffectBindingKey>,
+    suppressed_effect_bindings: BTreeSet<StateEffectBindingKey>,
     has_visible_text: bool,
     base_typography_properties: BTreeSet<ThemeTypographyProperty>,
     prepared_text_available: bool,
@@ -414,6 +429,28 @@ struct StateThemeEvidenceBuilder<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StateThemeUseId(usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct StateEffectBindingKey {
+    target: ThemeTarget,
+    effect_id: String,
+}
+
+impl StateEffectBindingKey {
+    fn from_binding(binding: &crate::diagram_theme::EffectBinding) -> Self {
+        Self {
+            target: binding.target(),
+            effect_id: binding.effect_id().to_string(),
+        }
+    }
+
+    fn family_key(&self) -> FamilyThemeMechanismKey {
+        FamilyThemeMechanismKey::EffectBinding {
+            target: self.target,
+            effect_id: self.effect_id.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StateThemePropertyOutcome {
@@ -445,6 +482,9 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             observed_targets: BTreeSet::new(),
             available_palettes: BTreeSet::new(),
             consumed_palettes: BTreeSet::new(),
+            applied_effect_bindings: BTreeSet::new(),
+            residual_effect_bindings: BTreeSet::new(),
+            suppressed_effect_bindings: BTreeSet::new(),
             has_visible_text: false,
             base_typography_properties,
             prepared_text_available,
@@ -637,7 +677,9 @@ impl StateStylePlan {
         let compatibility = MermaidThemeAdapter::new(effective_config).state_diagram();
         let config_view = super::StateConfigView::new(effective_config);
         let config_text_style = config_view.text_style();
-        let html_labels = config_view.render_settings().html_labels;
+        let render_settings = config_view.render_settings();
+        let html_labels = render_settings.html_labels;
+        let diagram_look = render_settings.diagram_look;
         let structured_typography =
             resolved_theme.is_some_and(|theme| theme.typography() != &ThemeTextStyle::default());
         let base_text_typography = prepared_text_available
@@ -660,6 +702,7 @@ impl StateStylePlan {
             theme_evidence.observe_text(ThemeTarget::Title);
         }
         let classes = prepare_classes(model, &mut residuals);
+        let mut effects = StateEffectPlan::default();
 
         let semantic_transition_text = resolve_theme_text_style(
             resolved_theme,
@@ -799,12 +842,14 @@ impl StateStylePlan {
                 target,
                 label_target,
                 variant,
+                diagram_look.as_str(),
                 one_based_ordinal,
                 label_ordinal,
                 composite_header_ordinal,
                 special_state_inner_ordinal,
                 &mut residuals,
                 &mut theme_evidence,
+                &mut effects,
                 work_meter,
             )?;
             nodes.insert(node.id.clone(), node_plan);
@@ -862,6 +907,7 @@ impl StateStylePlan {
             classes,
             nodes,
             edges,
+            effects,
             residuals,
         };
         Ok((plan, theme_evidence.finish()))
@@ -925,6 +971,25 @@ impl StateStylePlan {
 
     pub(crate) fn edges(&self) -> impl Iterator<Item = &StateEdgeStylePlan> {
         self.edges.values()
+    }
+
+    pub(crate) fn effects(&self) -> impl ExactSizeIterator<Item = &StateSvgEffect> {
+        self.effects.effects()
+    }
+
+    pub(crate) fn effect(&self, id: &str) -> Option<&StateSvgEffect> {
+        self.effects.effect(id)
+    }
+
+    pub(crate) const fn effect_outsets(&self) -> StateEffectOutsets {
+        self.effects.outsets()
+    }
+
+    pub(crate) fn expected_native_filter_application_count(&self) -> usize {
+        self.nodes
+            .values()
+            .filter_map(StateNodeStylePlan::effect)
+            .count()
     }
 
     pub(crate) fn residuals(&self) -> &[SourceStyleResidual] {
@@ -1183,6 +1248,84 @@ impl StateThemeEvidenceBuilder<'_> {
         self.consumed_palettes.insert(target);
     }
 
+    fn consume_effect(
+        &mut self,
+        use_id: StateThemeUseId,
+        target: ThemeTarget,
+        property: &ResolvedProperty<String>,
+        resolved: Option<ResolvedThemeEffect<'_>>,
+        surface_supported: bool,
+        effects: &mut StateEffectPlan,
+    ) -> Option<StateNodeEffectPlan> {
+        match resolved {
+            None => None,
+            Some(ResolvedThemeEffect::ClearedByRule) => {
+                self.suppress_effect_binding(target);
+                self.accept_property(use_id, property, ResolvedStyleProperty::Effect);
+                None
+            }
+            Some(ResolvedThemeEffect::Rule { graph }) => {
+                self.suppress_effect_binding(target);
+                let effect = surface_supported
+                    .then_some(graph)
+                    .flatten()
+                    .and_then(|graph| effects.admit(graph));
+                if effect.is_some() {
+                    self.accept_property(use_id, property, ResolvedStyleProperty::Effect);
+                } else {
+                    self.reject_property(
+                        use_id,
+                        property,
+                        ResolvedStyleProperty::Effect,
+                        FamilyThemeResidualReason::UnsupportedEffect,
+                    );
+                }
+                effect
+            }
+            Some(ResolvedThemeEffect::Binding { binding, graph }) => {
+                let key = StateEffectBindingKey::from_binding(binding);
+                let effect = surface_supported
+                    .then_some(graph)
+                    .flatten()
+                    .and_then(|graph| effects.admit(graph));
+                if effect.is_some() {
+                    self.applied_effect_bindings.insert(key);
+                } else {
+                    self.residual_effect_bindings.insert(key);
+                }
+                effect
+            }
+        }
+    }
+
+    fn suppress_effect_binding(&mut self, target: ThemeTarget) {
+        let Some(theme) = self.theme else {
+            return;
+        };
+        self.suppressed_effect_bindings.extend(
+            theme
+                .effect_bindings()
+                .filter(|binding| binding.target() == target)
+                .map(StateEffectBindingKey::from_binding),
+        );
+    }
+
+    fn accept_property<T>(
+        &mut self,
+        use_id: StateThemeUseId,
+        property: &ResolvedProperty<T>,
+        kind: ResolvedStyleProperty,
+    ) {
+        if let Some(origin) = property.winner() {
+            self.set_property_outcome(
+                use_id,
+                origin.rule_index(),
+                kind,
+                StateThemePropertyOutcome::Applied,
+            );
+        }
+    }
+
     fn finish(self) -> FamilyThemeEvidence {
         let mut evidence = FamilyThemeEvidence::from_theme(self.theme);
         let Some(theme) = self.theme else {
@@ -1198,19 +1341,25 @@ impl StateThemeEvidenceBuilder<'_> {
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             } else if self.base_typography_applied {
-                evidence.mark_applied(FamilyThemeMechanismKey::Typography);
+                evidence.mark_applied_with_capabilities(
+                    FamilyThemeMechanismKey::Typography,
+                    typography_capabilities(&self.base_typography_properties),
+                );
             } else {
                 evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
             }
         }
 
-        let mut consumed_rules = BTreeSet::new();
+        let mut consumed_rules = BTreeMap::<usize, BTreeSet<ResolvedStyleProperty>>::new();
         let mut residual_rules = BTreeMap::new();
         for use_record in &self.uses {
             for property in &use_record.properties {
                 match property.outcome {
                     StateThemePropertyOutcome::Applied => {
-                        consumed_rules.insert(property.rule_index);
+                        consumed_rules
+                            .entry(property.rule_index)
+                            .or_default()
+                            .insert(property.property);
                     }
                     StateThemePropertyOutcome::SupersededBySource => {}
                     StateThemePropertyOutcome::Residual(reason) => {
@@ -1227,8 +1376,11 @@ impl StateThemeEvidenceBuilder<'_> {
             };
             if let Some(reason) = residual_rules.get(&index).copied() {
                 evidence.mark_residual(key, reason);
-            } else if consumed_rules.contains(&index) {
-                evidence.mark_applied(key);
+            } else if let Some(properties) = consumed_rules.get(&index) {
+                evidence.mark_applied_with_capabilities(
+                    key,
+                    rule_capabilities(theme, rule, properties),
+                );
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -1237,7 +1389,7 @@ impl StateThemeEvidenceBuilder<'_> {
         for target in theme.family_ordinal_palette_targets() {
             let key = FamilyThemeMechanismKey::OrdinalPalette { target };
             if self.consumed_palettes.contains(&target) {
-                evidence.mark_applied(key);
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::SolidPaint]);
             } else if self.available_palettes.contains(&target) {
                 evidence.mark_not_applicable(key);
             } else if self.observed_targets.contains(&target) {
@@ -1248,11 +1400,19 @@ impl StateThemeEvidenceBuilder<'_> {
         }
 
         for binding in theme.effect_bindings() {
-            let key = FamilyThemeMechanismKey::EffectBinding {
-                target: binding.target(),
-                effect_id: binding.effect_id().to_string(),
-            };
-            if self.observed_targets.contains(&binding.target()) {
+            let binding_key = StateEffectBindingKey::from_binding(binding);
+            let key = binding_key.family_key();
+            if self.residual_effect_bindings.contains(&binding_key) {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+            } else if self.applied_effect_bindings.contains(&binding_key) {
+                let mut capabilities = BTreeSet::new();
+                if let Some(graph) = theme.effect_graph(binding.effect_id()) {
+                    collect_effect_graph_capabilities(graph, &mut capabilities);
+                }
+                evidence.mark_applied_with_capabilities(key, capabilities);
+            } else if self.suppressed_effect_bindings.contains(&binding_key) {
+                evidence.mark_not_applicable(key);
+            } else if self.observed_targets.contains(&binding.target()) {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
             } else {
                 evidence.mark_not_applicable(key);
@@ -1499,6 +1659,98 @@ impl StateThemeEvidenceBuilder<'_> {
     }
 }
 
+fn rule_capabilities(
+    theme: &ResolvedDiagramTheme,
+    rule: &ThemeRule,
+    properties: &BTreeSet<ResolvedStyleProperty>,
+) -> BTreeSet<ThemeCapability> {
+    let mut capabilities = BTreeSet::new();
+    let style = rule.style();
+    for property in properties {
+        match property {
+            ResolvedStyleProperty::Fill => {
+                if let Specified::Value(paint) = &style.paint.fill
+                    && let Some(capability) = paint_capability(paint)
+                {
+                    capabilities.insert(capability);
+                }
+            }
+            ResolvedStyleProperty::Stroke => {
+                if let Specified::Value(paint) = &style.stroke.paint
+                    && let Some(capability) = paint_capability(paint)
+                {
+                    capabilities.insert(capability);
+                }
+            }
+            ResolvedStyleProperty::StrokeWidth
+            | ResolvedStyleProperty::StrokeLinecap
+            | ResolvedStyleProperty::StrokeLinejoin => {
+                capabilities.insert(ThemeCapability::BorderStyling);
+            }
+            ResolvedStyleProperty::StrokeDasharray => {
+                capabilities.insert(ThemeCapability::DashStyling);
+            }
+            ResolvedStyleProperty::Opacity
+            | ResolvedStyleProperty::FillOpacity
+            | ResolvedStyleProperty::StrokeOpacity => {
+                capabilities.insert(ThemeCapability::Opacity);
+            }
+            ResolvedStyleProperty::Radius => {
+                capabilities.insert(ThemeCapability::RoundedGeometry);
+            }
+            ResolvedStyleProperty::Padding => {
+                capabilities.insert(ThemeCapability::ContentPadding);
+            }
+            ResolvedStyleProperty::Typography(property) => {
+                capabilities.extend(typography_capabilities(&BTreeSet::from([*property])));
+            }
+            ResolvedStyleProperty::Effect => {
+                if let Specified::Value(effect_id) = &style.effects.effect
+                    && let Some(graph) = theme.effect_graph(effect_id)
+                {
+                    collect_effect_graph_capabilities(graph, &mut capabilities);
+                }
+            }
+        }
+    }
+    capabilities
+}
+
+fn typography_capabilities(
+    properties: &BTreeSet<ThemeTypographyProperty>,
+) -> BTreeSet<ThemeCapability> {
+    if properties.is_empty() {
+        return BTreeSet::new();
+    }
+    let mut capabilities = BTreeSet::from([ThemeCapability::Typography]);
+    for property in properties {
+        match property {
+            ThemeTypographyProperty::LetterSpacing => {
+                capabilities.insert(ThemeCapability::LetterSpacing);
+            }
+            ThemeTypographyProperty::WordSpacing => {
+                capabilities.insert(ThemeCapability::WordSpacing);
+            }
+            ThemeTypographyProperty::Transform => {
+                capabilities.insert(ThemeCapability::TextTransform);
+            }
+            ThemeTypographyProperty::Decoration => {
+                capabilities.insert(ThemeCapability::TextDecoration);
+            }
+            ThemeTypographyProperty::WhiteSpace | ThemeTypographyProperty::Wrap => {
+                capabilities.insert(ThemeCapability::WhiteSpaceWrapping);
+            }
+            ThemeTypographyProperty::FontStack
+            | ThemeTypographyProperty::FontSize
+            | ThemeTypographyProperty::FontWeight
+            | ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::TextAlign => {}
+        }
+    }
+    capabilities
+}
+
 fn source_style_theme_property(property: &str) -> Option<ResolvedStyleProperty> {
     Some(match property {
         "fill" | "color" => ResolvedStyleProperty::Fill,
@@ -1638,12 +1890,14 @@ fn prepare_node(
     target: ThemeTarget,
     label_target: ThemeTarget,
     variant: ThemeVariant,
+    diagram_look: &str,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
     composite_header_ordinal: Option<usize>,
     special_state_inner_ordinal: Option<usize>,
     residuals: &mut Vec<SourceStyleResidual>,
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
+    effects: &mut StateEffectPlan,
     work_meter: &OperationWorkMeter,
 ) -> Result<StateNodeStylePlan, ResourceLimitExceeded> {
     let prepared_text_available = theme_evidence.prepared_text_available;
@@ -1683,6 +1937,21 @@ fn prepare_node(
     let shape_use = ordinal
         .zip(semantic_shape.as_ref())
         .map(|(_, style)| theme_evidence.consume_shape_style(style, geometry_support));
+    let effect = shape_use.and_then(|use_id| {
+        let theme = resolved_theme?;
+        let style = semantic_shape.as_ref()?;
+        let resolved = theme.resolve_effect(target, style.effect_resolution());
+        let surface_supported =
+            target == ThemeTarget::State && node.shape == "rect" && diagram_look == "classic";
+        theme_evidence.consume_effect(
+            use_id,
+            target,
+            style.effect_resolution(),
+            resolved,
+            surface_supported,
+            effects,
+        )
+    });
     let label_use = label_ordinal
         .zip(semantic_label.as_ref())
         .map(|(_, style)| theme_evidence.consume_text_style(style));
@@ -2014,6 +2283,7 @@ fn prepare_node(
         stroke_width_override,
         radius_override,
         padding_override,
+        effect,
         cluster_label_typography,
         label_typography,
     })
@@ -2464,14 +2734,14 @@ fn apply_source_text_property(
                 false
             }
         },
-        "font-weight" if valid_font_weight(value) => {
+        "font-weight" if is_supported_css_font_weight_value(value) => {
             typography.apply_font_weight(resolve_source_font_weight(
                 value,
                 inherited.font_weight.as_deref(),
             ));
             true
         }
-        "font-style" if valid_font_style(value) => {
+        "font-style" if is_supported_css_font_style_value(value) => {
             let style = match value.to_ascii_lowercase().as_str() {
                 "italic" => FontStyle::Italic,
                 "oblique" => FontStyle::Oblique,
@@ -2525,22 +2795,6 @@ fn inherited_font_weight(value: Option<&str>) -> u16 {
         Some("normal") | None => 400,
         Some(value) => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
     }
-}
-
-fn valid_font_weight(value: &str) -> bool {
-    matches!(
-        value.to_ascii_lowercase().as_str(),
-        "normal" | "bold" | "bolder" | "lighter"
-    ) || value
-        .parse::<u16>()
-        .is_ok_and(|weight| (1..=1000).contains(&weight))
-}
-
-fn valid_font_style(value: &str) -> bool {
-    matches!(
-        value.to_ascii_lowercase().as_str(),
-        "normal" | "italic" | "oblique"
-    )
 }
 
 #[derive(Debug, Clone)]
@@ -2743,9 +2997,10 @@ fn div_style_prefix(declarations: &IndexMap<String, EmittedDeclaration>) -> Stri
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, GradientStop, InsetsPx, LinearGradient,
-        OrdinalPalette, OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeGeometryPatch,
-        ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+        DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
+        EffectInput, EffectPrimitive, FilterRegion, GradientStop, InsetsPx, LinearGradient,
+        OrdinalPalette, OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeEffectPatch,
+        ThemeGeometryPatch, ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
     };
     use merman_core::diagrams::state::{
         StateDiagramRenderEdge, StateDiagramRenderNode, StateDiagramRenderStyleClass,
@@ -2818,6 +3073,22 @@ mod tests {
         node.css_compiled_styles.clear();
         node.css_styles.clear();
         node
+    }
+
+    fn hard_shadow_graph(id: &str, blur_radius: f32) -> EffectGraph {
+        EffectGraph::new(
+            id,
+            FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
+            [EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 5.0,
+                offset_y: 6.0,
+                blur_radius,
+                spread: 0.0,
+                color: ThemeColorValue::parse("#111827").expect("valid shadow color"),
+            }],
+        )
+        .expect("valid shadow graph")
     }
 
     #[test]
@@ -4206,5 +4477,123 @@ mod tests {
                 .contains(&FamilyThemeMechanismKey::Typography)
         );
         assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn state_rule_effect_overrides_and_clear_suppresses_target_binding() {
+        let effects = DiagramEffectSet::default()
+            .with_graph(hard_shadow_graph("binding-shadow", 0.0))
+            .unwrap()
+            .with_graph(hard_shadow_graph("rule-shadow", 0.0))
+            .unwrap()
+            .with_binding(EffectBinding::new(ThemeTarget::State, "binding-shadow").unwrap())
+            .unwrap();
+        let binding_key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::State,
+            effect_id: "binding-shadow".to_string(),
+        };
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+
+        let rule_theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_effects(effects.clone())
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            ThemeTarget::State,
+                            ThemeStylePatch::default()
+                                .with_effect("rule-shadow")
+                                .unwrap(),
+                        )),
+                    ),
+            )
+            .unwrap();
+        let resolved = rule_theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+
+        assert_eq!(
+            plan.node("Ready")
+                .and_then(StateNodeStylePlan::effect)
+                .map(StateNodeEffectPlan::effect_id),
+            Some("rule-shadow")
+        );
+        assert!(evidence.applied().contains(&rule_key));
+        assert!(evidence.not_applicable_mechanisms().contains(&binding_key));
+        assert!(evidence.residuals().is_empty());
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::Shadow, ThemeCapability::SvgFilter])
+        );
+
+        let clear_theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_effects(effects).with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::State,
+                    ThemeStylePatch {
+                        effects: ThemeEffectPatch {
+                            effect: Specified::Clear,
+                        },
+                        ..ThemeStylePatch::default()
+                    },
+                )),
+            ))
+            .unwrap();
+        let resolved = clear_theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+
+        assert!(plan.node("Ready").unwrap().effect().is_none());
+        assert!(evidence.applied().contains(&rule_key));
+        assert!(evidence.not_applicable_mechanisms().contains(&binding_key));
+        assert!(evidence.residuals().is_empty());
+        assert!(evidence.applied_capabilities().is_empty());
+    }
+
+    #[test]
+    fn state_effect_binding_is_residual_when_graph_or_surface_is_not_supported() {
+        for (config, graph) in [
+            (json!({}), hard_shadow_graph("soft-shadow", 1.0)),
+            (
+                json!({ "look": "handDrawn" }),
+                hard_shadow_graph("hand-drawn-shadow", 0.0),
+            ),
+        ] {
+            let effect_id = graph.id().to_string();
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(graph)
+                            .unwrap()
+                            .with_binding(
+                                EffectBinding::new(ThemeTarget::State, effect_id.clone()).unwrap(),
+                            )
+                            .unwrap(),
+                    ),
+                )
+                .unwrap();
+            let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+            let mut model = StateDiagramRenderModel::default();
+            model.nodes.push(semantic_node("Ready", "rect"));
+            let (plan, evidence) =
+                resolve_theme_plan_with_evidence(&model, &config, &resolved, None);
+            let key = FamilyThemeMechanismKey::EffectBinding {
+                target: ThemeTarget::State,
+                effect_id,
+            };
+
+            assert!(plan.node("Ready").unwrap().effect().is_none());
+            assert!(evidence.residuals().iter().any(|residual| {
+                residual.key() == &key
+                    && residual.reason() == FamilyThemeResidualReason::UnsupportedEffect
+            }));
+            assert!(evidence.applied_capabilities().is_empty());
+        }
     }
 }

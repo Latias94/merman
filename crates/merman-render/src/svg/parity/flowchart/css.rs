@@ -2,6 +2,84 @@
 
 use super::*;
 
+#[derive(Debug)]
+struct FlowchartClassDefCssDeclaration {
+    property_css: String,
+    value: String,
+}
+
+fn flowchart_classdef_css_declarations(declarations: &[String]) -> (String, String) {
+    let mut shape_cssom = IndexMap::<String, FlowchartClassDefCssDeclaration>::new();
+    let mut text_cssom = IndexMap::<String, FlowchartClassDefCssDeclaration>::new();
+
+    for raw in declarations {
+        flowchart_classdef_cssom_set(&mut shape_cssom, raw);
+
+        // FlowDB builds `textStyles` before CSSOM by selecting source declarations that contain
+        // the exact lowercase substring `color`, first replacing the first source `fill` with
+        // `bgFill`. `createCssStyles()` later replaces the first `color` with `fill`. Keep both
+        // source-sensitive steps separate from the canonical CSSOM declaration map.
+        if raw.contains("color") {
+            let text_raw = raw
+                .replacen("fill", "bgFill", 1)
+                .replacen("color", "fill", 1);
+            flowchart_classdef_cssom_set(&mut text_cssom, &text_raw);
+        }
+    }
+
+    // This is deliberately a safe headless projection, not a complete browser CSS engine:
+    // `PreparedSourceStyleDeclaration` rejects resource-bearing values that CSSOM would retain.
+    (
+        flowchart_classdef_cssom_string(shape_cssom),
+        flowchart_classdef_cssom_string(text_cssom),
+    )
+}
+
+fn flowchart_classdef_cssom_set(
+    cssom: &mut IndexMap<String, FlowchartClassDefCssDeclaration>,
+    raw: &str,
+) {
+    let Some(declaration) = crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw) else {
+        return;
+    };
+    let property = declaration.property().to_string();
+    let value = if !property.starts_with("--")
+        && (matches!(property.as_str(), "fill" | "stroke" | "color")
+            || property.ends_with("-color"))
+    {
+        super::super::util::cssom_color_value(declaration.value())
+    } else {
+        declaration.value().to_string()
+    };
+
+    // `createCssStyles()` crosses a browser CSSStyleSheet boundary. Ordinary CSS property names
+    // therefore share decoded, lowercase identity; custom properties retain decoded case-sensitive
+    // identity. Replacing either kind moves the surviving property to its final declaration
+    // position, and CSSOM serializes the decoded property spelling.
+    cssom.shift_remove(&property);
+    cssom.insert(
+        property.clone(),
+        FlowchartClassDefCssDeclaration {
+            property_css: property,
+            value,
+        },
+    );
+}
+
+fn flowchart_classdef_cssom_string(
+    cssom: IndexMap<String, FlowchartClassDefCssDeclaration>,
+) -> String {
+    let mut style = String::new();
+    for declaration in cssom.values() {
+        let _ = write!(
+            &mut style,
+            "{}:{}!important;",
+            declaration.property_css, declaration.value
+        );
+    }
+    style
+}
+
 pub(in crate::svg::parity) fn flowchart_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -193,17 +271,7 @@ pub(in crate::svg::parity) fn flowchart_css(
         if decls.is_empty() {
             continue;
         }
-        let mut style = String::new();
-        let mut text_color: Option<String> = None;
-        for d in decls {
-            let Some((k, v)) = parse_style_decl(d) else {
-                continue;
-            };
-            let _ = write!(&mut style, "{}:{}!important;", k, v);
-            if k == "color" {
-                text_color = Some(v.to_string());
-            }
-        }
+        let (style, text_style) = flowchart_classdef_css_declarations(decls);
         if style.is_empty() {
             continue;
         }
@@ -232,13 +300,13 @@ pub(in crate::svg::parity) fn flowchart_css(
                 );
             }
         }
-        if let Some(c) = text_color.as_deref() {
+        if !text_style.is_empty() {
             let _ = write!(
                 &mut out,
-                r#"#{} .{} tspan{{fill:{}!important;}}"#,
+                r#"#{} .{} tspan{{{}}}"#,
                 id.as_str(),
                 escape_xml(class),
-                escape_xml(c)
+                text_style
             );
         }
     }

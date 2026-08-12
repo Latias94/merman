@@ -23,7 +23,13 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub default_edge_style: Vec<String>,
     pub node_border_color: String,
     pub node_fill_color: String,
+    pub node_stroke_width: f32,
+    pub node_typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
+    pub node_border_config_override: bool,
+    pub node_fill_config_override: bool,
+    pub node_stroke_width_config_override: bool,
     pub node_corner_radius: f64,
+    pub node_corner_radius_config_override: bool,
     pub edge_corner_radius: f64,
     pub edge_label_padding: f64,
     pub compact_edge_corners: bool,
@@ -31,9 +37,10 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
-    effective_config_value: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
 ) -> FlowchartRenderConfig {
+    let effective_config_value = effective_config.as_value();
     let config = FlowchartConfigView::new(effective_config_value);
     let font_family = config.font_family();
     let font_size = config.render_font_size();
@@ -75,9 +82,33 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
 
     let node_border_color = config.theme_token("nodeBorder", "#9370DB");
     let node_fill_color = config.theme_token("mainBkg", "#ECECFF");
+    let node_stroke_width = config_f64(effective_config_value, &["themeVariables", "strokeWidth"])
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
+        .map(|value| value as f32)
+        .unwrap_or(1.3);
+    let node_typography_config_ownership =
+        crate::flowchart::flowchart_typography_config_ownership(effective_config);
+    let node_border_config_override = merman_core::__private::config_path_overrides_typed_default(
+        effective_config,
+        "themeVariables.nodeBorder",
+    );
+    let node_fill_config_override = merman_core::__private::config_path_overrides_typed_default(
+        effective_config,
+        "themeVariables.mainBkg",
+    );
+    let node_stroke_width_config_override =
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.strokeWidth",
+        );
     let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
         .unwrap_or(5.0)
         .max(0.0);
+    let node_corner_radius_config_override =
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.radius",
+        );
     let edge_corner_radius = node_corner_radius;
     let edge_label_padding = 0.0;
     let compact_edge_corners = false;
@@ -101,7 +132,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         default_edge_style,
         node_border_color,
         node_fill_color,
+        node_stroke_width,
+        node_typography_config_ownership,
+        node_border_config_override,
+        node_fill_config_override,
+        node_stroke_width_config_override,
         node_corner_radius,
+        node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,

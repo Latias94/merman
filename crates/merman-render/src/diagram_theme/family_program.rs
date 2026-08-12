@@ -25,8 +25,10 @@ pub(super) struct FamilyThemeProgram {
     rule_indices: Box<[usize]>,
     slots: BTreeMap<ThemeTarget, FamilyRuleSlot>,
     ordinal_palette_indices: BTreeMap<ThemeTarget, usize>,
+    ordinal_palette_dispositions: BTreeMap<ThemeTarget, FamilyThemeDisposition>,
     effect_binding_indices: Box<[usize]>,
     mechanism_routes: Box<[FamilyThemeRoute]>,
+    rule_facet_dispositions: BTreeMap<(usize, FamilyThemeRuleFacet), FamilyThemeDisposition>,
 }
 
 /// Per-recipe cache for the immutable family programs consumed by both typed adapters and the
@@ -107,12 +109,15 @@ impl FamilyThemeProgram {
         }
 
         let mut ordinal_palette_indices = BTreeMap::new();
+        let mut ordinal_palette_dispositions = BTreeMap::new();
         for (index, (target, _)) in spec.styles().ordinal_palettes().iter().enumerate() {
             if *target == ThemeTarget::Canvas || !target.valid_for(family) {
                 continue;
             }
             ordinal_palette_indices.insert(*target, index);
-            mechanism_routes.push(compile_ordinal_palette_route(family, *target));
+            let route = compile_ordinal_palette_route(family, *target);
+            ordinal_palette_dispositions.insert(*target, route.disposition());
+            mechanism_routes.push(route);
         }
         let mut effect_binding_indices = Vec::new();
         for (index, binding) in spec.effects().bindings().iter().enumerate() {
@@ -126,6 +131,17 @@ impl FamilyThemeProgram {
                 binding.target(),
             ));
         }
+        let rule_facet_dispositions = mechanism_routes
+            .iter()
+            .filter_map(|route| match route.mechanism() {
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index, facet, ..
+                } => Some(((rule_index, facet), route.disposition())),
+                FamilyThemeMechanism::BaseTypography(_)
+                | FamilyThemeMechanism::OrdinalPalette { .. }
+                | FamilyThemeMechanism::EffectBinding { .. } => None,
+            })
+            .collect();
 
         Self {
             spec,
@@ -133,8 +149,10 @@ impl FamilyThemeProgram {
             rule_indices: rule_indices.into_boxed_slice(),
             slots,
             ordinal_palette_indices,
+            ordinal_palette_dispositions,
             effect_binding_indices: effect_binding_indices.into_boxed_slice(),
             mechanism_routes: mechanism_routes.into_boxed_slice(),
+            rule_facet_dispositions,
         }
     }
 
@@ -167,6 +185,13 @@ impl FamilyThemeProgram {
         Some(&self.spec.styles().ordinal_palettes()[index].1)
     }
 
+    pub(super) fn ordinal_palette_disposition(
+        &self,
+        target: ThemeTarget,
+    ) -> Option<FamilyThemeDisposition> {
+        self.ordinal_palette_dispositions.get(&target).copied()
+    }
+
     pub(super) fn effect_binding_indices(&self) -> &[usize] {
         &self.effect_binding_indices
     }
@@ -195,17 +220,9 @@ impl FamilyThemeProgram {
         rule_index: usize,
         facet: FamilyThemeRuleFacet,
     ) -> Option<FamilyThemeDisposition> {
-        self.mechanism_routes.iter().find_map(|route| {
-            matches!(
-                route.mechanism(),
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index: candidate,
-                    facet: candidate_facet,
-                    ..
-                } if candidate == rule_index && candidate_facet == facet
-            )
-            .then_some(route.disposition())
-        })
+        self.rule_facet_dispositions
+            .get(&(rule_index, facet))
+            .copied()
     }
 
     pub(super) fn has_mechanism_routes(&self) -> bool {
@@ -217,10 +234,8 @@ impl FamilyThemeProgram {
     }
 
     pub(super) fn has_legacy_ordinal_palette(&self, target: ThemeTarget) -> bool {
-        self.has_route(
-            FamilyThemeMechanism::OrdinalPalette { target },
-            FamilyThemeDisposition::LegacyCompatibility,
-        )
+        self.ordinal_palette_disposition(target)
+            == Some(FamilyThemeDisposition::LegacyCompatibility)
     }
 
     fn has_route(
@@ -418,6 +433,7 @@ fn charge_ordinal_candidates(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagram_theme::{CanvasPaint, Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch};
 
     #[test]
     fn cache_reuses_the_same_program_for_one_recipe_family() {
@@ -430,5 +446,28 @@ mod tests {
 
         assert!(Arc::ptr_eq(&first, &second));
         assert!(!Arc::ptr_eq(&first, &state));
+    }
+
+    #[test]
+    fn compiled_program_indexes_rule_facet_dispositions() {
+        let paint = CanvasPaint::solid("#ef4444").expect("solid paint");
+        let spec = Arc::new(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(paint.clone()),
+                    )
+                    .for_family(RenderFamilyKind::Flowchart),
+                ),
+            ),
+        );
+        let program = FamilyThemeProgram::compile(spec, RenderFamilyKind::Flowchart);
+        let facet = FamilyThemeRuleFacet::fill(&Specified::Value(paint)).expect("fill facet");
+
+        assert_eq!(
+            program.rule_facet_disposition(0, facet),
+            Some(FamilyThemeDisposition::TypedAdapter)
+        );
     }
 }

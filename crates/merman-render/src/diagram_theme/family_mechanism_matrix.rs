@@ -5,10 +5,10 @@ use super::resolved::ThemeTypographyProperty;
 use super::semantic::{OrdinalSelector, ThemeRule, ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
 
-/// 与 core compatibility overlay 的单项字符串上限保持一致。
+/// Matches the per-string limit used by the core compatibility overlay.
 ///
-/// 超过该上限的字体栈不能进入 legacy 配置通道，必须落到 Unsupported，避免
-/// 矩阵宣称已适配而 bridge 静默丢弃。
+/// Font stacks above this limit cannot enter the legacy configuration lane and
+/// must remain unsupported so the matrix cannot claim an adaptation the bridge drops.
 pub(super) const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
 
 /// Static owner of one family-local theme mechanism.
@@ -411,7 +411,12 @@ pub(super) fn compile_ordinal_palette_route(
 ) -> FamilyThemeRoute {
     FamilyThemeRoute::new(
         FamilyThemeMechanism::OrdinalPalette { target },
-        if family == RenderFamilyKind::State {
+        if family == RenderFamilyKind::State
+            || (matches!(
+                family,
+                RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+            ) && target == ThemeTarget::Node)
+        {
             FamilyThemeDisposition::TypedAdapter
         } else if legacy_palette_supported(family, target) {
             FamilyThemeDisposition::LegacyCompatibility
@@ -475,6 +480,25 @@ fn classify_rule_facet(
     if matches!(
         family,
         RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+    ) && target == ThemeTarget::NodeLabel
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Typography(
+                ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
     ) && target == ThemeTarget::Node
         && matches!(
             selector,
@@ -488,7 +512,9 @@ fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
+            ) | FamilyThemeRuleFacet::StrokeWidth
+                | FamilyThemeRuleFacet::StrokeDasharray
+                | FamilyThemeRuleFacet::Radius
         )
     {
         return FamilyThemeDisposition::TypedAdapter;
@@ -793,24 +819,39 @@ mod tests {
                     facet: FamilyThemeRuleFacet::Radius,
                     ..
                 }
-            ) && route.disposition() == FamilyThemeDisposition::Unsupported
+            ) && route.disposition() == FamilyThemeDisposition::TypedAdapter
         }));
     }
 
     #[test]
-    fn flowchart_and_swimlane_own_only_default_scalar_node_paint() {
-        let default_rule = ThemeRule::new(
-            ThemeTarget::Node,
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::Transparent)
-                .with_stroke(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
-        )
-        .with_variant(ThemeVariant::Default);
+    fn flowchart_and_swimlane_own_default_scalar_node_paint_geometry_and_node_palette() {
+        let default_style = ThemeStylePatch {
+            geometry: ThemeGeometryPatch {
+                radius: Specified::Value(8.0),
+            },
+            ..ThemeStylePatch::default()
+        }
+        .with_fill(CanvasPaint::Transparent)
+        .with_stroke(CanvasPaint::solid("#abcdef").expect("valid fixture color"))
+        .with_stroke_width(2.5)
+        .expect("valid fixture stroke width")
+        .with_stroke_dasharray([4.0, 2.0])
+        .expect("valid fixture stroke dasharray");
+        let default_rule =
+            ThemeRule::new(ThemeTarget::Node, default_style).with_variant(ThemeVariant::Default);
         for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
             assert!(
                 compile_rule_routes(family, 0, &default_rule)
                     .iter()
                     .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+            assert_eq!(
+                compile_ordinal_palette_route(family, ThemeTarget::Node).disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+            assert_eq!(
+                compile_ordinal_palette_route(family, ThemeTarget::Edge).disposition(),
+                FamilyThemeDisposition::Unsupported
             );
         }
 
@@ -824,6 +865,115 @@ mod tests {
             compile_rule_routes(RenderFamilyKind::Flowchart, 0, &active_rule)[0].disposition(),
             FamilyThemeDisposition::Unsupported
         );
+
+        let edge_geometry_rule = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default()
+                .with_stroke_width(2.5)
+                .expect("valid edge width")
+                .with_stroke_dasharray([4.0, 2.0])
+                .expect("valid edge dasharray"),
+        );
+        assert!(
+            compile_rule_routes(RenderFamilyKind::Flowchart, 0, &edge_geometry_rule)
+                .iter()
+                .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+        );
+
+        let ordinal_geometry_rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_stroke_width(2.5)
+                .expect("valid ordinal width")
+                .with_stroke_dasharray([4.0, 2.0])
+                .expect("valid ordinal dasharray"),
+        )
+        .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap());
+        assert!(
+            compile_rule_routes(RenderFamilyKind::Flowchart, 0, &ordinal_geometry_rule)
+                .iter()
+                .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+        );
+
+        for rule in [
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(8.0),
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            )
+            .with_variant(ThemeVariant::Active),
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(8.0),
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            )
+            .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(8.0),
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            ),
+        ] {
+            assert_eq!(
+                compile_rule_routes(RenderFamilyKind::Flowchart, 0, &rule)[0].disposition(),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_and_swimlane_own_static_default_node_label_font_stack_and_size_only() {
+        let font_stack = super::super::FontStack::single("Excalifont").expect("valid font stack");
+        let style = ThemeStylePatch {
+            typography: TextStylePatch {
+                font_stack: Specified::Value(font_stack),
+                font_size_px: Specified::Value(20.0),
+                ..TextStylePatch::default()
+            },
+            ..ThemeStylePatch::default()
+        };
+        for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
+            let unqualified_rule = ThemeRule::new(ThemeTarget::NodeLabel, style.clone());
+            assert!(
+                compile_rule_routes(family, 0, &unqualified_rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+
+            let default_rule = ThemeRule::new(ThemeTarget::NodeLabel, style.clone())
+                .with_variant(ThemeVariant::Default);
+            assert!(
+                compile_rule_routes(family, 0, &default_rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+
+            for rule in [
+                ThemeRule::new(ThemeTarget::NodeLabel, style.clone())
+                    .with_variant(ThemeVariant::Active),
+                ThemeRule::new(ThemeTarget::NodeLabel, style.clone())
+                    .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+                ThemeRule::new(ThemeTarget::EdgeLabel, style.clone()),
+            ] {
+                assert!(
+                    compile_rule_routes(family, 0, &rule)
+                        .iter()
+                        .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+                );
+            }
+        }
     }
 
     #[test]

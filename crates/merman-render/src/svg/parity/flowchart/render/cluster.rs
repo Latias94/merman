@@ -81,7 +81,7 @@ fn write_flowchart_cluster_shape(
     top: f64,
     rect_w: f64,
     rect_h: f64,
-) {
+) -> bool {
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
         let fill = theme.cluster_bkg.as_str();
@@ -120,7 +120,7 @@ fn write_flowchart_cluster_shape(
                 escape_xml_display(stroke_dasharray),
                 OptionalStyleXmlAttr(&border_style),
             );
-            return;
+            return false;
         }
     }
 
@@ -133,6 +133,7 @@ fn write_flowchart_cluster_shape(
         fmt_display(rect_w),
         fmt_display(rect_h)
     );
+    true
 }
 
 pub(in crate::svg::parity) fn render_flowchart_cluster(
@@ -209,7 +210,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             escape_xml_display(&cluster_dom_id),
             escape_xml_display(data_look),
         );
-        write_flowchart_cluster_shape(
+        let shape_source_verified = write_flowchart_cluster_shape(
             out,
             ctx,
             &compiled_styles,
@@ -218,6 +219,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             top,
             rect_w,
             rect_h,
+        );
+        ctx.theme_evidence.record_source_residuals(
+            &compiled_styles
+                .emitted_shape_source_residuals(cluster.id.as_str(), shape_source_verified),
         );
         let _ = write!(
             out,
@@ -250,6 +255,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             write_flowchart_svg_label_plan(out, &prepared, true);
         }
         out.push_str("</g></g></g>");
+        ctx.theme_evidence.record_source_residuals(
+            &compiled_styles
+                .emitted_label_source_residuals(cluster.id.as_str(), label_type != "markdown"),
+        );
         return;
     }
 
@@ -280,7 +289,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         escape_xml_display(&cluster_dom_id),
         escape_xml_display(data_look),
     );
-    write_flowchart_cluster_shape(
+    let shape_source_verified = write_flowchart_cluster_shape(
         out,
         ctx,
         &compiled_styles,
@@ -289,6 +298,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         top,
         rect_w,
         rect_h,
+    );
+    ctx.theme_evidence.record_source_residuals(
+        &compiled_styles.emitted_shape_source_residuals(cluster.id.as_str(), shape_source_verified),
     );
     let _ = write!(
         out,
@@ -301,5 +313,12 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         escape_xml_display(&div_style),
         span_style_attr,
         title_html
+    );
+    ctx.theme_evidence.record_source_residuals(
+        &compiled_styles.emitted_html_label_source_residuals(
+            cluster.id.as_str(),
+            true,
+            &title_html,
+        ),
     );
 }

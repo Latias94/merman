@@ -16,6 +16,27 @@ const FIXED_CLUSTER_PADDING: f64 = 8.0;
 // markdown subgraph titles rely on that default instead of `flowchart.wrappingWidth`.
 const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct FlowchartTypographyConfigOwnership {
+    pub(crate) font_stack: bool,
+    pub(crate) font_size: bool,
+}
+
+pub(crate) fn flowchart_typography_config_ownership(
+    config: &merman_core::MermaidConfig,
+) -> FlowchartTypographyConfigOwnership {
+    FlowchartTypographyConfigOwnership {
+        font_stack: merman_core::__private::explicit_config_owns_path(
+            config,
+            "themeVariables.fontFamily",
+        ) || merman_core::__private::explicit_config_owns_path(config, "fontFamily"),
+        font_size: merman_core::__private::explicit_config_owns_path(
+            config,
+            "themeVariables.fontSize",
+        ),
+    }
+}
+
 pub(crate) struct FlowchartConfigView<'a> {
     effective_config: &'a Value,
     flowchart_config: &'a Value,

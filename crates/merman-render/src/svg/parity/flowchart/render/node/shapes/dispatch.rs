@@ -13,7 +13,7 @@ pub(in super::super) fn render_flowchart_shape(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> Result<bool> {
+) -> Result<super::super::emission::FlowchartNodeShapeRenderOutcome> {
     let resolved_shape = FlowchartShape::resolve(common.shape)?;
 
     match resolved_shape {
@@ -91,24 +91,54 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_hourglass_collate(out, common, details);
         }
         FlowchartShape::Icon => {
-            super::render_icon(out, ctx, common, label, details)?;
-            return Ok(true);
+            let label = super::render_icon(out, ctx, common, label, details)?;
+            return Ok(
+                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
+                    true,
+                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+                )
+                .with_label(label),
+            );
         }
         FlowchartShape::IconCircle => {
-            super::render_icon_circle(out, ctx, common, label, details)?;
-            return Ok(true);
+            let label = super::render_icon_circle(out, ctx, common, label, details)?;
+            return Ok(
+                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
+                    true,
+                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+                )
+                .with_label(label),
+            );
         }
         FlowchartShape::IconRounded => {
-            super::render_icon_rounded(out, ctx, common, label, details)?;
-            return Ok(true);
+            let label = super::render_icon_rounded(out, ctx, common, label, details)?;
+            return Ok(
+                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
+                    true,
+                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+                )
+                .with_label(label),
+            );
         }
         FlowchartShape::IconSquare => {
-            super::render_icon_square(out, ctx, common, label, details)?;
-            return Ok(true);
+            let label = super::render_icon_square(out, ctx, common, label, details)?;
+            return Ok(
+                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
+                    true,
+                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+                )
+                .with_label(label),
+            );
         }
         FlowchartShape::ImageSquare => {
-            if super::try_render_image_square(out, ctx, common, label, details) {
-                return Ok(true);
+            if let Some(label) = super::try_render_image_square(out, ctx, common, label, details) {
+                return Ok(
+                    super::super::emission::FlowchartNodeShapeRenderOutcome::new(
+                        true,
+                        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+                    )
+                    .with_label(label),
+                );
             }
             return missing_asset_error(common.shape, "image");
         }
@@ -149,7 +179,8 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_paper_tape(out, ctx, common, label, details);
         }
         FlowchartShape::Process => {
-            super::render_process_rectangle(out, common, details);
+            let paint = super::render_process_rectangle(out, common, details);
+            return Ok(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint));
         }
         FlowchartShape::RoundedRectangle => {
             super::render_rounded_rect(out, ctx, common, details);
@@ -199,7 +230,12 @@ pub(in super::super) fn render_flowchart_shape(
         }
     }
 
-    Ok(false)
+    Ok(
+        super::super::emission::FlowchartNodeShapeRenderOutcome::new(
+            false,
+            super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+        ),
+    )
 }
 
 fn missing_asset_error<T>(shape: &str, asset: &str) -> Result<T> {

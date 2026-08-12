@@ -180,6 +180,85 @@ pub(crate) fn strip_css_important(raw: &str) -> &str {
         .unwrap_or(raw)
 }
 
+pub(crate) fn is_supported_css_font_weight_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "normal" | "bold" | "bolder" | "lighter"
+    ) || value
+        .trim()
+        .parse::<u16>()
+        .is_ok_and(|weight| (1..=1000).contains(&weight))
+}
+
+pub(crate) fn is_supported_css_font_style_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "normal" | "italic" | "oblique"
+    )
+}
+
+pub(crate) fn is_supported_css_color_value(value: &str) -> bool {
+    merman_core::theme_color::ThemeColor::parse(value.trim()).is_ok()
+}
+
+pub(crate) fn is_supported_css_text_decoration_value(value: &str) -> bool {
+    if value.trim().eq_ignore_ascii_case("none") {
+        return true;
+    }
+    let mut count = 0;
+    for token in value.split_ascii_whitespace() {
+        count += 1;
+        if !matches!(
+            token.to_ascii_lowercase().as_str(),
+            "underline" | "overline" | "line-through" | "blink"
+        ) {
+            return false;
+        }
+    }
+    count != 0
+}
+
+pub(crate) fn is_supported_css_text_align_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "start" | "end" | "left" | "right" | "center" | "justify" | "match-parent" | "justify-all"
+    )
+}
+
+pub(crate) fn is_supported_css_line_height_value(value: &str) -> bool {
+    let Some(parsed) = parse_css_value(value, CssValuePolicy::MermaidSourceStyle) else {
+        return false;
+    };
+    if !parsed.analysis.is_single_component() {
+        return false;
+    }
+    match parsed.analysis.scalar.as_ref() {
+        Some(CssScalar::Ident(value)) => value == "normal",
+        Some(
+            CssScalar::Number(value)
+            | CssScalar::Percentage(value)
+            | CssScalar::Px(value)
+            | CssScalar::Em(value),
+        ) => value.is_finite() && *value > 0.0,
+        Some(CssScalar::Rem(_)) | None => false,
+    }
+}
+
+pub(crate) fn is_supported_css_spacing_value(value: &str) -> bool {
+    let Some(parsed) = parse_css_value(value, CssValuePolicy::MermaidSourceStyle) else {
+        return false;
+    };
+    if !parsed.analysis.is_single_component() {
+        return false;
+    }
+    match parsed.analysis.scalar.as_ref() {
+        Some(CssScalar::Ident(value)) => value == "normal",
+        Some(CssScalar::Number(value)) => *value == 0.0,
+        Some(CssScalar::Px(value) | CssScalar::Em(value)) => value.is_finite(),
+        Some(CssScalar::Percentage(_) | CssScalar::Rem(_)) | None => false,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum CssScalar {
     Number(f64),
@@ -664,6 +743,35 @@ mod tests {
             font.resolve_font_size_px(CssFontSizeContext::uniform(20.0)),
             Some(25.0)
         );
+    }
+
+    #[test]
+    fn supported_typography_values_match_the_native_admission_subset() {
+        for value in ["normal", "bold", "bolder", "lighter", "1", "700", "1000"] {
+            assert!(is_supported_css_font_weight_value(value), "value={value}");
+        }
+        for value in ["banana", "0", "1001", "700.0"] {
+            assert!(!is_supported_css_font_weight_value(value), "value={value}");
+        }
+
+        for value in ["normal", "italic", "oblique"] {
+            assert!(is_supported_css_font_style_value(value), "value={value}");
+        }
+        assert!(!is_supported_css_font_style_value("sideways"));
+
+        for value in ["normal", "1.5", "150%", "24px", "1.2em"] {
+            assert!(is_supported_css_line_height_value(value), "value={value}");
+        }
+        for value in ["banana", "0", "-1", "1rem"] {
+            assert!(!is_supported_css_line_height_value(value), "value={value}");
+        }
+
+        for value in ["normal", "0", "-0.5px", "0.1em"] {
+            assert!(is_supported_css_spacing_value(value), "value={value}");
+        }
+        for value in ["banana", "1", "10%", "1rem"] {
+            assert!(!is_supported_css_spacing_value(value), "value={value}");
+        }
     }
 
     #[test]

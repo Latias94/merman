@@ -159,6 +159,22 @@ pub(super) fn render_state_node_svg(
         node_style.and_then(crate::state::StateNodeStylePlan::stroke_width_override);
     let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
     let padding_override = node_style.and_then(crate::state::StateNodeStylePlan::padding_override);
+    let effect_filter = node_style
+        .and_then(crate::state::StateNodeStylePlan::effect)
+        .and_then(|binding| {
+            let effect = ctx.style_plan.effect(binding.effect_id())?;
+            let scoped_filter_id = format!("{}-theme-effect-{}", node_dom_id, effect.id());
+            let filter_url = write_state_theme_effect_application(out, &scoped_filter_id, effect);
+            Some((effect, scoped_filter_id, filter_url))
+        })
+        .map(|(effect, scoped_filter_id, filter_url)| {
+            let attr = format!(r#" filter="{}""#, escape_attr(&filter_url));
+            (effect, scoped_filter_id, attr)
+        });
+    let effect_filter_attr = effect_filter
+        .as_ref()
+        .map(|(_, _, attr)| attr.as_str())
+        .unwrap_or_default();
 
     match node.shape.as_str() {
         "stateStart" => {
@@ -819,7 +835,7 @@ pub(super) fn render_state_node_svg(
                     let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
                         escape_xml_display(&node_dom_id),
@@ -828,6 +844,7 @@ pub(super) fn render_state_node_svg(
                         fmt_display(cy),
                         node_title_attr,
                         rect_style,
+                        effect_filter_attr,
                         fmt_display(rect_radius),
                         fmt_display(rect_radius),
                         fmt_display(-w / 2.0),
@@ -847,7 +864,7 @@ pub(super) fn render_state_node_svg(
                 } else {
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
+                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
                         escape_xml_display(&node_dom_id),
@@ -856,6 +873,7 @@ pub(super) fn render_state_node_svg(
                         fmt_display(cy),
                         node_title_attr,
                         rect_style,
+                        effect_filter_attr,
                         fmt_display(rect_radius),
                         fmt_display(rect_radius),
                         fmt_display(-w / 2.0),
@@ -868,6 +886,10 @@ pub(super) fn render_state_node_svg(
                         label_dom,
                         link_close
                     );
+                }
+                if let Some((effect, scoped_filter_id, _)) = effect_filter.as_ref() {
+                    ctx.effect_evidence
+                        .record_application(effect, scoped_filter_id);
                 }
                 drop(_g_emit);
                 return;

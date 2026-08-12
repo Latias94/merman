@@ -13,7 +13,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     out: &mut String,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
     let width = common.layout_node.width.max(1.0);
     let height = common.layout_node.height.max(1.0);
     let rough_paths = if common.look_is_hand_drawn() {
@@ -50,7 +50,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
             common.stroke_width,
             escape_attr(common.stroke_dasharray),
         );
-        return;
+        return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_process();
     }
 
     let _ = write!(
@@ -61,7 +61,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
         fmt(-height / 2.0),
         fmt(width),
         fmt(height),
-        if common.look_is_neo() {
+        if common.emit_corner_radius {
             format!(
                 r#" rx="{}" ry="{}""#,
                 fmt(common.corner_radius),
@@ -71,4 +71,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
             String::new()
         },
     );
+    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(
+        common.emit_corner_radius,
+    )
 }

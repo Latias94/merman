@@ -667,6 +667,18 @@ pub struct ResolvedDiagramTheme {
     program: Arc<FamilyThemeProgram>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ResolvedThemeEffect<'a> {
+    ClearedByRule,
+    Rule {
+        graph: Option<&'a super::effects::EffectGraph>,
+    },
+    Binding {
+        binding: &'a super::effects::EffectBinding,
+        graph: Option<&'a super::effects::EffectGraph>,
+    },
+}
+
 impl ResolvedDiagramTheme {
     pub(crate) fn new(theme: super::DiagramTheme, family: RenderFamilyKind) -> Self {
         let program = theme.family_program(family);
@@ -699,6 +711,30 @@ impl ResolvedDiagramTheme {
             .map(|index| &self.theme.spec().effects().bindings()[*index])
     }
 
+    pub(crate) fn resolve_effect<'a>(
+        &'a self,
+        target: ThemeTarget,
+        resolution: &ResolvedProperty<String>,
+    ) -> Option<ResolvedThemeEffect<'a>> {
+        match resolution.specified() {
+            Specified::Clear => Some(ResolvedThemeEffect::ClearedByRule),
+            Specified::Value(effect_id) => Some(ResolvedThemeEffect::Rule {
+                graph: self.theme.spec().effects().graph(effect_id),
+            }),
+            Specified::Unspecified => self
+                .effect_bindings()
+                .find(|binding| binding.target() == target)
+                .map(|binding| ResolvedThemeEffect::Binding {
+                    graph: self.theme.spec().effects().graph(binding.effect_id()),
+                    binding,
+                }),
+        }
+    }
+
+    pub(crate) fn effect_graph(&self, effect_id: &str) -> Option<&super::effects::EffectGraph> {
+        self.theme.spec().effects().graph(effect_id)
+    }
+
     pub(crate) fn family_rules(&self) -> impl Iterator<Item = (usize, &ThemeRule)> + '_ {
         self.program
             .rule_indices()
@@ -709,6 +745,13 @@ impl ResolvedDiagramTheme {
 
     pub(crate) fn family_ordinal_palette_targets(&self) -> impl Iterator<Item = ThemeTarget> + '_ {
         self.program.ordinal_palette_targets()
+    }
+
+    pub(crate) fn ordinal_palette_disposition(
+        &self,
+        target: ThemeTarget,
+    ) -> Option<super::family_mechanism_matrix::FamilyThemeDisposition> {
+        self.program.ordinal_palette_disposition(target)
     }
 
     pub(crate) fn family_mechanism_keys(&self) -> Vec<super::application::FamilyThemeMechanismKey> {

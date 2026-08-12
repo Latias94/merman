@@ -1,11 +1,15 @@
 use super::{ExportError, Result};
+use merman_render::__private::{
+    PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+};
+#[cfg(test)]
+use merman_render::__private::{
+    native_export_svg, prepared_text_evidence_valid, prepared_text_label_ledger,
+};
 use merman_render::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontSource, GenericFontFamily,
 };
 use merman_render::svg::ResvgCompatibleSvg;
-use merman_render::text::{
-    PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
-};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -1284,11 +1288,11 @@ mod tests {
         options.fontdb = fontdb;
         options.font_family = default_family;
         options.font_resolver = resolver;
-        let tree = usvg::Tree::from_str(svg.native_export_svg(), &options).unwrap();
+        let tree = usvg::Tree::from_str(native_export_svg(svg), &options).unwrap();
         plan.finish_with_tree(
             &tree,
-            svg.prepared_text_label_ledger(),
-            svg.prepared_text_evidence_valid(),
+            prepared_text_label_ledger(svg),
+            prepared_text_evidence_valid(svg),
         )
     }
 

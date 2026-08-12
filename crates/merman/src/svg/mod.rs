@@ -51,31 +51,31 @@ pub use merman_core::runtime::{
 pub use merman_render::diagram_theme::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
-    EffectPrimitive, FamilyThemeMechanismKey, FilterRegion, FontAsset, FontAssetFingerprint,
-    FontAssetIdError, FontAssetSpec, FontCatalog, FontCatalogError, FontCatalogFingerprint,
-    FontCatalogSpec, FontContainer, FontEmbeddingPermissions, FontEmbeddingRequirement,
-    FontFaceMetadata, FontFamilyAlias, FontSource, FontSourcePolicy, FontStack, FontStyle,
-    GenericFontFamily, GradientStop, HostMeasurementFallback, HostMeasurementFallbackPolicy,
-    InsetsPx, LineHeight, LinearGradient, MAX_FONT_ALIASES_HARD_CAP,
-    MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP, MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP,
-    MAX_FONT_ASSETS_HARD_CAP, MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP,
-    MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP, MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP,
-    MAX_THEME_BASE64_BYTES_HARD_CAP, MAX_THEME_ENCODED_BYTES_HARD_CAP, MermaidThemeCompatibility,
-    MermaidThemeValue, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
-    RootThemeEvaluation, RootThemeMechanism, RootThemeMechanismEvidence, RootThemeMechanismKey,
-    RootThemeReport, RootThemeResidual, RootThemeResidualReason, RootThemeVerification, Specified,
-    StrokeLineCap, StrokeLineJoin, THEME_RESOURCE_LIMIT_COUNT, THEME_RESOURCE_LIMIT_DESCRIPTORS,
-    TextAlign, TextDecoration, TextLayoutCapability, TextStylePatch, TextTransform,
-    ThemeAdmissionError, ThemeAdmissionPolicy, ThemeAssets, ThemeCapability, ThemeColorValue,
-    ThemeCompileError, ThemeCompileValidationError, ThemeEffectPatch, ThemeGeometryPatch,
-    ThemeHostAdmissionReport, ThemeLength, ThemePaintPatch, ThemePortabilityRequirement,
-    ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemeRecipeFingerprint,
-    ThemeRecipeReport, ThemeRequirements, ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded,
-    ThemeResourceLimitId, ThemeResourceLimitOverride, ThemeResourceLimitOverrideError,
-    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, ThemeRule,
-    ThemeRuleSet, ThemeSpacingPatch, ThemeStrokePatch, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeTokens, ThemeVariant, ThemeWrapMode, TrustedThemeLane, TrustedThemeLanes,
-    TypographySpec, WhiteSpace, theme_preset_descriptors, theme_resource_limit_descriptors,
+    EffectPrimitive, FilterRegion, FontAsset, FontAssetFingerprint, FontAssetIdError,
+    FontAssetSpec, FontCatalog, FontCatalogError, FontCatalogFingerprint, FontCatalogSpec,
+    FontContainer, FontEmbeddingPermissions, FontEmbeddingRequirement, FontFaceMetadata,
+    FontFamilyAlias, FontSource, FontSourcePolicy, FontStack, FontStyle, GenericFontFamily,
+    GradientStop, HostMeasurementFallback, HostMeasurementFallbackPolicy, InsetsPx, LineHeight,
+    LinearGradient, MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
+    MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
+    MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
+    MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP, MAX_THEME_BASE64_BYTES_HARD_CAP,
+    MAX_THEME_ENCODED_BYTES_HARD_CAP, MermaidThemeCompatibility, MermaidThemeValue, OrdinalPalette,
+    OrdinalSelector, PatternKind, PatternSpec, RadialGradient, RootThemeEvaluation,
+    RootThemeMechanism, RootThemeMechanismEvidence, RootThemeMechanismKey, RootThemeReport,
+    RootThemeResidual, RootThemeResidualReason, RootThemeVerification, Specified, StrokeLineCap,
+    StrokeLineJoin, THEME_RESOURCE_LIMIT_COUNT, THEME_RESOURCE_LIMIT_DESCRIPTORS, TextAlign,
+    TextDecoration, TextLayoutCapability, TextStylePatch, TextTransform, ThemeAdmissionError,
+    ThemeAdmissionPolicy, ThemeAssets, ThemeCapability, ThemeColorValue, ThemeCompileError,
+    ThemeCompileValidationError, ThemeEffectPatch, ThemeGeometryPatch, ThemeHostAdmissionReport,
+    ThemeLength, ThemePaintPatch, ThemePortabilityRequirement, ThemePreset, ThemePresetDescriptor,
+    ThemePresetParseError, ThemeRecipeFingerprint, ThemeRecipeReport, ThemeRequirements,
+    ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded, ThemeResourceLimitId,
+    ThemeResourceLimitOverride, ThemeResourceLimitOverrideError, ThemeResourceLimitPhase,
+    ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, ThemeRule, ThemeRuleSet,
+    ThemeSpacingPatch, ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeTokens,
+    ThemeVariant, ThemeWrapMode, TrustedThemeLane, TrustedThemeLanes, TypographySpec, WhiteSpace,
+    theme_preset_descriptors, theme_resource_limit_descriptors,
 };
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
@@ -86,11 +86,7 @@ pub use merman_render::environment::{
     TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
     validate_host_text_measurement,
 };
-pub use merman_render::family::{
-    FamilyStyleChannel, FamilyStyleEvaluation, FamilyStyleOrigin, FamilyStyleReport,
-    FamilyStyleResidual, FamilyStyleResidualReason, FamilyStyleVerification, FamilyThemeResidual,
-    FamilyThemeResidualReason, RenderCapabilityPlan, RenderFamilyKind,
-};
+pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
@@ -152,13 +148,32 @@ pub enum HeadlessError {
     #[error(transparent)]
     Parse(#[from] merman_core::Error),
     #[error(transparent)]
-    Render(#[from] merman_render::Error),
+    Render(merman_render::Error),
     #[error(transparent)]
     RuntimePolicy(#[from] RuntimePolicyError),
     #[error(transparent)]
     Environment(#[from] RenderEnvironmentError),
     #[error("portable output requirement rejected target admission: {report}")]
     TargetAdmissionRejected { report: TargetAdmissionReport },
+}
+
+impl From<merman_render::Error> for HeadlessError {
+    fn from(error: merman_render::Error) -> Self {
+        let output_mutated = match &error {
+            merman_render::Error::UnverifiedFamilyOutputMutation { .. } => true,
+            merman_render::Error::RejectedRootTheme {
+                first_residual: Some(residual),
+                ..
+            } => residual.reason() == RootThemeResidualReason::OutputMutation,
+            _ => false,
+        };
+        if output_mutated {
+            return Self::TargetAdmissionRejected {
+                report: TargetAdmissionReport::rejected_svg_document_residual(),
+            };
+        }
+        Self::Render(error)
+    }
 }
 
 impl HeadlessError {
@@ -204,12 +219,27 @@ impl OutputError {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub type OutputResult<T> = std::result::Result<T, OutputError>;
 
+fn trusted_rust_cli_render_environment(runtime_policy: RuntimePolicy) -> RenderEnvironment {
+    RenderEnvironment::deterministic()
+        .with_runtime_policy(runtime_policy)
+        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
+        ))
+}
+
 fn default_render_environment() -> RenderEnvironment {
-    RenderEnvironment::deterministic().with_theme_admission_policy(
-        ThemeAdmissionPolicy::permissive().with_trusted_lanes(TrustedThemeLanes::from_allowed([
-            TrustedThemeLane::RawThemeCss,
-        ])),
-    )
+    trusted_rust_cli_render_environment(RuntimePolicy::deterministic())
+}
+
+/// Workspace-internal constructors shared by the Rust facade and the CLI.
+#[doc(hidden)]
+pub mod __private {
+    use super::{RenderEnvironment, RuntimePolicy};
+
+    /// Builds the trusted Rust/CLI compatibility environment without widening binding policy.
+    pub fn trusted_rust_cli_environment(runtime_policy: RuntimePolicy) -> RenderEnvironment {
+        super::trusted_rust_cli_render_environment(runtime_policy)
+    }
 }
 
 fn engine_with_session_context(
@@ -909,6 +939,72 @@ mod svg_pipeline_tests {
                 .contains(&TargetAdmissionReason::DocumentResidual),
             "postprocessor residual must explain the strict rejection: {report}"
         );
+    }
+
+    #[test]
+    fn require_portable_postprocessed_root_theme_retains_target_rejection() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(CanvasSpec::solid("#f8fafc").expect("valid solid canvas")),
+            )
+            .expect("root canvas theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+        let pipeline = SvgPipeline::parity().with_postprocessor(ReplaceWithEmptySvg);
+
+        let error = renderer
+            .render_resvg_compatible_svg_with_pipeline_sync(
+                "flowchart TD\n  A[Before] --> B[After]",
+                &pipeline,
+            )
+            .expect_err("strict mode must reject mutated root-theme output");
+        let report = error
+            .target_admission_rejection()
+            .expect("root output mutation should retain target evidence");
+
+        assert_eq!(report.target(), RenderTargetKind::Svg);
+        assert_eq!(report.status(), TargetAdmissionStatus::Rejected);
+        assert_eq!(report.reasons(), &[TargetAdmissionReason::DocumentResidual]);
+    }
+
+    #[test]
+    fn require_portable_unconsumed_root_theme_remains_a_render_error() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
+            ],
+        )
+        .expect("valid gradient");
+        let canvas = CanvasSpec::transparent()
+            .with_layer(CanvasLayer::new(CanvasPaint::LinearGradient(gradient)))
+            .expect("bounded gradient layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("root gradient theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+
+        let error = renderer
+            .render_resvg_compatible_svg_sync("flowchart TD\n  A[Before] --> B[After]")
+            .expect_err("strict mode must reject an unconsumed root gradient");
+        let HeadlessError::Render(RenderError::RejectedRootTheme {
+            first_residual: Some(residual),
+            ..
+        }) = error
+        else {
+            panic!("non-mutation root residuals must remain render errors");
+        };
+
+        assert_eq!(residual.reason(), RootThemeResidualReason::NoConsumer);
     }
 
     #[test]
@@ -1793,16 +1889,23 @@ flowchart TD
             .with_theme(theme)
             .with_diagram_id("legacy-flowchart-theme");
 
-        let rendered = renderer
-            .render_svg_report_sync("flowchart TD\n  A[Themed]")
+        let document = renderer
+            .render_document_sync("flowchart TD\n  A[Themed] --> B[Target]")
             .expect("render should succeed in best-effort mode")
             .expect("flowchart should be detected");
-        let report = rendered.report().family_style_report();
 
-        assert!(rendered.svg().contains("#ef4444"), "{}", rendered.svg());
-        assert_eq!(report.verification(), FamilyStyleVerification::Unverified);
-        assert!(report.compatibility_residual_count() > 0);
-        assert!(report.theme_applied_mechanisms().is_empty());
+        assert!(
+            document.sealed_svg().as_str().contains("#ef4444"),
+            "{}",
+            document.sealed_svg().as_str()
+        );
+        let admission = document.svg_target_admission();
+        assert_eq!(admission.status(), TargetAdmissionStatus::Rejected);
+        assert!(
+            admission
+                .reasons()
+                .contains(&TargetAdmissionReason::DocumentResidual)
+        );
     }
 
     #[test]
@@ -1828,7 +1931,8 @@ flowchart TD
             HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
                 .with_theme(theme);
 
-        let error = match renderer.render_svg_report_sync("flowchart TD\n  A[Themed]") {
+        let error = match renderer.render_svg_report_sync("flowchart TD\n  A[Themed] --> B[Target]")
+        {
             Ok(_) => panic!("strict portability must reject compatibility projection"),
             Err(error) => error,
         };
@@ -1876,11 +1980,10 @@ flowchart TD
 
         assert!(rendered.svg().contains("#abcdef"), "{}", rendered.svg());
         assert!(
-            rendered
-                .report()
-                .family_style_report()
-                .compatibility_residual_count()
-                == 0
+            !rendered
+                .target_admission()
+                .reasons()
+                .contains(&TargetAdmissionReason::DocumentResidual)
         );
     }
 
@@ -1907,18 +2010,13 @@ flowchart TD
             .render_svg_report_sync("stateDiagram-v2\n  [*] --> Active\n  state Active")
             .expect("render should succeed")
             .expect("state diagram should be detected");
-        let report = rendered.report().family_style_report();
 
-        assert_eq!(report.compatibility_residual_count(), 0);
-        assert!(report.theme_applied_mechanisms().iter().any(|mechanism| {
-            matches!(
-                mechanism,
-                merman_render::diagram_theme::FamilyThemeMechanismKey::Rule {
-                    target: ThemeTarget::State,
-                    ..
-                }
-            )
-        }));
+        assert!(
+            !rendered
+                .target_admission()
+                .reasons()
+                .contains(&TargetAdmissionReason::DocumentResidual)
+        );
     }
 
     #[test]
@@ -2013,9 +2111,10 @@ impl HeadlessRenderer {
     /// Creates a renderer that explicitly captures native clock, timezone, and randomness
     /// adapters for each operation. Timing diagnostics remain an explicit opt-in capability.
     pub fn try_native() -> Result<Self> {
+        let runtime_policy = RuntimePolicy::try_native()?;
         Ok(Self::from_engine_and_environment(
             merman_core::Engine::new(),
-            RenderEnvironment::try_native()?,
+            trusted_rust_cli_render_environment(runtime_policy),
         ))
     }
 

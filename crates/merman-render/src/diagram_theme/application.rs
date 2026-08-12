@@ -62,14 +62,13 @@ pub enum RootThemeMechanismKey {
     },
 }
 
-/// Stable recipe-local identity of one family-scoped semantic mechanism.
+/// Recipe-local identity of one family-scoped semantic mechanism.
 ///
-/// These keys describe the inputs an adapter must account for. They are deliberately separate
-/// from capability names: two rules can require the same capability while still needing two
-/// independent pieces of renderer evidence.
+/// This remains renderer-private until family adapters preserve facet-level identity end to end.
+/// The current rule-level shape is sufficient for internal accounting, but is not a stable public
+/// contract because one rule can mix supported and unsupported facets.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum FamilyThemeMechanismKey {
+pub(crate) enum FamilyThemeMechanismKey {
     Typography,
     Rule {
         index: usize,

@@ -43,7 +43,8 @@ impl fmt::Display for SvgResourceFingerprint {
 ///
 /// Construction is private to the terminal validator. Therefore every public value is closed:
 /// all referenced fragments exist in the finalized document, and every non-fragment render
-/// resource has already passed the resvg-safe inline-resource policy.
+/// resource has already passed either the resvg-safe inline-image policy or an exact
+/// renderer-owned typed-font embedding plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgResourceClosure {
     available_fragment_ids: Box<[String]>,

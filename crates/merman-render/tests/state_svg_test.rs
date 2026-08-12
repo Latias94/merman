@@ -3,8 +3,10 @@ mod common;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion, Specified,
+    TextStylePatch, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -52,6 +54,18 @@ fn state_edge_label_position(svg: &str, edge_id: &str) -> (f64, f64) {
     )
 }
 
+fn svg_view_box(svg: &str) -> [f64; 4] {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    let values = document
+        .root_element()
+        .attribute("viewBox")
+        .expect("root viewBox")
+        .split_whitespace()
+        .map(|value| value.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>();
+    values.try_into().expect("four-component viewBox")
+}
+
 fn render_state_svg_from_text(text: &str) -> String {
     render_state_svg_from_text_with_engine(Engine::new(), text)
 }
@@ -88,6 +102,126 @@ fn render_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> St
         .expect("render themed State artifact")
         .svg()
         .to_string()
+}
+
+#[test]
+fn state_svg_emits_bounded_typed_drop_shadow_on_classic_state_nodes() {
+    let graph = EffectGraph::new(
+        "state-hard-shadow",
+        FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x: 5.0,
+            offset_y: 6.0,
+            blur_radius: 0.0,
+            spread: 0.0,
+            color: ThemeColorValue::parse("#111827").expect("valid shadow color"),
+        }],
+    )
+    .expect("valid bounded hard-shadow graph");
+    let effects = DiagramEffectSet::default()
+        .with_graph(graph)
+        .expect("unique effect graph")
+        .with_binding(
+            EffectBinding::new(ThemeTarget::State, "state-hard-shadow")
+                .expect("valid State effect binding"),
+        )
+        .expect("unique State effect binding");
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .expect("compile State hard-shadow theme");
+
+    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> Done\nDone --> [*]\n";
+    let svg = render_state_svg_from_text_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid themed State SVG XML");
+    let filters = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("filter")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-theme-effect-state-hard-shadow"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(filters.len(), 2);
+    let filter_ids = filters
+        .iter()
+        .map(|filter| {
+            assert_eq!(filter.attribute("x"), Some("-0.2"));
+            assert_eq!(filter.attribute("y"), Some("-0.2"));
+            assert_eq!(filter.attribute("width"), Some("1.4"));
+            assert_eq!(filter.attribute("height"), Some("1.4"));
+            let primitives = filter
+                .children()
+                .filter(|node| node.is_element())
+                .collect::<Vec<_>>();
+            assert_eq!(primitives.len(), 1);
+            let shadow = primitives[0];
+            assert!(shadow.has_tag_name("feDropShadow"));
+            assert_eq!(shadow.attribute("in"), Some("SourceGraphic"));
+            assert_eq!(shadow.attribute("dx"), Some("5"));
+            assert_eq!(shadow.attribute("dy"), Some("6"));
+            assert_eq!(shadow.attribute("stdDeviation"), Some("0"));
+            assert_eq!(shadow.attribute("flood-color"), Some("#111827"));
+            filter.attribute("id").expect("filter id")
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(filter_ids.len(), 2);
+    let referenced_filter_ids = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("basic label-container")
+        })
+        .map(|node| {
+            node.attribute("filter")
+                .and_then(|value| value.strip_prefix("url(#"))
+                .and_then(|value| value.strip_suffix(')'))
+                .expect("State rect must reference one typed hard-shadow filter")
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(referenced_filter_ids, filter_ids);
+
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty comparison theme");
+    let baseline_view_box = svg_view_box(&render_state_svg_from_text_with_theme(
+        source,
+        &baseline_theme,
+    ));
+    let effect_view_box = svg_view_box(&svg);
+    assert!(effect_view_box[2] >= baseline_view_box[2] + 5.0);
+    assert!(effect_view_box[3] >= baseline_view_box[3] + 6.0);
+
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable State session");
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .expect("parse strict State source")
+        .expect("State diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare strict portable State artifact");
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("typed hard shadow should satisfy strict family portability");
+
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable State session without edges");
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .expect("parse strict State source without edges")
+        .expect("State diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare strict portable State artifact without edges");
+    let mut debug = SvgDebugOptions::default();
+    debug.include_edges = false;
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &debug)
+        .expect("hidden edges must not invalidate emitted State node effects");
+    assert!(rendered.svg().contains("theme-effect-state-hard-shadow"));
 }
 
 fn state_edge_label_foreign_object_height(svg: &str, edge_id: &str) -> f64 {

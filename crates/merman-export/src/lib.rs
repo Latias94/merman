@@ -8,12 +8,18 @@
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod font_environment;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod native_filter_receipt;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use font_environment::{ExportFontMode, ExportFontPlan};
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use cssparser::{Delimiter, Parser, ParserInput, Token};
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use merman_render::__private::{
+    native_export_svg, prepared_text_evidence_valid, prepared_text_label_ledger,
+};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::svg::ResvgCompatibleSvg;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -1042,6 +1048,7 @@ pub enum RasterOutputKind {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RasterExportReport {
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     output: RasterOutputKind,
     raster: RasterPlan,
     embedded_images: EmbeddedImagePlan,
@@ -1055,6 +1062,13 @@ pub struct RasterExportReport {
 impl RasterExportReport {
     pub const fn resource_fingerprint(self) -> merman_render::svg::SvgResourceFingerprint {
         self.resource_fingerprint
+    }
+
+    #[doc(hidden)]
+    pub const fn native_filter_receipt(
+        self,
+    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
+        self.native_filter_receipt
     }
 
     pub const fn output(self) -> RasterOutputKind {
@@ -1092,6 +1106,7 @@ impl RasterExportReport {
 #[derive(Debug, Clone, Copy)]
 struct RasterReportSeed {
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     raster: RasterPlan,
     embedded_images: EmbeddedImagePlan,
     conversion: SvgConversionPlan,
@@ -1142,6 +1157,8 @@ impl PdfPagePlan {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PdfExportReport {
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
+    native_filter_fully_localized: bool,
     page: PdfPagePlan,
     filters: PdfFilterImagePlan,
     embedded_images: EmbeddedImagePlan,
@@ -1154,6 +1171,18 @@ pub struct PdfExportReport {
 impl PdfExportReport {
     pub const fn resource_fingerprint(self) -> merman_render::svg::SvgResourceFingerprint {
         self.resource_fingerprint
+    }
+
+    #[doc(hidden)]
+    pub const fn native_filter_receipt(
+        self,
+    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
+        self.native_filter_receipt
+    }
+
+    #[doc(hidden)]
+    pub const fn native_filter_fully_localized(self) -> bool {
+        self.native_filter_fully_localized
     }
 
     pub const fn page(self) -> PdfPagePlan {
@@ -1217,6 +1246,7 @@ impl PreparedRaster {
     ) -> RasterExportReport {
         RasterExportReport {
             resource_fingerprint: self.report.resource_fingerprint,
+            native_filter_receipt: self.report.native_filter_receipt,
             output,
             raster: self.report.raster,
             embedded_images: self.report.embedded_images,
@@ -1388,7 +1418,7 @@ fn prepare_raster_on_backend_stack(
     svg: &ResvgCompatibleSvg,
     options: &RasterOptions,
 ) -> Result<PreparedRaster> {
-    let source = svg.native_export_svg();
+    let source = native_export_svg(svg);
     let matte = options
         .matte
         .as_deref()
@@ -1404,10 +1434,12 @@ fn prepare_raster_on_backend_stack(
         options.embedded_image_limit,
     )?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse)?;
+    let native_filter_receipt =
+        native_filter_receipt::preflight_native_filter_receipt(source, &tree);
     let font_plan = font_plan.finish_with_tree(
         &tree,
-        svg.prepared_text_label_ledger(),
-        svg.prepared_text_evidence_valid(),
+        prepared_text_label_ledger(svg),
+        prepared_text_evidence_valid(svg),
     );
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
@@ -1420,6 +1452,7 @@ fn prepare_raster_on_backend_stack(
         translate_min_to_origin,
         report: RasterReportSeed {
             resource_fingerprint: svg.resource_fingerprint(),
+            native_filter_receipt,
             raster: plan,
             embedded_images: embedded_image_plan,
             conversion: conversion_plan,
@@ -1443,7 +1476,7 @@ fn prepare_pdf_on_backend_stack(
     svg: &ResvgCompatibleSvg,
     options: &PdfOptions,
 ) -> Result<PreparedPdf> {
-    let source = svg.native_export_svg();
+    let source = native_export_svg(svg);
     validate_pdf_options(options)?;
     let page_paint = options
         .page_paint
@@ -1457,6 +1490,8 @@ fn prepare_pdf_on_backend_stack(
         options.embedded_image_limit,
     )?;
     let (tree, font_plan) = parse_pdf_tree(svg)?;
+    let native_filter_receipt =
+        native_filter_receipt::preflight_native_filter_receipt(source, &tree);
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
     let svg_size = pdf_svg_size(&tree)?;
@@ -1467,8 +1502,17 @@ fn prepare_pdf_on_backend_stack(
         options.filter_scale,
         options.filter_image_limit,
     )?;
+    let native_filter_fully_localized = pdf_native_filter_fully_localized(
+        &tree,
+        layout.drawing_size.width() / svg_size.width(),
+        options.filter_scale,
+        filter_plan,
+        native_filter_receipt,
+    );
     let report = PdfExportReport {
         resource_fingerprint: svg.resource_fingerprint(),
+        native_filter_receipt,
+        native_filter_fully_localized,
         page: layout.plan(),
         filters: filter_plan,
         embedded_images: embedded_image_plan,
@@ -1571,11 +1615,11 @@ fn parse_pdf_tree(svg: &ResvgCompatibleSvg) -> Result<(usvg::Tree, ExportFontPla
     let mut opts = usvg::Options::default();
     let font_plan = configure_usvg_options_for_pdf(&mut opts, svg)?;
     let tree =
-        usvg::Tree::from_str(svg.native_export_svg(), &opts).map_err(|_| ExportError::SvgParse)?;
+        usvg::Tree::from_str(native_export_svg(svg), &opts).map_err(|_| ExportError::SvgParse)?;
     let font_plan = font_plan.finish_with_tree(
         &tree,
-        svg.prepared_text_label_ledger(),
-        svg.prepared_text_evidence_valid(),
+        prepared_text_label_ledger(svg),
+        prepared_text_evidence_valid(svg),
     );
     Ok((tree, font_plan))
 }
@@ -1915,6 +1959,42 @@ fn pdf_filtered_group_bounds(tree: &usvg::Tree) -> Vec<(f64, f64)> {
         }
     }
     bounds
+}
+
+#[cfg(feature = "pdf")]
+fn pdf_native_filter_fully_localized(
+    tree: &usvg::Tree,
+    page_scale: f32,
+    requested_scale: f32,
+    filter_plan: PdfFilterImagePlan,
+    receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
+) -> bool {
+    let Some(receipt) = receipt else {
+        return false;
+    };
+    let Ok(reference_count) = usize::try_from(receipt.reference_count()) else {
+        return false;
+    };
+    if filter_plan.limited
+        || filter_plan.effective_scale != requested_scale
+        || filter_plan.filtered_groups != reference_count
+    {
+        return false;
+    }
+
+    let bounds = pdf_filtered_group_bounds(tree);
+    if bounds.len() != reference_count {
+        return false;
+    }
+    let scale = f64::from(page_scale) * f64::from(requested_scale);
+    bounds.into_iter().all(|(width, height)| {
+        let width = width * scale;
+        let height = height * scale;
+        width.is_finite()
+            && height.is_finite()
+            && width <= KRILLA_MAX_FILTER_SIDE_PX
+            && height <= KRILLA_MAX_FILTER_SIDE_PX
+    })
 }
 
 #[cfg(feature = "pdf")]

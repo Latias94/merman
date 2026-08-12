@@ -78,7 +78,10 @@ impl Deref for FlowchartRenderModelRef<'_> {
 
 pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter;
 
-pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
+pub(crate) use config::{
+    FlowchartConfigView, FlowchartLayoutSettings, FlowchartTypographyConfigOwnership,
+    flowchart_typography_config_ownership,
+};
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
@@ -104,7 +107,8 @@ pub(crate) use style::{
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes,
     flowchart_effective_text_style_for_node_classes_with_provenance,
-    flowchart_split_mermaid_style_decls, flowchart_swimlane_label_rect_text_style,
+    flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
+    flowchart_swimlane_label_rect_text_style,
     flowchart_swimlane_label_rect_text_style_with_provenance,
 };
 pub(crate) use svg_label_artifact::{
@@ -114,5 +118,6 @@ pub(crate) use svg_label_artifact::{
     measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
 pub(crate) use theme_evidence::{
-    FlowchartNodeThemeStyle, FlowchartSourcePaintStatus, FlowchartThemeEvidenceRecorder,
+    FlowchartFacetPrecedence, FlowchartNodeThemeEmission, FlowchartNodeThemeStyle,
+    FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder, FlowchartThemeFacetEmission,
 };

@@ -15,7 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> bool {
+) -> Option<super::super::emission::FlowchartNodeShapeRenderOutcome> {
     match common.shape {
         // Flowchart v2 anchor: a tiny dot used as an invisible anchor node. Mermaid ignores
         // `node.label` and does not emit a label group.
@@ -29,13 +29,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 r##"<g class="anchor" style=""><path d="{}" stroke="none" stroke-width="0" fill="black"/></g>"##,
                 escape_attr(&d),
             );
-            true
+            rendered(super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified())
         }
         // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
         // Mermaid ignores `node.label` for these shapes and does not emit a label group.
         "sm-circ" | "small-circle" | "start" => {
-            out.push_str(r#"<circle class="state-start" r="7" width="14" height="14"/>"#);
-            true
+            if common.theme_style.is_empty() {
+                out.push_str(r#"<circle class="state-start" r="7" width="14" height="14"/>"#);
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<circle class="state-start" r="7" width="14" height="14" style="{}"/>"#,
+                    escape_attr(common.theme_style),
+                );
+            }
+            rendered(super::super::emission::FlowchartNodeShapeEmissionReceipt::start())
         }
         "fr-circ" | "framed-circle" | "stop" => {
             let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
@@ -70,7 +78,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 fork/join (no label; uses `lineColor` fill/stroke).
         "fork" | "join" => {
@@ -108,7 +119,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 "rendering-elements" alias for state diagram choice pseudo-state.
         // Mermaid ignores `node.label` and does not emit a label group.
@@ -130,7 +144,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label` and does
         // not emit a label group.
@@ -176,7 +193,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 filled circle (junction). Mermaid clears `node.label` and does not emit a
         // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
@@ -208,7 +228,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(effective_style.as_ref()),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
@@ -274,8 +297,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
             );
-            true
+            rendered(
+                super::super::emission::FlowchartNodeShapeEmissionReceipt::common_style_unverified(
+                ),
+            )
         }
-        _ => false,
+        _ => None,
     }
+}
+
+fn rendered(
+    paint: super::super::emission::FlowchartNodeShapeEmissionReceipt,
+) -> Option<super::super::emission::FlowchartNodeShapeRenderOutcome> {
+    Some(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint))
 }

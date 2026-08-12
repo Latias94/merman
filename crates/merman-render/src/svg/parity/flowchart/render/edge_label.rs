@@ -145,6 +145,22 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         &compiled_label_styles,
         false,
     );
+    let record_label_source = |typography_verified, sanitized_xhtml: Option<&str>| {
+        let residuals = sanitized_xhtml.map_or_else(
+            || {
+                compiled_label_styles
+                    .emitted_label_source_residuals(edge.id.as_str(), typography_verified)
+            },
+            |sanitized_xhtml| {
+                compiled_label_styles.emitted_html_label_source_residuals(
+                    edge.id.as_str(),
+                    typography_verified,
+                    sanitized_xhtml,
+                )
+            },
+        );
+        ctx.theme_evidence.record_source_residuals(&residuals);
+    };
 
     fn fallback_midpoint(
         le: &crate::model::LayoutEdge,
@@ -209,6 +225,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             );
                         }
                         out.push_str("</g></g></g>");
+                        record_label_source(label_type != "markdown", None);
                         return;
                     }
                 } else {
@@ -253,6 +270,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         );
                     }
                     out.push_str("</g></g></g>");
+                    record_label_source(label_type != "markdown", None);
                     return;
                 }
             }
@@ -301,6 +319,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                 }
                 out.push_str("</g></g></g>");
+                record_label_source(label_type != "markdown", None);
                 return;
             }
         }
@@ -312,6 +331,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         );
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
+        record_label_source(false, None);
         return;
     }
 
@@ -361,6 +381,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
+            record_label_source(true, Some(&label_html));
             return;
         }
 
@@ -432,6 +453,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
+            record_label_source(true, Some(&label_html));
             return;
         }
     }
@@ -443,6 +465,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         escape_xml_display(&div_style_prefix),
         span_style_attr
     );
+    record_label_source(true, None);
 }
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
@@ -468,8 +491,14 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let first_label_style = ctx
         .default_edge_style
         .first()
-        .or_else(|| edge.style.first())
-        .map_or("", String::as_str);
+        .or_else(|| edge.style.first());
+    let compiled_label_styles = flowchart_compile_styles(
+        &IndexMap::new(),
+        &[],
+        first_label_style.map(std::slice::from_ref).unwrap_or(&[]),
+        &[],
+    );
+    let first_label_style = first_label_style.map_or("", String::as_str);
     let label_text_style = crate::flowchart::flowchart_swimlane_label_rect_text_style(
         &ctx.text_style,
         &ctx.default_edge_style,
@@ -501,6 +530,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         fmt_display(-width / 2.0),
         fmt_display(-height / 2.0),
     );
+    ctx.theme_evidence.record_source_residuals(
+        &compiled_label_styles.emitted_shape_source_residuals(edge.id.as_str(), true),
+    );
 
     if ctx.node_html_labels {
         let label_html =
@@ -528,6 +560,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             OptionalStyleXmlAttr(&html_label_style),
             label_html,
         );
+        ctx.theme_evidence.record_source_residuals(
+            &compiled_label_styles.emitted_html_label_source_residuals(
+                edge.id.as_str(),
+                true,
+                &label_html,
+            ),
+        );
         return;
     }
 
@@ -547,6 +586,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     );
     write_flowchart_svg_label_plan(out, &prepared, true);
     out.push_str("</g></g></g>");
+    ctx.theme_evidence.record_source_residuals(
+        &compiled_label_styles.emitted_label_source_residuals(edge.id.as_str(), true),
+    );
 }
 
 #[cfg(test)]

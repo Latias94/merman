@@ -50,6 +50,31 @@ fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &se
     );
 }
 
+pub(super) fn write_state_theme_effect_application(
+    out: &mut String,
+    scoped_filter_id: &str,
+    effect: &crate::state::StateSvgEffect,
+) -> String {
+    let region = effect.region();
+    let id = escape_attr(scoped_filter_id);
+    let color = escape_attr(&effect.color().as_css());
+    // Keep the SVG filter default explicit. `sRGB` causes a large dark-color gamma shift in the
+    // native resvg path, while `linearRGB` preserves the authored color within 8-bit quantization.
+    let _ = write!(
+        out,
+        r#"<defs><filter id="{}" filterUnits="objectBoundingBox" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{}" dy="{}" stdDeviation="0" flood-color="{}"/></filter></defs>"#,
+        id,
+        region.x,
+        region.y,
+        region.width,
+        region.height,
+        effect.offset_x(),
+        effect.offset_y(),
+        color,
+    );
+    format!("url(#{scoped_filter_id})")
+}
+
 pub(super) fn state_markers(
     out: &mut String,
     diagram_id: &str,

@@ -71,8 +71,9 @@
 //!
 //! A fresh `HeadlessRenderer` keeps the Mermaid parity SVG contract for
 //! `HeadlessRenderer::render_svg_sync`. Calling `with_svg_pipeline` installs a
-//! renderer-owned output pipeline for that method. Product presentation is selected
-//! independently with `HeadlessRenderer::with_presentation`. Use
+//! renderer-owned output pipeline for that method. Compile a [`svg::DiagramThemeSpec`] with
+//! [`svg::DiagramThemeCompiler`] and install the resulting theme independently with
+//! `HeadlessRenderer::with_theme`. Use
 //! `HeadlessRenderer::render_svg_readable_sync` when browser
 //! `<foreignObject>` labels may need readable `<text>` fallbacks, and
 //! `HeadlessRenderer::render_resvg_compatible_svg_sync` when the output will be

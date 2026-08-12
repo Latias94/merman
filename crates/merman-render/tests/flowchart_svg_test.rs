@@ -516,6 +516,70 @@ style C fill:#ff99ff,stroke:#333333,stroke-width:4px
 }
 
 #[test]
+fn flowchart_icon_and_image_labels_emit_the_typography_used_for_measurement() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+I@{ icon: "missing:icon", label: "Icon" }
+C@{ icon: "missing:icon", form: "circle", label: "Circle" }
+S@{ icon: "missing:icon", form: "square", label: "Square" }
+M@{ img: "https://mermaid.js.org/favicon.svg", label: "Image", h: 60, constraint: "on" }
+classDef themed font-family:Arial,font-size:28px,font-weight:700,font-style:italic,letter-spacing:2px,color:#123456
+class I,C,S,M themed
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    for node_id in ["I", "C", "S", "M"] {
+        let id_prefix = format!("merman-flowchart-{node_id}-");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.starts_with(&id_prefix))
+            })
+            .unwrap_or_else(|| panic!("missing Flowchart node {node_id}: {svg}"));
+        let label = node
+            .descendants()
+            .find(|child| child.has_tag_name("g") && child.attribute("class") == Some("label"))
+            .unwrap_or_else(|| panic!("missing label for Flowchart node {node_id}: {svg}"));
+        let group_style = label.attribute("style").unwrap_or_default();
+        for declaration in [
+            "font-family:Arial !important",
+            "font-size:28px !important",
+            "font-weight:700 !important",
+            "font-style:italic !important",
+            "letter-spacing:2px !important",
+            "color:#123456 !important",
+        ] {
+            assert!(
+                group_style.contains(declaration),
+                "node {node_id} label must emit {declaration}: {svg}"
+            );
+        }
+
+        let span_style = label
+            .descendants()
+            .find(|child| child.has_tag_name("span"))
+            .and_then(|span| span.attribute("style"))
+            .unwrap_or_default();
+        assert_eq!(span_style, group_style, "node {node_id}: {svg}");
+
+        let label_height = label
+            .descendants()
+            .find(|child| child.has_tag_name("foreignObject"))
+            .and_then(|foreign_object| foreign_object.attribute("height"))
+            .and_then(|height| height.parse::<f64>().ok())
+            .unwrap_or_else(|| panic!("missing label metrics for node {node_id}: {svg}"));
+        assert!(
+            label_height > 28.0,
+            "node {node_id} must be measured with the emitted 28px font: {svg}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_svg_renders_one_logical_self_loop_edge() {
     let svg = render_flowchart_svg_from_text("flowchart TB\nA -->|again| A\n");
 
@@ -937,7 +1001,9 @@ fn flowchart_layout_handles_deep_subgraph_chain() {
 
 #[test]
 fn flowchart_svg_handles_deep_subgraph_chain() {
-    const DEPTH: usize = 1200;
+    // Keep the SVG fixture below the backend's f32 coordinate safety ceiling while retaining
+    // enough nesting to exercise the deep-render path.
+    const DEPTH: usize = 1100;
     let text = deep_flowchart_subgraph_chain(DEPTH);
 
     let svg = render_flowchart_svg_from_text_with_engine_and_policy(
@@ -2406,6 +2472,145 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
     assert!(
         svg.contains(r#"<span class="nodeLabel" style="color:#fff !important">"#),
         "expected empty subgraph inline label style to be applied: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_node_style_preserves_source_css_while_using_canonical_winners() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+style A FILL:#ef4444,stroke:#111827,f\69ll:#22c55e,stroke:#334155
+",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-flowchart-A-"))
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A: {svg}"));
+    let shape = node
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    let mut tokens = class.split_ascii_whitespace();
+                    tokens.any(|token| token == "basic")
+                        && class
+                            .split_ascii_whitespace()
+                            .any(|token| token == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A shape: {svg}"));
+
+    assert_eq!(
+        shape.attribute("style"),
+        Some(r"FILL:#ef4444 !important;stroke:#334155 !important;f\69ll:#22c55e !important"),
+        "source CSS spelling and order must survive the no-theme render path: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_node_style_routes_label_keys_by_source_identity() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+style A COLOR:#ef4444,color:#22c55e,c\6flor:#2563eb
+",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-flowchart-A-"))
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A: {svg}"));
+    let shape = node
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|token| token == "basic")
+                        && class
+                            .split_ascii_whitespace()
+                            .any(|token| token == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A shape: {svg}"));
+    let label = node
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("span")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "nodeLabel")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing Flowchart node A label: {svg}"));
+
+    assert_eq!(
+        shape.attribute("style"),
+        Some(r"COLOR:#ef4444 !important;c\6flor:#2563eb !important"),
+        "only the exact pinned-Mermaid label keys may leave the node style channel: {svg}"
+    );
+    assert_eq!(
+        label.attribute("style"),
+        Some("color:#22c55e !important"),
+        "the exact lowercase label key must retain its source value and position: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_classdef_css_uses_cssom_property_cascade_with_safe_values() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+classDef hot FILL:#ef4444,stroke:#111827,f\69ll:#22c55e,filter:url(https://example.com/filter.svg#x)
+class A hot
+",
+    );
+
+    assert!(
+        svg.contains(
+            "#merman .hot&gt;*{stroke:rgb(17, 24, 39)!important;fill:rgb(34, 197, 94)!important;}"
+        ),
+        "generated classDef CSS must use the CSSOM winner identity and order: {svg}"
+    );
+    assert!(
+        !svg.contains("example.com/filter.svg"),
+        "the headless safe-value boundary intentionally remains narrower than browser CSSOM: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_classdef_text_styles_preserve_pre_cssom_source_classification() {
+    let svg = render_flowchart_svg_from_text(
+        r"flowchart LR
+A[Alpha]
+classDef hot color:#ef4444,COLOR:#22c55e,--Br\61nd:#f59e0b,--fill-color:#2563eb
+class A hot
+",
+    );
+
+    assert!(
+        svg.contains(
+            "#merman .hot&gt;*{color:rgb(34, 197, 94)!important;--Brand:#f59e0b!important;--fill-color:#2563eb!important;}"
+        ),
+        "generated classDef shape CSS must use CSSOM property identity and spelling: {svg}"
+    );
+    assert!(
+        svg.contains(
+            "#merman .hot tspan{fill:rgb(239, 68, 68)!important;--bgFill-fill:#2563eb!important;}"
+        ),
+        "the tspan rule must come from Mermaid's source-classified lowercase color declaration: {svg}"
     );
 }
 

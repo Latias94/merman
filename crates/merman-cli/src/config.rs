@@ -18,8 +18,8 @@ use crate::invocation::ResolvedRenderOptions;
 use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::svg::{
-    DiagramThemeCompiler, HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer,
-    RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy, ThemePreset,
+    __private::trusted_rust_cli_environment, DiagramThemeCompiler, HeadlessRenderer, IconRegistry,
+    LayoutOptions, MathRenderer, SvgRenderOptions, TextMeasurementPolicy, ThemePreset,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::compile_theme_selection_json_with;
@@ -111,11 +111,6 @@ impl ResolvedCliRuntimePolicy {
 
     fn apply_engine(&self, engine: Engine) -> Engine {
         engine.with_runtime_policy(self.runtime_policy.clone())
-    }
-
-    #[cfg(feature = "svg")]
-    fn apply_environment(&self, environment: RenderEnvironment) -> RenderEnvironment {
-        environment.with_runtime_policy(self.runtime_policy.clone())
     }
 }
 
@@ -290,7 +285,7 @@ fn renderer_from_config(
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<HeadlessRenderer, CliError> {
-    let mut environment = RenderEnvironment::deterministic()
+    let mut environment = trusted_rust_cli_environment(runtime.runtime_policy.clone())
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
         .with_resource_policy(resources.render_policy());
     if let Some(kind) = render.math_renderer {
@@ -302,8 +297,6 @@ fn renderer_from_config(
     if let Some(registry) = icon_registry {
         environment = environment.with_icon_registry(registry);
     }
-    environment = runtime.apply_environment(environment);
-
     let svg = SvgRenderOptions {
         diagram_id: render.svg_id.map(merman::svg::sanitize_svg_id),
         ..SvgRenderOptions::default()

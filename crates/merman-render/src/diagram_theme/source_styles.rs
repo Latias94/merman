@@ -141,6 +141,7 @@ pub(crate) struct PreparedSourceStyleDeclaration {
     raw: String,
     property: String,
     property_css: String,
+    source_value: String,
     value: String,
     analysis: CssValueAnalysis,
 }
@@ -156,6 +157,7 @@ impl PreparedSourceStyleDeclaration {
             raw: raw.trim().to_string(),
             property: parsed.property().to_string(),
             property_css: parsed.property_css().to_string(),
+            source_value: parsed.source_value().to_string(),
             value: parsed.value().to_string(),
             analysis: parsed.analysis().clone(),
         }
@@ -182,6 +184,11 @@ impl PreparedSourceStyleDeclaration {
     /// Returns the validated source spelling suitable for CSS emission.
     pub(crate) fn property_css(&self) -> &str {
         &self.property_css
+    }
+
+    /// Returns the source value used by Mermaid-compatible CSS emission.
+    pub(crate) fn source_value(&self) -> &str {
+        &self.source_value
     }
 
     pub(crate) fn value(&self) -> &str {

@@ -1082,6 +1082,7 @@ dependencies = [
  "merman-core",
  "merman-export",
  "merman-render",
+ "quick-xml",
  "serde_json",
  "thiserror 2.0.19",
 ]

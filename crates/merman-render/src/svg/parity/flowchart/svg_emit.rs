@@ -112,11 +112,17 @@ pub(super) fn render_flowchart_svg_model(
         default_edge_style,
         node_border_color,
         node_fill_color,
+        node_stroke_width,
+        node_typography_config_ownership,
+        node_border_config_override,
+        node_fill_config_override,
+        node_stroke_width_config_override,
         node_corner_radius,
+        node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
-    } = prepare_flowchart_render_config(model, effective_config_value, diagram_type);
+    } = prepare_flowchart_render_config(model, effective_config, diagram_type);
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
@@ -229,6 +235,8 @@ pub(super) fn render_flowchart_svg_model(
     let ty = 0.0;
 
     let node_dom_index = flowchart_node_dom_indices(model);
+    let node_theme_ordinals =
+        flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
 
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let ctx = FlowchartRenderCtx {
@@ -254,7 +262,13 @@ pub(super) fn render_flowchart_svg_model(
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
+        node_stroke_width,
+        node_typography_config_ownership,
+        node_border_config_override,
+        node_fill_config_override,
+        node_stroke_width_config_override,
         node_corner_radius,
+        node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
@@ -280,6 +294,7 @@ pub(super) fn render_flowchart_svg_model(
         swimlane_edge_label_edges_by_node_id,
         dom_node_order_by_root: &layout.dom_node_order_by_root,
         node_dom_index,
+        node_theme_ordinals,
         node_padding,
         wrapping_width,
         node_wrap_mode,
@@ -482,6 +497,106 @@ pub(super) fn render_flowchart_svg_model(
         );
     }
     root_document.complete(out)
+}
+
+fn flowchart_node_theme_ordinals<'a>(
+    nodes: &'a [crate::flowchart::FlowNode],
+    subgraphs: &'a [crate::flowchart::FlowSubgraph],
+    uses_elk_adapter_dom: bool,
+) -> FxHashMap<&'a str, usize> {
+    let subgraph_ids: FxHashSet<&str> = subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.as_str())
+        .collect();
+    let mut ordinals = FxHashMap::default();
+    let mut next_ordinal = 1usize;
+
+    // Theme ordinals describe surfaces that reach the Node emitter, not Graphlib/ELK vertices.
+    // ELK materializes every subgraph as a node in the semantic model, but renders it as a
+    // cluster. Dagre renders only empty subgraphs through the ordinary Node surface.
+    for node in nodes {
+        if subgraph_ids.contains(node.id.as_str()) {
+            continue;
+        }
+        if let std::collections::hash_map::Entry::Vacant(entry) = ordinals.entry(node.id.as_str()) {
+            entry.insert(next_ordinal);
+            next_ordinal += 1;
+        }
+    }
+
+    if !uses_elk_adapter_dom {
+        for subgraph in subgraphs
+            .iter()
+            .filter(|subgraph| subgraph.nodes.is_empty())
+        {
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                ordinals.entry(subgraph.id.as_str())
+            {
+                entry.insert(next_ordinal);
+                next_ordinal += 1;
+            }
+        }
+    }
+
+    ordinals
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: &str) -> crate::flowchart::FlowNode {
+        crate::flowchart::FlowNode {
+            id: id.to_string(),
+            label: None,
+            label_type: None,
+            layout_shape: None,
+            shape: None,
+            icon: None,
+            form: None,
+            pos: None,
+            img: None,
+            constraint: None,
+            asset_width: None,
+            asset_height: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            link: None,
+            link_target: None,
+            have_callback: false,
+        }
+    }
+
+    fn subgraph(id: &str, nodes: &[&str]) -> crate::flowchart::FlowSubgraph {
+        crate::flowchart::FlowSubgraph {
+            id: id.to_string(),
+            title: id.to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: nodes.iter().map(|node| (*node).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn node_theme_ordinals_follow_actual_node_emitter_surfaces() {
+        let nodes = vec![node("A"), node("group"), node("A"), node("empty")];
+        let subgraphs = vec![subgraph("group", &["A"]), subgraph("empty", &[])];
+
+        let dagre = flowchart_node_theme_ordinals(&nodes, &subgraphs, false);
+        assert_eq!(dagre.len(), 2);
+        assert_eq!(dagre.get("A"), Some(&1));
+        assert_eq!(dagre.get("empty"), Some(&2));
+        assert!(!dagre.contains_key("group"));
+
+        let elk = flowchart_node_theme_ordinals(&nodes, &subgraphs, true);
+        assert_eq!(elk.len(), 1);
+        assert_eq!(elk.get("A"), Some(&1));
+        assert!(!elk.contains_key("group"));
+        assert!(!elk.contains_key("empty"));
+    }
 }
 
 fn push_flowchart_shadow_defs(

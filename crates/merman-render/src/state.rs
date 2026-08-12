@@ -61,10 +61,16 @@ impl RectWithTitleGeometry {
 }
 
 mod config;
+mod effect_evidence;
+mod effect_plan;
 mod layout;
 mod style_plan;
 
 pub(crate) use config::StateConfigView;
+pub(crate) use effect_evidence::StateSvgEffectEvidenceRecorder;
+pub(crate) use effect_plan::{
+    StateEffectOutsets, StateEffectPlan, StateNodeEffectPlan, StateSvgEffect,
+};
 pub(crate) use style_plan::{
     ResolvedLabelTypography, StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan,
     StateStylePlan,

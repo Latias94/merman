@@ -46,7 +46,7 @@ fn write_swimlane_rect(
     height: f64,
     fill: Option<&str>,
     stroke: &str,
-) {
+) -> bool {
     if flowchart_config_look(ctx.config) == "handDrawn" {
         let stroke_width = parse_css_px_f32(compiled.stroke_width.as_ref(), 1.3);
         let stroke_dasharray = compiled.stroke_dasharray.as_deref().unwrap_or("0 0").trim();
@@ -93,7 +93,7 @@ fn write_swimlane_rect(
                 escape_xml_display(stroke_dasharray),
                 OptionalStyleXmlAttr(&border_style),
             );
-            return;
+            return false;
         }
     }
 
@@ -109,6 +109,7 @@ fn write_swimlane_rect(
         escape_xml_display(fill.unwrap_or("none")),
         escape_xml_display(stroke),
     );
+    true
 }
 
 fn lane_label_metrics(
@@ -214,11 +215,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     }
     out.push('>');
 
+    let mut shape_source_verified = true;
     let (label_x, label_y, label_transform) = if is_lr {
         let title_width = desired_title_size.max(label_height + 2.0 * title_padding_y);
         let body_x = lane_left + title_width;
         let body_width = (width - title_width).max(0.0);
-        write_swimlane_rect(
+        shape_source_verified &= write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -231,7 +233,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             None,
             &theme.cluster_border,
         );
-        write_swimlane_rect(
+        shape_source_verified &= write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -262,7 +264,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         let title_height = desired_title_size.min(header_max_height);
         let body_y = lane_top + title_height;
         let body_height = (lane_bottom - body_y).max(0.0);
-        write_swimlane_rect(
+        shape_source_verified &= write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -275,7 +277,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             None,
             &theme.cluster_border,
         );
-        write_swimlane_rect(
+        shape_source_verified &= write_swimlane_rect(
             out,
             ctx,
             &compiled,
@@ -294,6 +296,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             String::new(),
         )
     };
+    ctx.theme_evidence.record_source_residuals(
+        &compiled.emitted_shape_source_residuals(lane.id.as_str(), shape_source_verified),
+    );
 
     if ctx.swimlane_title_html_labels {
         let title_html =
@@ -321,6 +326,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             OptionalStyleXmlAttr(label_style),
             title_html,
         );
+        ctx.theme_evidence
+            .record_source_residuals(&compiled.emitted_html_label_source_residuals(
+                lane.id.as_str(),
+                true,
+                &title_html,
+            ));
     } else {
         let transform = if is_lr {
             label_transform
@@ -338,6 +349,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         );
         write_flowchart_svg_text_markdown(out, render_title, true);
         out.push_str("</g></g>");
+        ctx.theme_evidence.record_source_residuals(
+            &compiled.emitted_label_source_residuals(lane.id.as_str(), false),
+        );
     }
     out.push_str("</g>");
 }

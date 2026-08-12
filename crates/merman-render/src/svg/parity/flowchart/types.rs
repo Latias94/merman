@@ -33,7 +33,14 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
+    pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
+    pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
+        crate::flowchart::FlowchartTypographyConfigOwnership,
+    pub(in crate::svg::parity::flowchart) node_border_config_override: bool,
+    pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
+    pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_corner_radius: f64,
+    pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) edge_label_padding: f64,
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
@@ -69,6 +76,9 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
         &'a std::collections::HashMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
+    /// Dense one-based semantic Node ordinals used by theme ordinal selectors. This differs from
+    /// DOM suffixes, which include repeated vertex references and synthetic nodes.
+    pub(in crate::svg::parity::flowchart) node_theme_ordinals: FxHashMap<&'a str, usize>,
     pub(in crate::svg::parity::flowchart) node_padding: f64,
     pub(in crate::svg::parity::flowchart) wrapping_width: f64,
     pub(in crate::svg::parity::flowchart) node_wrap_mode: WrapMode,

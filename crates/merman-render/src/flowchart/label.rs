@@ -176,6 +176,11 @@ struct FlowchartSourcePlainPiece {
     plain_range: Range<usize>,
 }
 
+const FLOWCHART_SOURCE_RECORD_BYTES: usize = 128;
+const FLOWCHART_SOURCE_LINE_RECORD_BYTES: usize = 32;
+const FLOWCHART_SOURCE_WORD_RECORD_BYTES: usize = 32;
+const FLOWCHART_SOURCE_PLAIN_PIECE_RECORD_BYTES: usize = 96;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowchartSourceVisibleAtom {
     visible_range: Range<usize>,
@@ -280,13 +285,14 @@ fn flowchart_source_plain_projection(
 }
 
 fn authored_entity_len(text: &str) -> Option<usize> {
-    if !text.starts_with('&') {
+    const MAX_AUTHORED_ENTITY_BYTES: usize = 64;
+
+    let bytes = text.as_bytes();
+    if bytes.first() != Some(&b'&') {
         return None;
     }
-    let end = text.find(';')?.checked_add(1)?;
-    if end > 64 {
-        return None;
-    }
+    let scan = &bytes[..bytes.len().min(MAX_AUTHORED_ENTITY_BYTES)];
+    let end = scan.iter().position(|byte| *byte == b';')?.checked_add(1)?;
     let body = text.get(1..end - 1)?;
     (!body.is_empty() && body.chars().all(|character| !character.is_whitespace())).then_some(end)
 }
@@ -313,6 +319,31 @@ impl FlowchartSvgLabelSource {
             plain_text,
             plain_pieces,
         }
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let mut retained = FLOWCHART_SOURCE_RECORD_BYTES
+            .saturating_add(
+                self.source_lines
+                    .capacity()
+                    .saturating_mul(FLOWCHART_SOURCE_LINE_RECORD_BYTES),
+            )
+            .saturating_add(self.plain_text.capacity())
+            .saturating_add(
+                self.plain_pieces
+                    .capacity()
+                    .saturating_mul(FLOWCHART_SOURCE_PLAIN_PIECE_RECORD_BYTES),
+            );
+        for line in &self.source_lines {
+            retained = retained.saturating_add(
+                line.capacity()
+                    .saturating_mul(FLOWCHART_SOURCE_WORD_RECORD_BYTES),
+            );
+            for word in line {
+                retained = retained.saturating_add(word.capacity());
+            }
+        }
+        retained
     }
 
     pub(crate) fn plain_text(&self) -> &str {
@@ -1529,6 +1560,74 @@ mod tests {
     use super::*;
     use crate::math::MathRenderer;
     use crate::model::{LayoutLabel, LayoutPoint};
+
+    #[test]
+    fn source_retained_model_bounds_native_allocations() {
+        assert!(FLOWCHART_SOURCE_RECORD_BYTES >= std::mem::size_of::<FlowchartSvgLabelSource>());
+        assert!(FLOWCHART_SOURCE_LINE_RECORD_BYTES >= std::mem::size_of::<Vec<String>>());
+        assert!(FLOWCHART_SOURCE_WORD_RECORD_BYTES >= std::mem::size_of::<String>());
+        assert!(
+            FLOWCHART_SOURCE_PLAIN_PIECE_RECORD_BYTES
+                >= std::mem::size_of::<FlowchartSourcePlainPiece>()
+        );
+
+        let source = FlowchartSvgLabelSource::new(&"alpha &amp; beta ".repeat(128));
+        let native_allocations = std::mem::size_of::<FlowchartSvgLabelSource>()
+            .saturating_add(
+                source
+                    .source_lines
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<Vec<String>>()),
+            )
+            .saturating_add(source.plain_text.capacity())
+            .saturating_add(
+                source
+                    .plain_pieces
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<FlowchartSourcePlainPiece>()),
+            )
+            .saturating_add(source.source_lines.iter().fold(0usize, |total, line| {
+                total
+                    .saturating_add(
+                        line.capacity()
+                            .saturating_mul(std::mem::size_of::<String>()),
+                    )
+                    .saturating_add(
+                        line.iter()
+                            .fold(0usize, |bytes, word| bytes.saturating_add(word.capacity())),
+                    )
+            }));
+
+        assert!(source.retained_bytes() >= native_allocations);
+    }
+
+    #[test]
+    fn authored_entity_scan_is_bounded_to_sixty_four_bytes() {
+        let longest_admitted = format!("&{};", "a".repeat(62));
+        let first_rejected = format!("&{};", "a".repeat(63));
+        let amplified = format!("{};", "&".repeat(16_384));
+
+        assert_eq!(authored_entity_len(&longest_admitted), Some(64));
+        assert_eq!(authored_entity_len(&first_rejected), None);
+        assert_eq!(authored_entity_len(&amplified), None);
+        assert_eq!(
+            FlowchartSvgLabelSource::new(&amplified).plain_text(),
+            amplified
+        );
+    }
+
+    #[test]
+    fn authored_entity_scan_preserves_unicode_entity_semantics() {
+        assert_eq!(authored_entity_len("&é;"), Some(4));
+        assert_eq!(authored_entity_len("&\u{2003};"), None);
+
+        let split_at_scan_boundary = format!("&{};", "é".repeat(32));
+        assert_eq!(authored_entity_len(&split_at_scan_boundary), None);
+        assert_eq!(
+            FlowchartSvgLabelSource::new(&split_at_scan_boundary).plain_text(),
+            split_at_scan_boundary
+        );
+    }
 
     #[test]
     fn prepared_projection_preserves_entities_breaks_and_long_word_fragments() {

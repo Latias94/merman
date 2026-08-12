@@ -49,8 +49,32 @@ pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item
     parts.into_iter()
 }
 
+pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
+    matches!(
+        key.trim(),
+        "color"
+            | "font-size"
+            | "font-family"
+            | "font-weight"
+            | "font-style"
+            | "text-decoration"
+            | "text-align"
+            | "text-transform"
+            | "line-height"
+            | "letter-spacing"
+            | "word-spacing"
+            | "text-shadow"
+            | "text-overflow"
+            | "white-space"
+            | "word-wrap"
+            | "word-break"
+            | "overflow-wrap"
+            | "hyphens"
+    )
+}
+
 fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str, value: &str) {
-    match key.trim().to_ascii_lowercase().as_str() {
+    match key.trim() {
         "font-size" => {
             let inherited_px = style.as_ref().font_size;
             if let Some(px) = crate::mermaid_style::resolve_mermaid_font_size_px(
@@ -104,6 +128,9 @@ fn apply_text_style_decl_with_provenance(
     value: &str,
     prepared_text_overrides: &mut PreparedTextCssTypographyOverrides,
 ) {
+    if !flowchart_is_source_spelled_label_style_key(key) {
+        return;
+    }
     apply_text_style_decl(style, key, value);
     prepared_text_overrides.observe_declaration(key, value);
 }
@@ -813,6 +840,31 @@ mod tests {
             resolution.prepared_text_overrides.font_family(),
             Some("Excalifont")
         );
+        assert_eq!(resolution.prepared_text_overrides.font_size(), Some("18px"));
+    }
+
+    #[test]
+    fn text_style_resolution_uses_source_spelled_label_property_identity() {
+        let base = TextStyle {
+            font_size: 26.0,
+            ..TextStyle::default()
+        };
+        let class_defs = IndexMap::from([(
+            "accent".to_string(),
+            vec!["FONT-SIZE:22px,Font-Family:Xiaolai SC".to_string()],
+        )]);
+        let classes = vec!["accent".to_string()];
+
+        let resolution = flowchart_effective_text_style_for_classes_with_provenance(
+            &base,
+            &class_defs,
+            &classes,
+            &[],
+        );
+
+        assert_eq!(resolution.font_size, 26.0);
+        assert_eq!(resolution.font_family, None);
+        assert!(resolution.prepared_text_overrides.is_empty());
     }
 
     #[test]

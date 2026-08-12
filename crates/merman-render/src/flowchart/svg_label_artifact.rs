@@ -2,27 +2,36 @@
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
+use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
 
 use rustc_hash::FxHashMap;
 
 use crate::diagram_theme::{
-    ResolvedDiagramTheme, TextTransform as ThemeTextTransform, ThemeTarget, ThemeVariant,
+    ResolvedDiagramTheme, TextTransform as ThemeTextTransform, ThemeTarget, ThemeTextStyle,
+    ThemeVariant,
 };
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
+use crate::resources::{
+    OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
+};
 use crate::text::{
     CatalogAdmittedTextStyle, PendingPreparedTextLabelLedgerEntry, PrepareTextRequest,
     PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLabelId,
     PreparedTextLabelLedgerEntry, PreparedTextLayout, PreparedTextWrap, TextLayoutError,
     TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    merge_prepared_text_typography_with_css_overrides,
+    merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
 };
 
 use super::label::{
     FlowchartLabelMetricsRequest, FlowchartSvgLabelSource, FlowchartSvgWidthMode,
     flowchart_label_metrics_for_layout,
 };
+
+const FLOWCHART_SOURCE_ENTRY_RECORD_BYTES: usize = 64;
+const FLOWCHART_RENDER_ID_RECORD_BYTES: usize = 32;
+const FLOWCHART_PREPARED_OWNER_SLOT_BYTES: usize = 192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FlowchartSvgLabelOwner {
@@ -303,6 +312,14 @@ impl FlowchartSvgTextStyleKey {
             && self.font_weight.as_deref() == style.font_weight.as_deref()
             && self.font_style.as_deref() == style.font_style.as_deref()
     }
+
+    fn retained_bytes(&self) -> usize {
+        self.font_family
+            .as_ref()
+            .map_or(0, String::len)
+            .saturating_add(self.font_weight.as_ref().map_or(0, String::len))
+            .saturating_add(self.font_style.as_ref().map_or(0, String::len))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -429,6 +446,12 @@ impl FlowchartSvgLabelBinding {
     fn is_native(&self) -> bool {
         self.computed_length_carrier.is_none() && self.wrapped_carrier.is_none()
     }
+
+    fn retained_bytes(&self) -> usize {
+        self.wrap_style
+            .retained_bytes()
+            .saturating_add(self.metrics_style.retained_bytes())
+    }
 }
 
 fn canonical_f64_bits(value: f64) -> u64 {
@@ -457,6 +480,7 @@ pub(crate) struct PreparedFlowchartSvgLabel {
     pending_label_entry: Option<PendingPreparedTextLabelLedgerEntry>,
     label_entry: Option<PreparedTextLabelLedgerEntry>,
     label_consumed: Cell<bool>,
+    retained_reservation: RefCell<Option<PreparedTextRetainedReservation>>,
 }
 
 #[derive(Debug)]
@@ -476,6 +500,12 @@ impl FlowchartSvgLabelSourceEntry {
     fn matches(&self, raw_source: &str) -> bool {
         self.raw_source.as_ref() == raw_source
     }
+
+    fn retained_bytes(&self) -> usize {
+        FLOWCHART_SOURCE_ENTRY_RECORD_BYTES
+            .saturating_add(self.raw_source.len())
+            .saturating_add(self.source.retained_bytes())
+    }
 }
 
 impl PreparedFlowchartSvgLabel {
@@ -493,6 +523,7 @@ impl PreparedFlowchartSvgLabel {
             pending_label_entry: None,
             label_entry: None,
             label_consumed: Cell::new(false),
+            retained_reservation: RefCell::new(None),
         }
     }
 
@@ -513,6 +544,10 @@ impl PreparedFlowchartSvgLabel {
         self.admitted_typography
             .as_ref()
             .map(|typography| typography.merge_materialized_emission_font_style(existing))
+    }
+
+    fn emitted_admitted_typography(&self) -> bool {
+        self.admitted_typography.is_some() && self.label_consumed.get()
     }
 
     fn line_height_em(&self) -> Option<f64> {
@@ -567,6 +602,61 @@ impl PreparedFlowchartSvgLabel {
             .then_some(self.label_entry.as_ref())
             .flatten()
     }
+
+    fn retained_bytes(&self) -> usize {
+        const VEC_RECORD_BYTES: usize = 24;
+        const STRING_RECORD_BYTES: usize = 24;
+        const LABEL_RECORD_BYTES: usize = 256;
+
+        let wrapped_lines = self.wrapped_lines.iter().fold(0usize, |total, line| {
+            line.iter().fold(
+                total.saturating_add(VEC_RECORD_BYTES),
+                |line_total, word| {
+                    line_total
+                        .saturating_add(STRING_RECORD_BYTES)
+                        .saturating_add(word.len())
+                },
+            )
+        });
+        LABEL_RECORD_BYTES
+            .saturating_add(self.binding.retained_bytes())
+            .saturating_add(wrapped_lines)
+            .saturating_add(
+                self.admitted_typography
+                    .as_ref()
+                    .map_or(0, CatalogAdmittedTextStyle::retained_bytes),
+            )
+            .saturating_add(
+                self.pending_label_entry
+                    .as_ref()
+                    .map_or(0, PendingPreparedTextLabelLedgerEntry::retained_bytes),
+            )
+            .saturating_add(
+                self.label_entry
+                    .as_ref()
+                    .map_or(0, PreparedTextLabelLedgerEntry::retained_bytes),
+            )
+    }
+
+    fn reserve_retained_bytes(
+        &self,
+        work_meter: &Arc<OperationWorkMeter>,
+        retained_bytes: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let reservation = work_meter.reserve_prepared_text_retained_bytes(retained_bytes)?;
+        *self.retained_reservation.borrow_mut() = Some(reservation);
+        Ok(())
+    }
+
+    fn take_consumed_retained_reservation(&self) -> Option<PreparedTextRetainedReservation> {
+        let entry = self.consumed_label_entry()?;
+        let mut reservation = self.retained_reservation.borrow_mut().take()?;
+        let retained_bytes = entry.retained_bytes();
+        if retained_bytes < reservation.retained_bytes() {
+            reservation.reconcile_downward(retained_bytes);
+        }
+        Some(reservation)
+    }
 }
 
 /// Mutable preparation state used only while one Flowchart family artifact is laid out.
@@ -579,8 +669,11 @@ impl PreparedFlowchartSvgLabel {
 pub(crate) struct FlowchartSvgLabelSidecarBuilder {
     pending: RefCell<PendingFlowchartSvgLabels>,
     prepared_text_layout: Option<PreparedTextLayout>,
+    work_meter: Option<Arc<OperationWorkMeter>>,
     resolved_theme: Option<ResolvedDiagramTheme>,
+    typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     prepared_error: RefCell<Option<TextLayoutError>>,
+    prepared_resource_error: RefCell<Option<ResourceLimitExceeded>>,
     #[cfg(test)]
     prepared_hits: Cell<usize>,
     #[cfg(test)]
@@ -606,10 +699,66 @@ impl FlowchartSvgLabelSidecarBuilder {
         }
     }
 
+    pub(crate) fn new_with_work_meter(
+        prepared_text_layout: Option<&PreparedTextLayout>,
+        resolved_theme: Option<&ResolvedDiagramTheme>,
+        work_meter: Arc<OperationWorkMeter>,
+    ) -> Self {
+        Self {
+            prepared_text_layout: prepared_text_layout.cloned(),
+            work_meter: Some(work_meter),
+            resolved_theme: resolved_theme.cloned(),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn with_typography_config_ownership(
+        mut self,
+        ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
+    ) -> Self {
+        self.typography_config_ownership = ownership;
+        self
+    }
+
     fn record_prepared_error(&self, error: TextLayoutError) {
+        if self.prepared_resource_error.borrow().is_some() {
+            return;
+        }
         let mut prepared_error = self.prepared_error.borrow_mut();
         if prepared_error.is_none() {
             *prepared_error = Some(error);
+        }
+    }
+
+    fn record_prepared_resource_error(&self, error: ResourceLimitExceeded) {
+        let mut prepared_resource_error = self.prepared_resource_error.borrow_mut();
+        if prepared_resource_error.is_none() {
+            *prepared_resource_error = Some(error);
+            self.prepared_error.borrow_mut().take();
+        }
+    }
+
+    fn reserve_prepared_label(
+        &self,
+        label: &PreparedFlowchartSvgLabel,
+        source: &FlowchartSvgLabelSourceEntry,
+        render_id: &str,
+    ) -> bool {
+        let Some(work_meter) = self.work_meter.as_ref() else {
+            return true;
+        };
+        let retained_bytes = label
+            .retained_bytes()
+            .saturating_add(source.retained_bytes())
+            .saturating_add(FLOWCHART_RENDER_ID_RECORD_BYTES)
+            .saturating_add(render_id.len())
+            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES);
+        match label.reserve_retained_bytes(work_meter, retained_bytes) {
+            Ok(()) => true,
+            Err(error) => {
+                self.record_prepared_resource_error(error);
+                false
+            }
         }
     }
 
@@ -719,7 +868,8 @@ impl FlowchartSvgLabelSidecarBuilder {
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
-        if self.prepared_error.borrow().is_some() {
+        if self.prepared_error.borrow().is_some() || self.prepared_resource_error.borrow().is_some()
+        {
             return failed_prepared_metrics();
         }
         if !supports_svg_source_preparation(&request) {
@@ -904,6 +1054,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             request.style,
             metrics_style,
             typography_overrides,
+            self.typography_config_ownership,
         )?;
         debug_assert_eq!(
             wrapping_typography.catalog_fingerprint(),
@@ -916,22 +1067,23 @@ impl FlowchartSvgLabelSidecarBuilder {
             "prepared Flowchart metrics typography must remain bound to the active catalog"
         );
         if source.source.plain_text().is_empty() {
+            let label = PreparedFlowchartSvgLabel::new(
+                binding.into_owned(),
+                Vec::new(),
+                TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                },
+                Some(metrics_typography),
+            );
+            if !self.reserve_prepared_label(&label, &source, render_id) {
+                return Ok(failed_prepared_metrics());
+            }
             let mut pending = self.pending.borrow_mut();
             pending.render_ids.insert(owner, render_id.into());
             pending.sources.insert(owner, source);
-            pending.prepared.insert(
-                owner,
-                PreparedFlowchartSvgLabel::new(
-                    binding.into_owned(),
-                    Vec::new(),
-                    TextMetrics {
-                        width: 0.0,
-                        height: 0.0,
-                        line_count: 0,
-                    },
-                    Some(metrics_typography),
-                ),
-            );
+            pending.prepared.insert(owner, label);
             return Ok(TextMetrics {
                 width: 0.0,
                 height: 0.0,
@@ -951,18 +1103,20 @@ impl FlowchartSvgLabelSidecarBuilder {
             .clone()
             .with_transform(ThemeTextTransform::None);
 
-        let prepared = layout.prepare_text(
-            &PrepareTextRequest::new(
-                source_projection.visible_text(),
-                prepared_wrapping_typography,
-            )
-            .with_metrics_typography(prepared_metrics_typography)
-            .with_family_normalized_projection()
-            .with_wrap(PreparedTextWrap::SvgLike {
-                max_width_px: request.max_width_px,
-                break_long_words,
-            }),
-        )?;
+        let request = PrepareTextRequest::new(
+            source_projection.visible_text(),
+            prepared_wrapping_typography,
+        )
+        .with_metrics_typography(prepared_metrics_typography)
+        .with_family_normalized_projection()
+        .with_wrap(PreparedTextWrap::SvgLike {
+            max_width_px: request.max_width_px,
+            break_long_words,
+        });
+        let prepared = match self.work_meter.as_deref() {
+            Some(work_meter) => layout.prepare_text_with_work_meter(&request, work_meter)?,
+            None => layout.prepare_text(&request)?,
+        };
         let wrapped_lines = source
             .source
             .project_prepared_lines(&source_projection, &prepared)?;
@@ -978,19 +1132,20 @@ impl FlowchartSvgLabelSidecarBuilder {
                 .fold(0.0, f64::max);
         }
 
+        let label = PreparedFlowchartSvgLabel::new(
+            binding.into_owned(),
+            wrapped_lines,
+            metrics,
+            Some(metrics_typography),
+        )
+        .with_label_entry(label_entry);
+        if !self.reserve_prepared_label(&label, &source, render_id) {
+            return Ok(failed_prepared_metrics());
+        }
         let mut pending = self.pending.borrow_mut();
         pending.render_ids.insert(owner, render_id.into());
         pending.sources.insert(owner, source);
-        pending.prepared.insert(
-            owner,
-            PreparedFlowchartSvgLabel::new(
-                binding.into_owned(),
-                wrapped_lines,
-                metrics,
-                Some(metrics_typography),
-            )
-            .with_label_entry(label_entry),
-        );
+        pending.prepared.insert(owner, label);
         Ok(metrics)
     }
 
@@ -1003,6 +1158,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             pending.prepared,
             pending.render_ids,
             self.prepared_error.into_inner(),
+            self.prepared_resource_error.into_inner(),
             #[cfg(test)]
             source_plans_by_owner,
         )
@@ -1105,6 +1261,7 @@ fn native_typography_pair(
     wrap_style: &TextStyle,
     metrics_style: &TextStyle,
     typography_overrides: FlowchartLabelTypographyOverrides<'_>,
+    config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
 ) -> Result<(CatalogAdmittedTextStyle, CatalogAdmittedTextStyle), TextLayoutError> {
     let target = match owner {
         FlowchartSvgLabelOwner::Node(_)
@@ -1120,17 +1277,56 @@ fn native_typography_pair(
         .typography()
         .clone();
     Ok((
-        layout.admit_typography_request(&merge_prepared_text_typography_with_css_overrides(
+        admit_flowchart_prepared_typography(
+            layout,
             &base,
             wrap_style,
             typography_overrides.wrapping,
-        )?)?,
-        layout.admit_typography_request(&merge_prepared_text_typography_with_css_overrides(
+            config_ownership,
+        )?,
+        admit_flowchart_prepared_typography(
+            layout,
             &base,
             metrics_style,
             typography_overrides.metrics,
-        )?)?,
+            config_ownership,
+        )?,
     ))
+}
+
+fn admit_flowchart_prepared_typography(
+    layout: &PreparedTextLayout,
+    base: &ThemeTextStyle,
+    legacy: &TextStyle,
+    overrides: Option<&PreparedTextCssTypographyOverrides>,
+    config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
+) -> Result<CatalogAdmittedTextStyle, TextLayoutError> {
+    let base = flowchart_prepared_base_typography(base, legacy, config_ownership.font_stack)?;
+    let mut legacy = legacy.clone();
+    if !config_ownership.font_size && !overrides.is_some_and(|overrides| overrides.has_font_size())
+    {
+        legacy.font_size = f64::from(base.font_size_px());
+    }
+    layout.admit_typography_request(&merge_prepared_text_typography_with_css_overrides(
+        &base, &legacy, overrides,
+    )?)
+}
+
+fn flowchart_prepared_base_typography(
+    base: &ThemeTextStyle,
+    legacy: &TextStyle,
+    mermaid_font_stack_overrides_typed: bool,
+) -> Result<ThemeTextStyle, TextLayoutError> {
+    if !mermaid_font_stack_overrides_typed {
+        return Ok(base.clone());
+    }
+    let font_family = legacy
+        .font_family
+        .as_deref()
+        .ok_or(TextLayoutError::InvalidRequest("font_family"))?;
+    let parsed =
+        parse_css_font_stack(font_family).ok_or(TextLayoutError::InvalidRequest("font_family"))?;
+    Ok(base.clone().with_font_stack(parsed.font_stack().clone()))
 }
 
 fn measure_svg_label_without_sidecar(
@@ -1170,6 +1366,7 @@ pub(crate) struct FlowchartSvgLabelSidecar {
     swimlane_node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     swimlane_edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     prepared_error: Option<TextLayoutError>,
+    prepared_resource_error: Option<ResourceLimitExceeded>,
     #[cfg(test)]
     prepared_hits_by_owner: Mutex<FxHashMap<FlowchartSvgLabelOwner, usize>>,
     #[cfg(test)]
@@ -1182,6 +1379,7 @@ impl FlowchartSvgLabelSidecar {
         mut prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
         render_ids: FlowchartSvgLabelSlots<Box<str>>,
         mut prepared_error: Option<TextLayoutError>,
+        prepared_resource_error: Option<ResourceLimitExceeded>,
         #[cfg(test)] source_plans_by_owner: FxHashMap<FlowchartSvgLabelOwner, usize>,
     ) -> Self {
         let mut next_key = 0usize;
@@ -1204,6 +1402,7 @@ impl FlowchartSvgLabelSidecar {
             sources,
             prepared,
             prepared_error,
+            prepared_resource_error,
             #[cfg(test)]
             source_plans_by_owner: Mutex::new(source_plans_by_owner),
             ..Self::default()
@@ -1242,12 +1441,25 @@ impl FlowchartSvgLabelSidecar {
         self.prepared_error.as_ref()
     }
 
+    pub(crate) fn prepared_resource_error(&self) -> Option<&ResourceLimitExceeded> {
+        self.prepared_resource_error.as_ref()
+    }
+
     pub(crate) fn prepared_text_label_ledger(
         &self,
     ) -> impl Iterator<Item = &PreparedTextLabelLedgerEntry> {
         self.prepared
             .iter()
             .filter_map(PreparedFlowchartSvgLabel::consumed_label_entry)
+    }
+
+    pub(crate) fn take_prepared_text_retained_reservations(
+        &self,
+    ) -> Vec<PreparedTextRetainedReservation> {
+        self.prepared
+            .iter()
+            .filter_map(PreparedFlowchartSvgLabel::take_consumed_retained_reservation)
+            .collect()
     }
 
     pub(crate) fn node_owner(
@@ -1560,6 +1772,13 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
         }
     }
 
+    pub(crate) fn emitted_admitted_typography(&self) -> bool {
+        match self {
+            Self::Prepared { measured, .. } => measured.emitted_admitted_typography(),
+            Self::Source { .. } => false,
+        }
+    }
+
     pub(crate) fn line_height_em(&self) -> f64 {
         match self {
             Self::Prepared { measured, .. } => measured.line_height_em().unwrap_or(1.1),
@@ -1589,10 +1808,12 @@ mod tests {
 
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontSourcePolicy,
-        FontStack, TextTransform, ThemeAssets, ThemeTextStyle, TypographySpec,
+        FontStack, Specified, TextStylePatch, TextTransform, ThemeAssets, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
     };
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::render_family::RenderFamilyKind;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{
         NativeTextLayoutBackend, PrepareCatalogRequest, PreparedTextCssTypographyOverrides,
         TextMeasurer, TextMetrics, TextStyle, WrapMode,
@@ -1611,11 +1832,24 @@ mod tests {
     }
 
     fn native_flowchart_text_fixture() -> (PreparedTextLayout, ResolvedDiagramTheme) {
-        native_flowchart_text_fixture_with_transform(TextTransform::None)
+        native_flowchart_text_fixture_with_options(TextTransform::None, None)
     }
 
     fn native_flowchart_text_fixture_with_transform(
         transform: TextTransform,
+    ) -> (PreparedTextLayout, ResolvedDiagramTheme) {
+        native_flowchart_text_fixture_with_options(transform, None)
+    }
+
+    fn native_flowchart_text_fixture_with_node_label_font_size(
+        font_size_px: f32,
+    ) -> (PreparedTextLayout, ResolvedDiagramTheme) {
+        native_flowchart_text_fixture_with_options(TextTransform::None, Some(font_size_px))
+    }
+
+    fn native_flowchart_text_fixture_with_options(
+        transform: TextTransform,
+        node_label_font_size_px: Option<f32>,
     ) -> (PreparedTextLayout, ResolvedDiagramTheme) {
         let latin = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -1636,12 +1870,28 @@ mod tests {
                     .expect("fixture font stack should be valid"),
             )
             .with_transform(transform);
+        let mut spec = DiagramThemeSpec::new()
+            .with_typography(TypographySpec::default().with_default(typography))
+            .with_assets(ThemeAssets::default().with_font_catalog(catalog));
+        if let Some(font_size_px) = node_label_font_size_px {
+            spec = spec.with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch {
+                            typography: TextStylePatch {
+                                font_size_px: Specified::Value(font_size_px),
+                                ..TextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    )
+                    .for_family(RenderFamilyKind::Flowchart),
+                ),
+            );
+        }
         let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new()
-                    .with_typography(TypographySpec::default().with_default(typography))
-                    .with_assets(ThemeAssets::default().with_font_catalog(catalog)),
-            )
+            .compile(spec)
             .expect("fixture theme should compile");
         let prepared = NativeTextLayoutBackend::default()
             .prepare(&PrepareCatalogRequest::new(
@@ -1752,7 +2002,14 @@ mod tests {
             font_weight: None,
             font_style: None,
         };
-        let builder = FlowchartSvgLabelSidecarBuilder::new(Some(&prepared), Some(&theme));
+        let work_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
+            Some(&prepared),
+            Some(&theme),
+            Arc::clone(&work_meter),
+        );
         let owner = FlowchartSvgLabelOwner::Node(0);
         let raw_label = "Portable 图 layout";
         let request = || FlowchartLabelMetricsRequest {
@@ -1788,6 +2045,7 @@ mod tests {
         assert!(first.height.is_finite() && first.height > 0.0, "{first:?}");
         assert_eq!(builder.prepared_count(), 1);
         assert_eq!(builder.prepared_hit_count(), 1);
+        assert!(work_meter.used() > 0);
         assert!(measurer.snapshot().is_empty());
 
         let sidecar = builder.finish();
@@ -1816,6 +2074,201 @@ mod tests {
     }
 
     #[test]
+    fn node_label_font_size_drives_native_measurement_and_the_consumed_writer() {
+        let (default_prepared, default_theme) = native_flowchart_text_fixture();
+        let (typed_prepared, typed_theme) =
+            native_flowchart_text_fixture_with_node_label_font_size(26.0);
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        let config = MermaidConfig::default();
+        let style = TextStyle {
+            font_family: Some("Excalifont".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let owner = FlowchartSvgLabelOwner::Node(0);
+        let raw_label = "Typed size";
+        let request = || FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label,
+            label_type: "text",
+            style: &style,
+            max_width_px: None,
+            wrap_mode: WrapMode::SvgLike,
+            config: &config,
+            math_renderer: None,
+        };
+
+        let default_builder =
+            FlowchartSvgLabelSidecarBuilder::new(Some(&default_prepared), Some(&default_theme));
+        let default_metrics = measure_flowchart_svg_label_for_layout(
+            Some(&default_builder),
+            Some(owner),
+            Some("default-node"),
+            request(),
+            FlowchartSvgWidthMode::Bbox,
+        );
+
+        let typed_builder =
+            FlowchartSvgLabelSidecarBuilder::new(Some(&typed_prepared), Some(&typed_theme));
+        let typed_metrics = measure_flowchart_svg_label_for_layout(
+            Some(&typed_builder),
+            Some(owner),
+            Some("typed-node"),
+            request(),
+            FlowchartSvgWidthMode::Bbox,
+        );
+        assert!(typed_metrics.width > default_metrics.width * 1.5);
+        assert!(typed_metrics.height > default_metrics.height * 1.5);
+        assert!(measurer.snapshot().is_empty());
+
+        let typed_sidecar = typed_builder.finish();
+        let plan = FlowchartSvgLabelRenderPlan::new(
+            Some(&typed_sidecar),
+            typed_sidecar.node_owner("typed-node", false),
+            raw_label,
+            &measurer,
+            &style,
+            None,
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        assert!(!plan.emitted_admitted_typography());
+        let mut svg = String::new();
+        crate::svg::write_flowchart_svg_label_plan_for_test(&mut svg, &plan, true);
+        assert!(plan.emitted_admitted_typography());
+        assert!(svg.contains("font-size:26px !important"), "{svg}");
+    }
+
+    #[test]
+    fn native_prepared_label_retention_transfers_to_the_emitted_ledger() {
+        let (prepared, theme) = native_flowchart_text_fixture();
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let work_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
+            Some(&prepared),
+            Some(&theme),
+            Arc::clone(&work_meter),
+        );
+        let raw_label = "accounted label";
+        let metrics = builder.measure_for_layout(
+            FlowchartSvgLabelOwner::Node(0),
+            "node",
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label,
+                label_type: "text",
+                style: &style,
+                max_width_px: None,
+                wrap_mode: WrapMode::SvgLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        assert!(metrics.width > 0.0);
+        let sidecar = builder.finish();
+        let owner = FlowchartSvgLabelOwner::Node(0);
+        let expected_retained_bytes = sidecar
+            .prepared
+            .get(owner)
+            .expect("prepared Flowchart label")
+            .retained_bytes()
+            .saturating_add(
+                sidecar
+                    .sources
+                    .get(owner)
+                    .expect("prepared Flowchart source")
+                    .retained_bytes(),
+            )
+            .saturating_add(FLOWCHART_RENDER_ID_RECORD_BYTES)
+            .saturating_add("node".len())
+            .saturating_add(FLOWCHART_PREPARED_OWNER_SLOT_BYTES);
+        assert_eq!(sidecar.node_owner_by_id.get("node"), Some(&owner));
+        assert_eq!(
+            work_meter.prepared_text_retained_bytes(),
+            expected_retained_bytes
+        );
+
+        let plan = FlowchartSvgLabelRenderPlan::new(
+            Some(&sidecar),
+            sidecar.node_owner("node", false),
+            raw_label,
+            &measurer,
+            &style,
+            None,
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        let mut svg = String::new();
+        crate::svg::write_flowchart_svg_label_plan_for_test(&mut svg, &plan, true);
+        let ledger_bytes = sidecar
+            .prepared_text_label_ledger()
+            .next()
+            .expect("emitted Flowchart ledger entry")
+            .retained_bytes();
+        let reservations = sidecar.take_prepared_text_retained_reservations();
+
+        assert_eq!(reservations.len(), 1);
+        assert_eq!(work_meter.prepared_text_retained_bytes(), ledger_bytes);
+        drop(reservations);
+        assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn native_prepared_label_retention_rejection_is_structured() {
+        let (prepared, theme) = native_flowchart_text_fixture();
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+            .unwrap();
+        let work_meter = Arc::new(OperationWorkMeter::new(policy));
+        let builder = FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
+            Some(&prepared),
+            Some(&theme),
+            Arc::clone(&work_meter),
+        );
+
+        let metrics = builder.measure_for_layout(
+            FlowchartSvgLabelOwner::Node(0),
+            "node",
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label: "rejected retained label",
+                label_type: "text",
+                style: &style,
+                max_width_px: None,
+                wrap_mode: WrapMode::SvgLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        let sidecar = builder.finish();
+        let error = sidecar
+            .prepared_resource_error()
+            .expect("retained-byte rejection remains structured");
+
+        assert_eq!(metrics.width, 0.0);
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.max, 1);
+        assert!(sidecar.prepared_error().is_none());
+        let owner = FlowchartSvgLabelOwner::Node(0);
+        assert!(sidecar.sources.get(owner).is_none());
+        assert!(sidecar.prepared.get(owner).is_none());
+        assert!(!sidecar.node_owner_by_id.contains_key("node"));
+        assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
     fn native_prepared_label_emits_only_catalog_admitted_source_families() {
         let (prepared, theme) = native_flowchart_text_fixture();
         let measurer = StatefulOpaqueTraceMeasurer::new();
@@ -1829,6 +2282,7 @@ mod tests {
         };
         let mut metrics_overrides = PreparedTextCssTypographyOverrides::default();
         metrics_overrides.observe_declaration("font-family", "Arial, Excalifont");
+        metrics_overrides.observe_declaration("font-size", "19px");
         let builder = FlowchartSvgLabelSidecarBuilder::new(Some(&prepared), Some(&theme));
         let owner = FlowchartSvgLabelOwner::Node(0);
         let raw_label = "Catalog owned label";
@@ -2155,10 +2609,12 @@ mod tests {
             FlowchartSvgWidthMode::Bbox,
         );
         assert_eq!(node_plan.wrapped_lines().len(), 1);
+        assert!(!node_plan.emitted_admitted_typography());
         assert_eq!(sidecar.prepared_text_label_ledger().count(), 0);
 
         let mut svg = String::new();
         crate::svg::write_flowchart_svg_label_plan_for_test(&mut svg, &node_plan, true);
+        assert!(node_plan.emitted_admitted_typography());
         assert!(
             svg.contains("<text y=\"-10.1\" style=\"font-family:&quot;Excalifont&quot;, &quot;",)
                 && svg.contains(r#"id="merman-prepared-flowchart-0""#),
@@ -2184,8 +2640,10 @@ mod tests {
             true,
             FlowchartSvgWidthMode::Bbox,
         );
+        assert!(!fallback.emitted_admitted_typography());
         let mut fallback_svg = String::new();
         crate::svg::write_flowchart_svg_label_plan_for_test(&mut fallback_svg, &fallback, true);
+        assert!(!fallback.emitted_admitted_typography());
         assert!(!fallback_svg.contains("merman-prepared-"), "{fallback_svg}");
     }
 

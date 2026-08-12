@@ -1,6 +1,7 @@
 mod builtin;
 mod context;
 mod final_validation;
+mod font_embedding;
 mod policy;
 mod prepared_text;
 mod preset;
@@ -15,6 +16,7 @@ pub use builtin::{
 };
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub(crate) use final_validation::validate_well_formed_svg;
+pub(crate) use font_embedding::SvgFontSeal;
 pub use policy::SvgOutputPolicy;
 pub(crate) use prepared_text::partition_prepared_text_label_ids;
 pub use preset::SvgPipelinePreset;
@@ -22,6 +24,7 @@ pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 
 use crate::environment::RenderSession;
 use crate::resources::ResourceLimitPhase;
+use crate::text::PreparedTextEvidenceLease;
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;
@@ -42,7 +45,8 @@ pub trait SvgPostprocessor: Send + Sync {
 /// The inner string cannot be constructed directly. Custom postprocessors operate on an SVG draft
 /// before finalization and therefore cannot claim this type. Structural resources are limited to
 /// same-document fragments, ordinary image elements require approved, syntactically valid inline
-/// raster data URLs, and `feImage` accepts either form.
+/// raster data URLs, `feImage` accepts either form, and renderer-owned full-font data URLs require
+/// an exact prepared-text embedding plan.
 ///
 /// ```compile_fail
 /// use merman_render::svg::ResvgCompatibleSvg;
@@ -53,7 +57,7 @@ pub trait SvgPostprocessor: Send + Sync {
 pub struct ResvgCompatibleSvg {
     svg: String,
     prepared_text_svg: Option<Arc<str>>,
-    prepared_text_ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
+    prepared_text_evidence: PreparedTextEvidenceLease,
     prepared_text_evidence_valid: bool,
     reference_plan: SvgReferencePlan,
     resource_closure: SvgResourceClosure,
@@ -104,6 +108,7 @@ pub struct SvgFinalizationReport {
     reference_plan: SvgReferencePlan,
     resource_closure: SvgResourceClosure,
     text_element_count: usize,
+    font_seal: SvgFontSeal,
 }
 
 impl SvgFinalizationReport {
@@ -127,9 +132,13 @@ impl SvgFinalizationReport {
         &self.resource_closure
     }
 
-    /// Returns the number of terminal SVG `<text>` elements that still require font resolution.
+    /// Returns the number of terminal SVG `<text>` elements considered by font admission.
     pub const fn text_element_count(&self) -> usize {
         self.text_element_count
+    }
+
+    pub(crate) const fn font_seal(&self) -> &SvgFontSeal {
+        &self.font_seal
     }
 
     fn from_pipeline(
@@ -148,7 +157,15 @@ impl SvgFinalizationReport {
             reference_plan: terminal.reference_plan.clone(),
             resource_closure: terminal.resource_closure.clone(),
             text_element_count: terminal.text_elements,
+            font_seal: terminal.font_seal.clone(),
         }
+    }
+
+    fn refresh_terminal(&mut self, terminal: &final_validation::TerminalSvgValidation) {
+        self.reference_plan = terminal.reference_plan.clone();
+        self.resource_closure = terminal.resource_closure.clone();
+        self.text_element_count = terminal.text_elements;
+        self.font_seal = terminal.font_seal.clone();
     }
 }
 
@@ -170,7 +187,7 @@ impl ResvgCompatibleSvg {
         Self {
             svg,
             prepared_text_svg: None,
-            prepared_text_ledger: Arc::from([]),
+            prepared_text_evidence: PreparedTextEvidenceLease::default(),
             prepared_text_evidence_valid: true,
             reference_plan,
             resource_closure,
@@ -187,41 +204,64 @@ impl ResvgCompatibleSvg {
 
     pub(crate) fn attach_prepared_text_evidence(
         mut self,
-        ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
+        evidence: PreparedTextEvidenceLease,
         evidence_valid: bool,
+        resource_policy: crate::resources::RenderResourcePolicy,
     ) -> Result<Self> {
         self.prepared_text_evidence_valid = evidence_valid;
-        self.prepared_text_ledger = ledger;
-        if !evidence_valid || self.prepared_text_ledger.is_empty() {
+        self.prepared_text_evidence = if evidence_valid {
+            evidence
+        } else {
+            PreparedTextEvidenceLease::default()
+        };
+        if let Some(plan) = font_embedding::SvgFontEmbeddingPlan::for_prepared_text(
+            &self.font_catalog,
+            self.prepared_text_evidence.entries(),
+            &self.svg,
+        ) {
+            let embedded = plan.inject(&self.svg)?;
+            resource_policy.check_svg_bytes(&embedded, ResourceLimitPhase::SvgPostprocess)?;
+            let terminal = final_validation::validate_resvg_compatible_svg_with_font_plan(
+                &embedded,
+                resource_policy,
+                &plan,
+            )?;
+            self.reference_plan = terminal.reference_plan.clone();
+            self.resource_closure = terminal.resource_closure.clone();
+            self.finalization_report.refresh_terminal(&terminal);
+            self.svg = embedded;
+        }
+        if self.prepared_text_evidence.is_empty() {
             self.prepared_text_svg = None;
         } else {
             let (public_svg, tokenized_svg) = partition_prepared_text_label_ids(
                 std::mem::take(&mut self.svg),
-                &self.prepared_text_ledger,
+                self.prepared_text_evidence.entries(),
             )?;
             self.svg = public_svg;
             self.prepared_text_svg = tokenized_svg.map(Arc::from);
         }
+        self.resource_fingerprint = resource_closure::fingerprint_svg_resources(
+            self.native_export_svg(),
+            self.font_catalog.fingerprint().as_bytes(),
+            &self.font_source_policy,
+        );
         Ok(self)
     }
 
-    /// Returns the terminal SVG carrying renderer-owned prepared-label locators for native export.
-    #[doc(hidden)]
-    pub fn native_export_svg(&self) -> &str {
+    pub(crate) fn native_export_svg(&self) -> &str {
         self.prepared_text_svg
             .as_deref()
             .unwrap_or(self.svg.as_str())
     }
 
-    /// Returns per-label prepared-text evidence frozen by the family renderer.
-    #[doc(hidden)]
-    pub fn prepared_text_label_ledger(&self) -> &[crate::text::PreparedTextLabelLedgerEntry] {
-        &self.prepared_text_ledger
+    pub(crate) fn prepared_text_label_ledger(
+        &self,
+    ) -> &[crate::text::PreparedTextLabelLedgerEntry] {
+        self.prepared_text_evidence.entries()
     }
 
-    /// Returns whether the terminal pipeline preserved the renderer-owned label locators.
-    #[doc(hidden)]
-    pub const fn prepared_text_evidence_valid(&self) -> bool {
+    pub(crate) const fn prepared_text_evidence_valid(&self) -> bool {
         self.prepared_text_evidence_valid
     }
 
@@ -266,7 +306,7 @@ impl fmt::Debug for ResvgCompatibleSvg {
             .field("svg", &self.svg)
             .field(
                 "prepared_text_label_count",
-                &self.prepared_text_ledger.len(),
+                &self.prepared_text_evidence.entries().len(),
             )
             .field(
                 "prepared_text_evidence_valid",
@@ -286,7 +326,7 @@ impl PartialEq for ResvgCompatibleSvg {
     fn eq(&self, other: &Self) -> bool {
         self.svg == other.svg
             && self.prepared_text_svg == other.prepared_text_svg
-            && self.prepared_text_ledger == other.prepared_text_ledger
+            && self.prepared_text_evidence == other.prepared_text_evidence
             && self.prepared_text_evidence_valid == other.prepared_text_evidence_valid
             && self.reference_plan == other.reference_plan
             && self.resource_closure == other.resource_closure

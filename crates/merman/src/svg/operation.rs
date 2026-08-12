@@ -2,10 +2,14 @@ use super::{
     LayoutOptions, Result, ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgRenderOptions,
 };
 use merman_render::{
+    __private::{
+        FamilyEvidenceStatus, NativeSvgFilterReceipt, family_applied_theme_capabilities,
+        family_evidence, family_native_filter_receipt, family_prepared_text_label_ledger,
+        svg_text_fonts_are_self_contained,
+    },
     ResourceLimitExceeded,
     diagram_theme::{FontSource, RootThemeVerification, ThemeCapability},
     environment::{RenderEnvironment, RenderSession},
-    family::FamilyStyleVerification,
 };
 
 /// Stable identity of the operation that produced a retained render result.
@@ -48,11 +52,6 @@ impl RenderOperationReport {
     /// Returns root canvas/effect evaluation retained through terminal SVG completion.
     pub const fn root_theme_report(&self) -> &super::RootThemeReport {
         self.family.root_theme_report()
-    }
-
-    /// Returns selected-family structured style evaluation and source-style residuals.
-    pub const fn family_style_report(&self) -> &super::FamilyStyleReport {
-        self.family.family_style_report()
     }
 
     pub fn measurement_routes(&self) -> &[super::TextMeasurementRoute; 4] {
@@ -262,7 +261,7 @@ pub enum TargetAdmissionStatus {
 #[non_exhaustive]
 pub enum TargetAdmissionReason {
     DocumentResidual,
-    UnsupportedRootCapability,
+    UnsupportedThemeCapability,
     UnsealedSvg,
     HostTextMeasurement,
     PreparedHostBackend,
@@ -278,7 +277,7 @@ impl TargetAdmissionReason {
     pub const fn id(self) -> &'static str {
         match self {
             Self::DocumentResidual => "document-residual",
-            Self::UnsupportedRootCapability => "unsupported-root-capability",
+            Self::UnsupportedThemeCapability => "unsupported-theme-capability",
             Self::UnsealedSvg => "unsealed-svg",
             Self::HostTextMeasurement => "host-text-measurement",
             Self::PreparedHostBackend => "prepared-host-backend",
@@ -396,6 +395,14 @@ impl TargetAdmissionReport {
         }
     }
 
+    pub(super) fn rejected_svg_document_residual() -> Self {
+        Self {
+            target: RenderTargetKind::Svg,
+            status: TargetAdmissionStatus::Rejected,
+            reasons: Box::new([TargetAdmissionReason::DocumentResidual]),
+        }
+    }
+
     pub const fn target(&self) -> RenderTargetKind {
         self.target
     }
@@ -432,7 +439,8 @@ pub struct DocumentRenderReport {
     svg_finalization: super::SvgFinalizationReport,
     resource_fingerprint: super::SvgResourceFingerprint,
     residuals: Box<[DocumentResidual]>,
-    root_applied_capabilities: Box<[ThemeCapability]>,
+    applied_theme_capabilities: Box<[ThemeCapability]>,
+    native_filter_receipt: Option<NativeSvgFilterReceipt>,
     host_text_measurement_count: u64,
     prepared_text_used_font_sources: Box<[FontSource]>,
     prepared_text_host_dependent: bool,
@@ -473,7 +481,7 @@ impl DocumentRenderReport {
             }),
         }
 
-        let family = operation.family_style_report();
+        let family = family_evidence(&operation.family);
         let compatibility_count = family.compatibility_residual_count();
         if compatibility_count != 0 {
             residuals.push(DocumentResidual {
@@ -482,39 +490,37 @@ impl DocumentRenderReport {
                 count: compatibility_count,
             });
         }
-        match family.verification() {
-            FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => {}
-            FamilyStyleVerification::Unadapted => residuals.push(DocumentResidual {
+        match family.status() {
+            FamilyEvidenceStatus::NotApplicable | FamilyEvidenceStatus::Verified => {}
+            FamilyEvidenceStatus::Unadapted => residuals.push(DocumentResidual {
                 stage: DocumentResidualStage::FamilyTheme,
                 reason: DocumentResidualReason::Unadapted,
-                count: family.theme_required_mechanisms().len(),
+                count: family.required_count(),
             }),
-            FamilyStyleVerification::Unverified => {
-                if !family.theme_residuals().is_empty() {
+            FamilyEvidenceStatus::Unverified => {
+                if family.theme_residual_count() != 0 {
                     residuals.push(DocumentResidual {
                         stage: DocumentResidualStage::FamilyTheme,
                         reason: DocumentResidualReason::Unverified,
-                        count: family.theme_residuals().len(),
-                    });
-                }
-                if !family.residuals().is_empty() {
-                    residuals.push(DocumentResidual {
-                        stage: DocumentResidualStage::SourceStyle,
-                        reason: DocumentResidualReason::Unverified,
-                        count: family.residuals().len(),
+                        count: family.theme_residual_count(),
                     });
                 }
             }
-            FamilyStyleVerification::Incomplete => residuals.push(DocumentResidual {
+            FamilyEvidenceStatus::Incomplete => residuals.push(DocumentResidual {
                 stage: DocumentResidualStage::FamilyTheme,
                 reason: DocumentResidualReason::Incomplete,
-                count: family.theme_residuals().len(),
+                count: family.incomplete_count(),
             }),
-            _ => residuals.push(DocumentResidual {
-                stage: DocumentResidualStage::FamilyTheme,
-                reason: DocumentResidualReason::Incomplete,
-                count: family.theme_residuals().len(),
-            }),
+        }
+        // Source-style residuals are an independent evidence lane. A family can be incomplete
+        // because a theme facet is still outside its proof boundary while also retaining an
+        // unverified source declaration; do not let the family verification enum hide that fact.
+        if family.source_residual_count() != 0 {
+            residuals.push(DocumentResidual {
+                stage: DocumentResidualStage::SourceStyle,
+                reason: DocumentResidualReason::Unverified,
+                count: family.source_residual_count(),
+            });
         }
 
         if operation
@@ -580,7 +586,7 @@ impl DocumentRenderReport {
             .filter(|entry| entry.provenance().source == super::TextMeasurementSource::Host)
             .map(|entry| entry.count())
             .fold(0u64, u64::saturating_add);
-        let prepared_text_ledger = operation.family.prepared_text_label_ledger();
+        let prepared_text_ledger = family_prepared_text_label_ledger(&operation.family);
         let mut prepared_text_used_font_sources = Vec::new();
         for source in prepared_text_ledger
             .iter()
@@ -594,11 +600,20 @@ impl DocumentRenderReport {
             .iter()
             .any(|entry| entry.provenance().is_host_dependent());
 
+        let applied_theme_capabilities = root
+            .applied_capabilities()
+            .chain(family_applied_theme_capabilities(&operation.family))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let native_filter_receipt = family_native_filter_receipt(&operation.family);
+
         Ok(Self {
             svg_finalization: finalization,
             resource_fingerprint: svg.resource_fingerprint(),
             residuals: residuals.into_boxed_slice(),
-            root_applied_capabilities: root.applied_capabilities().collect(),
+            applied_theme_capabilities,
+            native_filter_receipt,
             host_text_measurement_count,
             prepared_text_used_font_sources: prepared_text_used_font_sources.into_boxed_slice(),
             prepared_text_host_dependent,
@@ -647,7 +662,9 @@ impl DocumentRenderReport {
         {
             reasons.push(TargetAdmissionReason::PreparedSystemFont);
         }
-        if self.svg_finalization.text_element_count() != 0 {
+        if self.svg_finalization.text_element_count() != 0
+            && !svg_text_fonts_are_self_contained(&self.svg_finalization)
+        {
             reasons.push(TargetAdmissionReason::ExternalSvgFontResolution);
         }
         reasons.sort_unstable();
@@ -667,22 +684,30 @@ impl DocumentRenderReport {
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    pub(crate) fn admit_native(
+    fn admit_native(
         &self,
         target: RenderTargetKind,
         resource_fingerprint: super::SvgResourceFingerprint,
         fonts: merman_export::ExportFontPlan,
+        native_filters: NativeFilterAdmissionEvidence,
     ) -> TargetAdmissionReport {
         let mut reasons = Vec::new();
         if !self.residuals.is_empty() {
             reasons.push(TargetAdmissionReason::DocumentResidual);
         }
         if self
-            .root_applied_capabilities
+            .applied_theme_capabilities
             .iter()
-            .any(|capability| !native_target_supports_root_capability(target, *capability))
+            .filter(|capability| {
+                !matches!(
+                    capability,
+                    ThemeCapability::Shadow | ThemeCapability::SvgFilter
+                )
+            })
+            .any(|capability| !native_target_supports_theme_capability(target, *capability))
+            || !self.native_filter_capabilities_are_supported(native_filters)
         {
-            reasons.push(TargetAdmissionReason::UnsupportedRootCapability);
+            reasons.push(TargetAdmissionReason::UnsupportedThemeCapability);
         }
         if resource_fingerprint != self.resource_fingerprint {
             reasons.push(TargetAdmissionReason::ResourceFingerprintMismatch);
@@ -720,7 +745,7 @@ impl DocumentRenderReport {
             matches!(
                 reason,
                 TargetAdmissionReason::DocumentResidual
-                    | TargetAdmissionReason::UnsupportedRootCapability
+                    | TargetAdmissionReason::UnsupportedThemeCapability
                     | TargetAdmissionReason::ResourceFingerprintMismatch
                     | TargetAdmissionReason::ExportUnresolvedFont
                     | TargetAdmissionReason::PreparedTextEvidenceMismatch
@@ -738,9 +763,48 @@ impl DocumentRenderReport {
             reasons: reasons.into_boxed_slice(),
         }
     }
+
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    fn native_filter_capabilities_are_supported(
+        &self,
+        evidence: NativeFilterAdmissionEvidence,
+    ) -> bool {
+        let has_shadow = self
+            .applied_theme_capabilities
+            .contains(&ThemeCapability::Shadow);
+        let has_svg_filter = self
+            .applied_theme_capabilities
+            .contains(&ThemeCapability::SvgFilter);
+        match (has_shadow, has_svg_filter) {
+            (false, false) => evidence.receipt.is_none(),
+            (true, true) => {
+                evidence.fully_localized
+                    && self.native_filter_receipt.is_some()
+                    && self.native_filter_receipt == evidence.receipt
+            }
+            (false, true) | (true, false) => false,
+        }
+    }
 }
 
-fn native_target_supports_root_capability(
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[derive(Debug, Clone, Copy, Default)]
+struct NativeFilterAdmissionEvidence {
+    receipt: Option<NativeSvgFilterReceipt>,
+    fully_localized: bool,
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl NativeFilterAdmissionEvidence {
+    const fn new(receipt: Option<NativeSvgFilterReceipt>, fully_localized: bool) -> Self {
+        Self {
+            receipt,
+            fully_localized,
+        }
+    }
+}
+
+fn native_target_supports_theme_capability(
     target: RenderTargetKind,
     capability: ThemeCapability,
 ) -> bool {
@@ -752,12 +816,25 @@ fn native_target_supports_root_capability(
     }
     matches!(
         capability,
-        ThemeCapability::SolidPaint
+        ThemeCapability::SemanticTokens
+            | ThemeCapability::SemanticRules
+            | ThemeCapability::OrdinalPalette
+            | ThemeCapability::SolidPaint
             | ThemeCapability::TransparentPaint
             | ThemeCapability::LayeredCanvas
             | ThemeCapability::CanvasLayerPlacement
             | ThemeCapability::BlendMode
+            | ThemeCapability::Typography
+            | ThemeCapability::BorderStyling
+            | ThemeCapability::DashStyling
+            | ThemeCapability::RoundedGeometry
+            | ThemeCapability::LetterSpacing
+            | ThemeCapability::TextTransform
+            | ThemeCapability::ContentPadding
             | ThemeCapability::Opacity
+            | ThemeCapability::TextDecoration
+            | ThemeCapability::WhiteSpaceWrapping
+            | ThemeCapability::WordSpacing
     )
 }
 
@@ -1314,6 +1391,7 @@ impl RenderedDocument {
             kind.target(),
             export_report.resource_fingerprint(),
             fonts,
+            NativeFilterAdmissionEvidence::new(export_report.native_filter_receipt(), true),
         );
         self.enforce_target_admission(&target_admission)
             .map_err(|report| super::OutputError::TargetAdmissionRejected { report })?;
@@ -1337,6 +1415,10 @@ impl RenderedDocument {
             RenderTargetKind::Pdf,
             export_report.resource_fingerprint(),
             fonts,
+            NativeFilterAdmissionEvidence::new(
+                export_report.native_filter_receipt(),
+                export_report.native_filter_fully_localized(),
+            ),
         );
         self.enforce_target_admission(&target_admission)
             .map_err(|report| super::OutputError::TargetAdmissionRejected { report })?;
@@ -1370,10 +1452,6 @@ impl RenderedDocument {
 
     pub const fn root_theme_report(&self) -> &super::RootThemeReport {
         self.report.root_theme_report()
-    }
-
-    pub const fn family_style_report(&self) -> &super::FamilyStyleReport {
-        self.report.family_style_report()
     }
 
     pub fn theme_recipe_fingerprint(&self) -> Option<super::ThemeRecipeFingerprint> {
@@ -1812,6 +1890,8 @@ pub(super) fn resource_limit_error(err: ResourceLimitExceeded) -> super::Headles
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    use merman_render::__private::NativeSvgHardShadow;
 
     fn legacy_flowchart_edge_theme() -> crate::svg::DiagramTheme {
         crate::svg::DiagramThemeCompiler::new()
@@ -1830,6 +1910,30 @@ mod tests {
                 ),
             )
             .expect("legacy Flowchart bridge theme should compile")
+    }
+
+    fn typed_flowchart_node_theme() -> crate::svg::DiagramTheme {
+        crate::svg::DiagramThemeCompiler::new()
+            .compile(
+                crate::svg::DiagramThemeSpec::new().with_styles(
+                    crate::svg::ThemeRuleSet::default().with_rule(
+                        crate::svg::ThemeRule::new(
+                            crate::svg::ThemeTarget::Node,
+                            crate::svg::ThemeStylePatch::default()
+                                .with_fill(
+                                    crate::svg::CanvasPaint::solid("#ef4444")
+                                        .expect("valid test fill"),
+                                )
+                                .with_stroke(
+                                    crate::svg::CanvasPaint::solid("#2563eb")
+                                        .expect("valid test stroke"),
+                                ),
+                        )
+                        .for_family(crate::svg::RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("typed Flowchart Node theme should compile")
     }
 
     fn explicit_mermaid_variable_theme() -> crate::svg::DiagramTheme {
@@ -1874,8 +1978,12 @@ mod tests {
             .expect("best-effort render should succeed")
             .expect("Flowchart source should be detected");
         let compatibility_count = document
-            .family_style_report()
-            .compatibility_residual_count();
+            .document_report()
+            .residuals()
+            .iter()
+            .find(|residual| residual.stage() == DocumentResidualStage::FamilyCompatibility)
+            .map(DocumentResidual::count)
+            .expect("legacy compatibility should remain a terminal residual");
 
         assert_ne!(compatibility_count, 0);
         assert!(
@@ -1896,6 +2004,118 @@ mod tests {
             admission
                 .reasons()
                 .contains(&TargetAdmissionReason::DocumentResidual)
+        );
+    }
+
+    #[test]
+    fn family_theme_and_source_style_residuals_remain_independent() {
+        let theme = crate::svg::DiagramThemeCompiler::new()
+            .compile(
+                crate::svg::DiagramThemeSpec::new().with_styles(
+                    crate::svg::ThemeRuleSet::default().with_rule(
+                        crate::svg::ThemeRule::new(
+                            crate::svg::ThemeTarget::Node,
+                            crate::svg::ThemeStylePatch {
+                                geometry: crate::svg::ThemeGeometryPatch {
+                                    radius: crate::svg::Specified::Value(8.0),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }
+                            .with_fill(
+                                crate::svg::CanvasPaint::solid("#ef4444")
+                                    .expect("valid test color"),
+                            ),
+                        )
+                        .for_family(crate::svg::RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile partially unsupported Flowchart theme");
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(theme)
+            .render_document_sync(
+                "flowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n",
+            )
+            .expect("best-effort render should succeed")
+            .expect("Flowchart source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| {
+                    residual.stage() == DocumentResidualStage::FamilyTheme
+                        && residual.reason() == DocumentResidualReason::Unverified
+                        && residual.count() != 0
+                })
+        );
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| {
+                    residual.stage() == DocumentResidualStage::SourceStyle
+                        && residual.reason() == DocumentResidualReason::Unverified
+                        && residual.count() != 0
+                })
+        );
+    }
+
+    #[test]
+    fn typed_flowchart_node_evidence_survives_document_completion() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(typed_flowchart_node_theme())
+            .render_document_sync("flowchart LR\nA[Alpha]\n")
+            .expect("typed Flowchart render should succeed")
+            .expect("Flowchart source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| {
+                    !matches!(
+                        residual.stage(),
+                        DocumentResidualStage::FamilyTheme | DocumentResidualStage::SourceStyle
+                    )
+                })
+        );
+        assert_ne!(
+            document.svg_target_admission().status(),
+            TargetAdmissionStatus::Rejected
+        );
+    }
+
+    #[test]
+    fn source_only_flowchart_residual_stays_out_of_the_family_theme_lane() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .render_document_sync(
+                "flowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n",
+            )
+            .expect("best-effort source-style render should succeed")
+            .expect("Flowchart source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| residual.stage() == DocumentResidualStage::SourceStyle)
+        );
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| residual.stage() != DocumentResidualStage::FamilyTheme)
+        );
+        assert_eq!(
+            document.svg_target_admission().status(),
+            TargetAdmissionStatus::Rejected
         );
     }
 
@@ -2079,7 +2299,12 @@ mod tests {
             RenderTargetKind::Jpeg,
             RenderTargetKind::Pdf,
         ] {
-            let admission = report.admit_native(target, report.resource_fingerprint(), fonts);
+            let admission = report.admit_native(
+                target,
+                report.resource_fingerprint(),
+                fonts,
+                NativeFilterAdmissionEvidence::default(),
+            );
 
             assert_eq!(admission.status(), TargetAdmissionStatus::Rejected);
             assert!(
@@ -2109,8 +2334,12 @@ mod tests {
             .report_for_output(merman_export::RasterOutputKind::Png)
             .fonts();
 
-        let admission =
-            report.admit_native(RenderTargetKind::Png, report.resource_fingerprint(), fonts);
+        let admission = report.admit_native(
+            RenderTargetKind::Png,
+            report.resource_fingerprint(),
+            fonts,
+            NativeFilterAdmissionEvidence::default(),
+        );
 
         assert!(
             admission
@@ -2125,7 +2354,7 @@ mod tests {
     }
 
     #[test]
-    fn native_root_capability_policy_is_explicit_and_fail_closed() {
+    fn native_theme_capability_policy_is_explicit_and_fail_closed() {
         for target in [
             RenderTargetKind::Png,
             RenderTargetKind::Jpeg,
@@ -2140,7 +2369,7 @@ mod tests {
                 ThemeCapability::Opacity,
             ] {
                 assert!(
-                    native_target_supports_root_capability(target, capability),
+                    native_target_supports_theme_capability(target, capability),
                     "{target} should support {capability}"
                 );
             }
@@ -2148,27 +2377,74 @@ mod tests {
                 ThemeCapability::GradientPaint,
                 ThemeCapability::PatternPaint,
                 ThemeCapability::CanvasBleed,
+                ThemeCapability::Shadow,
                 ThemeCapability::SvgFilter,
                 ThemeCapability::Noise,
                 ThemeCapability::Displacement,
             ] {
                 assert!(
-                    !native_target_supports_root_capability(target, capability),
+                    !native_target_supports_theme_capability(target, capability),
                     "{target} must not admit {capability} without exporter proof"
                 );
             }
         }
     }
 
-    #[cfg(feature = "png")]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
-    fn native_admission_rejects_an_unproved_root_capability() {
+    fn native_filter_capabilities_require_an_exact_localized_exporter_receipt() {
         let document = crate::svg::HeadlessRenderer::new()
             .render_document_sync("info")
             .expect("info render should succeed")
             .expect("info source should be detected");
         let mut report = document.document_report().clone();
-        report.root_applied_capabilities = vec![ThemeCapability::SvgFilter].into_boxed_slice();
+        let receipt = NativeSvgFilterReceipt::from_hard_shadows([NativeSvgHardShadow::new(
+            "state-ready-theme-effect-hard-shadow",
+            [-0.2, -0.2, 1.4, 1.4],
+            [4.0, 5.0],
+            "#111827",
+            1,
+        )
+        .expect("valid hard-shadow receipt")])
+        .expect("non-empty hard-shadow receipt");
+        let mismatched_receipt =
+            NativeSvgFilterReceipt::from_hard_shadows([NativeSvgHardShadow::new(
+                "state-ready-theme-effect-hard-shadow",
+                [-0.2, -0.2, 1.4, 1.4],
+                [5.0, 5.0],
+                "#111827",
+                1,
+            )
+            .expect("valid mismatched hard-shadow receipt")])
+            .expect("non-empty mismatched hard-shadow receipt");
+        report.applied_theme_capabilities =
+            vec![ThemeCapability::Shadow, ThemeCapability::SvgFilter].into_boxed_slice();
+        report.native_filter_receipt = Some(receipt);
+
+        assert!(report.native_filter_capabilities_are_supported(
+            NativeFilterAdmissionEvidence::new(Some(receipt), true)
+        ));
+        assert!(!report.native_filter_capabilities_are_supported(
+            NativeFilterAdmissionEvidence::new(Some(receipt), false)
+        ));
+        assert!(!report.native_filter_capabilities_are_supported(
+            NativeFilterAdmissionEvidence::new(Some(mismatched_receipt), true)
+        ));
+        assert!(
+            !report
+                .native_filter_capabilities_are_supported(NativeFilterAdmissionEvidence::default())
+        );
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn native_admission_rejects_an_unproved_theme_capability() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .render_document_sync("info")
+            .expect("info render should succeed")
+            .expect("info source should be detected");
+        let mut report = document.document_report().clone();
+        report.applied_theme_capabilities = vec![ThemeCapability::GradientPaint].into_boxed_slice();
         let export = merman_export::prepare_raster(
             document.sealed_svg(),
             &merman_export::RasterOptions::default(),
@@ -2178,14 +2454,18 @@ mod tests {
             .report_for_output(merman_export::RasterOutputKind::Png)
             .fonts();
 
-        let admission =
-            report.admit_native(RenderTargetKind::Png, report.resource_fingerprint(), fonts);
+        let admission = report.admit_native(
+            RenderTargetKind::Png,
+            report.resource_fingerprint(),
+            fonts,
+            NativeFilterAdmissionEvidence::default(),
+        );
 
         assert_eq!(admission.status(), TargetAdmissionStatus::Rejected);
         assert!(
             admission
                 .reasons()
-                .contains(&TargetAdmissionReason::UnsupportedRootCapability)
+                .contains(&TargetAdmissionReason::UnsupportedThemeCapability)
         );
     }
 }

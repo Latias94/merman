@@ -6,6 +6,9 @@ use std::sync::Arc;
 
 use crate::diagram_theme::LineHeight;
 use crate::entities::decode_mermaid_entities_for_render_text;
+use crate::resources::{
+    OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
+};
 use crate::text::{
     CatalogAdmittedTextStyle, PendingPreparedTextLabelLedgerEntry, PrepareTextRequest,
     PreparedText, PreparedTextLabelFamily, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
@@ -53,6 +56,7 @@ pub(crate) struct PreparedStateLabel {
     pending_label_entry: Option<PendingPreparedTextLabelLedgerEntry>,
     label_entry: Option<PreparedTextLabelLedgerEntry>,
     label_consumed: Cell<bool>,
+    retained_reservation: RefCell<Option<PreparedTextRetainedReservation>>,
 }
 
 impl PreparedStateLabel {
@@ -103,6 +107,32 @@ impl PreparedStateLabel {
             .get()
             .then_some(self.label_entry.as_ref())
             .flatten()
+    }
+
+    fn retained_bytes(&self) -> usize {
+        self.prepared
+            .retained_bytes()
+            .saturating_add(self.semantic_source.len())
+            .saturating_add(self.admitted_typography.retained_bytes())
+    }
+
+    fn reserve_retained_bytes(
+        &self,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let reservation = work_meter.reserve_prepared_text_retained_bytes(self.retained_bytes())?;
+        *self.retained_reservation.borrow_mut() = Some(reservation);
+        Ok(())
+    }
+
+    fn take_consumed_retained_reservation(&self) -> Option<PreparedTextRetainedReservation> {
+        let entry = self.consumed_label_entry()?;
+        let mut reservation = self.retained_reservation.borrow_mut().take()?;
+        let retained_bytes = entry.retained_bytes();
+        if retained_bytes < reservation.retained_bytes() {
+            reservation.reconcile_downward(retained_bytes);
+        }
+        Some(reservation)
     }
 }
 
@@ -180,8 +210,10 @@ impl<T> StateLabelSlots<T> {
 pub(crate) struct StateLabelSidecarBuilder {
     prepared_active: bool,
     prepared_text_layout: Option<PreparedTextLayout>,
+    work_meter: Option<Arc<OperationWorkMeter>>,
     labels: RefCell<StateLabelSlots<PreparedStateLabel>>,
     prepared_error: RefCell<Option<TextLayoutError>>,
+    prepared_resource_error: RefCell<Option<ResourceLimitExceeded>>,
 }
 
 impl StateLabelSidecarBuilder {
@@ -193,6 +225,18 @@ impl StateLabelSidecarBuilder {
         }
     }
 
+    pub(crate) fn new_with_work_meter(
+        prepared_text_layout: Option<&PreparedTextLayout>,
+        work_meter: Arc<OperationWorkMeter>,
+    ) -> Self {
+        Self {
+            prepared_active: prepared_text_layout.is_some(),
+            prepared_text_layout: prepared_text_layout.cloned(),
+            work_meter: Some(work_meter),
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn measure_for_layout(
         &self,
         request: StateLabelMetricsRequest<'_>,
@@ -200,12 +244,19 @@ impl StateLabelSidecarBuilder {
         let Some(layout) = self.prepared_text_layout.as_ref() else {
             return measure_without_prepared_text(request);
         };
-        if self.prepared_error.borrow().is_some() {
+        if self.prepared_error.borrow().is_some() || self.prepared_resource_error.borrow().is_some()
+        {
             return failed_prepared_measurement();
         }
 
         match self.prepare_label(layout, request) {
             Ok(label) => {
+                if let Some(work_meter) = self.work_meter.as_ref()
+                    && let Err(error) = label.reserve_retained_bytes(work_meter)
+                {
+                    self.record_resource_error(error);
+                    return failed_prepared_measurement();
+                }
                 let measurement = StateLabelMeasurement {
                     metrics: label.metrics(),
                     uses_html_wrapping_table: label.uses_html_wrapping_table(),
@@ -262,14 +313,18 @@ impl StateLabelSidecarBuilder {
                 max_width_px: normalized_width(request.max_width_px),
             },
         };
-        let prepared = layout.prepare_text(
-            &PrepareTextRequest::new(
-                prepared_source.as_ref(),
-                admitted_typography.typography().clone(),
-            )
-            .with_family_normalized_projection()
-            .with_wrap(wrap),
-        )?;
+        let prepared_request = PrepareTextRequest::new(
+            prepared_source.as_ref(),
+            admitted_typography.typography().clone(),
+        )
+        .with_family_normalized_projection()
+        .with_wrap(wrap);
+        let prepared = match self.work_meter.as_deref() {
+            Some(work_meter) => {
+                layout.prepare_text_with_work_meter(&prepared_request, work_meter)?
+            }
+            None => layout.prepare_text(&prepared_request)?,
+        };
         let pending_label_entry = prepared
             .label_ledger_entry()
             .ok_or(TextLayoutError::InvalidPreparedText)?;
@@ -287,13 +342,25 @@ impl StateLabelSidecarBuilder {
             pending_label_entry: Some(pending_label_entry),
             label_entry: None,
             label_consumed: Cell::new(false),
+            retained_reservation: RefCell::new(None),
         })
     }
 
     fn record_error(&self, error: TextLayoutError) {
+        if self.prepared_resource_error.borrow().is_some() {
+            return;
+        }
         let mut prepared_error = self.prepared_error.borrow_mut();
         if prepared_error.is_none() {
             *prepared_error = Some(error);
+        }
+    }
+
+    fn record_resource_error(&self, error: ResourceLimitExceeded) {
+        let mut prepared_resource_error = self.prepared_resource_error.borrow_mut();
+        if prepared_resource_error.is_none() {
+            *prepared_resource_error = Some(error);
+            self.prepared_error.borrow_mut().take();
         }
     }
 
@@ -326,6 +393,7 @@ impl StateLabelSidecarBuilder {
             prepared_active: self.prepared_active,
             labels,
             prepared_error,
+            prepared_resource_error: self.prepared_resource_error.into_inner(),
         }
     }
 }
@@ -374,11 +442,16 @@ pub(crate) struct StateLabelSidecar {
     prepared_active: bool,
     labels: StateLabelSlots<PreparedStateLabel>,
     prepared_error: Option<TextLayoutError>,
+    prepared_resource_error: Option<ResourceLimitExceeded>,
 }
 
 impl StateLabelSidecar {
     pub(crate) fn prepared_error(&self) -> Option<&TextLayoutError> {
         self.prepared_error.as_ref()
+    }
+
+    pub(crate) fn prepared_resource_error(&self) -> Option<&ResourceLimitExceeded> {
+        self.prepared_resource_error.as_ref()
     }
 
     pub(crate) fn prepared_text_label_ledger(
@@ -387,6 +460,15 @@ impl StateLabelSidecar {
         self.labels
             .iter()
             .filter_map(PreparedStateLabel::consumed_label_entry)
+    }
+
+    pub(crate) fn take_prepared_text_retained_reservations(
+        &self,
+    ) -> Vec<PreparedTextRetainedReservation> {
+        self.labels
+            .iter()
+            .filter_map(PreparedStateLabel::take_consumed_retained_reservation)
+            .collect()
     }
 
     pub(crate) fn node(&self, id: &str) -> Option<&PreparedStateLabel> {
@@ -494,7 +576,7 @@ mod tests {
         TypographySpec,
     };
     use crate::render_family::RenderFamilyKind;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{
         DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, TextStyle,
     };
@@ -598,21 +680,23 @@ mod tests {
     #[test]
     fn prepared_state_label_reuses_metered_plan_typography_without_theme_lookup() {
         let (prepared, resolved, model) = prepared_state_fixture();
-        let work_meter =
-            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let work_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
         let (plan, _) = crate::state::StateStylePlan::resolve_with_evidence(
             &model,
             &json!({}),
             Some(&resolved),
             None,
             true,
-            &work_meter,
+            work_meter.as_ref(),
         )
         .expect("resolve metered State style plan");
         assert_eq!(work_meter.used(), 4);
         let node = plan.node("Ready").expect("prepared State node style");
         let measurer = DeterministicTextMeasurer::default();
-        let sidecar = StateLabelSidecarBuilder::new(Some(&prepared));
+        let sidecar =
+            StateLabelSidecarBuilder::new_with_work_meter(Some(&prepared), Arc::clone(&work_meter));
 
         let measurement = sidecar.measure_for_layout(StateLabelMetricsRequest {
             owner: StateLabelOwner::Node("Ready"),
@@ -634,7 +718,102 @@ mod tests {
         assert!(emission_style.contains("font-family:\"Excalifont\" !important"));
         assert!(!emission_style.contains("Arial"));
         assert!(emission_style.contains("font-size:23px !important"));
-        assert_eq!(work_meter.used(), 4);
+        assert!(work_meter.used() > 4);
+    }
+
+    #[test]
+    fn prepared_state_label_retention_transfers_only_after_emission() {
+        let (prepared, resolved, model) = prepared_state_fixture();
+        let work_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let (plan, _) = crate::state::StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            None,
+            true,
+            work_meter.as_ref(),
+        )
+        .expect("resolve metered State style plan");
+        let node = plan.node("Ready").expect("prepared State node style");
+        let measurer = DeterministicTextMeasurer::default();
+        let builder =
+            StateLabelSidecarBuilder::new_with_work_meter(Some(&prepared), Arc::clone(&work_meter));
+        let measurement = builder.measure_for_layout(StateLabelMetricsRequest {
+            owner: StateLabelOwner::Node("Ready"),
+            text: "Ready",
+            source_kind: StateLabelSourceKind::Markdown,
+            measurer: &measurer,
+            typography: node.resolved_label_typography(),
+            max_width_px: Some(180.0),
+            wrap_mode: WrapMode::SvgLike,
+            break_long_words: true,
+        });
+        assert!(measurement.metrics.width > 0.0);
+        let sidecar = builder.finish();
+        assert!(work_meter.prepared_text_retained_bytes() > 0);
+        assert_eq!(sidecar.prepared_text_label_ledger().count(), 0);
+
+        sidecar
+            .node("Ready")
+            .expect("prepared State label")
+            .label_id_for_emission()
+            .expect("prepared State label id");
+        let ledger_bytes = sidecar
+            .prepared_text_label_ledger()
+            .next()
+            .expect("emitted State ledger entry")
+            .retained_bytes();
+        let reservations = sidecar.take_prepared_text_retained_reservations();
+        assert_eq!(reservations.len(), 1);
+        assert_eq!(work_meter.prepared_text_retained_bytes(), ledger_bytes);
+
+        drop(reservations);
+        assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn prepared_state_label_retention_rejection_is_structured() {
+        let (prepared, resolved, model) = prepared_state_fixture();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+            .unwrap();
+        let work_meter = Arc::new(OperationWorkMeter::new(policy));
+        let (plan, _) = crate::state::StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            None,
+            true,
+            work_meter.as_ref(),
+        )
+        .expect("resolve metered State style plan");
+        let node = plan.node("Ready").expect("prepared State node style");
+        let measurer = DeterministicTextMeasurer::default();
+        let builder =
+            StateLabelSidecarBuilder::new_with_work_meter(Some(&prepared), Arc::clone(&work_meter));
+
+        let measurement = builder.measure_for_layout(StateLabelMetricsRequest {
+            owner: StateLabelOwner::Node("Ready"),
+            text: "Ready",
+            source_kind: StateLabelSourceKind::Markdown,
+            measurer: &measurer,
+            typography: node.resolved_label_typography(),
+            max_width_px: Some(180.0),
+            wrap_mode: WrapMode::SvgLike,
+            break_long_words: true,
+        });
+        let sidecar = builder.finish();
+        let error = sidecar
+            .prepared_resource_error()
+            .expect("retained-byte rejection remains structured");
+
+        assert_eq!(measurement.metrics.width, 0.0);
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.max, 1);
+        assert!(sidecar.prepared_error().is_none());
+        assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
     }
 
     #[test]

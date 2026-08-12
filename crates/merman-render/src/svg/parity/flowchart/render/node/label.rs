@@ -3,7 +3,9 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::label::{flowchart_label_html, flowchart_label_plain_text};
-use crate::svg::parity::flowchart::style::FlowchartCompiledStyles;
+use crate::svg::parity::flowchart::style::{
+    FlowchartCompiledStyles, flowchart_label_div_style_prefix,
+};
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::util::{
     HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
@@ -13,25 +15,154 @@ use crate::svg::parity::flowchart::{
 };
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
+pub(super) struct FlowchartNodeLabelEmissionPlan<'a> {
+    node_classes: &'a [String],
+    node_styles: &'a [String],
+    compiled_styles: &'a FlowchartCompiledStyles,
+}
+
+impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
+    pub(super) const fn new(
+        node_classes: &'a [String],
+        node_styles: &'a [String],
+        compiled_styles: &'a FlowchartCompiledStyles,
+    ) -> Self {
+        Self {
+            node_classes,
+            node_styles,
+            compiled_styles,
+        }
+    }
+
+    fn text_style<'b>(
+        &'b self,
+        ctx: &'b FlowchartRenderCtx<'_>,
+    ) -> std::borrow::Cow<'b, crate::text::TextStyle> {
+        let base = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+            &ctx.html_label_text_style
+        } else {
+            &ctx.text_style
+        };
+        crate::flowchart::flowchart_effective_text_style_for_node_classes(
+            base,
+            ctx.class_defs,
+            self.node_classes,
+            self.node_styles,
+        )
+    }
+
+    pub(super) fn metrics(
+        &self,
+        ctx: &FlowchartRenderCtx<'_>,
+        layout_node: Option<&crate::model::LayoutNode>,
+        label: &super::FlowchartNodeLabelState<'_>,
+    ) -> crate::text::TextMetrics {
+        let text_style = self.text_style(ctx);
+        super::helpers::compute_node_label_metrics_with_style(
+            ctx,
+            layout_node,
+            label.text,
+            label.label_type,
+            text_style.as_ref(),
+        )
+    }
+
+    fn final_style(
+        &self,
+        prepared: Option<&crate::flowchart::FlowchartSvgLabelRenderPlan<'_>>,
+    ) -> String {
+        prepared
+            .and_then(|plan| {
+                plan.merge_emission_font_style(Some(self.compiled_styles.label_style.as_str()))
+            })
+            .unwrap_or_else(|| self.compiled_styles.label_style.clone())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn write_special_html_label(
+        &self,
+        out: &mut String,
+        ctx: &FlowchartRenderCtx<'_>,
+        common: &super::FlowchartNodeRenderCommon<'_>,
+        label: &super::FlowchartNodeLabelState<'_>,
+        details: &mut FlowchartRenderDetails,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
+        let text_style = self.text_style(ctx);
+        let prepared_svg_label =
+            (!ctx.node_html_labels && label.label_type != "markdown").then(|| {
+                let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
+                    sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
+                });
+                crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                    ctx.svg_label_sidecar,
+                    owner,
+                    label.text,
+                    ctx.measurer,
+                    text_style.as_ref(),
+                    Some(ctx.wrapping_width),
+                    true,
+                    crate::flowchart::flowchart_node_svg_width_mode(
+                        label.text,
+                        label.label_type,
+                        ctx.node_wrap_mode,
+                        common.shape,
+                    ),
+                )
+            });
+        let final_style = self.final_style(prepared_svg_label.as_ref());
+        let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
+        let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
+            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+        });
+        let mut div_style = final_style.clone();
+        if !div_style.is_empty() {
+            div_style.push(';');
+        }
+        let _ = write!(
+            &mut div_style,
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+            fmt_display(ctx.wrapping_width)
+        );
+        let _ = write!(
+            out,
+            r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
+            escape_xml_display(&final_style),
+            fmt_display(x),
+            fmt_display(y),
+            fmt_display(width),
+            fmt_display(height),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+            escape_xml_display(&div_style),
+            super::helpers::flowchart_node_label_span_class(label.label_type),
+            span_style_attr,
+            label_html,
+        );
+        let typography_applicable = flowchart_node_label_typography_is_applicable(
+            &flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels),
+            ctx.node_html_labels,
+        );
+        super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+            .with_prepared_typography_reach(
+                typography_applicable,
+                prepared_svg_label.as_ref().is_some_and(
+                    crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
+                ),
+            )
+    }
+}
+
 pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     common: &super::FlowchartNodeRenderCommon<'_>,
     label: &super::FlowchartNodeLabelState<'_>,
-    compiled_styles: &FlowchartCompiledStyles,
     details: &mut FlowchartRenderDetails,
-) {
-    let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-        &ctx.html_label_text_style
-    } else {
-        &ctx.text_style
-    };
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        label_base_style,
-        ctx.class_defs,
-        common.node_classes,
-        common.node_styles,
-    );
+) -> super::emission::FlowchartNodeLabelEmissionReceipt {
+    let node_text_style = common.label_emission.text_style(ctx);
     let prepared_svg_label = (!ctx.node_html_labels && label.label_type != "markdown").then(|| {
         let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
             sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
@@ -130,12 +261,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         "label"
     };
     if !ctx.node_html_labels {
-        let label_group_style = prepared_svg_label
-            .as_ref()
-            .and_then(|plan| {
-                plan.merge_emission_font_style(Some(compiled_styles.label_style.as_str()))
-            })
-            .unwrap_or_else(|| compiled_styles.label_style.clone());
+        let label_group_style = prepared_svg_label.as_ref().map_or_else(
+            || common.label_emission.final_style(None),
+            |plan| common.label_emission.final_style(Some(plan)),
+        );
         let _ = write!(
             out,
             r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><g><rect class="background" style="stroke: none"/>"#,
@@ -167,7 +296,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
             flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
         });
-        let span_style_attr = OptionalStyleXmlAttr(compiled_styles.label_style.as_str());
+        let final_style = common.label_emission.final_style(None);
+        let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
             && label.text.contains("$$")
             && ctx.math_renderer.is_some();
@@ -216,10 +346,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             false
         };
 
-        let mut div_style = crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(
-            compiled_styles,
-            true,
-        );
+        let mut div_style =
+            flowchart_label_div_style_prefix(common.label_emission.compiled_styles, true);
         if needs_wrap {
             let _ = write!(
                 &mut div_style,
@@ -237,7 +365,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             out,
             r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
             label_group_class,
-            escape_xml_display(&compiled_styles.label_style),
+            escape_xml_display(&final_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy),
             fmt_display(metrics.width),
@@ -252,6 +380,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
+    super::emission::FlowchartNodeLabelEmissionReceipt::verified().with_prepared_typography_reach(
+        flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels),
+        prepared_svg_label.as_ref().is_some_and(
+            crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
+        ),
+    )
+}
+
+fn flowchart_node_label_typography_is_applicable(text: &str, html_labels: bool) -> bool {
+    !crate::flowchart::flowchart_label_text_is_empty_for_mode(text, html_labels)
 }
 
 fn flowchart_node_label_uses_markdown_bbox(label_type: &str, text: &str) -> bool {
@@ -261,7 +399,25 @@ fn flowchart_node_label_uses_markdown_bbox(label_type: &str, text: &str) -> bool
 
 #[cfg(test)]
 mod tests {
-    use super::flowchart_node_label_uses_markdown_bbox;
+    use super::{
+        flowchart_node_label_typography_is_applicable, flowchart_node_label_uses_markdown_bbox,
+    };
+
+    #[test]
+    fn typography_applicability_uses_mermaid_visible_whitespace_semantics() {
+        assert!(!flowchart_node_label_typography_is_applicable(
+            " \t\n", false
+        ));
+        assert!(flowchart_node_label_typography_is_applicable(
+            "\u{00a0}", false
+        ));
+        assert!(flowchart_node_label_typography_is_applicable(
+            "\u{2007}", false
+        ));
+        assert!(flowchart_node_label_typography_is_applicable(
+            "\u{202f}", false
+        ));
+    }
 
     #[test]
     fn markdown_bbox_selection_uses_the_parser_label_type() {

@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use super::super::util::{escape_xml, escape_xml_display};
-use super::{FlowchartRenderCtx, flowchart_config_look, flowchart_resolve_stroke_for_marker};
+use super::{FlowchartRenderCtx, flowchart_config_look, flowchart_resolve_edge_marker_color};
 
 pub(in crate::svg::parity::flowchart) struct FlowchartDefs<'a> {
     diagram_id: &'a str,
@@ -238,45 +238,19 @@ fn collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
     let hand_drawn = flowchart_config_look(ctx.config) == "handDrawn";
 
     for e in ctx.edges_by_id.values() {
-        let mut found: Option<String> = None;
-        for raw in ctx.default_edge_style.iter().chain(e.style.iter()) {
-            // Mirror upstream behavior: handDrawn keeps the full `stroke:...` style token, while
-            // classic/neo extracts only the captured color value from final pathStyle.
-            //
-            // Our style declarations may include a leading space (e.g. ` stroke: orange`), so we
-            // only trim the key side.
-            let s = raw.trim_start();
-            let Some(rest) = s.strip_prefix("stroke:") else {
-                continue;
-            };
-            let marker_source = if hand_drawn { s } else { rest };
-            let cid = marker_color_id(marker_source);
-            if cid.is_empty() {
-                continue;
-            }
-            if seen.insert(cid) {
-                found = Some(marker_source.to_string());
-            }
-            break;
-        }
-
-        if !hand_drawn && found.is_none() && !e.classes.is_empty() {
-            let stroke = flowchart_resolve_stroke_for_marker(
-                ctx.class_defs,
-                &e.classes,
-                &ctx.default_edge_style,
-                &e.style,
-            );
-            if let Some(stroke) = stroke {
-                let cid = marker_color_id(&stroke);
-                if !cid.is_empty() && seen.insert(cid) {
-                    found = Some(stroke);
-                }
-            }
-        }
-
-        if let Some(v) = found {
-            out.push(v);
+        let Some(marker) = flowchart_resolve_edge_marker_color(
+            ctx.class_defs,
+            &e.classes,
+            &ctx.default_edge_style,
+            &e.style,
+            e.id.as_str(),
+            hand_drawn,
+        ) else {
+            continue;
+        };
+        let cid = marker_color_id(marker.value());
+        if !cid.is_empty() && seen.insert(cid) {
+            out.push(marker.value().to_string());
         }
     }
 

@@ -2,10 +2,7 @@
 
 use std::fmt::Write as _;
 
-use crate::svg::parity::flowchart::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, escape_attr, flowchart_label_html,
-    flowchart_label_plain_text,
-};
+use crate::svg::parity::flowchart::{escape_attr, flowchart_label_plain_text};
 use crate::svg::parity::fmt;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
@@ -14,7 +11,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<()> {
+) -> crate::Result<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
     // Port of Mermaid `icon.ts` (`icon-shape default`).
     let label_text_plain =
         flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
@@ -33,14 +30,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     let width = icon_size;
     let x = -width / 2.0;
     let y = -height / 2.0;
-    let mut metrics = super::super::helpers::compute_node_label_metrics(
-        ctx,
-        Some(common.layout_node),
-        label.text,
-        label.label_type,
-        common.node_classes,
-        common.node_styles,
-    );
+    let mut metrics = common
+        .label_emission
+        .metrics(ctx, Some(common.layout_node), label);
     if !has_label {
         metrics.width = 0.0;
         metrics.height = 0.0;
@@ -93,25 +85,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
         fmt(outer_y0 + outer_h)
     );
 
-    let label_html = super::super::helpers::timed_node_label_html(common.timing, details, || {
-        flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-    });
     let label_y = if top_label {
         -outer_h / 2.0
     } else {
         outer_h / 2.0 - label_bbox_h
     };
-    let _ = write!(
+    let label_receipt = common.label_emission.write_special_html_label(
         out,
-        r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
-        fmt(-label_bbox_w / 2.0),
-        fmt(label_y),
-        fmt(label_bbox_w),
-        fmt(label_bbox_h),
-        HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-        fmt(ctx.wrapping_width),
-        super::super::helpers::flowchart_node_label_span_class(label.label_type),
-        label_html
+        ctx,
+        common,
+        label,
+        details,
+        -label_bbox_w / 2.0,
+        label_y,
+        label_bbox_w,
+        label_bbox_h,
     );
 
     // Outer bbox helper node (transparent fill, no stroke) — emitted after the label group.
@@ -144,5 +132,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    Ok(())
+    Ok(label_receipt)
 }

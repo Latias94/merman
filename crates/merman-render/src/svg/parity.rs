@@ -320,6 +320,7 @@ pub(crate) struct SvgExecution<'a> {
 pub(crate) struct RootThemeAppliedSvg {
     svg: String,
     root_theme: crate::diagram_theme::RootThemeReport,
+    preserves_typed_theme_evidence: bool,
 }
 
 impl RootThemeAppliedSvg {
@@ -327,8 +328,12 @@ impl RootThemeAppliedSvg {
         &self.svg
     }
 
-    pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport) {
-        (self.svg, self.root_theme)
+    pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport, bool) {
+        (
+            self.svg,
+            self.root_theme,
+            self.preserves_typed_theme_evidence,
+        )
     }
 }
 
@@ -451,6 +456,10 @@ impl<'a> SvgExecution<'a> {
     pub(crate) fn work_meter(&self) -> &crate::resources::OperationWorkMeter {
         self.family.session().work_meter().as_ref()
     }
+
+    pub(crate) fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
+        self.family.session().resource_policy()
+    }
 }
 
 impl std::ops::Deref for SvgExecution<'_> {
@@ -498,7 +507,11 @@ pub(crate) fn render_builtin_family_artifact(
     } else {
         root_theme
     };
-    Ok(RootThemeAppliedSvg { svg, root_theme })
+    Ok(RootThemeAppliedSvg {
+        svg,
+        root_theme,
+        preserves_typed_theme_evidence: !theme_css_applied,
+    })
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -532,7 +545,11 @@ pub(crate) fn render_architecture_family_artifact(
     } else {
         root_theme
     };
-    Ok(RootThemeAppliedSvg { svg, root_theme })
+    Ok(RootThemeAppliedSvg {
+        svg,
+        root_theme,
+        preserves_typed_theme_evidence: !theme_css_applied,
+    })
 }
 
 fn render_builtin_family_artifact_raw(
@@ -602,6 +619,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.label_sidecar(),
+            artifact.effect_evidence(),
             effective_config_value,
             title,
             measurer,

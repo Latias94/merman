@@ -22,6 +22,10 @@ fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
 }
 
 fn render_xychart_svg_from_text(text: &str) -> String {
+    try_render_xychart_svg_from_text(text).expect("render svg")
+}
+
+fn try_render_xychart_svg_from_text(text: &str) -> Result<String, merman_render::Error> {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = engine
@@ -30,11 +34,10 @@ fn render_xychart_svg_from_text(text: &str) -> String {
         .expect("diagram detected");
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render svg")
+    Ok(artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
         .svg()
-        .to_owned()
+        .to_owned())
 }
 
 fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {
@@ -228,7 +231,7 @@ xychart horizontal
 
 #[test]
 fn xychart_huge_finite_bar_dimensions_do_not_spin_the_data_label_renderer() {
-    let svg = render_xychart_svg_from_text(
+    let error = try_render_xychart_svg_from_text(
         r#"---
 config:
   xyChart:
@@ -240,11 +243,13 @@ xychart horizontal
   y-axis 0 --> 100
   bar [73]
 "#,
-    );
-
-    let label = text_tag_by_text(&svg, "73");
-    assert!(!label.contains("font-size=\"NaNpx\""), "label: {label}");
-    assert!(!label.contains("Infinity"), "label: {label}");
+    )
+    .expect_err("huge finite geometry must fail before entering the SVG backend");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected typed resource-limit error, got {error}");
+    };
+    assert_eq!(limit.limit, "svg_backend_coordinate_magnitude");
+    assert!(limit.actual > limit.max);
 }
 
 #[test]

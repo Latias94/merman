@@ -16,6 +16,10 @@ use super::builtin::attr_sanitize::{
 use super::builtin::css_sanitize::{
     validate_resvg_css_declaration_list, validate_resvg_css_stylesheet,
 };
+use super::font_embedding::{
+    SvgFontEmbeddingPlan, SvgFontSeal, TYPED_FONT_STYLE_ATTRIBUTE, TYPED_FONT_STYLE_VERSION,
+    stylesheet_contains_font_face,
+};
 use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
 
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
@@ -345,12 +349,29 @@ pub(crate) fn validate_resvg_compatible_svg(
     svg: &str,
     limits: RenderResourcePolicy,
 ) -> Result<TerminalSvgValidation> {
+    validate_resvg_compatible_svg_inner(svg, limits, None)
+}
+
+pub(super) fn validate_resvg_compatible_svg_with_font_plan(
+    svg: &str,
+    limits: RenderResourcePolicy,
+    font_plan: &SvgFontEmbeddingPlan,
+) -> Result<TerminalSvgValidation> {
+    validate_resvg_compatible_svg_inner(svg, limits, Some(font_plan))
+}
+
+fn validate_resvg_compatible_svg_inner(
+    svg: &str,
+    limits: RenderResourcePolicy,
+    font_plan: Option<&SvgFontEmbeddingPlan>,
+) -> Result<TerminalSvgValidation> {
     validate_well_formed_svg(svg, limits)?;
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
     let mut root_seen = false;
     let mut root_closed = false;
-    let mut style_text = None::<String>;
+    let mut style_text = None::<OpenStyle>;
+    let mut typed_font_style_seen = false;
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
@@ -371,6 +392,13 @@ pub(crate) fn validate_resvg_compatible_svg(
                 reject_additional_root(is_root, root_seen, root_closed)?;
                 let validated =
                     validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
+                let opens_style = validated.is_style;
+                let typed_font_style = validated.is_typed_font_style;
+                if typed_font_style && depth != 1 {
+                    return Err(validation_error(
+                        "renderer-owned typed font stylesheet must be a direct child of the SVG root",
+                    ));
+                }
                 text_elements = text_elements.saturating_add(usize::from(validated.is_text));
                 append_reference_node(
                     &mut reference_nodes,
@@ -381,8 +409,16 @@ pub(crate) fn validate_resvg_compatible_svg(
                     root_seen = true;
                 }
                 depth += 1;
-                if reference_nodes.last().is_some_and(|node| node.is_style) {
-                    style_text = Some(String::new());
+                if opens_style {
+                    if typed_font_style && typed_font_style_seen {
+                        return Err(validation_error(
+                            "terminal SVG contains more than one renderer-owned typed font stylesheet",
+                        ));
+                    }
+                    style_text = Some(OpenStyle {
+                        css: String::new(),
+                        typed_font_style,
+                    });
                 }
                 reference_stack.push(reference_nodes.len() - 1);
             }
@@ -396,14 +432,26 @@ pub(crate) fn validate_resvg_compatible_svg(
                 reject_additional_root(is_root, root_seen, root_closed)?;
                 let validated =
                     validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
+                let empty_style = validated.is_style;
+                let typed_font_style = validated.is_typed_font_style;
+                if typed_font_style && depth != 1 {
+                    return Err(validation_error(
+                        "renderer-owned typed font stylesheet must be a direct child of the SVG root",
+                    ));
+                }
                 text_elements = text_elements.saturating_add(usize::from(validated.is_text));
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
                     validated,
                 );
-                if reference_nodes.last().is_some_and(|node| node.is_style) {
-                    validate_style_text("")?;
+                if empty_style {
+                    validate_terminal_style(
+                        "",
+                        typed_font_style,
+                        font_plan,
+                        &mut typed_font_style_seen,
+                    )?;
                 }
                 if is_root {
                     root_seen = true;
@@ -415,15 +463,20 @@ pub(crate) fn validate_resvg_compatible_svg(
                 reject_unknown_namespace(namespace)?;
                 let local_name = element.local_name();
                 let element_name = xml_name(local_name.as_ref())?;
-                if let Some(css) = style_text.take() {
+                if let Some(style) = style_text.take() {
                     if !element_name.eq_ignore_ascii_case("style") {
                         return Err(validation_error(
                             "a <style> element contains nested XML elements",
                         ));
                     }
-                    validate_style_text(&css)?;
+                    validate_terminal_style(
+                        &style.css,
+                        style.typed_font_style,
+                        font_plan,
+                        &mut typed_font_style_seen,
+                    )?;
                     resource_closure
-                        .observe_stylesheet_urls(&css)
+                        .observe_stylesheet_urls(&style.css)
                         .map_err(validation_error)?;
                 }
                 reference_stack
@@ -440,8 +493,8 @@ pub(crate) fn validate_resvg_compatible_svg(
                 let text = text
                     .xml10_content()
                     .map_err(|error| validation_error(format!("invalid XML text: {error}")))?;
-                if let Some(css) = style_text.as_mut() {
-                    css.push_str(&text);
+                if let Some(style) = style_text.as_mut() {
+                    style.css.push_str(&text);
                 } else if depth == 0 && !text.trim().is_empty() {
                     return Err(validation_error("text is not allowed outside the SVG root"));
                 }
@@ -450,8 +503,8 @@ pub(crate) fn validate_resvg_compatible_svg(
                 let text = text
                     .xml10_content()
                     .map_err(|error| validation_error(format!("invalid CDATA: {error}")))?;
-                if let Some(css) = style_text.as_mut() {
-                    css.push_str(&text);
+                if let Some(style) = style_text.as_mut() {
+                    style.css.push_str(&text);
                 } else if depth == 0 && !text.trim().is_empty() {
                     return Err(validation_error(
                         "CDATA is not allowed outside the SVG root",
@@ -460,8 +513,8 @@ pub(crate) fn validate_resvg_compatible_svg(
             }
             Event::GeneralRef(reference) => {
                 let value = resolve_xml_reference_value(&reference).map_err(validation_error)?;
-                if let Some(css) = style_text.as_mut() {
-                    css.push(value);
+                if let Some(style) = style_text.as_mut() {
+                    style.css.push(value);
                 } else if depth == 0 && !value.is_ascii_whitespace() {
                     return Err(validation_error(
                         "character references are not allowed outside the SVG root",
@@ -491,17 +544,35 @@ pub(crate) fn validate_resvg_compatible_svg(
     if !root_closed || depth != 0 || style_text.is_some() {
         return Err(validation_error("the SVG root is not closed"));
     }
+    if font_plan.is_some() && !typed_font_style_seen {
+        return Err(validation_error(
+            "renderer-owned typed font plan has no matching terminal stylesheet",
+        ));
+    }
     let reference_plan = plan_svg_reference_expansion(&reference_nodes)?;
     limits.check_svg_structure(
         reference_plan.expanded_elements(),
         reference_plan.max_tree_depth(),
     )?;
     let resource_closure = resource_closure.finish().map_err(validation_error)?;
+    let font_seal = if let Some(plan) = font_plan {
+        plan.seal(text_elements)?
+    } else if text_elements == 0 {
+        SvgFontSeal::not_required()
+    } else {
+        SvgFontSeal::unsealed(text_elements)
+    };
     Ok(TerminalSvgValidation {
         reference_plan,
         resource_closure,
         text_elements,
+        font_seal,
     })
+}
+
+struct OpenStyle {
+    css: String,
+    typed_font_style: bool,
 }
 
 #[derive(Debug)]
@@ -509,6 +580,7 @@ pub(crate) struct TerminalSvgValidation {
     pub(super) reference_plan: SvgReferencePlan,
     pub(super) resource_closure: SvgResourceClosure,
     pub(super) text_elements: usize,
+    pub(super) font_seal: SvgFontSeal,
 }
 
 impl std::ops::Deref for TerminalSvgValidation {
@@ -530,6 +602,7 @@ fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> 
 
 struct ValidatedElement {
     is_style: bool,
+    is_typed_font_style: bool,
     is_text: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
@@ -610,6 +683,9 @@ fn validate_element(
     let is_use = is_svg_element && element_name.eq_ignore_ascii_case("use");
     let is_fe_image = is_svg_element && element_name.eq_ignore_ascii_case("feImage");
     let is_marker = is_svg_element && element_name.eq_ignore_ascii_case("marker");
+    let is_style = is_svg_element && element_name.eq_ignore_ascii_case("style");
+    let mut is_typed_font_style = false;
+    let mut style_has_non_marker_attribute = false;
     let mut use_id = None;
     let mut parsed_id = None;
     let mut parsed_id_seen = false;
@@ -644,10 +720,28 @@ fn validate_element(
             &attribute_namespace,
             ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE.as_bytes()
         );
+        let is_typed_font_marker =
+            is_unbound_attribute && qualified_name == TYPED_FONT_STYLE_ATTRIBUTE;
+        if is_style && !is_typed_font_marker {
+            style_has_non_marker_attribute = true;
+        }
         if !usvg_consumes_attribute_namespace(attribute_namespace)? {
             continue;
         }
         let semantic_name = xml_name(local_name.as_ref())?;
+        if is_typed_font_marker {
+            if !is_style {
+                return Err(validation_error(format!(
+                    "renderer-owned typed font marker is not allowed on <{element_name}>"
+                )));
+            }
+            if value.as_ref() != TYPED_FONT_STYLE_VERSION {
+                return Err(validation_error(
+                    "renderer-owned typed font marker has an unsupported version",
+                ));
+            }
+            is_typed_font_style = true;
+        }
         if parsed_attribute_violates_resvg_contract(element_name, qualified_name, &value) {
             return Err(validation_error(format!(
                 "attribute {qualified_name:?} on <{element_name}> violates the resvg-safe contract"
@@ -729,6 +823,11 @@ fn validate_element(
             *slot = target.map(str::to_owned);
         }
     }
+    if is_typed_font_style && style_has_non_marker_attribute {
+        return Err(validation_error(
+            "renderer-owned typed font stylesheet may only carry its fixed marker and namespace declarations",
+        ));
+    }
 
     let mut references = Vec::new();
     if let Some(target) = use_xlink_href
@@ -772,7 +871,8 @@ fn validate_element(
     }
 
     Ok(ValidatedElement {
-        is_style: element_name.eq_ignore_ascii_case("style"),
+        is_style,
+        is_typed_font_style,
         is_text: is_svg_element && element_name.eq_ignore_ascii_case("text"),
         is_marker,
         may_repeat_per_element: is_svg_element
@@ -1138,6 +1238,37 @@ fn reject_unknown_namespace(namespace: ResolveResult<'_>) -> Result<()> {
 fn validate_style_text(css: &str) -> Result<()> {
     validate_resvg_css_stylesheet(css)
         .map_err(|error| validation_error(format!("invalid <style> content: {error}")))
+}
+
+fn validate_terminal_style(
+    css: &str,
+    typed_font_style: bool,
+    font_plan: Option<&SvgFontEmbeddingPlan>,
+    typed_font_style_seen: &mut bool,
+) -> Result<()> {
+    if !typed_font_style {
+        if font_plan.is_some() && stylesheet_contains_font_face(css) {
+            return Err(validation_error(
+                "terminal SVG contains an unplanned @font-face rule",
+            ));
+        }
+        return validate_style_text(css);
+    }
+    if *typed_font_style_seen {
+        return Err(validation_error(
+            "terminal SVG contains more than one renderer-owned typed font stylesheet",
+        ));
+    }
+    let Some(font_plan) = font_plan else {
+        return Err(validation_error(
+            "renderer-owned typed font stylesheet has no active embedding plan",
+        ));
+    };
+    font_plan
+        .validate_typed_style(css)
+        .map_err(|error| validation_error(error.to_string()))?;
+    *typed_font_style_seen = true;
+    Ok(())
 }
 
 fn resolve_xml_reference_value(reference: &BytesRef<'_>) -> std::result::Result<char, String> {

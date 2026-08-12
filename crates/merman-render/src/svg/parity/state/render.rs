@@ -4,6 +4,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
+    effect_evidence: &crate::state::StateSvgEffectEvidenceRecorder,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -138,6 +139,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         include_nodes: options.debug.include_nodes,
         measurer,
         label_sidecar,
+        effect_evidence,
         style_plan,
         rough_cache,
         #[cfg(test)]
@@ -303,7 +305,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let root_context =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::State, diagram_id);
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::State, diagram_id)
+            .with_resource_policy(options.resource_policy());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
     root_chrome.class = Some("statediagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -378,6 +381,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             max_x: 100.0,
             max_y: 100.0,
         });
+    let effect_outsets = style_plan.effect_outsets();
+    content_bounds.min_x -= effect_outsets.left;
+    content_bounds.max_x += effect_outsets.right;
+    content_bounds.min_y -= effect_outsets.top;
+    content_bounds.max_y += effect_outsets.bottom;
     drop(_g_scan);
 
     let mut title_svg = String::new();

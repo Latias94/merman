@@ -330,7 +330,7 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
             r#"data-look="handDrawn""#,
             r#"<g transform="translate"#,
             r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0""##,
-            r##"stroke="#ef4444" stroke-width="1.2999999523162842" fill="none" stroke-dasharray="0 0""##,
+            r##"stroke="#ef4444" stroke-width="3" fill="none" stroke-dasharray="0 0""##,
         ],
     );
 }

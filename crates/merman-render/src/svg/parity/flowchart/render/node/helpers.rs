@@ -79,24 +79,49 @@ pub(super) fn try_render_self_loop_label_placeholder(
     true
 }
 
-fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
-    escape_xml_into(out, base);
-    for c in classes {
-        let t = c.trim();
-        if t.is_empty() {
-            continue;
-        }
-        out.push(' ');
-        escape_xml_into(out, t);
+#[derive(Clone, Copy)]
+pub(in crate::svg::parity::flowchart) struct NodeWrapperClasses<'a> {
+    base: &'a str,
+    assigned: &'a [String],
+}
+
+impl<'a> NodeWrapperClasses<'a> {
+    pub(in crate::svg::parity::flowchart) const fn new(
+        base: &'a str,
+        assigned: &'a [String],
+    ) -> Self {
+        Self { base, assigned }
     }
+
+    pub(in crate::svg::parity::flowchart) fn contains(self, expected: &str) -> bool {
+        self.base
+            .split_ascii_whitespace()
+            .chain(self.assigned.iter().map(String::as_str))
+            .any(|class| class.trim() == expected)
+    }
+
+    fn write(self, out: &mut String) {
+        escape_xml_into(out, self.base);
+        for c in self.assigned {
+            let t = c.trim();
+            if t.is_empty() {
+                continue;
+            }
+            out.push(' ');
+            escape_xml_into(out, t);
+        }
+    }
+}
+
+fn write_class_attr(out: &mut String, classes: NodeWrapperClasses<'_>) {
+    classes.write(out);
 }
 
 pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) diagram_id: &'a str,
     pub(super) node_id: &'a str,
     pub(super) dom_idx: Option<usize>,
-    pub(super) class_attr_base: &'a str,
-    pub(super) node_classes: &'a [String],
+    pub(super) classes: NodeWrapperClasses<'a>,
     pub(super) wrapped_in_a: bool,
     pub(super) href: Option<&'a SerializedMermaidNavigationHref>,
     pub(super) target: Option<&'a str>,
@@ -112,8 +137,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         diagram_id,
         node_id,
         dom_idx,
-        class_attr_base,
-        node_classes,
+        classes,
         wrapped_in_a,
         href,
         target,
@@ -151,7 +175,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
             out.push_str(r#"">"#);
         }
         out.push_str(r#"<g class=""#);
-        write_class_attr(out, class_attr_base, node_classes);
+        write_class_attr(out, classes);
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
             escape_xml_into(out, diagram_id);
@@ -167,7 +191,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         }
     } else {
         out.push_str(r#"<g class=""#);
-        write_class_attr(out, class_attr_base, node_classes);
+        write_class_attr(out, classes);
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id=""#);
             escape_xml_into(out, diagram_id);
@@ -363,11 +387,6 @@ pub(in crate::svg::parity::flowchart) fn compute_node_label_metrics(
     // Shared across many Flowchart v2 shape renderers.
     //
     // Keep behavior identical to the inlined implementations to preserve Mermaid SVG parity.
-    let label_text_plain = crate::svg::parity::flowchart::flowchart_label_plain_text(
-        label_text,
-        label_type,
-        ctx.node_html_labels,
-    );
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
@@ -379,8 +398,29 @@ pub(in crate::svg::parity::flowchart) fn compute_node_label_metrics(
         node_classes,
         node_styles,
     );
+    compute_node_label_metrics_with_style(
+        ctx,
+        layout_node,
+        label_text,
+        label_type,
+        node_text_style.as_ref(),
+    )
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics_with_style(
+    ctx: &FlowchartRenderCtx<'_>,
+    layout_node: Option<&crate::model::LayoutNode>,
+    label_text: &str,
+    label_type: &str,
+    node_text_style: &crate::text::TextStyle,
+) -> crate::text::TextMetrics {
+    let label_text_plain = crate::svg::parity::flowchart::flowchart_label_plain_text(
+        label_text,
+        label_type,
+        ctx.node_html_labels,
+    );
     let prepared_metrics =
-        || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, &node_text_style);
+        || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, node_text_style);
     let mut metrics = if let Some(layout_node) = layout_node {
         if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
             crate::text::TextMetrics {
@@ -396,7 +436,7 @@ pub(in crate::svg::parity::flowchart) fn compute_node_label_metrics(
                     measurer: ctx.measurer,
                     raw_label: label_text,
                     label_type,
-                    style: &node_text_style,
+                    style: node_text_style,
                     max_width_px: Some(ctx.wrapping_width),
                     wrap_mode: ctx.node_wrap_mode,
                     config: ctx.config,
@@ -412,7 +452,7 @@ pub(in crate::svg::parity::flowchart) fn compute_node_label_metrics(
                 measurer: ctx.measurer,
                 raw_label: label_text,
                 label_type,
-                style: &node_text_style,
+                style: node_text_style,
                 max_width_px: Some(ctx.wrapping_width),
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,

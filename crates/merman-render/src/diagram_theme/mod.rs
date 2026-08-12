@@ -34,12 +34,11 @@ pub use admission::{
     ThemeCapability, ThemeHostAdmissionReport, ThemePortabilityRequirement, ThemeRequirements,
     TrustedThemeLane, TrustedThemeLanes,
 };
+pub(crate) use application::{FamilyThemeMechanismKey, RootThemeApplication, RootThemePlan};
 pub use application::{
-    FamilyThemeMechanismKey, RootThemeEvaluation, RootThemeMechanism, RootThemeMechanismEvidence,
-    RootThemeMechanismKey, RootThemeReport, RootThemeResidual, RootThemeResidualReason,
-    RootThemeVerification,
+    RootThemeEvaluation, RootThemeMechanism, RootThemeMechanismEvidence, RootThemeMechanismKey,
+    RootThemeReport, RootThemeResidual, RootThemeResidualReason, RootThemeVerification,
 };
-pub(crate) use application::{RootThemeApplication, RootThemePlan};
 pub use assets::{
     FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec, FontCatalog,
     FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
@@ -56,10 +55,13 @@ pub use effects::{
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRoute, FamilyThemeRuleFacet,
 };
+pub(crate) use mechanisms::{collect_effect_graph_capabilities, paint_capability};
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
 };
-pub(crate) use resolved::{ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeStyle};
+pub(crate) use resolved::{
+    ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect, ResolvedThemeStyle,
+};
 pub(crate) use resolved::{ResolvedStyleProperty, ThemeTypographyProperty};
 pub use resources::{
     MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,

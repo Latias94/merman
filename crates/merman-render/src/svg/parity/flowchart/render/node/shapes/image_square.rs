@@ -2,10 +2,8 @@
 
 use std::fmt::Write as _;
 
+use crate::svg::parity::flowchart::flowchart_label_plain_text;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::parity::flowchart::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, flowchart_label_html, flowchart_label_plain_text,
-};
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
@@ -16,7 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
-) -> bool {
+) -> Option<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
     // Port of Mermaid `imageSquare.ts` (`image-shape default`).
     if let Some(img_href) = common.node_img.filter(|s| !s.trim().is_empty()) {
         let label_text_plain =
@@ -55,14 +53,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         } else {
             asset_h
         };
-        let mut metrics = super::super::helpers::compute_node_label_metrics(
-            ctx,
-            Some(common.layout_node),
-            label.text,
-            label.label_type,
-            common.node_classes,
-            common.node_styles,
-        );
+        let mut metrics = common
+            .label_emission
+            .metrics(ctx, Some(common.layout_node), label);
         if !has_label {
             metrics.width = 0.0;
             metrics.height = 0.0;
@@ -144,34 +137,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         out.push_str("</g>");
 
         // Label group uses a background class in Mermaid's image/icon helpers.
-        let label_html =
-            super::super::helpers::timed_node_label_html(common.timing, details, || {
-                flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-            });
         let label_dy = if top_label {
             -image_height / 2.0 - label_bbox_h / 2.0 - label_padding / 2.0
         } else {
             image_height / 2.0 - label_bbox_h / 2.0 + label_padding / 2.0
         };
-        let _ = write!(
+        let label_receipt = common.label_emission.write_special_html_label(
             out,
-            concat!(
-                r#"<g class="label" style="" transform="translate({},{})">"#,
-                r#"<rect/>"#,
-                r#"<foreignObject width="{}" height="{}"{}>"#,
-                r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
-                r#"style="display: table-cell; white-space: nowrap; line-height: 1.5; "#,
-                r#"max-width: {}px; text-align: center;"><span class="{}">{}</span></div>"#,
-                r#"</foreignObject></g>"#
-            ),
-            fmt_display(-label_bbox_w / 2.0),
-            fmt_display(label_dy),
-            fmt_display(label_bbox_w),
-            fmt_display(label_bbox_h),
-            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            fmt_display(ctx.wrapping_width),
-            super::super::helpers::flowchart_node_label_span_class(label.label_type),
-            label_html
+            ctx,
+            common,
+            label,
+            details,
+            -label_bbox_w / 2.0,
+            label_dy,
+            label_bbox_w,
+            label_bbox_h,
         );
 
         let outer_x0 = -outer_w / 2.0;
@@ -212,7 +192,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         if common.wrapped_in_a {
             out.push_str("</a>");
         }
-        return true;
+        return Some(label_receipt);
     } else {
         // Fall back to a normal node if the image URL is missing.
         let w = common.layout_node.width.max(1.0);
@@ -229,5 +209,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         // Keep default label rendering.
     }
 
-    false
+    None
 }
