@@ -355,6 +355,25 @@ impl GraphNodeLabelPlan {
         node: &AsciiGraphNode,
         resources: &ResourceContext,
     ) -> crate::Result<GraphLabel> {
+        self.materialize_with_callback(node, resources, || {})
+    }
+
+    #[cfg(test)]
+    fn materialize_with_body_reserve_probe(
+        &self,
+        node: &AsciiGraphNode,
+        resources: &ResourceContext,
+        body_reserve_started: &std::cell::Cell<bool>,
+    ) -> crate::Result<GraphLabel> {
+        self.materialize_with_callback(node, resources, || body_reserve_started.set(true))
+    }
+
+    fn materialize_with_callback(
+        &self,
+        node: &AsciiGraphNode,
+        resources: &ResourceContext,
+        before_body_reserve: impl FnOnce(),
+    ) -> crate::Result<GraphLabel> {
         match (self.kind, node.semantics.compartments.as_ref()) {
             (GraphNodeLabelPlanKind::Single, None) => {
                 let (lines, width) = self
@@ -372,16 +391,18 @@ impl GraphNodeLabelPlan {
                 let Some(body) = self.secondary else {
                     return Err(invalid_graph_label_plan(self.diagram_type));
                 };
+                self.admit_compartment_materialization(body, resources)?;
                 let (mut lines, title_width) = self
                     .primary
-                    .materialize(&compartments.title, resources)?
+                    .materialize_after_admission(&compartments.title)?
                     .into_parts();
                 let body_metrics = body.metrics();
+                before_body_reserve();
                 lines
                     .try_reserve_exact(body_metrics.line_count)
                     .map_err(|_| label_allocation_failed())?;
                 let (mut body_lines, body_width) = body
-                    .materialize(&compartments.body, resources)?
+                    .materialize_after_admission(&compartments.body)?
                     .into_parts();
                 lines.append(&mut body_lines);
                 Ok(GraphLabel {
@@ -393,6 +414,23 @@ impl GraphNodeLabelPlan {
             }
             _ => Err(invalid_graph_label_plan(self.diagram_type)),
         }
+    }
+
+    fn admit_compartment_materialization(
+        &self,
+        body: NormalizedLabelPlan,
+        resources: &ResourceContext,
+    ) -> crate::Result<()> {
+        let work_units = resources.checked_work_add(
+            self.primary.materialization_work_units(),
+            body.materialization_work_units(),
+        )?;
+        resources.charge_layout_work(work_units)?;
+        resources.check(AsciiResourceLimitId::MaxDocumentCells, self.document_cells)?;
+        resources.check(
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.materialized_bytes,
+        )
     }
 }
 
@@ -447,7 +485,10 @@ fn graph_label_metrics(
 
 #[cfg(test)]
 mod tests {
-    use super::GraphLabel;
+    use super::{GraphLabel, GraphNodeLabelPlan};
+    use crate::graph::model::{
+        AsciiGraphNode, GraphNodeCompartments, GraphNodeSemantics, GraphNodeShape, GraphNodeStyle,
+    };
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use crate::{AsciiError, TerminalWidthProfile};
     use merman_core::resources::ResourceProfile;
@@ -549,6 +590,85 @@ mod tests {
     }
 
     #[test]
+    fn compartmented_label_admits_replay_document_and_output_before_reserving_body_rows() {
+        let node = compartmented_node("Title<br>continued", "Body<br>detail");
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let measured_resources = ResourceContext::new(unbounded);
+        let measured_plan = GraphNodeLabelPlan::try_for_node(
+            &node,
+            None,
+            "state",
+            TerminalWidthProfile::Unicode,
+            &measured_resources,
+        )
+        .expect("compartmented label planning should succeed");
+        let exact_document_cells = measured_plan.document_cells();
+        let exact_output_bytes = measured_plan.materialized_bytes();
+        let measured_reserve = Cell::new(false);
+        measured_plan
+            .materialize_with_body_reserve_probe(&node, &measured_resources, &measured_reserve)
+            .expect("unbounded compartmented label materialization should succeed");
+        assert!(measured_reserve.get());
+        let exact_work = measured_resources.layout_work_used();
+        assert!(exact_work > 1);
+        assert!(exact_document_cells > 1);
+        assert!(exact_output_bytes > 1);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact compartment replay-work limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_document_cells)
+            .expect("exact compartment document limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes)
+            .expect("exact compartment output limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        let exact_plan = GraphNodeLabelPlan::try_for_node(
+            &node,
+            None,
+            "state",
+            TerminalWidthProfile::Unicode,
+            &exact_resources,
+        )
+        .expect("exact compartmented label planning should succeed");
+        let label = exact_plan
+            .materialize(&node, &exact_resources)
+            .expect("exact replay-work, document, and output limits should permit materialization");
+        assert_eq!(label.lines(), ["Title", "continued", "Body", "detail"]);
+
+        for (limit, actual) in [
+            (AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work),
+            (AsciiResourceLimitId::MaxDocumentCells, exact_document_cells),
+            (AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes),
+        ] {
+            let below_policy = exact_policy
+                .with_limit(limit, actual - 1)
+                .expect("max-minus-one compartment limit should be valid");
+            let below_resources = ResourceContext::new(below_policy);
+            let below_plan = GraphNodeLabelPlan::try_for_node(
+                &node,
+                None,
+                "state",
+                TerminalWidthProfile::Unicode,
+                &below_resources,
+            )
+            .expect("compartment planning should remain non-materializing");
+            let body_reserve_started = Cell::new(false);
+            let error = below_plan
+                .materialize_with_body_reserve_probe(&node, &below_resources, &body_reserve_started)
+                .expect_err("max-minus-one limit should reject before body allocation");
+
+            assert!(!body_reserve_started.get(), "limit={limit:?}");
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit
+                        && details.actual == actual
+                        && details.max == actual - 1
+            ));
+        }
+    }
+
+    #[test]
     fn compartmented_label_keeps_multiline_title_boundary() {
         let label = GraphLabel::compartmented_with_profile(
             "Title<br>continued",
@@ -558,5 +678,18 @@ mod tests {
 
         assert_eq!(label.lines(), ["Title", "continued", "Body", "detail"]);
         assert_eq!(label.compartment_break_after(), Some(2));
+    }
+
+    fn compartmented_node(title: &str, body: &str) -> AsciiGraphNode {
+        AsciiGraphNode {
+            id: "node".to_string(),
+            label: title.to_string(),
+            shape: GraphNodeShape::StateWithTitle,
+            style: GraphNodeStyle::default(),
+            semantics: GraphNodeSemantics {
+                compartments: Some(GraphNodeCompartments::new(title, body)),
+                ..GraphNodeSemantics::default()
+            },
+        }
     }
 }
