@@ -166,9 +166,11 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
       "stable card and group ids",
       "assignments and metadata",
       "deterministic Unassigned grouping",
+      "group parent ownership disclosure",
     ],
     limits: [
       "drag and board presentation metadata are not terminal output",
+      "group parent ownership is disclosed without nested board geometry",
       "duplicate or empty ids are rejected",
     ],
   },

@@ -93,6 +93,16 @@ test("fallback projection fields derive the compatibility support level", () => 
     )
   );
 
+  const kanban = byType.get("kanban")!;
+  assert.ok(
+    kanban.supported_semantics.includes("group parent ownership disclosure")
+  );
+  assert.ok(
+    kanban.limits.includes(
+      "group parent ownership is disclosed without nested board geometry"
+    )
+  );
+
   const xychart = byType.get("xychart")!;
   assert.equal(xychart.structured_text_fallback, true);
   assert.ok(

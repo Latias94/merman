@@ -423,10 +423,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "assignments",
             "metadata",
             "deterministic Unassigned grouping",
+            "group parent ownership disclosure",
             "length-framed authored report fields",
         ],
         limits: &[
             "drag and board presentation metadata are not terminal output",
+            "group parent ownership is disclosed without nested board geometry",
             "duplicate or empty ids are rejected",
         ],
         evidence: &[
@@ -1035,6 +1037,11 @@ mod tests {
             find("mindmap")
                 .supported_semantics
                 .contains(&"ASCII and Unicode tree connectors")
+        );
+        assert!(
+            find("kanban")
+                .supported_semantics
+                .contains(&"group parent ownership disclosure")
         );
     }
 

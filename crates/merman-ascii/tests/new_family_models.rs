@@ -1085,6 +1085,35 @@ fn kanban_structured_text_framing_distinguishes_ticket_from_priority() {
 }
 
 #[test]
+fn kanban_group_parent_ownership_is_disclosed_without_nested_geometry() {
+    let model = KanbanDiagramRenderModel {
+        nodes: vec![
+            kanban_node("root", "Root", true, KanbanNodeMetadata::default()),
+            kanban_node(
+                "child",
+                "Child",
+                true,
+                KanbanNodeMetadata {
+                    parent_id: Some("root, priority=high"),
+                    ..Default::default()
+                },
+            ),
+        ],
+    };
+
+    let rendered = render(RenderSemanticModel::Kanban(model));
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "group(bytes=4)=\"Root\" [id(bytes=4)=\"root\"]\n",
+            "group(bytes=5)=\"Child\" [id(bytes=5)=\"child\",\n",
+            "parent(bytes=19)=\"root, priority=high\"]",
+        )
+    );
+}
+
+#[test]
 fn kanban_render_model_keeps_unassigned_and_unknown_parent_cards() {
     let model = KanbanDiagramRenderModel {
         nodes: vec![

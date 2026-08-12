@@ -42,6 +42,9 @@ pub fn render_kanban_diagram(
         .map_err(|_| layout_allocation_error())?;
     for group in model.nodes.iter().filter(|node| node.is_group) {
         document.preflight_text_work(&group.id)?;
+        if let Some(parent_id) = group.parent_id.as_deref() {
+            document.preflight_text_work(parent_id)?;
+        }
         group_ids.insert(group.id.as_str());
     }
 
@@ -69,7 +72,7 @@ pub fn render_kanban_diagram(
     for group in model.nodes.iter().filter(|node| node.is_group) {
         document.resources_mut().charge_layout_work(1)?;
         document.push_wrapped_prefixed_line_with("", "", SUMMARY_WRAP_WIDTH, |line| {
-            push_node_text(line, group, None)
+            push_node_text(line, group, group.parent_id.as_deref())
         })?;
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
