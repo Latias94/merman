@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use merman::{
-    OperationControl, OperationPhase, RenderError, RenderOutput, RenderRequest, Renderer,
-    SemanticArtifact,
+    OperationControl, OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest,
+    Renderer, SemanticArtifact,
+    resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
 #[test]
@@ -64,6 +65,52 @@ fn prepare_semantic_delegates_to_the_same_runner() {
     );
 }
 
+#[test]
+fn renderer_defaults_apply_when_the_request_does_not_override_them() {
+    let renderer = Renderer::new().with_resource_policy(
+        InputResourcePolicy::default()
+            .with_limit(InputResourceLimitId::MaxSourceBytes, 4)
+            .expect("valid source limit"),
+    );
+
+    let error = renderer
+        .render(RenderRequest::semantic(
+            "flowchart TD\nA --> B",
+            OperationControl::new(),
+        ))
+        .expect_err("the renderer's source limit must apply to one-shot requests");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_source_bytes" && limit.maximum == 4
+    ));
+}
+
+#[test]
+fn request_overrides_take_precedence_over_renderer_defaults() {
+    let renderer = Renderer::new()
+        .with_parse_options(ParseOptions::strict())
+        .with_resource_policy(
+            InputResourcePolicy::default()
+                .with_limit(InputResourceLimitId::MaxSourceBytes, 4)
+                .expect("valid source limit"),
+        );
+    let request_resources = InputResourcePolicy::default()
+        .with_limit(InputResourceLimitId::MaxSourceBytes, 4_096)
+        .expect("valid source limit");
+
+    let output = renderer
+        .render(
+            RenderRequest::semantic("flowchart TD\nA --> B", OperationControl::new())
+                .with_parse_options(ParseOptions::lenient())
+                .with_resource_policy(request_resources),
+        )
+        .expect("request overrides should replace renderer defaults");
+
+    assert!(matches!(output, RenderOutput::Semantic(Some(_))));
+}
+
 #[cfg(feature = "svg")]
 #[test]
 fn typed_svg_targets_share_the_prepared_operation() {
@@ -80,7 +127,7 @@ fn typed_svg_targets_share_the_prepared_operation() {
     let RenderOutput::LayoutJson(Some(layout)) = layout else {
         panic!("expected typed layout JSON");
     };
-    assert!(layout.get("layout").is_some());
+    assert!(layout.layout().get("layout").is_some());
 
     let plan = renderer
         .render(RenderRequest::svg_plan(

@@ -191,13 +191,9 @@ impl RenderRequestPlan {
         target: merman::RenderTarget,
         control: OperationControl,
     ) -> RenderRequest<'a> {
-        RenderRequest {
-            source,
-            target,
-            control,
-            parse_options: self.parse_options,
-            resources: self.input_resources,
-        }
+        RenderRequest::new(source, target, control)
+            .with_parse_options(self.parse_options)
+            .with_resource_policy(self.input_resources)
     }
 }
 

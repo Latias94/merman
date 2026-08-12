@@ -47,13 +47,7 @@ impl ConfiguredRenderer {
         target: merman::RenderTarget,
         control: merman::OperationControl,
     ) -> merman::RenderRequest<'a> {
-        merman::RenderRequest {
-            source,
-            target,
-            control,
-            parse_options: self.renderer.parse_options(),
-            resources: *self.renderer.resource_policy(),
-        }
+        merman::RenderRequest::new(source, target, control)
     }
 }
 
@@ -63,16 +57,6 @@ pub(crate) fn engine_for(
 ) -> Result<Engine, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
     let site_config = site_config_for(parse, resources)?;
-    Ok(engine_from_config(runtime, site_config))
-}
-
-#[cfg(feature = "ascii")]
-pub(crate) fn engine_for_resolved(
-    parse: &ResolvedParseOptions,
-    resources: &ResolvedResourcePolicy,
-) -> Result<Engine, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let site_config = site_config_for_resolved(parse, resources)?;
     Ok(engine_from_config(runtime, site_config))
 }
 
@@ -477,10 +461,14 @@ mod tests {
         };
 
         assert!(
-            svg.contains("<path"),
-            "expected rendered math glyphs: {svg}"
+            svg.svg().contains("<path"),
+            "expected rendered math glyphs: {}",
+            svg.svg()
         );
-        assert!(!svg.contains("$$x^2$$"), "math delimiters must be replaced");
+        assert!(
+            !svg.svg().contains("$$x^2$$"),
+            "math delimiters must be replaced"
+        );
     }
 
     #[test]

@@ -211,7 +211,7 @@ fn run_layout(args: ResolvedLayout, context: &mut ExecutionContext) -> Result<()
     let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };
-    print_json(&layout_json, args.pretty, &context.stdout)
+    print_json(layout_json.layout(), args.pretty, &context.stdout)
 }
 
 #[cfg(feature = "analysis")]

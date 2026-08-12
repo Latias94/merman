@@ -84,6 +84,7 @@ pub(crate) fn execute_graphical(
                     .render(renderer.request(source, target, control.clone()))?;
             match (&prepared.output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
+                    let (svg, _evidence) = svg.into_parts();
                     #[cfg(feature = "markdown")]
                     let metadata = svg_metadata(&svg);
                     Ok(ExecutedArtifact {

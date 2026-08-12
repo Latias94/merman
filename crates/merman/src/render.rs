@@ -25,6 +25,154 @@ use merman_render::{
 
 pub use crate::operation_runner::SemanticArtifact;
 
+/// Identifies the canonical source-to-target operation path that produced an artifact.
+///
+/// This deliberately describes the public facade rather than exposing an implementation type
+/// such as the former `HeadlessOperation`.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum OperationExecutionPath {
+    Renderer,
+}
+
+#[cfg(feature = "svg")]
+impl OperationExecutionPath {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Renderer => "renderer",
+        }
+    }
+}
+
+/// Immutable evidence captured by a completed SVG operation.
+///
+/// The evidence is created only by the renderer after SVG emission/postprocessing succeeds. It
+/// is intentionally a narrow projection: callers can inspect measurement provenance and runtime
+/// identity without gaining access to SVG session services or family layout internals.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderEvidence {
+    execution_path: OperationExecutionPath,
+    session: merman_render::environment::RenderSessionReport,
+}
+
+#[cfg(feature = "svg")]
+impl RenderEvidence {
+    fn from_session(session: merman_render::environment::RenderSession) -> Self {
+        Self {
+            execution_path: OperationExecutionPath::Renderer,
+            session: session.report(),
+        }
+    }
+
+    pub const fn execution_path(&self) -> OperationExecutionPath {
+        self.execution_path
+    }
+
+    pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {
+        self.session.measurement_routes()
+    }
+
+    pub fn measurement(&self) -> &merman_render::environment::TextMeasurementReport {
+        self.session.measurement()
+    }
+
+    pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
+        self.session.operation_context()
+    }
+
+    pub const fn unix_millis(&self) -> i64 {
+        self.session.unix_millis()
+    }
+
+    pub const fn local_date(&self) -> merman_core::time::CivilDate {
+        self.session.local_date()
+    }
+
+    pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
+        self.session.local_time_zone()
+    }
+
+    pub fn render_seed(&self) -> std::num::NonZeroU64 {
+        self.session.render_seed()
+    }
+
+    pub const fn layout_work_units(&self) -> usize {
+        self.session.layout_work_units()
+    }
+}
+
+/// Successful SVG output and the evidence for the operation that produced it.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SvgOutput {
+    svg: String,
+    evidence: RenderEvidence,
+}
+
+#[cfg(feature = "svg")]
+impl SvgOutput {
+    fn new(svg: String, session: merman_render::environment::RenderSession) -> Self {
+        Self {
+            svg,
+            evidence: RenderEvidence::from_session(session),
+        }
+    }
+
+    pub fn svg(&self) -> &str {
+        &self.svg
+    }
+
+    pub fn evidence(&self) -> &RenderEvidence {
+        &self.evidence
+    }
+
+    pub fn into_parts(self) -> (String, RenderEvidence) {
+        (self.svg, self.evidence)
+    }
+}
+
+/// Successful SVG layout inspection output.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct SvgLayoutOutput {
+    layout: serde_json::Value,
+    gantt_time_axis: Option<merman_render::family::GanttTimeAxisDiagnostics>,
+}
+
+#[cfg(feature = "svg")]
+impl SvgLayoutOutput {
+    fn new(
+        layout: serde_json::Value,
+        gantt_time_axis: Option<merman_render::family::GanttTimeAxisDiagnostics>,
+    ) -> Self {
+        Self {
+            layout,
+            gantt_time_axis,
+        }
+    }
+
+    pub fn layout(&self) -> &serde_json::Value {
+        &self.layout
+    }
+
+    pub fn gantt_time_axis_diagnostics(
+        &self,
+    ) -> Option<merman_render::family::GanttTimeAxisDiagnostics> {
+        self.gantt_time_axis
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        serde_json::Value,
+        Option<merman_render::family::GanttTimeAxisDiagnostics>,
+    ) {
+        (self.layout, self.gantt_time_axis)
+    }
+}
+
 /// Structured error returned by the canonical rendering facade.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -277,108 +425,72 @@ pub struct PdfOutput {
 /// the synchronous worker from another task or thread.
 #[derive(Debug, Clone)]
 pub struct RenderRequest<'a> {
-    pub source: &'a str,
-    pub target: RenderTarget,
-    pub control: OperationControl,
-    pub parse_options: ParseOptions,
-    pub resources: InputResourcePolicy,
+    source: &'a str,
+    target: RenderTarget,
+    control: OperationControl,
+    parse_options: Option<ParseOptions>,
+    resources: Option<InputResourcePolicy>,
 }
 
 impl<'a> RenderRequest<'a> {
-    pub fn semantic(source: &'a str, control: OperationControl) -> Self {
+    /// Creates a typed operation request that inherits the renderer's parse and input-resource
+    /// defaults until an explicit request override is applied.
+    pub fn new(source: &'a str, target: RenderTarget, control: OperationControl) -> Self {
         Self {
             source,
-            target: RenderTarget::Semantic,
+            target,
             control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
+            parse_options: None,
+            resources: None,
         }
+    }
+
+    pub fn semantic(source: &'a str, control: OperationControl) -> Self {
+        Self::new(source, RenderTarget::Semantic, control)
     }
 
     #[cfg(feature = "svg")]
     pub fn svg(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::Svg(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::Svg(request), control)
     }
 
     #[cfg(feature = "svg")]
     pub fn layout_json(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::LayoutJson(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::LayoutJson(request), control)
     }
 
     #[cfg(feature = "svg")]
     pub fn svg_plan(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::SvgPlan(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::SvgPlan(request), control)
     }
 
     #[cfg(feature = "ascii")]
     pub fn ascii(source: &'a str, control: OperationControl, request: AsciiRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::Ascii(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::Ascii(request), control)
     }
 
     #[cfg(feature = "png")]
     pub fn png(source: &'a str, control: OperationControl, request: PngRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::Png(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::Png(request), control)
     }
 
     #[cfg(feature = "jpeg")]
     pub fn jpeg(source: &'a str, control: OperationControl, request: JpegRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::Jpeg(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::Jpeg(request), control)
     }
 
     #[cfg(feature = "pdf")]
     pub fn pdf(source: &'a str, control: OperationControl, request: PdfRequest) -> Self {
-        Self {
-            source,
-            target: RenderTarget::Pdf(request),
-            control,
-            parse_options: ParseOptions::default(),
-            resources: InputResourcePolicy::default(),
-        }
+        Self::new(source, RenderTarget::Pdf(request), control)
     }
 
     pub fn with_parse_options(mut self, parse_options: ParseOptions) -> Self {
-        self.parse_options = parse_options;
+        self.parse_options = Some(parse_options);
         self
     }
 
     pub fn with_resource_policy(mut self, resources: InputResourcePolicy) -> Self {
-        self.resources = resources;
+        self.resources = Some(resources);
         self
     }
 }
@@ -388,9 +500,9 @@ impl<'a> RenderRequest<'a> {
 pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
     #[cfg(feature = "svg")]
-    Svg(Option<String>),
+    Svg(Option<SvgOutput>),
     #[cfg(feature = "svg")]
-    LayoutJson(Option<serde_json::Value>),
+    LayoutJson(Option<SvgLayoutOutput>),
     #[cfg(feature = "svg")]
     SvgPlan(Option<merman_render::family::RenderCapabilityPlan>),
     #[cfg(feature = "ascii")]
@@ -460,17 +572,25 @@ impl Renderer {
 
     /// Executes one typed target request through the canonical operation runner.
     pub fn render(&self, request: RenderRequest<'_>) -> Result<RenderOutput, RenderError> {
+        let RenderRequest {
+            source,
+            target,
+            control,
+            parse_options,
+            resources,
+        } = request;
         let operation = Operation::begin(
             &self.engine,
-            request.source,
-            request.control,
-            request.resources,
+            source,
+            control,
+            resources.unwrap_or(self.resources),
         )?;
-        let semantic = operation.parse_render_model(request.source, request.parse_options)?;
+        let semantic =
+            operation.parse_render_model(source, parse_options.unwrap_or(self.parse_options))?;
         let Some(semantic) = semantic else {
-            return Ok(RenderOutput::empty(request.target));
+            return Ok(RenderOutput::empty(target));
         };
-        semantic.render(request.target)
+        semantic.render(target)
     }
 
     /// Prepares a format-neutral semantic artifact through the same runner used by `render`.
@@ -560,7 +680,7 @@ impl RenderOutput {
 fn render_svg_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
-) -> Result<Option<String>, RenderError> {
+) -> Result<Option<SvgOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     let session = request
         .environment
@@ -579,15 +699,15 @@ fn render_svg_target(
         Some(pipeline) => rendered.apply_pipeline(pipeline).map_err(map_svg_error)?,
         None => rendered,
     };
-    let (svg, _, _, _) = rendered.into_parts();
-    Ok(Some(svg))
+    let (svg, _, _, session) = rendered.into_parts();
+    Ok(Some(SvgOutput::new(svg, session)))
 }
 
 #[cfg(feature = "svg")]
 fn render_layout_json_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
-) -> Result<Option<serde_json::Value>, RenderError> {
+) -> Result<Option<SvgLayoutOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     let session = request
         .environment
@@ -599,7 +719,11 @@ fn render_layout_json_target(
         request.presentation,
     )
     .map_err(map_svg_error)?;
-    artifact.layout_json().map(Some).map_err(map_svg_error)
+    let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
+    artifact
+        .layout_json()
+        .map(|layout| Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
+        .map_err(map_svg_error)
 }
 
 #[cfg(feature = "svg")]
