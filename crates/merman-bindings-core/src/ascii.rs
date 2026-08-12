@@ -281,9 +281,7 @@ fn classify_render_error(
 ) -> BindingError {
     match err {
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
-        merman::RenderError::RuntimePolicy(err) => {
-            crate::common::runtime_policy_error(err)
-        }
+        merman::RenderError::RuntimePolicy(err) => crate::common::runtime_policy_error(err),
         merman::RenderError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
