@@ -253,18 +253,35 @@ void projectsCurrentAbi3TableBoundaries() {
     'engine_new_with_services must append after metadata_collect',
   );
   _expect(
+    native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW == 7 &&
+        native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL == 8 &&
+        native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE == 9,
+    'operation-control functions must retain their appended ABI 3 slots',
+  );
+  _expect(
+    native.MERMAN_NATIVE_STATUS_BUSY == 16 &&
+        native.MERMAN_NATIVE_STATUS_CANCELLED == 17,
+    'cancelled must append after every pre-existing ABI 3 status',
+  );
+  _expect(
     !ffi_transport.nativeApiHasCurrentTableForTesting(
           native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1,
         ) &&
         ffi_transport.nativeApiHasCurrentTableForTesting(
-          native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+          native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
         ),
-    'consumers must reject a table smaller than the current minimum prefix',
+    'consumers must require the complete operation-control table prefix',
   );
   _expect(
-    native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ==
+    native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE <
+            native.MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE &&
+        native.MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE <
+            native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE &&
+        native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE <
+            native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE &&
+        native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ==
         ffi.sizeOf<native.MermanNativeApi>(),
-    'the current minimum prefix must include the complete release table',
+    'each appended control slot must end at one complete table prefix',
   );
 
   final request = calloc<native.MermanNativeApiRequest>();
@@ -1522,6 +1539,35 @@ void decodesMachineReadableNativeErrors() {
   _expect(
     busyWithoutResult is MermanBusyException,
     'result-free engine close status must preserve busy classification',
+  );
+
+  final cancelled = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_CANCELLED,
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'ok': false,
+          'status': native.MERMAN_NATIVE_STATUS_CANCELLED,
+          'status_name': 'cancelled',
+          'kind': 'generic',
+          'capability_id': null,
+          'details': {
+            'cancellation': {
+              'reason': 'deadline_exceeded',
+              'phase': 'layout',
+            },
+          },
+          'message': 'operation cancelled during layout',
+        }),
+      ),
+    ),
+  );
+  _expect(
+    cancelled is MermanCancelledException &&
+        cancelled.cancellationDetails?.reason == 'deadline_exceeded' &&
+        cancelled.cancellationDetails?.phase == 'layout',
+    'structured cancellation metadata should survive the Dart boundary',
   );
 
   final resource = MermanException.fromNative(
