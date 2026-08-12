@@ -146,7 +146,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@1.97.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           toolchain: ${{ env.FUZZ_NIGHTLY }}
           components: rust-src

@@ -208,7 +208,7 @@ jobs:
 
       - name: Install Rust toolchain
         if: matrix.target != 'linux-x64-musl'
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: ${{ matrix.rust_target }}
 
