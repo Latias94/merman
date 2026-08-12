@@ -74,7 +74,8 @@ pub mod __private {
 
     pub use crate::text::__private::{
         PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
-        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance, PreparedTextTerminalFace,
+        PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
     };
 
     /// Coarse family-evidence state used by the workspace facade.
@@ -220,6 +221,18 @@ pub mod __private {
         svg: &crate::svg::ResvgCompatibleSvg,
     ) -> &[PreparedTextLabelLedgerEntry] {
         svg.prepared_text_label_ledger()
+    }
+
+    /// Returns the renderer-owned terminal receipt bound to the exact native SVG artifact.
+    pub fn prepared_text_terminal_receipt(
+        svg: &crate::svg::ResvgCompatibleSvg,
+    ) -> Option<&PreparedTextTerminalReceipt> {
+        svg.prepared_text_terminal_receipt()
+    }
+
+    /// Returns the number of prepared labels retained by the sealed native artifact.
+    pub fn prepared_text_label_count(svg: &crate::svg::ResvgCompatibleSvg) -> usize {
+        svg.prepared_text_label_ledger().len()
     }
 
     /// Reports whether the terminal pipeline preserved prepared-label locators.

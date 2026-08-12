@@ -613,6 +613,8 @@ fn assert_export_font_plan(fonts: merman::svg::export::ExportFontPlan) {
     );
     assert_eq!(fonts.prepared_label_mismatch_count(), 0);
     assert!(fonts.prepared_text_evidence_matches());
+    assert_eq!(fonts.prepared_label_terminal_incomplete_count(), 0);
+    assert!(fonts.prepared_text_terminal_proof_complete());
     assert!(!fonts.is_host_dependent());
 }
 

@@ -1,16 +1,17 @@
 use super::{ExportError, Result};
 use merman_render::__private::{
-    PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+    PreparedTextLabelId, PreparedTextLabelProvenance, PreparedTextTerminalFace,
+    PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
 };
 #[cfg(test)]
 use merman_render::__private::{
-    native_export_svg, prepared_text_evidence_valid, prepared_text_label_ledger,
+    native_export_svg, prepared_text_label_count, prepared_text_terminal_receipt,
 };
 use merman_render::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontSource, GenericFontFamily,
 };
 use merman_render::svg::ResvgCompatibleSvg;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -75,6 +76,7 @@ pub struct ExportFontPlan {
     prepared_label_verified_count: usize,
     prepared_label_mismatch_count: usize,
     prepared_label_host_dependent_count: usize,
+    prepared_label_terminal_incomplete_count: usize,
     unclassified_face_count: usize,
     notdef_glyph_count: usize,
 }
@@ -130,12 +132,12 @@ impl ExportFontPlan {
         self.prepared_label_expected_count
     }
 
-    /// Returns the number of prepared labels whose final face/source set matched the ledger.
+    /// Returns the number of prepared labels whose terminal receipt matched the parsed artifact.
     pub const fn prepared_label_verified_count(self) -> usize {
         self.prepared_label_verified_count
     }
 
-    /// Returns the bounded count of prepared-label token or face/source mismatches.
+    /// Returns the bounded count of prepared-label receipt, token, text, or face mismatches.
     pub const fn prepared_label_mismatch_count(self) -> usize {
         self.prepared_label_mismatch_count
     }
@@ -143,6 +145,11 @@ impl ExportFontPlan {
     /// Returns the number of prepared labels produced by a host-dependent backend.
     pub const fn prepared_label_host_dependent_count(self) -> usize {
         self.prepared_label_host_dependent_count
+    }
+
+    /// Returns the number of matching native labels that still lack exact multi-face range proof.
+    pub const fn prepared_label_terminal_incomplete_count(self) -> usize {
+        self.prepared_label_terminal_incomplete_count
     }
 
     /// Returns the number of final font faces that were absent from the operation font map.
@@ -161,9 +168,17 @@ impl ExportFontPlan {
             && self.prepared_label_verified_count == self.prepared_label_expected_count
     }
 
-    /// Returns whether the concrete parsed output depends on host-installed font data.
+    /// Returns whether every prepared label has a complete terminal proof for Portable admission.
+    pub const fn prepared_text_terminal_proof_complete(self) -> bool {
+        self.prepared_text_evidence_matches() && self.prepared_label_terminal_incomplete_count == 0
+    }
+
+    /// Returns whether the concrete parsed output is host-dependent or lacks complete native text
+    /// proof and therefore cannot be treated as Portable.
     pub const fn is_host_dependent(self) -> bool {
-        self.used_system_fonts || self.prepared_label_host_dependent_count != 0
+        self.used_system_fonts
+            || self.prepared_label_host_dependent_count != 0
+            || self.prepared_label_terminal_incomplete_count != 0
     }
 }
 
@@ -187,34 +202,21 @@ pub(crate) struct ExportFontPlanSeed {
 impl ExportFontPlanSeed {
     pub(crate) fn finish_with_tree(
         &self,
+        source: &str,
         tree: &usvg::Tree,
-        ledger: &[PreparedTextLabelLedgerEntry],
-        evidence_valid: bool,
+        expected_label_count: usize,
+        receipt: Option<&PreparedTextTerminalReceipt>,
     ) -> ExportFontPlan {
-        let evidence = FinalTreeFontEvidence::collect(
-            tree,
-            self.faces.as_ref(),
-            &self.catalog_assets,
-            !ledger.is_empty() && evidence_valid,
+        let evidence =
+            FinalTreeFontEvidence::collect(tree, self.faces.as_ref(), &self.catalog_assets);
+        let prepared = verify_prepared_text_labels(
+            self.catalog_fingerprint,
+            source,
+            expected_label_count,
+            receipt,
+            &evidence.prepared_labels,
+            evidence.invalid_prepared_token_count,
         );
-        let prepared = if evidence_valid {
-            verify_prepared_text_labels(
-                self.catalog_fingerprint,
-                ledger,
-                &evidence.prepared_labels,
-                evidence.invalid_prepared_token_count,
-            )
-        } else {
-            PreparedTextVerification {
-                expected_count: ledger.len(),
-                verified_count: 0,
-                mismatch_count: ledger.len(),
-                host_dependent_count: ledger
-                    .iter()
-                    .filter(|entry| entry.provenance().is_host_dependent())
-                    .count(),
-            }
-        };
         let unresolved_glyph_fallback = self
             .recorder
             .unresolved_glyph_fallback
@@ -238,6 +240,7 @@ impl ExportFontPlanSeed {
             prepared_label_verified_count: prepared.verified_count,
             prepared_label_mismatch_count: prepared.mismatch_count,
             prepared_label_host_dependent_count: prepared.host_dependent_count,
+            prepared_label_terminal_incomplete_count: prepared.terminal_incomplete_count,
             unclassified_face_count: evidence.unclassified_face_count,
             notdef_glyph_count: evidence.notdef_glyph_count,
         }
@@ -271,41 +274,43 @@ enum ObservedFaceEvidence {
 
 #[derive(Debug, Default)]
 struct ObservedPreparedLabel {
-    saw_base_token: bool,
-    line_tokens: HashSet<u32>,
+    base_lines: Option<Vec<String>>,
+    line_tokens: BTreeMap<u32, String>,
     duplicate_token: bool,
     faces: HashSet<ObservedFaceEvidence>,
 }
 
 impl ObservedPreparedLabel {
-    fn observe_token(&mut self, line: Option<u32>) {
+    fn observe_token(&mut self, line: Option<u32>, lines: Vec<String>) {
         match line {
             None => {
-                if self.saw_base_token || !self.line_tokens.is_empty() {
+                if self.base_lines.is_some() || !self.line_tokens.is_empty() {
                     self.duplicate_token = true;
                 }
-                self.saw_base_token = true;
+                self.base_lines = Some(lines);
             }
             Some(line) => {
-                if self.saw_base_token || !self.line_tokens.insert(line) {
+                let text = lines.concat();
+                if self.base_lines.is_some() || self.line_tokens.insert(line, text).is_some() {
                     self.duplicate_token = true;
                 }
             }
         }
     }
 
-    fn tokens_match(&self, expected_line_count: usize) -> bool {
+    fn lines_match(&self, expected: &[String]) -> bool {
         if self.duplicate_token {
             return false;
         }
-        if self.saw_base_token {
-            return self.line_tokens.is_empty();
+        if let Some(lines) = &self.base_lines {
+            return self.line_tokens.is_empty() && lines == expected;
         }
-        self.line_tokens.len() == expected_line_count
-            && (0..expected_line_count).all(|line| {
+        self.line_tokens.len() == expected.len()
+            && expected.iter().enumerate().all(|(line, expected)| {
                 u32::try_from(line)
                     .ok()
-                    .is_some_and(|line| self.line_tokens.contains(&line))
+                    .and_then(|line| self.line_tokens.get(&line))
+                    .is_some_and(|actual| actual == expected)
             })
     }
 }
@@ -325,7 +330,6 @@ impl FinalTreeFontEvidence {
         tree: &usvg::Tree,
         faces: &HashMap<usvg::fontdb::ID, ExportResolvedFace>,
         catalog_assets: &[ExportCatalogAssetEvidence],
-        collect_prepared_labels: bool,
     ) -> Self {
         let mut evidence = Self::default();
         let mut unclassified_faces = HashSet::new();
@@ -336,7 +340,6 @@ impl FinalTreeFontEvidence {
             tree.fontdb(),
             faces,
             catalog_assets,
-            collect_prepared_labels,
             &mut unclassified_faces,
             &mut selected_system_face_keys,
             &mut visited_groups,
@@ -351,7 +354,6 @@ impl FinalTreeFontEvidence {
         fontdb: &usvg::fontdb::Database,
         faces: &HashMap<usvg::fontdb::ID, ExportResolvedFace>,
         catalog_assets: &[ExportCatalogAssetEvidence],
-        collect_prepared_labels: bool,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
         selected_system_face_keys: &mut HashMap<usvg::fontdb::ID, Option<ExportFaceKey>>,
         visited_groups: &mut HashSet<*const usvg::Group>,
@@ -366,7 +368,6 @@ impl FinalTreeFontEvidence {
                     fontdb,
                     faces,
                     catalog_assets,
-                    collect_prepared_labels,
                     unclassified_faces,
                     selected_system_face_keys,
                     visited_groups,
@@ -376,7 +377,6 @@ impl FinalTreeFontEvidence {
                     fontdb,
                     faces,
                     catalog_assets,
-                    collect_prepared_labels,
                     unclassified_faces,
                     selected_system_face_keys,
                 ),
@@ -388,7 +388,6 @@ impl FinalTreeFontEvidence {
                     fontdb,
                     faces,
                     catalog_assets,
-                    collect_prepared_labels,
                     unclassified_faces,
                     selected_system_face_keys,
                     visited_groups,
@@ -403,25 +402,24 @@ impl FinalTreeFontEvidence {
         fontdb: &usvg::fontdb::Database,
         faces: &HashMap<usvg::fontdb::ID, ExportResolvedFace>,
         catalog_assets: &[ExportCatalogAssetEvidence],
-        collect_prepared_labels: bool,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
         selected_system_face_keys: &mut HashMap<usvg::fontdb::ID, Option<ExportFaceKey>>,
     ) {
-        let prepared_token = collect_prepared_labels
-            .then(|| parse_prepared_text_token(text.id()))
-            .flatten();
-        if collect_prepared_labels
-            && PreparedTextLabelId::is_svg_id_candidate(text.id())
-            && prepared_token.is_none()
-        {
+        let prepared_token = parse_prepared_text_token(text.id());
+        if PreparedTextLabelId::is_svg_id_candidate(text.id()) && prepared_token.is_none() {
             self.invalid_prepared_token_count = self.invalid_prepared_token_count.saturating_add(1);
         }
 
         if let Some((id, line)) = prepared_token {
+            let lines = text
+                .chunks()
+                .iter()
+                .map(|chunk| chunk.text().to_string())
+                .collect();
             self.prepared_labels
                 .entry(id)
                 .or_default()
-                .observe_token(line);
+                .observe_token(line, lines);
         }
 
         for span in text.layouted().iter().filter(|span| span.visible) {
@@ -482,33 +480,37 @@ struct PreparedLabelExpectation {
     id: PreparedTextLabelId,
     catalog_fingerprint: FontCatalogFingerprint,
     provenance: PreparedTextLabelProvenance,
-    line_count: usize,
+    line_texts: Vec<String>,
     faces: HashSet<ObservedFaceEvidence>,
+    terminal_incomplete: bool,
 }
 
-impl From<&PreparedTextLabelLedgerEntry> for PreparedLabelExpectation {
-    fn from(entry: &PreparedTextLabelLedgerEntry) -> Self {
+impl From<&PreparedTextTerminalLabelReceipt> for PreparedLabelExpectation {
+    fn from(receipt: &PreparedTextTerminalLabelReceipt) -> Self {
         Self {
-            id: entry.id(),
-            catalog_fingerprint: entry.catalog_fingerprint(),
-            provenance: entry.provenance(),
-            line_count: entry.line_count(),
-            faces: entry
-                .evidence()
+            id: receipt.id(),
+            catalog_fingerprint: receipt.catalog_fingerprint(),
+            provenance: receipt.provenance(),
+            line_texts: receipt.line_texts().map(str::to_string).collect(),
+            faces: receipt
+                .faces()
                 .iter()
-                .map(|evidence| {
-                    let key = evidence.face_key();
-                    ObservedFaceEvidence::Classified(ExportResolvedFace {
-                        key: Some(ExportFaceKey {
-                            asset_fingerprint: key.asset_fingerprint(),
-                            face_index: key.face_index(),
-                        }),
-                        source: evidence.font_source(),
-                    })
-                })
+                .copied()
+                .map(observed_terminal_face)
                 .collect(),
+            terminal_incomplete: receipt.native_terminal_proof_is_incomplete(),
         }
     }
+}
+
+fn observed_terminal_face(face: PreparedTextTerminalFace) -> ObservedFaceEvidence {
+    ObservedFaceEvidence::Classified(ExportResolvedFace {
+        key: Some(ExportFaceKey {
+            asset_fingerprint: face.asset_fingerprint(),
+            face_index: face.face_index(),
+        }),
+        source: face.source(),
+    })
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -517,15 +519,43 @@ struct PreparedTextVerification {
     verified_count: usize,
     mismatch_count: usize,
     host_dependent_count: usize,
+    terminal_incomplete_count: usize,
 }
 
 fn verify_prepared_text_labels(
     catalog_fingerprint: FontCatalogFingerprint,
-    ledger: &[PreparedTextLabelLedgerEntry],
+    source: &str,
+    expected_label_count: usize,
+    receipt: Option<&PreparedTextTerminalReceipt>,
     observed: &HashMap<PreparedTextLabelId, ObservedPreparedLabel>,
     invalid_token_count: usize,
 ) -> PreparedTextVerification {
-    let expectations = ledger
+    if expected_label_count == 0 {
+        return PreparedTextVerification {
+            mismatch_count: receipt.map_or(0, |receipt| receipt.labels().len().max(1))
+                + observed.len()
+                + invalid_token_count,
+            ..PreparedTextVerification::default()
+        };
+    }
+    let Some(receipt) = receipt else {
+        return PreparedTextVerification {
+            expected_count: expected_label_count,
+            mismatch_count: expected_label_count.saturating_add(invalid_token_count),
+            ..PreparedTextVerification::default()
+        };
+    };
+    if !receipt.artifact_matches(source) || receipt.labels().len() != expected_label_count {
+        return PreparedTextVerification {
+            expected_count: expected_label_count,
+            mismatch_count: expected_label_count
+                .max(receipt.labels().len())
+                .saturating_add(invalid_token_count),
+            ..PreparedTextVerification::default()
+        };
+    }
+    let expectations = receipt
+        .labels()
         .iter()
         .map(PreparedLabelExpectation::from)
         .collect::<Vec<_>>();
@@ -564,10 +594,14 @@ fn verify_prepared_label_expectations(
         let valid = !duplicate_ids.contains(id)
             && expectation.catalog_fingerprint == catalog_fingerprint
             && observed.get(id).is_some_and(|actual| {
-                actual.tokens_match(expectation.line_count) && actual.faces == expectation.faces
+                actual.lines_match(&expectation.line_texts) && actual.faces == expectation.faces
             });
         if valid {
             verification.verified_count = verification.verified_count.saturating_add(1);
+            if expectation.terminal_incomplete {
+                verification.terminal_incomplete_count =
+                    verification.terminal_incomplete_count.saturating_add(1);
+            }
         } else {
             verification.mismatch_count = verification.mismatch_count.saturating_add(1);
         }
@@ -1290,9 +1324,10 @@ mod tests {
         options.font_resolver = resolver;
         let tree = usvg::Tree::from_str(native_export_svg(svg), &options).unwrap();
         plan.finish_with_tree(
+            native_export_svg(svg),
             &tree,
-            prepared_text_label_ledger(svg),
-            prepared_text_evidence_valid(svg),
+            prepared_text_label_count(svg),
+            prepared_text_terminal_receipt(svg),
         )
     }
 
@@ -1304,6 +1339,15 @@ mod tests {
     }
 
     fn prepared_verifier_fixture(ids: &[&str]) -> PreparedVerifierFixture {
+        prepared_verifier_fixture_with_text(ids, "Alpha")
+    }
+
+    fn prepared_verifier_fixture_with_text(ids: &[&str], text: &str) -> PreparedVerifierFixture {
+        let entries = ids.iter().map(|id| (*id, text)).collect::<Vec<_>>();
+        prepared_verifier_fixture_with_texts(&entries)
+    }
+
+    fn prepared_verifier_fixture_with_texts(entries: &[(&str, &str)]) -> PreparedVerifierFixture {
         let catalog = custom_catalog(&[FontSource::Embedded]);
         let environment = ExportFontEnvironment::from_resources(
             &catalog,
@@ -1313,12 +1357,13 @@ mod tests {
         .unwrap();
         let source = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="240" height="{}" viewBox="0 0 240 {}">{}</svg>"#,
-            (ids.len().max(1) * 32),
-            (ids.len().max(1) * 32),
-            ids.iter()
+            (entries.len().max(1) * 32),
+            (entries.len().max(1) * 32),
+            entries
+                .iter()
                 .enumerate()
-                .map(|(index, id)| format!(
-                    r#"<text id="{id}" x="4" y="{}" font-family="Sketch" font-size="20">Alpha</text>"#,
+                .map(|(index, (id, text))| format!(
+                    r#"<text id="{id}" x="4" y="{}" font-family="Sketch" font-size="20">{text}</text>"#,
                     index * 32 + 24
                 ))
                 .collect::<String>()
@@ -1332,7 +1377,6 @@ mod tests {
             &tree,
             environment.plan.faces.as_ref(),
             &environment.plan.catalog_assets,
-            true,
         );
         let asset = &catalog.assets()[0];
         let face = &catalog.faces()[0];
@@ -1367,8 +1411,9 @@ mod tests {
             id: PreparedTextLabelId::from_svg_id(svg_id).unwrap(),
             catalog_fingerprint: fixture.catalog_fingerprint,
             provenance: PreparedTextLabelProvenance::Native,
-            line_count,
+            line_texts: vec!["Alpha".to_string(); line_count],
             faces: HashSet::from([ObservedFaceEvidence::Classified(fixture.face)]),
+            terminal_incomplete: false,
         }
     }
 
@@ -1386,6 +1431,46 @@ mod tests {
         assert_eq!(verification.expected_count, 1);
         assert_eq!(verification.verified_count, 1);
         assert_eq!(verification.mismatch_count, 0);
+    }
+
+    #[test]
+    fn prepared_label_verifier_rejects_changed_text_with_the_same_line_and_face_set() {
+        let id = "merman-prepared-flowchart-0";
+        let expected = prepared_verifier_fixture_with_text(&[id], "Alpha");
+        let actual = prepared_verifier_fixture_with_text(&[id], "Bravo");
+        let verification = verify_prepared_label_expectations(
+            expected.catalog_fingerprint,
+            &[prepared_expectation(&expected, id)],
+            &actual.observed,
+            actual.invalid_token_count,
+        );
+
+        assert_eq!(verification.verified_count, 0);
+        assert_eq!(verification.mismatch_count, 1);
+    }
+
+    #[test]
+    fn prepared_label_verifier_rejects_reordered_lines_with_the_same_face_set() {
+        let base = "merman-prepared-state-4";
+        let expected = prepared_verifier_fixture_with_texts(&[
+            ("merman-prepared-state-4-line-0", "Alpha"),
+            ("merman-prepared-state-4-line-1", "Bravo"),
+        ]);
+        let actual = prepared_verifier_fixture_with_texts(&[
+            ("merman-prepared-state-4-line-0", "Bravo"),
+            ("merman-prepared-state-4-line-1", "Alpha"),
+        ]);
+        let mut expectation = prepared_expectation_with_line_count(&expected, base, 2);
+        expectation.line_texts = vec!["Alpha".to_string(), "Bravo".to_string()];
+        let verification = verify_prepared_label_expectations(
+            expected.catalog_fingerprint,
+            &[expectation],
+            &actual.observed,
+            actual.invalid_token_count,
+        );
+
+        assert_eq!(verification.verified_count, 0);
+        assert_eq!(verification.mismatch_count, 1);
     }
 
     #[test]
@@ -1501,6 +1586,66 @@ mod tests {
 
         assert_eq!(source_verification.mismatch_count, 1);
         assert_eq!(catalog_verification.mismatch_count, 1);
+    }
+
+    #[test]
+    fn prepared_label_verifier_keeps_matching_multi_face_evidence_incomplete() {
+        let id = "merman-prepared-sequence-9";
+        let mut fixture = prepared_verifier_fixture(&[id]);
+        let second_face = ObservedFaceEvidence::Classified(ExportResolvedFace {
+            key: fixture.face.key,
+            source: FontSource::System,
+        });
+        fixture
+            .observed
+            .get_mut(&PreparedTextLabelId::from_svg_id(id).unwrap())
+            .unwrap()
+            .faces
+            .insert(second_face);
+        let mut expectation = prepared_expectation(&fixture, id);
+        expectation.faces.insert(second_face);
+        expectation.terminal_incomplete = true;
+
+        let verification = verify_prepared_label_expectations(
+            fixture.catalog_fingerprint,
+            &[expectation],
+            &fixture.observed,
+            fixture.invalid_token_count,
+        );
+
+        assert_eq!(verification.verified_count, 1);
+        assert_eq!(verification.mismatch_count, 0);
+        assert_eq!(verification.terminal_incomplete_count, 1);
+    }
+
+    #[test]
+    fn prepared_label_verifier_rejects_missing_receipt_and_unexpected_tokens() {
+        let id = "merman-prepared-flowchart-0";
+        let fixture = prepared_verifier_fixture(&[id]);
+
+        let missing_receipt = verify_prepared_text_labels(
+            fixture.catalog_fingerprint,
+            "<svg/>",
+            1,
+            None,
+            &fixture.observed,
+            fixture.invalid_token_count,
+        );
+        assert_eq!(missing_receipt.expected_count, 1);
+        assert_eq!(missing_receipt.verified_count, 0);
+        assert_eq!(missing_receipt.mismatch_count, 1);
+
+        let unexpected_token = verify_prepared_text_labels(
+            fixture.catalog_fingerprint,
+            "<svg/>",
+            0,
+            None,
+            &fixture.observed,
+            fixture.invalid_token_count,
+        );
+        assert_eq!(unexpected_token.expected_count, 0);
+        assert_eq!(unexpected_token.verified_count, 0);
+        assert_eq!(unexpected_token.mismatch_count, 1);
     }
 
     #[test]

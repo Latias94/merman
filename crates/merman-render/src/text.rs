@@ -13,6 +13,7 @@ mod measure;
 mod metrics;
 mod prepared;
 mod svg_metrics;
+mod terminal_receipt;
 mod types;
 mod whitespace;
 mod wrap;
@@ -73,6 +74,7 @@ pub(crate) use prepared::{
 pub(crate) use prepared::{
     PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
 };
+pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
 
 /// Workspace-internal native-export evidence scheduled for replacement by a compact export plan.
 #[doc(hidden)]
@@ -80,6 +82,9 @@ pub mod __private {
     pub use super::prepared::{
         PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
         PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+    };
+    pub use super::terminal_receipt::{
+        PreparedTextTerminalFace, PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
     };
 }
 pub use prepared::{PreparedTextLayoutReport, TextLayoutFailure};

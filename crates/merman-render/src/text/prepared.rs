@@ -47,6 +47,7 @@ const PREPARED_TEXT_LINE_RECORD_BYTES: usize = 96;
 const PREPARED_TEXT_RUN_RECORD_BYTES: usize = 64;
 const TEXT_BYTE_RANGE_RECORD_BYTES: usize = 16;
 const PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES: usize = 128;
+const PREPARED_TEXT_LINE_TEXT_RECORD_BYTES: usize = 32;
 const PREPARED_TEXT_DIAGNOSTIC_RECORD_BYTES: usize = 32;
 const PREPARED_TEXT_OWNER_RECORD_BYTES: usize = 512;
 const PREPARED_TEXT_LEDGER_ENTRY_RECORD_BYTES: usize = 192;
@@ -1973,6 +1974,7 @@ pub struct PreparedTextLabelLedgerEntry {
     provenance: PreparedTextLabelProvenance,
     projection_spans: Arc<[SourceVisibleSpan]>,
     line_ranges: Arc<[TextByteRange]>,
+    line_texts: Arc<[Arc<str>]>,
     runs: Arc<[PreparedTextLabelEvidence]>,
 }
 
@@ -2001,6 +2003,10 @@ impl PreparedTextLabelLedgerEntry {
         &self.line_ranges
     }
 
+    pub(crate) fn line_texts(&self) -> &[Arc<str>] {
+        &self.line_texts
+    }
+
     pub fn evidence(&self) -> &[PreparedTextLabelEvidence] {
         &self.runs
     }
@@ -2019,6 +2025,7 @@ impl PreparedTextLabelLedgerEntry {
         prepared_text_label_ledger_retained_bytes(
             self.projection_spans.len(),
             self.line_ranges.len(),
+            self.line_texts.iter().map(|text| text.len()).sum(),
             self.runs.len(),
         )
     }
@@ -2031,6 +2038,7 @@ pub(crate) struct PendingPreparedTextLabelLedgerEntry {
     provenance: PreparedTextLabelProvenance,
     projection_spans: Arc<[SourceVisibleSpan]>,
     line_ranges: Arc<[TextByteRange]>,
+    line_texts: Arc<[Arc<str>]>,
     runs: Arc<[PreparedTextLabelEvidence]>,
 }
 
@@ -2046,6 +2054,7 @@ impl PendingPreparedTextLabelLedgerEntry {
         prepared_text_label_ledger_retained_bytes(
             self.projection_spans.len(),
             self.line_ranges.len(),
+            self.line_texts.iter().map(|text| text.len()).sum(),
             self.runs.len(),
         )
     }
@@ -2058,6 +2067,7 @@ impl PendingPreparedTextLabelLedgerEntry {
             provenance: self.provenance,
             projection_spans: self.projection_spans,
             line_ranges: self.line_ranges,
+            line_texts: self.line_texts,
             runs: self.runs,
         }
     }
@@ -2066,11 +2076,14 @@ impl PendingPreparedTextLabelLedgerEntry {
 fn prepared_text_label_ledger_retained_bytes(
     projection_span_count: usize,
     line_range_count: usize,
+    line_text_bytes: usize,
     run_count: usize,
 ) -> usize {
     let mut retained = ModeledRetainedBytes::new(PREPARED_TEXT_LEDGER_ENTRY_RECORD_BYTES);
     retained.add_records(projection_span_count, TEXT_PROJECTION_SPAN_RECORD_BYTES);
     retained.add_records(line_range_count, TEXT_BYTE_RANGE_RECORD_BYTES);
+    retained.add_records(line_range_count, PREPARED_TEXT_LINE_TEXT_RECORD_BYTES);
+    retained.add_bytes(line_text_bytes);
     retained.add_records(run_count, PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES);
     retained.finish()
 }
@@ -2644,6 +2657,11 @@ impl PreparedText {
                     .map(|line| line.visible_range)
                     .collect::<Vec<_>>()
                     .into(),
+                line_texts: lines
+                    .iter()
+                    .map(|line| Arc::clone(&line.text))
+                    .collect::<Vec<_>>()
+                    .into(),
                 runs: Arc::clone(&runs),
             });
         Ok(Self {
@@ -2706,10 +2724,12 @@ impl PreparedText {
             retained.add_bytes(diagnostic.len());
         }
 
-        // The pending ledger shares the projection spans and run evidence with this owner. Only
-        // its independently allocated line-range slice is charged here.
+        // The pending ledger shares projection spans, line text, and run evidence with this owner.
+        // Only its independently allocated line-range and line-text-reference slices are charged
+        // here.
         if let Some(entry) = &self.label_ledger_entry {
             retained.add_records(entry.line_ranges.len(), TEXT_BYTE_RANGE_RECORD_BYTES);
+            retained.add_records(entry.line_texts.len(), PREPARED_TEXT_LINE_TEXT_RECORD_BYTES);
         }
 
         retained.finish()
@@ -6861,6 +6881,7 @@ mod tests {
         ThemeTextStyle,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+    use crate::text::terminal_receipt::PreparedTextTerminalReceipt;
 
     fn projection_span_text(projection: &TextProjection) -> Vec<(&str, &str)> {
         projection
@@ -6950,6 +6971,8 @@ mod tests {
         let expected_ledger_bytes = PREPARED_TEXT_LEDGER_ENTRY_RECORD_BYTES
             + TEXT_PROJECTION_SPAN_RECORD_BYTES
             + TEXT_BYTE_RANGE_RECORD_BYTES
+            + PREPARED_TEXT_LINE_TEXT_RECORD_BYTES
+            + 2
             + PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES;
         let expected_prepared_bytes = PREPARED_TEXT_OWNER_RECORD_BYTES
             + 2
@@ -6960,12 +6983,98 @@ mod tests {
             + PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES
             + PREPARED_TEXT_DIAGNOSTIC_RECORD_BYTES
             + 4
-            + TEXT_BYTE_RANGE_RECORD_BYTES;
+            + TEXT_BYTE_RANGE_RECORD_BYTES
+            + PREPARED_TEXT_LINE_TEXT_RECORD_BYTES;
 
         assert_eq!(pending_bytes, expected_ledger_bytes);
         assert_eq!(final_bytes, expected_ledger_bytes);
         assert_eq!(prepared.retained_bytes(), expected_prepared_bytes);
         assert!(prepared.retained_bytes() >= final_bytes);
+    }
+
+    fn terminal_receipt_entry() -> PreparedTextLabelLedgerEntry {
+        let catalog = mixed_catalog();
+        let evidence = catalog
+            .faces()
+            .iter()
+            .take(2)
+            .enumerate()
+            .map(|(index, face)| {
+                let asset = catalog
+                    .assets()
+                    .iter()
+                    .find(|asset| asset.id() == face.asset_id())
+                    .expect("the fixture face belongs to one retained asset");
+                let range = TextByteRange::new(index, index + 1);
+                PreparedTextLabelEvidence::new(
+                    range,
+                    range,
+                    PreparedTextFaceKey::new(asset.fingerprint(), face.face_index()),
+                    FontSource::Embedded,
+                )
+            })
+            .collect::<Vec<_>>();
+        PreparedTextLabelLedgerEntry {
+            id: PreparedTextLabelId::new(PreparedTextLabelFamily::State, 4),
+            catalog_fingerprint: catalog.fingerprint(),
+            request_digest: TextLayoutRequestDigest::from_bytes([7; 32]),
+            provenance: PreparedTextLabelProvenance::Native,
+            projection_spans: Arc::from([SourceVisibleSpan::new(
+                TextByteRange::new(0, 2),
+                TextByteRange::new(0, 2),
+            )]),
+            line_ranges: Arc::from([TextByteRange::new(0, 1), TextByteRange::new(1, 2)]),
+            line_texts: Arc::from([Arc::<str>::from("A"), Arc::<str>::from("B")]),
+            runs: evidence.into(),
+        }
+    }
+
+    #[test]
+    fn terminal_receipt_binds_artifact_request_lines_and_ordered_runs() {
+        let svg = r#"<svg><text id="merman-prepared-state-4">AB</text></svg>"#;
+        let entry = terminal_receipt_entry();
+        let receipt = PreparedTextTerminalReceipt::from_ledger(svg, &[entry.clone()])
+            .expect("the valid ledger should freeze a terminal receipt");
+
+        assert!(receipt.artifact_matches(svg));
+        assert!(
+            !receipt.artifact_matches(r#"<svg><text id="merman-prepared-state-4">BA</text></svg>"#)
+        );
+        assert!(receipt.labels()[0].native_terminal_proof_is_incomplete());
+
+        let mut changed_request = entry.clone();
+        changed_request.request_digest = TextLayoutRequestDigest::from_bytes([8; 32]);
+        let request_receipt =
+            PreparedTextTerminalReceipt::from_ledger(svg, &[changed_request]).unwrap();
+        assert_ne!(
+            receipt.labels()[0].identity_digest(),
+            request_receipt.labels()[0].identity_digest()
+        );
+
+        let mut changed_lines = entry.clone();
+        changed_lines.line_texts = Arc::from([Arc::<str>::from("B"), Arc::<str>::from("A")]);
+        let line_receipt = PreparedTextTerminalReceipt::from_ledger(svg, &[changed_lines]).unwrap();
+        assert_ne!(
+            receipt.labels()[0].identity_digest(),
+            line_receipt.labels()[0].identity_digest()
+        );
+
+        let mut changed_run_assignment = entry.clone();
+        let mut runs = changed_run_assignment.runs.to_vec();
+        runs.swap(0, 1);
+        changed_run_assignment.runs = runs.into();
+        assert!(
+            PreparedTextTerminalReceipt::from_ledger(svg, &[changed_run_assignment]).is_none(),
+            "non-monotonic ordered run evidence must fail closed"
+        );
+
+        let mut missing_runs = entry.clone();
+        missing_runs.runs = Arc::from([]);
+        assert!(PreparedTextTerminalReceipt::from_ledger(svg, &[missing_runs]).is_none());
+
+        let mut native_system_face = entry;
+        Arc::make_mut(&mut native_system_face.runs)[0].font_source = FontSource::System;
+        assert!(PreparedTextTerminalReceipt::from_ledger(svg, &[native_system_face]).is_none());
     }
 
     #[test]
@@ -7000,7 +7109,12 @@ mod tests {
 
         assert_eq!(retained.finish(), usize::MAX);
         assert_eq!(
-            prepared_text_label_ledger_retained_bytes(usize::MAX, usize::MAX, usize::MAX),
+            prepared_text_label_ledger_retained_bytes(
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+                usize::MAX,
+            ),
             usize::MAX
         );
     }

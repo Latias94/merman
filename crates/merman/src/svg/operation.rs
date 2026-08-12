@@ -270,6 +270,7 @@ pub enum TargetAdmissionReason {
     ExportSystemFont,
     ExportUnresolvedFont,
     PreparedTextEvidenceMismatch,
+    PreparedTextTerminalProofIncomplete,
     ResourceFingerprintMismatch,
 }
 
@@ -286,6 +287,7 @@ impl TargetAdmissionReason {
             Self::ExportSystemFont => "export-system-font",
             Self::ExportUnresolvedFont => "export-unresolved-font",
             Self::PreparedTextEvidenceMismatch => "prepared-text-evidence-mismatch",
+            Self::PreparedTextTerminalProofIncomplete => "prepared-text-terminal-proof-incomplete",
             Self::ResourceFingerprintMismatch => "resource-fingerprint-mismatch",
         }
     }
@@ -444,6 +446,7 @@ pub struct DocumentRenderReport {
     host_text_measurement_count: u64,
     prepared_text_used_font_sources: Box<[FontSource]>,
     prepared_text_host_dependent: bool,
+    prepared_text_label_count: usize,
 }
 
 impl DocumentRenderReport {
@@ -617,6 +620,7 @@ impl DocumentRenderReport {
             host_text_measurement_count,
             prepared_text_used_font_sources: prepared_text_used_font_sources.into_boxed_slice(),
             prepared_text_host_dependent,
+            prepared_text_label_count: prepared_text_ledger.len(),
         })
     }
 
@@ -642,6 +646,10 @@ impl DocumentRenderReport {
 
     pub const fn prepared_text_is_host_dependent(&self) -> bool {
         self.prepared_text_host_dependent
+    }
+
+    pub const fn prepared_text_label_count(&self) -> usize {
+        self.prepared_text_label_count
     }
 
     pub fn admit_svg(&self) -> TargetAdmissionReport {
@@ -721,8 +729,12 @@ impl DocumentRenderReport {
         }
         if fonts.prepared_label_mismatch_count() != 0
             || fonts.prepared_label_verified_count() != fonts.prepared_label_expected_count()
+            || fonts.prepared_label_expected_count() != self.prepared_text_label_count
         {
             reasons.push(TargetAdmissionReason::PreparedTextEvidenceMismatch);
+        }
+        if fonts.prepared_label_terminal_incomplete_count() != 0 {
+            reasons.push(TargetAdmissionReason::PreparedTextTerminalProofIncomplete);
         }
         if self.host_text_measurement_count != 0 {
             reasons.push(TargetAdmissionReason::HostTextMeasurement);

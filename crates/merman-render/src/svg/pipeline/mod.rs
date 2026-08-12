@@ -24,7 +24,7 @@ pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 
 use crate::environment::RenderSession;
 use crate::resources::ResourceLimitPhase;
-use crate::text::PreparedTextEvidenceLease;
+use crate::text::{PreparedTextEvidenceLease, PreparedTextTerminalReceipt};
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;
@@ -58,6 +58,7 @@ pub struct ResvgCompatibleSvg {
     svg: String,
     prepared_text_svg: Option<Arc<str>>,
     prepared_text_evidence: PreparedTextEvidenceLease,
+    prepared_text_terminal_receipt: Option<PreparedTextTerminalReceipt>,
     prepared_text_evidence_valid: bool,
     reference_plan: SvgReferencePlan,
     resource_closure: SvgResourceClosure,
@@ -188,6 +189,7 @@ impl ResvgCompatibleSvg {
             svg,
             prepared_text_svg: None,
             prepared_text_evidence: PreparedTextEvidenceLease::default(),
+            prepared_text_terminal_receipt: None,
             prepared_text_evidence_valid: true,
             reference_plan,
             resource_closure,
@@ -233,6 +235,7 @@ impl ResvgCompatibleSvg {
         }
         if self.prepared_text_evidence.is_empty() {
             self.prepared_text_svg = None;
+            self.prepared_text_terminal_receipt = None;
         } else {
             let (public_svg, tokenized_svg) = partition_prepared_text_label_ids(
                 std::mem::take(&mut self.svg),
@@ -240,6 +243,22 @@ impl ResvgCompatibleSvg {
             )?;
             self.svg = public_svg;
             self.prepared_text_svg = tokenized_svg.map(Arc::from);
+            self.prepared_text_terminal_receipt = self
+                .prepared_text_svg
+                .as_deref()
+                .and_then(|tokenized_svg| {
+                    PreparedTextTerminalReceipt::from_ledger(
+                        tokenized_svg,
+                        self.prepared_text_evidence.entries(),
+                    )
+                })
+                .ok_or_else(|| {
+                    Error::svg_postprocess(
+                        "prepared-text-terminal-receipt",
+                        "prepared-text terminal receipt could not be frozen from the sealed artifact",
+                    )
+                })
+                .map(Some)?;
         }
         self.resource_fingerprint = resource_closure::fingerprint_svg_resources(
             self.native_export_svg(),
@@ -259,6 +278,12 @@ impl ResvgCompatibleSvg {
         &self,
     ) -> &[crate::text::PreparedTextLabelLedgerEntry] {
         self.prepared_text_evidence.entries()
+    }
+
+    pub(crate) const fn prepared_text_terminal_receipt(
+        &self,
+    ) -> Option<&PreparedTextTerminalReceipt> {
+        self.prepared_text_terminal_receipt.as_ref()
     }
 
     pub(crate) const fn prepared_text_evidence_valid(&self) -> bool {
@@ -312,6 +337,10 @@ impl fmt::Debug for ResvgCompatibleSvg {
                 "prepared_text_evidence_valid",
                 &self.prepared_text_evidence_valid,
             )
+            .field(
+                "prepared_text_terminal_receipt",
+                &self.prepared_text_terminal_receipt,
+            )
             .field("reference_plan", &self.reference_plan)
             .field("resource_closure", &self.resource_closure)
             .field("finalization_report", &self.finalization_report)
@@ -327,6 +356,7 @@ impl PartialEq for ResvgCompatibleSvg {
         self.svg == other.svg
             && self.prepared_text_svg == other.prepared_text_svg
             && self.prepared_text_evidence == other.prepared_text_evidence
+            && self.prepared_text_terminal_receipt == other.prepared_text_terminal_receipt
             && self.prepared_text_evidence_valid == other.prepared_text_evidence_valid
             && self.reference_plan == other.reference_plan
             && self.resource_closure == other.resource_closure

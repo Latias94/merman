@@ -18,7 +18,7 @@ pub use font_environment::{ExportFontMode, ExportFontPlan};
 use cssparser::{Delimiter, Parser, ParserInput, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::__private::{
-    native_export_svg, prepared_text_evidence_valid, prepared_text_label_ledger,
+    native_export_svg, prepared_text_label_count, prepared_text_terminal_receipt,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::svg::ResvgCompatibleSvg;
@@ -1437,9 +1437,10 @@ fn prepare_raster_on_backend_stack(
     let native_filter_receipt =
         native_filter_receipt::preflight_native_filter_receipt(source, &tree);
     let font_plan = font_plan.finish_with_tree(
+        source,
         &tree,
-        prepared_text_label_ledger(svg),
-        prepared_text_evidence_valid(svg),
+        prepared_text_label_count(svg),
+        prepared_text_terminal_receipt(svg),
     );
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
@@ -1617,9 +1618,10 @@ fn parse_pdf_tree(svg: &ResvgCompatibleSvg) -> Result<(usvg::Tree, ExportFontPla
     let tree =
         usvg::Tree::from_str(native_export_svg(svg), &opts).map_err(|_| ExportError::SvgParse)?;
     let font_plan = font_plan.finish_with_tree(
+        native_export_svg(svg),
         &tree,
-        prepared_text_label_ledger(svg),
-        prepared_text_evidence_valid(svg),
+        prepared_text_label_count(svg),
+        prepared_text_terminal_receipt(svg),
     );
     Ok((tree, font_plan))
 }

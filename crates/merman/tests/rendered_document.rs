@@ -663,7 +663,11 @@ Ready --> Done : Prepared edge"#;
 }
 
 #[cfg(all(feature = "png", feature = "pdf"))]
-fn assert_custom_font_state_native_exports_reuse_the_prepared_catalog(source: &str) {
+fn assert_custom_font_state_native_exports_reuse_the_prepared_catalog(
+    source: &str,
+    expected_admission: TargetAdmissionStatus,
+    expected_terminal_incomplete: bool,
+) {
     let theme = embedded_font_theme();
 
     let (png, png_report) = HeadlessRenderer::new()
@@ -687,14 +691,27 @@ fn assert_custom_font_state_native_exports_reuse_the_prepared_catalog(source: &s
     assert_eq!(png_fonts.prepared_label_mismatch_count(), 0);
     assert!(png_fonts.prepared_text_evidence_matches());
     assert_eq!(
+        png_fonts.prepared_label_terminal_incomplete_count() != 0,
+        expected_terminal_incomplete,
+    );
+    assert_eq!(
+        png_fonts.prepared_text_terminal_proof_complete(),
+        !expected_terminal_incomplete,
+    );
+    assert_eq!(png_fonts.is_host_dependent(), expected_terminal_incomplete,);
+    assert_eq!(
         png_report
             .document_report()
             .prepared_text_used_font_sources(),
         &[FontSource::Embedded]
     );
+    assert_eq!(png_report.target_admission().status(), expected_admission,);
     assert_eq!(
-        png_report.target_admission().status(),
-        TargetAdmissionStatus::Portable,
+        png_report
+            .target_admission()
+            .reasons()
+            .contains(&TargetAdmissionReason::PreparedTextTerminalProofIncomplete),
+        expected_terminal_incomplete,
     );
 
     let (pdf, pdf_report) = HeadlessRenderer::new()
@@ -718,26 +735,43 @@ fn assert_custom_font_state_native_exports_reuse_the_prepared_catalog(source: &s
     assert_eq!(pdf_fonts.prepared_label_mismatch_count(), 0);
     assert!(pdf_fonts.prepared_text_evidence_matches());
     assert_eq!(
+        pdf_fonts.prepared_label_terminal_incomplete_count() != 0,
+        expected_terminal_incomplete,
+    );
+    assert_eq!(
+        pdf_fonts.prepared_text_terminal_proof_complete(),
+        !expected_terminal_incomplete,
+    );
+    assert_eq!(pdf_fonts.is_host_dependent(), expected_terminal_incomplete,);
+    assert_eq!(
         pdf_report
             .document_report()
             .prepared_text_used_font_sources(),
         &[FontSource::Embedded]
     );
+    assert_eq!(pdf_report.target_admission().status(), expected_admission,);
     assert_eq!(
-        pdf_report.target_admission().status(),
-        TargetAdmissionStatus::Portable,
+        pdf_report
+            .target_admission()
+            .reasons()
+            .contains(&TargetAdmissionReason::PreparedTextTerminalProofIncomplete),
+        expected_terminal_incomplete,
     );
 }
 
 #[cfg(all(feature = "png", feature = "pdf"))]
 #[test]
-fn custom_font_state_native_exports_reuse_the_prepared_catalog() {
+fn custom_font_state_multi_face_native_exports_are_not_misreported_as_portable() {
     const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
 stateDiagram-v2
 state "Portable 图 layout" as Ready
 Ready --> Done : Prepared edge"#;
 
-    assert_custom_font_state_native_exports_reuse_the_prepared_catalog(SOURCE);
+    assert_custom_font_state_native_exports_reuse_the_prepared_catalog(
+        SOURCE,
+        TargetAdmissionStatus::HostDependent,
+        true,
+    );
 }
 
 #[cfg(all(feature = "png", feature = "pdf"))]
@@ -748,7 +782,52 @@ stateDiagram-v2
 state "Portable State label wraps here" as Ready
 Ready --> Done : Prepared edge"#;
 
-    assert_custom_font_state_native_exports_reuse_the_prepared_catalog(SOURCE);
+    assert_custom_font_state_native_exports_reuse_the_prepared_catalog(
+        SOURCE,
+        TargetAdmissionStatus::Portable,
+        false,
+    );
+}
+
+#[cfg(all(feature = "png", feature = "pdf"))]
+#[test]
+fn require_portable_rejects_multi_face_native_text_without_exact_terminal_ranges() {
+    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
+stateDiagram-v2
+state "Portable 图 layout" as Ready
+Ready --> Done : Prepared edge"#;
+    let environment = RenderEnvironment::deterministic().with_theme_portability_requirement(
+        merman::svg::ThemePortabilityRequirement::RequirePortable,
+    );
+
+    let png_error =
+        HeadlessRenderer::from_engine_and_environment(Engine::new(), environment.clone())
+            .with_theme(embedded_font_theme())
+            .render_png_with_report_sync(SOURCE, &merman::svg::export::RasterOptions::default())
+            .expect_err("strict multi-face PNG must fail terminal admission");
+    let png_rejection = png_error
+        .target_admission_rejection()
+        .expect("PNG failure must retain target admission");
+    assert_eq!(png_rejection.status(), TargetAdmissionStatus::HostDependent);
+    assert!(
+        png_rejection
+            .reasons()
+            .contains(&TargetAdmissionReason::PreparedTextTerminalProofIncomplete)
+    );
+
+    let pdf_error = HeadlessRenderer::from_engine_and_environment(Engine::new(), environment)
+        .with_theme(embedded_font_theme())
+        .render_pdf_with_report_sync(SOURCE, &merman::svg::export::PdfOptions::default())
+        .expect_err("strict multi-face PDF must fail terminal admission");
+    let pdf_rejection = pdf_error
+        .target_admission_rejection()
+        .expect("PDF failure must retain target admission");
+    assert_eq!(pdf_rejection.status(), TargetAdmissionStatus::HostDependent);
+    assert!(
+        pdf_rejection
+            .reasons()
+            .contains(&TargetAdmissionReason::PreparedTextTerminalProofIncomplete)
+    );
 }
 
 #[cfg(all(feature = "png", feature = "pdf"))]
