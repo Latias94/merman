@@ -148,6 +148,7 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     limits: [
       "does not draw a full Git lane graph",
       "implementation flags are normalized into semantic labels",
+      "unknown direct-model commit types are rejected",
     ],
   },
   journey: {

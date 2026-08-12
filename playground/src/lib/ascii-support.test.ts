@@ -103,6 +103,13 @@ test("fallback projection fields derive the compatibility support level", () => 
     )
   );
 
+  const gitgraph = byType.get("gitgraph")!;
+  assert.ok(
+    gitgraph.limits.includes(
+      "unknown direct-model commit types are rejected"
+    )
+  );
+
   const xychart = byType.get("xychart")!;
   assert.equal(xychart.structured_text_fallback, true);
   assert.ok(
