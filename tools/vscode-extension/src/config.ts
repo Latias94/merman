@@ -7,7 +7,9 @@ import type {
   PreviewDisplayMode,
 } from "./preview-model.js";
 import {
+  analysisInitializationSettings,
   normalizeAnalysisSettings,
+  projectAnalysisSettings,
   type AnalysisSettings,
 } from "./analysis-settings.js";
 
@@ -119,9 +121,17 @@ export function getAnalysisSettings(): AnalysisSettings {
   });
 }
 
-export function getDidChangeConfigurationPayload(): Record<string, unknown> {
+export function getInitializationAnalysisSettings(): AnalysisSettings {
+  return analysisInitializationSettings(getAnalysisSettings());
+}
+
+export function getDidChangeConfigurationPayload(
+  configurableRuleIds: readonly string[],
+): { payload: Record<string, unknown>; unsupportedRuleIds: string[] } {
+  const projection = projectAnalysisSettings(getAnalysisSettings(), configurableRuleIds);
   return {
-    analysis: getAnalysisSettings(),
+    payload: { analysis: projection.settings },
+    unsupportedRuleIds: projection.unsupportedRuleIds,
   };
 }
 

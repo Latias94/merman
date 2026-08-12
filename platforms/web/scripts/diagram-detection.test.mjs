@@ -18,6 +18,7 @@ let receivedOptions;
 await webApi.initMerman({
   loader: async () => ({
     default: async () => {},
+    transportApiVersion: () => 4,
     analysisFacts(_source, options) {
       receivedOptions = options;
       if (analysisResult instanceof Error) {

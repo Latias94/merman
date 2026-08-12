@@ -421,7 +421,7 @@ fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
     OutlineItem {
         name: fence_name(fence),
         detail: fence_detail(fence),
-        kind: generic_kind(fence.diagram_type()),
+        kind: fence.text_index().family_semantics().outline_kind(),
         fact_source: fence.text_index().source(),
         span: {
             let document_range = fence.document_range();
@@ -615,19 +615,6 @@ fn fence_detail(fence: &FenceSnapshot) -> Option<String> {
         None
     } else {
         Some(parts.join(" · "))
-    }
-}
-
-fn generic_kind(diagram_type: Option<&str>) -> EditorSemanticKind {
-    match diagram_type {
-        Some("sequence") => EditorSemanticKind::Event,
-        Some("state") => EditorSemanticKind::Class,
-        Some("mindmap") => EditorSemanticKind::Namespace,
-        Some("class") => EditorSemanticKind::Class,
-        Some("er") => EditorSemanticKind::Struct,
-        Some("block") => EditorSemanticKind::Object,
-        Some("flowchart-v2") | Some("flowchart-elk") => EditorSemanticKind::Module,
-        _ => EditorSemanticKind::Variable,
     }
 }
 

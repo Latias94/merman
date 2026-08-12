@@ -815,7 +815,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             selection,
         )
         .expecting(
-            crate::EditorExpectedSyntaxKind::DirectionValue,
+            crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
             selection,
         )))
     }

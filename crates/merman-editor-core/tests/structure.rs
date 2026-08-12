@@ -1,6 +1,7 @@
 mod support;
 
 use merman_analysis::FenceTextIndexSource;
+use merman_core::EditorSemanticKind;
 use merman_editor_core::{
     DocumentKind, Position, Range, RenameError, document_symbols, folding_ranges, goto_definition,
     hover, prepare_rename, references, rename, search_document_symbols, selection_range,
@@ -23,6 +24,7 @@ fn document_symbols_include_root_and_child_items() {
 
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].name, "flowchart-v2 diagram");
+    assert_eq!(symbols[0].kind, EditorSemanticKind::Module);
     assert_eq!(symbols[0].fact_source, FenceTextIndexSource::ParserComplete);
     assert!(
         symbols[0]
@@ -30,6 +32,30 @@ fn document_symbols_include_root_and_child_items() {
             .iter()
             .any(|symbol| symbol.name == "group")
     );
+}
+
+#[test]
+fn root_semantic_kind_is_independent_of_flowchart_variant_name() {
+    let harness = SnapshotHarness::new();
+
+    for (version, source, expected_name) in [
+        (1, "flowchart TD\nA-->B\n", "flowchart-v2 diagram"),
+        (2, "flowchart-elk TD\nA-->B\n", "flowchart-elk diagram"),
+    ] {
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/flowchart-variant-{version}.mmd"),
+                version,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("flowchart variant should be accepted");
+        let symbols = document_symbols(&snapshot);
+
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, expected_name);
+        assert_eq!(symbols[0].kind, EditorSemanticKind::Module);
+    }
 }
 
 #[test]

@@ -189,11 +189,11 @@ impl AnalysisOptionsJson {
     }
 
     pub fn rule_config(&self) -> Result<AnalysisRuleConfig, AnalysisOptionsJsonError> {
+        let mut config = AnalysisRuleConfig::default()
+            .with_profile(crate::config_contract::default_lint_profile());
         let Some(lint) = self.lint.as_ref() else {
-            return Ok(AnalysisRuleConfig::default());
+            return Ok(config);
         };
-
-        let mut config = AnalysisRuleConfig::default();
         if let Some(profile) = lint.profile.as_deref() {
             config.set_profile(parse_lint_profile(profile)?);
         }

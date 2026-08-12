@@ -11,9 +11,10 @@ use crate::{
     family, runtime, sanitize, theme,
 };
 use diagram::{
-    CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
-    DiagramWarningFact, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner,
-    RenderSemanticModel, RenderSemanticParseOutput, ResolvedRenderParser, ResolvedSemanticParser,
+    CapturedPanic, CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot,
+    DiagramSnapshotCapture, DiagramWarningFact, ParsedDiagram, ParsedDiagramRender,
+    ParsedEditorFacts, RegistryOwner, RenderSemanticModel, RenderSemanticParseOutput,
+    ResolvedRenderParser, ResolvedSemanticParser,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -88,8 +89,17 @@ pub(crate) struct ParsePipeline<'a> {
 }
 
 struct PreparedPreprocessCapture {
-    result: Result<(PreprocessedSource, ParseMetadata)>,
+    outcome: PreparedPreprocessOutcome,
     source_config: SourceConfigEvidence,
+}
+
+// The ready variant is the parse hot path and is moved exactly once into snapshot construction.
+// Boxing it would add one allocation to every parse only to shrink this short-lived control value.
+#[allow(clippy::large_enum_variant)]
+enum PreparedPreprocessOutcome {
+    Ready(PreprocessedSource, ParseMetadata),
+    Failed(Error),
+    Panicked(CapturedPanic),
 }
 
 struct EditorParseSourceMap<'a> {
@@ -336,19 +346,30 @@ impl<'a> ParsePipeline<'a> {
             DirectiveRecoveryMode::RecoverLine,
             control,
         )?;
-        let (code, meta) = match preprocessed.result {
-            Ok(preprocessed) => preprocessed,
-            Err(Error::DetectType(_)) if self.options.suppress_errors => {
+        let PreparedPreprocessCapture {
+            outcome,
+            source_config,
+        } = preprocessed;
+        let (code, meta) = match outcome {
+            PreparedPreprocessOutcome::Ready(code, meta) => (code, meta),
+            PreparedPreprocessOutcome::Failed(Error::DetectType(_))
+                if self.options.suppress_errors =>
+            {
                 return Ok(DiagramSnapshotCapture::Snapshot(None));
             }
-            Err(error) => {
+            PreparedPreprocessOutcome::Failed(error) => {
                 return Ok(DiagramSnapshotCapture::Failed {
                     error,
-                    source_config: preprocessed.source_config,
+                    source_config,
+                });
+            }
+            PreparedPreprocessOutcome::Panicked(panic) => {
+                return Ok(DiagramSnapshotCapture::Panicked {
+                    panic,
+                    source_config,
                 });
             }
         };
-        let source_config = preprocessed.source_config;
         control.checkpoint()?;
         let source_map = EditorParseSourceMap::new(&code);
         let recovered_incomplete_directive = code.recovered_incomplete_directive();
@@ -540,6 +561,8 @@ impl<'a> ParsePipeline<'a> {
         source_map.remap_facts(&mut facts, control)?;
         let family = family::diagram_type_family_id(&meta.diagram_type)
             .expect("built-in combined semantic facts belong to a catalog family");
+        facts.family_semantics = family::diagram_type_editor_semantics(&meta.diagram_type)
+            .expect("built-in combined semantic facts have typed editor family semantics");
         facts.finalize_lexemes_controlled(family, source_map.source.global_lexemes(), control)?;
         for expected in source_map.source.global_expected_syntax().chunks(128) {
             control.checkpoint()?;
@@ -897,14 +920,23 @@ impl<'a> ParsePipeline<'a> {
             directive_recovery,
             control,
         )?;
-        let result = match captured.result {
-            Ok(preprocessed) => {
-                self.finish_preprocessed_controlled(preprocessed, known_type, control)?
-            }
-            Err(error) => Err(error),
+        let outcome = match captured.result {
+            Ok(preprocessed) => match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.finish_preprocessed_controlled(preprocessed, known_type, control)
+            })) {
+                Ok(result) => match result? {
+                    Ok((source, metadata)) => PreparedPreprocessOutcome::Ready(source, metadata),
+                    Err(error) => PreparedPreprocessOutcome::Failed(error),
+                },
+                Err(payload) => PreparedPreprocessOutcome::Panicked(CapturedPanic::new(
+                    panic_payload_message(payload.as_ref()),
+                    payload,
+                )),
+            },
+            Err(error) => PreparedPreprocessOutcome::Failed(error),
         };
         Ok(PreparedPreprocessCapture {
-            result,
+            outcome,
             source_config: captured.source_config,
         })
     }
@@ -1216,10 +1248,14 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 mod editor_parse_source_map_tests {
     use super::{EditorParseSourceMap, ParsePipeline, PreprocessPath};
     use crate::{
-        DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
+        DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
         EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Engine, Error,
-        ParseCancelled, ParseControl, ParseOptions, SourceSpan,
+        MermaidConfig, ParseCancelled, ParseControl, ParseOptions, SourceSpan,
     };
+
+    fn panicking_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
+        panic!("detector fixture panic")
+    }
 
     #[test]
     fn controlled_snapshot_stops_before_a_cancelled_operation() {
@@ -1262,6 +1298,61 @@ mod editor_parse_source_map_tests {
         assert_eq!(source_config.directives().len(), 1);
         let keyword = source_config.directives()[0].keyword_span();
         assert_eq!(&source[keyword.start..keyword.end], "initialize");
+    }
+
+    #[test]
+    fn editor_capture_retains_source_config_when_detection_panics() {
+        let source = concat!(
+            "%%{ initialize: { lazyLoadedDiagrams: true } }%%\n",
+            "detector-panic-fixture\n",
+        );
+        let mut engine = Engine::new();
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine
+            .registry_mut()
+            .add_fn("detector-panic-fixture", panicking_detector);
+
+        let captured = engine
+            .capture_diagram_snapshot_controlled_sync(source, &ParseControl::new())
+            .expect("an active parse control must not cancel");
+
+        let DiagramSnapshotCapture::Panicked {
+            panic,
+            source_config,
+        } = captured
+        else {
+            panic!("detector panic must remain a capture outcome");
+        };
+        assert!(panic.message().contains("detector fixture panic"));
+        assert_eq!(source_config.directives().len(), 1);
+        let directive = &source_config.directives()[0];
+        assert_eq!(directive.keyword(), "initialize");
+        assert!(
+            source_config
+                .keys()
+                .iter()
+                .any(|entry| entry.matches_path(&["lazyLoadedDiagrams"]))
+        );
+    }
+
+    #[test]
+    fn legacy_snapshot_facade_resumes_the_original_detector_panic_payload() {
+        let source = "detector-panic-fixture\n";
+        let mut engine = Engine::new();
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine
+            .registry_mut()
+            .add_fn("detector-panic-fixture", panicking_detector);
+
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = engine.parse_diagram_snapshot_sync(source);
+        }))
+        .expect_err("the legacy snapshot facade must resume detector panics");
+
+        assert_eq!(
+            payload.downcast_ref::<&'static str>(),
+            Some(&"detector fixture panic")
+        );
     }
 
     #[test]

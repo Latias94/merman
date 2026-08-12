@@ -1,10 +1,9 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
-    editor::EditorLexemeJournal, family::CombinedSemanticFailure,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseMetadata, Result,
+    SourceSpan, editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -15,16 +14,6 @@ use std::collections::{BTreeMap, HashMap};
 thread_local! {
     static REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
-
-const REQUIREMENT_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const REQUIREMENT_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], REQUIREMENT_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 pub(crate) fn reset_requirement_syntax_construction_count() {
@@ -623,8 +612,7 @@ fn parse_requirement_semantic_source_once(
     let mut db = RequirementDb::new();
     let mut acc_title: Option<String> = None;
     let mut acc_descr: Option<String> = None;
-    let mut editor_facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(REQUIREMENT_COMPLETION_VOCABULARY);
+    let mut editor_facts = EditorSemanticFacts::new();
     let mut lines = LineCursor::new(code);
     let mut saw_header = false;
     let mut first_error = None;
@@ -1354,7 +1342,7 @@ impl ParsedRequirementDirection {
 
     fn emit_editor_fact(&self, facts: &mut EditorSemanticFacts, statement_span: SourceSpan) {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::DirectionValue,
+            EditorExpectedSyntaxKind::CardinalDirectionValue,
             self.selection,
         ));
         if let Some(value) = self.value {

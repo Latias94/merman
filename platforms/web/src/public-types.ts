@@ -232,11 +232,14 @@ export interface AnalysisBindingOptions {
   lint?: LintBindingOptions;
 }
 
-export interface CommonBindingOptions extends AnalysisBindingOptions {
+export interface EditorBindingOptions extends AnalysisBindingOptions {
   version?: 2;
-  parse?: ParseOptions;
   analysis?: AnalysisBindingOptions;
   merman?: AnalysisBindingOptions;
+}
+
+export interface CommonBindingOptions extends EditorBindingOptions {
+  parse?: ParseOptions;
 }
 
 export type AsciiCharsetOption = "ascii" | "unicode";
@@ -517,6 +520,7 @@ export type AnalysisExpectedSyntaxKind =
   | "id_list"
   | "node_identifier"
   | "class_name"
+  | "operator"
   | "shape"
   | "shape_trigger"
   | "direction"

@@ -9,8 +9,8 @@ use crate::diagram::{
     RenderSemanticParseOutput,
 };
 use crate::{
-    DiagramWarningFact, EditorSemanticFacts, Error, MermaidConfig, ParseControl,
-    ParseControlResult, ParseMetadata, Result,
+    DiagramWarningFact, EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error,
+    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -309,6 +309,9 @@ pub struct DiagramFamilyCapability {
 pub struct DiagramFamilyId(&'static str);
 
 impl DiagramFamilyId {
+    /// Logical identity shared by all admitted Flowchart parser variants.
+    pub const FLOWCHART: Self = Self("flowchart");
+
     pub fn as_str(self) -> &'static str {
         self.0
     }
@@ -510,8 +513,12 @@ pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
     find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
 }
 
-pub(crate) fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
+pub fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
     find_variant(diagram_type).map(|(family, _)| DiagramFamilyId(family.logical_kind))
+}
+
+pub(crate) fn diagram_type_editor_semantics(diagram_type: &str) -> Option<EditorFamilySemantics> {
+    find_variant(diagram_type).map(|(family, _)| family.editor_semantics)
 }
 
 pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {
@@ -807,9 +814,31 @@ struct FamilyConfigDefinition {
 #[derive(Clone, Copy)]
 struct DiagramFamilyDefinition {
     logical_kind: &'static str,
+    editor_semantics: EditorFamilySemantics,
     config: Option<FamilyConfigDefinition>,
     variants: &'static [FamilyVariantDefinition],
 }
+
+const GENERIC_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Variable);
+const FLOWCHART_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Module);
+const SWIMLANE_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Variable);
+const MINDMAP_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Namespace);
+const SEQUENCE_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Event);
+const CLASS_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Class);
+const ER_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Struct);
+const CARDINAL_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Variable);
+const STATE_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Class);
+const BLOCK_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Object);
 
 macro_rules! variant {
     (
@@ -1630,11 +1659,13 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     DiagramFamilyDefinition {
         logical_kind: "error",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: None,
         variants: ERROR_VARIANTS,
     },
     DiagramFamilyDefinition {
         logical_kind: "flowchart",
+        editor_semantics: FLOWCHART_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "flowchart",
             frontmatter_order: 7,
@@ -1643,6 +1674,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "swimlane",
+        editor_semantics: SWIMLANE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "swimlane",
             frontmatter_order: 23,
@@ -1651,6 +1683,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "mindmap",
+        editor_semantics: MINDMAP_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "mindmap",
             frontmatter_order: 13,
@@ -1659,6 +1692,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "architecture",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "architecture",
             frontmatter_order: 0,
@@ -1667,6 +1701,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "zenuml",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "zenuml",
             frontmatter_order: 30,
@@ -1675,6 +1710,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "sequence",
+        editor_semantics: SEQUENCE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "sequence",
             frontmatter_order: 21,
@@ -1683,6 +1719,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "c4",
+        editor_semantics: CARDINAL_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "c4",
             frontmatter_order: 2,
@@ -1691,6 +1728,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "kanban",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "kanban",
             frontmatter_order: 12,
@@ -1699,6 +1737,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "class",
+        editor_semantics: CLASS_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "class",
             frontmatter_order: 3,
@@ -1707,6 +1746,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "er",
+        editor_semantics: ER_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "er",
             frontmatter_order: 5,
@@ -1715,6 +1755,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "gantt",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "gantt",
             frontmatter_order: 8,
@@ -1723,11 +1764,13 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "info",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: None,
         variants: INFO_VARIANTS,
     },
     DiagramFamilyDefinition {
         logical_kind: "pie",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "pie",
             frontmatter_order: 15,
@@ -1736,6 +1779,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "requirement",
+        editor_semantics: CARDINAL_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "requirement",
             frontmatter_order: 19,
@@ -1744,6 +1788,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "timeline",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "timeline",
             frontmatter_order: 24,
@@ -1752,6 +1797,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "gitGraph",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "gitGraph",
             frontmatter_order: 9,
@@ -1760,6 +1806,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "state",
+        editor_semantics: STATE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "state",
             frontmatter_order: 22,
@@ -1768,6 +1815,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "journey",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "journey",
             frontmatter_order: 11,
@@ -1776,6 +1824,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "quadrantChart",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "quadrantChart",
             frontmatter_order: 16,
@@ -1784,6 +1833,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "sankey",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "sankey",
             frontmatter_order: 20,
@@ -1792,6 +1842,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "packet",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "packet",
             frontmatter_order: 14,
@@ -1800,6 +1851,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "xychart",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "xyChart",
             frontmatter_order: 29,
@@ -1808,6 +1860,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "block",
+        editor_semantics: BLOCK_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "block",
             frontmatter_order: 1,
@@ -1816,6 +1869,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "eventmodeling",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "eventmodeling",
             frontmatter_order: 6,
@@ -1824,6 +1878,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "treeView",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "treeView",
             frontmatter_order: 25,
@@ -1832,6 +1887,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "radar",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "radar",
             frontmatter_order: 17,
@@ -1840,6 +1896,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "ishikawa",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "ishikawa",
             frontmatter_order: 10,
@@ -1848,6 +1905,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "treemap",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "treemap",
             frontmatter_order: 26,
@@ -1856,6 +1914,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "railroad",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "railroad",
             frontmatter_order: 18,
@@ -1864,6 +1923,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "venn",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "venn",
             frontmatter_order: 27,
@@ -1872,6 +1932,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "wardley",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "wardley-beta",
             frontmatter_order: 28,
@@ -1880,6 +1941,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "cynefin",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "cynefin",
             frontmatter_order: 4,
@@ -1902,6 +1964,32 @@ mod catalog_tests {
             Some("quadrantchart")
         );
         assert_eq!(diagram_type_metadata_id("treeView"), Some("treeView"));
+    }
+
+    #[test]
+    fn editor_semantics_follow_family_identity_across_variant_ids() {
+        for variant in ["flowchart-v2", "flowchart-elk", "flowchart"] {
+            assert_eq!(
+                diagram_type_family_id(variant),
+                Some(DiagramFamilyId::FLOWCHART),
+                "{variant} must retain typed Flowchart family identity"
+            );
+        }
+
+        let flowchart = diagram_type_editor_semantics("flowchart-v2")
+            .expect("flowchart-v2 has editor family semantics");
+        for variant in ["flowchart-elk", "flowchart"] {
+            assert_eq!(
+                diagram_type_editor_semantics(variant),
+                Some(flowchart),
+                "{variant} must inherit flowchart family semantics"
+            );
+        }
+
+        let class = diagram_type_editor_semantics("classDiagram")
+            .expect("classDiagram has editor family semantics");
+        assert_eq!(diagram_type_editor_semantics("class"), Some(class));
+        assert_ne!(flowchart, class);
     }
 
     #[test]

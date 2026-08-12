@@ -1,11 +1,10 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
-    editor::EditorLexemeJournal,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
+    Result, SourceSpan, editor::EditorLexemeJournal,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -16,16 +15,6 @@ use std::cell::Cell;
 thread_local! {
     static C4_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
-
-const C4_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const C4_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], C4_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 pub(crate) fn reset_c4_syntax_construction_count() {
@@ -930,7 +919,7 @@ fn parse_direction_stmt_facts_c4(
     let value = &rest[whitespace..];
     if value.is_empty() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::DirectionValue,
+            EditorExpectedSyntaxKind::CardinalDirectionValue,
             SourceSpan::new(keyword_end, keyword_end),
         ));
         return Some(false);
@@ -940,7 +929,7 @@ fn parse_direction_stmt_facts_c4(
     let value_start = keyword_end + whitespace;
     let value_span = SourceSpan::new(value_start, value_start + token.len());
     facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::DirectionValue,
+        EditorExpectedSyntaxKind::CardinalDirectionValue,
         value_span,
     ));
     push_c4_lexeme(lexemes, EditorLexemeKind::Literal, value_span);
@@ -2128,8 +2117,7 @@ fn parse_c4_semantic_source(
 ) -> ParseControlResult<C4ParseOutcome> {
     control.checkpoint()?;
     let mut db = C4Db::new(&meta.effective_config);
-    let mut editor_facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(C4_COMPLETION_VOCABULARY);
+    let mut editor_facts = EditorSemanticFacts::new();
     let mut issues = Vec::new();
     let mut semantic_statements = Vec::new();
     let mut boundary_frames = Vec::new();

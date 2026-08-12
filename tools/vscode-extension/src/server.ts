@@ -12,12 +12,17 @@ import {
 } from "vscode-languageclient/node";
 
 import {
-  getAnalysisSettings,
   getDiagnosticsSettings,
   getDidChangeConfigurationPayload,
+  getInitializationAnalysisSettings,
   getServerSettings,
   getTraceSetting,
 } from "./config.js";
+import {
+  CONFIG_SCHEMA_METHOD,
+  RULE_CATALOG_METHOD,
+  type NegotiatedAnalysisConfig,
+} from "./analysis-config-contract.js";
 import { resolveMermanBinary } from "./binaries.js";
 import {
   emptyDocumentDiagnosticReport,
@@ -25,9 +30,6 @@ import {
   projectOwnedDocumentDiagnosticReport,
 } from "./diagnostic-ownership.js";
 import { workspaceRoots } from "./workspace.js";
-
-export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
-export const CONFIG_SCHEMA_METHOD = "merman/configSchema";
 
 export type LspRuleTag = "deprecated";
 
@@ -78,7 +80,7 @@ export async function createLanguageClient(
     outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
     initializationOptions: {
-      analysis: getAnalysisSettings(),
+      analysis: getInitializationAnalysisSettings(),
     },
     markdown: {
       isTrusted: false,
@@ -126,9 +128,20 @@ export async function createLanguageClient(
   return client;
 }
 
-export async function pushConfiguration(client: LanguageClient): Promise<void> {
+export async function pushConfiguration(
+  client: LanguageClient,
+  contract: NegotiatedAnalysisConfig,
+): Promise<void> {
+  const { payload, unsupportedRuleIds } = getDidChangeConfigurationPayload(
+    contract.configurableRuleIds,
+  );
+  if (unsupportedRuleIds.length > 0) {
+    client.outputChannel.warn(
+      `Connected Merman server does not advertise these rule IDs as configurable; ignoring them: ${unsupportedRuleIds.join(", ")}`,
+    );
+  }
   await client.sendNotification("workspace/didChangeConfiguration", {
-    settings: getDidChangeConfigurationPayload(),
+    settings: payload,
   });
 }
 

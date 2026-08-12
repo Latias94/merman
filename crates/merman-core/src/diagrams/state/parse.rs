@@ -1,8 +1,7 @@
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseDiagnostic, ParseDiagnosticSpanKind, ParseMetadata,
-    Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseDiagnostic,
+    ParseDiagnosticSpanKind, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
         format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
@@ -15,16 +14,6 @@ use std::cell::Cell;
 
 use super::db::StateDb;
 use super::{Lexer, StateDiagramRenderModel, Stmt, Tok};
-
-const STATE_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const STATE_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], STATE_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -269,8 +258,7 @@ fn assign_divider_ids(
 }
 
 fn state_editor_facts_from_events(events: Vec<StateEditorEvent>) -> EditorSemanticFacts {
-    let mut facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(STATE_COMPLETION_VOCABULARY);
+    let mut facts = EditorSemanticFacts::new();
     for event in events {
         event.emit(&mut facts);
     }
@@ -763,7 +751,7 @@ impl StateTokenFactCollector<'_> {
                 if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
                     push_state_expected_syntax(
                         events,
-                        EditorExpectedSyntaxKind::DirectionValue,
+                        EditorExpectedSyntaxKind::CardinalDirectionValue,
                         span,
                     );
                 }

@@ -1735,6 +1735,52 @@ fn completion_offers_frontmatter_templates_at_document_start() {
 }
 
 #[test]
+fn completion_offers_frontmatter_at_the_start_of_a_complete_diagram() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/frontmatter-at-complete-source-start.mmd",
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 0));
+
+    assert!(list.items.iter().any(|item| {
+        item.data
+            .as_ref()
+            .is_some_and(|data| data.kind == CompletionDataKind::Frontmatter)
+    }));
+}
+
+#[test]
+fn incomplete_frontmatter_opening_keeps_authoring_completion_across_line_endings() {
+    for (ending_name, ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+        let source = format!("---{ending}");
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/frontmatter-opening-{ending_name}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("incomplete frontmatter source should remain analyzable");
+        let list = completion_for_snapshot(&snapshot, Position::new(1, 0));
+
+        assert!(
+            list.items.iter().any(|item| {
+                item.data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Frontmatter)
+            }),
+            "{ending_name} opening should retain frontmatter completion"
+        );
+    }
+}
+
+#[test]
 fn completion_offers_themecss_inside_frontmatter() {
     let harness = SnapshotHarness::new();
     let snapshot = harness

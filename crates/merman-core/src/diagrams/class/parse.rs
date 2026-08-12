@@ -1,8 +1,8 @@
 use crate::models::class_diagram as class_typed;
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseMetadata, Result,
+    SourceSpan,
     editor::{
         editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
         lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
@@ -17,16 +17,6 @@ use super::class_grammar;
 use super::db::ClassDb;
 use super::lexer::Lexer;
 use super::{MERMAID_DOM_ID_PREFIX, Tok};
-
-const CLASS_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const CLASS_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], CLASS_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -249,8 +239,7 @@ fn collect_class_editor_facts_from_events(
     lexemes: crate::editor::EditorLexemeBatchResult,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let mut facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(CLASS_COMPLETION_VOCABULARY);
+    let mut facts = EditorSemanticFacts::new();
     facts.replace_family_lexemes(lexemes);
     let mut collector = ClassEditorFactCollector::new(code);
 
@@ -694,7 +683,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             Tok::Direction(_) => {
                 if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::DirectionValue,
+                        EditorExpectedSyntaxKind::CardinalDirectionValue,
                         span,
                     ));
                 }

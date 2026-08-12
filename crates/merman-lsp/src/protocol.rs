@@ -371,18 +371,32 @@ mod tests {
             "merman.analysis.lint.enable_rules",
             "merman.analysis.lint.disable_rules",
         ] {
-            let rule_ids = vscode_analysis_setting(&package_json, setting_key)
-                .and_then(|setting| setting["items"]["enum"].as_array())
-                .expect("VS Code rule lists must publish configurable analysis rule ids");
+            let items = vscode_analysis_setting(&package_json, setting_key)
+                .map(|setting| &setting["items"])
+                .expect("VS Code rule lists must describe their item schema");
+            assert!(
+                items.get("enum").is_none(),
+                "VS Code rule lists must accept future server rule ids"
+            );
+            let rule_ids = items["examples"]
+                .as_array()
+                .expect("VS Code rule lists must advertise current configurable rule ids");
             assert_eq!(
                 Value::Array(rule_ids.clone()),
                 json!(response.configurable_rule_ids)
             );
         }
-        let severity_rule_ids =
+        let severity_rule_id =
             vscode_analysis_setting(&package_json, "merman.analysis.lint.rule_severities")
-                .and_then(|setting| setting["items"]["properties"]["rule_id"]["enum"].as_array())
-                .expect("VS Code severity overrides must publish configurable analysis rule ids");
+                .map(|setting| &setting["items"]["properties"]["rule_id"])
+                .expect("VS Code severity overrides must describe rule ids");
+        assert!(
+            severity_rule_id.get("enum").is_none(),
+            "VS Code severity overrides must accept future server rule ids"
+        );
+        let severity_rule_ids = severity_rule_id["examples"]
+            .as_array()
+            .expect("VS Code severity overrides must advertise current configurable rule ids");
         assert_eq!(
             Value::Array(severity_rule_ids.clone()),
             json!(response.configurable_rule_ids)

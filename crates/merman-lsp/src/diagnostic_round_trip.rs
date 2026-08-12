@@ -119,7 +119,9 @@ impl DiagnosticRoundTrip {
             if diagnostic.source.as_deref() != Some("merman") {
                 continue;
             }
-            let (identity, server_diagnostic) = self.resolve(diagnostic)?;
+            let Some((identity, server_diagnostic)) = self.resolve(diagnostic) else {
+                continue;
+            };
             if !seen.insert(identity) {
                 return None;
             }
@@ -394,6 +396,16 @@ mod tests {
                     .is_none()
             );
         }
+
+        let mut stale = diagnostic.clone();
+        stale.data.as_mut().expect("identity")["documentVersion"] = json!(DOCUMENT_VERSION - 1);
+        let mixed_actions = round_trip
+            .code_actions_with_profile(
+                &params(uri.clone(), vec![stale, diagnostic.clone()]),
+                &profile,
+            )
+            .expect("one stale Merman diagnostic must not suppress a valid quickfix");
+        assert_eq!(mixed_actions.len(), 1);
         assert!(
             round_trip
                 .code_actions_with_profile(

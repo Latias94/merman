@@ -747,8 +747,8 @@ impl SessionState {
 
     pub(super) fn remove(&mut self, uri: &Uri) {
         self.analysis_executor.forget(uri);
+        self.open_document_tracker.advance(uri);
         if self.documents.remove(uri).is_some() {
-            self.open_document_tracker.advance(uri);
             self.advance_documents_revision();
         }
         self.analysis_cache.remove(uri);

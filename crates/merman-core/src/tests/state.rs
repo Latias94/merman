@@ -843,6 +843,9 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     .expect("combined State parse succeeds");
     let family = crate::family::diagram_type_family_id(&standalone.meta.diagram_type)
         .expect("State belongs to a catalog family");
+    combined_editor.family_semantics =
+        crate::family::diagram_type_editor_semantics(&standalone.meta.diagram_type)
+            .expect("State has typed editor family semantics");
     combined_editor.finalize_lexemes(family, &[]);
 
     assert_eq!(

@@ -68,11 +68,20 @@ impl<'a> CompletionQuery<'a> {
     }
 
     pub(crate) fn direction_value_range(&self) -> Option<Range> {
-        self.expected_range(EditorExpectedSyntaxKind::DirectionValue)
+        matches!(
+            self.expected_syntax.map(|expected| expected.kind),
+            Some(
+                EditorExpectedSyntaxKind::FlowchartDirectionValue
+                    | EditorExpectedSyntaxKind::CardinalDirectionValue
+                    | EditorExpectedSyntaxKind::BlockDirectionValue
+            )
+        )
+        .then(|| self.expected_syntax_range())
+        .flatten()
     }
 
     pub(crate) fn operator_range(&self) -> Option<Range> {
-        self.expected_range(EditorExpectedSyntaxKind::Operator)
+        self.expected_range(EditorExpectedSyntaxKind::FlowchartOperator)
     }
 
     pub(crate) fn shape_value_edit(&self, value: &str) -> Option<CompletionTextEditParts> {

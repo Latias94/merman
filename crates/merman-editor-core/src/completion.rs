@@ -2,14 +2,81 @@ use crate::context::CompletionQuery;
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
 use merman_analysis::FenceTextIndexSource;
-use merman_core::{EditorExpectedSyntaxKind, diagram_header_facts};
+use merman_core::{
+    EditorExpectedSyntaxKind, diagram_header_facts, preprocess::split_frontmatter_block,
+};
 use serde::{Deserialize, Serialize};
 
 const COMMON_TEMPLATE_DETAIL: &str = "diagram template";
+
+#[derive(Debug, Clone, Copy)]
+struct CompletionCandidateSpec {
+    label: &'static str,
+    detail: &'static str,
+    snippet: Option<&'static str>,
+}
+
+impl CompletionCandidateSpec {
+    const fn keyword(label: &'static str, detail: &'static str) -> Self {
+        Self {
+            label,
+            detail,
+            snippet: None,
+        }
+    }
+
+    const fn snippet(label: &'static str, detail: &'static str, snippet: &'static str) -> Self {
+        Self {
+            label,
+            detail,
+            snippet: Some(snippet),
+        }
+    }
+}
+
+const FLOWCHART_OPERATOR_ITEMS: &[CompletionCandidateSpec] = &[
+    CompletionCandidateSpec::keyword("-->", "edge operator"),
+    CompletionCandidateSpec::keyword("---", "edge operator"),
+    CompletionCandidateSpec::keyword("-.->", "edge operator"),
+    CompletionCandidateSpec::keyword("==>", "edge operator"),
+    CompletionCandidateSpec::snippet("-->|label|", "labeled edge operator", "-->|${1:label}|"),
+    CompletionCandidateSpec::keyword("--o", "circle-ended edge operator"),
+];
+const FLOWCHART_DIRECTION_ITEMS: &[CompletionCandidateSpec] = &[
+    CompletionCandidateSpec::keyword("TB", "top to bottom"),
+    CompletionCandidateSpec::keyword("TD", "top down"),
+    CompletionCandidateSpec::keyword("BT", "bottom to top"),
+    CompletionCandidateSpec::keyword("LR", "left to right"),
+    CompletionCandidateSpec::keyword("RL", "right to left"),
+];
+const CARDINAL_DIRECTION_ITEMS: &[CompletionCandidateSpec] = &[
+    CompletionCandidateSpec::keyword("TB", "top to bottom"),
+    CompletionCandidateSpec::keyword("BT", "bottom to top"),
+    CompletionCandidateSpec::keyword("LR", "left to right"),
+    CompletionCandidateSpec::keyword("RL", "right to left"),
+];
+const BLOCK_DIRECTION_ITEMS: &[CompletionCandidateSpec] = &[
+    CompletionCandidateSpec::keyword("right", "right"),
+    CompletionCandidateSpec::keyword("left", "left"),
+    CompletionCandidateSpec::keyword("up", "up"),
+    CompletionCandidateSpec::keyword("down", "down"),
+    CompletionCandidateSpec::keyword("x", "horizontal"),
+    CompletionCandidateSpec::keyword("y", "vertical"),
+];
+
 pub const COMPLETION_TRIGGER_CHARACTERS: &[char] =
     &[' ', '\n', '-', '>', '%', '[', '(', '{', '/', '\\', '@', ':'];
 const TEMPLATE_PREFIXES: &[&str] = &[
     "flow", "seq", "icon", "acc", "class", "state", "er", "gantt", "pie", "journey", "mind",
+];
+const FRONTMATTER_PREFIXES: &[&str] = &[
+    "---",
+    "config",
+    "theme",
+    "themeCSS",
+    "themeVariables",
+    "look",
+    "layout",
 ];
 
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
@@ -27,8 +94,15 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     let offer_headers =
         expected_syntax.is_none() && offer_diagram_headers(query.source_start, query.prefix);
     let offer_templates = offer_template_items(&query);
-    let offer_operator = expected_syntax == Some(EditorExpectedSyntaxKind::Operator);
-    let offer_direction = expected_syntax == Some(EditorExpectedSyntaxKind::DirectionValue);
+    let offer_operator = expected_syntax == Some(EditorExpectedSyntaxKind::FlowchartOperator);
+    let direction_kind = expected_syntax.filter(|kind| {
+        matches!(
+            kind,
+            EditorExpectedSyntaxKind::FlowchartDirectionValue
+                | EditorExpectedSyntaxKind::CardinalDirectionValue
+                | EditorExpectedSyntaxKind::BlockDirectionValue
+        )
+    });
     let offer_shape = matches!(
         expected_syntax,
         Some(EditorExpectedSyntaxKind::ShapeValue | EditorExpectedSyntaxKind::ShapeTrigger)
@@ -36,7 +110,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     let offer_directives =
         parser_backed && expected_syntax == Some(EditorExpectedSyntaxKind::Directive);
     let offer_frontmatter = expected_syntax == Some(EditorExpectedSyntaxKind::Frontmatter)
-        || (query.source_start && query.source.is_unavailable());
+        || is_frontmatter_authoring_position(&query);
     let offer_class_names =
         parser_backed && expected_syntax == Some(EditorExpectedSyntaxKind::ClassName);
     let offer_styles =
@@ -56,15 +130,15 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     }
 
     if offer_operator {
-        items.extend(operator_items(&query, query.operator_range()));
+        items.extend(operator_items(query.operator_range()));
     }
 
     if offer_frontmatter {
         items.extend(frontmatter_items(query.prefix_range()));
     }
 
-    if offer_direction {
-        items.extend(direction_items(&query));
+    if let Some(direction_kind) = direction_kind {
+        items.extend(direction_items(&query, direction_kind));
     }
 
     if offer_directives {
@@ -131,6 +205,38 @@ fn offer_template_items(query: &CompletionQuery<'_>) -> bool {
             .any(|template_prefix| template_prefix.starts_with(prefix))
 }
 
+fn is_frontmatter_authoring_position(query: &CompletionQuery<'_>) -> bool {
+    let text = query.fence.text();
+    let cursor = query
+        .cursor_offset
+        .saturating_sub(query.fence.body_range().start)
+        .min(text.len());
+    if let Some(frontmatter) = split_frontmatter_block(text) {
+        return cursor <= frontmatter.body.end;
+    }
+    if starts_with_frontmatter_opening_line(text) {
+        return true;
+    }
+    if !query.source_start {
+        return false;
+    }
+
+    let prefix = query.prefix.trim_end();
+    cursor == 0
+        || prefix == "---"
+        || (!prefix.is_empty()
+            && !prefix.chars().any(char::is_whitespace)
+            && FRONTMATTER_PREFIXES
+                .iter()
+                .any(|frontmatter_prefix| frontmatter_prefix.starts_with(prefix)))
+}
+
+fn starts_with_frontmatter_opening_line(text: &str) -> bool {
+    let first_line_end = text.find('\n').unwrap_or(text.len());
+    let first_line = text[..first_line_end].trim_end_matches('\r');
+    first_line.trim_start() == "---"
+}
+
 fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
     diagram_header_facts()
         .iter()
@@ -146,26 +252,22 @@ fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
         .collect()
 }
 
-fn operator_items(query: &CompletionQuery<'_>, range: Option<Range>) -> Vec<CompletionItem> {
-    query
-        .fence
-        .text_index()
-        .completion_vocabulary()
-        .operators()
+fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
+    FLOWCHART_OPERATOR_ITEMS
         .iter()
         .map(|candidate| {
-            if let Some(snippet) = candidate.snippet_text() {
+            if let Some(snippet) = candidate.snippet {
                 snippet_completion(
-                    candidate.label(),
-                    candidate.detail(),
+                    candidate.label,
+                    candidate.detail,
                     range,
                     snippet,
                     CompletionDataKind::Operator,
                 )
             } else {
                 keyword_completion(
-                    candidate.label(),
-                    candidate.detail(),
+                    candidate.label,
+                    candidate.detail,
                     range,
                     None,
                     CompletionDataKind::Operator,
@@ -202,19 +304,18 @@ fn directive_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
     ]
 }
 
-fn direction_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
-    let values = query
-        .fence
-        .text_index()
-        .completion_vocabulary()
-        .directions();
+fn direction_items(
+    query: &CompletionQuery<'_>,
+    kind: EditorExpectedSyntaxKind,
+) -> Vec<CompletionItem> {
+    let values = direction_candidates(kind);
     if let Some(range) = query.direction_value_range() {
         return values
             .iter()
             .map(|candidate| {
                 keyword_completion(
-                    candidate.label(),
-                    candidate.detail(),
+                    candidate.label,
+                    candidate.detail,
                     Some(range),
                     None,
                     CompletionDataKind::Direction,
@@ -227,14 +328,33 @@ fn direction_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
         .iter()
         .map(|candidate| {
             keyword_completion(
-                &format!("direction {}", candidate.label()),
-                candidate.detail(),
+                &format!("direction {}", candidate.label),
+                candidate.detail,
                 query.prefix_range(),
                 None,
                 CompletionDataKind::Direction,
             )
         })
         .collect()
+}
+
+fn direction_candidates(kind: EditorExpectedSyntaxKind) -> &'static [CompletionCandidateSpec] {
+    match kind {
+        EditorExpectedSyntaxKind::FlowchartDirectionValue => FLOWCHART_DIRECTION_ITEMS,
+        EditorExpectedSyntaxKind::CardinalDirectionValue => CARDINAL_DIRECTION_ITEMS,
+        EditorExpectedSyntaxKind::BlockDirectionValue => BLOCK_DIRECTION_ITEMS,
+        EditorExpectedSyntaxKind::Directive
+        | EditorExpectedSyntaxKind::Frontmatter
+        | EditorExpectedSyntaxKind::IdList
+        | EditorExpectedSyntaxKind::NodeIdentifier
+        | EditorExpectedSyntaxKind::ClassName
+        | EditorExpectedSyntaxKind::FlowchartOperator
+        | EditorExpectedSyntaxKind::ShapeValue
+        | EditorExpectedSyntaxKind::ShapeTrigger
+        | EditorExpectedSyntaxKind::StyleValue
+        | EditorExpectedSyntaxKind::InteractionAction
+        | EditorExpectedSyntaxKind::Payload => &[],
+    }
 }
 
 fn shape_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
@@ -618,10 +738,14 @@ pub struct CompletionResolveData {
 
 #[cfg(test)]
 mod tests {
-    use super::{CompletionDataKind, completion_for_snapshot};
+    use super::{
+        CompletionDataKind, FLOWCHART_DIRECTION_ITEMS, FLOWCHART_OPERATOR_ITEMS,
+        completion_for_snapshot,
+    };
     use crate::document_analysis::analyze_document_snapshot_with_shared_text;
     use crate::types::{DocumentKind, DocumentUri, Position};
     use merman_analysis::{AnalysisRejection, Analyzer};
+    use merman_core::{EditorSemanticCompleteness, Engine};
     use std::sync::Arc;
 
     struct SnapshotHarness {
@@ -700,6 +824,44 @@ mod tests {
                     data.kind == CompletionDataKind::Template && data.label == "flowchart template"
                 }))
         );
+        assert!(!completion.items.iter().any(|item| {
+            item.data
+                .as_ref()
+                .is_some_and(|data| data.kind == CompletionDataKind::Frontmatter)
+        }));
+    }
+
+    #[test]
+    fn flowchart_completion_policy_contains_only_parser_accepted_syntax() {
+        let engine = Engine::new();
+
+        for candidate in FLOWCHART_OPERATOR_ITEMS {
+            let source = format!("flowchart TD\nA {} B\n", candidate.label);
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("flowchart-v2", &source)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "flowchart completion operator {:?} must parse: {error}",
+                        candidate.label
+                    )
+                })
+                .expect("flowchart has parser-backed editor facts");
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        }
+
+        for candidate in FLOWCHART_DIRECTION_ITEMS {
+            let source = format!("flowchart {}\nA --> B\n", candidate.label);
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("flowchart-v2", &source)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "flowchart completion direction {:?} must parse: {error}",
+                        candidate.label
+                    )
+                })
+                .expect("flowchart has parser-backed editor facts");
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        }
     }
 
     #[test]
@@ -802,6 +964,59 @@ mod tests {
         assert_eq!(edit.range.start.character, "direction ".len());
         assert_eq!(edit.range.end.line, 2);
         assert_eq!(edit.range.end.character, "direction L".len());
+    }
+
+    #[test]
+    fn flowchart_variant_names_share_editor_owned_operator_policy() {
+        let harness = SnapshotHarness::new();
+        let completions = ["flowchart TD", "flowchart-elk TD"].map(|header| {
+            let source = format!("{header}\nA ->");
+            let snapshot = harness
+                .analyze(
+                    format!("file:///tmp/{}.mmd", header.replace(' ', "-")),
+                    1,
+                    source,
+                    DocumentKind::Diagram,
+                )
+                .expect("flowchart variant should be accepted");
+
+            completion_for_snapshot(&snapshot, Position::new(1, "A ->".len()))
+                .items
+                .into_iter()
+                .filter(|item| {
+                    item.data
+                        .as_ref()
+                        .is_some_and(|data| data.kind == CompletionDataKind::Operator)
+                })
+                .collect::<Vec<_>>()
+        });
+
+        assert_eq!(completions[0], completions[1]);
+        assert_eq!(
+            completions[0]
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["-->", "---", "-.->", "==>", "-->|label|", "--o"]
+        );
+
+        let labeled = completions[0]
+            .iter()
+            .find(|item| item.label == "-->|label|")
+            .expect("editor-owned labeled edge candidate");
+        assert_eq!(labeled.detail.as_deref(), Some("labeled edge operator"));
+        assert_eq!(labeled.insert_text.as_deref(), Some("-->|${1:label}|"));
+        assert_eq!(
+            labeled.insert_text_format,
+            super::CompletionInsertTextFormat::Snippet
+        );
+        assert_eq!(
+            labeled
+                .text_edit
+                .as_ref()
+                .map(|edit| edit.new_text.as_str()),
+            Some("-->|${1:label}|")
+        );
     }
 
     #[test]

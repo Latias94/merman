@@ -389,7 +389,7 @@ impl<'input> Lexer<'input> {
             }
             return Some(Err(LexError::new("invalid class direction", selection)
                 .expecting(
-                    crate::EditorExpectedSyntaxKind::DirectionValue,
+                    crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
                     selection,
                 )));
         };

@@ -278,10 +278,18 @@ describe("Merman binary resolution", () => {
       contributes: {
         configuration:
           | {
-              properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
+              properties: Record<string, {
+                markdownDescription?: string;
+                restricted?: boolean;
+                items?: { type?: string; enum?: unknown[] };
+              }>;
             }
           | Array<{
-              properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
+              properties: Record<string, {
+                markdownDescription?: string;
+                restricted?: boolean;
+                items?: { type?: string; enum?: unknown[] };
+              }>;
             }>;
       };
     };
@@ -304,6 +312,14 @@ describe("Merman binary resolution", () => {
         `${settingName} must explain Workspace Trust`,
       );
     }
+
+    const serverArgsItems = properties["merman.server.args"]?.items;
+    assert.equal(serverArgsItems?.type, "string");
+    assert.equal(
+      serverArgsItems?.enum,
+      undefined,
+      "server arguments must not be restricted to analysis rule IDs",
+    );
   });
 
   it("declares runtime settings in native VS Code configuration categories", () => {

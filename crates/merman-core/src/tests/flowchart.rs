@@ -3387,7 +3387,7 @@ fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
     let dir_start = text.find("LR").unwrap();
     assert!(
         facts.expected_syntax.iter().any(|expected| {
-            expected.kind == EditorExpectedSyntaxKind::DirectionValue
+            expected.kind == EditorExpectedSyntaxKind::FlowchartDirectionValue
                 && expected.span == SourceSpan::new(dir_start, dir_start + "LR".len())
         }),
         "missing direction value expected syntax"

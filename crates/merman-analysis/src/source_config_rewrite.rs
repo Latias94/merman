@@ -700,7 +700,8 @@ fn source_config_evidence_for_test(source: &str) -> SourceConfigEvidence {
             snapshot.source_config().clone()
         }
         merman_core::DiagramSnapshotCapture::Snapshot(None) => SourceConfigEvidence::default(),
-        merman_core::DiagramSnapshotCapture::Failed { source_config, .. } => source_config,
+        merman_core::DiagramSnapshotCapture::Failed { source_config, .. }
+        | merman_core::DiagramSnapshotCapture::Panicked { source_config, .. } => source_config,
     }
 }
 

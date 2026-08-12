@@ -254,6 +254,46 @@ describe("language intelligence adoption", () => {
     assert.equal(properties["merman.sourceActions.enabled"]?.scope, "resource");
   });
 
+  it("documents current lint rule ids without rejecting future catalog entries", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        configuration:
+          | { properties: Record<string, unknown> }
+          | Array<{ properties: Record<string, unknown> }>;
+      };
+    };
+    const properties = configurationProperties(pkg.contributes.configuration) as Record<
+      string,
+      {
+        items?: {
+          enum?: unknown[];
+          examples?: unknown[];
+          properties?: Record<string, { enum?: unknown[]; examples?: unknown[] }>;
+        };
+      }
+    >;
+
+    for (const setting of [
+      "merman.analysis.lint.enable_rules",
+      "merman.analysis.lint.disable_rules",
+    ]) {
+      assert.equal(properties[setting]?.items?.enum, undefined, setting);
+      assert.ok(
+        properties[setting]?.items?.examples?.includes(
+          "merman.parse.no_diagram",
+        ),
+        setting,
+      );
+    }
+
+    const ruleId = properties["merman.analysis.lint.rule_severities"]
+      ?.items?.properties?.rule_id;
+    assert.equal(ruleId?.enum, undefined);
+    assert.ok(ruleId?.examples?.includes("merman.parse.no_diagram"));
+  });
+
   it("declares preview defaults in the native settings schema", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

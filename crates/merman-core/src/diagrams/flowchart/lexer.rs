@@ -413,8 +413,10 @@ impl<'input> Lexer<'input> {
             .into_iter()
             .find(|candidate| *candidate == direction)
         else {
-            let error = LexError::with_span("invalid flowchart direction", selection)
-                .expecting(crate::EditorExpectedSyntaxKind::DirectionValue, selection);
+            let error = LexError::with_span("invalid flowchart direction", selection).expecting(
+                crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
+                selection,
+            );
             if self.recover_partial_node_labels {
                 return Some(Ok((
                     start,
@@ -1322,7 +1324,10 @@ impl<'input> Lexer<'input> {
                     "incomplete flowchart edge operator",
                     selection,
                 )
-                .expecting(crate::EditorExpectedSyntaxKind::Operator, selection)));
+                .expecting(
+                    crate::EditorExpectedSyntaxKind::FlowchartOperator,
+                    selection,
+                )));
             }
             return None;
         };
@@ -1488,7 +1493,7 @@ impl<'input> Lexer<'input> {
             SourceSpan::new(edge_text_start, self.pos),
         )
         .expecting(
-            crate::EditorExpectedSyntaxKind::Operator,
+            crate::EditorExpectedSyntaxKind::FlowchartOperator,
             SourceSpan::new(start_match.operator_span.start, after_start),
         )))
     }

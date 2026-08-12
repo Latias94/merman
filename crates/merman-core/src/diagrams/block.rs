@@ -1,10 +1,9 @@
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{EditorLexemeJournal, trailing_ascii_whitespace_slot},
 };
 use indexmap::IndexMap;
@@ -19,18 +18,6 @@ use std::cell::Cell;
 // model items, and an unbounded profile must still not turn a tiny source into an effectively
 // infinite allocation.
 const MAX_BLOCK_SPACE_EXPANSION_ITEMS: i64 = 200_000;
-
-const BLOCK_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("right", "right"),
-    EditorCompletionCandidate::keyword("left", "left"),
-    EditorCompletionCandidate::keyword("up", "up"),
-    EditorCompletionCandidate::keyword("down", "down"),
-    EditorCompletionCandidate::keyword("x", "horizontal"),
-    EditorCompletionCandidate::keyword("y", "vertical"),
-];
-
-const BLOCK_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], BLOCK_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -1282,8 +1269,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             control,
             pos: 0,
             gen_counter: 0,
-            editor_facts: EditorSemanticFacts::new()
-                .with_completion_vocabulary(BLOCK_COMPLETION_VOCABULARY),
+            editor_facts: EditorSemanticFacts::new(),
             lexemes: EditorLexemeJournal::family_parser(input),
         }
     }
@@ -2256,7 +2242,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
         self.editor_facts
             .push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::DirectionValue,
+                EditorExpectedSyntaxKind::BlockDirectionValue,
                 SourceSpan::new(start, self.pos),
             ));
         if self.pos == start {

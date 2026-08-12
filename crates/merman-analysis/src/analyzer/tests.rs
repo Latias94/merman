@@ -50,6 +50,10 @@ fn detect_markdown_custom_fixture(source: &str, _config: &mut merman_core::Merma
     source.trim_start().starts_with("markdown-custom-fixture")
 }
 
+fn panicking_detector(_source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
+    panic!("detector fixture panic")
+}
+
 fn captured_config_panicking_parser(
     _source: &str,
     _metadata: &ParseMetadata,
@@ -1418,6 +1422,44 @@ fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
     assert!(migration.fixes[0].edits.iter().any(|edit| {
         edit.replacement.contains("config:") && edit.replacement.contains("theme: dark")
     }));
+}
+
+#[test]
+fn source_config_diagnostics_survive_detector_panic_without_metadata() {
+    let mut engine = merman_core::Engine::new();
+    *engine.registry_mut() = merman_core::DetectorRegistry::new();
+    engine
+        .registry_mut()
+        .add_fn("detector-panic-fixture", panicking_detector);
+    let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
+    let source = concat!(
+        "%%{ init: { lazyLoadedDiagrams: true } }%%\n",
+        "detector-panic-fixture\n",
+    );
+
+    let payload = analyzer.analyze(source);
+
+    let panic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::PANIC_RULE_ID)
+        .expect("detector panic must remain visible");
+    assert!(panic.message.contains("detector fixture panic"));
+    assert_eq!(panic.diagram_type, None);
+
+    let deprecated = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.id == crate::rules::DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID
+        })
+        .expect("source-config evidence must survive the detector panic");
+    let span = deprecated.span.as_ref().expect("deprecated config span");
+    assert_eq!(
+        &source[span.byte_start..span.byte_end],
+        "lazyLoadedDiagrams"
+    );
+    assert_eq!(deprecated.diagram_type, None);
 }
 
 #[test]

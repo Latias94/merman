@@ -7,9 +7,9 @@ use crate::{
     },
 };
 use merman_core::{
-    BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
-    MermaidConfig,
+    BLOCK_WIDTH_WARNING_RULE_ID, DiagramFamilyId, DiagramWarningFact,
+    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, MermaidConfig, diagram_type_family_id,
     preprocess::{SourceConfigEvidence, SourceConfigOrigin},
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -822,7 +822,7 @@ pub(crate) fn parsed_source_lint_candidates_cancellable(
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
-    if merman_core::diagram_type_family_kind(diagram_type) != Some("flowchart") {
+    if diagram_type_family_id(diagram_type) != Some(DiagramFamilyId::FLOWCHART) {
         return Ok(Vec::new());
     }
     deprecated_flowchart_html_labels_candidates(
@@ -875,7 +875,8 @@ fn source_config_evidence_for_test(source: &str) -> SourceConfigEvidence {
             snapshot.source_config().clone()
         }
         merman_core::DiagramSnapshotCapture::Snapshot(None) => SourceConfigEvidence::default(),
-        merman_core::DiagramSnapshotCapture::Failed { source_config, .. } => source_config,
+        merman_core::DiagramSnapshotCapture::Failed { source_config, .. }
+        | merman_core::DiagramSnapshotCapture::Panicked { source_config, .. } => source_config,
     }
 }
 

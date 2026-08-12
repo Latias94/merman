@@ -760,10 +760,12 @@ impl From<EditorExpectedSyntaxKind> for AnalysisExpectedSyntaxKind {
             EditorExpectedSyntaxKind::IdList => Self::IdList,
             EditorExpectedSyntaxKind::NodeIdentifier => Self::NodeIdentifier,
             EditorExpectedSyntaxKind::ClassName => Self::ClassName,
-            EditorExpectedSyntaxKind::Operator => Self::Operator,
+            EditorExpectedSyntaxKind::FlowchartOperator => Self::Operator,
             EditorExpectedSyntaxKind::ShapeValue => Self::Shape,
             EditorExpectedSyntaxKind::ShapeTrigger => Self::ShapeTrigger,
-            EditorExpectedSyntaxKind::DirectionValue => Self::Direction,
+            EditorExpectedSyntaxKind::FlowchartDirectionValue
+            | EditorExpectedSyntaxKind::CardinalDirectionValue
+            | EditorExpectedSyntaxKind::BlockDirectionValue => Self::Direction,
             EditorExpectedSyntaxKind::StyleValue => Self::StyleValue,
             EditorExpectedSyntaxKind::InteractionAction => Self::InteractionAction,
             EditorExpectedSyntaxKind::Payload => Self::Payload,

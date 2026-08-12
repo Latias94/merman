@@ -1,7 +1,12 @@
 import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { normalizeAnalysisSettings, type RawAnalysisSettings } from "../analysis-settings.js";
+import {
+  analysisInitializationSettings,
+  normalizeAnalysisSettings,
+  projectAnalysisSettings,
+  type RawAnalysisSettings,
+} from "../analysis-settings.js";
 
 describe("analysis settings normalization", () => {
   it("keeps only integer analysis values accepted by the LSP parser", () => {
@@ -163,12 +168,13 @@ describe("analysis settings normalization", () => {
     });
   });
 
-  it("drops rule ids outside the analysis-owned configurable catalog", () => {
+  it("preserves future rule ids while still validating the surrounding shape", () => {
     assert.deepEqual(normalizeAnalysisSettings({
       ...defaultRawAnalysisSettings(),
       enableRules: [
         "merman.authoring.flowchart.explicit_direction",
         "merman.unknown.rule",
+        "   ",
       ],
       disableRules: ["merman.resource.source_bytes_exceeded"],
       ruleSeverities: [
@@ -184,14 +190,65 @@ describe("analysis settings normalization", () => {
     }), {
       lint: {
         profile: "core",
-        enable_rules: ["merman.authoring.flowchart.explicit_direction"],
+        enable_rules: [
+          "merman.authoring.flowchart.explicit_direction",
+          "merman.unknown.rule",
+        ],
+        disable_rules: ["merman.resource.source_bytes_exceeded"],
         rule_severities: [
           {
             rule_id: "merman.config.invalid_theme_color",
             severity: "hint",
           },
+          {
+            rule_id: "merman.internal.panic",
+            severity: "warning",
+          },
         ],
       },
+    });
+  });
+
+  it("defers rule ids during initialization while preserving other analysis settings", () => {
+    const settings = normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
+      fixedToday: "2024-02-29",
+      maxSourceBytes: 1024,
+      lintProfile: "recommended",
+      enableRules: ["merman.future.rule"],
+      ruleSeverities: [{ rule_id: "merman.future.rule", severity: "hint" }],
+    });
+
+    assert.deepEqual(analysisInitializationSettings(settings), {
+      fixed_today: "2024-02-29",
+      resources: { limits: { max_source_bytes: 1024 } },
+      lint: { profile: "recommended" },
+    });
+  });
+
+  it("projects rule settings through the connected server catalog", () => {
+    const settings = normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
+      maxDocumentDiagrams: 12,
+      enableRules: ["merman.future.rule", "merman.unsupported.rule"],
+      disableRules: ["merman.internal.panic", "merman.future.rule"],
+      ruleSeverities: [
+        { rule_id: "merman.unsupported.rule", severity: "warning" },
+        { rule_id: "merman.future.rule", severity: "hint" },
+      ],
+    });
+
+    assert.deepEqual(projectAnalysisSettings(settings, ["merman.future.rule"]), {
+      settings: {
+        resources: { limits: { max_document_diagrams: 12 } },
+        lint: {
+          profile: "core",
+          enable_rules: ["merman.future.rule"],
+          disable_rules: ["merman.future.rule"],
+          rule_severities: [{ rule_id: "merman.future.rule", severity: "hint" }],
+        },
+      },
+      unsupportedRuleIds: ["merman.unsupported.rule", "merman.internal.panic"],
     });
   });
 });

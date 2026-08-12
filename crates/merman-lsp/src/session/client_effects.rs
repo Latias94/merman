@@ -100,14 +100,12 @@ impl ClientEffects {
         &self,
         change: super::documents::ConfigurationUpdateOutcome,
     ) {
-        if change.affects_diagnostics() {
-            self.republish_diagnostics().await;
-        }
         if change.affects_snapshots() {
             self.refresh_semantic_tokens();
         }
         if change.affects_diagnostics() {
             self.refresh_diagnostics();
+            self.republish_diagnostics().await;
         }
     }
 
@@ -181,14 +179,15 @@ impl ClientEffects {
     }
 
     #[cfg(test)]
-    pub(crate) async fn saturate_serial_lane_for_test(&self) {
+    pub(crate) async fn saturate_serial_lane_for_test(&self) -> tokio::sync::oneshot::Sender<()> {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
         self.session
             .enqueue_latest_client_effect(
                 ClientEffectKey::document_for_test("blocker"),
                 async move {
                     let _ = started_tx.send(());
-                    std::future::pending::<()>().await;
+                    let _ = release_rx.await;
                 },
             )
             .await;
@@ -203,6 +202,7 @@ impl ClientEffects {
                 )
                 .await;
         }
+        release_tx
     }
 }
 

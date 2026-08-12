@@ -1769,6 +1769,28 @@ fn open_commit_rejects_an_absent_present_absent_aba() {
 }
 
 #[test]
+fn closing_an_absent_document_invalidates_an_in_flight_open_ticket() {
+    let mut state = new_session_state();
+    let uri = Uri::from_str("file:///tmp/open-ticket-absent-close.mmd").unwrap();
+    let ticket = state.capture_open_document(uri.clone());
+
+    state.remove(&uri);
+    assert!(state.get(&uri).is_none());
+
+    assert!(!state.commit_open_document(
+        ticket,
+        1,
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->B\n")),
+        DocumentKind::Diagram,
+    ));
+    assert!(state.get(&uri).is_none());
+    assert!(
+        crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty(),
+        "a rejected open ticket must release its URI clock"
+    );
+}
+
+#[test]
 fn open_tickets_share_a_uri_clock_until_the_last_ticket_finishes() {
     let mut state = new_session_state();
     let uri = Uri::from_str("file:///tmp/open-ticket-overlap.mmd").unwrap();

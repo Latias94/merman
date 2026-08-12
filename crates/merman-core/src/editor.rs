@@ -395,6 +395,33 @@ pub enum EditorSemanticKind {
     Variable,
 }
 
+/// Typed family semantics consumed by editor projections.
+///
+/// Parser families own this classification. Downstream editor layers must not recover it from a
+/// diagram type name or other display string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditorFamilySemantics {
+    outline_kind: EditorSemanticKind,
+}
+
+impl Default for EditorFamilySemantics {
+    fn default() -> Self {
+        Self {
+            outline_kind: EditorSemanticKind::Variable,
+        }
+    }
+}
+
+impl EditorFamilySemantics {
+    pub(crate) const fn new(outline_kind: EditorSemanticKind) -> Self {
+        Self { outline_kind }
+    }
+
+    pub const fn outline_kind(self) -> EditorSemanticKind {
+        self.outline_kind
+    }
+}
+
 /// How downstream editor indexes should project a parser-produced symbol.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EditorSemanticRole {
@@ -462,71 +489,6 @@ fn is_ascii_identifier(value: &str) -> bool {
         .next()
         .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
         && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
-}
-
-/// One family-owned body completion candidate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EditorCompletionCandidate {
-    label: &'static str,
-    detail: &'static str,
-    snippet: Option<&'static str>,
-}
-
-impl EditorCompletionCandidate {
-    pub const fn keyword(label: &'static str, detail: &'static str) -> Self {
-        Self {
-            label,
-            detail,
-            snippet: None,
-        }
-    }
-
-    pub const fn snippet(label: &'static str, detail: &'static str, snippet: &'static str) -> Self {
-        Self {
-            label,
-            detail,
-            snippet: Some(snippet),
-        }
-    }
-
-    pub const fn label(self) -> &'static str {
-        self.label
-    }
-
-    pub const fn detail(self) -> &'static str {
-        self.detail
-    }
-
-    pub const fn snippet_text(self) -> Option<&'static str> {
-        self.snippet
-    }
-}
-
-/// Family-owned candidates that editor consumers may project for the current parse generation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct EditorCompletionVocabulary {
-    operators: &'static [EditorCompletionCandidate],
-    directions: &'static [EditorCompletionCandidate],
-}
-
-impl EditorCompletionVocabulary {
-    pub const fn new(
-        operators: &'static [EditorCompletionCandidate],
-        directions: &'static [EditorCompletionCandidate],
-    ) -> Self {
-        Self {
-            operators,
-            directions,
-        }
-    }
-
-    pub const fn operators(self) -> &'static [EditorCompletionCandidate] {
-        self.operators
-    }
-
-    pub const fn directions(self) -> &'static [EditorCompletionCandidate] {
-        self.directions
-    }
 }
 
 impl EditorSemanticRole {
@@ -699,10 +661,12 @@ pub enum EditorExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
     ClassName,
-    Operator,
+    FlowchartOperator,
     ShapeValue,
     ShapeTrigger,
-    DirectionValue,
+    FlowchartDirectionValue,
+    CardinalDirectionValue,
+    BlockDirectionValue,
     StyleValue,
     InteractionAction,
     Payload,
@@ -734,7 +698,7 @@ pub enum EditorSemanticCompleteness {
 #[non_exhaustive]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
-    pub completion_vocabulary: EditorCompletionVocabulary,
+    pub family_semantics: EditorFamilySemantics,
     pub symbols: Vec<EditorSemanticSymbol>,
     lexemes: Vec<EditorLexeme>,
     lexeme_failure: Option<EditorLexemeFailure>,
@@ -872,14 +836,6 @@ impl EditorSemanticFacts {
             }
         }
         Ok(Ok(()))
-    }
-
-    pub fn with_completion_vocabulary(
-        mut self,
-        completion_vocabulary: EditorCompletionVocabulary,
-    ) -> Self {
-        self.completion_vocabulary = completion_vocabulary;
-        self
     }
 
     pub fn mark_recovered(&mut self) {

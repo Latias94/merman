@@ -20,7 +20,7 @@ pub(super) fn from_core_facts_cancellable(
         merman_core::EditorSemanticCompleteness::Recovered => FenceTextIndexSource::ParserRecovered,
     };
     let mut index = FenceTextIndexData {
-        completion_vocabulary: facts.completion_vocabulary,
+        family_semantics: facts.family_semantics,
         source,
         ..FenceTextIndexData::default()
     };

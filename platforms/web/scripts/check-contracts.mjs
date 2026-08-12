@@ -198,6 +198,25 @@ const requiredTypeStringLiterals = new Map([
     ],
   ],
 ]);
+const knownTypeStringLiterals = new Map([
+  [
+    "AnalysisExpectedSyntaxKind",
+    new Set([
+      "directive",
+      "frontmatter",
+      "id_list",
+      "node_identifier",
+      "class_name",
+      "operator",
+      "shape",
+      "shape_trigger",
+      "direction",
+      "style_value",
+      "interaction_action",
+      "payload",
+    ]),
+  ],
+]);
 const exactTypeStringLiterals = new Map([
   [
     "AnalysisRenamePolicy",
@@ -345,6 +364,15 @@ failed ||= reportPolicyFailure(
     .has("parse"),
 );
 failed ||= reportPolicyFailure(
+  "check-contracts: editor options must expose only analysis-owned configuration fields",
+  !contract
+    .exportedTypePropertyNames(publicEntry, "EditorBindingOptions")
+    .has("analysis") ||
+    contract
+      .exportedTypePropertyNames(publicEntry, "EditorBindingOptions")
+      .has("parse"),
+);
+failed ||= reportPolicyFailure(
   "check-contracts: SVG options must use presentation instead of the removed host_theme group",
   contract
     .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
@@ -387,6 +415,18 @@ for (const [typeName, expectedLiterals] of exactTypeStringLiterals) {
   );
   failed ||= reportUnexpected(
     `check-contracts: ${typeName} has members outside the generated contract`,
+    difference(literals, expectedLiterals),
+  );
+}
+
+for (const [typeName, expectedLiterals] of knownTypeStringLiterals) {
+  const literals = contract.exportedStringLiteralMembers(publicEntry, typeName);
+  failed ||= reportMissing(
+    `check-contracts: ${typeName} is missing known string members`,
+    difference(expectedLiterals, literals),
+  );
+  failed ||= reportUnexpected(
+    `check-contracts: ${typeName} has unknown string members`,
     difference(literals, expectedLiterals),
   );
 }

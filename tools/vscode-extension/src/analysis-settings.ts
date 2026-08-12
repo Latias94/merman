@@ -10,28 +10,9 @@ export const ANALYSIS_DIAGNOSTIC_SEVERITIES = [
   "info",
   "hint",
 ] as const;
-export const ANALYSIS_CONFIGURABLE_RULE_IDS = [
-  "merman.authoring.config.prefer_init_directive",
-  "merman.authoring.config.prefer_frontmatter_config",
-  "merman.compatibility.config.deprecated_flowchart_html_labels",
-  "merman.compatibility.config.deprecated_external_diagram_loading",
-  "merman.parse.no_diagram",
-  "merman.parse.diagram_parse",
-  "merman.compatibility.unsupported_diagram",
-  "merman.parse.recovered_editor_facts",
-  "merman.config.malformed_front_matter",
-  "merman.config.invalid_directive_json",
-  "merman.config.invalid_front_matter_yaml",
-  "merman.config.invalid_theme_color",
-  "merman.block.width_exceeds_columns",
-  "merman.authoring.flowchart.explicit_direction",
-  "merman.semantic.flowchart.unknown_style_target",
-  "merman.git_graph.duplicate_commit_id",
-] as const;
-
 export type AnalysisLintProfile = (typeof ANALYSIS_LINT_PROFILES)[number];
 export type AnalysisDiagnosticSeverity = (typeof ANALYSIS_DIAGNOSTIC_SEVERITIES)[number];
-export type AnalysisConfigurableRuleId = (typeof ANALYSIS_CONFIGURABLE_RULE_IDS)[number];
+export type AnalysisConfigurableRuleId = string;
 
 export interface AnalysisSettings {
   fixed_today?: string;
@@ -49,6 +30,11 @@ export interface AnalysisSettings {
     disable_rules?: AnalysisConfigurableRuleId[];
     rule_severities?: LintRuleSeverityOverride[];
   };
+}
+
+export interface ProjectedAnalysisSettings {
+  settings: AnalysisSettings;
+  unsupportedRuleIds: string[];
 }
 
 export interface RawAnalysisSettings {
@@ -106,6 +92,51 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
   });
 }
 
+export function analysisInitializationSettings(settings: AnalysisSettings): AnalysisSettings {
+  const lint = settings.lint
+    ? compactObject({
+        profile: settings.lint.profile,
+      })
+    : undefined;
+  return compactObject({
+    ...settings,
+    lint: lint && Object.keys(lint).length > 0 ? lint : undefined,
+  });
+}
+
+export function projectAnalysisSettings(
+  settings: AnalysisSettings,
+  configurableRuleIds: readonly string[],
+): ProjectedAnalysisSettings {
+  const supported = new Set(configurableRuleIds);
+  const unsupported = new Set<string>();
+  const retainRuleId = (ruleId: string): boolean => {
+    if (supported.has(ruleId)) {
+      return true;
+    }
+    unsupported.add(ruleId);
+    return false;
+  };
+  const lint = settings.lint
+    ? compactObject({
+        profile: settings.lint.profile,
+        enable_rules: settings.lint.enable_rules?.filter(retainRuleId),
+        disable_rules: settings.lint.disable_rules?.filter(retainRuleId),
+        rule_severities: settings.lint.rule_severities?.filter((entry) =>
+          retainRuleId(entry.rule_id)
+        ),
+      })
+    : undefined;
+
+  return {
+    settings: compactObject({
+      ...settings,
+      lint: lint && Object.keys(lint).length > 0 ? lint : undefined,
+    }),
+    unsupportedRuleIds: [...unsupported],
+  };
+}
+
 function normalizePlainObject(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -118,11 +149,10 @@ function sanitizeRuleIds(value: unknown[] | undefined): AnalysisConfigurableRule
   if (!Array.isArray(value)) {
     return [];
   }
-  const ruleIds = new Set<string>(ANALYSIS_CONFIGURABLE_RULE_IDS);
-  return value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim())
-    .filter((entry): entry is AnalysisConfigurableRuleId => ruleIds.has(entry));
+  return value.flatMap((entry) => {
+    const normalized = normalizeOptionalString(entry);
+    return normalized ? [normalized] : [];
+  });
 }
 
 function sanitizeRuleSeverities(value: unknown[] | undefined): LintRuleSeverityOverride[] {
@@ -130,19 +160,18 @@ function sanitizeRuleSeverities(value: unknown[] | undefined): LintRuleSeverityO
     return [];
   }
   const severities = new Set<string>(ANALYSIS_DIAGNOSTIC_SEVERITIES);
-  const ruleIds = new Set<string>(ANALYSIS_CONFIGURABLE_RULE_IDS);
   return value.flatMap((entry) => {
     if (!entry || typeof entry !== "object") {
       return [];
     }
     const ruleId = normalizeOptionalString((entry as Record<string, unknown>).rule_id);
     const severity = normalizeOptionalString((entry as Record<string, unknown>).severity);
-    if (!ruleId || !ruleIds.has(ruleId) || !severity || !severities.has(severity)) {
+    if (!ruleId || !severity || !severities.has(severity)) {
       return [];
     }
     return [
       {
-        rule_id: ruleId as AnalysisConfigurableRuleId,
+        rule_id: ruleId,
         severity: severity as LintRuleSeverityOverride["severity"],
       },
     ];

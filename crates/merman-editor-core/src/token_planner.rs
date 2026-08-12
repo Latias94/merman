@@ -327,7 +327,7 @@ pub fn plan_semantic_tokens_for_snapshot_with_support(
 ///
 /// This is intentionally a planner operation rather than a post-processing filter: Markdown and
 /// MDX documents can contain many or very large Mermaid fences, and a range request must not
-/// allocate and sort candidates outside the requested lines.
+/// allocate and sort candidates outside the requested range.
 pub fn plan_semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
@@ -349,13 +349,11 @@ fn plan_semantic_tokens(
     range: Option<Range>,
     support: SemanticTokenSupport,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    let requested = match range {
-        Some(range) => RequestedTokenRange::new(snapshot.source_map(), range)?,
-        None => None,
-    };
+    let request = TokenRangeRequest::new(snapshot.source_map(), range)?;
+    let requested = request.requested();
     let mut candidates = Vec::new();
     for fence in snapshot.fences() {
-        if range.is_some() && requested.is_none() {
+        if request.is_empty() {
             break;
         }
         if let Some(requested) = requested
@@ -366,9 +364,49 @@ fn plan_semantic_tokens(
         {
             continue;
         }
-        collect_fence_candidates(snapshot, fence, requested, &mut candidates)?;
+        collect_fence_candidates(snapshot, fence, requested, support, &mut candidates)?;
     }
-    plan_candidates_with_support(snapshot.source_map(), candidates, support, range)
+    plan_candidates_with_request(snapshot.source_map(), candidates, support, request)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TokenRangeRequest {
+    All,
+    Empty(Range),
+    Bounded {
+        requested: RequestedTokenRange,
+        range: Range,
+    },
+}
+
+impl TokenRangeRequest {
+    fn new(source_map: &SourceMap, range: Option<Range>) -> Result<Self, TokenPlanError> {
+        match range {
+            None => Ok(Self::All),
+            Some(range) => Ok(match RequestedTokenRange::new(source_map, range)? {
+                Some(requested) => Self::Bounded { requested, range },
+                None => Self::Empty(range),
+            }),
+        }
+    }
+
+    const fn requested(self) -> Option<RequestedTokenRange> {
+        match self {
+            Self::Bounded { requested, .. } => Some(requested),
+            Self::All | Self::Empty(_) => None,
+        }
+    }
+
+    const fn is_empty(self) -> bool {
+        matches!(self, Self::Empty(_))
+    }
+
+    const fn range(self) -> Option<Range> {
+        match self {
+            Self::All => None,
+            Self::Empty(range) | Self::Bounded { range, .. } => Some(range),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -383,18 +421,14 @@ impl RequestedTokenRange {
         }
 
         let line_count = source_map.line_count();
-        let start_line =
-            validate_range_position(source_map, range, RangeEndpoint::Start, line_count)?;
-        let end_line = validate_range_position(source_map, range, RangeEndpoint::End, line_count)?;
+        let start = validate_range_position(source_map, range, RangeEndpoint::Start, line_count)?;
+        let end = validate_range_position(source_map, range, RangeEndpoint::End, line_count)?;
         if range.start == range.end {
             return Ok(None);
         }
 
         Ok(Some(Self {
-            byte_span: ByteSpan {
-                start: start_line.0,
-                end: end_line.1,
-            },
+            byte_span: ByteSpan { start, end },
         }))
     }
 
@@ -414,12 +448,12 @@ fn validate_range_position(
     range: Range,
     endpoint: RangeEndpoint,
     line_count: usize,
-) -> Result<(usize, usize), TokenPlanError> {
+) -> Result<usize, TokenPlanError> {
     let position = match endpoint {
         RangeEndpoint::Start => range.start,
         RangeEndpoint::End => range.end,
     };
-    let Some((line_start, line_end)) = source_map.line_bounds(position.line) else {
+    let Some((_, line_end)) = source_map.line_bounds(position.line) else {
         let error = match endpoint {
             RangeEndpoint::Start => TokenPlanError::RangeStartLineOutOfBounds { range, line_count },
             RangeEndpoint::End => TokenPlanError::RangeEndLineOutOfBounds { range, line_count },
@@ -455,18 +489,12 @@ fn validate_range_position(
         line: position.line,
         character: position.character,
     };
-    if source_map
+    source_map
         .byte_offset_for_utf16_position(position)
-        .is_none()
-    {
-        let error = match endpoint {
+        .ok_or(match endpoint {
             RangeEndpoint::Start => TokenPlanError::RangeStartCharacterNotBoundary { range },
             RangeEndpoint::End => TokenPlanError::RangeEndCharacterNotBoundary { range },
-        };
-        return Err(error);
-    }
-
-    Ok((line_start, line_end))
+        })
 }
 
 fn token_overlaps_range(token: PlannedToken, range: Range) -> bool {
@@ -519,6 +547,7 @@ fn collect_fence_candidates(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
     requested: Option<RequestedTokenRange>,
+    support: SemanticTokenSupport,
     candidates: &mut Vec<TokenCandidate>,
 ) -> Result<(), TokenPlanError> {
     reject_upstream_lexeme_failure(fence.index(), fence.text_index().lexeme_failure())?;
@@ -526,6 +555,9 @@ fn collect_fence_candidates(
     let mut previous_lexeme: Option<ByteSpan> = None;
     for lexeme in fence.text_index().lexemes() {
         let kind = planned_kind_for_lexeme(lexeme.kind());
+        if !support.supports_kind(kind) {
+            continue;
+        }
         let relative = lexeme.span();
         let span = absolute_fence_span(
             snapshot,
@@ -565,6 +597,9 @@ fn collect_fence_candidates(
 
     for item in fence.text_index().semantic_items() {
         let kind = planned_kind_for_symbol(item.kind);
+        if !support.supports_kind(kind) {
+            continue;
+        }
         let span = absolute_fence_span(
             snapshot,
             fence,
@@ -712,15 +747,37 @@ fn plan_candidates(
     plan_candidates_with_support(source_map, candidates, SemanticTokenSupport::all(), None)
 }
 
+#[cfg(test)]
 fn plan_candidates_with_support(
     source_map: &SourceMap,
     candidates: Vec<TokenCandidate>,
     support: SemanticTokenSupport,
     range: Option<Range>,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
+    let request = TokenRangeRequest::new(source_map, range)?;
+    plan_candidates_with_request(source_map, candidates, support, request)
+}
+
+fn plan_candidates_with_request(
+    source_map: &SourceMap,
+    candidates: Vec<TokenCandidate>,
+    support: SemanticTokenSupport,
+    request: TokenRangeRequest,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    if request.is_empty() {
+        return Ok(SemanticTokenPlan {
+            tokens: Vec::new(),
+            packed: Vec::new(),
+        });
+    }
+    let requested = request.requested();
+    let candidates = candidates
+        .into_iter()
+        .filter(|candidate| support.supports_kind(candidate.kind))
+        .filter(|candidate| requested.is_none_or(|requested| requested.overlaps(candidate.span)))
+        .collect();
     let mut candidates = validate_candidates(source_map.source(), candidates)?;
     validate_lexical_non_overlap(&candidates)?;
-    candidates.retain(|candidate| support.supports_kind(candidate.kind));
     for candidate in &mut candidates {
         candidate.modifier_bits = support.mask_modifier_bits(candidate.modifier_bits);
     }
@@ -745,6 +802,7 @@ fn plan_candidates_with_support(
         )
     });
     validate_planned_non_overlap(&tokens)?;
+    let range = request.range();
     tokens.retain(|token| range.is_none_or(|range| token_overlaps_range(*token, range)));
     let packed = pack_tokens(&tokens, support);
     Ok(SemanticTokenPlan { tokens, packed })
@@ -1680,6 +1738,94 @@ mod tests {
             }]
         );
         assert_eq!(plan.packed, vec![0, 0, 7, 0, 0]);
+    }
+
+    #[test]
+    fn unsupported_candidate_duplicate_modifier_is_filtered_before_validation() {
+        let source_map = SourceMap::new(Arc::<str>::from("aa bb"));
+        let support =
+            SemanticTokenSupport::from_support(|kind| kind == PlannedTokenKind::String, |_| false);
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..2,
+                    PlannedTokenKind::String,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Keyword,
+                    [
+                        PlannedTokenModifier::Reference,
+                        PlannedTokenModifier::Reference,
+                    ],
+                    TokenOverlayKind::Lexeme,
+                ),
+            ],
+            support,
+            None,
+        )
+        .expect("unsupported candidate must not participate in validation");
+
+        assert_eq!(
+            plan.tokens,
+            vec![PlannedToken {
+                line: 0,
+                start: 0,
+                length: 2,
+                kind: PlannedTokenKind::String,
+                modifier_bits: 0,
+            }]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 2, 0, 0]);
+    }
+
+    #[test]
+    fn exact_same_line_range_filters_outside_conflicts_before_resolution() {
+        let source_map = SourceMap::new(Arc::<str>::from("aa bb"));
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..2,
+                    PlannedTokenKind::String,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Variable,
+                    Vec::new(),
+                    TokenOverlayKind::SemanticEntity,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Class,
+                    Vec::new(),
+                    TokenOverlayKind::SemanticEntity,
+                ),
+            ],
+            SemanticTokenSupport::all(),
+            Some(Range::new(
+                crate::Position::new(0, 0),
+                crate::Position::new(0, 2),
+            )),
+        )
+        .expect("out-of-range conflicts must not affect a precise range request");
+
+        assert_eq!(
+            plan.tokens,
+            vec![PlannedToken {
+                line: 0,
+                start: 0,
+                length: 2,
+                kind: PlannedTokenKind::String,
+                modifier_bits: 0,
+            }]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 2, 9, 0]);
     }
 
     #[test]

@@ -102,25 +102,7 @@
           "merman.server.args": {
             "type": "array",
             "items": {
-              "type": "string",
-              "enum": [
-                "merman.authoring.config.prefer_init_directive",
-                "merman.authoring.config.prefer_frontmatter_config",
-                "merman.compatibility.config.deprecated_flowchart_html_labels",
-                "merman.compatibility.config.deprecated_external_diagram_loading",
-                "merman.parse.no_diagram",
-                "merman.parse.diagram_parse",
-                "merman.compatibility.unsupported_diagram",
-                "merman.parse.recovered_editor_facts",
-                "merman.config.malformed_front_matter",
-                "merman.config.invalid_directive_json",
-                "merman.config.invalid_front_matter_yaml",
-                "merman.config.invalid_theme_color",
-                "merman.block.width_exceeds_columns",
-                "merman.authoring.flowchart.explicit_direction",
-                "merman.semantic.flowchart.unknown_style_target",
-                "merman.git_graph.duplicate_commit_id"
-              ]
+              "type": "string"
             },
             "default": [],
             "restricted": true,
@@ -251,7 +233,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": [
+              "examples": [
                 "merman.authoring.config.prefer_init_directive",
                 "merman.authoring.config.prefer_frontmatter_config",
                 "merman.compatibility.config.deprecated_flowchart_html_labels",
@@ -279,7 +261,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": [
+              "examples": [
                 "merman.authoring.config.prefer_init_directive",
                 "merman.authoring.config.prefer_frontmatter_config",
                 "merman.compatibility.config.deprecated_flowchart_html_labels",
@@ -314,7 +296,7 @@
               "properties": {
                 "rule_id": {
                   "type": "string",
-                  "enum": [
+                  "examples": [
                     "merman.authoring.config.prefer_init_directive",
                     "merman.authoring.config.prefer_frontmatter_config",
                     "merman.compatibility.config.deprecated_flowchart_html_labels",

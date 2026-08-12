@@ -70,11 +70,11 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version() == 3
+assert api.transport_api_version() == 4
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.binding_api_version()
+assert catalog["transport_api_version"] == api.transport_api_version()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -135,9 +135,10 @@ The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 `ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
-references, for editor settings, diagnostic explanations, or LSP rule configuration.
+references and policy tags, for editor settings, diagnostic explanations, or LSP rule
+configuration.
 
-The direct UniFFI binding API is `3`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `4`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature

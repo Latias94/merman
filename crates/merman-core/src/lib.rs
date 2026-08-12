@@ -38,7 +38,7 @@ mod yaml_config;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
+    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance,
     CustomJsonRenderModel, CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot,
     DiagramRegistry, DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
@@ -46,17 +46,16 @@ pub use diagram::{
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure, EditorLexemeKind,
-    EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer, EditorLexemeProducerKind,
-    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticDiagnostic,
-    EditorSemanticDiagnosticKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorFamilySemantics, EditorLexeme,
+    EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorLexemeProducer, EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
+    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
-    diagram_type_metadata_id, diagram_type_render_model_kind,
+    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id,
+    diagram_type_family_kind, diagram_type_metadata_id, diagram_type_render_model_kind,
 };
 pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
@@ -450,8 +449,9 @@ impl Engine {
     }
 
     /// Captures an editor parse operation while retaining preprocessing source-configuration
-    /// evidence on non-cancellation failures. Cooperative cancellation remains the outer error
-    /// channel and never yields a partial capture.
+    /// evidence on non-cancellation failures and on panics after preprocessing completes.
+    /// Cooperative cancellation remains the outer error channel and never yields a partial
+    /// capture.
     pub fn capture_diagram_snapshot_controlled_sync(
         &self,
         text: &str,

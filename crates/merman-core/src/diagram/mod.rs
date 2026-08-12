@@ -4,7 +4,9 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
@@ -286,13 +288,48 @@ impl DiagramParseSnapshot {
 /// Non-cancellation result of one editor snapshot capture operation.
 // Keep the successful snapshot inline: the pre-existing parse API already returned this payload
 // by value, while boxing it would add an allocation to every editor capture only to balance the
-// less common failure variant.
+// less common failure variants.
+pub struct CapturedPanic {
+    message: String,
+    payload: Box<dyn Any + Send + 'static>,
+}
+
+impl CapturedPanic {
+    pub(crate) fn new(message: String, payload: Box<dyn Any + Send + 'static>) -> Self {
+        Self { message, payload }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    fn into_payload(self) -> Box<dyn Any + Send + 'static> {
+        self.payload
+    }
+}
+
+impl Debug for CapturedPanic {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CapturedPanic")
+            .field("message", &self.message)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum DiagramSnapshotCapture {
     Snapshot(Option<DiagramParseSnapshot>),
     Failed {
         error: Error,
+        source_config: SourceConfigEvidence,
+    },
+    /// Detection or metadata finalization panicked after preprocessing evidence was captured.
+    ///
+    /// No diagram metadata is attached because automatic detection did not complete.
+    Panicked {
+        panic: CapturedPanic,
         source_config: SourceConfigEvidence,
     },
 }
@@ -302,6 +339,9 @@ impl DiagramSnapshotCapture {
         match self {
             Self::Snapshot(snapshot) => Ok(snapshot),
             Self::Failed { error, .. } => Err(error),
+            // The legacy Result facade has no panic outcome. Resume the exact original payload;
+            // evidence-aware callers consume this capture before reaching this adapter.
+            Self::Panicked { panic, .. } => std::panic::resume_unwind(panic.into_payload()),
         }
     }
 }

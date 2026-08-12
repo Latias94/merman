@@ -192,7 +192,7 @@ pub(super) struct FenceTextIndexData {
     pub(super) lexemes: Vec<merman_core::EditorLexeme>,
     pub(super) lexeme_failure: Option<merman_core::EditorLexemeFailure>,
     pub(super) expected_syntax: Vec<EditorExpectedSyntax>,
-    pub(super) completion_vocabulary: merman_core::EditorCompletionVocabulary,
+    pub(super) family_semantics: merman_core::EditorFamilySemantics,
     pub(super) source: FenceTextIndexSource,
     semantic_point_index: PointIntervalIndex<usize>,
     reference_point_index: PointIntervalIndex<ReferenceIntervalId>,
@@ -425,8 +425,8 @@ impl FenceTextIndex {
         &self.data.expected_syntax
     }
 
-    pub fn completion_vocabulary(&self) -> merman_core::EditorCompletionVocabulary {
-        self.data.completion_vocabulary
+    pub fn family_semantics(&self) -> merman_core::EditorFamilySemantics {
+        self.data.family_semantics
     }
 
     pub fn source(&self) -> FenceTextIndexSource {

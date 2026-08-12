@@ -1,9 +1,8 @@
 use crate::diagrams::scan::consume_line_ending;
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl,
-    ParseControlResult, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
         format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
@@ -14,16 +13,6 @@ use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
-
-const ER_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const ER_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], ER_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -433,8 +422,7 @@ impl ErSyntax {
         EditorSemanticFacts,
         std::result::Result<Vec<Action>, ErGrammarError>,
     )> {
-        let mut facts =
-            EditorSemanticFacts::new().with_completion_vocabulary(ER_COMPLETION_VOCABULARY);
+        let mut facts = EditorSemanticFacts::new();
         let mut collector = ErEditorFactCollector::default();
         for (index, event) in self.events.iter().enumerate() {
             if index % 128 == 0 {
@@ -819,7 +807,7 @@ impl ErEditorFactCollector {
             Tok::Direction(_) => {
                 if let Some(span) = editor_keyword_value_span(code, start, end, "direction") {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::DirectionValue,
+                        EditorExpectedSyntaxKind::CardinalDirectionValue,
                         span,
                     ));
                 }
@@ -1557,7 +1545,10 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
                 self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
             }
             return Some(Err(LexError::new("invalid ER direction", selection)
-                .expecting(EditorExpectedSyntaxKind::DirectionValue, selection)));
+                .expecting(
+                    EditorExpectedSyntaxKind::CardinalDirectionValue,
+                    selection,
+                )));
         };
         Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }

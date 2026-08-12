@@ -878,7 +878,7 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
             )
         })?
     };
-    remove_resource_profile_for_analysis(&mut analysis_value);
+    prepare_binding_options_for_analysis(&mut analysis_value);
     let options = merman_analysis::analysis_options_from_json_value(&analysis_value)
         .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
     Ok(options.with_max_source_bytes(Some(max_source_bytes)))
@@ -962,10 +962,13 @@ fn normalized_editor_max_source_bytes(
     }
 }
 
-fn remove_resource_profile_for_analysis(value: &mut serde_json::Value) {
+fn prepare_binding_options_for_analysis(value: &mut serde_json::Value) {
     let Some(root) = value.as_object_mut() else {
         return;
     };
+    // The shared binding envelope owns render parsing policy. Editor analysis accepts the same
+    // transport string, but only consumes analysis-owned fields from its root.
+    root.remove("parse");
     remove_resource_profile(root);
     for wrapper in ["analysis", "merman"] {
         if let Some(options) = root
@@ -1119,6 +1122,29 @@ mod tests {
         ))
         .expect("wrapped interactive editor profile");
         assert_eq!(wrapped.max_source_bytes(), Some(2 * 1024 * 1024));
+    }
+
+    #[test]
+    fn editor_language_extracts_analysis_options_from_the_shared_binding_envelope() {
+        let options = parse_analysis_options(Some(
+            r#"{
+                "version": 2,
+                "parse": { "suppress_errors": true },
+                "resources": { "profile": "constrained" }
+            }"#,
+        ))
+        .expect("binding-owned parse policy must not leak into analysis decoding");
+        assert_eq!(options.max_source_bytes(), Some(1024 * 1024));
+
+        let error =
+            parse_analysis_options(Some(r#"{"analysis":{"parse":{"suppress_errors":true}}}"#))
+                .expect_err("removed analysis parse policy must remain rejected inside wrappers");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("analysis option `parse` was removed")
+        );
     }
 
     #[test]

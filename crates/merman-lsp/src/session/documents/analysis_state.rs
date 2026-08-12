@@ -383,3 +383,168 @@ impl LanguageSession {
         self.inner.state.lock().await.diagnostic_contexts()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    const TEST_SOURCE: &str = "flowchart TD\nA-->B\n";
+
+    fn test_uri(name: &str) -> Uri {
+        Uri::from_str(&format!("file:///tmp/{name}.mmd")).expect("test URI must be valid")
+    }
+
+    fn state_with_cache_budget(cache_budget: usize) -> SessionState {
+        let cancellation = AnalysisCancellationToken::new();
+        SessionState::with_session_cancellation_and_cache_budget(cancellation, cache_budget)
+    }
+
+    fn open_test_document(state: &mut SessionState, uri: &Uri) {
+        state.open_document_source(
+            uri.clone(),
+            1,
+            DocumentSource::Available(Arc::from(TEST_SOURCE)),
+            DocumentKind::Diagram,
+        );
+    }
+
+    fn cache_contains(state: &SessionState, uri: &Uri) -> bool {
+        let stamp = state
+            .analysis_cache_stamp(uri)
+            .expect("open test document must have a cache stamp");
+        state
+            .analysis_cache
+            .current_without_touch(uri, stamp)
+            .is_some()
+    }
+
+    fn exact_snapshot_cache_budget(uri: &Uri) -> usize {
+        let mut state = state_with_cache_budget(DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES);
+        open_test_document(&mut state, uri);
+        let request = state
+            .snapshot_build_request_after_cache_miss(uri)
+            .expect("available test document must produce a build request");
+        let snapshot = request
+            .build_cancellable(&AnalysisCancellationToken::new())
+            .expect("test snapshot must build");
+        state
+            .commit_built_snapshot_inner(&request, snapshot, || true)
+            .expect("current test snapshot must commit");
+        state.analysis_cache.total_weight()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn duplicate_build_waiter_cannot_resurrect_an_evicted_cache_entry() {
+        let a = test_uri("duplicate-build-a");
+        let b = test_uri("duplicate-build-b");
+        let budget = exact_snapshot_cache_budget(&a);
+        let mut state = state_with_cache_budget(budget);
+        open_test_document(&mut state, &a);
+        open_test_document(&mut state, &b);
+        let executor = state.analysis_executor();
+
+        let a_request = state
+            .snapshot_build_request_after_cache_miss(&a)
+            .expect("available test document must produce a build request");
+        let (first, second) =
+            tokio::join!(executor.execute(&a_request), executor.execute(&a_request));
+        let first = first.expect("first shared build must complete");
+        let second = second.expect("second shared build must complete");
+        assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+
+        state
+            .commit_built_snapshot(&a_request, &first)
+            .expect("the first waiter must admit the shared build");
+        drop(first);
+        assert!(cache_contains(&state, &a));
+
+        let b_request = state
+            .snapshot_build_request_after_cache_miss(&b)
+            .expect("available test document must produce a build request");
+        let b_analysis = executor
+            .execute(&b_request)
+            .await
+            .expect("replacement build must complete");
+        state
+            .commit_built_snapshot(&b_request, &b_analysis)
+            .expect("replacement build must commit");
+        assert!(!cache_contains(&state, &a));
+        assert!(cache_contains(&state, &b));
+        let before_weight = state.analysis_cache.total_weight();
+        let before_statistics = state.analysis_cache.statistics();
+
+        let request_local = state
+            .commit_built_snapshot(&a_request, &second)
+            .expect("the late waiter must remain a request-local result");
+
+        assert!(Arc::ptr_eq(&request_local.snapshot, second.snapshot()));
+        assert!(!cache_contains(&state, &a));
+        assert!(cache_contains(&state, &b));
+        assert_eq!(state.analysis_cache.total_weight(), before_weight);
+        assert_eq!(state.analysis_cache.statistics(), before_statistics);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cache_hit_consumes_a_new_build_outputs_admission_claim() {
+        let a = test_uri("cache-hit-build-a");
+        let b = test_uri("cache-hit-build-b");
+        let budget = exact_snapshot_cache_budget(&a);
+        let mut state = state_with_cache_budget(budget);
+        open_test_document(&mut state, &a);
+        open_test_document(&mut state, &b);
+        let executor = state.analysis_executor();
+        let a_request = state
+            .snapshot_build_request_after_cache_miss(&a)
+            .expect("available test document must produce a build request");
+
+        let initial = executor
+            .execute(&a_request)
+            .await
+            .expect("initial build must complete");
+        let initial_snapshot = Arc::clone(initial.snapshot());
+        state
+            .commit_built_snapshot(&a_request, &initial)
+            .expect("initial build must enter the cache");
+        drop(initial);
+
+        let (first, second) =
+            tokio::join!(executor.execute(&a_request), executor.execute(&a_request));
+        let first = first.expect("first replacement build waiter must complete");
+        let second = second.expect("second replacement build waiter must complete");
+        assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+        assert!(!Arc::ptr_eq(&initial_snapshot, first.snapshot()));
+
+        let cached = state
+            .commit_built_snapshot(&a_request, &first)
+            .expect("the new build must observe the resident snapshot");
+        assert!(Arc::ptr_eq(&cached.snapshot, &initial_snapshot));
+        drop(cached);
+        drop(first);
+
+        let b_request = state
+            .snapshot_build_request_after_cache_miss(&b)
+            .expect("available test document must produce a build request");
+        let b_analysis = executor
+            .execute(&b_request)
+            .await
+            .expect("replacement build must complete");
+        state
+            .commit_built_snapshot(&b_request, &b_analysis)
+            .expect("replacement build must commit");
+        assert!(!cache_contains(&state, &a));
+        assert!(cache_contains(&state, &b));
+        let before_weight = state.analysis_cache.total_weight();
+        let before_statistics = state.analysis_cache.statistics();
+
+        let request_local = state
+            .commit_built_snapshot(&a_request, &second)
+            .expect("the late waiter must remain a request-local result");
+
+        assert!(Arc::ptr_eq(&request_local.snapshot, second.snapshot()));
+        assert!(!cache_contains(&state, &a));
+        assert!(cache_contains(&state, &b));
+        assert_eq!(state.analysis_cache.total_weight(), before_weight);
+        assert_eq!(state.analysis_cache.statistics(), before_statistics);
+    }
+}

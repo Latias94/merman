@@ -1,11 +1,10 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorCompletionCandidate, EditorCompletionVocabulary,
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind,
+    EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
         lalrpop_recovery_span,
@@ -665,34 +664,11 @@ fn flowchart_warning_facts(
     ]
 }
 
-const FLOWCHART_COMPLETION_OPERATORS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("-->", "edge operator"),
-    EditorCompletionCandidate::keyword("---", "edge operator"),
-    EditorCompletionCandidate::keyword("-.->", "edge operator"),
-    EditorCompletionCandidate::keyword("==>", "edge operator"),
-    EditorCompletionCandidate::snippet("-->|label|", "labeled edge operator", "-->|${1:label}|"),
-    EditorCompletionCandidate::keyword("--o", "circle-ended edge operator"),
-];
-
-const FLOWCHART_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("TD", "top down"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const FLOWCHART_COMPLETION_VOCABULARY: EditorCompletionVocabulary = EditorCompletionVocabulary::new(
-    FLOWCHART_COMPLETION_OPERATORS,
-    FLOWCHART_COMPLETION_DIRECTIONS,
-);
-
 fn editor_facts_from_flowchart_ast(
     ast: &FlowchartAst,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let mut facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(FLOWCHART_COMPLETION_VOCABULARY);
+    let mut facts = EditorSemanticFacts::new();
     collect_editor_facts_from_statements(&ast.statements, &mut facts, control)?;
     Ok(facts)
 }
@@ -702,8 +678,7 @@ fn recover_flowchart_editor_facts_from_tokens(
     trace: FlowchartTokenTrace,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let mut facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(FLOWCHART_COMPLETION_VOCABULARY);
+    let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
     for (index, (start, token, end)) in trace.editor_tokens().enumerate() {
@@ -780,7 +755,8 @@ fn flowchart_eof_recovery_insertion(
         && facts.expected_syntax.iter().any(|expected| {
             matches!(
                 expected.kind,
-                EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::Operator
+                EditorExpectedSyntaxKind::NodeIdentifier
+                    | EditorExpectedSyntaxKind::FlowchartOperator
             ) && expected.span.end == code.len()
         }))
     .then_some(insertion)
@@ -1259,7 +1235,7 @@ fn push_flowchart_direction_value_expected_syntax(
     facts: &mut EditorSemanticFacts,
 ) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::DirectionValue,
+        EditorExpectedSyntaxKind::FlowchartDirectionValue,
         span,
     ));
 }
@@ -2076,33 +2052,14 @@ F -- "&nbsp;" --> G
     }
 
     #[test]
-    fn completion_vocabulary_contains_only_parser_accepted_flowchart_syntax() {
-        let meta = ParseMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
-            title: None,
-        };
+    fn flowchart_parser_families_expose_typed_editor_semantics() {
+        let semantics = crate::family::diagram_type_editor_semantics("flowchart-v2")
+            .expect("flowchart is an admitted family");
 
-        for candidate in FLOWCHART_COMPLETION_OPERATORS {
-            let source = format!("flowchart TD\nA {} B\n", candidate.label());
-            parse_flowchart_ast(&source, &meta).unwrap_or_else(|error| {
-                panic!(
-                    "flowchart completion operator {:?} must parse: {error}",
-                    candidate.label()
-                )
-            });
-        }
-
-        for candidate in FLOWCHART_COMPLETION_DIRECTIONS {
-            let source = format!("flowchart {}\nA --> B\n", candidate.label());
-            parse_flowchart_ast(&source, &meta).unwrap_or_else(|error| {
-                panic!(
-                    "flowchart completion direction {:?} must parse: {error}",
-                    candidate.label()
-                )
-            });
-        }
+        assert_eq!(semantics.outline_kind(), EditorSemanticKind::Module);
+        let swimlane = crate::family::diagram_type_editor_semantics("swimlane")
+            .expect("swimlane is an admitted family");
+        assert_eq!(swimlane.outline_kind(), EditorSemanticKind::Variable);
     }
 
     #[test]

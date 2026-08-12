@@ -553,6 +553,14 @@ impl Analyzer {
                     error,
                     source_config,
                 },
+                DiagramSnapshotCapture::Panicked {
+                    panic,
+                    source_config,
+                } => DiagramAnalysisEvidence::Panic {
+                    message: panic.message().to_owned(),
+                    metadata: None,
+                    source_config,
+                },
             },
         };
         cancellation.checkpoint()?;

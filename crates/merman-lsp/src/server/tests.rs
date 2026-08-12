@@ -527,6 +527,45 @@ async fn configuration_side_effects_follow_the_changed_policy_scope() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn configuration_refreshes_are_scheduled_before_diagnostic_republish_backpressure() {
+    let (_service, _socket, server) = test_service();
+    initialize_test_backend(
+        &server,
+        serde_json::json!({
+            "textDocument": {
+                "semanticTokens": {
+                    "requests": { "full": true },
+                    "tokenTypes": ["keyword"],
+                    "tokenModifiers": [],
+                    "formats": ["relative"]
+                }
+            },
+            "workspace": {
+                "semanticTokens": { "refreshSupport": true }
+            }
+        }),
+    )
+    .await;
+    let release = server.client_effects.saturate_serial_lane_for_test().await;
+    let change = server
+        .session
+        .update_configuration(default_lsp_analysis_options().with_max_source_bytes(Some(1024)))
+        .await;
+
+    let mut effects = Box::pin(server.client_effects.configuration_changed(change));
+    assert!(futures::poll!(&mut effects).is_pending());
+    assert_eq!(
+        server.client_effects.refresh_request_counts(),
+        (1, 0),
+        "snapshot refresh must be admitted before the saturated diagnostic publisher"
+    );
+
+    release.send(()).unwrap();
+    effects.await;
+    server.client_effects.wait_idle().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn pull_diagnostic_effects_require_negotiated_refresh_support() {
     for (refresh_support, expected_refreshes) in [(false, 0), (true, 1)] {
         let (_service, _socket, server) = test_service();
@@ -1213,7 +1252,7 @@ async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
             .is_some_and(|response| response.is_ok())
     );
     let uri = Uri::from_str("file:///tmp/effect-backpressure.mmd").unwrap();
-    backend.client_effects.saturate_serial_lane_for_test().await;
+    let _release = backend.client_effects.saturate_serial_lane_for_test().await;
 
     let save = service.call(
         Request::build("textDocument/didSave")
@@ -1269,7 +1308,7 @@ async fn client_log_backpressure_does_not_hold_mutation_fences() {
             ..
         } = super::test_support::service();
         initialize_test_service(&mut service).await;
-        backend.client_effects.saturate_serial_lane_for_test().await;
+        let _release = backend.client_effects.saturate_serial_lane_for_test().await;
 
         let notification = service.call(Request::build(method).params(params).finish());
         tokio::pin!(notification);

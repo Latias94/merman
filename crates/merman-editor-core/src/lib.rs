@@ -33,6 +33,19 @@
 //! use merman_editor_core::CompletionContext;
 //! ```
 //!
+//! Core completion candidates and the former generic expected-syntax variants were also deleted;
+//! parser facts now expose typed slots while editor-core owns the candidate policy.
+//!
+//! ```compile_fail
+//! use merman_core::{EditorCompletionCandidate, EditorCompletionVocabulary};
+//! ```
+//!
+//! ```compile_fail
+//! use merman_core::EditorExpectedSyntaxKind;
+//! let _ = EditorExpectedSyntaxKind::Operator;
+//! let _ = EditorExpectedSyntaxKind::DirectionValue;
+//! ```
+//!
 //! The former stateful workspace and outcome wrappers were also deleted instead of retained as
 //! compatibility aliases.
 //!
