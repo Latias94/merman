@@ -266,7 +266,7 @@ fn flowchart_parser_thick_edges_render_with_heavy_unicode_line() {
 
     assert_eq!(
         rendered,
-        "┌───┐     ┌───┐\n│   │     │   │\n│ A ├━━━━►│ B │\n│   │     │   │\n└───┘     └───┘\n"
+        "┌───┐     ┌───┐\n│   │     │   │\n│ A ┝━━━━►│ B │\n│   │     │   │\n└───┘     └───┘\n"
     );
 }
 

@@ -122,12 +122,28 @@ pub(super) fn route_char_directions(ch: char) -> u8 {
         '┐' | '╮' | '┓' => DIR_LEFT | DIR_DOWN,
         '└' | '╰' | '┗' => DIR_UP | DIR_RIGHT,
         '┘' | '╯' | '┛' => DIR_UP | DIR_LEFT,
-        '├' | '┣' => DIR_UP | DIR_RIGHT | DIR_DOWN,
-        '┤' | '┫' => DIR_UP | DIR_DOWN | DIR_LEFT,
-        '┬' | '┳' => DIR_RIGHT | DIR_DOWN | DIR_LEFT,
-        '┴' | '┻' => DIR_UP | DIR_RIGHT | DIR_LEFT,
+        '├' | '┝' | '┣' => DIR_UP | DIR_RIGHT | DIR_DOWN,
+        '┤' | '┥' | '┫' => DIR_UP | DIR_DOWN | DIR_LEFT,
+        '┬' | '┰' | '┳' => DIR_RIGHT | DIR_DOWN | DIR_LEFT,
+        '┴' | '┸' | '┻' => DIR_UP | DIR_RIGHT | DIR_LEFT,
         '+' | '·' | '┼' | '╋' => DIR_ALL,
         _ => 0,
+    }
+}
+
+pub(super) fn edge_line_stroke_char(stroke: GraphEdgeStroke, ch: char, unicode: bool) -> char {
+    if !unicode || stroke != GraphEdgeStroke::Thick {
+        return ch;
+    }
+
+    // EdgeLine 位于已有的细节点/组边框上。保留边框粗细，只增强路由拥有的分支；普通
+    // RouteCell junction 完全由 stroke 拥有，继续走 `stroke_route_char`。
+    match ch {
+        '├' => '┝',
+        '┤' => '┥',
+        '┬' => '┰',
+        '┴' => '┸',
+        _ => ch,
     }
 }
 
@@ -232,6 +248,34 @@ mod tests {
         assert_eq!(
             stroke_route_char(GraphEdgeStroke::Thick, DIR_VERTICAL, true),
             '┃'
+        );
+    }
+
+    #[test]
+    fn edge_line_stroke_char_preserves_light_borders_and_strengthens_only_route_branches() {
+        assert_eq!(
+            edge_line_stroke_char(GraphEdgeStroke::Thick, '├', true),
+            '┝'
+        );
+        assert_eq!(
+            edge_line_stroke_char(GraphEdgeStroke::Thick, '┤', true),
+            '┥'
+        );
+        assert_eq!(
+            edge_line_stroke_char(GraphEdgeStroke::Thick, '┬', true),
+            '┰'
+        );
+        assert_eq!(
+            edge_line_stroke_char(GraphEdgeStroke::Thick, '┴', true),
+            '┸'
+        );
+        assert_eq!(
+            edge_line_stroke_char(GraphEdgeStroke::Dotted, '├', true),
+            '├'
+        );
+        assert_eq!(
+            edge_line_stroke_char(GraphEdgeStroke::Thick, '|', false),
+            '|'
         );
     }
 

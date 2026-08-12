@@ -186,18 +186,26 @@ impl RoutePlan {
         diagram_type: &'static str,
     ) -> Result<Self> {
         for cell in &mut self.cells {
-            if matches!(
-                cell.kind,
-                PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell
-            ) {
-                let directions = super::cell::route_char_directions(cell.ch);
-                if directions != 0 {
-                    cell.directions = directions;
-                    cell.ch = super::cell::stroke_route_char(stroke, directions, charset.unicode);
+            let directions = match cell.kind {
+                PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
+                    super::cell::route_char_directions(cell.ch)
                 }
-                cell.stroke = stroke;
-                cell.unicode = charset.unicode;
+                PlannedRouteCellKind::EdgeArrow => continue,
+            };
+            if directions != 0 {
+                cell.directions = directions;
+                cell.ch = match cell.kind {
+                    PlannedRouteCellKind::EdgeLine => {
+                        super::cell::edge_line_stroke_char(stroke, cell.ch, charset.unicode)
+                    }
+                    PlannedRouteCellKind::RouteCell => {
+                        super::cell::stroke_route_char(stroke, directions, charset.unicode)
+                    }
+                    PlannedRouteCellKind::EdgeArrow => unreachable!(),
+                };
             }
+            cell.stroke = stroke;
+            cell.unicode = charset.unicode;
         }
         self.diagram_type = diagram_type;
         Ok(self)
