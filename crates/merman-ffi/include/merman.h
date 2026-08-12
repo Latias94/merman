@@ -21,8 +21,8 @@ extern "C" {
 #endif
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
-#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a"
+#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:8ace28529f9b68f6e6ba6019daabcff99ae7f3e5d2782d912f70fbc9c9d43093"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:c6d306226ee98e926a7a6954e5d3f557e5c986586dcc7ac69e0c7b920961fdbf"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -54,7 +54,8 @@ enum {
     MERMAN_NATIVE_STATUS_CALLBACK_ERROR = 13,
     MERMAN_NATIVE_STATUS_REENTRANT_CALL = 14,
     MERMAN_NATIVE_STATUS_INVALID_ENGINE = 15,
-    MERMAN_NATIVE_STATUS_BUSY = 16
+    MERMAN_NATIVE_STATUS_BUSY = 16,
+    MERMAN_NATIVE_STATUS_CANCELLED = 17
 };
 
 typedef int32_t MermanNativeOperationCode;
@@ -151,10 +152,14 @@ enum {
     MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT = 3,
     MERMAN_NATIVE_FUNCTION_RESULT_FREE = 4,
     MERMAN_NATIVE_FUNCTION_METADATA_COLLECT = 5,
-    MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6
+    MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6,
+    MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW = 7,
+    MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL = 8,
+    MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9
 };
 
 typedef uint64_t MermanNativeEngineToken;
+typedef uint64_t MermanNativeOperationControlToken;
 
 typedef struct MermanNativeSlice MermanNativeSlice;
 typedef struct MermanNativeBuffer MermanNativeBuffer;
@@ -177,6 +182,9 @@ typedef MermanNativeStatus (*MermanNativeExecuteCollectFn)(MermanNativeEngineTok
 typedef void (*MermanNativeResultFreeFn)(MermanNativeResult *result) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeMetadataCollectFn)(MermanNativeSlice metadata_id, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeEngineNewWithServicesFn)(const MermanNativeEngineServicesConfig *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeOperationControlNewFn)(uint64_t timeout_ms, uint8_t has_timeout_ms, MermanNativeOperationControlToken *out_control, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeOperationControlCancelFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeOperationControlReleaseFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
 
 struct MermanNativeSlice {
     uint32_t struct_size;
@@ -237,6 +245,7 @@ struct MermanNativeOperationRequest {
     MermanNativeSlice source;
     MermanNativeSlice uri;
     MermanNativeSlice options_json;
+    MermanNativeOperationControlToken operation_control;
 };
 
 struct MermanNativeResult {
@@ -269,6 +278,9 @@ struct MermanNativeApi {
     MermanNativeResultFreeFn result_free;
     MermanNativeMetadataCollectFn metadata_collect;
     MermanNativeEngineNewWithServicesFn engine_new_with_services;
+    MermanNativeOperationControlNewFn operation_control_new;
+    MermanNativeOperationControlCancelFn operation_control_cancel;
+    MermanNativeOperationControlReleaseFn operation_control_release;
 };
 
 struct MermanNativeIconPack {
@@ -286,6 +298,9 @@ struct MermanNativeEngineServicesConfig {
 
 #define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services) + sizeof(((MermanNativeApi *)0)->engine_new_with_services)))
 
+#define MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_new) + sizeof(((MermanNativeApi *)0)->operation_control_new)))
+#define MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_cancel) + sizeof(((MermanNativeApi *)0)->operation_control_cancel)))
+#define MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_release) + sizeof(((MermanNativeApi *)0)->operation_control_release)))
 
 /*
  * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
@@ -372,6 +387,10 @@ struct MermanNativeEngineServicesConfig {
  *   identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects
  *   accidental engine-token use, every issued value remains positive when projected through a
  *   signed 64-bit host integer, and the token is not an authorization boundary.
+ * - operation_control_token: An opaque process-lifetime monotonic operation-control identity. A
+ *   control token may be attached to requests, cancelled from another execution context, and
+ *   released independently; execution clones the control before synchronous binding work and never
+ *   holds the registry lock while running.
  *
  * Unsafe caller-memory preconditions from the ABI descriptor:
  * - record_pointer_alignment: Every caller-supplied native record pointer must be naturally aligned

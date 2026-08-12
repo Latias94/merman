@@ -85,6 +85,22 @@
         "maximum_value": 9223372036854775806
       },
       "description": "An opaque process-lifetime monotonic result-allocation ownership identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects accidental engine-token use, every issued value remains positive when projected through a signed 64-bit host integer, and the token is not an authorization boundary."
+    },
+    {
+      "id": "operation_control_token",
+      "c_name": "MermanNativeOperationControlToken",
+      "rust_name": "MermanNativeOperationControlToken",
+      "c_type": "uint64_t",
+      "rust_type": "u64",
+      "invalid_value": 0,
+      "domain": {
+        "tag": 3,
+        "mask": 3,
+        "counter_shift": 2,
+        "maximum_counter": 2305843009213693951,
+        "maximum_value": 9223372036854775807
+      },
+      "description": "An opaque process-lifetime monotonic operation-control identity. A control token may be attached to requests, cancelled from another execution context, and released independently; execution clones the control before synchronous binding work and never holds the registry lock while running."
     }
   ],
   "caller_memory_rules": [
@@ -137,7 +153,8 @@
     { "id": "callback_error", "c_name": "MERMAN_NATIVE_STATUS_CALLBACK_ERROR", "code": 13, "error_kinds": ["generic"], "description": "A host callback could not produce a result. Rendering may continue through a source-backed fallback." },
     { "id": "reentrant_call", "c_name": "MERMAN_NATIVE_STATUS_REENTRANT_CALL", "code": 14, "error_kinds": ["reentrant_call"], "description": "A callback re-entered or retired the same engine." },
     { "id": "invalid_engine", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ENGINE", "code": 15, "error_kinds": ["generic"], "description": "The supplied engine token is unknown or has already been released." },
-    { "id": "busy", "c_name": "MERMAN_NATIVE_STATUS_BUSY", "code": 16, "error_kinds": ["busy"], "description": "The reusable engine has an active operation and cannot be closed or concurrently entered under its callback policy." }
+    { "id": "busy", "c_name": "MERMAN_NATIVE_STATUS_BUSY", "code": 16, "error_kinds": ["busy"], "description": "The reusable engine has an active operation and cannot be closed or concurrently entered under its callback policy." },
+    { "id": "cancelled", "c_name": "MERMAN_NATIVE_STATUS_CANCELLED", "code": 17, "error_kinds": ["generic"], "description": "The operation cooperatively stopped before producing a complete payload; failure JSON carries structured cancellation reason and phase details." }
   ],
   "operation_codes": [
     {
@@ -271,6 +288,45 @@
         { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
       "description": "Create a reusable engine from one size-tagged service configuration. The embedded engine_config preserves the code-1 configuration record, icon pack records and nested slices are borrowed only until return, and successful construction retains only the immutable registry plus any host callback state. The caller initializes out_engine to zero. All structural inputs and nested slices must be disjoint from writable outputs; read-only payload slices may overlap each other."
+    },
+    {
+      "id": "operation_control_new",
+      "c_name": "MermanNativeOperationControlNewFn",
+      "rust_name": "MermanNativeOperationControlNewFn",
+      "code": 7,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "timeout_ms", "c_type": "uint64_t", "rust_type": "u64" },
+        { "name": "has_timeout_ms", "c_type": "uint8_t", "rust_type": "u8" },
+        { "name": "out_control", "c_type": "MermanNativeOperationControlToken *", "rust_type": "*mut MermanNativeOperationControlToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create an opaque operation-control token. Set has_timeout_ms to zero for no deadline or one for a relative timeout in milliseconds; timeout zero is an immediate deadline. The caller initializes out_control to zero and out_result with MERMAN_NATIVE_RESULT_INIT. A failed call publishes neither a token nor a partial result."
+    },
+    {
+      "id": "operation_control_cancel",
+      "c_name": "MermanNativeOperationControlCancelFn",
+      "rust_name": "MermanNativeOperationControlCancelFn",
+      "code": 8,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" }
+      ],
+      "description": "Request cooperative cancellation for a live operation-control token. The registry lock is held only while cloning the control; cancellation itself is atomic and never runs under the registry lock."
+    },
+    {
+      "id": "operation_control_release",
+      "c_name": "MermanNativeOperationControlReleaseFn",
+      "rust_name": "MermanNativeOperationControlReleaseFn",
+      "code": 9,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" }
+      ],
+      "description": "Release a live operation-control token from the process registry. An execution that cloned the control before release may continue to observe cancellation and deadline state; release never invalidates that in-flight clone."
     }
   ],
   "records": [
@@ -362,7 +418,8 @@
         { "name": "operation", "c_type": "MermanNativeOperationCode", "rust_type": "MermanNativeOperationCode", "ownership": "stable operation code" },
         { "name": "source", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call" },
         { "name": "uri", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; empty when not applicable" },
-        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; recursively overrides engine options except runtime_policy, which is constructor-owned" }
+        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; recursively overrides engine options except runtime_policy, which is constructor-owned" },
+        { "name": "operation_control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken", "ownership": "borrowed opaque control identity for the call; zero means no caller-supplied control and the request does not release the token" }
       ]
     },
     {

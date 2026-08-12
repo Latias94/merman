@@ -6,6 +6,7 @@
 //! function table and execute every operation through the shared binding operation path. No raw Rust
 //! allocation or Rust object pointer crosses this boundary.
 
+use merman::OperationControl;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
     BindingEngineServices, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
@@ -22,6 +23,7 @@ use std::mem::{align_of, size_of};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 include!("generated/text_measurement_abi.rs");
 include!("generated/abi3.rs");
@@ -42,7 +44,14 @@ struct NativeFailure {
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
     icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
+    cancellation: Option<NativeCancellationDetails>,
     message: Box<str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NativeCancellationDetails {
+    reason: &'static str,
+    phase: &'static str,
 }
 
 impl NativeFailure {
@@ -78,6 +87,7 @@ impl NativeFailure {
             capability_id,
             resource,
             icon_registry: None,
+            cancellation: None,
             message: message.into().into_boxed_str(),
         }
     }
@@ -207,6 +217,45 @@ struct NativeAllocationRegistry {
     results: BTreeMap<u64, NativeResultAllocation>,
 }
 
+#[derive(Default)]
+struct NativeOperationControlRegistry {
+    last_counter: u64,
+    controls: BTreeMap<MermanNativeOperationControlToken, Arc<OperationControl>>,
+}
+
+impl NativeOperationControlRegistry {
+    fn issue(
+        &mut self,
+        timeout_ms: Option<u64>,
+    ) -> Result<MermanNativeOperationControlToken, NativeFailure> {
+        let control = match timeout_ms {
+            Some(timeout_ms) => {
+                OperationControl::new().with_deadline(Duration::from_millis(timeout_ms))
+            }
+            None => OperationControl::new(),
+        };
+        let token = issue_domain_token(
+            &mut self.last_counter,
+            MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG,
+            "native operation-control token space is exhausted",
+        )?;
+        let previous = self.controls.insert(token, Arc::new(control));
+        debug_assert!(
+            previous.is_none(),
+            "operation-control tokens are never reused"
+        );
+        Ok(token)
+    }
+
+    fn acquire(&self, token: MermanNativeOperationControlToken) -> Option<Arc<OperationControl>> {
+        self.controls.get(&token).cloned()
+    }
+
+    fn release(&mut self, token: MermanNativeOperationControlToken) -> bool {
+        self.controls.remove(&token).is_some()
+    }
+}
+
 struct NativeResultAllocation {
     _data: Vec<u8>,
     _metadata_or_error_json: Vec<u8>,
@@ -259,6 +308,8 @@ fn token_has_domain(token: u64, domain_tag: u64) -> bool {
 
 static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
+static OPERATION_CONTROL_REGISTRY: OnceLock<Mutex<NativeOperationControlRegistry>> =
+    OnceLock::new();
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
@@ -304,7 +355,10 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         "capability_id": failure.capability_id,
         "message": failure.message.as_ref(),
     });
-    if failure.resource.is_some() || failure.icon_registry.is_some() {
+    if failure.resource.is_some()
+        || failure.icon_registry.is_some()
+        || failure.cancellation.is_some()
+    {
         let mut details = serde_json::Map::new();
         if let Some(resource) = failure.resource {
             details.insert("resource".to_string(), serde_json::json!(resource));
@@ -313,6 +367,15 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
             details.insert(
                 "icon_registry".to_string(),
                 serde_json::json!(icon_registry),
+            );
+        }
+        if let Some(cancellation) = failure.cancellation {
+            details.insert(
+                "cancellation".to_string(),
+                serde_json::json!({
+                    "reason": cancellation.reason,
+                    "phase": cancellation.phase,
+                }),
             );
         }
         payload["details"] = serde_json::Value::Object(details);
@@ -350,6 +413,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::InternalError => MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
         BindingStatus::ResourceLimitExceeded => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
         BindingStatus::Busy => MERMAN_NATIVE_STATUS_BUSY,
+        BindingStatus::Cancelled => MERMAN_NATIVE_STATUS_CANCELLED,
     };
     let icon_registry = error.icon_registry_details().cloned().map(Box::new);
     let mut failure = NativeFailure::classified(
@@ -360,6 +424,14 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         error.message(),
     );
     failure.icon_registry = icon_registry;
+    if error.status() == BindingStatus::Cancelled {
+        if let Some(details) = error.cancellation_details() {
+            failure.cancellation = Some(NativeCancellationDetails {
+                reason: details.reason,
+                phase: details.phase,
+            });
+        }
+    }
     failure
 }
 
@@ -373,6 +445,10 @@ fn engine_registry() -> &'static Mutex<NativeEngineRegistry> {
 
 fn allocation_registry() -> &'static Mutex<NativeAllocationRegistry> {
     ALLOCATION_REGISTRY.get_or_init(|| Mutex::new(NativeAllocationRegistry::default()))
+}
+
+fn operation_control_registry() -> &'static Mutex<NativeOperationControlRegistry> {
+    OPERATION_CONTROL_REGISTRY.get_or_init(|| Mutex::new(NativeOperationControlRegistry::default()))
 }
 
 fn runtime_catalog_bytes() -> Result<&'static [u8], NativeFailure> {
@@ -936,6 +1012,7 @@ struct NativeOperationRequest<'a> {
     source: &'a [u8],
     uri: Option<&'a [u8]>,
     options_json: &'a [u8],
+    operation_control: MermanNativeOperationControlToken,
 }
 
 unsafe fn read_operation_request<'a>(
@@ -961,7 +1038,34 @@ unsafe fn read_operation_request<'a>(
         source,
         uri: (!uri.is_empty()).then_some(uri),
         options_json,
+        operation_control: request.operation_control,
     })
+}
+
+fn acquire_operation_control(
+    token: MermanNativeOperationControlToken,
+) -> Result<Option<OperationControl>, NativeFailure> {
+    if token == 0 {
+        return Ok(None);
+    }
+    if !token_has_domain(token, MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG) {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "operation control token is zero or belongs to a different opaque token domain",
+        ));
+    }
+    let registry = operation_control_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry
+        .acquire(token)
+        .map(|control| Some((*control).clone()))
+        .ok_or_else(|| {
+            NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "operation control token is unknown or has already been released",
+            )
+        })
 }
 
 fn acquire_engine(token: MermanNativeEngineToken) -> Result<Arc<NativeEngineState>, NativeFailure> {
@@ -1011,6 +1115,10 @@ fn execute_with_engine<T>(
     consume: impl FnOnce(NativeExecution) -> Result<T, NativeFailure>,
 ) -> Result<T, NativeFailure> {
     let state = acquire_engine(token)?;
+    // Clone the operation control while the registry lock is held, then release every registry
+    // lock before admission and synchronous execution. Releasing the token concurrently is safe:
+    // the in-flight clone retains the control state until this operation returns.
+    let operation_control = acquire_operation_control(request.operation_control)?;
     // Freeze request classification before lifecycle admission. For a live token, NONE and
     // unknown numeric codes are caller errors regardless of transient busy/reentrant state.
     let operation = resolve_executable_native_operation(request.operation)?;
@@ -1023,7 +1131,8 @@ fn execute_with_engine<T>(
         .execute(
             BindingOperationRequest::new(operation.spec().id, request.source)
                 .with_optional_uri(request.uri)
-                .with_options_json(request.options_json),
+                .with_options_json(request.options_json)
+                .with_control(operation_control.unwrap_or_default()),
         )
         .map_err(native_failure_from_binding)?;
     let (operation, media_type, data, metadata) = result.into_parts();
@@ -1305,6 +1414,9 @@ unsafe fn get_native_api_impl(
             result_free: Some(native_result_free),
             metadata_collect: Some(native_metadata_collect),
             engine_new_with_services: Some(native_engine_new_with_services),
+            operation_control_new: Some(native_operation_control_new),
+            operation_control_cancel: Some(native_operation_control_cancel),
+            operation_control_release: Some(native_operation_control_release),
         };
         let initialized_size = MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES
             .iter()
@@ -2227,6 +2339,136 @@ unsafe extern "C" fn native_engine_try_close(
     })
 }
 
+unsafe extern "C" fn native_operation_control_new(
+    timeout_ms: u64,
+    has_timeout_ms: u8,
+    out_control: *mut MermanNativeOperationControlToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            operation_control_new_impl(timeout_ms, has_timeout_ms, out_control, out_result)
+        })
+    }
+}
+
+unsafe fn operation_control_new_impl(
+    timeout_ms: u64,
+    has_timeout_ms: u8,
+    out_control: *mut MermanNativeOperationControlToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
+    }
+    if out_control.is_null() {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_control must not be null",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+    if let Err(failure) = validate_pointer_alignment(out_control, "out_control") {
+        return failure.status;
+    }
+    if let Err(failure) = validate_disjoint_storage(
+        out_control.cast::<u8>(),
+        size_of::<MermanNativeOperationControlToken>(),
+        "out_control",
+        out_result.cast::<u8>(),
+        size_of::<MermanNativeResult>(),
+        "out_result",
+    ) {
+        return failure.status;
+    }
+    if has_timeout_ms > 1 {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "has_timeout_ms must be 0 or 1",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+    if unsafe { ptr::read(out_control) } != 0 {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_control must be initialized to zero",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+    let timeout = (has_timeout_ms == 1).then_some(timeout_ms);
+    let token = {
+        let mut registry = operation_control_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match registry.issue(timeout) {
+            Ok(token) => token,
+            Err(failure) => {
+                return unsafe {
+                    write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+                };
+            }
+        }
+    };
+    let status = unsafe {
+        write_native_result(
+            out_result,
+            MERMAN_NATIVE_STATUS_OK,
+            MERMAN_NATIVE_OPERATION_NONE,
+            None,
+            Vec::new(),
+            native_success_json("operation-control-new"),
+        )
+    };
+    if status != MERMAN_NATIVE_STATUS_OK {
+        let _ = operation_control_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .release(token);
+        return status;
+    }
+    unsafe { ptr::write(out_control, token) };
+    status
+}
+
+unsafe extern "C" fn native_operation_control_cancel(
+    control: MermanNativeOperationControlToken,
+) -> MermanNativeStatus {
+    status_boundary(|| {
+        if !token_has_domain(control, MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG) {
+            return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
+        }
+        let control = {
+            let registry = operation_control_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            registry.acquire(control)
+        };
+        let Some(control) = control else {
+            return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
+        };
+        control.cancel();
+        MERMAN_NATIVE_STATUS_OK
+    })
+}
+
+unsafe extern "C" fn native_operation_control_release(
+    control: MermanNativeOperationControlToken,
+) -> MermanNativeStatus {
+    status_boundary(|| {
+        if !token_has_domain(control, MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG) {
+            return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
+        }
+        let mut registry = operation_control_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if registry.release(control) {
+            MERMAN_NATIVE_STATUS_OK
+        } else {
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        }
+    })
+}
+
 unsafe extern "C" fn native_execute_collect(
     engine: MermanNativeEngineToken,
     request: *const MermanNativeOperationRequest,
@@ -2324,6 +2566,9 @@ mod tests {
             result_free: None,
             metadata_collect: None,
             engine_new_with_services: None,
+            operation_control_new: None,
+            operation_control_cancel: None,
+            operation_control_release: None,
         }
     }
 
@@ -2511,6 +2756,7 @@ mod tests {
             source: borrowed_slice(source),
             uri: borrowed_slice(&[]),
             options_json: borrowed_slice(options_json),
+            operation_control: 0,
         }
     }
 
@@ -2681,6 +2927,9 @@ mod tests {
         assert!(api.result_free.is_some());
         assert!(api.metadata_collect.is_some());
         assert!(api.engine_new_with_services.is_some());
+        assert!(api.operation_control_new.is_some());
+        assert!(api.operation_control_cancel.is_some());
+        assert!(api.operation_control_release.is_some());
     }
 
     #[test]
@@ -2712,8 +2961,9 @@ mod tests {
             buffer.api.struct_size,
             native_struct_size::<MermanNativeApi>()
         );
+        assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
         assert_eq!(
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+            MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
         assert!(buffer.api.metadata_collect.is_some());
@@ -2742,7 +2992,12 @@ mod tests {
 
         assert_eq!(
             MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES,
-            &[MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE]
+            &[
+                MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+                MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE,
+                MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
+                MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
+            ]
         );
 
         // The returned table size is itself safe input capacity for rediscovery.
@@ -2773,6 +3028,80 @@ mod tests {
         assert!(undersized.api.runtime_catalog.is_none());
         assert!(undersized.api.engine_new_with_services.is_none());
         assert_eq!(undersized.suffix, [0xa5; 32]);
+    }
+
+    #[test]
+    fn operation_control_tokens_cancel_release_and_preserve_structured_failure() {
+        let api = api_table();
+        let mut control = 0;
+        let mut control_result = native_result();
+        assert_eq!(
+            unsafe { api.operation_control_new.unwrap()(0, 0, &mut control, &mut control_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert!(token_has_domain(
+            control,
+            MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG
+        ));
+        assert_eq!(control_result.operation, MERMAN_NATIVE_OPERATION_NONE);
+        assert_eq!(control_result.data.len, 0);
+        unsafe { api.result_free.unwrap()(&mut control_result) };
+
+        assert_eq!(
+            unsafe { api.operation_control_cancel.unwrap()(control) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+
+        let mut engine = 0;
+        let mut engine_result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut engine_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut engine_result) };
+
+        let mut request = native_request(
+            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+            b"flowchart TD\nCancelled --> Request",
+        );
+        request.operation_control = control;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_CANCELLED
+        );
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_CANCELLED);
+        assert_eq!(
+            result.data.len, 0,
+            "cancelled requests publish no partial output"
+        );
+        let failure: serde_json::Value = serde_json::from_slice(unsafe {
+            std::slice::from_raw_parts(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+            )
+        })
+        .expect("cancelled native error JSON");
+        assert_eq!(failure["details"]["cancellation"]["reason"], "requested");
+        assert!(failure["details"]["cancellation"]["phase"].is_string());
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            unsafe { api.operation_control_release.unwrap()(control) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            unsafe { api.operation_control_cancel.unwrap()(control) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { api.operation_control_release.unwrap()(control) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
     }
 
     #[test]

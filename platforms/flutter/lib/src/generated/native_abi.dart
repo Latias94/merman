@@ -135,6 +135,8 @@ typedef MermanNativeFunctionSlot = ffi.Int32;
 typedef DartMermanNativeFunctionSlot = int;
 typedef MermanNativeEngineToken = ffi.Uint64;
 typedef DartMermanNativeEngineToken = int;
+typedef MermanNativeOperationControlToken = ffi.Uint64;
+typedef DartMermanNativeOperationControlToken = int;
 
 final class MermanNativeSlice extends ffi.Struct {
   @ffi.Uint32()
@@ -278,6 +280,9 @@ final class MermanNativeOperationRequest extends ffi.Struct {
   external MermanNativeSlice uri;
 
   external MermanNativeSlice options_json;
+
+  @ffi.Uint64()
+  external int operation_control;
 }
 
 final class MermanNativeResult extends ffi.Struct {
@@ -406,6 +411,40 @@ typedef MermanNativeEngineNewWithServicesFn =
     ffi.Pointer<
       ffi.NativeFunction<MermanNativeEngineNewWithServicesFnFunction>
     >;
+typedef MermanNativeOperationControlNewFnFunction =
+    MermanNativeStatus Function(
+      ffi.Uint64 timeout_ms,
+      ffi.Uint8 has_timeout_ms,
+      ffi.Pointer<MermanNativeOperationControlToken> out_control,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef DartMermanNativeOperationControlNewFnFunction =
+    DartMermanNativeStatus Function(
+      int timeout_ms,
+      int has_timeout_ms,
+      ffi.Pointer<MermanNativeOperationControlToken> out_control,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef MermanNativeOperationControlNewFn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeOperationControlNewFnFunction>
+    >;
+typedef MermanNativeOperationControlCancelFnFunction =
+    MermanNativeStatus Function(MermanNativeOperationControlToken control);
+typedef DartMermanNativeOperationControlCancelFnFunction =
+    DartMermanNativeStatus Function(DartMermanNativeOperationControlToken control);
+typedef MermanNativeOperationControlCancelFn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeOperationControlCancelFnFunction>
+    >;
+typedef MermanNativeOperationControlReleaseFnFunction =
+    MermanNativeStatus Function(MermanNativeOperationControlToken control);
+typedef DartMermanNativeOperationControlReleaseFnFunction =
+    DartMermanNativeStatus Function(DartMermanNativeOperationControlToken control);
+typedef MermanNativeOperationControlReleaseFn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeOperationControlReleaseFnFunction>
+    >;
 
 final class MermanNativeApi extends ffi.Struct {
   @ffi.Uint32()
@@ -435,6 +474,12 @@ final class MermanNativeApi extends ffi.Struct {
   external MermanNativeMetadataCollectFn metadata_collect;
 
   external MermanNativeEngineNewWithServicesFn engine_new_with_services;
+
+  external MermanNativeOperationControlNewFn operation_control_new;
+
+  external MermanNativeOperationControlCancelFn operation_control_cancel;
+
+  external MermanNativeOperationControlReleaseFn operation_control_release;
 }
 
 const int MERMAN_TEXT_WRAP_MODE_SVG_LIKE = 0;
@@ -541,6 +586,8 @@ const int MERMAN_NATIVE_STATUS_INVALID_ENGINE = 15;
 
 const int MERMAN_NATIVE_STATUS_BUSY = 16;
 
+const int MERMAN_NATIVE_STATUS_CANCELLED = 17;
+
 const int MERMAN_NATIVE_OPERATION_NONE = 0;
 
 const int MERMAN_NATIVE_OPERATION_SVG = 1;
@@ -583,15 +630,21 @@ const int MERMAN_NATIVE_FUNCTION_METADATA_COLLECT = 5;
 
 const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6;
 
+const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW = 7;
+
+const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL = 8;
+
+const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9;
+
 const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 const int MERMAN_NATIVE_ABI_VERSION = 3;
 
 const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
-    'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
+    'sha256:8ace28529f9b68f6e6ba6019daabcff99ae7f3e5d2782d912f70fbc9c9d43093';
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a';
+    'sha256:c6d306226ee98e926a7a6954e5d3f557e5c986586dcc7ac69e0c7b920961fdbf';
 
 const int MERMAN_NATIVE_RESULT_SCHEMA_VERSION = 1;
 
@@ -757,3 +810,9 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON =
     'application/json';
 
 const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 160;
+
+const int MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE = 168;
+
+const int MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE = 176;
+
+const int MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE = 184;
