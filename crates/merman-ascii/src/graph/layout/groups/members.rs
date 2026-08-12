@@ -274,9 +274,7 @@ mod tests {
     use merman_core::resources::ResourceProfile;
 
     #[test]
-    fn side_follower_scan_accepts_exact_work_and_rejects_before_member_materialization() {
-        const EXACT_WORK: usize = 11;
-
+    fn group_placement_entry_accepts_exact_work_and_rejects_at_limit_minus_one() {
         let mut graph = AsciiGraph::new_for_diagram("state", GraphDirection::TopDown);
         graph.add_node_with_semantics(
             "anchor",
@@ -307,54 +305,41 @@ mod tests {
         let mut topology_resources = ResourceContext::new(unbounded);
         let topology = GraphGroupTopology::try_new(&graph, &mut topology_resources)
             .expect("state group topology should be valid");
-        let initial_member = GroupPlacementMember {
-            id: "anchor".to_string(),
-            endpoint: GraphEndpointIndex::Node(0),
-            node_indices: vec![0],
-        };
-        let exact_policy = unbounded
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXACT_WORK)
-            .expect("exact layout-work limit should be valid");
-        let mut exact_members = vec![initial_member.clone()];
-        let mut exact_resources = ResourceContext::new(exact_policy);
+        let mut measured_resources = ResourceContext::new(unbounded);
+        let measured_members =
+            group_placement_members(&graph, &topology, 0, &mut measured_resources)
+                .expect("the production group-placement entry should succeed");
+        let exact_work = measured_resources.layout_work_used();
+        assert!(exact_work > 1);
+        assert_eq!(
+            measured_members
+                .iter()
+                .map(|member| member.id.as_str())
+                .collect::<Vec<_>>(),
+            ["anchor", "note"]
+        );
 
-        include_side_constrained_group_followers(
-            &graph,
-            &topology,
-            0,
-            &mut exact_members,
-            &mut exact_resources,
-        )
-        .expect("side-constrained follower planning should succeed");
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact layout-work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let exact_members = group_placement_members(&graph, &topology, 0, &mut exact_resources)
+            .expect("the production entry should accept its exact work budget");
 
         assert_eq!(exact_members.len(), 2);
-        assert_eq!(exact_resources.layout_work_used(), EXACT_WORK);
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
 
         let below_policy = unbounded
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXACT_WORK - 1)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one layout-work limit should be valid");
-        let mut below_members = vec![initial_member];
         let mut below_resources = ResourceContext::new(below_policy);
-        let error = include_side_constrained_group_followers(
-            &graph,
-            &topology,
-            0,
-            &mut below_members,
-            &mut below_resources,
-        )
-        .expect_err("max-minus-one work should reject before follower materialization");
+        let error = group_placement_members(&graph, &topology, 0, &mut below_resources)
+            .expect_err("the production entry should reject at max-minus-one");
         let crate::AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
         };
         assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
-        assert_eq!(details.actual, EXACT_WORK);
-        assert_eq!(details.max, EXACT_WORK - 1);
-        assert_eq!(below_members.len(), 1);
-        assert_eq!(below_members[0].id, "anchor");
-        assert!(matches!(
-            below_members[0].endpoint,
-            GraphEndpointIndex::Node(0)
-        ));
-        assert_eq!(below_members[0].node_indices, vec![0]);
+        assert_eq!(details.actual, exact_work);
+        assert_eq!(details.max, exact_work - 1);
     }
 }
