@@ -71,8 +71,8 @@ impl PreparedMessageRows {
         self.extent
     }
 
-    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
-        &self.footprints
+    pub(super) fn take_footprints(&mut self) -> Vec<SequenceRowFootprint> {
+        std::mem::take(&mut self.footprints)
     }
 
     pub(super) fn materialization_work_units(&self) -> usize {
@@ -99,8 +99,8 @@ impl PreparedSelfMessageRows {
         self.extent
     }
 
-    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
-        &self.footprints
+    pub(super) fn take_footprints(&mut self) -> Vec<SequenceRowFootprint> {
+        std::mem::take(&mut self.footprints)
     }
 
     pub(super) fn materialization_work_units(&self) -> usize {

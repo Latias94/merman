@@ -30,8 +30,8 @@ impl PreparedNoteRows {
         self.extent
     }
 
-    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
-        &self.footprints
+    pub(super) fn take_footprints(&mut self) -> Vec<SequenceRowFootprint> {
+        std::mem::take(&mut self.footprints)
     }
 
     pub(super) const fn materialization_work_units(&self) -> usize {

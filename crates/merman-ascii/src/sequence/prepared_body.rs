@@ -177,7 +177,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
             SequenceEvent::Message(message) => {
                 ensure_message_actors_visible(message, &step.visible_actors)?;
                 if message.from == message.to {
-                    let prepared = prepare_self_message_rows(
+                    let mut prepared = prepare_self_message_rows(
                         message,
                         layout,
                         chars,
@@ -185,7 +185,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
                         resources,
                     )?;
                     let extent = prepared.extent();
-                    let footprints = try_clone_slice(prepared.footprints())?;
+                    let footprints = prepared.take_footprints();
                     self.push_batch(
                         extent,
                         &footprints,
@@ -199,10 +199,10 @@ impl<'diagram> SequencePreparedBody<'diagram> {
                         resources,
                     )?;
                 } else {
-                    let prepared =
+                    let mut prepared =
                         prepare_message_rows(message, layout, &step.visible_actors, resources)?;
                     let extent = prepared.extent();
-                    let footprints = try_clone_slice(prepared.footprints())?;
+                    let footprints = prepared.take_footprints();
                     self.push_batch(
                         extent,
                         &footprints,
@@ -219,9 +219,10 @@ impl<'diagram> SequencePreparedBody<'diagram> {
             }
             SequenceEvent::Note(note) => {
                 ensure_note_actors_known(note, layout)?;
-                let prepared = prepare_note_rows(note, layout, &step.visible_actors, resources)?;
+                let mut prepared =
+                    prepare_note_rows(note, layout, &step.visible_actors, resources)?;
                 let extent = prepared.extent();
-                let footprints = try_clone_slice(prepared.footprints())?;
+                let footprints = prepared.take_footprints();
                 self.push_batch(
                     extent,
                     &footprints,
