@@ -1,5 +1,6 @@
 mod create_text;
 mod deterministic;
+mod evidence;
 mod flowchart_parity;
 mod font_metrics;
 mod font_metrics_data;
@@ -18,6 +19,7 @@ mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::DeterministicTextMeasurer;
+pub(crate) use evidence::PreparedTextEvidenceLease;
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub use font_metrics::VendoredFontMetricsTextMeasurer;
 pub(crate) use font_metrics::{
@@ -68,11 +70,18 @@ pub use prepared::{
 pub(crate) use prepared::{
     NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest, PreparedTextWrap,
 };
-#[doc(hidden)]
-pub use prepared::{
-    PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
-    PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+pub(crate) use prepared::{
+    PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
 };
+
+/// Workspace-internal native-export evidence scheduled for replacement by a compact export plan.
+#[doc(hidden)]
+pub mod __private {
+    pub use super::prepared::{
+        PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
+        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
+    };
+}
 pub use prepared::{PreparedTextLayoutReport, TextLayoutFailure};
 pub(crate) use svg_metrics::{
     FLOWCHART_DEFAULT_FONT_KEY, flowchart_svg_edge_label_background_y_px,

@@ -24,6 +24,7 @@ class ResourceLimitId(str):
     MAX_MODEL_TEXT_BYTES: ClassVar[ResourceLimitId]
     MAX_MODEL_NESTING_DEPTH: ClassVar[ResourceLimitId]
     MAX_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
+    MAX_PREPARED_TEXT_RETAINED_BYTES: ClassVar[ResourceLimitId]
     MAX_SVG_BYTES: ClassVar[ResourceLimitId]
     MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
     MAX_DOCUMENT_DIAGRAMS: ClassVar[ResourceLimitId]
@@ -82,6 +83,7 @@ ResourceLimitId.MAX_MODEL_ITEMS = ResourceLimitId("max_model_items")
 ResourceLimitId.MAX_MODEL_TEXT_BYTES = ResourceLimitId("max_model_text_bytes")
 ResourceLimitId.MAX_MODEL_NESTING_DEPTH = ResourceLimitId("max_model_nesting_depth")
 ResourceLimitId.MAX_LAYOUT_WORK_UNITS = ResourceLimitId("max_layout_work_units")
+ResourceLimitId.MAX_PREPARED_TEXT_RETAINED_BYTES = ResourceLimitId("max_prepared_text_retained_bytes")
 ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
 ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
 ResourceLimitId.MAX_DOCUMENT_DIAGRAMS = ResourceLimitId("max_document_diagrams")
@@ -107,6 +109,7 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_MODEL_TEXT_BYTES,
     ResourceLimitId.MAX_MODEL_NESTING_DEPTH,
     ResourceLimitId.MAX_LAYOUT_WORK_UNITS,
+    ResourceLimitId.MAX_PREPARED_TEXT_RETAINED_BYTES,
     ResourceLimitId.MAX_SVG_BYTES,
     ResourceLimitId.MAX_SVG_ELEMENTS,
     ResourceLimitId.MAX_DOCUMENT_DIAGRAMS,
@@ -134,6 +137,7 @@ _RESOURCE_LIMIT_METADATA = {
     "max_model_text_bytes": ("layout_model", True, 1),
     "max_model_nesting_depth": ("layout_model", True, 1),
     "max_layout_work_units": ("layout_model", True, 1),
+    "max_prepared_text_retained_bytes": ("layout_model", True, 1),
     "max_svg_bytes": ("svg_output", True, 1),
     "max_svg_elements": ("svg_postprocess", True, 1),
     "max_document_diagrams": ("document_scan", True, 0),
@@ -160,6 +164,7 @@ class ResourceOverrideId(str, Enum):
     MAX_MODEL_TEXT_BYTES = "max_model_text_bytes"
     MAX_MODEL_NESTING_DEPTH = "max_model_nesting_depth"
     MAX_LAYOUT_WORK_UNITS = "max_layout_work_units"
+    MAX_PREPARED_TEXT_RETAINED_BYTES = "max_prepared_text_retained_bytes"
     MAX_SVG_BYTES = "max_svg_bytes"
     MAX_SVG_ELEMENTS = "max_svg_elements"
     MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
@@ -179,6 +184,7 @@ _MINIMUM_LIMIT_VALUES = {
     ResourceOverrideId.MAX_MODEL_TEXT_BYTES: 1,
     ResourceOverrideId.MAX_MODEL_NESTING_DEPTH: 1,
     ResourceOverrideId.MAX_LAYOUT_WORK_UNITS: 1,
+    ResourceOverrideId.MAX_PREPARED_TEXT_RETAINED_BYTES: 1,
     ResourceOverrideId.MAX_SVG_BYTES: 1,
     ResourceOverrideId.MAX_SVG_ELEMENTS: 1,
     ResourceOverrideId.MAX_DOCUMENT_DIAGRAMS: 0,

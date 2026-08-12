@@ -2175,6 +2175,7 @@ impl RenderSession {
                 .clone(),
             resource_policy: self.resource_policy,
             layout_work_units: self.work_meter.used(),
+            prepared_text_retained_bytes_peak: self.work_meter.prepared_text_retained_bytes_peak(),
             theme_recipe_report: self.theme_recipe_report().cloned(),
             theme_host_admission_report: self.theme_host_admission_report(),
             font_catalog_fingerprint: self.font_catalog().fingerprint(),
@@ -2199,6 +2200,7 @@ pub struct RenderSessionReport {
     local_time_zone: LocalTimeZoneProvenance,
     resource_policy: RenderResourcePolicy,
     layout_work_units: usize,
+    prepared_text_retained_bytes_peak: usize,
     theme_recipe_report: Option<ThemeRecipeReport>,
     theme_host_admission_report: Option<ThemeHostAdmissionReport>,
     font_catalog_fingerprint: FontCatalogFingerprint,
@@ -2287,11 +2289,17 @@ impl RenderSessionReport {
     pub const fn layout_work_units(&self) -> usize {
         self.layout_work_units
     }
+
+    /// Returns the peak owner-accounted prepared-text bytes retained by the operation.
+    pub const fn prepared_text_retained_bytes_peak(&self) -> usize {
+        self.prepared_text_retained_bytes_peak
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::ResourceLimitId;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -3519,6 +3527,31 @@ mod tests {
         assert!(session.prepared_text_layout().is_none());
         assert!(session.text_layout_error().is_none());
         assert_eq!(session.report().operation_context().seed(), 0);
+    }
+
+    #[test]
+    fn session_report_keeps_prepared_text_retained_peak_separate_from_layout_work() {
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 16)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(limits)
+            .begin_session()
+            .unwrap();
+
+        let mut reservation = session
+            .work_meter()
+            .reserve_prepared_text_retained_bytes(12)
+            .unwrap();
+        reservation.reconcile_downward(7);
+        let live_report = session.report();
+        assert_eq!(live_report.prepared_text_retained_bytes_peak(), 12);
+        assert_eq!(live_report.layout_work_units(), 0);
+
+        drop(reservation);
+        let released_report = session.report();
+        assert_eq!(released_report.prepared_text_retained_bytes_peak(), 12);
+        assert_eq!(released_report.layout_work_units(), 0);
     }
 
     fn embedded_font_theme() -> DiagramTheme {

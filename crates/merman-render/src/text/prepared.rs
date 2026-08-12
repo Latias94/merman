@@ -45,6 +45,13 @@ const MAX_TEXT_PROJECTION_SPAN_BYTES: usize =
     MAX_TEXT_PROJECTION_SPANS * TEXT_PROJECTION_SPAN_RECORD_BYTES;
 const PREPARED_TEXT_LINE_RECORD_BYTES: usize = 96;
 const PREPARED_TEXT_RUN_RECORD_BYTES: usize = 64;
+const TEXT_BYTE_RANGE_RECORD_BYTES: usize = 16;
+const PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES: usize = 128;
+const PREPARED_TEXT_DIAGNOSTIC_RECORD_BYTES: usize = 32;
+const PREPARED_TEXT_OWNER_RECORD_BYTES: usize = 512;
+const PREPARED_TEXT_LEDGER_ENTRY_RECORD_BYTES: usize = 192;
+const CATALOG_ADMITTED_TEXT_STYLE_RECORD_BYTES: usize = 128;
+const FONT_STACK_FAMILY_RECORD_BYTES: usize = 32;
 const MAX_STRUCTURED_COVERAGE_INPUT_BYTES: usize = MAX_TEXT_PROJECTION_BYTES * 16;
 const MAX_STRUCTURED_FACE_INSPECTIONS: usize = MAX_TEXT_PROJECTION_BYTES * 32;
 const STRUCTURED_COVERAGE_CACHE_LANES: usize = 2;
@@ -54,6 +61,27 @@ const MAX_STRUCTURED_SPAN_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 4;
 const MAX_STRUCTURED_GLYPH_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 64;
 const MAX_STRUCTURED_CLUSTER_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 32;
 const MAX_STRUCTURED_WRAP_BOUNDARY_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 32;
+
+#[derive(Debug, Clone, Copy)]
+struct ModeledRetainedBytes(usize);
+
+impl ModeledRetainedBytes {
+    const fn new(bytes: usize) -> Self {
+        Self(bytes)
+    }
+
+    fn add_bytes(&mut self, bytes: usize) {
+        self.0 = self.0.saturating_add(bytes);
+    }
+
+    fn add_records(&mut self, count: usize, record_bytes: usize) {
+        self.add_bytes(count.saturating_mul(record_bytes));
+    }
+
+    const fn finish(self) -> usize {
+        self.0
+    }
+}
 
 pub(crate) fn merge_prepared_text_typography(
     base: &ThemeTextStyle,
@@ -97,6 +125,7 @@ pub(crate) fn merge_prepared_text_typography(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PreparedTextCssTypographyOverrides {
     font_family: Option<String>,
+    font_size: Option<String>,
     line_height: Option<String>,
     letter_spacing: Option<String>,
     word_spacing: Option<String>,
@@ -110,6 +139,7 @@ impl PreparedTextCssTypographyOverrides {
             "font-family" if crate::mermaid_style::is_safe_css_font_family_value(value) => {
                 self.font_family = Some(value.trim().to_string());
             }
+            "font-size" => self.font_size = Some(value.trim().to_string()),
             "line-height" => self.line_height = Some(value.trim().to_string()),
             "letter-spacing" => self.letter_spacing = Some(value.trim().to_string()),
             "word-spacing" => self.word_spacing = Some(value.trim().to_string()),
@@ -125,9 +155,18 @@ impl PreparedTextCssTypographyOverrides {
         self == &Self::default()
     }
 
+    pub(crate) fn has_font_size(&self) -> bool {
+        self.font_size.is_some()
+    }
+
     #[cfg(test)]
     pub(crate) fn font_family(&self) -> Option<&str> {
         self.font_family.as_deref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn font_size(&self) -> Option<&str> {
+        self.font_size.as_deref()
     }
 }
 
@@ -387,6 +426,15 @@ impl CatalogAdmittedTextStyle {
             LineHeight::Px(value) => f64::from(value) / f64::from(self.typography.font_size_px()),
         };
         (value * 1_000_000.0).round() / 1_000_000.0
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let mut retained = ModeledRetainedBytes::new(CATALOG_ADMITTED_TEXT_STYLE_RECORD_BYTES);
+        for family in self.typography.font_stack().families() {
+            retained.add_records(1, FONT_STACK_FAMILY_RECORD_BYTES);
+            retained.add_bytes(family.len());
+        }
+        retained.finish()
     }
 
     pub(crate) fn merge_emission_font_style(&self, existing: Option<&str>) -> String {
@@ -1966,6 +2014,14 @@ impl PreparedTextLabelLedgerEntry {
     pub fn used_font_sources(&self) -> impl Iterator<Item = FontSource> + '_ {
         self.runs.iter().map(PreparedTextLabelEvidence::font_source)
     }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        prepared_text_label_ledger_retained_bytes(
+            self.projection_spans.len(),
+            self.line_ranges.len(),
+            self.runs.len(),
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1986,6 +2042,14 @@ struct PreparedTextLabelEvidenceContext {
 }
 
 impl PendingPreparedTextLabelLedgerEntry {
+    pub(crate) fn retained_bytes(&self) -> usize {
+        prepared_text_label_ledger_retained_bytes(
+            self.projection_spans.len(),
+            self.line_ranges.len(),
+            self.runs.len(),
+        )
+    }
+
     pub(crate) fn bind(self, id: PreparedTextLabelId) -> PreparedTextLabelLedgerEntry {
         PreparedTextLabelLedgerEntry {
             id,
@@ -1997,6 +2061,18 @@ impl PendingPreparedTextLabelLedgerEntry {
             runs: self.runs,
         }
     }
+}
+
+fn prepared_text_label_ledger_retained_bytes(
+    projection_span_count: usize,
+    line_range_count: usize,
+    run_count: usize,
+) -> usize {
+    let mut retained = ModeledRetainedBytes::new(PREPARED_TEXT_LEDGER_ENTRY_RECORD_BYTES);
+    retained.add_records(projection_span_count, TEXT_PROJECTION_SPAN_RECORD_BYTES);
+    retained.add_records(line_range_count, TEXT_BYTE_RANGE_RECORD_BYTES);
+    retained.add_records(run_count, PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES);
+    retained.finish()
 }
 
 /// Identity echoed by a prepared-text response so stale or cross-session results can be rejected.
@@ -2603,6 +2679,40 @@ impl PreparedText {
 
     pub(crate) fn label_ledger_entry(&self) -> Option<PendingPreparedTextLabelLedgerEntry> {
         self.label_ledger_entry.clone()
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        let mut retained = ModeledRetainedBytes::new(PREPARED_TEXT_OWNER_RECORD_BYTES);
+
+        retained.add_bytes(self.projection.source.len());
+        retained.add_bytes(self.projection.visible.len());
+        retained.add_records(
+            self.projection.spans.len(),
+            TEXT_PROJECTION_SPAN_RECORD_BYTES,
+        );
+
+        retained.add_records(self.lines.len(), PREPARED_TEXT_LINE_RECORD_BYTES);
+        for line in self.lines.iter() {
+            retained.add_bytes(line.text.len());
+        }
+
+        retained.add_records(self.runs.len(), PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES);
+
+        retained.add_records(
+            self.diagnostics.len(),
+            PREPARED_TEXT_DIAGNOSTIC_RECORD_BYTES,
+        );
+        for diagnostic in self.diagnostics.iter() {
+            retained.add_bytes(diagnostic.len());
+        }
+
+        // The pending ledger shares the projection spans and run evidence with this owner. Only
+        // its independently allocated line-range slice is charged here.
+        if let Some(entry) = &self.label_ledger_entry {
+            retained.add_records(entry.line_ranges.len(), TEXT_BYTE_RANGE_RECORD_BYTES);
+        }
+
+        retained.finish()
     }
 
     pub fn wrapped_lines(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
@@ -6787,6 +6897,112 @@ mod tests {
         ] {
             assert_eq!(PreparedTextLabelId::from_svg_id(invalid), None, "{invalid}");
         }
+    }
+
+    #[test]
+    fn prepared_text_retained_bytes_count_shared_evidence_once() {
+        let catalog = mixed_catalog();
+        let face = &catalog.faces()[0];
+        let asset = catalog
+            .assets()
+            .iter()
+            .find(|asset| asset.id() == face.asset_id())
+            .expect("the fixture face belongs to one retained asset");
+        let range = TextByteRange::new(0, 2);
+        let projection = TextProjection::from_parts(
+            Arc::from("ab"),
+            Arc::from("AB"),
+            vec![SourceVisibleSpan::new(range, range)],
+        )
+        .expect("the fixed projection is valid");
+        let line = PreparedTextLine::new("AB", range, 10.0, (0.0, 10.0), 8.0)
+            .expect("the fixed line geometry is valid");
+        let run = PreparedTextLabelEvidence::new(
+            range,
+            range,
+            PreparedTextFaceKey::new(asset.fingerprint(), face.face_index()),
+            FontSource::Embedded,
+        );
+        let prepared = PreparedText::new_with_evidence(
+            projection,
+            [line],
+            [run],
+            12.0,
+            None,
+            Arc::from([Arc::<str>::from("note")]),
+            Some(PreparedTextLabelEvidenceContext {
+                catalog_fingerprint: catalog.fingerprint(),
+                request_digest: TextLayoutRequestDigest::from_bytes([7; 32]),
+                provenance: PreparedTextLabelProvenance::Native,
+            }),
+        )
+        .expect("the fixed prepared label is valid");
+
+        let pending = prepared
+            .label_ledger_entry()
+            .expect("the prepared label retains pending export evidence");
+        let pending_bytes = pending.retained_bytes();
+        let final_entry = pending.bind(PreparedTextLabelId::new(
+            PreparedTextLabelFamily::Flowchart,
+            1,
+        ));
+        let final_bytes = final_entry.retained_bytes();
+        let expected_ledger_bytes = PREPARED_TEXT_LEDGER_ENTRY_RECORD_BYTES
+            + TEXT_PROJECTION_SPAN_RECORD_BYTES
+            + TEXT_BYTE_RANGE_RECORD_BYTES
+            + PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES;
+        let expected_prepared_bytes = PREPARED_TEXT_OWNER_RECORD_BYTES
+            + 2
+            + 2
+            + TEXT_PROJECTION_SPAN_RECORD_BYTES
+            + PREPARED_TEXT_LINE_RECORD_BYTES
+            + 2
+            + PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES
+            + PREPARED_TEXT_DIAGNOSTIC_RECORD_BYTES
+            + 4
+            + TEXT_BYTE_RANGE_RECORD_BYTES;
+
+        assert_eq!(pending_bytes, expected_ledger_bytes);
+        assert_eq!(final_bytes, expected_ledger_bytes);
+        assert_eq!(prepared.retained_bytes(), expected_prepared_bytes);
+        assert!(prepared.retained_bytes() >= final_bytes);
+    }
+
+    #[test]
+    fn retained_byte_model_is_logical_and_target_stable() {
+        let fingerprint = FontCatalog::default_parity().fingerprint();
+        let first = CatalogAdmittedTextStyle {
+            typography: ThemeTextStyle::default().with_font_stack(
+                FontStack::new(["Excalifont", "sans-serif"]).expect("valid font stack"),
+            ),
+            catalog_fingerprint: fingerprint,
+        };
+        let repeated = CatalogAdmittedTextStyle {
+            typography: ThemeTextStyle::default().with_font_stack(
+                FontStack::new(["Excalifont", "sans-serif"]).expect("valid font stack"),
+            ),
+            catalog_fingerprint: fingerprint,
+        };
+        let expected = CATALOG_ADMITTED_TEXT_STYLE_RECORD_BYTES
+            + 2 * FONT_STACK_FAMILY_RECORD_BYTES
+            + "Excalifont".len()
+            + "sans-serif".len();
+
+        assert_eq!(first.retained_bytes(), expected);
+        assert_eq!(repeated.retained_bytes(), expected);
+    }
+
+    #[test]
+    fn retained_byte_model_saturates_instead_of_wrapping() {
+        let mut retained = ModeledRetainedBytes::new(usize::MAX - 1);
+        retained.add_records(usize::MAX, PREPARED_TEXT_LABEL_EVIDENCE_RECORD_BYTES);
+        retained.add_bytes(1);
+
+        assert_eq!(retained.finish(), usize::MAX);
+        assert_eq!(
+            prepared_text_label_ledger_retained_bytes(usize::MAX, usize::MAX, usize::MAX),
+            usize::MAX
+        );
     }
 
     #[test]

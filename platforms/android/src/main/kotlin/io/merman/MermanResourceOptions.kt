@@ -34,6 +34,7 @@ public class MermanResourceLimitId private constructor(
         public val MAX_MODEL_TEXT_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_model_text_bytes", "layout_model", true, 1)
         public val MAX_MODEL_NESTING_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_model_nesting_depth", "layout_model", true, 1)
         public val MAX_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_layout_work_units", "layout_model", true, 1)
+        public val MAX_PREPARED_TEXT_RETAINED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_prepared_text_retained_bytes", "layout_model", true, 1)
         public val MAX_SVG_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_svg_bytes", "svg_output", true, 1)
         public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
         public val MAX_DOCUMENT_DIAGRAMS: MermanResourceLimitId = MermanResourceLimitId("max_document_diagrams", "document_scan", true, 0)
@@ -60,6 +61,7 @@ public class MermanResourceLimitId private constructor(
             MAX_MODEL_TEXT_BYTES,
             MAX_MODEL_NESTING_DEPTH,
             MAX_LAYOUT_WORK_UNITS,
+            MAX_PREPARED_TEXT_RETAINED_BYTES,
             MAX_SVG_BYTES,
             MAX_SVG_ELEMENTS,
             MAX_DOCUMENT_DIAGRAMS,
@@ -97,6 +99,7 @@ public enum class MermanResourceOverrideId(public val id: String, public val min
     MAX_MODEL_TEXT_BYTES("max_model_text_bytes", 1),
     MAX_MODEL_NESTING_DEPTH("max_model_nesting_depth", 1),
     MAX_LAYOUT_WORK_UNITS("max_layout_work_units", 1),
+    MAX_PREPARED_TEXT_RETAINED_BYTES("max_prepared_text_retained_bytes", 1),
     MAX_SVG_BYTES("max_svg_bytes", 1),
     MAX_SVG_ELEMENTS("max_svg_elements", 1),
     MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", 0),

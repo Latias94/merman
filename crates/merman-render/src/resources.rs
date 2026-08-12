@@ -39,6 +39,13 @@ pub const SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID: &str = "svg_backend_tree_depth";
 pub const MAX_RESVG_TREE_NODES: usize = 1_000_000;
 pub const SVG_BACKEND_TREE_NODES_HARD_CAP_ID: &str = "svg_backend_tree_nodes";
 
+// usvg, resvg, and tiny-skia eventually project SVG geometry into f32 coordinates. Keep the
+// document coordinate space within the largest consecutive integer range representable by f32 so
+// one-unit geometry remains distinguishable before target-specific raster limits run.
+pub(crate) const MAX_SVG_BACKEND_COORDINATE_MAGNITUDE: usize = 1 << 24;
+pub(crate) const SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID: &str =
+    "svg_backend_coordinate_magnitude";
+
 #[cfg(target_arch = "wasm32")]
 pub const MAX_RESVG_TREE_DEPTH: usize = WASM_RESVG_TREE_DEPTH_HARD_CAP;
 
@@ -51,7 +58,7 @@ const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = merman_core::MAX_DIAGRAM_NESTING_D
 const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = 64;
 
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
-const RENDER_RESOURCE_LIMIT_COUNT: usize = 3;
+const RENDER_RESOURCE_LIMIT_COUNT: usize = 4;
 pub const RESOURCE_LIMIT_COUNT: usize =
     merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
 
@@ -111,6 +118,7 @@ pub enum RenderResourceLimitId {
     MaxSvgBytes,
     MaxSvgElements,
     MaxLayoutWorkUnits,
+    MaxPreparedTextRetainedBytes,
 }
 
 impl RenderResourceLimitId {
@@ -118,6 +126,7 @@ impl RenderResourceLimitId {
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
         Self::MaxLayoutWorkUnits,
+        Self::MaxPreparedTextRetainedBytes,
     ];
 
     const fn index(self) -> usize {
@@ -140,6 +149,8 @@ impl ResourceLimitId {
     pub const MaxSvgBytes: Self = Self::Render(RenderResourceLimitId::MaxSvgBytes);
     pub const MaxSvgElements: Self = Self::Render(RenderResourceLimitId::MaxSvgElements);
     pub const MaxLayoutWorkUnits: Self = Self::Render(RenderResourceLimitId::MaxLayoutWorkUnits);
+    pub const MaxPreparedTextRetainedBytes: Self =
+        Self::Render(RenderResourceLimitId::MaxPreparedTextRetainedBytes);
 
     pub const ALL: [Self; RESOURCE_LIMIT_COUNT] = [
         Self::MaxSourceBytes,
@@ -147,6 +158,7 @@ impl ResourceLimitId {
         Self::MaxModelTextBytes,
         Self::MaxModelNestingDepth,
         Self::MaxLayoutWorkUnits,
+        Self::MaxPreparedTextRetainedBytes,
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
     ];
@@ -230,6 +242,15 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         hard_cap: false,
         minimum_value: 1,
     },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxPreparedTextRetainedBytes,
+        stable_id: "max_prepared_text_retained_bytes",
+        phase: ResourceLimitPhase::LayoutModel,
+        description: "Maximum operation-local bytes retained by prepared text artifacts",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 1,
+    },
 ];
 
 pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_COUNT] = [
@@ -238,6 +259,7 @@ pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_
     input_descriptor(InputResourceLimitId::MaxModelTextBytes),
     input_descriptor(InputResourceLimitId::MaxModelNestingDepth),
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[2],
+    RENDER_RESOURCE_LIMIT_DESCRIPTORS[3],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[0],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[1],
 ];
@@ -251,6 +273,7 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     // ceiling admits the repository's normal large public fixtures with calibration
     // headroom while the constrained profile remains the untrusted-input boundary.
     [Some(800_000), Some(125_000), Some(1_000_000), None],
+    [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
 ];
 
 pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
@@ -641,6 +664,27 @@ impl RenderResourcePolicy {
         })
     }
 
+    pub(crate) fn check_svg_backend_coordinate_magnitude(
+        &self,
+        value: f64,
+    ) -> Result<(), ResourceLimitExceeded> {
+        if !value.is_finite() || value.abs() <= MAX_SVG_BACKEND_COORDINATE_MAGNITUDE as f64 {
+            return Ok(());
+        }
+        Err(ResourceLimitExceeded {
+            cause: ResourceLimitCause::Ceiling,
+            phase: ResourceLimitPhase::SvgOutput,
+            limit: SVG_BACKEND_COORDINATE_MAGNITUDE_HARD_CAP_ID,
+            actual: value.abs().ceil() as usize,
+            max: MAX_SVG_BACKEND_COORDINATE_MAGNITUDE,
+            profile: self.profile(),
+            explicit_overrides: self
+                .explicit_overrides()
+                .map(|(id, value)| ResourceLimitOverride { id, value })
+                .collect(),
+        })
+    }
+
     pub fn check_flowchart_complexity(
         &self,
         model: &FlowchartModel,
@@ -693,6 +737,17 @@ impl RenderResourcePolicy {
             work_units,
         )
     }
+
+    pub fn check_prepared_text_retained_bytes(
+        &self,
+        retained_bytes: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_render_limit(
+            ResourceLimitPhase::LayoutModel,
+            RenderResourceLimitId::MaxPreparedTextRetainedBytes,
+            retained_bytes,
+        )
+    }
 }
 
 const fn minimum_ceiling(left: Option<usize>, right: Option<usize>) -> Option<usize> {
@@ -721,16 +776,51 @@ fn map_input_restriction_error(
     }
 }
 
-/// One cumulative derived-geometry budget shared by layout and SVG emission.
+/// Operation-local resource counters shared by layout and SVG emission.
+#[derive(Debug)]
 pub(crate) struct OperationWorkMeter {
     policy: RenderResourcePolicy,
     used: std::sync::atomic::AtomicUsize,
     projected_svg_bytes: std::sync::atomic::AtomicUsize,
+    prepared_text_retained_bytes: std::sync::atomic::AtomicUsize,
+    prepared_text_retained_bytes_peak: std::sync::atomic::AtomicUsize,
 }
 
 pub(crate) struct SvgByteReservation {
     pub(crate) additional_bytes: usize,
     pub(crate) limit_error: Option<ResourceLimitExceeded>,
+}
+
+/// Operation-local ownership of prepared-text bytes admitted by the shared resource meter.
+#[derive(Debug)]
+#[must_use = "keep the reservation alive while its prepared-text bytes are retained"]
+pub(crate) struct PreparedTextRetainedReservation {
+    meter: std::sync::Arc<OperationWorkMeter>,
+    retained_bytes: usize,
+}
+
+impl PreparedTextRetainedReservation {
+    pub(crate) const fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    /// Releases the unused portion of a conservative reservation.
+    pub(crate) fn reconcile_downward(&mut self, retained_bytes: usize) {
+        assert!(
+            retained_bytes <= self.retained_bytes,
+            "prepared-text retained-byte reconciliation cannot grow a reservation"
+        );
+        let released = self.retained_bytes - retained_bytes;
+        self.meter.release_prepared_text_retained_bytes(released);
+        self.retained_bytes = retained_bytes;
+    }
+}
+
+impl Drop for PreparedTextRetainedReservation {
+    fn drop(&mut self) {
+        self.meter
+            .release_prepared_text_retained_bytes(self.retained_bytes);
+    }
 }
 
 impl OperationWorkMeter {
@@ -739,6 +829,8 @@ impl OperationWorkMeter {
             policy,
             used: std::sync::atomic::AtomicUsize::new(0),
             projected_svg_bytes: std::sync::atomic::AtomicUsize::new(0),
+            prepared_text_retained_bytes: std::sync::atomic::AtomicUsize::new(0),
+            prepared_text_retained_bytes_peak: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -787,6 +879,52 @@ impl OperationWorkMeter {
             ResourceLimitPhase::LayoutModel,
             RenderResourceLimitId::MaxLayoutWorkUnits,
         )
+    }
+
+    /// Atomically reserves operation-local bytes retained by one prepared-text owner.
+    pub(crate) fn reserve_prepared_text_retained_bytes(
+        self: &std::sync::Arc<Self>,
+        retained_bytes: usize,
+    ) -> Result<PreparedTextRetainedReservation, ResourceLimitExceeded> {
+        let mut current = self
+            .prepared_text_retained_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        loop {
+            let next = current.checked_add(retained_bytes).ok_or_else(|| {
+                accumulation_overflow(
+                    self.policy,
+                    ResourceLimitPhase::LayoutModel,
+                    RenderResourceLimitId::MaxPreparedTextRetainedBytes,
+                )
+            })?;
+            self.policy.check_prepared_text_retained_bytes(next)?;
+            match self.prepared_text_retained_bytes.compare_exchange_weak(
+                current,
+                next,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    self.prepared_text_retained_bytes_peak
+                        .fetch_max(next, std::sync::atomic::Ordering::Relaxed);
+                    return Ok(PreparedTextRetainedReservation {
+                        meter: std::sync::Arc::clone(self),
+                        retained_bytes,
+                    });
+                }
+                Err(actual) => current = actual,
+            }
+        }
+    }
+
+    fn release_prepared_text_retained_bytes(&self, released_bytes: usize) {
+        if released_bytes == 0 {
+            return;
+        }
+        let previous = self
+            .prepared_text_retained_bytes
+            .fetch_sub(released_bytes, std::sync::atomic::Ordering::Relaxed);
+        debug_assert!(previous >= released_bytes);
     }
 
     /// Reserves the projected serialized bytes contributed by external icon expansion.
@@ -901,6 +1039,16 @@ impl OperationWorkMeter {
 
     pub(crate) fn used(&self) -> usize {
         self.used.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn prepared_text_retained_bytes(&self) -> usize {
+        self.prepared_text_retained_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn prepared_text_retained_bytes_peak(&self) -> usize {
+        self.prepared_text_retained_bytes_peak
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     #[cfg(test)]
@@ -1177,6 +1325,19 @@ mod tests {
     }
 
     #[test]
+    fn prepared_text_retained_limits_report_the_owned_phase_and_metric() {
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 7)
+            .unwrap();
+
+        let error = limits.check_prepared_text_retained_bytes(8).unwrap_err();
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.actual, 8);
+        assert_eq!(error.max, 7);
+    }
+
+    #[test]
     fn operation_work_meter_preflight_does_not_consume_budget() {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 7)
@@ -1226,6 +1387,72 @@ mod tests {
         assert_eq!(charge_error.actual, usize::MAX);
         assert_eq!(charge_error.max, usize::MAX);
         assert_eq!(meter.used(), usize::MAX);
+    }
+
+    #[test]
+    fn operation_prepared_text_reservation_tracks_peak_reconcile_and_release() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 10)
+            .unwrap();
+        let meter = std::sync::Arc::new(OperationWorkMeter::new(policy));
+
+        let mut reservation = meter.reserve_prepared_text_retained_bytes(10).unwrap();
+        assert_eq!(reservation.retained_bytes(), 10);
+        assert_eq!(meter.prepared_text_retained_bytes(), 10);
+        assert_eq!(meter.prepared_text_retained_bytes_peak(), 10);
+        assert_eq!(meter.used(), 0);
+
+        reservation.reconcile_downward(6);
+        assert_eq!(reservation.retained_bytes(), 6);
+        assert_eq!(meter.prepared_text_retained_bytes(), 6);
+        assert_eq!(meter.prepared_text_retained_bytes_peak(), 10);
+
+        drop(reservation);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+        assert_eq!(meter.prepared_text_retained_bytes_peak(), 10);
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn operation_prepared_text_rejection_is_structured_and_does_not_advance() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 10)
+            .unwrap();
+        let meter = std::sync::Arc::new(OperationWorkMeter::new(policy));
+        let reservation = meter.reserve_prepared_text_retained_bytes(8).unwrap();
+
+        let error = meter.reserve_prepared_text_retained_bytes(3).unwrap_err();
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 10);
+        assert_eq!(meter.prepared_text_retained_bytes(), 8);
+        assert_eq!(meter.prepared_text_retained_bytes_peak(), 8);
+
+        drop(reservation);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn operation_prepared_text_reservation_overflow_fails_under_unlimited_policy() {
+        let meter = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let reservation = meter
+            .reserve_prepared_text_retained_bytes(usize::MAX)
+            .unwrap();
+
+        let error = meter.reserve_prepared_text_retained_bytes(1).unwrap_err();
+        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.actual, usize::MAX);
+        assert_eq!(error.max, usize::MAX);
+        assert_eq!(meter.prepared_text_retained_bytes(), usize::MAX);
+
+        drop(reservation);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
     #[test]
