@@ -1022,7 +1022,7 @@ mod tests {
         assert_eq!(defaults.uri(), None);
         assert_eq!(defaults.options_json(), b"");
 
-        assert_eq!(defaults.with_uri(b"").uri(), None);
+        assert_eq!(defaults.clone().with_uri(b"").uri(), None);
         assert_eq!(defaults.with_optional_uri(Some(b"")).uri(), None);
     }
 
@@ -1222,7 +1222,7 @@ mod tests {
     fn reusable_byte_execution_matches_result_data_and_errors_without_metadata() {
         let engine = BindingEngine::from_options(b"").unwrap();
         let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B");
-        let result = engine.execute(request).unwrap();
+        let result = engine.execute(request.clone()).unwrap();
 
         reset_metadata_serialization_count();
         assert_eq!(engine.parse_json(request.source()).unwrap(), result.data());
@@ -1242,7 +1242,7 @@ mod tests {
             BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
                 .with_options_json(br#"{"resources":{"limits":{"max_source_bytes":4}}}"#),
         ] {
-            let expected = engine.execute(request).unwrap_err();
+            let expected = engine.execute(request.clone()).unwrap_err();
 
             reset_metadata_serialization_count();
             assert_eq!(engine.execute_data(request).unwrap_err(), expected);
@@ -1253,7 +1253,7 @@ mod tests {
     #[test]
     fn one_shot_byte_execution_matches_result_data_and_errors_without_metadata() {
         let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B");
-        let result = execute_once(request).unwrap();
+        let result = execute_once(request.clone()).unwrap();
 
         reset_metadata_serialization_count();
         assert_eq!(
@@ -1276,7 +1276,7 @@ mod tests {
             BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
                 .with_options_json(br#"{"resources":{"limits":{"max_source_bytes":4}}}"#),
         ] {
-            let expected = execute_once(request).unwrap_err();
+            let expected = execute_once(request.clone()).unwrap_err();
 
             reset_metadata_serialization_count();
             assert_eq!(execute_once_data(request).unwrap_err(), expected);
@@ -1514,7 +1514,7 @@ mod tests {
                     options_json,
                     operation_control: None,
                 };
-                let one_shot = execute_once(request).unwrap_or_else(|error| {
+                let one_shot = execute_once(request.clone()).unwrap_or_else(|error| {
                     panic!(
                         "one-shot operation `{}` failed: {}",
                         operation.operation_id(),
@@ -1560,6 +1560,60 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_request_propagates_caller_control_into_the_canonical_renderer() {
+        assert_render_request_propagates_control("svg");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_request_propagates_caller_control_into_the_canonical_renderer() {
+        assert_render_request_propagates_control("ascii");
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn assert_render_request_propagates_control(operation_id: &'static str) {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let pre_cancelled = OperationControl::new();
+        pre_cancelled.cancel();
+        let error = engine
+            .execute(
+                BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+                    .with_control(pre_cancelled),
+            )
+            .expect_err("a pre-cancelled request must not produce render output");
+        assert_structured_requested_cancellation(&error, "admission");
+
+        let control = OperationControl::new();
+        // The binding execution path consumes admission and parse checkpoints first. The next
+        // checkpoint must therefore be the canonical renderer's operation admission. A renderer
+        // that substitutes a fresh control would only observe this at the outer postprocess step.
+        control.cancel_after_checkpoints(2);
+
+        let error = engine
+            .execute(
+                BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+                    .with_control(control),
+            )
+            .expect_err("the caller-owned control must cancel before any render output escapes");
+
+        assert_structured_requested_cancellation(&error, "admission");
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn assert_structured_requested_cancellation(error: &BindingError, phase: &'static str) {
+        assert_eq!(error.status(), BindingStatus::Cancelled);
+        assert_eq!(error.resource_details(), None);
+        assert_eq!(
+            error.cancellation_details(),
+            Some(crate::BindingCancellationErrorDetails {
+                reason: "requested",
+                phase,
+            })
+        );
     }
 
     #[cfg(feature = "svg")]

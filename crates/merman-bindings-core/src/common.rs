@@ -1853,7 +1853,6 @@ fn binding_resource_profile(
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub(crate) struct BindingExportResourceOptions {
-    pub(crate) profile: merman::resources::ResourceProfile,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(crate) raster_size_limit: merman::svg::export::RasterSizeLimit,
     pub(crate) embedded_image_limit: merman::svg::export::EmbeddedImageLimit,
@@ -1868,10 +1867,7 @@ pub(crate) fn binding_export_resource_options(
 ) -> Result<BindingExportResourceOptions, BindingError> {
     let default_resources = ResourceOptionsJson::default();
     let values = effective_resource_limits(resources.unwrap_or(&default_resources))?;
-    let profile = binding_resource_profile(resources)?;
-
     Ok(BindingExportResourceOptions {
-        profile,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         raster_size_limit: merman::svg::export::RasterSizeLimit::new(
             export_resource_u32(
