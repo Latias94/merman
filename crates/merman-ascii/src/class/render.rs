@@ -12,12 +12,12 @@ use crate::relation_graph::{
     RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
     RelationSummaryPaintPlan,
 };
-#[cfg(test)]
-use crate::resource::AsciiResourceLimitId;
-use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
+};
 use crate::safe_text::charge_text_layout;
 use crate::text::display_width_with_profile;
-use merman_core::common::parse_generic_types;
+use merman_core::common::GenericTypesPlan;
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
@@ -725,13 +725,12 @@ fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<
     members
         .try_reserve_exact(class.members.len())
         .map_err(|_| layout_allocation_failed())?;
-    members.extend(
-        class
-            .members
-            .iter()
-            .map(member_text)
-            .filter(|line| !line.is_empty()),
-    );
+    for member in &class.members {
+        let line = member_text(member, resources)?;
+        if !line.is_empty() {
+            members.push(line);
+        }
+    }
     if !members.is_empty() {
         sections.push(members);
     }
@@ -740,13 +739,12 @@ fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<
     methods
         .try_reserve_exact(class.methods.len())
         .map_err(|_| layout_allocation_failed())?;
-    methods.extend(
-        class
-            .methods
-            .iter()
-            .map(member_text)
-            .filter(|line| !line.is_empty()),
-    );
+    for method in &class.methods {
+        let line = member_text(method, resources)?;
+        if !line.is_empty() {
+            methods.push(line);
+        }
+    }
     if !methods.is_empty() {
         sections.push(methods);
     }
@@ -758,36 +756,149 @@ fn class_title(class: &ClassNode) -> String {
     decode_html_entities_to_unicode(&class.text).into_owned()
 }
 
-fn member_text(member: &ClassMember) -> String {
-    if !member.display_text.is_empty() {
-        return member.display_text.clone();
-    }
-
-    let mut text = String::new();
-    text.push_str(&member.visibility);
-    push_canonical_generic_types(&mut text, &member.id);
-    if member.member_type == "method"
-        || !member.parameters.is_empty()
-        || !member.return_type.is_empty()
-    {
-        text.push('(');
-        push_canonical_generic_types(&mut text, member.parameters.trim());
-        text.push(')');
-        if !member.return_type.is_empty() {
-            text.push_str(" : ");
-            push_canonical_generic_types(&mut text, member.return_type.trim());
-        }
-    }
-    text.push_str(&member.classifier);
-    text
+fn member_text(member: &ClassMember, resources: &ResourceContext) -> Result<String> {
+    member_text_with_probe(member, resources, || {})
 }
 
-fn push_canonical_generic_types(output: &mut String, value: &str) {
-    if value.contains('~') {
-        output.push_str(&parse_generic_types(value));
-    } else {
-        output.push_str(value);
+fn member_text_with_probe(
+    member: &ClassMember,
+    resources: &ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> Result<String> {
+    if !member.display_text.is_empty() {
+        return Ok(member.display_text.clone());
     }
+
+    let plan = ClassMemberTextPlan::try_new(member, resources)?;
+    plan.materialize(resources, before_materialize)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClassMemberTextPlan<'a> {
+    member: &'a ClassMember,
+    id: GenericTypesPlan<'a>,
+    parameters: Option<GenericTypesPlan<'a>>,
+    return_type: Option<GenericTypesPlan<'a>>,
+    output_bytes: usize,
+    materialization_work: usize,
+}
+
+impl<'a> ClassMemberTextPlan<'a> {
+    fn try_new(member: &'a ClassMember, resources: &ResourceContext) -> Result<Self> {
+        let callable = member.member_type == "method"
+            || !member.parameters.is_empty()
+            || !member.return_type.is_empty();
+
+        let id = plan_canonical_generic_types(&member.id, resources)?;
+        let parameters = if callable {
+            resources.charge_layout_work(member.parameters.len().max(1))?;
+            Some(plan_canonical_generic_types(
+                member.parameters.trim(),
+                resources,
+            )?)
+        } else {
+            None
+        };
+        let return_type = if callable && !member.return_type.is_empty() {
+            resources.charge_layout_work(member.return_type.len().max(1))?;
+            Some(plan_canonical_generic_types(
+                member.return_type.trim(),
+                resources,
+            )?)
+        } else {
+            None
+        };
+
+        let mut output_bytes = member.visibility.len();
+        output_bytes = checked_output_add(resources, output_bytes, id.output_len())?;
+        if let Some(parameters) = parameters {
+            output_bytes = checked_output_add(resources, output_bytes, 2)?;
+            output_bytes = checked_output_add(resources, output_bytes, parameters.output_len())?;
+            if let Some(return_type) = return_type {
+                output_bytes = checked_output_add(resources, output_bytes, 3)?;
+                output_bytes =
+                    checked_output_add(resources, output_bytes, return_type.output_len())?;
+            }
+        }
+        output_bytes = checked_output_add(resources, output_bytes, member.classifier.len())?;
+
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+        let canonical_scan_work = generic_materialization_scan_work(resources, id)?;
+        let canonical_scan_work = parameters.map_or(Ok(canonical_scan_work), |plan| {
+            resources.checked_work_add(
+                canonical_scan_work,
+                generic_materialization_scan_work(resources, plan)?,
+            )
+        })?;
+        let canonical_scan_work = return_type.map_or(Ok(canonical_scan_work), |plan| {
+            resources.checked_work_add(
+                canonical_scan_work,
+                generic_materialization_scan_work(resources, plan)?,
+            )
+        })?;
+        let materialization_work =
+            resources.checked_work_add(output_bytes.max(1), canonical_scan_work)?;
+
+        Ok(Self {
+            member,
+            id,
+            parameters,
+            return_type,
+            output_bytes,
+            materialization_work,
+        })
+    }
+
+    fn materialize(
+        self,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<String> {
+        resources.charge_layout_work(self.materialization_work)?;
+        before_materialize();
+        let mut text = String::new();
+        text.try_reserve_exact(self.output_bytes)
+            .map_err(|_| layout_allocation_failed())?;
+
+        text.push_str(&self.member.visibility);
+        self.id.visit(|fragment| text.push_str(fragment));
+        if let Some(parameters) = self.parameters {
+            text.push('(');
+            parameters.visit(|fragment| text.push_str(fragment));
+            text.push(')');
+        }
+        if let Some(return_type) = self.return_type {
+            text.push_str(" : ");
+            return_type.visit(|fragment| text.push_str(fragment));
+        }
+        text.push_str(&self.member.classifier);
+        debug_assert_eq!(text.len(), self.output_bytes);
+        Ok(text)
+    }
+}
+
+fn plan_canonical_generic_types<'a>(
+    value: &'a str,
+    resources: &ResourceContext,
+) -> Result<GenericTypesPlan<'a>> {
+    // `GenericTypesPlan::new` performs a containment scan, one delimiter/counting pass, and at
+    // most one canonical-output pass. Debit the full conservative bound before any of them run.
+    let planning_work = resources.checked_work_mul(value.len().max(1), 3)?;
+    resources.charge_layout_work(planning_work)?;
+    Ok(GenericTypesPlan::new(value))
+}
+
+fn generic_materialization_scan_work(
+    resources: &ResourceContext,
+    plan: GenericTypesPlan<'_>,
+) -> Result<usize> {
+    plan.materialization_scan_work()
+        .ok_or_else(|| resources.work_overflow())
+}
+
+fn checked_output_add(resources: &ResourceContext, left: usize, right: usize) -> Result<usize> {
+    left.checked_add(right)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
 }
 
 fn relation_layout<'a>(
@@ -2198,6 +2309,7 @@ mod tests {
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagram::RenderSemanticModel;
     use merman_core::{Engine, ParseOptions};
+    use std::cell::Cell;
 
     fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
         let policy = AsciiResourcePolicy::default()
@@ -2293,6 +2405,66 @@ mod tests {
             assert_eq!(details.actual, OVERSIZED_GRAPHEME.len());
             assert_eq!(details.max, 2);
         }
+    }
+
+    #[test]
+    fn reconstructed_generic_member_admits_layout_work_before_materializing() {
+        let mut model =
+            parsed_class_model("classDiagram\nclass Service {\n  #compute(input) Result\n}");
+        let member = model
+            .classes
+            .get_mut("Service")
+            .and_then(|class| class.methods.first_mut())
+            .expect("Service method should exist");
+        member.visibility = "#".to_string();
+        member.id = "compute~Array~Array~T~~~".to_string();
+        member.parameters = "input: Map~Key,Value~".to_string();
+        member.return_type = "Result~List~T~~".to_string();
+        member.classifier = "*".to_string();
+        member.display_text.clear();
+
+        let member = model
+            .classes
+            .get("Service")
+            .and_then(|class| class.methods.first())
+            .expect("Service method should remain available");
+        let unbounded = AsciiResourcePolicy::default();
+        let measured = ResourceContext::new(unbounded);
+        let materialized = Cell::new(false);
+        let rendered = member_text_with_probe(member, &measured, || materialized.set(true))
+            .expect("unbounded generic member should render");
+        let exact_work = measured.layout_work_used();
+        assert!(exact_work > 1);
+        assert!(materialized.get());
+        assert!(
+            rendered.contains("compute<Array<Array<T>>>") && rendered.contains("Map<Key,Value>")
+        );
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact generic-member work limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        let exact_materialized = Cell::new(false);
+        member_text_with_probe(member, &exact_resources, || exact_materialized.set(true))
+            .expect("exact generic-member work should permit materialization");
+        assert!(exact_materialized.get());
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one generic-member work limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        let below_materialized = Cell::new(false);
+        let error =
+            member_text_with_probe(member, &below_resources, || below_materialized.set(true))
+                .expect_err("max-minus-one generic-member work must reject before materialization");
+        assert!(!below_materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual > details.max
+        ));
     }
 
     #[test]
