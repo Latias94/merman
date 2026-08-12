@@ -99,6 +99,8 @@ The renderer consumes the typed XYChart display policy from `merman-core`. `xyCh
 
 The public typed-model path accepts an empty orientation as the legacy vertical default and accepts `vertical` or `horizontal` case-insensitively. Other orientation strings and a Band y-axis return a precise `UnsupportedFeature` error instead of silently changing meaning. `accTitle` and `accDescr` remain browser/accessibility metadata and are intentionally omitted from terminal output.
 
+Header-only charts and typed plots with no terminal slots use an injective `xychart: empty` report instead of returning an empty document. The report preserves orientation, title, typed axes and categories, display policy, and any empty-series metadata through the same byte-length framing and resource limits as other StructuredText disclosures.
+
 ## Relation Summary Diagnostics
 
 Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when class relationships cross namespace/container boundaries, when parallel lane ports cannot land on both endpoint box faces, or when route or overlay collision checks would damage a box. Default output hides that internal reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: crossing` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, and `overlay_collision`; port-fit failures are reported as `route_collision`. Resource limits always return `AsciiError::ResourceLimitExceeded` instead of selecting this summary path.

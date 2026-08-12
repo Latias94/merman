@@ -265,11 +265,13 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     displayName: "XYChart",
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
+    structuredTextFallback: true,
     supportedSemantics: [
       "model-owned x/y coordinates and point labels",
       "band and linear axes with compact scale-aware ticks",
       "grouped bars, topology-resolved lines, and mixed plots",
       "horizontal and vertical orientation, titles, legends, and exact disclosure",
+      "length-framed empty-chart metadata disclosure",
     ],
     limits: [
       "browser hover tooltips are replaced by deterministic terminal disclosure",

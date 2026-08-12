@@ -11,7 +11,7 @@ omitted.
 | --- | --- | --- |
 | `semantic_coverage` | `full`, `partial`, or `null` | How much of the family's typed semantics the terminal output preserves. `null` means no output is available. |
 | `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
-| `structured_text_fallback` | Boolean | Whether a diagrammatic family can intentionally fall back to structured text for cases that exceed its readable geometry boundary. |
+| `structured_text_fallback` | Boolean | Whether a diagrammatic family can intentionally fall back to structured text when no honest readable geometry exists or a case exceeds its readable geometry boundary. |
 
 The legacy `support_level` / `supportLevel` field remains a derived compatibility view:
 `none` maps to `unsupported`, `structured_text` maps to `summary`, and `diagrammatic` maps to its
@@ -43,7 +43,7 @@ readable at ordinary terminal widths.
 | State | Partial | Diagrammatic | No | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | Some presentation metadata and future shape variants are approximated. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, and explicit relation summaries. | Namespace-crossing, port-incompatible, and dense/collision-prone relationships can use lossless `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, keys, four directions, relationship labels/cardinalities including the parent diamond, shared relation components, and explicit relation summaries. | Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; accessibility, comments, and styling metadata are intentionally omitted. |
-| XYChart | Partial | Diagrammatic | No | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, injective length-framed disclosure, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; terminal coordinates are quantized, cross-series same-cell ownership remains approximate, unknown direct-model orientations and band y-axes are rejected, and accessibility title/description metadata is intentionally omitted. |
+| XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, injective length-framed disclosure, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; terminal coordinates are quantized, cross-series same-cell ownership remains approximate, unknown direct-model orientations and band y-axes are rejected, and accessibility title/description metadata is intentionally omitted. |
 
 ## Structured-Text Outputs
 

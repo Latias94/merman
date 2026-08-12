@@ -4,9 +4,10 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::ResourceContext;
 use crate::safe_text::visit_quoted_terminal_text;
 use crate::text::display_width_with_profile;
-use crate::xychart::plot::{ChartChars, SeriesPlan, TerminalChartPlan, format_data_number};
+use crate::xychart::plot::{
+    ChartChars, SeriesPlan, TerminalChartPlan, format_data_number, plot_type_name,
+};
 use crate::{AsciiRenderOptions, Result};
-use merman_core::diagrams::xychart::XyChartPlotType;
 
 pub(super) fn push_value_disclosure_lines(
     out: &mut ChartDocument,
@@ -158,10 +159,7 @@ fn write_value_disclosure_line(
     push_disclosure_usize(line, series.series_index, resources)?;
     line.push_text(" type=", AsciiColorRole::Text, resources)?;
     line.push_text(
-        match series.plot_type {
-            XyChartPlotType::Line => "line",
-            XyChartPlotType::Bar => "bar",
-        },
+        plot_type_name(series.plot_type),
         AsciiColorRole::Text,
         resources,
     )?;

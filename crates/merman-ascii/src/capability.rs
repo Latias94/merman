@@ -645,7 +645,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         display_name: "XYChart",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::Diagrammatic,
-        structured_text_fallback: false,
+        structured_text_fallback: true,
         supported_semantics: &[
             "model-owned x/y sample coordinates and point labels",
             "parser-produced x coordinates derived from typed axes, categories, and sample order",
@@ -655,6 +655,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "titles and axes",
             "legends",
             "length-framed exact data labels and semantic disclosure",
+            "length-framed empty-chart metadata disclosure",
             "configurable plot dimensions",
         ],
         limits: &[
@@ -673,7 +674,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/xychart_model.rs",
-                note: "semantic tests assert model-owned coordinates, parser-derived x positions, grouped lanes, missing-sample gaps, connected horizontal paths, precision, injective disclosure, clipping, collisions, direct-model validation, labels, and resource extents",
+                note: "semantic tests assert model-owned coordinates, parser-derived x positions, grouped lanes, missing-sample gaps, connected horizontal paths, precision, injective disclosure, empty-chart reports, clipping, collisions, direct-model validation, labels, and resource extents",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -1063,10 +1064,16 @@ mod tests {
     fn xychart_capability_discloses_injective_fields_and_direct_model_boundaries() {
         let xychart = find("xychart");
 
+        assert!(xychart.structured_text_fallback);
         assert!(
             xychart
                 .supported_semantics
                 .contains(&"length-framed exact data labels and semantic disclosure")
+        );
+        assert!(
+            xychart
+                .supported_semantics
+                .contains(&"length-framed empty-chart metadata disclosure")
         );
         assert!(
             xychart

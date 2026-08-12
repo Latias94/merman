@@ -94,9 +94,15 @@ test("fallback projection fields derive the compatibility support level", () => 
   );
 
   const xychart = byType.get("xychart")!;
+  assert.equal(xychart.structured_text_fallback, true);
   assert.ok(
     xychart.supported_semantics.some((semantic) =>
       semantic.includes("model-owned x/y coordinates")
+    )
+  );
+  assert.ok(
+    xychart.supported_semantics.includes(
+      "length-framed empty-chart metadata disclosure"
     )
   );
   assert.ok(

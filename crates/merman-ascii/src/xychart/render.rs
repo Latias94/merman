@@ -1,4 +1,5 @@
 mod disclosure;
+mod empty;
 
 use super::plot::{
     ChartChars, SeriesPlan, TerminalChartPlan, ValueRange, XyChartPlotArea,
@@ -104,6 +105,13 @@ impl ChartOrientation {
     const fn is_horizontal(self) -> bool {
         matches!(self, Self::Horizontal)
     }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Vertical => "vertical",
+            Self::Horizontal => "horizontal",
+        }
+    }
 }
 
 pub(crate) fn render_xychart_diagram(
@@ -120,15 +128,16 @@ fn render_xychart_diagram_with_materializer(
 ) -> Result<String> {
     options.validate()?;
     let orientation = validate_xychart_model(model)?;
+    let mut resources = ResourceContext::new(options.resources);
     if model.plots.is_empty() {
-        return Ok(String::new());
+        return empty::render(model, orientation, options, resources);
+    }
+    let cardinality = TerminalChartPlan::measure_cardinality(model, &mut resources)?;
+    if cardinality.is_empty() {
+        return empty::render(model, orientation, options, resources);
     }
 
-    let mut resources = ResourceContext::new(options.resources);
-    let plan = TerminalChartPlan::build(model, &mut resources)?;
-    if plan.slot_count == 0 {
-        return Ok(String::new());
-    }
+    let plan = TerminalChartPlan::build(model, cardinality, &mut resources)?;
 
     let chars = ChartChars::from_options(options);
     let plot_area = XyChartPlotArea::from_options(options);

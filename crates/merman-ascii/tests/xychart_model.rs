@@ -731,11 +731,229 @@ bar [5]
 }
 
 #[test]
-fn xychart_parser_header_only_renders_empty_text() {
+fn xychart_parser_header_only_preserves_empty_chart_state() {
     let rendered = render_xychart("xychart", &AsciiRenderOptions::ascii())
         .expect("empty xychart should render");
 
-    assert_eq!(rendered, "");
+    assert_eq!(
+        rendered,
+        concat!(
+            "xychart: empty\n",
+            "orientation: vertical\n",
+            "xAxis: band title(bytes=0)=\"\" categories=[]\n",
+            "yAxis: linear title(bytes=0)=\"\" min=none max=none\n",
+            "display: showTitle=true showDataLabel=false showDataLabelOutsideBar=false xAxis={showLabel=true showTitle=true showTick=true showAxisLine=true} yAxis={showLabel=true showTitle=true showTick=true showAxisLine=true}\n",
+            "plots: []",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_empty_chart_preserves_title_and_axis_semantics() {
+    let rendered = render_xychart(
+        concat!(
+            "xychart horizontal\n",
+            "title Lost\n",
+            "x-axis [alpha, beta]\n",
+            "y-axis Score 0 --> 10\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("empty authored xychart should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "xychart: empty\n",
+            "orientation: horizontal\n",
+            "title(bytes=4)=\"Lost\"\n",
+            "xAxis: band title(bytes=0)=\"\" categories=[bytes=5 \"alpha\", bytes=4 \"beta\"]\n",
+            "yAxis: linear title(bytes=5)=\"Score\" min=0 max=10\n",
+            "display: showTitle=true showDataLabel=false showDataLabelOutsideBar=false xAxis={showLabel=true showTitle=true showTick=true showAxisLine=true} yAxis={showLabel=true showTitle=true showTick=true showAxisLine=true}\n",
+            "plots: []",
+        )
+    );
+}
+
+#[test]
+fn xychart_empty_plot_preserves_typed_series_metadata() {
+    let model = XyChartDiagramRenderModel {
+        orientation: "vertical".to_string(),
+        title: Some("No samples".to_string()),
+        acc_title: None,
+        acc_descr: None,
+        x_axis: XyChartAxisRenderModel::Band {
+            title: "Category".to_string(),
+            categories: Vec::new(),
+        },
+        y_axis: XyChartAxisRenderModel::Linear {
+            title: "Score".to_string(),
+            min: Some(0.0),
+            max: Some(10.0),
+        },
+        plots: vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: Some("Forecast".to_string()),
+            values: Vec::new(),
+            data: Vec::new(),
+            point_labels: vec!["orphan".to_string()],
+        }],
+        display: XyChartDisplayPolicy::default(),
+    };
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("zero-slot typed XYChart should retain its authored fields");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "xychart: empty\n",
+            "orientation: vertical\n",
+            "title(bytes=10)=\"No samples\"\n",
+            "xAxis: band title(bytes=8)=\"Category\" categories=[]\n",
+            "yAxis: linear title(bytes=5)=\"Score\" min=0 max=10\n",
+            "display: showTitle=true showDataLabel=false showDataLabelOutsideBar=false xAxis={showLabel=true showTitle=true showTick=true showAxisLine=true} yAxis={showLabel=true showTitle=true showTick=true showAxisLine=true}\n",
+            "plots: count=1\n",
+            "plot: index=0 type=line title(bytes=8)=\"Forecast\" values=[] data=[] pointLabels=[bytes=6 \"orphan\"]",
+        )
+    );
+}
+
+#[test]
+fn xychart_empty_projection_obeys_exact_output_byte_budget() {
+    let input = concat!(
+        "xychart\n",
+        "title 空\n",
+        "x-axis [alpha, beta]\n",
+        "y-axis Score 0 --> 10\n",
+    );
+    let rendered = render_xychart(input, &AsciiRenderOptions::ascii())
+        .expect("empty XYChart should render under the default budget");
+    let exact = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
+        .expect("valid exact output-byte limit");
+
+    assert_eq!(
+        render_xychart(input, &exact).expect("exact empty-chart byte budget should render"),
+        rendered
+    );
+
+    let below = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
+        .expect("valid N-1 output-byte limit");
+    let error = render_xychart(input, &below)
+        .expect_err("N-1 empty-chart byte budget should reject the final document");
+    let AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected output-byte resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxOutputBytes);
+    assert_eq!(details.actual, rendered.len());
+    assert_eq!(details.max, rendered.len() - 1);
+}
+
+#[test]
+fn xychart_empty_projection_obeys_exact_document_cell_budget() {
+    let input = concat!(
+        "xychart horizontal\n",
+        "title Lost\n",
+        "x-axis [alpha, beta]\n",
+        "y-axis Score 0 --> 10\n",
+    );
+    let rendered = render_xychart(input, &AsciiRenderOptions::ascii())
+        .expect("empty XYChart should render under the default budget");
+    let exact_cells = rendered.lines().map(str::len).sum::<usize>();
+    let exact = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells)
+        .expect("valid exact document-cell limit");
+
+    assert_eq!(
+        render_xychart(input, &exact).expect("exact empty-chart cell budget should render"),
+        rendered
+    );
+
+    let below = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1)
+        .expect("valid N-1 document-cell limit");
+    let error = render_xychart(input, &below)
+        .expect_err("N-1 empty-chart cell budget should reject the document");
+    let AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected document-cell resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxDocumentCells);
+    assert_eq!(details.actual, exact_cells);
+    assert_eq!(details.max, exact_cells - 1);
+}
+
+#[test]
+fn xychart_empty_projection_enforces_authored_grapheme_budget() {
+    let grapheme = "👩‍💻";
+    let model = XyChartDiagramRenderModel {
+        orientation: "vertical".to_string(),
+        title: Some(grapheme.to_string()),
+        acc_title: None,
+        acc_descr: None,
+        x_axis: XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: Vec::new(),
+        },
+        y_axis: XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: None,
+            max: None,
+        },
+        plots: Vec::new(),
+        display: XyChartDisplayPolicy::default(),
+    };
+    let exact = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len())
+        .expect("valid exact grapheme-byte limit");
+
+    assert!(
+        render_typed_xychart(&model, &exact)
+            .expect("exact empty-chart grapheme budget should render")
+            .contains(grapheme)
+    );
+
+    let below = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1)
+        .expect("valid N-1 grapheme-byte limit");
+    let error = render_typed_xychart(&model, &below)
+        .expect_err("N-1 empty-chart grapheme budget should reject authored text");
+    let AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected grapheme resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxGraphemeBytes);
+    assert_eq!(details.actual, grapheme.len());
+    assert_eq!(details.max, grapheme.len() - 1);
+}
+
+#[test]
+fn xychart_empty_projection_html_escapes_authored_fields() {
+    let model = XyChartDiagramRenderModel {
+        orientation: "vertical".to_string(),
+        title: Some("<empty & safe>".to_string()),
+        acc_title: None,
+        acc_descr: None,
+        x_axis: XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: Vec::new(),
+        },
+        y_axis: XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: None,
+            max: None,
+        },
+        plots: Vec::new(),
+        display: XyChartDisplayPolicy::default(),
+    };
+    let rendered = render_typed_xychart(
+        &model,
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html),
+    )
+    .expect("empty XYChart HTML output should render");
+
+    assert!(rendered.contains("title(bytes=14)=&quot;&lt;empty &amp; safe&gt;&quot;"));
+    assert!(!rendered.contains("<empty"));
 }
 
 #[test]

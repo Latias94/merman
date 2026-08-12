@@ -70,9 +70,13 @@ struct NormalizedTextRange {
 
 impl BudgetedTextDocument {
     pub(crate) fn new(options: &AsciiRenderOptions) -> Self {
+        Self::from_resources(ResourceContext::new(options.resources), options)
+    }
+
+    pub(crate) fn from_resources(resources: ResourceContext, options: &AsciiRenderOptions) -> Self {
         Self {
             lines: Vec::new(),
-            resources: ResourceContext::new(options.resources),
+            resources,
             width_profile: options.terminal_width_profile,
         }
     }

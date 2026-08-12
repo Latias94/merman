@@ -416,26 +416,50 @@ pub(super) struct TerminalChartPlan {
     pub(super) line_series_count: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TerminalChartCardinality {
+    max_data_count: usize,
+    slot_count: usize,
+}
+
+impl TerminalChartCardinality {
+    pub(super) const fn is_empty(self) -> bool {
+        self.slot_count == 0
+    }
+}
+
 impl TerminalChartPlan {
-    pub(super) fn build(
+    pub(super) fn measure_cardinality(
         model: &XyChartDiagramRenderModel,
         resources: &mut ResourceContext,
-    ) -> Result<Self> {
+    ) -> Result<TerminalChartCardinality> {
         let mut max_data_count = 0;
         for plot in &model.plots {
             resources.charge_layout_work(1)?;
-            max_data_count = max_data_count.max(if plot.data.is_empty() {
-                plot.values.len()
-            } else {
-                plot.data.len()
-            });
+            max_data_count = max_data_count.max(effective_sample_count(plot));
         }
-
-        let x_axis = build_axis_plan(&model.x_axis, max_data_count, &model.plots, resources)?;
-        let slot_count = match &x_axis {
-            AxisPlan::Band { categories } => categories.len().max(max_data_count),
-            AxisPlan::Linear { .. } => max_data_count,
+        let category_count = match &model.x_axis {
+            XyChartAxisRenderModel::Band { categories, .. } => categories.len(),
+            XyChartAxisRenderModel::Linear { .. } => 0,
         };
+        Ok(TerminalChartCardinality {
+            max_data_count,
+            slot_count: category_count.max(max_data_count),
+        })
+    }
+
+    pub(super) fn build(
+        model: &XyChartDiagramRenderModel,
+        cardinality: TerminalChartCardinality,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        let x_axis = build_axis_plan(
+            &model.x_axis,
+            cardinality.max_data_count,
+            &model.plots,
+            resources,
+        )?;
+        let slot_count = cardinality.slot_count;
         let category_labels = axis_labels(&x_axis, slot_count, resources)?;
 
         let mut series = Vec::new();
@@ -857,11 +881,7 @@ fn build_series_plan(
     slot_count: usize,
     resources: &mut ResourceContext,
 ) -> Result<SeriesPlan> {
-    let data_len = if plot.data.is_empty() {
-        plot.values.len()
-    } else {
-        plot.data.len()
-    };
+    let data_len = effective_sample_count(plot);
     let mut data = Vec::new();
     data.try_reserve_exact(data_len)
         .map_err(|_| AsciiError::AllocationFailed {
@@ -924,6 +944,21 @@ fn build_series_plan(
         orphan_point_labels,
         bar_lane,
     })
+}
+
+pub(super) const fn effective_sample_count(plot: &XyChartPlotRenderModel) -> usize {
+    if plot.data.is_empty() {
+        plot.values.len()
+    } else {
+        plot.data.len()
+    }
+}
+
+pub(super) const fn plot_type_name(plot_type: XyChartPlotType) -> &'static str {
+    match plot_type {
+        XyChartPlotType::Line => "line",
+        XyChartPlotType::Bar => "bar",
+    }
 }
 
 fn fallback_x_label(axis: &AxisPlan, index: usize, count: usize) -> String {
