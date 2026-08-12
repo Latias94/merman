@@ -9,8 +9,16 @@ macro_rules! define_render_families {
         }
 
         impl RenderFamilyKind {
+            /// Returns the complete typed render-family catalog.
+            ///
+            /// The slice is intentionally returned instead of exposing a fixed-size array so
+            /// callers can iterate the catalog without coupling their public API to its length.
+            pub const fn all() -> &'static [Self] {
+                &[$(Self::$variant),+]
+            }
+
             #[cfg(test)]
-            pub(crate) const ALL: &'static [Self] = &[$(Self::$variant),+];
+            pub(crate) const ALL: &'static [Self] = Self::all();
 
             pub const fn as_str(self) -> &'static str {
                 match self {
@@ -18,11 +26,16 @@ macro_rules! define_render_families {
                 }
             }
 
-            pub(crate) fn from_str(value: &str) -> Option<Self> {
+            /// Parses one stable render-family identifier from the public wire form.
+            pub fn from_id(value: &str) -> Option<Self> {
                 match value {
                     $($id => Some(Self::$variant),)+
                     _ => None,
                 }
+            }
+
+            pub(crate) fn from_str(value: &str) -> Option<Self> {
+                Self::from_id(value)
             }
         }
     };

@@ -1322,43 +1322,7 @@ fn parse_color(value: &str, field: &'static str) -> Result<ThemeColorValue, Bind
 }
 
 fn parse_render_family(value: &str, field: &'static str) -> Result<RenderFamilyKind, BindingError> {
-    let family = match value {
-        "error" => RenderFamilyKind::Error,
-        "mindmap" => RenderFamilyKind::Mindmap,
-        "state" => RenderFamilyKind::State,
-        "sequence" => RenderFamilyKind::Sequence,
-        "zenuml" => RenderFamilyKind::Zenuml,
-        "flowchart" => RenderFamilyKind::Flowchart,
-        "swimlane" => RenderFamilyKind::Swimlane,
-        "architecture" => RenderFamilyKind::Architecture,
-        "class" => RenderFamilyKind::Class,
-        "c4" => RenderFamilyKind::C4,
-        "cynefin" => RenderFamilyKind::Cynefin,
-        "wardley" => RenderFamilyKind::Wardley,
-        "railroad" => RenderFamilyKind::Railroad,
-        "kanban" => RenderFamilyKind::Kanban,
-        "gantt" => RenderFamilyKind::Gantt,
-        "pie" => RenderFamilyKind::Pie,
-        "packet" => RenderFamilyKind::Packet,
-        "timeline" => RenderFamilyKind::Timeline,
-        "journey" => RenderFamilyKind::Journey,
-        "requirement" => RenderFamilyKind::Requirement,
-        "sankey" => RenderFamilyKind::Sankey,
-        "radar" => RenderFamilyKind::Radar,
-        "info" => RenderFamilyKind::Info,
-        "treemap" => RenderFamilyKind::Treemap,
-        "block" => RenderFamilyKind::Block,
-        "er" => RenderFamilyKind::Er,
-        "quadrantChart" => RenderFamilyKind::QuadrantChart,
-        "xychart" => RenderFamilyKind::XyChart,
-        "gitGraph" => RenderFamilyKind::GitGraph,
-        "treeView" => RenderFamilyKind::TreeView,
-        "ishikawa" => RenderFamilyKind::Ishikawa,
-        "eventmodeling" => RenderFamilyKind::EventModeling,
-        "venn" => RenderFamilyKind::Venn,
-        _ => return Err(unsupported(field, value)),
-    };
-    Ok(family)
+    RenderFamilyKind::from_id(value).ok_or_else(|| unsupported(field, value))
 }
 
 fn parse_theme_target(value: &str, field: &'static str) -> Result<ThemeTarget, BindingError> {
@@ -1656,6 +1620,18 @@ mod tests {
                 parse_theme_target(id, "theme.spec.styles.target").unwrap(),
                 target,
                 "binding theme parser must accept semantic target `{id}`"
+            );
+        }
+    }
+
+    #[test]
+    fn every_render_family_id_round_trips_through_the_binding_parser() {
+        for &family in RenderFamilyKind::all() {
+            let id = family.as_str();
+            assert_eq!(
+                parse_render_family(id, "theme.spec.styles.family").unwrap(),
+                family,
+                "binding theme parser must accept typed render family `{id}`"
             );
         }
     }
