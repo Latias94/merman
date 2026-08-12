@@ -22,6 +22,7 @@ pub mod generated;
 pub mod geom;
 mod inline_config;
 pub mod models;
+pub mod operation;
 mod parse_control;
 mod parse_pipeline;
 pub mod preprocess;
@@ -57,6 +58,10 @@ pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
     DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
     diagram_type_metadata_id, diagram_type_render_model_kind,
+};
+pub use operation::{
+    CancelReason, OperationCancelled, OperationControl, OperationLedger, OperationLedgerError,
+    OperationPhase, OperationResourceLimitExceeded,
 };
 pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{

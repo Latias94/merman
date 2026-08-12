@@ -1,10 +1,4 @@
-use std::sync::Arc;
-#[cfg(test)]
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-#[cfg(test)]
-const NO_SCHEDULED_CANCELLATION: usize = usize::MAX;
+use crate::operation::{OperationControl, OperationPhase};
 
 /// Cooperative cancellation control for one parse operation.
 ///
@@ -13,90 +7,50 @@ const NO_SCHEDULED_CANCELLATION: usize = usize::MAX;
 /// from Mermaid syntax and semantic errors.
 #[derive(Debug, Clone)]
 pub struct ParseControl {
-    state: Arc<ParseControlState>,
-    #[cfg(test)]
-    successful_checkpoints_before_cancellation: Arc<AtomicUsize>,
-}
-
-#[derive(Debug)]
-struct ParseControlState {
-    cancelled: AtomicBool,
-    parent: Option<Arc<ParseControlState>>,
+    operation: OperationControl,
 }
 
 impl ParseControl {
     /// Creates an active parse control.
     pub fn new() -> Self {
         Self {
-            state: Arc::new(ParseControlState {
-                cancelled: AtomicBool::new(false),
-                parent: None,
-            }),
-            #[cfg(test)]
-            successful_checkpoints_before_cancellation: Arc::new(AtomicUsize::new(
-                NO_SCHEDULED_CANCELLATION,
-            )),
+            operation: OperationControl::new(),
         }
     }
 
     /// Creates an independently cancellable child that also observes this control.
     pub fn child(&self) -> Self {
         Self {
-            state: Arc::new(ParseControlState {
-                cancelled: AtomicBool::new(false),
-                parent: Some(Arc::clone(&self.state)),
-            }),
-            #[cfg(test)]
-            successful_checkpoints_before_cancellation: Arc::new(AtomicUsize::new(
-                NO_SCHEDULED_CANCELLATION,
-            )),
+            operation: self.operation.child(),
         }
     }
 
     /// Requests cancellation for this control and all of its clones.
     pub fn cancel(&self) {
-        self.state.cancelled.store(true, Ordering::Release);
+        self.operation.cancel();
     }
 
     /// Returns whether cancellation was requested locally or by an ancestor control.
     pub fn is_cancelled(&self) -> bool {
-        let mut state = self.state.as_ref();
-        loop {
-            if state.cancelled.load(Ordering::Acquire) {
-                return true;
-            }
-            let Some(parent) = state.parent.as_deref() else {
-                return false;
-            };
-            state = parent;
-        }
+        self.operation.is_cancelled()
     }
 
     /// Stops the current parse at a cooperative boundary when cancellation was requested.
     pub fn checkpoint(&self) -> ParseControlResult<()> {
-        if self.is_cancelled() {
-            return Err(ParseCancelled);
-        }
-
-        #[cfg(test)]
-        if let Ok(remaining) = self
-            .successful_checkpoints_before_cancellation
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
-                (remaining != NO_SCHEDULED_CANCELLATION).then(|| remaining.saturating_sub(1))
-            })
-            && remaining == 0
-        {
-            self.cancel();
-            return Err(ParseCancelled);
-        }
-
-        Ok(())
+        self.operation
+            .checkpoint_at(OperationPhase::Parse)
+            .map_err(|_| ParseCancelled)
     }
 
-    #[cfg(test)]
-    pub(crate) fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
-        self.successful_checkpoints_before_cancellation
-            .store(successful_checkpoints, Ordering::Relaxed);
+    /// Returns the shared target-neutral operation control for adapter integration.
+    pub fn operation_control(&self) -> &OperationControl {
+        &self.operation
+    }
+
+    #[doc(hidden)]
+    pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
+        self.operation
+            .cancel_after_checkpoints(successful_checkpoints);
     }
 }
 
