@@ -149,7 +149,8 @@ Correctness and stable-identity gates remain mandatory regardless of timing.
 
 - `cargo nextest run -p dugong-graphlib -p dugong --no-fail-fast`
 - `cargo nextest run -p merman-render --no-fail-fast`
-- State and Class `compare-dagre-layout` canaries produce zero node, edge, and graph deltas.
+- The signed State and Class semantic-label and SVG canaries remain green, together with the
+  focused Dugong ordering and geometry tests derived from the historical same-input audit.
 - The all-family SVG and semantic-label comparison remains green.
 
 ## Results

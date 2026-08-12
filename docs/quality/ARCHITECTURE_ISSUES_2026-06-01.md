@@ -508,7 +508,7 @@ report projections, and renderer lookup adapters.
 
 Related decisions:
 
-- ADR-0050 release quality gates / SVG viewBox parity
+- ADR-0081 release quality gates / ADR-0050 SVG viewBox parity
 - ADR-0057 headless SVG text bbox
 - ADR-0062 fixture-derived overrides
 
@@ -1072,10 +1072,10 @@ normalization, JS invocation, Rust/JS diff, and optional golden output.
 
 HPD-050 status:
 
-An initial adapter extraction has landed in
-`crates/xtask/src/cmd/debug/dagre_reference.rs`. `compare-dagre-layout` remains a
-State-only graph producer for now; non-State producers should be added only when a
-source-backed Dagre residual audit needs them.
+The temporary Dagre reference adapter and State/Class differential command completed the intended
+source-backed residual audit. They were retired after the resulting ordering and geometry evidence
+was encoded in focused Dugong tests and signed family canaries; future residual audits should use a
+purpose-built temporary probe rather than restoring a standing JS adapter.
 
 Related decisions:
 

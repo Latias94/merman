@@ -180,8 +180,28 @@ mod tests {
     use crate::client_profile::ClientProtocolProfile;
     use crate::snapshot::snapshot_for_test;
     use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier};
-    use std::str::FromStr;
+    use serde::Deserialize;
+    use std::{fs, path::PathBuf, str::FromStr};
     use tower_lsp_server::ls_types::{Position, Uri};
+
+    #[derive(Debug, Deserialize)]
+    struct TokenEquivalenceEvidence {
+        descriptor_digest: String,
+        words_per_token: usize,
+        family_cases: Vec<TokenEquivalenceCase>,
+        recovery_cases: Vec<TokenEquivalenceCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TokenEquivalenceCase {
+        id: String,
+        family: String,
+        source: String,
+        detection_validity: String,
+        syntax_id: String,
+        effective_layout_id: String,
+        packed_words: Vec<u32>,
+    }
 
     #[test]
     fn full_sequence_is_the_negotiated_planner_packed_sequence() {
@@ -279,6 +299,80 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn all_family_and_recovery_sequences_match_the_generated_cross_surface_evidence() {
+        let evidence_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("contracts/editor-language/token-equivalence-v1.json");
+        let evidence: TokenEquivalenceEvidence = serde_json::from_str(
+            &fs::read_to_string(&evidence_path).expect("generated token equivalence evidence"),
+        )
+        .expect("valid token equivalence evidence");
+        assert_eq!(evidence.descriptor_digest, SEMANTIC_TOKEN_DESCRIPTOR_DIGEST);
+        assert_eq!(
+            evidence.words_per_token,
+            SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN
+        );
+        assert_eq!(evidence.family_cases.len(), 35);
+        assert_eq!(evidence.recovery_cases.len(), 1);
+
+        for (version, case) in evidence
+            .family_cases
+            .iter()
+            .chain(&evidence.recovery_cases)
+            .enumerate()
+        {
+            let uri = Uri::from_str(&format!("file:///token-equivalence/{}.mmd", case.id)).unwrap();
+            let snapshot = snapshot_for_test(uri, version as i32 + 1, case.source.clone());
+            let plan = token_plan(&snapshot, SemanticTokenSupport::all()).unwrap();
+
+            assert_eq!(
+                plan.packed(),
+                case.packed_words,
+                "{} ({}) planner-packed sequence",
+                case.id,
+                case.family
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| detection.diagram_type.as_str()),
+                Some(case.family.as_str()),
+                "{} diagram detection",
+                case.id
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| match detection.validity {
+                        merman_editor_core::DiagramDetectionValidity::Valid => "valid",
+                        merman_editor_core::DiagramDetectionValidity::RecoverableInvalid => {
+                            "recoverable-invalid"
+                        }
+                    }),
+                Some(case.detection_validity.as_str()),
+                "{} recovery identity",
+                case.id
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| detection.syntax_id.as_str()),
+                Some(case.syntax_id.as_str()),
+                "{} syntax identity",
+                case.id
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| detection.effective_layout_id.as_str()),
+                Some(case.effective_layout_id.as_str()),
+                "{} effective layout identity",
+                case.id
+            );
+        }
     }
 
     #[test]

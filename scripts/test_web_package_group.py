@@ -229,50 +229,41 @@ class FakeNpm:
     def __init__(
         self,
         *,
-        fail_tag_for: str | None = None,
-        fail_after_tag_for: str | None = None,
-        fail_observe_after_add_for: str | None = None,
+        fail_publish_for: str | None = None,
+        fail_after_publish_for: str | None = None,
+        omit_tag_for: str | None = None,
+        hidden_integrity_reads_after_publish: int = 0,
     ) -> None:
         self.versions: dict[tuple[str, str], str] = {}
         self.tags: dict[tuple[str, str], str] = {}
         self.published: list[tuple[str, str]] = []
-        self.fail_tag_for = fail_tag_for
-        self.fail_after_tag_for = fail_after_tag_for
-        self.fail_observe_after_add_for = fail_observe_after_add_for
-        self.added_tags: set[tuple[str, str]] = set()
-        self.did_fail_after_tag = False
-        self.did_fail_observe = False
+        self.fail_publish_for = fail_publish_for
+        self.fail_after_publish_for = fail_after_publish_for
+        self.omit_tag_for = omit_tag_for
+        self.hidden_integrity_reads_after_publish = hidden_integrity_reads_after_publish
 
     def version_integrity(self, package: str, version: str) -> str | None:
+        if (
+            (package, version) in self.published
+            and self.hidden_integrity_reads_after_publish > 0
+        ):
+            self.hidden_integrity_reads_after_publish -= 1
+            return None
         return self.versions.get((package, version))
 
     def dist_tag(self, package: str, tag: str) -> str | None:
-        if (
-            package == self.fail_observe_after_add_for
-            and (package, tag) in self.added_tags
-            and not self.did_fail_observe
-        ):
-            self.did_fail_observe = True
-            raise web_package_group.PackageGroupError("simulated post-promotion lookup failure")
         return self.tags.get((package, tag))
 
     def publish(self, tarball: Path, tag: str) -> None:
-        del tag
         record = next(item for item in self.manifest["packages"] if item["tarball"] == tarball.name)
+        if record["name"] == self.fail_publish_for:
+            raise web_package_group.PackageGroupError("simulated publish failure")
         self.versions[(record["name"], self.manifest["version"])] = record["integrity"]
+        if record["name"] != self.omit_tag_for:
+            self.tags[(record["name"], tag)] = self.manifest["version"]
         self.published.append((record["name"], self.manifest["version"]))
-
-    def add_tag(self, package: str, version: str, tag: str) -> None:
-        if package == self.fail_tag_for:
-            raise web_package_group.PackageGroupError("simulated tag failure")
-        self.tags[(package, tag)] = version
-        self.added_tags.add((package, tag))
-        if package == self.fail_after_tag_for and not self.did_fail_after_tag:
-            self.did_fail_after_tag = True
-            raise web_package_group.PackageGroupError("simulated post-request failure")
-
-    def remove_tag(self, package: str, tag: str) -> None:
-        self.tags.pop((package, tag), None)
+        if record["name"] == self.fail_after_publish_for:
+            raise web_package_group.PackageGroupError("simulated response loss after publish")
 
 
 class WebPackageDescriptorTests(unittest.TestCase):
@@ -400,7 +391,7 @@ class WebPackageArtifactTests(unittest.TestCase):
             expected_version=VERSION,
             descriptor=web_package_group.load_descriptor(self.descriptor_path),
         )
-        self.assertEqual([item["id"] for item in manifest["packages"]], ["full", "editor", "render"])
+        self.assertEqual([item["id"] for item in manifest["packages"]], ["editor", "render", "full"])
 
     def test_tarball_rejects_second_wasm_and_legacy_pkg_artifact(self) -> None:
         entry = web_package_group.public_packages(self.data)[0]
@@ -548,66 +539,124 @@ class WebPackageArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(web_package_group.PackageGroupError, "must include the public 'full' package"):
             web_package_group.validate_group_manifest(manifest)
 
-    def test_reconciliation_publishes_missing_versions_then_promotes_every_package(self) -> None:
+    def test_reconciliation_publishes_the_default_package_last(self) -> None:
         path = self.create_manifest()
         manifest = web_package_group.verify_artifact(path, self.artifacts)
         client = FakeNpm()
         client.manifest = manifest
         report = web_package_group.reconcile_group(manifest, self.artifacts, client)
         self.assertEqual(
-            {name for name, _version in client.published},
-            {"@mermanjs/web", "@mermanjs/web-editor", "@mermanjs/web-render"},
+            [name for name, _version in client.published],
+            ["@mermanjs/web-editor", "@mermanjs/web-render", "@mermanjs/web"],
         )
-        self.assertEqual(
-            set(report["promoted"]),
-            {"@mermanjs/web", "@mermanjs/web-editor", "@mermanjs/web-render"},
-        )
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(report["published"], [name for name, _version in client.published])
         for record in manifest["packages"]:
             self.assertEqual(client.tags[(record["name"], "alpha")], VERSION)
 
-    def test_reconciliation_recovers_prior_tags_when_promotion_fails(self) -> None:
+    def test_reconciliation_skips_an_already_released_group(self) -> None:
         path = self.create_manifest()
         manifest = web_package_group.verify_artifact(path, self.artifacts)
-        client = FakeNpm(fail_tag_for="@mermanjs/web-editor")
+        client = FakeNpm()
         client.manifest = manifest
         for record in manifest["packages"]:
             client.versions[(record["name"], VERSION)] = record["integrity"]
-        client.tags[("@mermanjs/web", "alpha")] = "0.8.0-alpha.3"
-        with self.assertRaisesRegex(web_package_group.PackageGroupError, "simulated tag failure"):
-            web_package_group.reconcile_group(manifest, self.artifacts, client)
-        self.assertEqual(client.tags[("@mermanjs/web", "alpha")], "0.8.0-alpha.3")
-        self.assertNotIn(("@mermanjs/web-editor", "alpha"), client.tags)
+            client.tags[(record["name"], "alpha")] = VERSION
 
-    def test_reconciliation_rolls_back_a_tag_when_its_promotion_request_errors_after_succeeding(self) -> None:
+        report = web_package_group.reconcile_group(manifest, self.artifacts, client)
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(report["published"], [])
+        self.assertEqual(
+            report["already_published"],
+            [record["name"] for record in manifest["packages"]],
+        )
+
+    def test_reconciliation_preflights_existing_tags_before_publishing(self) -> None:
         path = self.create_manifest()
         manifest = web_package_group.verify_artifact(path, self.artifacts)
-        client = FakeNpm(fail_after_tag_for="@mermanjs/web")
+        client = FakeNpm()
         client.manifest = manifest
-        for record in manifest["packages"]:
-            client.versions[(record["name"], VERSION)] = record["integrity"]
-        client.tags[("@mermanjs/web", "alpha")] = "0.8.0-alpha.3"
+        existing = manifest["packages"][1]
+        client.versions[(existing["name"], VERSION)] = existing["integrity"]
+        client.tags[(existing["name"], "alpha")] = "0.8.0-alpha.3"
 
-        with self.assertRaisesRegex(web_package_group.ReconciliationError, "post-request failure") as raised:
+        with self.assertRaisesRegex(web_package_group.PackageGroupError, "cannot repair dist-tags"):
             web_package_group.reconcile_group(manifest, self.artifacts, client)
+        self.assertEqual(client.published, [])
 
-        self.assertEqual(raised.exception.report["rollback_failures"], [])
-        self.assertEqual(client.tags[("@mermanjs/web", "alpha")], "0.8.0-alpha.3")
-        self.assertNotIn(("@mermanjs/web-editor", "alpha"), client.tags)
-
-    def test_reconciliation_rolls_back_a_tag_when_its_post_promotion_read_fails(self) -> None:
+    def test_reconciliation_reports_a_missing_tag_after_publish(self) -> None:
         path = self.create_manifest()
         manifest = web_package_group.verify_artifact(path, self.artifacts)
-        client = FakeNpm(fail_observe_after_add_for="@mermanjs/web")
+        first = manifest["packages"][0]
+        client = FakeNpm(omit_tag_for=first["name"])
         client.manifest = manifest
-        for record in manifest["packages"]:
-            client.versions[(record["name"], VERSION)] = record["integrity"]
-        client.tags[("@mermanjs/web", "alpha")] = "0.8.0-alpha.3"
 
-        with self.assertRaisesRegex(web_package_group.PackageGroupError, "post-promotion lookup failure"):
-            web_package_group.reconcile_group(manifest, self.artifacts, client)
+        with self.assertRaisesRegex(
+            web_package_group.ReconciliationError,
+            "registry state was not confirmed",
+        ) as raised:
+            web_package_group.reconcile_group(
+                manifest,
+                self.artifacts,
+                client,
+                observation_attempts=2,
+                observation_delay_seconds=0,
+            )
+        self.assertEqual(raised.exception.report["status"], "failed-during-publish")
+        self.assertEqual(raised.exception.report["published"], [first["name"]])
 
-        self.assertEqual(client.tags[("@mermanjs/web", "alpha")], "0.8.0-alpha.3")
-        self.assertNotIn(("@mermanjs/web-editor", "alpha"), client.tags)
+    def test_reconciliation_stops_when_publish_fails(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        first = manifest["packages"][0]
+        client = FakeNpm(fail_publish_for=first["name"])
+        client.manifest = manifest
+
+        with self.assertRaisesRegex(web_package_group.ReconciliationError, "publish failure") as raised:
+            web_package_group.reconcile_group(
+                manifest,
+                self.artifacts,
+                client,
+                observation_attempts=2,
+                observation_delay_seconds=0,
+            )
+        self.assertEqual(raised.exception.report["status"], "failed-during-publish")
+        self.assertEqual(raised.exception.report["published"], [])
+        self.assertEqual(client.published, [])
+
+    def test_reconciliation_recovers_when_publish_succeeds_before_response_loss(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        first = manifest["packages"][0]
+        client = FakeNpm(fail_after_publish_for=first["name"])
+        client.manifest = manifest
+
+        report = web_package_group.reconcile_group(
+            manifest,
+            self.artifacts,
+            client,
+            observation_delay_seconds=0,
+        )
+
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(report["published"], [record["name"] for record in manifest["packages"]])
+
+    def test_reconciliation_retries_transient_registry_invisibility(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        client = FakeNpm(hidden_integrity_reads_after_publish=2)
+        client.manifest = manifest
+
+        report = web_package_group.reconcile_group(
+            manifest,
+            self.artifacts,
+            client,
+            observation_attempts=3,
+            observation_delay_seconds=0,
+        )
+
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(client.hidden_integrity_reads_after_publish, 0)
 
     def test_reconciliation_rejects_existing_version_with_different_integrity(self) -> None:
         path = self.create_manifest()

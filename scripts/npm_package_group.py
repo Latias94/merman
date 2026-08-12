@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Shared npm registry reconciliation for verified lockstep package groups."""
+"""Publish verified lockstep package groups with npm Trusted Publisher."""
 
 from __future__ import annotations
 
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
@@ -14,6 +15,8 @@ from typing import Any, Protocol
 INTEGRITY_RE = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
 NPM_DIST_TAG_RE = re.compile(r"[a-z][a-z0-9-]*\Z")
 NPMJS_REGISTRY_URL = "https://registry.npmjs.org"
+DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS = 5
+DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS = 2.0
 
 
 class PackageGroupError(ValueError):
@@ -34,10 +37,6 @@ class NpmClient(Protocol):
     def dist_tag(self, package: str, tag: str) -> str | None: ...
 
     def publish(self, tarball: Path, tag: str) -> None: ...
-
-    def add_tag(self, package: str, version: str, tag: str) -> None: ...
-
-    def remove_tag(self, package: str, tag: str) -> None: ...
 
 
 @dataclass
@@ -128,12 +127,6 @@ class NpmCli:
             tag,
         )
 
-    def add_tag(self, package: str, version: str, tag: str) -> None:
-        self._run("dist-tag", "add", f"{package}@{version}", tag)
-
-    def remove_tag(self, package: str, tag: str) -> None:
-        self._run("dist-tag", "rm", package, tag)
-
 
 @dataclass
 class DryRunNpmClient:
@@ -156,14 +149,7 @@ class DryRunNpmClient:
             f"publish {record['name']}@{self.manifest['version']} --tag {tag}"
         )
         self.versions[(record["name"], self.manifest["version"])] = record["integrity"]
-
-    def add_tag(self, package: str, version: str, tag: str) -> None:
-        self.operations.append(f"dist-tag add {package}@{version} {tag}")
-        self.tags[(package, tag)] = version
-
-    def remove_tag(self, package: str, tag: str) -> None:
-        self.operations.append(f"dist-tag rm {package} {tag}")
-        self.tags.pop((package, tag), None)
+        self.tags[(record["name"], tag)] = self.manifest["version"]
 
 
 def validate_registry_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -201,131 +187,142 @@ def validate_registry_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     return manifest
 
 
-def staging_tag(version: str) -> str:
-    return "staging-v" + re.sub(r"[^a-z0-9]+", "-", version.lower()).strip("-")
+def _wait_for_published_state(
+    record: dict[str, Any],
+    version: str,
+    target_tag: str,
+    client: NpmClient,
+    *,
+    attempts: int,
+    delay_seconds: float,
+) -> None:
+    """Wait for one accepted publish to become consistently observable."""
 
-
-def stage_group(
-    manifest: dict[str, Any], artifact_dir: Path, client: NpmClient
-) -> dict[str, Any]:
-    manifest = validate_registry_manifest(manifest)
-    version = manifest["version"]
-    stage = staging_tag(version)
-    report: dict[str, Any] = {
-        "schema_version": 1,
-        "version": version,
-        "target_dist_tag": manifest["target_dist_tag"],
-        "staging_dist_tag": stage,
-        "published": [],
-        "status": "running",
-    }
-    for record in manifest["packages"]:
+    last_observation = "the version was not visible"
+    for attempt in range(1, attempts + 1):
         try:
             observed_integrity = client.version_integrity(record["name"], version)
+        except PackageGroupError as exc:
+            last_observation = f"integrity lookup failed: {exc}"
+        else:
+            if observed_integrity is not None and observed_integrity != record["integrity"]:
+                raise PackageGroupError(
+                    f"{record['name']}@{version}: registry integrity differs from the "
+                    "verified tarball"
+                )
             if observed_integrity is None:
-                client.publish(artifact_dir / record["tarball"], stage)
-                report["published"].append(record["name"])
-                observed_integrity = client.version_integrity(record["name"], version)
-        except PackageGroupError as exc:
-            report["status"] = "failed-before-promotion"
-            report["error"] = str(exc)
-            raise ReconciliationError(str(exc), report) from exc
-        if observed_integrity != record["integrity"]:
-            message = (
-                f"{record['name']}@{version}: registry integrity differs from the verified tarball"
-            )
-            report["status"] = "failed-before-promotion"
-            report["error"] = message
-            raise ReconciliationError(message, report)
-    report["status"] = "staged"
-    return report
-
-
-def restore_tags(
-    client: NpmClient,
-    changed: list[dict[str, Any]],
-    previous: dict[str, str | None],
-    tag: str,
-) -> list[str]:
-    failures: list[str] = []
-    for record in reversed(changed):
-        name = record["name"]
-        prior = previous[name]
-        try:
-            if prior is None:
-                client.remove_tag(name, tag)
-                observed = client.dist_tag(name, tag)
-                if observed is not None:
-                    raise PackageGroupError(f"tag still points to {observed!r}")
+                last_observation = "the version was not visible"
             else:
-                client.add_tag(name, prior, tag)
-                observed = client.dist_tag(name, tag)
-                if observed != prior:
-                    raise PackageGroupError(f"tag points to {observed!r}, expected {prior!r}")
-        except PackageGroupError as exc:
-            failures.append(f"{name}: {exc}")
-    return failures
+                try:
+                    observed_tag = client.dist_tag(record["name"], target_tag)
+                except PackageGroupError as exc:
+                    last_observation = f"dist-tag lookup failed: {exc}"
+                else:
+                    if observed_tag == version:
+                        return
+                    last_observation = (
+                        f"dist-tag {target_tag!r} pointed to {observed_tag!r}"
+                    )
+
+        if attempt < attempts and delay_seconds > 0:
+            time.sleep(delay_seconds)
+
+    raise PackageGroupError(
+        f"{record['name']}@{version}: registry state was not confirmed after "
+        f"{attempts} attempts ({last_observation})"
+    )
 
 
-def promote_group(manifest: dict[str, Any], client: NpmClient) -> dict[str, Any]:
+def reconcile_group(
+    manifest: dict[str, Any],
+    artifact_dir: Path,
+    client: NpmClient,
+    *,
+    observation_attempts: int = DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+    observation_delay_seconds: float = DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
+) -> dict[str, Any]:
+    """Publish missing versions directly under the final tag in manifest order.
+
+    npm Trusted Publisher credentials authorize ``npm publish`` but not a later
+    ``npm dist-tag`` mutation. Existing versions therefore have to be complete
+    and correctly tagged before this function mutates the registry. A retry can
+    safely skip packages published by an earlier partial run.
+    """
+
+    if observation_attempts < 1:
+        raise PackageGroupError("registry observation attempts must be positive")
+    if observation_delay_seconds < 0:
+        raise PackageGroupError("registry observation delay must not be negative")
+
     manifest = validate_registry_manifest(manifest)
     version = manifest["version"]
     target_tag = manifest["target_dist_tag"]
     report: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "version": version,
         "target_dist_tag": target_tag,
-        "staging_dist_tag": staging_tag(version),
-        "promoted": [],
-        "previous_tags": {},
+        "already_published": [],
+        "published": [],
         "status": "running",
     }
-    try:
-        previous = {
-            record["name"]: client.dist_tag(record["name"], target_tag)
-            for record in manifest["packages"]
-        }
-    except PackageGroupError as exc:
-        report["status"] = "failed-before-promotion"
-        report["error"] = str(exc)
-        raise ReconciliationError(str(exc), report) from exc
-    report["previous_tags"] = previous
-    changed: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+
     try:
         for record in manifest["packages"]:
-            if previous[record["name"]] == version:
+            name = record["name"]
+            observed_integrity = client.version_integrity(name, version)
+            if observed_integrity is None:
+                missing.append(record)
                 continue
-            changed.append(record)
-            client.add_tag(record["name"], version, target_tag)
-            observed_tag = client.dist_tag(record["name"], target_tag)
+            if observed_integrity != record["integrity"]:
+                raise PackageGroupError(
+                    f"{name}@{version}: registry integrity differs from the verified tarball"
+                )
+            observed_tag = client.dist_tag(name, target_tag)
             if observed_tag != version:
                 raise PackageGroupError(
-                    f"{record['name']}: dist-tag {target_tag!r} points to "
-                    f"{observed_tag!r} after promotion"
+                    f"{name}@{version}: dist-tag {target_tag!r} points to "
+                    f"{observed_tag!r}; npm Trusted Publisher cannot repair dist-tags, "
+                    "so restore the tag with maintainer credentials before rerunning"
                 )
+            report["already_published"].append(name)
     except PackageGroupError as exc:
-        rollback_failures = restore_tags(client, changed, previous, target_tag)
-        detail = str(exc)
-        if rollback_failures:
-            detail += "; rollback failed: " + "; ".join(rollback_failures)
-        report["status"] = "failed-during-promotion"
-        report["error"] = detail
-        report["promoted"] = [record["name"] for record in changed]
-        report["rollback_failures"] = rollback_failures
-        raise ReconciliationError(detail, report) from exc
-    report["status"] = "promoted"
-    report["promoted"] = [record["name"] for record in changed]
+        report["status"] = "failed-before-publish"
+        report["error"] = str(exc)
+        raise ReconciliationError(str(exc), report) from exc
+
+    for record in missing:
+        name = record["name"]
+        publish_error: PackageGroupError | None = None
+        try:
+            client.publish(artifact_dir / record["tarball"], target_tag)
+            report["published"].append(name)
+        except PackageGroupError as exc:
+            publish_error = exc
+
+        try:
+            _wait_for_published_state(
+                record,
+                version,
+                target_tag,
+                client,
+                attempts=observation_attempts,
+                delay_seconds=observation_delay_seconds,
+            )
+        except PackageGroupError as observation_error:
+            if publish_error is None:
+                error = str(observation_error)
+            else:
+                error = (
+                    f"{publish_error}; registry observation could not confirm whether "
+                    f"npm accepted the publish: {observation_error}"
+                )
+            report["status"] = "failed-during-publish"
+            report["error"] = error
+            raise ReconciliationError(error, report) from observation_error
+
+        if publish_error is not None:
+            report["published"].append(name)
+
+    report["status"] = "released"
     return report
-
-
-def reconcile_group(
-    manifest: dict[str, Any], artifact_dir: Path, client: NpmClient
-) -> dict[str, Any]:
-    staged = stage_group(manifest, artifact_dir, client)
-    promoted = promote_group(manifest, client)
-    return {
-        **staged,
-        "promoted": promoted["promoted"],
-        "previous_tags": promoted["previous_tags"],
-        "status": "reconciled",
-    }

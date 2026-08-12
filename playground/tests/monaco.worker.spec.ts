@@ -46,7 +46,7 @@ const repositoryRoot = path.resolve(
 );
 const tokenEquivalenceEvidence = JSON.parse(
   readFileSync(
-    path.join(repositoryRoot, "editor-language/token-equivalence-v1.json"),
+    path.join(repositoryRoot, "contracts/editor-language/token-equivalence-v1.json"),
     "utf8",
   ),
 ) as TokenEquivalenceEvidence;

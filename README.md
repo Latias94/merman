@@ -48,7 +48,7 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 > [!IMPORTANT]
-> This README describes the current development source. Rust crates and GitHub CLI/LSP artifacts are published at `0.8.0-alpha.5`; npm alpha-flow tests may use a newer commit with the same experimental prerelease version, while language-binding channels publish independently and may trail it. Verify the selected channel and provenance before installing it. Commands labeled as source installs require a reviewed full commit before use in CI or production.
+> This README describes the current development source. Rust crates and GitHub CLI/LSP artifacts are published at `0.8.0-alpha.5`; the Web and Node npm alpha.5 packages were bootstrapped from verified workflow artifacts built at reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, which is newer than the workspace `v0.8.0-alpha.5` tag. Those first npm registry artifacts do not expose npm provenance attestations. Language-binding channels publish independently and may trail it. Verify the selected channel, exact version, and release record before installing it. Commands labeled as source installs require a reviewed full commit before use in CI or production.
 
 ### Rust
 
@@ -135,7 +135,7 @@ The call returns the rendered SVG string in `svg`; it does not mutate the page.
 
 The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
 
-The npm alpha channel can trail this source tree. Check the installed package version and provenance before depending on prerelease-only behavior.
+The npm alpha.5 packages were built from the reviewed source commit recorded by their verified package-group artifacts. The manually bootstrapped registry artifacts do not expose npm provenance attestations, so check the exact installed version and the release record before depending on prerelease-only behavior.
 
 ### Node.js And Static-Site Builds
 
@@ -180,7 +180,7 @@ cargo add merman --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA
 | Analyze Mermaid without SVG | [`merman-analysis`](https://crates.io/crates/merman-analysis) |
 | Add editor intelligence | [`merman-lsp`](https://crates.io/crates/merman-lsp) or the [VS Code preview](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) |
 | Call Merman from another language | [Python](https://pypi.org/project/merman/), [C/C++](https://github.com/Latias94/merman/tree/main/crates/merman-ffi#readme), [Flutter/Dart](https://pub.dev/packages/merman), [Android](https://github.com/Latias94/merman/tree/main/platforms/android#readme), or [Apple](https://github.com/Latias94/merman/tree/main/platforms/apple#readme) |
-| Render in Rustdoc or Typst | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) or the [Typst package](https://github.com/Latias94/merman/tree/main/packages/typst/merman#readme) |
+| Render in Rustdoc or Typst | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) or the [Typst package](https://github.com/Latias94/merman/tree/main/distribution/typst/merman#readme) |
 
 For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
 

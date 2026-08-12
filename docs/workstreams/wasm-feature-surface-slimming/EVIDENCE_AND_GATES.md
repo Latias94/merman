@@ -18,7 +18,7 @@ Use the owner-backed commands from `crates/merman-typst-plugin/README.md`:
 
 ```bash
 cargo run --locked -p xtask -- build-typst-package --profile publish
-cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- typst-plugin-smoke --profile publish
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build

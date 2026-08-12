@@ -131,7 +131,7 @@ Classification:
   therefore browser/system-font measurements, not TreeView layout semantics.
 - `RawBBoxWidth` and `RawBBoxHeight` are already distinct render-environment operations. A host
   with the installed browser fonts can answer them exactly without a TreeView-specific ABI.
-- These observations are suitable for a version- and hash-bound root residual catalog. Do not add
+- These observations belong in the attributable browser root diagnostic artifact. Do not add
   fixture ids, complete labels, a blanket `1/64px` adjustment, or emoji-specific geometry to the
   production renderer.
 

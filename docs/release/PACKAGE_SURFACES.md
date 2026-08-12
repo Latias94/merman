@@ -20,7 +20,7 @@ installation command.
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
 | Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
-| Typst plugin package | `packages/typst/merman` | manual Typst registry submission |
+| Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
@@ -72,7 +72,8 @@ Merman CI keeps publication separate from validation:
   then packs and verifies the complete lockstep npm group without publishing it.
 - `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
   macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native package. Its publisher receives
-  verified tarballs only and reconciles the platform packages before promoting the loader's dist-tag.
+  verified tarballs only and publishes platform packages before the root loader under the requested
+  final dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -108,10 +109,11 @@ names or Cargo features.
 
 Release builds pack every public member into one verified artifact group. The manifest records the
 release version, source commit, target dist-tag, package/profile identity, tarball hash and npm
-integrity, and legal-material digest. Publication first makes every exact version available under a
-staging tag, then promotes the requested public dist-tag only after the complete group verifies. A
-promotion failure restores previously changed tags and leaves a reconciliation report for a safe
-rerun. npm cannot provide cross-package transactions; this is the strongest recoverable boundary.
+integrity, and legal-material digest. The publisher preflights every existing version and target tag,
+then publishes missing versions directly under the final tag in dependency order. npm Trusted
+Publisher cannot perform a later `dist-tag` mutation, so a conflicting existing tag stops the run
+before any publish; a retry safely skips members whose integrity and tag already match. npm cannot
+provide cross-package transactions, so the root package is deliberately published last.
 
 ## Compatibility And Migration Notes
 

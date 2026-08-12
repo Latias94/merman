@@ -1,54 +1,24 @@
 use super::{
     artifact_profiles::{WasmArtifactProfile, load_wasm_size_artifact_profiles},
-    typst_profiles::{
-        TypstPackageProfile, TypstProfileCatalog, load_typst_profiles,
-        validate_typst_artifact_profiles,
-    },
+    typst_profiles::{TypstPackageProfile, TypstProfileCatalog, validate_typst_artifact_profiles},
     wasm_module_surface::{LoadedWasmModule, WasmModuleLoadError, WasmSurfaceProfile},
 };
 use crate::XtaskError;
+#[cfg(test)]
+use crate::cmd::typst_profiles::load_typst_profiles;
 #[cfg(test)]
 use merman_bindings_core::OperationKey;
 use merman_bindings_core::{
     BindingOptionGroupKey, BindingPayloadSchemaKey, ConstructorServiceKey, MetadataKey,
 };
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use wasmi::{Caller, Linker, Store, Val, ValType};
 
 const DEFAULT_SOURCE: &[u8] = b"flowchart TD\nA[Hello] --> B[World]";
 const DEFAULT_OPTIONS_JSON: &[u8] =
     br#"{"fixed_today":"2026-06-10","fixed_local_offset_minutes":480}"#;
 const TYPST_RESULT_PAYLOAD_SCHEMA_VERSION: u64 = 1;
-
-#[derive(Debug)]
-struct TypstPluginSmokeOptions {
-    wasm_file: PathBuf,
-    profile: Option<String>,
-    source: Vec<u8>,
-    options_json: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TypstPluginValidationReport {
-    render_output_bytes: usize,
-    svg_bytes: usize,
-    analysis_output_bytes: usize,
-}
-
-impl TypstPluginValidationReport {
-    pub(crate) const fn render_output_bytes(self) -> usize {
-        self.render_output_bytes
-    }
-
-    pub(crate) const fn svg_bytes(self) -> usize {
-        self.svg_bytes
-    }
-
-    pub(crate) const fn analysis_output_bytes(self) -> usize {
-        self.analysis_output_bytes
-    }
-}
 
 #[derive(Debug, Default)]
 struct CallData {
@@ -64,112 +34,11 @@ struct MemoryError {
     write: bool,
 }
 
-pub(crate) fn typst_plugin_smoke(args: Vec<String>) -> Result<(), XtaskError> {
-    let options = parse_options(args)?;
-    let catalog = load_typst_profiles()?;
-    let profile = catalog.resolve_package(options.profile.as_deref())?;
-    let report = if options.source == DEFAULT_SOURCE && options.options_json == DEFAULT_OPTIONS_JSON
-    {
-        validate_typst_plugin(&options.wasm_file, &catalog, profile)?
-    } else {
-        validate_typst_plugin_with_input(
-            &options.wasm_file,
-            &catalog,
-            profile,
-            &options.source,
-            &options.options_json,
-        )?
-    };
-    println!(
-        "typst-plugin-smoke OK wasm={} profile={} render_output_bytes={} svg_bytes={} analysis_output_bytes={}",
-        options.wasm_file.display(),
-        profile.name(),
-        report.render_output_bytes(),
-        report.svg_bytes(),
-        report.analysis_output_bytes(),
-    );
-    Ok(())
-}
-
-fn parse_options(args: Vec<String>) -> Result<TypstPluginSmokeOptions, XtaskError> {
-    if args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
-    {
-        print_usage();
-        return Err(XtaskError::Usage);
-    }
-
-    let mut wasm_file = None;
-    let mut profile = None;
-    let mut source = DEFAULT_SOURCE.to_vec();
-    let mut options_json = DEFAULT_OPTIONS_JSON.to_vec();
-
-    let mut iter = args.into_iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--wasm" => {
-                wasm_file = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
-            }
-            "--profile" => {
-                profile = Some(iter.next().ok_or(XtaskError::Usage)?);
-            }
-            "--source" => {
-                source = iter.next().ok_or(XtaskError::Usage)?.into_bytes();
-            }
-            "--source-file" => {
-                let path = PathBuf::from(iter.next().ok_or(XtaskError::Usage)?);
-                source = std::fs::read(&path).map_err(|source| XtaskError::ReadFile {
-                    path: path.display().to_string(),
-                    source,
-                })?;
-            }
-            "--options-json" => {
-                options_json = iter.next().ok_or(XtaskError::Usage)?.into_bytes();
-            }
-            "--options-json-file" => {
-                let path = PathBuf::from(iter.next().ok_or(XtaskError::Usage)?);
-                options_json = std::fs::read(&path).map_err(|source| XtaskError::ReadFile {
-                    path: path.display().to_string(),
-                    source,
-                })?;
-            }
-            _ => {
-                print_usage();
-                return Err(XtaskError::Usage);
-            }
-        }
-    }
-
-    let wasm_file = wasm_file.ok_or_else(|| {
-        print_usage();
-        XtaskError::Usage
-    })?;
-
-    Ok(TypstPluginSmokeOptions {
-        wasm_file,
-        profile,
-        source,
-        options_json,
-    })
-}
-
-fn print_usage() {
-    println!("usage: xtask typst-plugin-smoke --wasm <plugin.wasm> [options]");
-    println!();
-    println!("Options:");
-    println!("  --profile <name>             Public package profile (default: publish)");
-    println!("  --source <text>              Mermaid source bytes to pass to render_svg_json");
-    println!("  --source-file <path>         Read Mermaid source bytes from a file");
-    println!("  --options-json <json>        Options JSON bytes to pass to render_svg_json");
-    println!("  --options-json-file <path>   Read options JSON bytes from a file");
-}
-
 pub(crate) fn validate_typst_plugin(
     wasm_file: &Path,
     catalog: &TypstProfileCatalog,
     profile: &TypstPackageProfile,
-) -> Result<TypstPluginValidationReport, XtaskError> {
+) -> Result<(), XtaskError> {
     validate_typst_plugin_with_input(
         wasm_file,
         catalog,
@@ -185,7 +54,7 @@ pub(crate) fn validate_typst_plugin_with_input(
     profile: &TypstPackageProfile,
     source: &[u8],
     options_json: &[u8],
-) -> Result<TypstPluginValidationReport, XtaskError> {
+) -> Result<(), XtaskError> {
     let artifact_profile = validate_requested_profile(catalog, profile)?;
     let mut instance = PluginInstance::new(wasm_file)?;
 
@@ -217,7 +86,7 @@ pub(crate) fn validate_typst_plugin_with_input(
         vec![source.to_vec(), options_json.to_vec()],
     )?;
     let render_payload = parse_json("render_svg_json", &render_output)?;
-    let svg_bytes = assert_render_payload(&render_payload)?;
+    assert_render_payload(&render_payload)?;
 
     let analysis_output =
         instance.call("analyze_json", vec![source.to_vec(), options_json.to_vec()])?;
@@ -275,11 +144,7 @@ pub(crate) fn validate_typst_plugin_with_input(
         }
     }
 
-    Ok(TypstPluginValidationReport {
-        render_output_bytes: render_output.len(),
-        svg_bytes,
-        analysis_output_bytes: analysis_output.len(),
-    })
+    Ok(())
 }
 
 fn validate_requested_profile(
@@ -1373,39 +1238,6 @@ fn wasm_minimal_protocol_send_result_to_host(mut caller: Caller<CallData>, ptr: 
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn cli_defaults_to_publish_and_accepts_only_public_profile_aliases() {
-        let options = parse_options(vec!["--wasm".to_string(), "plugin.wasm".to_string()])
-            .expect("default smoke options");
-        let catalog = load_typst_profiles().expect("Typst package descriptor");
-
-        assert!(options.profile.is_none());
-        assert_eq!(
-            catalog
-                .resolve_package(options.profile.as_deref())
-                .expect("default publish profile")
-                .name(),
-            "publish"
-        );
-
-        let options = parse_options(vec![
-            "--wasm".to_string(),
-            "plugin.wasm".to_string(),
-            "--profile".to_string(),
-            "publish".to_string(),
-        ])
-        .expect("named smoke profile");
-        assert!(catalog.resolve_package(options.profile.as_deref()).is_ok());
-        for private_name in [
-            "minimal",
-            "typst-full-elk",
-            "typst-bridge",
-            "typst-render-only-no-elk",
-        ] {
-            assert!(catalog.resolve_package(Some(private_name)).is_err());
-        }
-    }
 
     #[test]
     fn canonical_artifact_recipe_owns_publish_capabilities() {

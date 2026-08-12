@@ -19,9 +19,7 @@ try:
         NpmCli,
         PackageGroupError,
         ReconciliationError,
-        promote_group,
         reconcile_group,
-        stage_group,
         validate_registry_manifest,
     )
 except ModuleNotFoundError:
@@ -31,9 +29,7 @@ except ModuleNotFoundError:
         NpmCli,
         PackageGroupError,
         ReconciliationError,
-        promote_group,
         reconcile_group,
-        stage_group,
         validate_registry_manifest,
     )
 
@@ -403,14 +399,13 @@ def cli() -> argparse.ArgumentParser:
     verify.add_argument("--source-sha")
     verify.add_argument("--target-dist-tag")
 
-    for command_name in ("stage", "promote", "reconcile"):
-        command = subparsers.add_parser(command_name)
-        command.add_argument("--manifest", type=Path, required=True)
-        command.add_argument("--artifact-dir", type=Path, required=True)
-        command.add_argument("--descriptor", type=Path, required=True)
-        command.add_argument("--registry", default=NPMJS_REGISTRY_URL)
-        command.add_argument("--report", type=Path, required=True)
-        command.add_argument("--dry-run", action="store_true")
+    reconcile = subparsers.add_parser("reconcile")
+    reconcile.add_argument("--manifest", type=Path, required=True)
+    reconcile.add_argument("--artifact-dir", type=Path, required=True)
+    reconcile.add_argument("--descriptor", type=Path, required=True)
+    reconcile.add_argument("--registry", default=NPMJS_REGISTRY_URL)
+    reconcile.add_argument("--report", type=Path, required=True)
+    reconcile.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -441,12 +436,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"validated {len(manifest['packages'])} packed Node package(s)")
             return 0
         client = DryRunNpmClient(manifest) if args.dry_run else NpmCli(args.registry)
-        operation = {
-            "stage": lambda: stage_group(manifest, args.artifact_dir, client),
-            "promote": lambda: promote_group(manifest, client),
-            "reconcile": lambda: reconcile_group(manifest, args.artifact_dir, client),
-        }[args.command]
-        report = operation()
+        report = reconcile_group(manifest, args.artifact_dir, client)
         if isinstance(client, DryRunNpmClient):
             report["dry_run_operations"] = client.operations
         write_json(args.report, report)

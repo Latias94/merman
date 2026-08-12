@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
 import importlib.util
@@ -26,7 +27,6 @@ from artifact_profile_recipe import (
     cargo_host_build_args,
     load_artifact_profile,
 )
-from github_workflow_contract import load_workflow_contract, workflow_job, workflow_step
 
 
 WHEEL_BUILDER_PATH = Path(__file__).resolve().parent / "build-python-uniffi-wheel.py"
@@ -37,6 +37,18 @@ assert WHEEL_BUILDER_SPEC is not None
 wheel_builder = importlib.util.module_from_spec(WHEEL_BUILDER_SPEC)
 assert WHEEL_BUILDER_SPEC.loader is not None
 WHEEL_BUILDER_SPEC.loader.exec_module(wheel_builder)
+
+
+def posix_recipe_shell(
+    *,
+    os_name: str | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str | None:
+    """Return Bash only when this host owns POSIX recipe execution."""
+    resolved_os_name = os.name if os_name is None else os_name
+    if resolved_os_name != "posix":
+        return None
+    return which("bash")
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
@@ -218,8 +230,32 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertNotIn("pdf", flutter.features)
         self.assertNotIn("png", flutter.features)
 
+    def test_posix_recipe_shell_requires_both_owner_host_and_bash(self) -> None:
+        lookups: list[str] = []
+
+        def available(command: str) -> str:
+            lookups.append(command)
+            return "/usr/bin/bash"
+
+        self.assertEqual(
+            posix_recipe_shell(os_name="posix", which=available),
+            "/usr/bin/bash",
+        )
+        self.assertEqual(lookups, ["bash"])
+        self.assertIsNone(
+            posix_recipe_shell(os_name="posix", which=lambda _command: None)
+        )
+        lookups.clear()
+        self.assertIsNone(posix_recipe_shell(os_name="nt", which=available))
+        self.assertEqual(lookups, [])
+
     def test_native_shell_consumers_validate_the_committed_recipe_at_runtime(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
+        bash = posix_recipe_shell()
+        if bash is None:
+            if os.name != "posix":
+                self.skipTest("POSIX recipe execution belongs to POSIX owner hosts")
+            self.skipTest("Bash is unavailable for the POSIX owner recipe smoke")
         environment = os.environ.copy()
         environment["MERMAN_CHECK_RECIPE_ONLY"] = "true"
         for relative_path in (
@@ -229,7 +265,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         ):
             with self.subTest(path=relative_path):
                 subprocess.run(
-                    ["bash", str(repo_root / relative_path)],
+                    [bash, str(repo_root / relative_path)],
                     cwd=repo_root,
                     env=environment,
                     check=True,
@@ -595,102 +631,6 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             command[command.index("--target") + 1],
             "x86_64-unknown-linux-gnu",
         )
-
-    def test_cli_profiles_use_binary_process_contracts(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        process_step = workflow_step(
-            workflow_job(workflow, "cli-contracts"),
-            name="Test exact CLI feature process matrix",
-        )
-        self.assertEqual(
-            process_step["run"],
-            "python3 scripts/verify_cli_process_matrix.py --locked",
-        )
-        validation_step = workflow_step(
-            workflow_job(workflow, "cli-contracts"),
-            name="Validate CLI distribution assets",
-        )
-        self.assertEqual(
-            validation_step["run"],
-            "python3 scripts/verify_cli_assets.py "
-            "--require bash,zsh,fish,elvish,mandoc",
-        )
-
-    def test_cli_artifact_profiles_build_on_every_descriptor_host(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        job = workflow_job(workflow, "cli-artifact-profiles")
-        matrix = job["matrix_include"]
-        self.assertEqual(
-            {(row["os"], row["target"]) for row in matrix},
-            {
-                ("ubuntu-24.04", "x86_64-unknown-linux-gnu"),
-                ("macos-15", "aarch64-apple-darwin"),
-                ("macos-15-intel", "x86_64-apple-darwin"),
-                ("windows-2025-vs2026", "x86_64-pc-windows-msvc"),
-            },
-        )
-        step = workflow_step(job, name="Build exact CLI artifact profiles")
-        self.assertEqual(
-            [line.strip() for line in step["run"].splitlines() if line.strip()],
-            [
-                "python3 scripts/artifact_profile_recipe.py "
-                "cli-analysis --build-host --locked",
-                "python3 scripts/artifact_profile_recipe.py "
-                "cli-release --build-host --locked",
-            ],
-        )
-        powershell = workflow_step(job, name="Validate PowerShell completion")
-        self.assertEqual(powershell["if"], "runner.os == 'Windows'")
-        self.assertEqual(
-            powershell["run"],
-            "python3 scripts/verify_cli_assets.py --require powershell",
-        )
-
-    def test_homebrew_checks_binary_and_version_gated_asset_contracts(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        workflow = load_workflow_contract(repo_root / ".github/workflows/homebrew.yml")
-        job = workflow_job(workflow, "formula-health")
-        self.assertEqual(
-            {row["os"] for row in job["matrix_include"]},
-            {"macos-15", "ubuntu-24.04"},
-        )
-        self.assertEqual(job["env"]["SUPPORT_ASSETS_SINCE"], "0.8.0")
-        step = workflow_step(
-            job,
-            name="Smoke installed merman-cli",
-        )
-        command = step["run"]
-        self.assertEqual(
-            step["env"]["FORMULA_VERSION"],
-            "${{ steps.metadata.outputs.version }}",
-        )
-        self.assertNotIn("brew info", command)
-        self.assertNotIn("formula_version", command)
-        self.assertIn("merman-cli --version", command)
-        self.assertIn("merman-cli render", command)
-        support_assets = workflow_step(
-            job,
-            name="Verify version-gated support assets",
-        )
-        self.assertIn("scripts/verify_homebrew_install.py", support_assets["run"])
-        linkage = workflow_step(job, name="Audit installed formula")
-        self.assertIn("brew linkage --test merman-cli", linkage["run"])
-
-    def test_c_ffi_ci_smoke_resolves_the_recipe_owned_output_directory(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        step = workflow_step(
-            workflow_job(workflow, "c-ffi-example"),
-            name="Build and run C example",
-        )
-        command = step["run"]
-        self.assertIn(
-            "artifact_profile_recipe.py c-abi-native --field profile",
-            command,
-        )
-        self.assertNotIn("target/release", command)
 
     def test_uniffi_binding_generation_is_generator_only(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

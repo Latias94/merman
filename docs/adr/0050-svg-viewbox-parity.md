@@ -11,7 +11,8 @@ Mermaid renders SVG using a browser DOM and then derives the final SVG viewport 
 - `svgElem.attr('viewBox', ...)` based on that bounding box
 - `configureSvgSize(...)` which sets `width="100%"` and `style="max-width: ...px;"` when `useMaxWidth=true`
 
-In `merman`, we aim for 1:1 parity with Mermaid `@11.12.3` while staying headless (no browser DOM).
+In `merman`, we aim for source-backed parity with Mermaid `@11.16.1` while staying headless (no
+browser DOM).
 
 Historically, our DOM parity tooling (`xtask` SVG DOM signatures) ignored the root `<svg>` `viewBox`
 and `style` attributes in parity modes to reduce noise while iterating on layout and shape output.
@@ -21,13 +22,23 @@ without being noticed if they are always excluded from parity checks.
 
 ## Decision
 
-1. Introduce a new DOM signature mode: `parity-root`.
-   - Same as `parity` (masks geometry noise and ignores `<style>` content).
-   - Additionally compares the root `<svg>` `viewBox` and `style` attributes.
+1. Keep `parity-root` as the root-aware DOM mode. It compares the normalized descendant tree and
+   invokes the blocking root viewport contract for every rendered fixture. The contract rejects
+   invalid or non-finite origins/dimensions, non-positive viewports, changed width/height strategy,
+   changed non-numeric root style, and changed `max-width`/`viewBox` relationship. Exact origin
+   policy remains blocking in the deterministic fixture set, while browser bbox origins remain
+   diagnostic.
 
-2. For diagrams that use Mermaid's `setupGraphViewbox` behavior (e.g. Sankey), implement headless
-   bounding-box calculation that includes text ascent so that `viewBox` can match the upstream
-   baselines within the configured DOM numeric rounding (`--dom-decimals`).
+2. Retain a small exact deterministic fixture set in
+   `fixtures/_verification/deterministic-root-contracts.json`. Each row is bound to the pinned
+   input and upstream SVG hashes and catches a deterministic root regression without becoming a
+   production override or a family tolerance.
+
+3. Treat browser-owned exact bbox values as diagnostics, not routine acceptance policy. The
+   schedule/release browser artifact may report exact root and painted-content rectangles together
+   with browser identity. A separate browser-mounted cropping oracle checks that painted SVG and
+   `foreignObject` descendants remain inside the final viewport using one coordinate-quantization
+   epsilon. It does not relax descendant, semantic, or root-contract checks.
 
 ## Alternatives Considered
 
@@ -47,11 +58,16 @@ without being noticed if they are always excluded from parity checks.
 
 ## Consequences
 
-- `parity-root` provides a stronger guardrail for SVG size and `viewBox` parity without requiring
-  full CSS parity.
+- `parity-root` provides a blocking guardrail for SVG structure, finite positive dimensions,
+  viewport policy, deterministic examples, and descendant parity without requiring browser bbox
+  numerics to be stable across fonts and browser versions.
 - Some renderers must implement explicit bounding-box logic (including text ascent) to satisfy
   `viewBox` comparisons against upstream baselines.
-- This is an incremental step toward full SVG XML parity while keeping the headless design goals.
+- Browser-only root movement remains visible in reports and does not require fixture-specific
+  production overrides. Exact browser movement is attributable through a schedule/release report,
+  while cropping remains independently blocking.
 
-For Mermaid `@11.12.3`, Flowchart root SVG viewport calculation now also follows this approach by
-including the diagram title in the headless bounding box before emitting the root `viewBox`.
+For Mermaid `@11.16.1`, Flowchart root SVG viewport calculation follows the same source-backed
+approach by including the diagram title in the headless bounding box before emitting the root
+`viewBox`. Browser measurement differences remain an artifact contract rather than a reason to
+weaken the shared comparator.

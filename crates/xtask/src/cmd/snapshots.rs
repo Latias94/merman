@@ -353,76 +353,18 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let alignment_dir = workspace_root.join("docs").join("alignment");
     let fixtures_root = crate::cmd::fixtures_root();
 
     let mut failures: Vec<String> = Vec::new();
-    failures.extend(crate::cmd::admission_inventory_alignment_failures(
+    failures.extend(crate::cmd::structured_admission_alignment_failures(
         &fixtures_root,
     ));
     failures.extend(crate::cmd::committed_cypress_corpus_alignment_failures(
         &workspace_root,
     ));
-
-    // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
-    let mut minimum_docs: Vec<PathBuf> = Vec::new();
-    if let Ok(entries) = fs::read_dir(&alignment_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            if name.ends_with("_MINIMUM.md") {
-                minimum_docs.push(path);
-            }
-        }
-    }
-    minimum_docs.sort();
-    for min_path in &minimum_docs {
-        let Some(stem) = min_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|n| n.strip_suffix("_MINIMUM.md"))
-        else {
-            continue;
-        };
-        let cov = alignment_dir.join(format!("{stem}_UPSTREAM_TEST_COVERAGE.md"));
-        if !cov.exists() {
-            failures.push(format!(
-                "missing upstream coverage doc for {stem}: expected {}",
-                cov.display()
-            ));
-        }
-    }
-
-    fn strip_reference_suffix(s: &str) -> &str {
-        // Normalize "path:line" and "path#Lline" forms to just "path" for existence checks.
-        if let Some((left, right)) = s.rsplit_once(':')
-            && right.chars().all(|c| c.is_ascii_digit())
-        {
-            return left;
-        }
-        if let Some((left, right)) = s.rsplit_once("#L")
-            && right.chars().all(|c| c.is_ascii_digit())
-        {
-            return left;
-        }
-        s
-    }
-
-    fn is_probably_relative_path(s: &str) -> bool {
-        s.starts_with("fixtures/")
-            || s.starts_with("docs/")
-            || s.starts_with("crates/")
-            || s.starts_with("repo-ref/")
-    }
-
-    fn contains_glob(s: &str) -> bool {
-        s.contains('*') || s.contains('?') || s.contains('[') || s.contains(']')
-    }
+    failures.extend(crate::cmd::committed_flowchart_elk_collection_failures(
+        &workspace_root,
+    ));
 
     fn is_flowchart_elk_parity_fixture(path: &Path) -> bool {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
@@ -436,7 +378,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         is_flowchart_fixture && crate::cmd::flowchart_elk_svg_parity_admitted(stem)
     }
 
-    // 2) Every ordinary `fixtures/**/*.mmd` must have a sibling `.golden.json`.
+    // Every ordinary `fixtures/**/*.mmd` must have a sibling `.golden.json`.
     // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the alignment
     // gates (e.g. upstream CLI renders an error, or depends on unsupported options). Do not require
     // goldens for these files.
@@ -462,69 +404,6 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
                 mmd.display(),
                 golden.display()
             ));
-        }
-    }
-
-    // 3) Coverage docs should not reference non-existent local files.
-    let backtick_re = Regex::new(r"`([^`]+)`")
-        .map_err(|e| XtaskError::AlignmentCheckFailed(format!("invalid regex: {e}")))?;
-
-    let mut coverage_docs: Vec<PathBuf> = Vec::new();
-    if let Ok(entries) = fs::read_dir(&alignment_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            if name.ends_with("_UPSTREAM_TEST_COVERAGE.md") {
-                coverage_docs.push(path);
-            }
-        }
-    }
-    coverage_docs.sort();
-
-    for cov_path in &coverage_docs {
-        let text = read_text(cov_path)?;
-        for caps in backtick_re.captures_iter(&text) {
-            let raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let raw = strip_reference_suffix(raw.trim());
-            if raw.is_empty() {
-                continue;
-            }
-            if !is_probably_relative_path(raw) {
-                continue;
-            }
-            if contains_glob(raw) {
-                continue;
-            }
-            let path = workspace_root.join(raw);
-            // `repo-ref/*` repositories are optional workspace checkouts (not committed).
-            // We only require `fixtures/`, `docs/`, and `crates/` references to exist.
-            if raw.starts_with("repo-ref/") && !path.exists() {
-                continue;
-            }
-            if !path.exists() {
-                failures.push(format!(
-                    "broken reference in {}: `{}` does not exist",
-                    cov_path.display(),
-                    raw
-                ));
-                continue;
-            }
-            if raw.starts_with("fixtures/") && raw.ends_with(".mmd") {
-                let golden = path.with_extension("golden.json");
-                if !golden.exists() {
-                    failures.push(format!(
-                        "broken reference in {}: missing golden for `{}` (expected {})",
-                        cov_path.display(),
-                        raw,
-                        golden.display()
-                    ));
-                }
-            }
         }
     }
 

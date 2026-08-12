@@ -248,7 +248,7 @@ result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
 status = api.execute_collect(engine, &request, &result);
 ```
 
-Operation enums are generated from [`abi/merman-v3.json`](../../abi/merman-v3.json): SVG, PNG, JPEG,
+Operation enums are generated from [`contracts/abi/merman-v3.json`](../../contracts/abi/merman-v3.json): SVG, PNG, JPEG,
 PDF, ASCII, semantic JSON, layout JSON, analysis JSON, analysis facts, validation JSON, and the two
 URI-requiring document analysis operations. `MERMAN_NATIVE_OPERATION_*_REQUIRES_URI_*` identifies
 the two document operations; pass an empty URI for all other operations. When a requested
@@ -379,7 +379,7 @@ function-pointer types are declared `noexcept` to make this contract visible to 
 - The descriptor and generated Rust/C/Dart projections are the single current ABI authority.
   Descriptor validation, the derived minimum-prefix layout digest, generated-file freshness, and
   current-header lifecycle tests cover layout, ownership, token, status, and operation semantics.
-- A breaking semantic change is reviewed directly in `abi/merman-v3.json` and its generated
+- A breaking semantic change is reviewed directly in `contracts/abi/merman-v3.json` and its generated
   artifacts; no second semantic snapshot or hand-maintained approval digest is required.
 - A future generated header may add slots. Current consumers require the complete table they were
   generated against instead of maintaining hand-written historical fallbacks.

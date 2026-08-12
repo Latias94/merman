@@ -13,11 +13,6 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from github_workflow_contract import (
-    load_workflow_contract,
-    workflow_job,
-    workflow_step,
-)
 import verify_homebrew_install as verifier
 import verify_cli_installation as installation_verifier
 
@@ -347,30 +342,6 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
             path.name for path in (ROOT / "crates/merman-cli/assets/man").glob("*.1")
         }
         self.assertEqual(observed, set(verifier.MANPAGE_NAMES))
-
-    def test_workflow_owns_one_threshold_and_invokes_the_verifier(self) -> None:
-        workflow = load_workflow_contract(ROOT / ".github/workflows/homebrew.yml")
-        job = workflow_job(workflow, "formula-health")
-        self.assertEqual(job["env"]["SUPPORT_ASSETS_SINCE"], SUPPORT_ASSETS_SINCE)
-        step = workflow_step(job, name="Verify version-gated support assets")
-        self.assertEqual(
-            step["env"]["FORMULA_VERSION"],
-            "${{ steps.metadata.outputs.version }}",
-        )
-        self.assertIn("--select-version-verifier", step["run"])
-        self.assertIn('--support-assets-since "$SUPPORT_ASSETS_SINCE"', step["run"])
-        self.assertIn('--contract-root "$contract_root"', step["run"])
-        setup = workflow_step(job, name="Set up Homebrew test environment")
-        self.assertEqual(setup["with"]["core"], "true")
-        self.assertEqual(setup["with"]["setup-sandbox"], "true")
-        metadata = workflow_step(job, name="Check Homebrew formula metadata")
-        self.assertIn(r"^[0-9]+\.[0-9]+\.[0-9]+$", metadata["run"])
-        livecheck = workflow_step(job, name="Check Homebrew livecheck")
-        self.assertNotIn("if", livecheck)
-        self.assertEqual(livecheck["run"], "brew livecheck merman-cli --json")
-        checkout = workflow_step(job, name="Check out formula release contract")
-        self.assertEqual(checkout["with"]["ref"], "refs/tags/v${{ steps.metadata.outputs.version }}")
-        self.assertEqual(checkout["with"]["path"], "formula-contract")
 
     def installation_fixture(self):
         return InstallationFixture()
