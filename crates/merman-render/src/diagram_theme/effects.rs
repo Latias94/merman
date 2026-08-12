@@ -1,11 +1,11 @@
 use super::ThemeCompileValidationError;
 use super::canvas::ThemeColorValue;
+use super::resources::{
+    MAX_EFFECT_BINDINGS_HARD_CAP, MAX_EFFECT_GRAPHS_HARD_CAP,
+    MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP, MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP,
+    ThemeResourceLimitExceeded, ThemeResourcePolicy,
+};
 use super::semantic::ThemeTarget;
-
-const MAX_EFFECT_GRAPHS: usize = 32;
-const MAX_EFFECT_PRIMITIVES: usize = 256;
-const MAX_EFFECT_BINDINGS: usize = 64;
-const MAX_TURBULENCE_OCTAVES: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectInput {
@@ -113,7 +113,7 @@ impl EffectPrimitive {
             } => {
                 validate_nonnegative(*base_frequency_x, "effects.turbulence.base_frequency_x")?;
                 validate_nonnegative(*base_frequency_y, "effects.turbulence.base_frequency_y")?;
-                if *octaves == 0 || *octaves > MAX_TURBULENCE_OCTAVES {
+                if *octaves == 0 || usize::from(*octaves) > MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP {
                     return Err(ThemeCompileValidationError::InvalidNumber {
                         field: "effects.turbulence.octaves",
                     });
@@ -144,7 +144,7 @@ impl EffectGraph {
         validate_effect_id(&id)?;
         region.validate()?;
         let primitives = primitives.into_iter().collect::<Vec<_>>();
-        if primitives.is_empty() || primitives.len() > MAX_EFFECT_PRIMITIVES {
+        if primitives.is_empty() || primitives.len() > MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP {
             return Err(ThemeCompileValidationError::InvalidCollection {
                 field: "effects.graph.primitives",
             });
@@ -206,7 +206,7 @@ pub struct DiagramEffectSet {
 
 impl DiagramEffectSet {
     pub fn with_graph(mut self, graph: EffectGraph) -> Result<Self, ThemeCompileValidationError> {
-        if self.graphs.len() >= MAX_EFFECT_GRAPHS {
+        if self.graphs.len() >= MAX_EFFECT_GRAPHS_HARD_CAP {
             return Err(ThemeCompileValidationError::LimitExceeded {
                 field: "effects.graphs",
             });
@@ -224,7 +224,7 @@ impl DiagramEffectSet {
         mut self,
         binding: EffectBinding,
     ) -> Result<Self, ThemeCompileValidationError> {
-        if self.bindings.len() >= MAX_EFFECT_BINDINGS {
+        if self.bindings.len() >= MAX_EFFECT_BINDINGS_HARD_CAP {
             return Err(ThemeCompileValidationError::LimitExceeded {
                 field: "effects.bindings",
             });
@@ -255,12 +255,12 @@ impl DiagramEffectSet {
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
-        if self.graphs.len() > MAX_EFFECT_GRAPHS {
+        if self.graphs.len() > MAX_EFFECT_GRAPHS_HARD_CAP {
             return Err(ThemeCompileValidationError::LimitExceeded {
                 field: "effects.graphs",
             });
         }
-        if self.bindings.len() > MAX_EFFECT_BINDINGS {
+        if self.bindings.len() > MAX_EFFECT_BINDINGS_HARD_CAP {
             return Err(ThemeCompileValidationError::LimitExceeded {
                 field: "effects.bindings",
             });
@@ -293,6 +293,63 @@ impl DiagramEffectSet {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn check_resources(
+        &self,
+        resources: &ThemeResourcePolicy,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        resources.check_effect_graph_count(self.graphs.len())?;
+        for graph in &self.graphs {
+            resources.check_effect_primitives_per_graph(graph.primitives.len())?;
+        }
+        resources.check_effect_binding_count(self.bindings.len())?;
+
+        let mut offset_magnitude = 0.0_f32;
+        let mut filter_region_magnitude = 0.0_f32;
+        let mut blur_magnitude = 0.0_f32;
+        let mut displacement_scale = 0.0_f32;
+        let mut turbulence_octaves = 0_usize;
+
+        for graph in &self.graphs {
+            let region = graph.region;
+            filter_region_magnitude = filter_region_magnitude
+                .max(region.x.abs())
+                .max(region.y.abs())
+                .max(region.width.abs())
+                .max(region.height.abs());
+
+            for primitive in &graph.primitives {
+                match primitive {
+                    EffectPrimitive::DropShadow {
+                        offset_x,
+                        offset_y,
+                        blur_radius,
+                        spread,
+                        ..
+                    } => {
+                        offset_magnitude = offset_magnitude.max(offset_x.abs()).max(offset_y.abs());
+                        blur_magnitude = blur_magnitude.max(*blur_radius).max(*spread);
+                    }
+                    EffectPrimitive::GaussianBlur { std_deviation, .. } => {
+                        blur_magnitude = blur_magnitude.max(*std_deviation);
+                    }
+                    EffectPrimitive::Turbulence { octaves, .. } => {
+                        turbulence_octaves = turbulence_octaves.max(usize::from(*octaves));
+                    }
+                    EffectPrimitive::Displacement { scale, .. } => {
+                        displacement_scale = displacement_scale.max(*scale);
+                    }
+                    EffectPrimitive::ColorMatrix { .. } => {}
+                }
+            }
+        }
+
+        resources.check_effect_offset_magnitude(offset_magnitude)?;
+        resources.check_effect_filter_region_magnitude(filter_region_magnitude)?;
+        resources.check_effect_blur_magnitude(blur_magnitude)?;
+        resources.check_effect_displacement_scale(displacement_scale)?;
+        resources.check_effect_turbulence_octaves(turbulence_octaves)
     }
 }
 

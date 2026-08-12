@@ -1813,14 +1813,14 @@ pub(super) fn resource_limit_error(err: ResourceLimitExceeded) -> super::Headles
 mod tests {
     use super::*;
 
-    fn legacy_flowchart_bridge_theme() -> crate::svg::DiagramTheme {
+    fn legacy_flowchart_edge_theme() -> crate::svg::DiagramTheme {
         crate::svg::DiagramThemeCompiler::new()
             .compile(
                 crate::svg::DiagramThemeSpec::new().with_styles(
                     crate::svg::ThemeRuleSet::default().with_rule(
                         crate::svg::ThemeRule::new(
-                            crate::svg::ThemeTarget::Node,
-                            crate::svg::ThemeStylePatch::default().with_fill(
+                            crate::svg::ThemeTarget::Edge,
+                            crate::svg::ThemeStylePatch::default().with_stroke(
                                 crate::svg::CanvasPaint::solid("#ef4444")
                                     .expect("valid test color"),
                             ),
@@ -1869,7 +1869,7 @@ mod tests {
     #[test]
     fn legacy_family_compatibility_is_a_terminal_document_residual() {
         let document = crate::svg::HeadlessRenderer::new()
-            .with_theme(legacy_flowchart_bridge_theme())
+            .with_theme(legacy_flowchart_edge_theme())
             .render_document_sync("flowchart TD\n  A[Themed]")
             .expect("best-effort render should succeed")
             .expect("Flowchart source should be detected");
@@ -2060,7 +2060,7 @@ mod tests {
     #[test]
     fn legacy_family_compatibility_rejects_every_native_target() {
         let document = crate::svg::HeadlessRenderer::new()
-            .with_theme(legacy_flowchart_bridge_theme())
+            .with_theme(legacy_flowchart_edge_theme())
             .render_document_sync("flowchart TD\n  A[Themed]")
             .expect("best-effort render should succeed")
             .expect("Flowchart source should be detected");

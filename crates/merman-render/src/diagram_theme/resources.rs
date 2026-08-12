@@ -1,7 +1,7 @@
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
-pub const THEME_RESOURCE_LIMIT_COUNT: usize = 20;
+pub const THEME_RESOURCE_LIMIT_COUNT: usize = 36;
 
 pub const MAX_THEME_ENCODED_BYTES_HARD_CAP: usize = 64 * MIB;
 pub const MAX_THEME_BASE64_BYTES_HARD_CAP: usize = 64 * MIB;
@@ -13,6 +13,14 @@ pub const MAX_FONT_FACES_HARD_CAP: usize = 256;
 pub const MAX_FONT_TABLES_HARD_CAP: usize = 8_192;
 pub const MAX_FONT_ALIASES_HARD_CAP: usize = 1_024;
 pub const MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP: usize = 100;
+pub const MAX_EFFECT_GRAPHS_HARD_CAP: usize = 32;
+pub const MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP: usize = 256;
+pub const MAX_EFFECT_BINDINGS_HARD_CAP: usize = 64;
+pub const MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP: usize = 65_536;
+pub const MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP: usize = 65_536;
+pub const MAX_EFFECT_BLUR_MAGNITUDE_HARD_CAP: usize = 8_192;
+pub const MAX_EFFECT_DISPLACEMENT_SCALE_HARD_CAP: usize = 65_536;
+pub const MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -20,6 +28,7 @@ pub enum ThemeResourceLimitPhase {
     ThemeInput,
     FontDecode,
     FontCatalog,
+    EffectCompile,
 }
 
 impl ThemeResourceLimitPhase {
@@ -28,6 +37,7 @@ impl ThemeResourceLimitPhase {
             Self::ThemeInput => "theme_input",
             Self::FontDecode => "font_decode",
             Self::FontCatalog => "font_catalog",
+            Self::EffectCompile => "effect_compile",
         }
     }
 }
@@ -62,6 +72,22 @@ pub enum ThemeResourceLimitId {
     FontTablesHardCap,
     FontAliasesHardCap,
     FontDecodedExpansionRatioHardCap,
+    MaxEffectGraphs,
+    MaxEffectPrimitivesPerGraph,
+    MaxEffectBindings,
+    MaxEffectOffsetMagnitude,
+    MaxEffectFilterRegionMagnitude,
+    MaxEffectBlurMagnitude,
+    MaxEffectDisplacementScale,
+    MaxEffectTurbulenceOctaves,
+    EffectGraphsHardCap,
+    EffectPrimitivesPerGraphHardCap,
+    EffectBindingsHardCap,
+    EffectOffsetMagnitudeHardCap,
+    EffectFilterRegionMagnitudeHardCap,
+    EffectBlurMagnitudeHardCap,
+    EffectDisplacementScaleHardCap,
+    EffectTurbulenceOctavesHardCap,
 }
 
 impl ThemeResourceLimitId {
@@ -86,6 +112,22 @@ impl ThemeResourceLimitId {
         Self::FontTablesHardCap,
         Self::FontAliasesHardCap,
         Self::FontDecodedExpansionRatioHardCap,
+        Self::MaxEffectGraphs,
+        Self::MaxEffectPrimitivesPerGraph,
+        Self::MaxEffectBindings,
+        Self::MaxEffectOffsetMagnitude,
+        Self::MaxEffectFilterRegionMagnitude,
+        Self::MaxEffectBlurMagnitude,
+        Self::MaxEffectDisplacementScale,
+        Self::MaxEffectTurbulenceOctaves,
+        Self::EffectGraphsHardCap,
+        Self::EffectPrimitivesPerGraphHardCap,
+        Self::EffectBindingsHardCap,
+        Self::EffectOffsetMagnitudeHardCap,
+        Self::EffectFilterRegionMagnitudeHardCap,
+        Self::EffectBlurMagnitudeHardCap,
+        Self::EffectDisplacementScaleHardCap,
+        Self::EffectTurbulenceOctavesHardCap,
     ];
 
     const fn index(self) -> usize {
@@ -302,6 +344,150 @@ pub static THEME_RESOURCE_LIMIT_DESCRIPTORS: [ThemeResourceLimitDescriptor;
         hard_cap: true,
         minimum_value: 1,
     },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectGraphs,
+        stable_id: "max_effect_graphs",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum effect graphs compiled by one theme",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectPrimitivesPerGraph,
+        stable_id: "max_effect_primitives_per_graph",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum effect primitives compiled in one effect graph",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectBindings,
+        stable_id: "max_effect_bindings",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum semantic effect bindings compiled by one theme",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectOffsetMagnitude,
+        stable_id: "max_effect_offset_magnitude",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum absolute drop-shadow offset in a compiled effect graph",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectFilterRegionMagnitude,
+        stable_id: "max_effect_filter_region_magnitude",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum absolute filter-region coordinate or extent in a compiled effect graph",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectBlurMagnitude,
+        stable_id: "max_effect_blur_magnitude",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum blur, spread, or standard-deviation magnitude in a compiled effect graph",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectDisplacementScale,
+        stable_id: "max_effect_displacement_scale",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum displacement scale in a compiled effect graph",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
+        stable_id: "max_effect_turbulence_octaves",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Maximum turbulence octaves in a compiled effect graph",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectGraphsHardCap,
+        stable_id: "effect_graphs_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for effect graph count",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectPrimitivesPerGraphHardCap,
+        stable_id: "effect_primitives_per_graph_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for primitives in one effect graph",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectBindingsHardCap,
+        stable_id: "effect_bindings_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for semantic effect binding count",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectOffsetMagnitudeHardCap,
+        stable_id: "effect_offset_magnitude_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for absolute drop-shadow offsets",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectFilterRegionMagnitudeHardCap,
+        stable_id: "effect_filter_region_magnitude_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for filter-region coordinates and extents",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectBlurMagnitudeHardCap,
+        stable_id: "effect_blur_magnitude_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for effect blur magnitudes",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectDisplacementScaleHardCap,
+        stable_id: "effect_displacement_scale_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for displacement scale",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ThemeResourceLimitDescriptor {
+        id: ThemeResourceLimitId::EffectTurbulenceOctavesHardCap,
+        stable_id: "effect_turbulence_octaves_hard_cap",
+        phase: ThemeResourceLimitPhase::EffectCompile,
+        description: "Non-overridable implementation cap for turbulence octaves",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
 ];
 
 const INTERACTIVE_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
@@ -325,6 +511,22 @@ const INTERACTIVE_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
     Some(MAX_FONT_TABLES_HARD_CAP),
     Some(MAX_FONT_ALIASES_HARD_CAP),
     Some(MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP),
+    Some(16),
+    Some(64),
+    Some(32),
+    Some(4_096),
+    Some(4_096),
+    Some(1_024),
+    Some(4_096),
+    Some(8),
+    Some(MAX_EFFECT_GRAPHS_HARD_CAP),
+    Some(MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP),
+    Some(MAX_EFFECT_BINDINGS_HARD_CAP),
+    Some(MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_BLUR_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_DISPLACEMENT_SCALE_HARD_CAP),
+    Some(MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP),
 ];
 
 const CONSTRAINED_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
@@ -348,6 +550,22 @@ const CONSTRAINED_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
     Some(MAX_FONT_TABLES_HARD_CAP),
     Some(MAX_FONT_ALIASES_HARD_CAP),
     Some(MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP),
+    Some(8),
+    Some(32),
+    Some(16),
+    Some(1_024),
+    Some(1_024),
+    Some(256),
+    Some(1_024),
+    Some(4),
+    Some(MAX_EFFECT_GRAPHS_HARD_CAP),
+    Some(MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP),
+    Some(MAX_EFFECT_BINDINGS_HARD_CAP),
+    Some(MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_BLUR_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_DISPLACEMENT_SCALE_HARD_CAP),
+    Some(MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP),
 ];
 
 const TRUSTED_NATIVE_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
@@ -371,6 +589,22 @@ const TRUSTED_NATIVE_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
     Some(MAX_FONT_TABLES_HARD_CAP),
     Some(MAX_FONT_ALIASES_HARD_CAP),
     Some(MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP),
+    Some(32),
+    Some(256),
+    Some(64),
+    Some(16_384),
+    Some(16_384),
+    Some(4_096),
+    Some(16_384),
+    Some(8),
+    Some(MAX_EFFECT_GRAPHS_HARD_CAP),
+    Some(MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP),
+    Some(MAX_EFFECT_BINDINGS_HARD_CAP),
+    Some(MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_BLUR_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_DISPLACEMENT_SCALE_HARD_CAP),
+    Some(MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP),
 ];
 
 const UNBOUNDED_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
@@ -394,6 +628,22 @@ const UNBOUNDED_VALUES: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT] = [
     Some(MAX_FONT_TABLES_HARD_CAP),
     Some(MAX_FONT_ALIASES_HARD_CAP),
     Some(MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP),
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    Some(MAX_EFFECT_GRAPHS_HARD_CAP),
+    Some(MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP),
+    Some(MAX_EFFECT_BINDINGS_HARD_CAP),
+    Some(MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_BLUR_MAGNITUDE_HARD_CAP),
+    Some(MAX_EFFECT_DISPLACEMENT_SCALE_HARD_CAP),
+    Some(MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP),
 ];
 
 pub const fn theme_resource_limit_descriptors() -> &'static [ThemeResourceLimitDescriptor] {
@@ -754,6 +1004,111 @@ impl ThemeResourcePolicy {
             actual,
         )
     }
+
+    pub(crate) fn check_effect_graph_count(
+        &self,
+        actual: usize,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxEffectGraphs,
+            ThemeResourceLimitId::EffectGraphsHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_primitives_per_graph(
+        &self,
+        actual: usize,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxEffectPrimitivesPerGraph,
+            ThemeResourceLimitId::EffectPrimitivesPerGraphHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_binding_count(
+        &self,
+        actual: usize,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxEffectBindings,
+            ThemeResourceLimitId::EffectBindingsHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_offset_magnitude(
+        &self,
+        actual: f32,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_effect_magnitude(
+            ThemeResourceLimitId::MaxEffectOffsetMagnitude,
+            ThemeResourceLimitId::EffectOffsetMagnitudeHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_filter_region_magnitude(
+        &self,
+        actual: f32,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_effect_magnitude(
+            ThemeResourceLimitId::MaxEffectFilterRegionMagnitude,
+            ThemeResourceLimitId::EffectFilterRegionMagnitudeHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_blur_magnitude(
+        &self,
+        actual: f32,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_effect_magnitude(
+            ThemeResourceLimitId::MaxEffectBlurMagnitude,
+            ThemeResourceLimitId::EffectBlurMagnitudeHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_displacement_scale(
+        &self,
+        actual: f32,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_effect_magnitude(
+            ThemeResourceLimitId::MaxEffectDisplacementScale,
+            ThemeResourceLimitId::EffectDisplacementScaleHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_effect_turbulence_octaves(
+        &self,
+        actual: usize,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
+            ThemeResourceLimitId::EffectTurbulenceOctavesHardCap,
+            actual,
+        )
+    }
+
+    fn check_effect_magnitude(
+        &self,
+        policy: ThemeResourceLimitId,
+        hard_cap: ThemeResourceLimitId,
+        actual: f32,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.check_limit_with_hard_cap(policy, hard_cap, effect_magnitude_units(actual))
+    }
+}
+
+fn effect_magnitude_units(actual: f32) -> usize {
+    if !actual.is_finite() || actual < 0.0 {
+        usize::MAX
+    } else {
+        actual.ceil() as usize
+    }
 }
 
 const fn minimum_ceiling(left: Option<usize>, right: Option<usize>) -> Option<usize> {
@@ -847,6 +1202,38 @@ mod tests {
             (
                 ThemeResourceLimitId::MaxFontDecodedExpansionRatio,
                 [Some(32), Some(16), Some(64), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectGraphs,
+                [Some(16), Some(8), Some(32), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectPrimitivesPerGraph,
+                [Some(64), Some(32), Some(256), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectBindings,
+                [Some(32), Some(16), Some(64), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectOffsetMagnitude,
+                [Some(4_096), Some(1_024), Some(16_384), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectFilterRegionMagnitude,
+                [Some(4_096), Some(1_024), Some(16_384), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectBlurMagnitude,
+                [Some(1_024), Some(256), Some(4_096), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectDisplacementScale,
+                [Some(4_096), Some(1_024), Some(16_384), None],
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
+                [Some(8), Some(4), Some(8), None],
             ),
         ];
 
@@ -971,6 +1358,34 @@ mod tests {
             policy
                 .check_font_decoded_expansion(1, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP + 1)
                 .unwrap_err(),
+            policy
+                .check_effect_graph_count(MAX_EFFECT_GRAPHS_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_effect_primitives_per_graph(MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_effect_binding_count(MAX_EFFECT_BINDINGS_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_effect_offset_magnitude((MAX_EFFECT_OFFSET_MAGNITUDE_HARD_CAP + 1) as f32)
+                .unwrap_err(),
+            policy
+                .check_effect_filter_region_magnitude(
+                    (MAX_EFFECT_FILTER_REGION_MAGNITUDE_HARD_CAP + 1) as f32,
+                )
+                .unwrap_err(),
+            policy
+                .check_effect_blur_magnitude((MAX_EFFECT_BLUR_MAGNITUDE_HARD_CAP + 1) as f32)
+                .unwrap_err(),
+            policy
+                .check_effect_displacement_scale(
+                    (MAX_EFFECT_DISPLACEMENT_SCALE_HARD_CAP + 1) as f32,
+                )
+                .unwrap_err(),
+            policy
+                .check_effect_turbulence_octaves(MAX_EFFECT_TURBULENCE_OCTAVES_HARD_CAP + 1)
+                .unwrap_err(),
         ];
         let expected = [
             "theme_encoded_bytes_hard_cap",
@@ -983,6 +1398,14 @@ mod tests {
             "font_tables_hard_cap",
             "font_aliases_hard_cap",
             "font_decoded_expansion_ratio_hard_cap",
+            "effect_graphs_hard_cap",
+            "effect_primitives_per_graph_hard_cap",
+            "effect_bindings_hard_cap",
+            "effect_offset_magnitude_hard_cap",
+            "effect_filter_region_magnitude_hard_cap",
+            "effect_blur_magnitude_hard_cap",
+            "effect_displacement_scale_hard_cap",
+            "effect_turbulence_octaves_hard_cap",
         ];
 
         assert_eq!(checks.map(|error| error.limit), expected);

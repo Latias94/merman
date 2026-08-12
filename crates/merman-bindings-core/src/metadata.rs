@@ -1684,6 +1684,16 @@ mod tests {
             assert!(encoded_limit.get("overridable").is_none());
             assert!(encoded_limit.get("minimum_value").is_none());
 
+            let effect_graph_limit = catalog["resource_limits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|limit| limit["id"] == "max_effect_graphs")
+                .expect("effect graph compile limit");
+            assert_eq!(effect_graph_limit["phase"], "effect_compile");
+            assert_eq!(effect_graph_limit["effective_value"], 16);
+            assert_eq!(effect_graph_limit["hard_cap"], false);
+
             let empty_again: Value =
                 serde_json::from_slice(&theme_catalog_json_for(&empty_contract).unwrap()).unwrap();
             assert_eq!(empty_again, empty);

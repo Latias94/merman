@@ -1779,8 +1779,8 @@ flowchart TD
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
                         ThemeRule::new(
-                            ThemeTarget::Node,
-                            ThemeStylePatch::default().with_fill(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default().with_stroke(
                                 CanvasPaint::solid("#ef4444").expect("valid test color"),
                             ),
                         )
@@ -1812,8 +1812,8 @@ flowchart TD
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
                         ThemeRule::new(
-                            ThemeTarget::Node,
-                            ThemeStylePatch::default().with_fill(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default().with_stroke(
                                 CanvasPaint::solid("#ef4444").expect("valid test color"),
                             ),
                         )

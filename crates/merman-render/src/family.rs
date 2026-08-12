@@ -163,6 +163,7 @@ pub enum FamilyThemeResidualReason {
     UnsupportedEffect,
     UnsupportedOrdinalPalette,
     OutputVisibilityFiltered,
+    OutputMutation,
 }
 
 impl FamilyThemeResidualReason {
@@ -174,6 +175,7 @@ impl FamilyThemeResidualReason {
             Self::UnsupportedEffect => "unsupported-effect",
             Self::UnsupportedOrdinalPalette => "unsupported-ordinal-palette",
             Self::OutputVisibilityFiltered => "output-visibility-filtered",
+            Self::OutputMutation => "output-mutation",
         }
     }
 }
@@ -370,6 +372,7 @@ impl FamilyStyleReport {
         let evaluation = match &plan.payload {
             FamilyStylePayload::NotApplicable => FamilyStyleEvaluation::NotApplicable,
             FamilyStylePayload::Unadapted => FamilyStyleEvaluation::Unadapted,
+            FamilyStylePayload::Evaluated => FamilyStyleEvaluation::Evaluated,
             FamilyStylePayload::State(state) => {
                 for residual in state.residuals() {
                     let residual = FamilyStyleResidual::freeze(residual);
@@ -380,6 +383,12 @@ impl FamilyStyleReport {
                 FamilyStyleEvaluation::Evaluated
             }
         };
+        for residual in &plan.source_style_residuals {
+            let residual = FamilyStyleResidual::freeze(residual);
+            if !residuals.contains(&residual) {
+                residuals.push(residual);
+            }
+        }
         Self {
             family_kind: plan.family_kind,
             evaluation,
@@ -391,6 +400,22 @@ impl FamilyStyleReport {
             mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
             residuals,
         }
+    }
+
+    fn invalidate_for_output_mutation(mut self) -> Self {
+        for key in std::mem::take(&mut self.theme_applied) {
+            if !self
+                .theme_residuals
+                .iter()
+                .any(|residual| residual.key == key)
+            {
+                self.theme_residuals.push(FamilyThemeResidual {
+                    key,
+                    reason: FamilyThemeResidualReason::OutputMutation,
+                });
+            }
+        }
+        self
     }
 
     pub const fn family_kind(&self) -> RenderFamilyKind {
@@ -496,18 +521,7 @@ impl FamilyStyleReport {
     }
 
     fn ensure_portable(&self) -> Result<()> {
-        if self.compatibility_residual_count != 0 {
-            return Err(Error::LegacyFamilyThemeCompatibility {
-                family_kind: self.family_kind,
-                residual_count: self.compatibility_residual_count,
-            });
-        }
-        if self.mermaid_compatibility_residual_count != 0 {
-            return Err(Error::MermaidThemeCompatibility {
-                family_kind: self.family_kind,
-                residual_count: self.mermaid_compatibility_residual_count,
-            });
-        }
+        self.ensure_compatibility_portable()?;
         match self.verification() {
             FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
             FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
@@ -540,6 +554,22 @@ impl FamilyStyleReport {
                 })
             }
         }
+    }
+
+    fn ensure_compatibility_portable(&self) -> Result<()> {
+        if self.compatibility_residual_count != 0 {
+            return Err(Error::LegacyFamilyThemeCompatibility {
+                family_kind: self.family_kind,
+                residual_count: self.compatibility_residual_count,
+            });
+        }
+        if self.mermaid_compatibility_residual_count != 0 {
+            return Err(Error::MermaidThemeCompatibility {
+                family_kind: self.family_kind,
+                residual_count: self.mermaid_compatibility_residual_count,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -698,6 +728,7 @@ impl FamilyThemeEvidence {
 enum FamilyStylePayload {
     NotApplicable,
     Unadapted,
+    Evaluated,
     State(Box<crate::state::StateStylePlan>),
 }
 
@@ -706,6 +737,7 @@ pub(crate) struct ResolvedFamilyStylePlan {
     family_kind: RenderFamilyKind,
     resolved_theme: Option<Box<ResolvedDiagramTheme>>,
     theme_evidence: FamilyThemeEvidence,
+    source_style_residuals: Vec<SourceStyleResidual>,
     compatibility_residual_count: usize,
     mermaid_compatibility_residual_count: usize,
     payload: FamilyStylePayload,
@@ -726,6 +758,7 @@ impl ResolvedFamilyStylePlan {
             family_kind,
             resolved_theme,
             theme_evidence,
+            source_style_residuals: Vec::new(),
             compatibility_residual_count: 0,
             mermaid_compatibility_residual_count: 0,
             payload,
@@ -760,6 +793,26 @@ impl ResolvedFamilyStylePlan {
         self.compatibility_residual_count = evidence.fallback_contribution_count();
     }
 
+    fn merge_flowchart_evidence(
+        &mut self,
+        evidence: FamilyThemeEvidence,
+        source_style_residuals: Vec<SourceStyleResidual>,
+    ) {
+        debug_assert!(matches!(
+            self.family_kind,
+            RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+        ));
+        self.theme_evidence = evidence;
+        self.source_style_residuals = source_style_residuals;
+        self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref())
+            && self.source_style_residuals.is_empty()
+        {
+            FamilyStylePayload::NotApplicable
+        } else {
+            FamilyStylePayload::Evaluated
+        };
+    }
+
     fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
         if self.family_kind == RenderFamilyKind::State
             && (!debug.include_nodes || !debug.include_edges)
@@ -776,6 +829,25 @@ impl ResolvedFamilyStylePlan {
         FamilyStyleReport::freeze(self).ensure_portable()
     }
 
+    fn ensure_portable_before_svg(&self, portability: ThemePortabilityRequirement) -> Result<()> {
+        if portability != ThemePortabilityRequirement::RequirePortable {
+            return Ok(());
+        }
+        let waits_for_svg_evidence = matches!(
+            self.family_kind,
+            RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+        ) && self
+            .resolved_theme
+            .as_deref()
+            .is_some_and(ResolvedDiagramTheme::has_family_mechanism_routes);
+        let report = FamilyStyleReport::freeze(self);
+        if waits_for_svg_evidence {
+            report.ensure_compatibility_portable()
+        } else {
+            report.ensure_portable()
+        }
+    }
+
     pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
         self.family_kind
     }
@@ -787,7 +859,9 @@ impl ResolvedFamilyStylePlan {
     pub(crate) fn state(&self) -> Option<&crate::state::StateStylePlan> {
         match &self.payload {
             FamilyStylePayload::State(plan) => Some(plan),
-            FamilyStylePayload::NotApplicable | FamilyStylePayload::Unadapted => None,
+            FamilyStylePayload::NotApplicable
+            | FamilyStylePayload::Unadapted
+            | FamilyStylePayload::Evaluated => None,
         }
     }
 }
@@ -876,7 +950,6 @@ impl FamilyRenderContext {
         self.style_plan.family_kind()
     }
 
-    #[cfg(test)]
     fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
         self.style_plan.resolved_theme()
     }
@@ -912,12 +985,29 @@ impl FamilyRenderContext {
         self.style_plan.observe_output_visibility(debug);
     }
 
+    fn merge_flowchart_evidence(
+        &mut self,
+        evidence: FamilyThemeEvidence,
+        source_style_residuals: Vec<SourceStyleResidual>,
+    ) {
+        self.style_plan
+            .merge_flowchart_evidence(evidence, source_style_residuals);
+    }
+
     fn ensure_portable(&self) -> Result<()> {
         let portability = self
             .session
             .theme_portability_requirement()
             .unwrap_or(ThemePortabilityRequirement::BestEffort);
         self.style_plan.ensure_portable(portability)
+    }
+
+    fn ensure_portable_before_svg(&self) -> Result<()> {
+        let portability = self
+            .session
+            .theme_portability_requirement()
+            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        self.style_plan.ensure_portable_before_svg(portability)
     }
 
     fn into_session_and_style_report(self) -> (RenderSession, FamilyStyleReport) {
@@ -960,6 +1050,7 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
+    theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
 }
 
 impl<L> FlowchartFamilyArtifact<L> {
@@ -973,6 +1064,10 @@ impl<L> FlowchartFamilyArtifact<L> {
 
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
         &self.svg_label_sidecar
+    }
+
+    pub(crate) const fn theme_evidence(&self) -> &crate::flowchart::FlowchartThemeEvidenceRecorder {
+        &self.theme_evidence
     }
 }
 
@@ -1246,6 +1341,17 @@ impl BuiltinFamilyArtifact {
             _ => Vec::new(),
         };
         Arc::from(entries)
+    }
+
+    fn flowchart_theme_evidence(
+        &self,
+        theme: Option<&ResolvedDiagramTheme>,
+    ) -> Option<(FamilyThemeEvidence, Vec<SourceStyleResidual>)> {
+        match self {
+            Self::Flowchart(artifact) => Some(artifact.theme_evidence().finish(theme)),
+            Self::Swimlane(artifact) => Some(artifact.theme_evidence().finish(theme)),
+            _ => None,
+        }
     }
 
     fn compatibility_json(
@@ -1550,8 +1656,9 @@ impl RenderedFamilySvg {
         self.session
             .resource_policy()
             .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
-        if !pipeline.preserves_typed_root_theme() {
+        if !pipeline.preserves_typed_theme_evidence() {
             self.root_theme = self.root_theme.invalidate_for_output_mutation();
+            self.style_report = self.style_report.invalidate_for_output_mutation();
         }
         ensure_root_theme_portable(
             &self.root_theme,
@@ -1559,6 +1666,11 @@ impl RenderedFamilySvg {
                 .theme_portability_requirement()
                 .unwrap_or(ThemePortabilityRequirement::BestEffort),
         )?;
+        if self.session.theme_portability_requirement()
+            == Some(ThemePortabilityRequirement::RequirePortable)
+        {
+            self.style_report.ensure_portable()?;
+        }
         Ok(self)
     }
 
@@ -1589,16 +1701,25 @@ impl RenderedFamilySvg {
         self.session
             .resource_policy()
             .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
-        let root_theme = if pipeline.preserves_typed_root_theme() {
+        let preserves_typed_theme_evidence = pipeline.preserves_typed_theme_evidence();
+        let root_theme = if preserves_typed_theme_evidence {
             self.root_theme
         } else {
             self.root_theme.invalidate_for_output_mutation()
         };
+        let style_report = if preserves_typed_theme_evidence {
+            self.style_report
+        } else {
+            self.style_report.invalidate_for_output_mutation()
+        };
         ensure_root_theme_portable(&root_theme, portability)?;
+        if portability == ThemePortabilityRequirement::RequirePortable {
+            style_report.ensure_portable()?;
+        }
         Ok(RenderedResvgCompatibleSvg {
             svg,
             root_theme,
-            style_report: self.style_report,
+            style_report,
             session: self.session,
             prepared_text_ledger: self.prepared_text_ledger,
         })
@@ -1774,6 +1895,9 @@ impl FamilyRenderArtifact {
             .session()
             .resource_policy()
             .check_svg_bytes(rendered.as_str(), ResourceLimitPhase::SvgOutput)?;
+        let flowchart_theme_evidence = self
+            .family
+            .flowchart_theme_evidence(self.context.resolved_theme());
         let prepared_text_ledger = self.family.prepared_text_label_ledger();
         let Self {
             metadata,
@@ -1781,6 +1905,9 @@ impl FamilyRenderArtifact {
             family: _,
             mut context,
         } = self;
+        if let Some((evidence, source_style_residuals)) = flowchart_theme_evidence {
+            context.merge_flowchart_evidence(evidence, source_style_residuals);
+        }
         context.observe_output_visibility(debug);
         context.ensure_portable()?;
         let (tokenized_svg, root_theme) = rendered.into_parts();
@@ -1889,6 +2016,7 @@ fn prepare_flowchart_artifact<L>(
         pair: FamilyPair::new(semantic, layout),
         label_sources,
         svg_label_sidecar,
+        theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
     }))
 }
 
@@ -2172,7 +2300,7 @@ fn prepare_non_class_render(
     if let RenderSemanticModel::State(model) = &model {
         context.adapt_state(model, effective_config, title)?;
     }
-    context.ensure_portable()?;
+    context.ensure_portable_before_svg()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = match model {
         RenderSemanticModel::Error(model) => {
@@ -2564,8 +2692,8 @@ fn prepare_non_class_render(
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramThemeCompiler, DiagramThemeSpec,
-        GradientStop, LinearGradient, MermaidThemeCompatibility, OrdinalPalette,
+        BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler,
+        DiagramThemeSpec, GradientStop, LinearGradient, MermaidThemeCompatibility, OrdinalPalette,
         RootThemeEvaluation, RootThemeMechanismKey, RootThemeVerification, ThemeCapability,
         ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
         TypographySpec,
@@ -2618,6 +2746,19 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    fn flowchart_node_theme(style: ThemeStylePatch) -> DiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(ThemeTarget::Node, style)
+                            .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart Node theme")
     }
 
     fn family_report(
@@ -3271,6 +3412,83 @@ mod tests {
     }
 
     #[test]
+    fn family_theme_evidence_is_invalidated_by_untrusted_svg_postprocessing() {
+        let theme = flowchart_node_theme(
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+        );
+        let render = |portability| {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "flowchart LR\nA[Alpha]\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(portability)
+                .begin_session_with_theme(&theme)
+                .expect("begin themed render session");
+            prepare(parsed, &LayoutOptions::default(), session)
+                .expect("prepare themed Flowchart")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("initial Node consumer proves typed paint")
+        };
+        let pipeline = || {
+            SvgPipeline::parity()
+                .with_postprocessor(crate::svg::RootBackgroundPostprocessor::new("white"))
+        };
+
+        let rendered = render(ThemePortabilityRequirement::BestEffort)
+            .apply_pipeline(&pipeline())
+            .expect("best-effort output retains downgraded family evidence");
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Unverified
+        );
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Node,
+                },
+                reason: FamilyThemeResidualReason::OutputMutation,
+            }]
+        );
+
+        let apply_error = match render(ThemePortabilityRequirement::RequirePortable)
+            .apply_pipeline(&pipeline())
+        {
+            Ok(_) => panic!("strict draft output must reject invalidated family evidence"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            apply_error
+                .unverified_family_theme()
+                .expect("postprocess family residual")
+                .2
+                .reason(),
+            FamilyThemeResidualReason::OutputMutation
+        );
+
+        let finalize_error = match render(ThemePortabilityRequirement::RequirePortable)
+            .finalize_resvg(&pipeline().into_resvg_safe())
+        {
+            Ok(_) => panic!("strict finalized output must reject invalidated family evidence"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            finalize_error
+                .unverified_family_theme()
+                .expect("finalized postprocess family residual")
+                .2
+                .reason(),
+            FamilyThemeResidualReason::OutputMutation
+        );
+    }
+
+    #[test]
     fn unsupported_root_gradient_residual_survives_terminal_svg_completion() {
         let gradient = LinearGradient::new(
             90.0,
@@ -3468,15 +3686,18 @@ mod tests {
     }
 
     #[test]
-    fn environment_portability_ceiling_rejects_legacy_family_compatibility() {
+    fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
         let fill = CanvasPaint::solid("#ef4444").expect("valid node fill");
+        let stroke = CanvasPaint::solid("#2563eb").expect("valid node stroke");
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
                         ThemeRule::new(
                             ThemeTarget::Node,
-                            ThemeStylePatch::default().with_fill(fill),
+                            ThemeStylePatch::default()
+                                .with_fill(fill)
+                                .with_stroke(stroke),
                         )
                         .for_family(RenderFamilyKind::Flowchart),
                     ),
@@ -3493,15 +3714,649 @@ mod tests {
             .begin_session_with_theme(&theme)
             .expect("begin strict portable render session");
 
+        let artifact = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("typed Flowchart paint must reach SVG emission");
+        let (preparation_evidence, source_residuals) = artifact
+            .family
+            .flowchart_theme_evidence(artifact.context.resolved_theme())
+            .expect("Flowchart artifact evidence");
+        assert!(source_residuals.is_empty());
+        assert!(preparation_evidence.applied().is_empty());
+
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("emitted typed Flowchart paint must satisfy strict portability");
+
+        assert!(rendered.svg().contains("fill:#ef4444 !important"));
+        assert!(rendered.svg().contains("stroke:#2563eb !important"));
+        let report = rendered.style_report();
+        assert_eq!(report.evaluation(), FamilyStyleEvaluation::Evaluated);
+        assert_eq!(report.verification(), FamilyStyleVerification::Verified);
+        assert_eq!(report.compatibility_residual_count(), 0);
+        assert_eq!(
+            report.theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
+    }
+
+    #[test]
+    fn require_portable_accepts_swimlane_typed_node_paint_after_svg_emission() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::Transparent)
+                                .with_stroke(CanvasPaint::Transparent),
+                        )
+                        .for_family(RenderFamilyKind::Swimlane),
+                    ),
+                ),
+            )
+            .expect("compile strict Swimlane theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Swimlane source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("typed Swimlane paint must reach SVG emission")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("emitted typed Swimlane paint must satisfy strict portability");
+
+        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert!(
+            rendered
+                .svg()
+                .contains("fill:none !important;stroke:none !important")
+        );
+        let report = rendered.style_report();
+        assert_eq!(report.evaluation(), FamilyStyleEvaluation::Evaluated);
+        assert_eq!(report.verification(), FamilyStyleVerification::Verified);
+        assert_eq!(report.compatibility_residual_count(), 0);
+        assert_eq!(
+            report.theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
+    }
+
+    #[test]
+    fn flowchart_source_paint_override_does_not_claim_typed_application() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap())
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart source precedence theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nclassDef source fill:#22c55e,stroke:#111827\nA[Alpha]:::source\nB[Beta]\nstyle B fill:#f59e0b,stroke:#334155\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("source-overridden typed paint remains evaluable")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("source-overridden typed paint is not a portability residual");
+
+        assert!(rendered.svg().contains("fill:#22c55e !important"));
+        assert!(rendered.svg().contains("stroke:#111827 !important"));
+        assert!(rendered.svg().contains("fill:#f59e0b !important"));
+        assert!(rendered.svg().contains("stroke:#334155 !important"));
+        assert!(!rendered.svg().contains("fill:#ef4444 !important"));
+        assert!(!rendered.svg().contains("stroke:#2563eb !important"));
+        let report = rendered.style_report();
+        assert_eq!(report.verification(), FamilyStyleVerification::Verified);
+        assert!(report.theme_applied_mechanisms().is_empty());
+        assert_eq!(
+            report.theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
+    }
+
+    #[test]
+    fn flowchart_single_source_paint_override_keeps_other_typed_channel_applied() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap())
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart source precedence theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nstyle A fill:#22c55e\nA[Alpha]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable session");
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("single source override remains evaluable")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("the surviving typed stroke should satisfy strict portability");
+
+        assert!(rendered.svg().contains("fill:#22c55e !important"));
+        assert!(rendered.svg().contains("stroke:#2563eb !important"));
+        assert!(!rendered.svg().contains("fill:#ef4444 !important"));
+        assert!(rendered.style_report().theme_applied_mechanisms().contains(
+            &FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }
+        ));
+    }
+
+    #[test]
+    fn flowchart_source_paint_identity_and_value_admission_control_precedence() {
+        let theme = flowchart_node_theme(
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+        );
+        let render = |source: &str| {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable render session");
+            prepare(parsed, &LayoutOptions::default(), session)
+                .expect("source paint precedence is evaluated during SVG emission")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("admitted source precedence must remain portable")
+        };
+
+        let overridden = render("flowchart LR\nstyle A FILL:#22c55e\nA[Alpha]\n");
+        assert!(overridden.svg().contains("fill:#22c55e !important"));
+        assert!(!overridden.svg().contains("fill:#ef4444 !important"));
+        assert!(
+            overridden
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            overridden.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
+
+        let dynamic_source = "flowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n";
+        let parse_dynamic = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(dynamic_source, ParseOptions::strict())
+                .unwrap()
+                .expect("dynamic source paint should produce a render model")
+        };
+        let dynamic = prepare(
+            parse_dynamic(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort session"),
+        )
+        .expect("prepare dynamic source paint")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort output must preserve dynamic source paint");
+        assert!(dynamic.svg().contains("fill:var(--paint) !important"));
+        assert!(!dynamic.svg().contains("fill:#ef4444 !important"));
+        assert!(dynamic.style_report().theme_residuals().is_empty());
+        assert_eq!(dynamic.style_report().residuals().len(), 1);
+        assert_eq!(dynamic.style_report().residuals()[0].owner_id(), "A");
+        assert_eq!(
+            dynamic.style_report().residuals()[0].property(),
+            Some("fill")
+        );
+        assert_eq!(
+            dynamic.style_report().residuals()[0].reason(),
+            FamilyStyleResidualReason::InvalidValue
+        );
+
+        let strict_session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict session");
+        let artifact = prepare(parse_dynamic(), &LayoutOptions::default(), strict_session)
+            .expect("dynamic source verification waits for SVG emission");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("unverified dynamic source paint must fail strict portability"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error
+                .unverified_family_style()
+                .expect("dynamic source paint residual")
+                .2
+                .reason(),
+            FamilyStyleResidualReason::InvalidValue
+        );
+    }
+
+    #[test]
+    fn flowchart_source_paint_residual_is_independent_from_theme_channel() {
+        let theme = flowchart_node_theme(
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+        );
+        let source = "flowchart LR\nstyle A --paint:#22c55e,fill:var(--paint)\nA[Alpha]\n";
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model")
+        };
+
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort session"),
+        )
+        .expect("prepare dynamic source paint")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort output must preserve dynamic source paint");
+
+        assert!(rendered.svg().contains("fill:var(--paint) !important"));
+        assert!(rendered.svg().contains("stroke:#2563eb !important"));
+        assert!(rendered.style_report().theme_applied_mechanisms().contains(
+            &FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }
+        ));
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert_eq!(rendered.style_report().residuals().len(), 1);
+        assert_eq!(rendered.style_report().residuals()[0].owner_id(), "A");
+        assert_eq!(
+            rendered.style_report().residuals()[0].property(),
+            Some("fill")
+        );
+
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict session"),
+        )
+        .expect("source residual is discovered during SVG emission");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("independent source residual must fail strict portability"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error
+                .unverified_family_style()
+                .expect("dynamic source paint residual")
+                .2
+                .reason(),
+            FamilyStyleResidualReason::InvalidValue
+        );
+    }
+
+    #[test]
+    fn flowchart_unverified_node_surfaces_remain_fail_closed_after_svg_emission() {
+        let theme = flowchart_node_theme(
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("rgb(239 68 68)").unwrap()),
+        );
+        let cases = [
+            r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart LR
+A[Alpha]
+"#,
+            "flowchart LR\nA@{ shape: start }\n",
+        ];
+
+        for source in cases {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable render session");
+            let artifact = prepare(parsed, &LayoutOptions::default(), session)
+                .expect("concrete paint support must be decided during SVG emission");
+
+            let error = match artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            {
+                Ok(_) => panic!("unverified node surface must remain fail-closed"),
+                Err(error) => error,
+            };
+            let (_, _, residual) = error
+                .unverified_family_theme()
+                .expect("unsupported Node paint residual");
+            assert_eq!(
+                residual.reason(),
+                FamilyThemeResidualReason::UnsupportedPaint
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_empty_subgraph_consumes_typed_node_paint() {
+        let theme = flowchart_node_theme(
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+        );
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "flowchart TD\nsubgraph Empty\nend\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("empty subgraph source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("empty subgraph theme must reach SVG emission")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("emitted empty subgraph paint must satisfy strict portability");
+
+        assert!(rendered.svg().contains("fill:#ef4444 !important"));
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
+    }
+
+    #[test]
+    fn flowchart_icon_without_asset_retains_unemitted_fill_as_residual() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart icon theme");
+        let source = "flowchart LR\nI@{ shape: icon, label: \"Plain\" }\n";
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart icon source should produce a render model")
+        };
+
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort render session"),
+        )
+        .expect("prepare Flowchart icon")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render best-effort Flowchart icon");
+
+        assert!(!rendered.svg().contains("#ef4444"));
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Node,
+                },
+                reason: FamilyThemeResidualReason::UnsupportedPaint,
+            }]
+        );
+
+        let strict_session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict render session");
+        let artifact = prepare(parse(), &LayoutOptions::default(), strict_session)
+            .expect("strict verification must wait for icon emission");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("unemitted icon fill must fail strict portability"),
+                Err(error) => error,
+            };
+        let (_, _, residual) = error
+            .unverified_family_theme()
+            .expect("unemitted icon fill residual");
+        assert_eq!(
+            residual.reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
+    }
+
+    #[test]
+    fn require_portable_rejects_flowchart_unsupported_styles_after_svg_emission() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let cases = [
+            (
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::LinearGradient(gradient))
+                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                Some(FamilyThemeResidualReason::UnsupportedPaint),
+            ),
+            (
+                ThemeStylePatch {
+                    geometry: crate::diagram_theme::ThemeGeometryPatch {
+                        radius: crate::diagram_theme::Specified::Value(8.0),
+                    },
+                    ..ThemeStylePatch::default()
+                }
+                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                None,
+            ),
+        ];
+
+        for (style, expected_reason) in cases {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(ThemeTarget::Node, style)
+                                .for_family(RenderFamilyKind::Flowchart),
+                        ),
+                    ),
+                )
+                .expect("compile unsupported Flowchart theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "flowchart LR\nA --> B\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable render session");
+            let artifact = prepare(parsed, &LayoutOptions::default(), session)
+                .expect("Flowchart theme verification must wait for SVG emission");
+
+            let error = match artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            {
+                Ok(_) => panic!("unsupported Flowchart style must remain fail-closed"),
+                Err(error) => error,
+            };
+            if let Some(expected_reason) = expected_reason {
+                let (_, _, residual) = error
+                    .unverified_family_theme()
+                    .expect("structured Flowchart residual");
+                assert_eq!(residual.reason(), expected_reason);
+            } else {
+                assert_eq!(
+                    error.incomplete_family_theme(),
+                    Some((RenderFamilyKind::Flowchart, 1, 0))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn require_portable_rejects_flowchart_node_ordinal_palette_after_svg_emission() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_ordinal_palette(
+                        ThemeTarget::Node,
+                        OrdinalPalette::new([
+                            ThemeColorValue::parse("#ef4444").unwrap(),
+                            ThemeColorValue::parse("#2563eb").unwrap(),
+                        ])
+                        .unwrap(),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart ordinal palette theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[Alpha] --> B[Beta]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("ordinal verification must wait for SVG emission");
+
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("unsupported Flowchart ordinal palette must fail closed"),
+                Err(error) => error,
+            };
+        let (family_kind, residual_count, residual) = error
+            .unverified_family_theme()
+            .expect("ordinal palette theme residual");
+        assert_eq!(family_kind, RenderFamilyKind::Flowchart);
+        assert_eq!(residual_count, 1);
+        assert_eq!(
+            residual.reason(),
+            FamilyThemeResidualReason::UnsupportedOrdinalPalette
+        );
+    }
+
+    #[test]
+    fn require_portable_still_rejects_flowchart_legacy_edge_paint_before_svg() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile legacy Flowchart edge theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
         let error = match prepare(parsed, &LayoutOptions::default(), session) {
-            Ok(_) => panic!("strict portability must reject Flowchart compatibility projection"),
+            Ok(_) => panic!("legacy Flowchart edge paint must fail before layout"),
             Err(error) => error,
         };
         assert!(matches!(
             error,
             Error::LegacyFamilyThemeCompatibility {
                 family_kind: RenderFamilyKind::Flowchart,
-                ..
+                residual_count: 1..,
             }
         ));
     }
@@ -4186,7 +5041,7 @@ mod tests {
     }
 
     #[test]
-    fn equivalent_theme_instances_retain_selected_family_compatibility_evidence() {
+    fn equivalent_theme_instances_retain_selected_family_typed_evidence() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
@@ -4219,18 +5074,22 @@ mod tests {
             .begin_session_with_theme(&render_theme)
             .expect("equivalent render session should start");
 
-        let error = match prepare(parsed, &LayoutOptions::default(), session) {
-            Ok(_) => panic!("strict portability must retain the parsed compatibility residual"),
-            Err(error) => error,
-        };
-        assert!(matches!(
-            error,
-            Error::LegacyFamilyThemeCompatibility {
-                family_kind: RenderFamilyKind::Flowchart,
-                residual_count: 1,
-                ..
-            }
-        ));
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("equivalent theme should retain the typed route")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("equivalent theme should retain emitted typed evidence");
+        assert!(rendered.svg().contains("fill:#ef4444 !important"));
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            }]
+        );
     }
 
     #[test]

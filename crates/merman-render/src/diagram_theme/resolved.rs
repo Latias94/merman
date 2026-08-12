@@ -713,27 +713,63 @@ impl ResolvedDiagramTheme {
 
     pub(crate) fn family_mechanism_keys(&self) -> Vec<super::application::FamilyThemeMechanismKey> {
         let mut keys = Vec::new();
-        if self.typography() != &TextStyle::default() {
-            keys.push(super::application::FamilyThemeMechanismKey::Typography);
+        for route in self.program.mechanism_routes().iter().copied() {
+            let key = self.family_mechanism_key(route);
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
         }
-        keys.extend(self.family_rules().map(|(index, rule)| {
-            super::application::FamilyThemeMechanismKey::Rule {
-                index,
-                target: rule.target(),
-            }
-        }));
-        keys.extend(
-            self.family_ordinal_palette_targets().map(|target| {
-                super::application::FamilyThemeMechanismKey::OrdinalPalette { target }
-            }),
-        );
-        keys.extend(self.effect_bindings().map(|binding| {
-            super::application::FamilyThemeMechanismKey::EffectBinding {
-                target: binding.target(),
-                effect_id: binding.effect_id().to_string(),
-            }
-        }));
         keys
+    }
+
+    pub(crate) fn family_mechanism_key(
+        &self,
+        route: super::family_mechanism_matrix::FamilyThemeRoute,
+    ) -> super::application::FamilyThemeMechanismKey {
+        use super::application::FamilyThemeMechanismKey;
+        use super::family_mechanism_matrix::FamilyThemeMechanism;
+
+        match route.mechanism() {
+            FamilyThemeMechanism::BaseTypography(_) => FamilyThemeMechanismKey::Typography,
+            FamilyThemeMechanism::RuleFacet {
+                rule_index, target, ..
+            } => FamilyThemeMechanismKey::Rule {
+                index: rule_index,
+                target,
+            },
+            FamilyThemeMechanism::OrdinalPalette { target } => {
+                FamilyThemeMechanismKey::OrdinalPalette { target }
+            }
+            FamilyThemeMechanism::EffectBinding {
+                binding_index,
+                target,
+            } => {
+                let binding = &self.theme.spec().effects().bindings()[binding_index];
+                debug_assert_eq!(binding.target(), target);
+                FamilyThemeMechanismKey::EffectBinding {
+                    target,
+                    effect_id: binding.effect_id().to_string(),
+                }
+            }
+        }
+    }
+
+    pub(crate) fn family_mechanism_routes(
+        &self,
+    ) -> &[super::family_mechanism_matrix::FamilyThemeRoute] {
+        self.program.mechanism_routes()
+    }
+
+    pub(crate) fn has_family_mechanism_routes(&self) -> bool {
+        self.program.has_mechanism_routes()
+    }
+
+    pub(crate) fn rule_facet_disposition(
+        &self,
+        rule_index: usize,
+        facet: super::family_mechanism_matrix::FamilyThemeRuleFacet,
+    ) -> Option<super::family_mechanism_matrix::FamilyThemeDisposition> {
+        self.program.rule_facet_disposition(rule_index, facet)
     }
 
     pub fn style(

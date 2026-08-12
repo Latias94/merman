@@ -16,14 +16,14 @@ pub(super) const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
 /// This classification routes work. It never claims that a concrete document applied a
 /// mechanism; only the selected family consumer can produce runtime evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) enum FamilyThemeDisposition {
+pub(crate) enum FamilyThemeDisposition {
     TypedAdapter,
     LegacyCompatibility,
     Unsupported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) enum FamilyThemePaintKind {
+pub(crate) enum FamilyThemePaintKind {
     Clear,
     Transparent,
     Solid,
@@ -54,17 +54,17 @@ impl FamilyThemePaintKind {
 }
 
 impl FamilyThemeRuleFacet {
-    pub(super) fn fill(paint: &Specified<CanvasPaint>) -> Option<Self> {
+    pub(crate) fn fill(paint: &Specified<CanvasPaint>) -> Option<Self> {
         FamilyThemePaintKind::from_specified(paint).map(Self::Fill)
     }
 
-    pub(super) fn stroke(paint: &Specified<CanvasPaint>) -> Option<Self> {
+    pub(crate) fn stroke(paint: &Specified<CanvasPaint>) -> Option<Self> {
         FamilyThemePaintKind::from_specified(paint).map(Self::Stroke)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) enum FamilyThemeRuleFacet {
+pub(crate) enum FamilyThemeRuleFacet {
     Fill(FamilyThemePaintKind),
     Stroke(FamilyThemePaintKind),
     StrokeWidth,
@@ -81,13 +81,13 @@ pub(super) enum FamilyThemeRuleFacet {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) enum FamilyThemeSelectorShape {
+pub(crate) enum FamilyThemeSelectorShape {
     Static {
         variant: Option<ThemeVariant>,
     },
     Ordinal {
         variant: Option<ThemeVariant>,
-        kind: FamilyThemeOrdinalKind,
+        selector: OrdinalSelector,
     },
 }
 
@@ -97,13 +97,13 @@ impl FamilyThemeSelectorShape {
             None => Self::Static {
                 variant: rule.variant(),
             },
-            Some(OrdinalSelector::Exact(_)) => Self::Ordinal {
+            Some(selector @ OrdinalSelector::Exact(_)) => Self::Ordinal {
                 variant: rule.variant(),
-                kind: FamilyThemeOrdinalKind::Exact,
+                selector,
             },
-            Some(OrdinalSelector::Cycle { .. }) => Self::Ordinal {
+            Some(selector @ OrdinalSelector::Cycle { .. }) => Self::Ordinal {
                 variant: rule.variant(),
-                kind: FamilyThemeOrdinalKind::Cycle,
+                selector,
             },
         }
     }
@@ -117,13 +117,7 @@ impl FamilyThemeSelectorShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) enum FamilyThemeOrdinalKind {
-    Exact,
-    Cycle,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) enum FamilyThemeMechanism {
+pub(crate) enum FamilyThemeMechanism {
     BaseTypography(ThemeTypographyProperty),
     RuleFacet {
         rule_index: usize,
@@ -141,7 +135,7 @@ pub(super) enum FamilyThemeMechanism {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) struct FamilyThemeRoute {
+pub(crate) struct FamilyThemeRoute {
     mechanism: FamilyThemeMechanism,
     disposition: FamilyThemeDisposition,
 }
@@ -154,11 +148,11 @@ impl FamilyThemeRoute {
         }
     }
 
-    pub(super) const fn mechanism(self) -> FamilyThemeMechanism {
+    pub(crate) const fn mechanism(self) -> FamilyThemeMechanism {
         self.mechanism
     }
 
-    pub(super) const fn disposition(self) -> FamilyThemeDisposition {
+    pub(crate) const fn disposition(self) -> FamilyThemeDisposition {
         self.disposition
     }
 }
@@ -478,6 +472,27 @@ fn classify_rule_facet(
     if family == RenderFamilyKind::State {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if matches!(
+        family,
+        RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+    ) && target == ThemeTarget::Node
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     let Some(variant) = selector.static_variant() else {
         return FamilyThemeDisposition::Unsupported;
     };
@@ -769,7 +784,7 @@ mod tests {
                     selector: FamilyThemeSelectorShape::Static { variant: None },
                     facet: FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
                 }
-                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
         }));
         assert!(routes.iter().any(|route| {
             matches!(
@@ -780,6 +795,35 @@ mod tests {
                 }
             ) && route.disposition() == FamilyThemeDisposition::Unsupported
         }));
+    }
+
+    #[test]
+    fn flowchart_and_swimlane_own_only_default_scalar_node_paint() {
+        let default_rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::Transparent)
+                .with_stroke(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
+        )
+        .with_variant(ThemeVariant::Default);
+        for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
+            assert!(
+                compile_rule_routes(family, 0, &default_rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+        }
+
+        let active_rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
+        )
+        .with_variant(ThemeVariant::Active);
+        assert_eq!(
+            compile_rule_routes(RenderFamilyKind::Flowchart, 0, &active_rule)[0].disposition(),
+            FamilyThemeDisposition::Unsupported
+        );
     }
 
     #[test]

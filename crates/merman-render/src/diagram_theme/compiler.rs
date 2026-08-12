@@ -56,6 +56,7 @@ impl DiagramThemeCompiler {
         spec: DiagramThemeSpec,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
         spec.validate()?;
+        spec.effects().check_resources(&self.resources)?;
         let catalog = match spec.assets().font_catalog() {
             Some(catalog) => catalog.clone().compile(&self.resources)?,
             None => FontCatalog::default_parity(),
@@ -189,7 +190,8 @@ mod tests {
     use super::*;
     use crate::diagram_theme::{
         DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
-        ThemeColorValue, ThemeTarget,
+        ThemeColorValue, ThemeResourceLimitId, ThemeResourceLimitPhase, ThemeResourcePolicy,
+        ThemeTarget,
     };
 
     fn shadow_graph() -> EffectGraph {
@@ -244,5 +246,202 @@ mod tests {
                 .requires_capability(ThemeCapability::SvgFilter)
         );
         assert!(theme.report().requires_capability(ThemeCapability::Shadow));
+    }
+
+    #[test]
+    fn compiler_enforces_effect_count_resource_limits() {
+        assert_effect_resource_limit(
+            ThemeResourceLimitId::MaxEffectGraphs,
+            0,
+            DiagramEffectSet::default()
+                .with_graph(shadow_graph())
+                .expect("add graph"),
+            "max_effect_graphs",
+            1,
+        );
+
+        let graph = EffectGraph::new(
+            "two-primitives",
+            FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
+            [
+                EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                },
+                EffectPrimitive::GaussianBlur {
+                    input: EffectInput::Previous,
+                    std_deviation: 1.0,
+                },
+            ],
+        )
+        .expect("valid two-primitive graph");
+        assert_effect_resource_limit(
+            ThemeResourceLimitId::MaxEffectPrimitivesPerGraph,
+            1,
+            DiagramEffectSet::default()
+                .with_graph(graph)
+                .expect("add graph"),
+            "max_effect_primitives_per_graph",
+            2,
+        );
+
+        let effects = DiagramEffectSet::default()
+            .with_graph(shadow_graph())
+            .expect("add graph")
+            .with_binding(EffectBinding::new(ThemeTarget::Node, "shadow").expect("valid binding"))
+            .expect("add binding");
+        assert_effect_resource_limit(
+            ThemeResourceLimitId::MaxEffectBindings,
+            0,
+            effects,
+            "max_effect_bindings",
+            1,
+        );
+    }
+
+    #[test]
+    fn compiler_enforces_effect_parameter_resource_limits() {
+        let color = || ThemeColorValue::parse("#00000080").expect("valid shadow color");
+        let cases = [
+            (
+                ThemeResourceLimitId::MaxEffectOffsetMagnitude,
+                EffectGraph::new(
+                    "offset",
+                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
+                    [EffectPrimitive::DropShadow {
+                        input: EffectInput::SourceGraphic,
+                        offset_x: -2.0,
+                        offset_y: 0.0,
+                        blur_radius: 0.0,
+                        spread: 0.0,
+                        color: color(),
+                    }],
+                )
+                .expect("valid offset graph"),
+                "max_effect_offset_magnitude",
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectFilterRegionMagnitude,
+                EffectGraph::new(
+                    "region",
+                    FilterRegion::bounded(-2.0, 0.0, 1.0, 1.0),
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 0.0,
+                    }],
+                )
+                .expect("valid region graph"),
+                "max_effect_filter_region_magnitude",
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectBlurMagnitude,
+                EffectGraph::new(
+                    "blur",
+                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 2.0,
+                    }],
+                )
+                .expect("valid blur graph"),
+                "max_effect_blur_magnitude",
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectDisplacementScale,
+                EffectGraph::new(
+                    "displacement",
+                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
+                    [EffectPrimitive::Displacement {
+                        input: EffectInput::SourceGraphic,
+                        map_input: EffectInput::SourceGraphic,
+                        scale: 2.0,
+                    }],
+                )
+                .expect("valid displacement graph"),
+                "max_effect_displacement_scale",
+            ),
+            (
+                ThemeResourceLimitId::MaxEffectTurbulenceOctaves,
+                EffectGraph::new(
+                    "turbulence",
+                    FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
+                    [EffectPrimitive::Turbulence {
+                        input: EffectInput::SourceGraphic,
+                        base_frequency_x: 0.1,
+                        base_frequency_y: 0.1,
+                        octaves: 2,
+                        seed: 7,
+                    }],
+                )
+                .expect("valid turbulence graph"),
+                "max_effect_turbulence_octaves",
+            ),
+        ];
+
+        for (limit, graph, expected_id) in cases {
+            assert_effect_resource_limit(
+                limit,
+                1,
+                DiagramEffectSet::default()
+                    .with_graph(graph)
+                    .expect("add graph"),
+                expected_id,
+                2,
+            );
+        }
+    }
+
+    #[test]
+    fn drop_shadow_spread_is_charged_as_effect_blur_magnitude() {
+        let graph = EffectGraph::new(
+            "spread",
+            FilterRegion::bounded(0.0, 0.0, 1.0, 1.0),
+            [EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur_radius: 0.0,
+                spread: 2.0,
+                color: ThemeColorValue::parse("#00000080").expect("valid shadow color"),
+            }],
+        )
+        .expect("valid spread graph");
+
+        assert_effect_resource_limit(
+            ThemeResourceLimitId::MaxEffectBlurMagnitude,
+            1,
+            DiagramEffectSet::default()
+                .with_graph(graph)
+                .expect("add graph"),
+            "max_effect_blur_magnitude",
+            2,
+        );
+    }
+
+    fn assert_effect_resource_limit(
+        limit: ThemeResourceLimitId,
+        max: usize,
+        effects: DiagramEffectSet,
+        expected_id: &'static str,
+        expected_actual: usize,
+    ) {
+        let policy = ThemeResourcePolicy::interactive()
+            .with_limit(limit, max)
+            .expect("valid effect resource override");
+        let error = DiagramThemeCompiler::new()
+            .with_resource_policy(policy)
+            .compile(DiagramThemeSpec::new().with_effects(effects))
+            .expect_err("effect resource limit must reject theme compilation");
+
+        assert!(matches!(
+            error,
+            ThemeCompileError::ResourceLimit(ThemeResourceLimitExceeded {
+                phase: ThemeResourceLimitPhase::EffectCompile,
+                limit: actual_id,
+                actual,
+                max: actual_max,
+                ..
+            }) if actual_id == expected_id && actual == expected_actual && actual_max == max
+        ));
     }
 }

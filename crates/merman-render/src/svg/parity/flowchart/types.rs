@@ -16,6 +16,10 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) config: &'a merman_core::MermaidConfig,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(in crate::svg::parity::flowchart) resolved_theme:
+        Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
+    pub(in crate::svg::parity::flowchart) theme_evidence:
+        &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) svg_label_sidecar:

@@ -162,15 +162,36 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
-    let style = std::mem::take(&mut compiled_styles.node_style);
+    let source_fill = crate::flowchart::FlowchartSourcePaintStatus::from_parts(
+        compiled_styles.fill_declared,
+        compiled_styles.fill.is_some(),
+    );
+    let source_stroke = crate::flowchart::FlowchartSourcePaintStatus::from_parts(
+        compiled_styles.stroke_declared,
+        compiled_styles.stroke.is_some(),
+    );
+    let source_paint_residuals = compiled_styles.unverified_shape_paint_residuals(node_id);
+    let paint_support = node_theme_paint_support(shape, look)?;
+    let node_theme =
+        crate::flowchart::FlowchartNodeThemeStyle::resolve(ctx.resolved_theme, ctx.work_meter)?;
+    let mut style = std::mem::take(&mut compiled_styles.node_style);
+    node_theme.append_inline_paint(
+        &mut style,
+        source_fill,
+        source_stroke,
+        paint_support.apply_fill,
+        paint_support.apply_stroke,
+    );
     let rough_group_style = flowchart_hand_drawn_shape_group_style(node_styles);
     let fill_color = compiled_styles
         .fill
         .as_deref()
+        .or_else(|| node_theme.fill_value(source_fill, paint_support.apply_fill))
         .unwrap_or(ctx.node_fill_color.as_str());
     let stroke_color = compiled_styles
         .stroke
         .as_deref()
+        .or_else(|| node_theme.stroke_value(source_stroke, paint_support.apply_stroke))
         .unwrap_or(ctx.node_border_color.as_str());
     let stroke_width: f32 = compiled_styles
         .stroke_width
@@ -219,6 +240,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     };
 
     if shapes::try_render_flowchart_no_label(out, ctx, &common, details) {
+        ctx.theme_evidence.record_node_emission(
+            &node_theme,
+            source_fill,
+            source_stroke,
+            paint_support.verified_fill,
+            paint_support.verified_stroke,
+            &source_paint_residuals,
+        );
         out.push_str("</g>");
         if common.wrapped_in_a {
             out.push_str("</a>");
@@ -226,10 +255,85 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         return Ok(());
     }
 
-    if shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)? {
+    let shape_closed_wrapper =
+        shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)?;
+    ctx.theme_evidence.record_node_emission(
+        &node_theme,
+        source_fill,
+        source_stroke,
+        paint_support.verified_fill,
+        paint_support.verified_stroke,
+        &source_paint_residuals,
+    );
+    if shape_closed_wrapper {
         return Ok(());
     }
 
     label::render_flowchart_node_label(out, ctx, &common, &label, &compiled_styles, details);
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct FlowchartNodePaintSupport {
+    apply_fill: bool,
+    apply_stroke: bool,
+    verified_fill: bool,
+    verified_stroke: bool,
+}
+
+fn node_theme_paint_support(shape: &str, look: &str) -> crate::Result<FlowchartNodePaintSupport> {
+    let shape = crate::flowchart::FlowchartShape::resolve(shape)?;
+    let verified =
+        look != "handDrawn" && matches!(shape, crate::flowchart::FlowchartShape::Process);
+    // The typed owner keeps best-effort visual continuity on every Node surface through the
+    // existing inline/common-color inputs. Only the standard Process surface currently produces
+    // positive portability evidence; all other shapes remain residual until their emitter is
+    // verified directly.
+    let support = FlowchartNodePaintSupport {
+        apply_fill: true,
+        apply_stroke: true,
+        verified_fill: verified,
+        verified_stroke: verified,
+    };
+    Ok(support)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_node_paint_only_claims_the_verified_standard_svg_surface() {
+        let process = node_theme_paint_support("rect", "classic").expect("process shape");
+        assert!(process.apply_fill);
+        assert!(process.apply_stroke);
+        assert!(process.verified_fill);
+        assert!(process.verified_stroke);
+
+        for (shape, look) in [
+            ("rect", "handDrawn"),
+            ("start", "classic"),
+            ("anchor", "classic"),
+            ("icon", "classic"),
+            ("circle", "classic"),
+        ] {
+            let support = node_theme_paint_support(shape, look).expect("known Flowchart shape");
+            assert!(
+                support.apply_fill,
+                "typed fill was not forwarded for {shape}/{look}"
+            );
+            assert!(
+                support.apply_stroke,
+                "typed stroke was not forwarded for {shape}/{look}"
+            );
+            assert!(
+                !support.verified_fill,
+                "unexpected verified fill for {shape}/{look}"
+            );
+            assert!(
+                !support.verified_stroke,
+                "unexpected verified stroke for {shape}/{look}"
+            );
+        }
+    }
 }

@@ -53,6 +53,9 @@ pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
 pub use effects::{
     DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
 };
+pub(crate) use family_mechanism_matrix::{
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRoute, FamilyThemeRuleFacet,
+};
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
 };

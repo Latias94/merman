@@ -365,6 +365,22 @@ mod theme_tests {
             "font_tables_hard_cap",
             "font_aliases_hard_cap",
             "font_decoded_expansion_ratio_hard_cap",
+            "max_effect_graphs",
+            "max_effect_primitives_per_graph",
+            "max_effect_bindings",
+            "max_effect_offset_magnitude",
+            "max_effect_filter_region_magnitude",
+            "max_effect_blur_magnitude",
+            "max_effect_displacement_scale",
+            "max_effect_turbulence_octaves",
+            "effect_graphs_hard_cap",
+            "effect_primitives_per_graph_hard_cap",
+            "effect_bindings_hard_cap",
+            "effect_offset_magnitude_hard_cap",
+            "effect_filter_region_magnitude_hard_cap",
+            "effect_blur_magnitude_hard_cap",
+            "effect_displacement_scale_hard_cap",
+            "effect_turbulence_octaves_hard_cap",
         ];
 
         for id in forbidden {

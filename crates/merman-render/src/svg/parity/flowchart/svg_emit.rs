@@ -23,6 +23,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
+            theme_evidence: artifact.theme_evidence(),
         },
         options,
     )
@@ -37,6 +38,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
+    pub(super) theme_evidence: &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
 }
 
 pub(super) fn render_flowchart_svg_model(
@@ -52,6 +54,7 @@ pub(super) fn render_flowchart_svg_model(
         diagram_type,
         diagram_title,
         svg_label_sidecar,
+        theme_evidence,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -238,6 +241,8 @@ pub(super) fn render_flowchart_svg_model(
         config: effective_config,
         hand_drawn_seed,
         work_meter: options.work_meter(),
+        resolved_theme: options.resolved_theme(),
+        theme_evidence,
         math_renderer: options.math_renderer(),
         svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: options.icon_registry(),

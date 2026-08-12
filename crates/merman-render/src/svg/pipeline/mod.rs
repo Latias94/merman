@@ -359,12 +359,12 @@ impl SvgPipeline {
     }
 
     /// Returns whether the configured draft pipeline has no untrusted transformation that could
-    /// rewrite typed root-theme nodes after the root consumer emitted them.
+    /// rewrite typed root or family output after the renderer emitted it.
     ///
     /// The terminal preset itself is renderer-owned and does not invalidate root evidence. A
     /// custom postprocessor is conservatively treated as a mutation boundary until it provides a
     /// dedicated preservation contract.
-    pub(crate) fn preserves_typed_root_theme(&self) -> bool {
+    pub(crate) fn preserves_typed_theme_evidence(&self) -> bool {
         self.postprocessors.is_empty()
     }
 

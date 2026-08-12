@@ -76,7 +76,7 @@ fn render_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> St
     let session = RenderEnvironment::deterministic()
         .begin_session_with_theme(theme)
         .unwrap();
-    let parsed = Engine::new()
+    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");

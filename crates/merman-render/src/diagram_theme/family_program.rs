@@ -186,7 +186,16 @@ impl FamilyThemeProgram {
         rule_index: usize,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        self.mechanism_routes.iter().any(|route| {
+        self.rule_facet_disposition(rule_index, facet)
+            == Some(FamilyThemeDisposition::LegacyCompatibility)
+    }
+
+    pub(super) fn rule_facet_disposition(
+        &self,
+        rule_index: usize,
+        facet: FamilyThemeRuleFacet,
+    ) -> Option<FamilyThemeDisposition> {
+        self.mechanism_routes.iter().find_map(|route| {
             matches!(
                 route.mechanism(),
                 FamilyThemeMechanism::RuleFacet {
@@ -194,8 +203,17 @@ impl FamilyThemeProgram {
                     facet: candidate_facet,
                     ..
                 } if candidate == rule_index && candidate_facet == facet
-            ) && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+            )
+            .then_some(route.disposition())
         })
+    }
+
+    pub(super) fn has_mechanism_routes(&self) -> bool {
+        !self.mechanism_routes.is_empty()
+    }
+
+    pub(super) fn mechanism_routes(&self) -> &[FamilyThemeRoute] {
+        &self.mechanism_routes
     }
 
     pub(super) fn has_legacy_ordinal_palette(&self, target: ThemeTarget) -> bool {

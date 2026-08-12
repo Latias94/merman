@@ -8,6 +8,7 @@ mod self_loop;
 mod shapes;
 mod style;
 mod svg_label_artifact;
+mod theme_evidence;
 
 pub(crate) use merman_core::diagrams::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
@@ -111,4 +112,7 @@ pub(crate) use svg_label_artifact::{
     FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
     measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
     measure_flowchart_svg_label_for_layout_with_typography_overrides,
+};
+pub(crate) use theme_evidence::{
+    FlowchartNodeThemeStyle, FlowchartSourcePaintStatus, FlowchartThemeEvidenceRecorder,
 };

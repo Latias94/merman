@@ -1397,8 +1397,8 @@ mod tests {
             DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
-                        ThemeTarget::Node,
-                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke(solid("#f8fafc")),
                     )
                     .for_family(RenderFamilyKind::Flowchart),
                 ),
@@ -1538,13 +1538,13 @@ mod tests {
         let flowchart = parse(&spec, "flowchart LR\nA --> B\n");
         let sequence = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
 
-        assert_eq!(
+        assert_ne!(
             flowchart
                 .effective_config
                 .get_str("themeVariables.primaryColor"),
             Some("#ef4444")
         );
-        assert_eq!(fallback_contribution_count(&flowchart), 1);
+        assert_eq!(fallback_contribution_count(&flowchart), 0);
         assert_eq!(
             sequence.effective_config.get_str("themeVariables.actorBkg"),
             Some("#22c55e")
@@ -1771,7 +1771,7 @@ mod tests {
         let bridge = bridge(&spec);
         assert_eq!(bridge.cached_family_count(), 0);
 
-        assert!(bridge.owns_contribution_id("merman.legacy-family-theme.v1.flowchart.node.fill"));
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.flowchart.node.fill"));
         assert_eq!(bridge.cached_family_count(), 1);
         assert!(
             !bridge

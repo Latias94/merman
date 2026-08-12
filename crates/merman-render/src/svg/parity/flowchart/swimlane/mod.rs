@@ -28,6 +28,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
+            theme_evidence: artifact.theme_evidence(),
         },
         options,
     )
