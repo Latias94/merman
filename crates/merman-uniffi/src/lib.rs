@@ -8,7 +8,7 @@
 //! This crate exposes an idiomatic generated-binding surface over `merman-bindings-core`. It does
 //! not replace the canonical C ABI in `merman-ffi`.
 
-use merman::{OperationControl, OperationPhase};
+use merman::OperationControl;
 use merman_bindings_core::BindingEngineServices;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
@@ -1530,11 +1530,11 @@ mod tests {
         let control = MermanOperationControl::new(Some(0));
         let cancelled = control
             .clone_control()
-            .checkpoint_at(OperationPhase::Admission)
+            .checkpoint_at(merman::OperationPhase::Admission)
             .expect_err("zero timeout must cancel at the first checkpoint");
 
         assert_eq!(cancelled.reason, merman::CancelReason::DeadlineExceeded);
-        assert_eq!(cancelled.phase, OperationPhase::Admission);
+        assert_eq!(cancelled.phase, merman::OperationPhase::Admission);
     }
 
     fn reusable_engine(options_json: Option<String>) -> Arc<MermanEngine> {
