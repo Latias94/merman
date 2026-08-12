@@ -45,9 +45,9 @@ The desired behavior is cooperative: a host-owned control can be cloned into a s
 ### Requirements
 
 - R1. A cloneable operation control supports atomic cancellation, an optional monotonic deadline, and parent/child propagation where existing parser composition needs it. Cancellation is sticky for the lifetime of the operation.
-- R2. Every controlled stage can report the phase and cancellation reason (`requested` or `deadline`) through a structured `Cancelled` result. A cancellation result is never converted to a syntax error, layout overflow, or `ResourceLimitExceeded`.
+- R2. Every controlled stage reports cancellation as `RenderError::Cancelled(OperationCancelled { phase, reason })`, where `CancelReason` is exactly `Requested` or `DeadlineExceeded`. Cancellation is never converted to a syntax error, layout overflow, or `ResourceLimitExceeded`.
 - R3. The canonical source-to-output path captures one operation context, control, and resource view. SVG, ASCII, and export adapters receive narrow projections of that operation and do not create hidden replacement contexts.
-- R4. The public facade exposes a `Renderer` and typed target request instead of SVG/ASCII method combinations. A one-shot render and any supported semantic preparation use the same internal operation runner.
+- R4. The public facade exposes a `Renderer` and typed target request instead of SVG/ASCII method combinations. Built-in target requests include semantic, SVG, ASCII, PNG, JPEG, and PDF where their features are enabled. PNG/JPEG/PDF are public target variants but internally remain terminal exports from the sealed SVG path within the same operation. A one-shot render and any supported semantic preparation use the same internal operation runner.
 - R5. `PreparedSemantic` becomes a format-neutral `SemanticArtifact`. SVG-only `PreparedRender` and other public paired semantic/layout artifacts are hidden or removed so callers cannot recombine a family model with an unrelated layout.
 - R6. SVG retains its own text measurement, math, icon, Dagre, ELK, Cytoscape, SVG DOM, postprocessing, and export implementations. ASCII retains its own grid, character-width, routing, and terminal emission implementations. No universal `Layout`, `Canvas`, or public backend-plugin trait is introduced.
 - R7. `charge()` performs a control/deadline checkpoint before checked work accounting. Neutral interruption from Dagre, ELK, or Cytoscape is mapped using the sticky operation termination cause rather than guessed as arithmetic overflow.
@@ -126,11 +126,11 @@ The desired behavior is cooperative: a host-owned control can be cloned into a s
 - KTD1. **Put the control primitive in `merman-core`, not in `merman-render`.** `merman-core` is the common dependency of parser, SVG, ASCII, export, and analysis. This is session-settled: user-approved — chosen over an SVG-only `RenderControl` because ASCII and controlled parsing would otherwise require a second state owner.
 - KTD2. **Unify the operation lifecycle, not layout semantics.** The common seam stops at the typed semantic model and carries control, deadline, context, budget projections, and error/report ownership. SVG and ASCII remain independent adapters. This is session-settled: user-approved — chosen over a lowest-common-denominator geometry abstraction because ADR-0065 and ADR-0073 require family-local meaning and target-local layout.
 - KTD3. **Use `Renderer + RenderRequest + RenderTarget` as the public facade.** `Renderer::render` is the normal entrypoint; a narrow `Renderer::prepare`/`SemanticArtifact` path is retained only for existing metadata/admission use cases. This is session-settled: user-approved — chosen over rebuilding the current `run_svg_*`/`render_ascii_*` method matrix.
-- KTD4. **Make cancellation and resource exhaustion disjoint terminal classes.** The shared control reports `Cancelled` with a requested/deadline reason; target quotas report `ResourceLimitExceeded` with stable descriptor data. The first termination cause observed at a checkpoint wins and remains sticky for that operation.
+- KTD4. **Make cancellation and resource exhaustion disjoint terminal classes.** The facade reports `RenderError::Cancelled(OperationCancelled { phase, reason })`, with `CancelReason::{Requested, DeadlineExceeded}`; target quotas report `RenderError::ResourceLimitExceeded` with stable descriptor data. Transports preserve the cancellation reason as structured data instead of inventing a second error vocabulary. The first termination cause observed at a checkpoint wins and remains sticky for that operation.
 - KTD5. **Keep target quotas local behind a common descriptor and ledger projection.** Shared work admission and error shape live in the common operation layer, while SVG bytes/elements, ASCII grid cells, and export pixels retain target-specific policy ownership. This avoids a giant target enum while preventing duplicate safety envelopes.
-- KTD6. **Make the internal operation runner canonical and consume old stages.** One runner performs controlled preprocess/parse/semantic admission, then dispatches to a target adapter. One-shot and preparation paths delegate to it; old Headless operations and public SVG `PreparedRender` are removed rather than kept as a second master path.
+- KTD6. **Make the internal operation runner canonical, migrate consumers, then delete old stages.** One runner performs controlled preprocess/parse/semantic admission, then dispatches to a target adapter. One-shot, preparation, and temporary migration shims delegate to it. Old Headless operations and public SVG `PreparedRender` are deleted only after all owned consumers use the replacement, so no second master path survives and the workspace remains compilable between units.
 - KTD7. **Use cooperative checkpoints with an explicit opaque-callback contract.** Tight loops may amortize deadline reads, but every `charge()` checks control first. Custom postprocessors and third-party encoders are checked before/after invocation only; hard stop is a host isolation concern.
-- KTD8. **Delete obsolete public API after migration, without aliases.** Alpha status and ADR-0073's rejection of permanent compatibility layers justify breaking `HeadlessRenderer`, `HeadlessAsciiRenderer`, `HeadlessAsciiError`, `ParseControl`, `PreparedRender`, and pass-through helpers once replacement tests are green.
+- KTD8. **Delete obsolete public API after all consumers migrate, without permanent aliases.** Alpha status and ADR-0073's rejection of permanent compatibility layers justify breaking `HeadlessRenderer`, `HeadlessAsciiRenderer`, `HeadlessAsciiError`, `ParseControl`, `PreparedRender`, and pass-through helpers. Temporary delegating shims may exist only across U5-U6 and are removed in U7.
 - KTD9. **Keep analysis cancellation as a domain projection, not a new state.** `AnalysisCancellationToken` may remain as a narrow semantic wrapper if callers need it, but it delegates to `OperationControl` and cannot own another atomic flag or deadline.
 
 ### High-Level Technical Design
@@ -145,7 +145,8 @@ flowchart TD
     P --> S[SVG adapter]
     P --> A[ASCII adapter]
     S --> L1[Dagre / ELK / Cytoscape]
-    S --> E1[SVG emit + postprocess + export]
+    S --> E1[SVG emit + postprocess]
+    E1 --> X[SVG output or PNG / JPEG / PDF export]
     A --> L2[Grid / route / sequence layout]
     A --> E2[Terminal emit]
     O --> Q[Common stop + resource descriptor]
@@ -161,8 +162,8 @@ The termination state machine is:
 
 ```text
 Active
-  ├─ checkpoint observes cancel request  -> Cancelled(Requested)
-  ├─ checkpoint observes expired deadline -> Cancelled(DeadlineExceeded)
+  ├─ checkpoint observes cancel request  -> Cancelled { reason: Requested }
+  ├─ checkpoint observes expired deadline -> Cancelled { reason: DeadlineExceeded }
   ├─ charge observes checked quota failure -> ResourceLimitExceeded
   └─ successful terminal emit             -> Completed
 ```
@@ -177,9 +178,9 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 | P0 | Canonical operation runner and typed `Renderer` request | Establishes the new master path before deleting old facades. | SVG and ASCII both execute through one runner with no hidden engine/context creation. |
 | P1 | SVG adapter checkpoints and interruption mapping | SVG is the largest existing consumer and owns `max_layout_work_units`, pipeline, and export seams. | Layout, pipeline, postprocess, and export tests distinguish cancellation/resource errors. |
 | P1 | ASCII adapter checkpoints and resource migration | Removes the second operation owner and makes the user-requested ASCII behavior real. | Grid/sequence/layout/output tests cover cancellation and structured grid limits. |
-| P1 | Public API deletion and async cleanup | Only safe after the replacement path and tests exist. | No stale Headless/PreparedRender/pass-through/CPU-bound render async symbols remain. |
-| P2 | Bindings, CLI, WASM, FFI, generated contracts | External surfaces need the settled Rust seam and error taxonomy first. | Feature matrix and transport smoke tests consume typed target/status mappings. |
-| P2 | Documentation, final simplification, and evidence | Prevents stale architecture guidance and removes abandoned migration artifacts. | ADR/docs/source scans and final parity/resource/security gates pass. |
+| P1 | New public facade stabilization | Gives all in-workspace consumers a complete replacement before the destructive cutover. | Typed semantic/SVG/ASCII/export requests are stable and their direct Rust tests pass. |
+| P2 | Bindings, CLI, WASM, FFI, generated contracts | External surfaces need the settled Rust seam and error taxonomy first. | Feature matrix and transport smoke tests consume typed target/status mappings while the temporary old facade still exists only as migration scaffolding. |
+| P2 | Old API deletion, documentation, final simplification, and evidence | Destructive cleanup is safe only after every owned consumer has migrated. | No stale Headless/PreparedRender/pass-through/CPU-bound render async symbols remain; ADR/docs/source scans and final parity/resource/security gates pass. |
 
 ### Assumptions
 
@@ -305,14 +306,13 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 
 **Test scenarios:**
 
-- A normal SVG and ASCII request capture one operation context each and never create a second hidden context inside the target adapter.
 - A controlled render-model parse cancelled during preprocessing or family parsing returns the common cancellation result rather than an ordinary parse error.
 - A known-type request skips detection but still observes source admission, control, and runtime capture.
 - A `SemanticArtifact` exposes metadata and family identity while preventing construction of an unrelated layout artifact.
-- One-shot `Renderer::render` and `Renderer::prepare` produce equivalent successful semantic/output behavior for the same request.
-- A cancelled operation returns no `RenderOutput` or partial artifact.
+- One-shot semantic preparation and direct controlled parsing share the same source admission, runtime context, and operation report path.
+- A cancelled operation returns no `SemanticArtifact` or partial prepared state.
 
-**Verification:** New facade tests exercise both targets through the same runner, compile-fail/public-surface checks show that old paired semantic/layout combinations are unrepresentable, and existing canonical operation parity tests can be redirected without duplicating parse/layout logic.
+**Verification:** Controlled-parse and operation-runner tests pass without requiring a target backend; compile-fail/public-surface checks show that unrelated semantic/layout combinations are unrepresentable. Cross-target single-context and one-shot/prepared equivalence move to U5 after U3/U4 attach the real adapters.
 
 ### U3. Migrate SVG to the common operation projection and preserve adapter-local behavior
 
@@ -401,9 +401,9 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 
 **Verification:** ASCII crate tests and root facade tests cover all supported target families and failure classes; repository search confirms no root ASCII orchestration or old limit/error symbols remain.
 
-### U5. Replace the public SVG/ASCII API matrix and remove non-yielding render async wrappers
+### U5. Stabilize the typed public facade while retaining temporary migration shims
 
-**Goal:** Complete the breaking facade migration after both adapters use the canonical runner, reducing the public surface to typed requests and stable output/error artifacts.
+**Goal:** Complete and test the replacement facade after both adapters use the canonical runner, while keeping the minimum old public surface required for U6 consumer migration.
 
 **Requirements:** R4, R5, R11, R13, R14; KTD3, KTD6, KTD8.
 
@@ -423,21 +423,23 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 
 **Approach:**
 
-1. Rename the root public concept from `HeadlessRenderer` to `Renderer` and route all supported output requests through `RenderTarget`.
-2. Remove `PreparedRender`, SVG-only public `RenderOperationReport` wrappers, `RenderSvgError`, `HeadlessError`, and `HeadlessAsciiError` where the common facade can own the envelope.
+1. Introduce the root public `Renderer` and route semantic, SVG, ASCII, PNG, JPEG, and PDF requests through typed `RenderTarget` variants; export variants delegate internally to the sealed SVG path and remain inside the same operation.
+2. Define the common facade output/error/report contracts that will replace `PreparedRender`, SVG-only `RenderOperationReport`, `RenderSvgError`, `HeadlessError`, and `HeadlessAsciiError` after U6 migrates their remaining consumers.
 3. Keep format-specific option and sealed artifact types where they are real adapter contracts; do not flatten them into a universal output enum with backend internals.
-4. Delete CPU-bound render `async fn` wrappers and duplicate `_sync`/pipeline/readable/export combinations whose behavior is now request data. Preserve only genuinely asynchronous APIs with actual suspension or an independently justified transport contract.
-5. Update examples and compile-fail tests to prove the new surface and delete tests whose only purpose was to protect removed names.
+4. Mark the exact old facade modules, error wrappers, and CPU-bound render async wrappers as temporary migration shims. They may delegate to the canonical runner, but cannot retain independent orchestration or gain new behavior.
+5. Add direct Rust tests and migration examples for the new surface. Destructive symbol removal and deletion-only tests belong to U7 after U6.
 
 **Test scenarios:**
 
 - A normal SVG, ASCII, PNG, JPEG, and PDF request selects a typed target and returns the expected output/error variant through one facade.
+- A normal SVG and ASCII request capture one operation context each and never create a second hidden context inside the target adapter.
+- One-shot `Renderer::render` and `Renderer::prepare` produce equivalent successful behavior for the same semantic/target request.
 - Invalid target options and unsupported feature combinations fail before backend execution with structured request errors.
 - A caller cannot construct or pass a public SVG `PreparedRender` detached from its operation-owned semantic artifact.
-- The public API contains no CPU-bound render async wrapper and no duplicate target-specific method matrix.
+- Temporary old calls delegate to the canonical runner and cannot create a second parse/layout/operation path.
 - Existing one-shot convenience behavior, including no-diagram handling and explicit SVG id selection, is preserved through request constructors or documented replacements.
 
-**Verification:** Public-surface/compile-fail tests, examples, docs builds, and feature combinations compile against the new API; symbol inventory confirms deleted names are absent from active code.
+**Verification:** Direct Rust public-surface/compile-fail tests, migration examples, and feature combinations compile against the new API; the workspace also remains compilable for U6 because temporary shims delegate to, rather than compete with, the canonical runner.
 
 ### U6. Migrate bindings, CLI, WASM, FFI, and host-facing operation contracts
 
@@ -510,7 +512,7 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 
 **Approach:**
 
-1. Run a final owned-symbol inventory for old control/facade/error/stage names and remove only program-owned leftovers.
+1. Run a final owned-symbol inventory and remove `ParseControl`, `ParseCancelled`, `ParseControlResult`, `PreparedSemantic`, public `PreparedRender`, `RenderOperationReport`, `RenderSvgError`, `HeadlessRenderer`, `HeadlessError`, `HeadlessAsciiRenderer`, `HeadlessAsciiError`, public ASCII family pass-throughs, and CPU-bound render async wrappers. Remove only program-owned leftovers.
 2. Delete temporary probes, duplicate tests, compatibility aliases, and failed migration code; preserve unrelated user files and historical records.
 3. Update docs to distinguish operation cancellation, deadlines, deterministic resource budgets, and hard isolation limitations.
 4. Exercise the canonical operation through parity, deterministic runtime, security, ASCII, export, binding, and feature-surface gates.
@@ -522,6 +524,7 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 - Cancellation/resource structured-error tests pass through direct Rust and at least one binding transport.
 - Security and resvg-safe pipeline tests prove that cancellation/error wrapping does not bypass sealing or sanitization.
 - Public docs/examples contain only the new renderer/request vocabulary and accurately describe cooperative limits.
+- Active code and generated contracts contain none of the old-symbol inventory names except historical documentation that is explicitly marked as such.
 - A clean build with each supported feature closure has no duplicate operation or stale alias warnings.
 
 **Verification:** `cargo fmt` is clean, serial nextest/workspace gates and feature checks pass, parity/security/resource/ABI smoke evidence is recorded, `git diff --check` is clean, and abandoned code is absent from the final diff.
@@ -545,7 +548,7 @@ Once a terminal state is observed it is sticky. A cancellation observed at a che
 
 ### Public Surface Gates
 
-- Active code and generated contracts no longer expose `ParseControl`, `ParseCancelled`, `HeadlessRenderer`, `HeadlessAsciiRenderer`, `HeadlessAsciiError`, public `PreparedRender`, or CPU-bound render async wrappers.
+- Active code and generated contracts no longer expose `ParseControl`, `ParseCancelled`, `ParseControlResult`, `PreparedSemantic`, public `PreparedRender`, `RenderOperationReport`, `RenderSvgError`, `HeadlessRenderer`, `HeadlessError`, `HeadlessAsciiRenderer`, `HeadlessAsciiError`, public ASCII family pass-throughs, or CPU-bound render async wrappers.
 - `Renderer`, typed target requests, `SemanticArtifact`, and common error/status projections are documented and used by examples/tests.
 - `merman-ascii` exposes a model-level backend without public per-family pass-through orchestration.
 
