@@ -18,7 +18,7 @@ The generated transport exposes generic operation dispatch plus stable convenien
 
 The browser transport currently reports:
 
-- transport API version `3`;
+- transport API version `4`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;
@@ -29,6 +29,28 @@ These contracts are independently versioned. Native ABI numbers, Typst plugin AB
 Call `runtimeCatalog()` after initialization to discover the loaded artifact's exact capability, operation, output, system-adapter, resource, and text-measurement IDs. Do not infer availability from exported function names, package names, or Cargo feature names. A stable function whose backend is absent returns a typed `missing-capability` error.
 
 All profiles retain the same pinned Mermaid language catalog. Slim artifacts remove callable rendering, analysis, ASCII, editor, or layout capabilities, not diagram parsers.
+
+## Cooperative cancellation and deadlines
+
+One-shot operation options may include a transport-owned top-level `timeout_ms` field:
+
+```json
+{"timeout_ms":250,"resources":{"profile":"interactive"}}
+```
+
+`timeout_ms` must be an integer from `0` through `4294967295` milliseconds. The portable upper
+bound prevents monotonic-clock arithmetic overflow. The WASM transport removes this field before
+passing the remaining object to the shared binding options schema, then installs the corresponding
+relative monotonic deadline on `OperationControl`. A deadline is observed only at the renderer's
+cooperative checkpoints; an expired call returns a structured `MERMAN_CANCELLED` error with
+`details.cancellation.reason = "deadline_exceeded"` and a phase identifier.
+
+The synchronous, single-threaded WASM exports do not expose a mid-call `AbortSignal` and cannot
+forcefully interrupt Rust or a host text-measurement callback that is already running. A browser
+`AbortSignal` may stop work before a call is entered or after it returns, but it does not change
+this cooperative boundary. Hosts that require hard termination must run the WASM artifact in an
+isolated Worker (or another process boundary) and terminate that isolation unit; use deadline and
+checkpoint cancellation for in-call cooperative stopping.
 
 ## Browser Text Measurement
 
