@@ -8,6 +8,8 @@ updates:
       time: "05:17"
       timezone: Etc/UTC
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain
     labels:
       - dependencies
       - ci
