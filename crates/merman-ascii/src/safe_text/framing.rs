@@ -28,10 +28,14 @@ pub(super) fn visit_quoted_terminal_text_with(
     value: &str,
     mut visit: impl for<'a> FnMut(QuotedTerminalTextEvent<'a>) -> Result<()>,
 ) -> Result<()> {
+    // Validate every authored grapheme before exposing any renderer-owned framing. This keeps the
+    // visitor callback atomic when a later grapheme exceeds the configured source limit.
+    for grapheme in value.graphemes(true) {
+        visit(QuotedTerminalTextEvent::SourceGrapheme(grapheme))?;
+    }
+
     visit(QuotedTerminalTextEvent::OutputFragment("\""))?;
     for grapheme in value.graphemes(true) {
-        // Check the source grapheme before quoting can split it into fragments and bypass the byte limit.
-        visit(QuotedTerminalTextEvent::SourceGrapheme(grapheme))?;
         if !grapheme
             .chars()
             .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
@@ -65,6 +69,47 @@ pub(super) fn visit_quoted_terminal_text_with(
         }
     }
     visit(QuotedTerminalTextEvent::OutputFragment("\""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::AsciiError;
+
+    #[test]
+    fn quoted_visitor_validates_all_source_graphemes_before_emitting_output() {
+        let mut source_graphemes = Vec::new();
+        let mut output = String::new();
+
+        let error = visit_quoted_terminal_text_with("a👩‍💻", |event| match event {
+            QuotedTerminalTextEvent::SourceGrapheme(grapheme) => {
+                source_graphemes.push(grapheme.to_string());
+                if grapheme == "👩‍💻" {
+                    Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "test",
+                        feature: "oversized source grapheme",
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            QuotedTerminalTextEvent::OutputFragment(fragment) => {
+                output.push_str(fragment);
+                Ok(())
+            }
+        })
+        .expect_err("a later source-grapheme failure should abort before framing output");
+
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "test",
+                feature: "oversized source grapheme"
+            }
+        ));
+        assert_eq!(source_graphemes, ["a", "👩‍💻"]);
+        assert!(output.is_empty());
+    }
 }
 
 /// Writes one length-framed authored field to a non-wrapping StructuredText row.
