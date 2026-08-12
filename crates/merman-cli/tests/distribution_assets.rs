@@ -87,10 +87,20 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         mmdc.contains("-e"),
         "the permanent mmdc compatibility surface must retain -e"
     );
-    assert!(
-        mmdc.contains("--theme-file"),
-        "mmdc completion must expose the Merman theme-file extension"
-    );
+    for removed in ["--theme-preset", "--theme-file"] {
+        assert!(
+            !mmdc.contains(removed),
+            "mmdc completion must not expose provisional native option {removed}"
+        );
+    }
+
+    let layout = bash_options(&script, "layout");
+    for removed in ["--theme-preset", "--theme-file"] {
+        assert!(
+            !layout.contains(removed),
+            "layout completion must not expose provisional native option {removed}"
+        );
+    }
 
     let native_themes = bash_option_values(&script, "render", "--theme");
     let expected_native_themes = merman::supported_themes()
@@ -105,9 +115,6 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         .map(|descriptor| descriptor.id().to_owned())
         .collect::<BTreeSet<_>>();
     assert_eq!(native_theme_presets, expected_theme_presets);
-
-    let mmdc_theme_presets = bash_option_values(&script, "mmdc", "--theme-preset");
-    assert_eq!(mmdc_theme_presets, expected_theme_presets);
 
     let mmdc_themes = bash_option_values(&script, "mmdc", "--theme");
     assert_eq!(

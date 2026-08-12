@@ -531,7 +531,7 @@ _merman-cli() {
             return 0
             ;;
         merman__cli__subcmd__layout)
-            opts="-c -t -w -H -h -V --pretty --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --theme-preset --theme-file --text-measurer --math-renderer --width --height --resource-profile --resource-limit --help --version"
+            opts="-c -t -w -H -h -V --pretty --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -585,25 +585,6 @@ _merman-cli() {
                     ;;
                 --fixed-local-offset-minutes)
                     COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --theme-preset)
-                    COMPREPLY=($(compgen -W "editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark" -- "${cur}"))
-                    return 0
-                    ;;
-                --theme-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
                     return 0
                     ;;
                 --text-measurer)
@@ -763,7 +744,7 @@ _merman-cli() {
             return 0
             ;;
         merman__cli__subcmd__mmdc)
-            opts="-i -o -a -j -e -b -C -f -q -p -s -c -t -w -H -I -h -V --input --output --artefacts --jobs --format --outputFormat --svg-pipeline --backgroundColor --cssFile --pdfFit --quiet --puppeteerConfigFile --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --iconPacks --iconPacksNamesAndUrls --configFile --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --theme-preset --theme-file --text-measurer --math-renderer --width --height --svgId --hand-drawn-seed --resource-profile --resource-limit --help --version"
+            opts="-i -o -a -j -e -b -C -f -q -p -s -c -t -w -H -I -h -V --input --output --artefacts --jobs --format --outputFormat --svg-pipeline --backgroundColor --cssFile --pdfFit --quiet --puppeteerConfigFile --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --iconPacks --iconPacksNamesAndUrls --configFile --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --svgId --hand-drawn-seed --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1047,25 +1028,6 @@ _merman-cli() {
                     ;;
                 --fixed-local-offset-minutes)
                     COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --theme-preset)
-                    COMPREPLY=($(compgen -W "editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark" -- "${cur}"))
-                    return 0
-                    ;;
-                --theme-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
                     return 0
                     ;;
                 --text-measurer)

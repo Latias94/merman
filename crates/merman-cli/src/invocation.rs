@@ -804,25 +804,22 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     let warn_on_implicit_stdin = args.input_file.is_none();
     let warn_on_implicit_output_format =
         args.output.as_deref() == Some(Path::new("-")) && args.output_format.is_none();
-    // Preserve mmdc's implicit official `default` theme only when the Merman extension did not
-    // select a complete compiled theme. Explicit config-file values still merge above the preset.
+    // Preserve mmdc's implicit official `default` theme. Native theme selection is intentionally
+    // not part of this compatibility surface.
     let parse = ParseCliArgs {
         suppress_errors: false,
         config_file: args.parse.config_file.clone(),
         theme: args
             .parse
             .theme
-            .or_else(|| {
-                (args.render.theme_preset.is_none() && args.render.theme_file.is_none())
-                    .then_some(crate::cli::MmdcTheme::Default)
-            })
+            .or(Some(crate::cli::MmdcTheme::Default))
             .map(|theme| theme.as_str().to_string()),
         runtime: args.parse.runtime.clone(),
     };
     let runtime_policy = resolve_render_runtime_policy(&parse, args.quiet)?;
     let render = RenderCliArgs {
-        theme_preset: args.render.theme_preset,
-        theme_file: args.render.theme_file.clone(),
+        theme_preset: None,
+        theme_file: None,
         text_measurer: Some(args.render.text_measurer),
         math_renderer: args.render.math_renderer,
         container_width: Some(args.render.container_width),

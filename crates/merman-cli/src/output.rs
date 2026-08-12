@@ -566,7 +566,6 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
         ResolvedInvocation::Layout(args) => {
             anchor_input(&mut args.input, cwd);
             anchor_optional_path(&mut args.parse.config_file, cwd);
-            anchor_optional_path(&mut args.render.theme_file, cwd);
         }
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => {

@@ -685,24 +685,6 @@ pub(crate) struct RenderCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct LayoutRenderCliArgs {
-    /// Compiled diagram-theme preset applied before layout.
-    #[arg(
-        long = "theme-preset",
-        value_parser = theme_preset_value_parser(),
-        conflicts_with = "theme_file",
-        help_heading = "Layout controls"
-    )]
-    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
-
-    /// JSON theme selection file containing exactly one `preset` or `spec` member.
-    #[arg(
-        long = "theme-file",
-        value_hint = ValueHint::FilePath,
-        conflicts_with = "theme_preset",
-        help_heading = "Layout controls"
-    )]
-    pub(crate) theme_file: Option<PathBuf>,
-
     /// Text measurement strategy.
     #[arg(
         long = "text-measurer",
@@ -739,8 +721,8 @@ pub(crate) struct LayoutRenderCliArgs {
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
         RenderCliArgs {
-            theme_preset: self.theme_preset,
-            theme_file: self.theme_file,
+            theme_preset: None,
+            theme_file: None,
             text_measurer: Some(self.text_measurer),
             math_renderer: self.math_renderer,
             container_width: self.container_width,
@@ -788,8 +770,7 @@ pub(crate) struct MmdcParseCliArgs {
 
     /// Official Mermaid CLI theme selector.
     ///
-    /// The accepted values stay pinned to the upstream mmdc contract. Use
-    /// `--theme-preset` for Merman's compiled diagram themes.
+    /// The accepted values stay pinned to the upstream mmdc contract.
     #[arg(
         short = 't',
         long,
@@ -807,30 +788,6 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
-    /// Compiled Merman diagram-theme preset.
-    ///
-    /// This is a complete visual theme selector and therefore cannot be combined with the
-    /// official mmdc `-t`/`--theme` option. Explicit values in `--configFile` retain normal
-    /// Mermaid configuration precedence.
-    #[arg(
-        long = "theme-preset",
-        value_parser = theme_preset_value_parser(),
-        conflicts_with = "theme",
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
-
-    /// JSON theme selection file containing exactly one `preset` or `spec` member.
-    #[arg(
-        long = "theme-file",
-        value_hint = ValueHint::FilePath,
-        conflicts_with_all = ["theme", "theme_preset"],
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) theme_file: Option<PathBuf>,
-
     /// Text measurement strategy.
     #[arg(
         long = "text-measurer",
@@ -894,8 +851,6 @@ pub(crate) struct MmdcRenderCliArgs {
 impl Default for MmdcRenderCliArgs {
     fn default() -> Self {
         Self {
-            theme_preset: None,
-            theme_file: None,
             text_measurer: TextMeasurerKind::Vendored,
             math_renderer: None,
             container_width: 800.0,

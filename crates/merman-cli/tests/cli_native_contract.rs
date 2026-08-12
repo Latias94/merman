@@ -156,7 +156,7 @@ fn batch_help_exposes_only_graphical_batch_options() {
 }
 
 #[test]
-fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
+fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     for (command, common, advanced) in [
         (
@@ -181,8 +181,6 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
                 "--raster-max-width",
                 "--pdf-filter-scale",
                 "--svg-pipeline",
-                "--theme-preset",
-                "--theme-file",
                 "--puppeteerConfigFile",
             ][..],
         ),
@@ -218,6 +216,32 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
         assert!(
             short.contains(&format!("merman-cli {command}")) && short.contains("--help"),
             "{command} short help needs an example and long-help cue:\n{short}"
+        );
+        if command == "mmdc" {
+            for removed in ["--theme-preset", "--theme-file"] {
+                assert!(
+                    !long.contains(removed),
+                    "mmdc long help must not expose provisional native option {removed}:\n{long}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn layout_help_excludes_native_theme_selection() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args(["layout", "--help"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    for removed in ["--theme-preset", "--theme-file"] {
+        assert!(
+            !stdout.contains(removed),
+            "layout help must not expose provisional native option {removed}:\n{stdout}"
         );
     }
 }

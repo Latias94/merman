@@ -168,7 +168,6 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         "--iconPacks",
         "--iconPacksNamesAndUrls",
         "--theme",
-        "--theme-preset",
     ] {
         assert!(
             stdout.contains(flag),
@@ -179,6 +178,12 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         !stdout.contains("--presentation-profile") && !stdout.contains("merman-modern"),
         "removed non-upstream presentation inputs must stay absent:\n{stdout}"
     );
+    for removed in ["--theme-preset", "--theme-file"] {
+        assert!(
+            !stdout.contains(removed),
+            "mmdc help must not advertise provisional native theme option {removed}:\n{stdout}"
+        );
+    }
 }
 
 #[test]
@@ -227,77 +232,55 @@ fn mmdc_theme_flag_without_a_value_selects_the_official_default() {
 }
 
 #[test]
-fn mmdc_rejects_two_explicit_theme_selectors_before_input_acquisition() {
+fn compatibility_commands_reject_native_theme_options_before_input_acquisition() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe)
-        .args([
-            "mmdc",
-            "-i",
-            "missing.mmd",
-            "--theme",
-            "dark",
-            "--theme-preset",
-            "editor-dark",
-        ])
-        .output()
-        .expect("run cli");
+    for command in ["mmdc", "layout"] {
+        for (removed, value) in [
+            ("--theme-preset", "editor-dark"),
+            ("--theme-file", "theme.json"),
+        ] {
+            let args = if command == "mmdc" {
+                vec![command, "-i", "missing.mmd", removed, value]
+            } else {
+                vec![command, "missing.mmd", removed, value]
+            };
+            let output = Command::new(exe).args(&args).output().expect("run cli");
 
-    assert_eq!(support::exit_code(output.status), 2);
-    assert!(output.stdout.is_empty(), "failure must not write a payload");
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("--theme")
-            && stderr.contains("--theme-preset")
-            && !stderr.contains("missing.mmd:"),
-        "theme selector conflict must be reported during argument parsing:\n{stderr}"
-    );
-}
-
-#[test]
-fn theme_file_conflicts_with_other_complete_theme_selectors() {
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    for args in [
-        vec![
-            "render",
-            "missing.mmd",
-            "--theme-preset",
-            "editor-dark",
-            "--theme-file",
-            "missing-theme.json",
-        ],
-        vec![
-            "mmdc",
-            "-i",
-            "missing.mmd",
-            "--theme",
-            "dark",
-            "--theme-file",
-            "missing-theme.json",
-        ],
-        vec![
-            "mmdc",
-            "-i",
-            "missing.mmd",
-            "--theme-preset",
-            "editor-dark",
-            "--theme-file",
-            "missing-theme.json",
-        ],
-    ] {
-        let output = Command::new(exe).args(&args).output().expect("run cli");
-
-        assert_eq!(support::exit_code(output.status), 2, "{args:?}");
-        assert!(output.stdout.is_empty(), "{args:?}");
-        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-        assert!(
-            stderr.contains("--theme-file") && !stderr.contains("missing.mmd:"),
-            "theme selector conflicts must precede input acquisition for {args:?}:\n{stderr}"
-        );
+            assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+            assert!(output.stdout.is_empty(), "{args:?}");
+            let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+            assert!(
+                stderr.contains(removed) && !stderr.contains("missing.mmd:"),
+                "{command} must reject provisional native option during argument parsing:\n{stderr}"
+            );
+        }
     }
 }
 
 #[test]
-fn mmdc_config_file_can_explicitly_override_theme_preset_inputs() {
+fn native_theme_file_conflicts_with_the_native_preset() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let args = [
+        "render",
+        "missing.mmd",
+        "--theme-preset",
+        "editor-dark",
+        "--theme-file",
+        "missing-theme.json",
+    ];
+    let output = Command::new(exe).args(args).output().expect("run cli");
+
+    assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+    assert!(output.stdout.is_empty(), "{args:?}");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("--theme-file") && !stderr.contains("missing.mmd:"),
+        "theme selector conflicts must precede input acquisition for {args:?}:\n{stderr}"
+    );
+}
+
+#[test]
+fn mmdc_config_file_can_explicitly_override_the_official_theme_selector() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = tmp.path().join("mermaid.json");
     fs::write(
@@ -319,8 +302,8 @@ fn mmdc_config_file_can_explicitly_override_theme_preset_inputs() {
             "-",
             "-o",
             "-",
-            "--theme-preset",
-            "editor-dark",
+            "--theme",
+            "dark",
             "--configFile",
             path.as_ref(),
         ],
@@ -374,35 +357,34 @@ fn native_theme_values_match_the_compiled_runtime_catalog() {
 }
 
 #[test]
-fn theme_preset_values_match_the_compiled_runtime_catalog() {
+fn native_theme_preset_values_match_the_compiled_runtime_catalog() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    for command in ["render", "mmdc"] {
-        let mut rejected = Command::new(exe);
-        rejected.args([command, "--theme-preset", "not-a-runtime-preset"]);
-        if command == "mmdc" {
-            rejected.args(["-i", "missing.mmd"]);
-        } else {
-            rejected.arg("missing.mmd");
-        }
-        let rejected = rejected.output().expect("run cli");
+    let rejected = Command::new(exe)
+        .args([
+            "render",
+            "missing.mmd",
+            "--theme-preset",
+            "not-a-runtime-preset",
+        ])
+        .output()
+        .expect("run cli");
 
-        assert_eq!(support::exit_code(rejected.status), 2);
+    assert_eq!(support::exit_code(rejected.status), 2);
+    assert!(
+        rejected.stdout.is_empty(),
+        "failure must not write a payload"
+    );
+    let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("not-a-runtime-preset") && !stderr.contains("missing.mmd:"),
+        "theme preset validation must precede input acquisition:\n{stderr}"
+    );
+    for descriptor in merman::svg::theme_preset_descriptors() {
         assert!(
-            rejected.stdout.is_empty(),
-            "failure must not write a payload"
+            stderr.contains(descriptor.id()),
+            "theme preset validation should list `{}`:\n{stderr}",
+            descriptor.id()
         );
-        let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
-        assert!(
-            stderr.contains("not-a-runtime-preset") && !stderr.contains("missing.mmd:"),
-            "theme preset validation must precede input acquisition:\n{stderr}"
-        );
-        for descriptor in merman::svg::theme_preset_descriptors() {
-            assert!(
-                stderr.contains(descriptor.id()),
-                "theme preset validation should list `{}`:\n{stderr}",
-                descriptor.id()
-            );
-        }
     }
 
     let accepted = run_with_stdin(
@@ -430,37 +412,10 @@ fn theme_preset_values_match_the_compiled_runtime_catalog() {
         !svg.contains(r#"data-look="neo""#),
         "a visual theme preset must not select Mermaid look: {svg}"
     );
-
-    let mmdc = run_with_stdin(
-        &[
-            "mmdc",
-            "-i",
-            "-",
-            "-o",
-            "-",
-            "--theme-preset",
-            "editor-dark",
-        ],
-        "flowchart LR\nA-->B\n",
-    );
-    assert!(
-        mmdc.status.success(),
-        "mmdc theme preset should be accepted: {}",
-        String::from_utf8_lossy(&mmdc.stderr)
-    );
-    let svg = String::from_utf8(mmdc.stdout).expect("stdout should be utf8");
-    assert!(
-        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
-        "implicit mmdc defaults must not override an explicit theme preset: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"data-look="neo""#),
-        "mmdc theme presets must remain independent from Mermaid look: {svg}"
-    );
 }
 
 #[test]
-fn theme_file_uses_the_same_compiled_theme_contract_across_commands() {
+fn native_theme_file_uses_the_compiled_theme_contract() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(
         tmp.path().join("theme.json"),
@@ -469,42 +424,25 @@ fn theme_file_uses_the_same_compiled_theme_contract_across_commands() {
     .expect("write theme selection");
     let source = "flowchart LR\nA-->B\n";
 
-    for args in [
-        vec![
-            "render",
-            "--theme-file",
-            "theme.json",
-            "--format",
-            "svg",
-            "-",
-        ],
-        vec!["mmdc", "-i", "-", "-o", "-", "--theme-file", "theme.json"],
-    ] {
-        let output = run_with_stdin_in_dir(&args, source, Some(tmp.path()));
-        assert!(
-            output.status.success(),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
-        assert!(
-            svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
-            "{args:?} should compile the theme file through the typed theme path: {svg}"
-        );
-    }
-
-    let layout = run_with_stdin_in_dir(
-        &["layout", "--theme-file", "theme.json", "-"],
-        source,
-        Some(tmp.path()),
-    );
+    let args = [
+        "render",
+        "--theme-file",
+        "theme.json",
+        "--format",
+        "svg",
+        "-",
+    ];
+    let output = run_with_stdin_in_dir(&args, source, Some(tmp.path()));
     assert!(
-        layout.status.success(),
-        "layout should accept the same relative theme file: {}",
-        String::from_utf8_lossy(&layout.stderr)
+        output.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let model: Value = serde_json::from_slice(&layout.stdout).expect("layout JSON");
-    assert!(model.is_object(), "layout should emit a JSON model");
+    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+        "native render should compile the theme file through the typed theme path: {svg}"
+    );
 }
 
 #[test]
