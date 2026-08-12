@@ -87,6 +87,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "debug-assertions": False,
                 "overflow-checks": False,
                 "rpath": False,
+                "build-override": {"strip": "none"},
             },
         )
 
