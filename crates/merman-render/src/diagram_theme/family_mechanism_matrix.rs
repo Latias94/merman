@@ -1104,6 +1104,38 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_and_swimlane_base_typography_remains_legacy_until_shared_layout_plan() {
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::single("Excalifont").expect("valid fixture font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid font size")
+            .with_font_weight(700)
+            .expect("valid font weight");
+
+        for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
+            let routes = compile_base_typography_routes(family, &typography);
+
+            assert!(routes.iter().any(|route| {
+                route.mechanism()
+                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                    && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+            }));
+            assert!(routes.iter().any(|route| {
+                route.mechanism()
+                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                    && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+            }));
+            assert!(routes.iter().any(|route| {
+                route.mechanism()
+                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
+                    && route.disposition() == FamilyThemeDisposition::Unsupported
+            }));
+        }
+    }
+
+    #[test]
     fn oversized_font_stack_is_unsupported_without_shadowing_font_size() {
         let families = (0..32)
             .map(|index| format!("font-{index}-{}", "x".repeat(180)))
