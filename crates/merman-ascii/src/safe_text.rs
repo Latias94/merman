@@ -1,3 +1,4 @@
+mod composed;
 mod document;
 mod encode;
 mod framing;
@@ -7,6 +8,7 @@ mod normalization;
 mod width;
 mod wrapped;
 
+pub(crate) use composed::ComposedTextPlan;
 #[cfg(test)]
 use document::encode_text_lines;
 pub(crate) use document::{

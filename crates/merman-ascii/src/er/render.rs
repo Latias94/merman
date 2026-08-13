@@ -10,10 +10,8 @@ use crate::relation_graph::{
     RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
     RelationSummaryPaintPlan,
 };
-use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
-};
-use crate::safe_text::{charge_text_layout, terminal_char_display_width};
+use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::safe_text::{ComposedTextPlan, charge_text_layout, terminal_char_display_width};
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
@@ -380,66 +378,51 @@ fn attribute_text_with_probe(
     })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct ErAttributeTextPlan<'a> {
-    attribute: &'a ErAttributeRenderModel,
-    output_bytes: usize,
-    materialization_work: usize,
+    text: ComposedTextPlan<'a>,
 }
 
 impl<'a> ErAttributeTextPlan<'a> {
     fn try_new(attribute: &'a ErAttributeRenderModel, resources: &ResourceContext) -> Result<Self> {
-        // The only input-sized planning loop is the key list. Admit it before traversing the list.
-        resources.charge_layout_work(attribute.keys.len().max(1))?;
-
-        let mut output_bytes = 0usize;
-        let mut has_text = false;
-        if !attribute.ty.is_empty() {
-            output_bytes =
-                checked_attribute_output_add(resources, output_bytes, attribute.ty.len())?;
-            has_text = true;
-        }
-        if !attribute.name.is_empty() {
-            if has_text {
-                output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+        let text = ComposedTextPlan::try_new(resources, attribute.keys.len().max(1), |push| {
+            let mut has_text = false;
+            if !attribute.ty.is_empty() {
+                push(&attribute.ty)?;
+                has_text = true;
             }
-            output_bytes =
-                checked_attribute_output_add(resources, output_bytes, attribute.name.len())?;
-            has_text = true;
-        }
-        if !attribute.keys.is_empty() {
-            if has_text {
-                output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
-            }
-            output_bytes = checked_attribute_output_add(resources, output_bytes, "[keys: ".len())?;
-            for (index, key) in attribute.keys.iter().enumerate() {
-                if index > 0 {
-                    output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+            if !attribute.name.is_empty() {
+                if has_text {
+                    push(" ")?;
                 }
-                output_bytes = checked_attribute_output_add(resources, output_bytes, key.len())?;
+                push(&attribute.name)?;
+                has_text = true;
             }
-            output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
-            has_text = true;
-        }
-        if !attribute.comment.is_empty() {
-            if has_text {
-                output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+            if !attribute.keys.is_empty() {
+                if has_text {
+                    push(" ")?;
+                }
+                push("[keys: ")?;
+                for (index, key) in attribute.keys.iter().enumerate() {
+                    if index > 0 {
+                        push(",")?;
+                    }
+                    push(key)?;
+                }
+                push("]")?;
+                has_text = true;
             }
-            output_bytes =
-                checked_attribute_output_add(resources, output_bytes, "[comment: ".len())?;
-            output_bytes =
-                checked_attribute_output_add(resources, output_bytes, attribute.comment.len())?;
-            output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
-        }
-
-        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
-        let materialization_work = output_bytes.max(1);
-        resources.check_usage(materialization_work, 0)?;
-        Ok(Self {
-            attribute,
-            output_bytes,
-            materialization_work,
-        })
+            if !attribute.comment.is_empty() {
+                if has_text {
+                    push(" ")?;
+                }
+                push("[comment: ")?;
+                push(&attribute.comment)?;
+                push("]")?;
+            }
+            Ok(())
+        })?;
+        Ok(Self { text })
     }
 
     fn materialize(
@@ -447,54 +430,8 @@ impl<'a> ErAttributeTextPlan<'a> {
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> Result<String> {
-        resources.charge_usage(self.materialization_work, 0)?;
-        before_materialize();
-
-        let mut text = String::new();
-        text.try_reserve_exact(self.output_bytes)
-            .map_err(|_| layout_allocation_failed())?;
-        if !self.attribute.ty.is_empty() {
-            text.push_str(&self.attribute.ty);
-        }
-        if !self.attribute.name.is_empty() {
-            if !text.is_empty() {
-                text.push(' ');
-            }
-            text.push_str(&self.attribute.name);
-        }
-        if !self.attribute.keys.is_empty() {
-            if !text.is_empty() {
-                text.push(' ');
-            }
-            text.push_str("[keys: ");
-            for (index, key) in self.attribute.keys.iter().enumerate() {
-                if index > 0 {
-                    text.push(',');
-                }
-                text.push_str(key);
-            }
-            text.push(']');
-        }
-        if !self.attribute.comment.is_empty() {
-            if !text.is_empty() {
-                text.push(' ');
-            }
-            text.push_str("[comment: ");
-            text.push_str(&self.attribute.comment);
-            text.push(']');
-        }
-        debug_assert_eq!(text.len(), self.output_bytes);
-        Ok(text)
+        self.text.materialize(resources, before_materialize)
     }
-}
-
-fn checked_attribute_output_add(
-    resources: &ResourceContext,
-    left: usize,
-    right: usize,
-) -> Result<usize> {
-    left.checked_add(right)
-        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
 }
 
 fn render_er_document_lines(
@@ -1317,7 +1254,7 @@ fn layout_allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resource::AsciiResourcePolicy;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
     use std::cell::Cell;
 
@@ -1445,6 +1382,36 @@ mod tests {
         ));
         assert_eq!(below_resources.layout_work_used(), prior_work);
         assert_eq!(below_resources.document_cells_used(), prior_document);
+    }
+
+    #[test]
+    fn er_attribute_rejects_cross_field_grapheme_before_materializing() {
+        let attribute = ErAttributeRenderModel {
+            ty: "string".to_string(),
+            name: "\u{301}".to_string(),
+            keys: Vec::new(),
+            comment: String::new(),
+        };
+        let policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
+            .expect("grapheme resource limit should be valid");
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(3, 5)
+            .expect("test checkpoint should fit");
+        let materialized = Cell::new(false);
+        let error = attribute_text_with_probe(&attribute, &resources, || materialized.set(true))
+            .expect_err("separator space plus combining mark exceeds two bytes");
+        assert!(!materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
+                    && details.actual == 3
+                    && details.max == 2
+        ));
+        assert_eq!(resources.layout_work_used(), 3);
+        assert_eq!(resources.document_cells_used(), 5);
     }
 
     #[test]

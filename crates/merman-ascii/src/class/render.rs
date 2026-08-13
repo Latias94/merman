@@ -15,7 +15,7 @@ use crate::relation_graph::{
 use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
-use crate::safe_text::charge_text_layout;
+use crate::safe_text::{ComposedTextPlan, charge_text_layout};
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
 use merman_core::entities::decode_html_entities_to_unicode;
@@ -841,26 +841,25 @@ fn member_text_with_probe(
     resources: &ResourceContext,
     before_materialize: impl FnOnce(),
 ) -> Result<String> {
-    if !member.display_text.is_empty() {
-        return Ok(member.display_text.clone());
-    }
-
-    let plan = ClassMemberTextPlan::try_new(member, resources)?;
-    plan.materialize(resources, before_materialize)
+    resources.transaction(|resources| {
+        let plan = ClassMemberTextPlan::try_new(member, resources)?;
+        plan.materialize(resources, before_materialize)
+    })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct ClassMemberTextPlan<'a> {
-    member: &'a ClassMember,
-    id: GenericTypesPlan<'a>,
-    parameters: Option<GenericTypesPlan<'a>>,
-    return_type: Option<GenericTypesPlan<'a>>,
-    output_bytes: usize,
-    materialization_work: usize,
+    text: ComposedTextPlan<'a>,
 }
 
 impl<'a> ClassMemberTextPlan<'a> {
     fn try_new(member: &'a ClassMember, resources: &ResourceContext) -> Result<Self> {
+        if !member.display_text.is_empty() {
+            return Ok(Self {
+                text: ComposedTextPlan::try_new(resources, 1, |push| push(&member.display_text))?,
+            });
+        }
+
         let callable = member.member_type == "method"
             || !member.parameters.is_empty()
             || !member.return_type.is_empty();
@@ -885,20 +884,6 @@ impl<'a> ClassMemberTextPlan<'a> {
             None
         };
 
-        let mut output_bytes = member.visibility.len();
-        output_bytes = checked_output_add(resources, output_bytes, id.output_len())?;
-        if let Some(parameters) = parameters {
-            output_bytes = checked_output_add(resources, output_bytes, 2)?;
-            output_bytes = checked_output_add(resources, output_bytes, parameters.output_len())?;
-            if let Some(return_type) = return_type {
-                output_bytes = checked_output_add(resources, output_bytes, 3)?;
-                output_bytes =
-                    checked_output_add(resources, output_bytes, return_type.output_len())?;
-            }
-        }
-        output_bytes = checked_output_add(resources, output_bytes, member.classifier.len())?;
-
-        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
         let canonical_scan_work = generic_materialization_scan_work(resources, id)?;
         let canonical_scan_work = parameters.map_or(Ok(canonical_scan_work), |plan| {
             resources.checked_work_add(
@@ -912,17 +897,22 @@ impl<'a> ClassMemberTextPlan<'a> {
                 generic_materialization_scan_work(resources, plan)?,
             )
         })?;
-        let materialization_work =
-            resources.checked_work_add(output_bytes.max(1), canonical_scan_work)?;
+        let text = ComposedTextPlan::try_new(resources, canonical_scan_work, |push| {
+            push(&member.visibility)?;
+            id.try_visit(&mut *push)?;
+            if let Some(parameters) = parameters {
+                push("(")?;
+                parameters.try_visit(&mut *push)?;
+                push(")")?;
+            }
+            if let Some(return_type) = return_type {
+                push(" : ")?;
+                return_type.try_visit(&mut *push)?;
+            }
+            push(&member.classifier)
+        })?;
 
-        Ok(Self {
-            member,
-            id,
-            parameters,
-            return_type,
-            output_bytes,
-            materialization_work,
-        })
+        Ok(Self { text })
     }
 
     fn materialize(
@@ -930,26 +920,7 @@ impl<'a> ClassMemberTextPlan<'a> {
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> Result<String> {
-        resources.charge_layout_work(self.materialization_work)?;
-        before_materialize();
-        let mut text = String::new();
-        text.try_reserve_exact(self.output_bytes)
-            .map_err(|_| layout_allocation_failed())?;
-
-        text.push_str(&self.member.visibility);
-        self.id.visit(|fragment| text.push_str(fragment));
-        if let Some(parameters) = self.parameters {
-            text.push('(');
-            parameters.visit(|fragment| text.push_str(fragment));
-            text.push(')');
-        }
-        if let Some(return_type) = self.return_type {
-            text.push_str(" : ");
-            return_type.visit(|fragment| text.push_str(fragment));
-        }
-        text.push_str(&self.member.classifier);
-        debug_assert_eq!(text.len(), self.output_bytes);
-        Ok(text)
+        self.text.materialize(resources, before_materialize)
     }
 }
 
@@ -970,11 +941,6 @@ fn generic_materialization_scan_work(
 ) -> Result<usize> {
     plan.materialization_scan_work()
         .ok_or_else(|| resources.work_overflow())
-}
-
-fn checked_output_add(resources: &ResourceContext, left: usize, right: usize) -> Result<usize> {
-    left.checked_add(right)
-        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
 }
 
 fn relation_layout<'a>(
@@ -2556,6 +2522,47 @@ mod tests {
                 if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
                     && details.actual > details.max
         ));
+    }
+
+    #[test]
+    fn reconstructed_member_rejects_cross_field_grapheme_before_materializing() {
+        let mut model =
+            parsed_class_model("classDiagram\nclass Service {\n  +compute(input) Result\n}");
+        let member = model
+            .classes
+            .get_mut("Service")
+            .and_then(|class| class.methods.first_mut())
+            .expect("Service method should exist");
+        member.id = "compute".to_string();
+        member.parameters = "\u{301}".to_string();
+        member.return_type.clear();
+        member.display_text.clear();
+
+        let member = model
+            .classes
+            .get("Service")
+            .and_then(|class| class.methods.first())
+            .expect("Service method should remain available");
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
+            .expect("grapheme resource limit should be valid");
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(3, 5)
+            .expect("test checkpoint should fit");
+        let materialized = Cell::new(false);
+        let error = member_text_with_probe(member, &resources, || materialized.set(true))
+            .expect_err("opening parenthesis plus combining mark exceeds two bytes");
+        assert!(!materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
+                    && details.actual == 3
+                    && details.max == 2
+        ));
+        assert_eq!(resources.layout_work_used(), 3);
+        assert_eq!(resources.document_cells_used(), 5);
     }
 
     #[test]

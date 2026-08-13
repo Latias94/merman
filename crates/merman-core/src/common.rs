@@ -12,25 +12,29 @@ enum GenericTypeSet<'a> {
     Combined { left: &'a str, right: &'a str },
 }
 
-impl GenericTypeSet<'_> {
-    fn visit(self, visit: &mut impl FnMut(&str)) {
+impl<'a> GenericTypeSet<'a> {
+    fn visit<E>(self, visit: &mut impl FnMut(&'a str) -> Result<(), E>) -> Result<(), E> {
         match self {
             Self::Single { value, tilde_count } => {
-                visit_processed_generic_set(&[value], tilde_count, visit);
+                visit_processed_generic_set(&[value], tilde_count, visit)
             }
             Self::Combined { left, right } => {
-                visit_processed_generic_set(&[left, ",", right], 2, visit);
+                visit_processed_generic_set(&[left, ",", right], 2, visit)
             }
         }
     }
 }
 
-fn visit_processed_generic_set(parts: &[&str], tilde_count: usize, visit: &mut impl FnMut(&str)) {
+fn visit_processed_generic_set<'a, E>(
+    parts: &[&'a str],
+    tilde_count: usize,
+    visit: &mut impl FnMut(&'a str) -> Result<(), E>,
+) -> Result<(), E> {
     if tilde_count <= 1 {
         for part in parts {
-            visit(part);
+            visit(part)?;
         }
-        return;
+        return Ok(());
     }
 
     let preserve_leading_tilde =
@@ -44,7 +48,7 @@ fn visit_processed_generic_set(parts: &[&str], tilde_count: usize, visit: &mut i
                 continue;
             }
             if retained_start < offset {
-                visit(&part[retained_start..offset]);
+                visit(&part[retained_start..offset])?;
             }
             let replacement = if preserve_leading_tilde && tilde_index == 0 {
                 "~"
@@ -61,17 +65,21 @@ fn visit_processed_generic_set(parts: &[&str], tilde_count: usize, visit: &mut i
                     ">"
                 }
             };
-            visit(replacement);
+            visit(replacement)?;
             retained_start = offset + ch.len_utf8();
             tilde_index += 1;
         }
         if retained_start < part.len() {
-            visit(&part[retained_start..]);
+            visit(&part[retained_start..])?;
         }
     }
+    Ok(())
 }
 
-fn visit_generic_types(input: &str, visit: &mut impl FnMut(&str)) {
+fn visit_generic_types<'a, E>(
+    input: &'a str,
+    visit: &mut impl FnMut(&'a str) -> Result<(), E>,
+) -> Result<(), E> {
     let mut sets = input.split(',');
     let first = sets.next().unwrap_or_default();
     let mut previous = first;
@@ -91,8 +99,8 @@ fn visit_generic_types(input: &str, visit: &mut impl FnMut(&str)) {
                 right: next,
             };
         } else {
-            pending.visit(visit);
-            visit(",");
+            pending.visit(visit)?;
+            visit(",")?;
             pending = GenericTypeSet::Single {
                 value: next,
                 tilde_count: next_tilde_count,
@@ -102,7 +110,7 @@ fn visit_generic_types(input: &str, visit: &mut impl FnMut(&str)) {
         previous_tilde_count = next_tilde_count;
     }
 
-    pending.visit(visit);
+    pending.visit(visit)
 }
 
 /// An allocation-free plan for Mermaid's generic-type canonicalization.
@@ -124,9 +132,14 @@ impl<'a> GenericTypesPlan<'a> {
         }
 
         let mut output_len = 0usize;
-        visit_generic_types(input, &mut |fragment| {
+        let counted = visit_generic_types(input, &mut |fragment| {
             output_len += fragment.len();
+            Ok::<(), std::convert::Infallible>(())
         });
+        match counted {
+            Ok(()) => {}
+            Err(never) => match never {},
+        }
         debug_assert!(output_len <= input.len());
         Self {
             input,
@@ -149,11 +162,24 @@ impl<'a> GenericTypesPlan<'a> {
     }
 
     /// Visits the canonical text without allocating an intermediate string.
-    pub fn visit(self, mut visit: impl FnMut(&str)) {
+    /// Visits canonical fragments and stops at the first callback error.
+    pub fn try_visit<E>(self, mut visit: impl FnMut(&'a str) -> Result<(), E>) -> Result<(), E> {
         if !self.has_generic_syntax {
-            visit(self.input);
+            visit(self.input)
         } else {
-            visit_generic_types(self.input, &mut visit);
+            visit_generic_types(self.input, &mut visit)
+        }
+    }
+
+    /// Visits canonical fragments without allocating the resulting string.
+    pub fn visit(self, mut visit: impl FnMut(&'a str)) {
+        let visited = self.try_visit(|fragment| {
+            visit(fragment);
+            Ok::<(), std::convert::Infallible>(())
+        });
+        match visited {
+            Ok(()) => {}
+            Err(never) => match never {},
         }
     }
 }
