@@ -65,6 +65,7 @@ fn disconnected_component_rendering_borrows_non_clone_relations() {
         summary_reason: Cell::new(None),
         overlap: TestRelationOverlap::None,
     };
+    let mut deferred = DeferredTextRegistry::new();
     let projected_box = boxes[0].shared_projection();
     let shared_line = boxes[0].lines[0].clone();
 
@@ -72,11 +73,17 @@ fn disconnected_component_rendering_borrows_non_clone_relations() {
     assert!(Rc::ptr_eq(&boxes[0].lines, &projected_box.lines));
     assert!(Rc::ptr_eq(&boxes[0].lines[0].line, &shared_line.line));
 
-    let lines =
-        render_relation_component_lines(&boxes, &relations, &options, &mut resources, &adapter)
-            .expect("disconnected components should render")
-            .expect("non-empty components should produce lines");
-    let rendered = render_lines_with_options(&lines, &options, &mut resources)
+    let lines = render_relation_component_lines(
+        &boxes,
+        &relations,
+        &options,
+        &mut resources,
+        &adapter,
+        &mut deferred,
+    )
+    .expect("disconnected components should render")
+    .expect("non-empty components should produce lines");
+    let rendered = render_lines_with_deferred_options(&lines, &options, &mut resources, &deferred)
         .expect("component lines should encode");
 
     for label in ["A", "B", "C", "D", "I"] {

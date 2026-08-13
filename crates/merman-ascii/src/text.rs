@@ -7,7 +7,7 @@ use crate::resource::{
     ResourceContext,
 };
 use crate::safe_text::{
-    SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
+    DeferredTextLine, SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
     visit_quoted_terminal_text, visit_safe_line_graphemes,
 };
 #[cfg(test)]
@@ -15,8 +15,8 @@ use crate::terminal::try_mirror_surface;
 use crate::terminal::{
     CanvasColor, CanvasStyle, GlyphArena, TerminalCell, is_retained_glyph_budget_error,
     owner_index, primary_width, style_at, try_append_cells_from_surface,
-    try_push_primary_grapheme_style_with_policy, try_write_primary_cell_from_surface,
-    try_write_primary_grapheme_style_with_policy,
+    try_push_primary_deferred_style_with_policy, try_push_primary_grapheme_style_with_policy,
+    try_write_primary_cell_from_surface, try_write_primary_grapheme_style_with_policy,
 };
 
 pub(crate) type StyledCell = TerminalCell;
@@ -222,7 +222,7 @@ impl StyledLine {
                 }
             }
             offset = offset
-                .checked_add(cell.primary_width_hint().unwrap_or(1).max(1))
+                .checked_add(primary_width(&self.cells, offset).max(1))
                 .ok_or_else(document_allocation_failed)?;
         }
         Ok(())
@@ -365,6 +365,41 @@ impl StyledLine {
             return self.record_error(error);
         }
         Ok(())
+    }
+
+    pub(crate) fn try_push_deferred_text(
+        &mut self,
+        text: &DeferredTextLine,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let final_len = self
+            .cells
+            .len()
+            .checked_add(text.width())
+            .ok_or_else(document_allocation_failed)?;
+        if let Err(error) = self.resources.check_usage(0, text.width()) {
+            return self.record_error(error);
+        }
+        if let Err(error) = self
+            .resources
+            .check(AsciiResourceLimitId::MaxGridCells, final_len)
+        {
+            return self.record_error(error);
+        }
+        let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        for glyph in text.glyphs() {
+            let result = try_push_primary_deferred_style_with_policy(
+                &mut self.cells,
+                glyph.id(),
+                glyph.width(),
+                style,
+                self.resources.policy(),
+            );
+            if let Err(error) = result {
+                return self.record_error(error);
+            }
+        }
+        self.resources.charge_usage(0, text.width())
     }
 
     pub(crate) fn try_push_role_quoted_text(

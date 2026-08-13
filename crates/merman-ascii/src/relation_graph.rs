@@ -1,8 +1,13 @@
-use crate::canvas::finish_styled_line_iter_with_resources;
+use crate::canvas::finish_styled_line_iter_with_deferred_resources;
+#[cfg(test)]
+use crate::canvas::{
+    finish_styled_line_iter_with_deferred_probe, finish_styled_line_iter_with_resources,
+};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::safe_text::DeferredTextRegistry;
 use crate::text::{StyledLine, display_width_with_profile};
 use crate::{AsciiError, Result};
 #[cfg(test)]
@@ -32,7 +37,7 @@ pub(crate) use self::self_loop::{
 pub(crate) use self::stack::{RelationParallelPlan, RelationStackPlan, centered_row_blocks_extent};
 pub(crate) use self::summary::*;
 
-pub(crate) trait RelationComponentAdapter<R> {
+pub(crate) trait RelationComponentAdapter<'text, R> {
     fn build_edges(&self, relation: &R) -> LayeredRelationEdge;
 
     fn is_self_relation(&self, relation: &R) -> bool;
@@ -85,6 +90,7 @@ pub(crate) trait RelationComponentAdapter<R> {
         relations: Vec<&'plan R>,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
+        deferred: &mut DeferredTextRegistry<'text>,
     ) -> Result<RelationRegionPlan<'plan>>;
 
     fn build_summary_row(
@@ -92,6 +98,7 @@ pub(crate) trait RelationComponentAdapter<R> {
         relation: &R,
         reason: LayeredRelationSummaryReason,
         resources: &ResourceContext,
+        deferred: &mut DeferredTextRegistry<'text>,
     ) -> Result<RelationGraphSummaryRow>;
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError;
@@ -102,13 +109,14 @@ pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
     boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
 }
 
-pub(crate) fn render_stacked_boxes_with_options(
+pub(crate) fn render_stacked_boxes_with_deferred_options(
     boxes: &[RelationGraphBox],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
 ) -> Result<String> {
     let lines = stacked_box_lines(boxes, options.terminal_width_profile, resources)?;
-    render_lines_with_options(&lines, options, resources)
+    render_lines_with_deferred_options(&lines, options, resources, deferred)
 }
 
 #[cfg(test)]
@@ -260,13 +268,13 @@ fn stacked_boxes_height(boxes: &[RelationGraphBox], resources: &ResourceContext)
         })
 }
 
-fn build_layered_edges<R, A>(
+fn build_layered_edges<'text, R, A>(
     relations: &[R],
     adapter: &A,
     resources: &mut ResourceContext,
 ) -> Result<Vec<LayeredRelationEdge>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     resources.charge_layout_work(relations.len().max(1))?;
     let mut edges = Vec::new();
@@ -281,31 +289,34 @@ where
     Ok(edges)
 }
 
-pub(crate) fn render_relation_components<R, A>(
+pub(crate) fn render_relation_components_with_deferred<'text, R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<String>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
-    match render_relation_component_lines(boxes, relations, options, resources, adapter)? {
-        Some(lines) => render_lines_with_options(&lines, options, resources),
+    match render_relation_component_lines(boxes, relations, options, resources, adapter, deferred)?
+    {
+        Some(lines) => render_lines_with_deferred_options(&lines, options, resources, deferred),
         None => Ok(String::new()),
     }
 }
 
-pub(crate) fn render_relation_component_lines<'plan, R, A>(
+pub(crate) fn render_relation_component_lines<'plan, 'text, R, A>(
     boxes: &'plan [RelationGraphBox],
     relations: &'plan [R],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &'plan A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<Option<Vec<RelationGraphLine>>>
 where
-    A: RelationComponentAdapter<R> + 'plan,
+    A: RelationComponentAdapter<'text, R> + 'plan,
 {
     let edges = build_layered_edges(relations, adapter, resources)?;
     let layered_error = |error| adapter.layered_error(error);
@@ -322,8 +333,9 @@ where
         .map_err(|_| layout_allocation_failed())?;
     for component in components {
         let has_relations = !component.edge_indices().is_empty();
-        let region =
-            plan_relation_component_region(component, relations, options, resources, adapter)?;
+        let region = plan_relation_component_region(
+            component, relations, options, resources, adapter, deferred,
+        )?;
         if has_relations {
             relation_regions.push(region);
         } else {
@@ -354,15 +366,16 @@ where
     Ok(Some(plan.materialize(options, resources)?))
 }
 
-fn plan_relation_component_region<'plan, R, A>(
+fn plan_relation_component_region<'plan, 'text, R, A>(
     component: RelationGraphComponent<'plan>,
     relations: &'plan [R],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &'plan A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
-    A: RelationComponentAdapter<R> + 'plan,
+    A: RelationComponentAdapter<'text, R> + 'plan,
 {
     let (component_boxes, edge_indices) = component.into_parts();
     let mut selected = Vec::new();
@@ -397,6 +410,7 @@ where
             options,
             resources,
             adapter,
+            deferred,
         );
     }
 
@@ -414,7 +428,13 @@ where
     }
 
     if selected.len() > 1 && same_directed_endpoints(&selected, adapter) {
-        return adapter.plan_parallel_region(component_boxes, selected, options, resources);
+        return adapter.plan_parallel_region(
+            component_boxes,
+            selected,
+            options,
+            resources,
+            deferred,
+        );
     }
     if let [relation] = selected.as_slice() {
         return adapter.plan_vertical_region(&component_boxes, relation, resources);
@@ -436,13 +456,14 @@ where
             options,
             resources,
             adapter,
+            deferred,
         ),
     }
 }
 
-fn same_directed_endpoints<R, A>(relations: &[&R], adapter: &A) -> bool
+fn same_directed_endpoints<'text, R, A>(relations: &[&R], adapter: &A) -> bool
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let Some(first) = relations.first() else {
         return false;
@@ -454,14 +475,14 @@ where
     })
 }
 
-fn plan_relation_self_loop_region<'plan, R, A>(
+fn plan_relation_self_loop_region<'plan, 'text, R, A>(
     relation_box: &'plan RelationGraphBox,
     relations: Vec<&'plan R>,
     adapter: &'plan A,
     resources: &mut ResourceContext,
 ) -> Result<RelationRegionPlan<'plan>>
 where
-    A: RelationComponentAdapter<R> + 'plan,
+    A: RelationComponentAdapter<'text, R> + 'plan,
 {
     let mut metrics = Vec::new();
     metrics
@@ -486,22 +507,23 @@ where
     })
 }
 
-fn plan_relation_summary_region<'plan, R, A>(
+fn plan_relation_summary_region<'plan, 'text, R, A>(
     boxes: Vec<&'plan RelationGraphBox>,
     relations: Vec<&'plan R>,
     reason: LayeredRelationSummaryReason,
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
     adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let mut rows = Vec::new();
     rows.try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
-        rows.push(adapter.build_summary_row(relation, reason, resources)?);
+        rows.push(adapter.build_summary_row(relation, reason, resources, deferred)?);
     }
     Ok(RelationRegionPlan::Summary(
         RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
@@ -517,9 +539,10 @@ pub(crate) fn render_layered_relation_component<R, A>(
     adapter: &A,
 ) -> Result<String>
 where
-    A: RelationComponentAdapter<R>,
+    for<'text> A: RelationComponentAdapter<'text, R>,
 {
     let mut resources = ResourceContext::new(options.resources);
+    let mut deferred = DeferredTextRegistry::new();
     let lines = render_layered_relation_component_lines(
         boxes,
         relations,
@@ -527,21 +550,23 @@ where
         horizontal_gap,
         &mut resources,
         adapter,
+        &mut deferred,
     )?;
-    render_lines_with_options(&lines, options, &mut resources)
+    render_lines_with_deferred_options(&lines, options, &mut resources, &deferred)
 }
 
 #[cfg(test)]
-pub(crate) fn render_layered_relation_component_lines<R, A>(
+pub(crate) fn render_layered_relation_component_lines<'text, R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
     horizontal_gap: usize,
     resources: &mut ResourceContext,
     adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<Vec<RelationGraphLine>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     match render_layered_relation_component_result(
         boxes,
@@ -552,14 +577,23 @@ where
         adapter,
     )? {
         Ok(rendered) => Ok(rendered),
-        Err(reason) => render_relation_summary_component_lines(
-            boxes,
-            relations,
-            options,
-            reason,
-            resources,
-            |relation, resources| adapter.build_summary_row(relation, reason, resources),
-        ),
+        Err(reason) => {
+            let mut rows = Vec::new();
+            rows.try_reserve_exact(relations.len())
+                .map_err(|_| layout_allocation_failed())?;
+            for relation in relations {
+                rows.push(adapter.build_summary_row(relation, reason, resources, deferred)?);
+            }
+            let base_extent = stacked_box_extent(boxes, resources)?;
+            render_relation_document_with_summary(
+                base_extent,
+                &rows,
+                Some(reason),
+                options,
+                resources,
+                |resources| stacked_box_lines(boxes, options.terminal_width_profile, resources),
+            )
+        }
     }
 }
 
@@ -593,37 +627,8 @@ pub(crate) fn render_relation_document_with_summary(
     }
 }
 
-/// Render a lossless relation summary for a component whose spatial plan is
-/// not safe to materialize. This is shared by family-owned parallel planners so
-/// they can reject invalid endpoint ports without duplicating section assembly.
 #[cfg(test)]
-pub(crate) fn render_relation_summary_component_lines<R>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    reason: LayeredRelationSummaryReason,
-    resources: &mut ResourceContext,
-    mut build_row: impl FnMut(&R, &ResourceContext) -> Result<RelationGraphSummaryRow>,
-) -> Result<Vec<RelationGraphLine>> {
-    let mut rows = Vec::new();
-    rows.try_reserve_exact(relations.len())
-        .map_err(|_| layout_allocation_failed())?;
-    for relation in relations {
-        rows.push(build_row(relation, resources)?);
-    }
-    let base_extent = stacked_box_extent(boxes, resources)?;
-    render_relation_document_with_summary(
-        base_extent,
-        &rows,
-        Some(reason),
-        options,
-        resources,
-        |resources| stacked_box_lines(boxes, options.terminal_width_profile, resources),
-    )
-}
-
-#[cfg(test)]
-fn render_layered_relation_component_result<R, A>(
+fn render_layered_relation_component_result<'text, R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
@@ -632,7 +637,7 @@ fn render_layered_relation_component_result<R, A>(
     adapter: &A,
 ) -> Result<std::result::Result<Vec<RelationGraphLine>, LayeredRelationSummaryReason>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     match plan_layered_relation_component_result(
         boxes,
@@ -648,7 +653,7 @@ where
 }
 
 #[cfg(test)]
-fn plan_layered_relation_component_result<'boxes, R, A>(
+fn plan_layered_relation_component_result<'boxes, 'text, R, A>(
     boxes: &'boxes [RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
@@ -657,7 +662,7 @@ fn plan_layered_relation_component_result<'boxes, R, A>(
     adapter: &A,
 ) -> Result<std::result::Result<LayeredRelationPaintPlan<'boxes>, LayeredRelationSummaryReason>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let box_refs = boxes.iter().collect::<Vec<_>>();
     let relation_refs = relations.iter().collect::<Vec<_>>();
@@ -689,7 +694,7 @@ struct PlannedLayeredRoute {
     geometry: LayeredRelationRouteGeometry,
 }
 
-fn plan_layered_relation_component_ref_result<'boxes, R, A>(
+fn plan_layered_relation_component_ref_result<'boxes, 'text, R, A>(
     boxes: &[&'boxes RelationGraphBox],
     relations: &[&R],
     options: &AsciiRenderOptions,
@@ -698,7 +703,7 @@ fn plan_layered_relation_component_ref_result<'boxes, R, A>(
     adapter: &A,
 ) -> Result<std::result::Result<LayeredRelationPaintPlan<'boxes>, LayeredRelationSummaryReason>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let has_self_relation = relations
         .iter()
@@ -749,7 +754,7 @@ where
     }))
 }
 
-fn plan_layered_route_batch<R, A>(
+fn plan_layered_route_batch<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
     resources: &ResourceContext,
@@ -762,12 +767,12 @@ fn plan_layered_route_batch<R, A>(
     LayeredRouteBatchError,
 >
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     plan_layered_route_batch_with_probes(scene, relations, resources, adapter, || {}, || {})
 }
 
-fn plan_layered_route_batch_with_probes<R, A>(
+fn plan_layered_route_batch_with_probes<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
     resources: &ResourceContext,
@@ -782,7 +787,7 @@ fn plan_layered_route_batch_with_probes<R, A>(
     LayeredRouteBatchError,
 >
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let outcome: Result<
         std::result::Result<
@@ -816,7 +821,7 @@ where
     }
 }
 
-fn plan_layered_route_batch_in_transaction<R, A>(
+fn plan_layered_route_batch_in_transaction<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
     resources: &ResourceContext,
@@ -831,7 +836,7 @@ fn plan_layered_route_batch_in_transaction<R, A>(
     LayeredRouteBatchError,
 >
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     resources.charge_layout_work(scene.draw_order().len().max(1))?;
     let mut planned = Vec::new();
@@ -1199,6 +1204,7 @@ fn render_box(relation_box: &RelationGraphBox) -> String {
     rendered
 }
 
+#[cfg(test)]
 pub(crate) fn render_lines_with_options(
     lines: &[RelationGraphLine],
     options: &AsciiRenderOptions,
@@ -1219,6 +1225,59 @@ pub(crate) fn render_lines_with_options(
         options,
         true,
         resources,
+    )
+}
+
+pub(crate) fn render_lines_with_deferred_options(
+    lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+) -> Result<String> {
+    if lines.is_empty() {
+        return Ok(String::new());
+    }
+
+    debug_assert!(
+        lines
+            .iter()
+            .all(|line| line.width_profile() == options.terminal_width_profile)
+    );
+
+    finish_styled_line_iter_with_deferred_resources(
+        lines.iter().map(RelationGraphLine::styled),
+        options,
+        true,
+        resources,
+        deferred,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn render_lines_with_deferred_probe(
+    lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+    before_materialize: impl FnOnce(),
+) -> Result<String> {
+    if lines.is_empty() {
+        return Ok(String::new());
+    }
+
+    debug_assert!(
+        lines
+            .iter()
+            .all(|line| line.width_profile() == options.terminal_width_profile)
+    );
+
+    finish_styled_line_iter_with_deferred_probe(
+        lines.iter().map(RelationGraphLine::styled),
+        options,
+        true,
+        resources,
+        deferred,
+        before_materialize,
     )
 }
 

@@ -11,7 +11,10 @@ use crate::relation_graph::{
     RelationSummaryPaintPlan,
 };
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
-use crate::safe_text::{ComposedTextPlan, charge_text_layout, terminal_char_display_width};
+use crate::safe_text::{
+    ComposedTextPlan, DeferredTextLine, DeferredTextRegistry, charge_text_layout,
+    terminal_char_display_width,
+};
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
@@ -120,11 +123,18 @@ impl ErDirection {
     }
 }
 
-struct ErRelationComponentAdapter<'a> {
+struct ErRelationComponentAdapter<'adapter, 'model> {
     charset: ErCharset,
-    entity_labels: &'a HashMap<String, String>,
+    entity_labels: &'adapter HashMap<&'model str, &'model str>,
     width_profile: TerminalWidthProfile,
     direction: ErDirection,
+}
+
+struct ErRenderContext<'render, 'model> {
+    options: &'render AsciiRenderOptions,
+    charset: ErCharset,
+    direction: ErDirection,
+    entity_labels: &'render HashMap<&'model str, &'model str>,
 }
 
 struct ErRelationLayout<'a> {
@@ -166,12 +176,19 @@ pub(crate) fn render_er_diagram(
     validate_unique_er_entity_ids(model, &mut resources)?;
     let charset = ErCharset::for_options(options);
     let direction = ErDirection::try_from_model(&model.direction)?;
+    let mut deferred_text = DeferredTextRegistry::new();
     let mut boxes = Vec::new();
     boxes
         .try_reserve_exact(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
     for entity in model.entities.values() {
-        boxes.push(render_entity_box(entity, options, charset, &mut resources)?);
+        boxes.push(render_entity_box(
+            entity,
+            options,
+            charset,
+            &mut deferred_text,
+            &mut resources,
+        )?);
     }
     if model.relationships.is_empty() {
         if direction.is_horizontal() {
@@ -182,7 +199,7 @@ pub(crate) fn render_er_diagram(
                 options.terminal_width_profile,
                 &resources,
             )?;
-            return render_er_document_lines(lines, options, &mut resources);
+            return render_er_document_lines(lines, options, &mut resources, &deferred_text);
         }
         if direction.is_reversed() {
             let lines = relation_graph::stacked_box_lines_ordered(
@@ -191,9 +208,14 @@ pub(crate) fn render_er_diagram(
                 true,
                 &mut resources,
             )?;
-            return render_er_document_lines(lines, options, &mut resources);
+            return render_er_document_lines(lines, options, &mut resources, &deferred_text);
         }
-        return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
+        return relation_graph::render_stacked_boxes_with_deferred_options(
+            &boxes,
+            options,
+            &mut resources,
+            &deferred_text,
+        );
     }
 
     let mut entity_labels = HashMap::new();
@@ -204,17 +226,21 @@ pub(crate) fn render_er_diagram(
         model
             .entities
             .values()
-            .map(|entity| (entity.id.clone(), entity_display_label(entity).to_string())),
+            .map(|entity| (entity.id.as_str(), entity_display_label(entity))),
     );
 
-    render_er_components(
-        &boxes,
-        &model.relationships,
-        &entity_labels,
+    let context = ErRenderContext {
         options,
         charset,
         direction,
+        entity_labels: &entity_labels,
+    };
+    render_er_components(
+        &boxes,
+        &model.relationships,
+        &context,
         &mut resources,
+        &mut deferred_text,
     )
 }
 
@@ -237,14 +263,12 @@ fn validate_unique_er_entity_ids(
     Ok(())
 }
 
-fn render_er_components(
+fn render_er_components<'model>(
     boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    entity_labels: &HashMap<String, String>,
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-    direction: ErDirection,
+    relationships: &'model [ErRelationshipRenderModel],
+    context: &ErRenderContext<'_, 'model>,
     resources: &mut ResourceContext,
+    deferred_text: &mut DeferredTextRegistry<'model>,
 ) -> Result<String> {
     let mut layouts = Vec::new();
     layouts
@@ -259,41 +283,61 @@ fn render_er_components(
             bottom_cardinality: relationship.rel_spec.card_a.as_str(),
             label: RelationGraphLabel::try_new(
                 &relationship.role_a,
-                options.terminal_width_profile,
+                context.options.terminal_width_profile,
+                deferred_text,
                 resources,
             )?,
         };
-        layout.apply_direction(direction);
+        layout.apply_direction(context.direction);
         layouts.push(layout);
     }
     let adapter = ErRelationComponentAdapter {
-        charset,
-        entity_labels,
-        width_profile: options.terminal_width_profile,
-        direction,
+        charset: context.charset,
+        entity_labels: context.entity_labels,
+        width_profile: context.options.terminal_width_profile,
+        direction: context.direction,
     };
-    if direction.is_horizontal() {
+    if context.direction.is_horizontal() {
         let lines = render_horizontal_er_component_lines(
-            boxes, &layouts, direction, options, &adapter, resources,
+            boxes,
+            &layouts,
+            context.direction,
+            context.options,
+            &adapter,
+            resources,
+            deferred_text,
         )?;
-        return render_er_document_lines(lines, options, resources);
+        return render_er_document_lines(lines, context.options, resources, deferred_text);
     }
-    relation_graph::render_relation_components(boxes, &layouts, options, resources, &adapter)
+    relation_graph::render_relation_components_with_deferred(
+        boxes,
+        &layouts,
+        context.options,
+        resources,
+        &adapter,
+        deferred_text,
+    )
 }
 
-fn render_entity_box(
-    entity: &ErEntityRenderModel,
+fn render_entity_box<'a>(
+    entity: &'a ErEntityRenderModel,
     options: &AsciiRenderOptions,
     charset: ErCharset,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedEntityBox> {
-    let sections = entity_sections(entity, resources)?;
+    let sections = entity_sections(
+        entity,
+        options.terminal_width_profile,
+        deferred_text,
+        resources,
+    )?;
     render_box_sections(entity.id.clone(), sections, options, charset, resources)
 }
 
 fn render_box_sections(
     id: String,
-    sections: Vec<Vec<String>>,
+    sections: Vec<Vec<DeferredTextLine>>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
     resources: &mut ResourceContext,
@@ -310,7 +354,7 @@ fn render_box_sections(
         border_role: AsciiColorRole::NodeBorder,
         text_role: AsciiColorRole::Text,
     };
-    relation_graph::RelationGraphBox::from_sections(
+    relation_graph::RelationGraphBox::from_deferred_sections(
         id,
         &sections,
         options.box_border_padding,
@@ -320,15 +364,19 @@ fn render_box_sections(
     )
 }
 
-fn entity_sections(
-    entity: &ErEntityRenderModel,
+fn entity_sections<'a>(
+    entity: &'a ErEntityRenderModel,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
-) -> Result<Vec<Vec<String>>> {
+) -> Result<Vec<Vec<DeferredTextLine>>> {
     let mut header = Vec::new();
     header
         .try_reserve_exact(1)
         .map_err(|_| layout_allocation_failed())?;
-    header.push(entity_display_label(entity).to_string());
+    let header_plan =
+        ComposedTextPlan::try_new(resources, 1, |push| push(entity_display_label(entity)))?;
+    header.push(deferred_text.try_register(header_plan, width_profile, resources)?);
     let mut sections = Vec::new();
     sections
         .try_reserve_exact(2)
@@ -340,8 +388,9 @@ fn entity_sections(
         .try_reserve_exact(entity.attributes.len())
         .map_err(|_| layout_allocation_failed())?;
     for attribute in &entity.attributes {
-        let line = attribute_text(attribute, resources)?;
-        if !line.is_empty() {
+        let plan = ErAttributeTextPlan::try_new(attribute, resources)?;
+        let line = deferred_text.try_register(plan.into_text(), width_profile, resources)?;
+        if line.width() > 0 {
             attributes.push(line);
         }
     }
@@ -360,13 +409,7 @@ fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
     }
 }
 
-fn attribute_text(
-    attribute: &ErAttributeRenderModel,
-    resources: &ResourceContext,
-) -> Result<String> {
-    attribute_text_with_probe(attribute, resources, || {})
-}
-
+#[cfg(test)]
 fn attribute_text_with_probe(
     attribute: &ErAttributeRenderModel,
     resources: &ResourceContext,
@@ -425,6 +468,7 @@ impl<'a> ErAttributeTextPlan<'a> {
         Ok(Self { text })
     }
 
+    #[cfg(test)]
     fn materialize(
         self,
         resources: &ResourceContext,
@@ -432,23 +476,29 @@ impl<'a> ErAttributeTextPlan<'a> {
     ) -> Result<String> {
         self.text.materialize(resources, before_materialize)
     }
+
+    fn into_text(self) -> ComposedTextPlan<'a> {
+        self.text
+    }
 }
 
 fn render_er_document_lines(
     lines: Vec<RelationGraphLine>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
+    deferred_text: &DeferredTextRegistry<'_>,
 ) -> Result<String> {
-    relation_graph::render_lines_with_options(&lines, options, resources)
+    relation_graph::render_lines_with_deferred_options(&lines, options, resources, deferred_text)
 }
 
-fn render_horizontal_er_component_lines(
+fn render_horizontal_er_component_lines<'adapter, 'model>(
     boxes: &[RenderedEntityBox],
-    layouts: &[ErRelationLayout<'_>],
+    layouts: &[ErRelationLayout<'model>],
     direction: ErDirection,
     options: &AsciiRenderOptions,
-    adapter: &ErRelationComponentAdapter<'_>,
+    adapter: &ErRelationComponentAdapter<'adapter, 'model>,
     resources: &mut ResourceContext,
+    deferred_text: &mut DeferredTextRegistry<'model>,
 ) -> Result<Vec<RelationGraphLine>> {
     relation_graph::render_horizontal_relation_components(
         boxes,
@@ -457,6 +507,7 @@ fn render_horizontal_er_component_lines(
         options,
         resources,
         adapter,
+        deferred_text,
     )
 }
 
@@ -599,15 +650,16 @@ fn er_relationship_rows(
     Ok(relation_lines)
 }
 
-fn plan_parallel_vertical_relationships<'plan>(
+fn plan_parallel_vertical_relationships<'plan, 'model>(
     boxes: Vec<&'plan RenderedEntityBox>,
-    layouts: Vec<&'plan ErRelationLayout<'_>>,
+    layouts: Vec<&'plan ErRelationLayout<'model>>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
-    width_profile: TerminalWidthProfile,
-    entity_labels: &HashMap<String, String>,
+    entity_labels: &HashMap<&'model str, &'model str>,
     resources: &mut ResourceContext,
+    deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationRegionPlan<'plan>> {
+    let width_profile = options.terminal_width_profile;
     let first = layouts
         .first()
         .copied()
@@ -647,7 +699,14 @@ fn plan_parallel_vertical_relationships<'plan>(
         rows.try_reserve_exact(layouts.len())
             .map_err(|_| layout_allocation_failed())?;
         for layout in layouts {
-            rows.push(er_relationship_summary_row(layout, entity_labels, charset)?);
+            rows.push(er_relationship_summary_row(
+                layout,
+                entity_labels,
+                charset,
+                width_profile,
+                resources,
+                deferred,
+            )?);
         }
         return Ok(RelationRegionPlan::Summary(
             RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
@@ -761,10 +820,13 @@ fn parallel_er_lane_rows(
     Ok(rows)
 }
 
-fn er_relationship_summary_row(
-    layout: &ErRelationLayout<'_>,
-    entity_labels: &HashMap<String, String>,
+fn er_relationship_summary_row<'model>(
+    layout: &ErRelationLayout<'model>,
+    entity_labels: &HashMap<&'model str, &'model str>,
     charset: ErCharset,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationGraphSummaryRow> {
     let relationship = layout.relationship;
     // Summary rows use Mermaid's horizontal, left-to-right token orientation;
@@ -775,31 +837,67 @@ fn er_relationship_summary_row(
     let right_cardinality =
         horizontal_cardinality_marker(layout.bottom_cardinality, RelationPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
+    let source_text = relationship_label(entity_labels, layout.top_id);
+    let source = deferred.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push(source_text))?,
+        width_profile,
+        resources,
+    )?;
+    let connector = deferred.try_register(
+        ComposedTextPlan::try_new(resources, 3, |push| {
+            push(left_cardinality)?;
+            push(relation)?;
+            push(right_cardinality)
+        })?,
+        width_profile,
+        resources,
+    )?;
+    let target_text = relationship_label(entity_labels, layout.bottom_id);
+    let target = deferred.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push(target_text))?,
+        width_profile,
+        resources,
+    )?;
+    let label = layout
+        .label
+        .as_ref()
+        .map(RelationGraphLabel::shared_lines)
+        .unwrap_or_else(|| std::rc::Rc::new(Vec::new()));
     Ok(RelationGraphSummaryRow::new(
-        relationship_label(entity_labels, layout.top_id),
-        format!("{left_cardinality}{relation}{right_cardinality}"),
-        relationship_label(entity_labels, layout.bottom_id),
-    )
-    .with_label(layout.label.as_ref()))
+        source, connector, target, label,
+    ))
 }
 
-fn er_relationship_summary_row_for_reason(
-    layout: &ErRelationLayout<'_>,
-    entity_labels: &HashMap<String, String>,
+fn er_relationship_summary_row_for_reason<'model>(
+    layout: &ErRelationLayout<'model>,
+    entity_labels: &HashMap<&'model str, &'model str>,
     charset: ErCharset,
     reason: relation_graph::LayeredRelationSummaryReason,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationGraphSummaryRow> {
     match reason {
         relation_graph::LayeredRelationSummaryReason::Crossing
         | relation_graph::LayeredRelationSummaryReason::RouteCollision
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
-            er_relationship_summary_row(layout, entity_labels, charset)
+            er_relationship_summary_row(
+                layout,
+                entity_labels,
+                charset,
+                width_profile,
+                resources,
+                deferred,
+            )
         }
     }
 }
 
-fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a str) -> &'a str {
-    entity_labels.get(id).map(String::as_str).unwrap_or(id)
+fn relationship_label<'model>(
+    entity_labels: &HashMap<&'model str, &'model str>,
+    id: &'model str,
+) -> &'model str {
+    entity_labels.get(id).copied().unwrap_or(id)
 }
 
 fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
@@ -832,8 +930,8 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLayout<'relation>>
-    for ErRelationComponentAdapter<'adapter>
+impl<'adapter, 'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'model>>
+    for ErRelationComponentAdapter<'adapter, 'model>
 {
     fn build_edges(&self, layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
         er_layered_edge(layout)
@@ -962,7 +1060,7 @@ impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLay
     fn plan_vertical_region<'plan>(
         &self,
         boxes: &[&'plan RenderedEntityBox],
-        layout: &'plan ErRelationLayout<'relation>,
+        layout: &'plan ErRelationLayout<'model>,
         resources: &mut ResourceContext,
     ) -> Result<RelationRegionPlan<'plan>> {
         let top = relation_graph::find_box_ref(boxes, layout.top_id).ok_or(
@@ -990,28 +1088,38 @@ impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLay
     fn plan_parallel_region<'plan>(
         &self,
         boxes: Vec<&'plan RenderedEntityBox>,
-        layouts: Vec<&'plan ErRelationLayout<'relation>>,
+        layouts: Vec<&'plan ErRelationLayout<'model>>,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
+        deferred: &mut DeferredTextRegistry<'model>,
     ) -> Result<RelationRegionPlan<'plan>> {
         plan_parallel_vertical_relationships(
             boxes,
             layouts,
             options,
             self.charset,
-            self.width_profile,
             self.entity_labels,
             resources,
+            deferred,
         )
     }
 
     fn build_summary_row(
         &self,
-        layout: &ErRelationLayout<'_>,
+        layout: &ErRelationLayout<'model>,
         reason: relation_graph::LayeredRelationSummaryReason,
-        _resources: &ResourceContext,
+        resources: &ResourceContext,
+        deferred: &mut DeferredTextRegistry<'model>,
     ) -> Result<RelationGraphSummaryRow> {
-        er_relationship_summary_row_for_reason(layout, self.entity_labels, self.charset, reason)
+        er_relationship_summary_row_for_reason(
+            layout,
+            self.entity_labels,
+            self.charset,
+            reason,
+            self.width_profile,
+            resources,
+            deferred,
+        )
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
@@ -1255,6 +1363,7 @@ fn layout_allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::AsciiColorMode;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
     use std::cell::Cell;
@@ -1277,6 +1386,298 @@ mod tests {
 
     fn unbounded_policy() -> AsciiResourcePolicy {
         AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
+    fn render_er_section_fixture(
+        entity: &ErEntityRenderModel,
+        options: &AsciiRenderOptions,
+        materialized: &Cell<bool>,
+    ) -> (Result<String>, (usize, usize), (usize, usize)) {
+        let mut resources = ResourceContext::new(options.resources);
+        let mut deferred = DeferredTextRegistry::new();
+        let relation_box = render_entity_box(
+            entity,
+            options,
+            ErCharset::for_options(options),
+            &mut deferred,
+            &mut resources,
+        )
+        .expect("ER section fixture should plan before final output admission");
+        let lines = relation_graph::stacked_box_lines(
+            std::slice::from_ref(&relation_box),
+            options.terminal_width_profile,
+            &mut resources,
+        )
+        .expect("ER section fixture should build relation rows");
+        let before = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        let result = relation_graph::render_lines_with_deferred_probe(
+            &lines,
+            options,
+            &mut resources,
+            &deferred,
+            || materialized.set(true),
+        );
+        let after = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        (result, before, after)
+    }
+
+    fn er_summary_model() -> ErDiagramRenderModel {
+        let mut model = ErDiagramRenderModel {
+            direction: "TB".to_string(),
+            ..ErDiagramRenderModel::default()
+        };
+        model.entities.insert(
+            "A".to_string(),
+            ErEntityRenderModel {
+                id: "A".to_string(),
+                label: "Source<&中".to_string(),
+                ..ErEntityRenderModel::default()
+            },
+        );
+        model.entities.insert(
+            "B".to_string(),
+            ErEntityRenderModel {
+                id: "B".to_string(),
+                label: "Target<&中".to_string(),
+                ..ErEntityRenderModel::default()
+            },
+        );
+        model.relationships = vec![
+            ErRelationshipRenderModel {
+                entity_a: "A".to_string(),
+                role_a: "self<&中".to_string(),
+                entity_b: "A".to_string(),
+                rel_spec: merman_core::diagrams::er::ErRelSpecRenderModel {
+                    card_a: "ONLY_ONE".to_string(),
+                    card_b: "ZERO_OR_MORE".to_string(),
+                    rel_type: "IDENTIFYING".to_string(),
+                },
+            },
+            ErRelationshipRenderModel {
+                entity_a: "A".to_string(),
+                role_a: "linked<&中".to_string(),
+                entity_b: "B".to_string(),
+                rel_spec: merman_core::diagrams::er::ErRelSpecRenderModel {
+                    card_a: "ZERO_OR_ONE".to_string(),
+                    card_b: "ONE_OR_MORE".to_string(),
+                    rel_type: "NON_IDENTIFYING".to_string(),
+                },
+            },
+        ];
+        model
+    }
+
+    fn render_er_summary_fixture(
+        model: &ErDiagramRenderModel,
+        options: &AsciiRenderOptions,
+        materialized: &Cell<bool>,
+    ) -> (Result<String>, (usize, usize), (usize, usize)) {
+        let mut resources = ResourceContext::new(options.resources);
+        let charset = ErCharset::for_options(options);
+        let direction = ErDirection::try_from_model(&model.direction)
+            .expect("ER summary direction should be valid");
+        let mut deferred = DeferredTextRegistry::new();
+        let mut boxes = Vec::new();
+        boxes
+            .try_reserve_exact(model.entities.len())
+            .expect("ER summary box allocation should succeed");
+        for entity in model.entities.values() {
+            boxes.push(
+                render_entity_box(entity, options, charset, &mut deferred, &mut resources)
+                    .expect("ER summary box should plan"),
+            );
+        }
+        let mut entity_labels = HashMap::new();
+        entity_labels
+            .try_reserve(model.entities.len())
+            .expect("ER summary label allocation should succeed");
+        entity_labels.extend(
+            model
+                .entities
+                .values()
+                .map(|entity| (entity.id.as_str(), entity_display_label(entity))),
+        );
+        let mut layouts = Vec::new();
+        layouts
+            .try_reserve_exact(model.relationships.len())
+            .expect("ER summary layout allocation should succeed");
+        for relationship in &model.relationships {
+            layouts.push(ErRelationLayout {
+                relationship,
+                top_id: relationship.entity_a.as_str(),
+                bottom_id: relationship.entity_b.as_str(),
+                top_cardinality: relationship.rel_spec.card_b.as_str(),
+                bottom_cardinality: relationship.rel_spec.card_a.as_str(),
+                label: RelationGraphLabel::try_new(
+                    &relationship.role_a,
+                    options.terminal_width_profile,
+                    &mut deferred,
+                    &resources,
+                )
+                .expect("ER summary label should plan"),
+            });
+        }
+        let adapter = ErRelationComponentAdapter {
+            charset,
+            entity_labels: &entity_labels,
+            width_profile: options.terminal_width_profile,
+            direction,
+        };
+        let lines = relation_graph::render_relation_component_lines(
+            &boxes,
+            &layouts,
+            options,
+            &mut resources,
+            &adapter,
+            &mut deferred,
+        )
+        .expect("ER summary should plan")
+        .expect("ER summary should produce lines");
+        let before = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        let result = relation_graph::render_lines_with_deferred_probe(
+            &lines,
+            options,
+            &mut resources,
+            &deferred,
+            || materialized.set(true),
+        );
+        let after = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        (result, before, after)
+    }
+
+    #[test]
+    fn er_summary_admits_exact_encoded_output_before_deferred_materialization() {
+        let model = er_summary_model();
+        for mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let base = AsciiRenderOptions::unicode()
+                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_color_mode(mode);
+            let measured_probe = Cell::new(false);
+            let (measured, _, _) = render_er_summary_fixture(&model, &base, &measured_probe);
+            let expected = measured.expect("unbounded ER summary should render");
+            assert!(measured_probe.get(), "mode={mode:?}");
+            assert!(expected.contains("relations:"), "mode={mode:?}");
+            if mode == AsciiColorMode::Html {
+                assert!(expected.contains("Source&lt;&amp;中"), "mode={mode:?}");
+                assert!(expected.contains("self&lt;&amp;中"), "mode={mode:?}");
+            } else {
+                assert!(expected.contains("Source<&中"), "mode={mode:?}");
+                assert!(expected.contains("self<&中"), "mode={mode:?}");
+            }
+
+            let exact = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .expect("exact ER summary output limit should be valid");
+            let exact_probe = Cell::new(false);
+            let (rendered, _, _) = render_er_summary_fixture(&model, &exact, &exact_probe);
+            assert_eq!(
+                rendered.expect("exact ER summary should materialize"),
+                expected,
+                "mode={mode:?}"
+            );
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                .expect("max-minus-one ER summary limit should be valid");
+            let below_probe = Cell::new(false);
+            let (error, before, after) = render_er_summary_fixture(&model, &below, &below_probe);
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert_eq!(after, before, "mode={mode:?}");
+            assert!(matches!(
+                error.expect_err("max-minus-one ER summary must reject"),
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                        && details.actual == expected.len()
+                        && details.max == expected.len() - 1
+            ));
+        }
+    }
+
+    #[test]
+    fn er_sections_admit_exact_encoded_output_before_deferred_materialization() {
+        let entity = ErEntityRenderModel {
+            id: "OWNER".to_string(),
+            label: "Owner<&中".to_string(),
+            attributes: vec![ErAttributeRenderModel {
+                ty: "string".to_string(),
+                name: "owner<&中".to_string(),
+                keys: vec!["PK".to_string(), "FK".to_string()],
+                comment: "record<&中".to_string(),
+            }],
+            ..ErEntityRenderModel::default()
+        };
+
+        for mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let base = AsciiRenderOptions::unicode()
+                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_color_mode(mode);
+            let measured_probe = Cell::new(false);
+            let (measured, _, _) = render_er_section_fixture(&entity, &base, &measured_probe);
+            let expected = measured.expect("unbounded ER section should render");
+            assert!(measured_probe.get(), "mode={mode:?}");
+            if mode == AsciiColorMode::Html {
+                assert!(expected.contains("Owner&lt;&amp;中"), "mode={mode:?}");
+                assert!(expected.contains("owner&lt;&amp;中"), "mode={mode:?}");
+            } else {
+                assert!(expected.contains("Owner<&中"), "mode={mode:?}");
+                assert!(expected.contains("owner<&中"), "mode={mode:?}");
+            }
+
+            let exact = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .expect("exact ER output limit should be valid");
+            let exact_probe = Cell::new(false);
+            let (rendered, _, _) = render_er_section_fixture(&entity, &exact, &exact_probe);
+            assert_eq!(
+                rendered.expect("exact ER output should materialize"),
+                expected,
+                "mode={mode:?}"
+            );
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                .expect("max-minus-one ER output limit should be valid");
+            let below_probe = Cell::new(false);
+            let (error, before, after) = render_er_section_fixture(&entity, &below, &below_probe);
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert_eq!(after, before, "mode={mode:?}");
+            assert!(
+                matches!(
+                    error.expect_err("max-minus-one ER output must reject"),
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                            && details.actual == expected.len()
+                            && details.max == expected.len() - 1
+                ),
+                "mode={mode:?}"
+            );
+        }
     }
 
     #[test]

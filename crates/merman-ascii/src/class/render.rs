@@ -12,13 +12,14 @@ use crate::relation_graph::{
     RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
     RelationSummaryPaintPlan,
 };
-use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
+#[cfg(test)]
+use crate::resource::AsciiResourceLimitId;
+use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::safe_text::{
+    ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
 };
-use crate::safe_text::{ComposedTextPlan, charge_text_layout, visit_quoted_terminal_text};
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
-use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
 };
@@ -268,6 +269,14 @@ struct RelationLayout<'a> {
     bottom_endpoint_role: EndpointLabelRole,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RelationRouteEndpoints<'a> {
+    pub(super) top_id: &'a str,
+    pub(super) bottom_id: &'a str,
+    pub(super) top_facade_member: Option<&'a str>,
+    pub(super) bottom_facade_member: Option<&'a str>,
+}
+
 impl<'a> RelationLayout<'a> {
     fn apply_direction(&mut self, direction: ClassDirection) {
         if direction != ClassDirection::BottomUp {
@@ -284,26 +293,26 @@ impl<'a> RelationLayout<'a> {
 
     pub(super) fn with_route_endpoints(
         mut self,
-        top_id: &'a str,
-        bottom_id: &'a str,
-        top_facade_member: Option<&str>,
-        bottom_facade_member: Option<&str>,
+        endpoints: RelationRouteEndpoints<'a>,
         width_profile: TerminalWidthProfile,
+        deferred_text: &mut DeferredTextRegistry<'a>,
         resources: &ResourceContext,
     ) -> Result<Self> {
         resources.transaction(|resources| {
-            self.top_id = top_id;
-            self.bottom_id = bottom_id;
+            self.top_id = endpoints.top_id;
+            self.bottom_id = endpoints.bottom_id;
             self.top_endpoint_label = join_endpoint_label_with_facade(
-                top_facade_member,
+                endpoints.top_facade_member,
                 self.top_endpoint_label.take(),
                 width_profile,
+                deferred_text,
                 resources,
             )?;
             self.bottom_endpoint_label = join_endpoint_label_with_facade(
-                bottom_facade_member,
+                endpoints.bottom_facade_member,
                 self.bottom_endpoint_label.take(),
                 width_profile,
+                deferred_text,
                 resources,
             )?;
             Ok(self)
@@ -311,52 +320,49 @@ impl<'a> RelationLayout<'a> {
     }
 }
 
-fn join_endpoint_label_with_facade(
-    facade_member: Option<&str>,
+fn join_endpoint_label_with_facade<'a>(
+    facade_member: Option<&'a str>,
     label: Option<RelationGraphLabel>,
     width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Option<RelationGraphLabel>> {
     let Some(facade_member) = facade_member else {
         return Ok(label);
     };
 
-    let label_bytes = label.as_ref().map_or(Ok(0usize), |label| {
-        let line_bytes = label.lines().iter().try_fold(0usize, |total, line| {
-            total
-                .checked_add(line.len())
-                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
-        })?;
-        line_bytes
-            .checked_add(label.line_count().saturating_sub(1))
-            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
+    let prefix = deferred_text.try_register_parts(width_profile, resources, 3, |push| {
+        push(DeferredTextPart::Static("member(bytes="))?;
+        push(DeferredTextPart::Decimal(facade_member.len()))?;
+        push(DeferredTextPart::Static(")="))
     })?;
-    let separator_bytes = usize::from(label.is_some())
-        .checked_mul(2)
-        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
-    let output_bytes = facade_member
-        .len()
-        .checked_add(separator_bytes)
-        .and_then(|value| value.checked_add(label_bytes))
-        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+    let quoted = deferred_text.try_register_quoted_text(facade_member, width_profile, resources)?;
+    let facade = DeferredTextLine::try_concat(&[&prefix, &quoted], resources)?;
 
-    resources.charge_layout_work(label.as_ref().map_or(1, RelationGraphLabel::line_count))?;
-    resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
-
-    let mut text = String::new();
-    text.try_reserve_exact(output_bytes)
+    let Some(label) = label else {
+        let mut lines = Vec::new();
+        lines
+            .try_reserve_exact(1)
+            .map_err(|_| layout_allocation_failed())?;
+        lines.push(facade);
+        return RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some);
+    };
+    let separator = deferred_text.try_register_parts(width_profile, resources, 1, |push| {
+        push(DeferredTextPart::Static(": "))
+    })?;
+    let first = label
+        .lines()
+        .first()
+        .map(|line| DeferredTextLine::try_concat(&[&facade, &separator, line], resources))
+        .transpose()?
+        .unwrap_or(facade);
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(label.line_count().max(1))
         .map_err(|_| layout_allocation_failed())?;
-    text.push_str(facade_member);
-    if let Some(label) = label {
-        text.push_str(": ");
-        for (index, line) in label.lines().iter().enumerate() {
-            if index > 0 {
-                text.push('\n');
-            }
-            text.push_str(line);
-        }
-    }
-    RelationGraphLabel::try_new(&text, width_profile, resources)
+    lines.push(first);
+    lines.extend(label.lines().iter().skip(1).cloned());
+    RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
 }
 
 pub(crate) fn render_class_diagram(
@@ -369,6 +375,7 @@ pub(crate) fn render_class_diagram(
     validate_unique_class_render_ids(model, &mut resources)?;
     let charset = ClassCharset::for_options(options);
     let direction = ClassDirection::try_from_model(&model.direction)?;
+    let mut deferred_text = DeferredTextRegistry::new();
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
     validate_class_references(model, &namespace_facade_aliases, &mut resources)?;
     validate_class_namespace_ownership(model, &mut resources)?;
@@ -379,6 +386,7 @@ pub(crate) fn render_class_diagram(
             charset,
             direction,
             &namespace_facade_aliases,
+            &mut deferred_text,
             &mut resources,
         );
     }
@@ -389,6 +397,7 @@ pub(crate) fn render_class_diagram(
         charset,
         direction,
         &namespace_facade_aliases,
+        &mut deferred_text,
         &mut resources,
     )?;
     if boxes.is_empty() {
@@ -398,7 +407,12 @@ pub(crate) fn render_class_diagram(
                 feature: "relationships with missing endpoint classes",
             });
         }
-        return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
+        return relation_graph::render_stacked_boxes_with_deferred_options(
+            &boxes,
+            options,
+            &mut resources,
+            &deferred_text,
+        );
     }
     let box_by_id = RenderedClassBoxIndex::new(&boxes, &mut resources)?;
 
@@ -417,6 +431,7 @@ pub(crate) fn render_class_diagram(
             relation,
             &namespace_facade_aliases,
             options.terminal_width_profile,
+            &mut deferred_text,
             &resources,
         )?);
     }
@@ -439,7 +454,7 @@ pub(crate) fn render_class_diagram(
                 options.terminal_width_profile,
                 &resources,
             )?;
-            return render_class_document_lines(lines, options, &mut resources);
+            return render_class_document_lines(lines, options, &mut resources, &deferred_text);
         }
         if direction.is_reversed() {
             let lines = relation_graph::stacked_box_lines_ordered(
@@ -448,22 +463,27 @@ pub(crate) fn render_class_diagram(
                 true,
                 &mut resources,
             )?;
-            return render_class_document_lines(lines, options, &mut resources);
+            return render_class_document_lines(lines, options, &mut resources, &deferred_text);
         }
-        return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
+        return relation_graph::render_stacked_boxes_with_deferred_options(
+            &boxes,
+            options,
+            &mut resources,
+            &deferred_text,
+        );
     }
 
     if direction.is_horizontal() {
         let lines = render_horizontal_class_component_lines(
             &boxes,
-            &box_by_id,
             &layouts,
             direction,
             options,
             charset,
             &mut resources,
+            &mut deferred_text,
         )?;
-        return render_class_document_lines(lines, options, &mut resources);
+        return render_class_document_lines(lines, options, &mut resources, &deferred_text);
     }
 
     render_class_components(
@@ -473,6 +493,7 @@ pub(crate) fn render_class_diagram(
         options,
         charset,
         &mut resources,
+        &mut deferred_text,
     )
 }
 
@@ -573,12 +594,13 @@ fn validate_class_references(
     Ok(())
 }
 
-fn render_class_boxes(
-    model: &ClassDiagram,
+fn render_class_boxes<'a>(
+    model: &'a ClassDiagram,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     direction: ClassDirection,
     namespace_facade_aliases: &HashMap<String, String>,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RenderedClassBox>> {
     let capacity = model
@@ -597,15 +619,31 @@ fn render_class_boxes(
         .values()
         .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
     {
-        boxes.push(render_class_box(class, options, charset, resources)?);
+        boxes.push(render_class_box(
+            class,
+            options,
+            charset,
+            deferred_text,
+            resources,
+        )?);
     }
     for interface in &model.interfaces {
         boxes.push(render_interface_box(
-            interface, options, charset, resources,
+            interface,
+            options,
+            charset,
+            deferred_text,
+            resources,
         )?);
     }
     for note in &model.notes {
-        boxes.push(render_note_box(note, options, charset, resources)?);
+        boxes.push(render_note_box(
+            note,
+            options,
+            charset,
+            deferred_text,
+            resources,
+        )?);
     }
     for namespace in model.namespaces.values() {
         boxes.push(render_namespace_container_box(
@@ -614,41 +652,56 @@ fn render_class_boxes(
             options,
             charset,
             direction,
+            deferred_text,
             resources,
         )?);
     }
     Ok(boxes)
 }
 
-fn render_class_components(
+fn render_class_components<'text>(
     boxes: &[RenderedClassBox],
     _box_by_id: &RenderedClassBoxIndex<'_>,
-    layouts: &[RelationLayout<'_>],
+    layouts: &[RelationLayout<'text>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     resources: &mut ResourceContext,
+    deferred_text: &mut DeferredTextRegistry<'text>,
 ) -> Result<String> {
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
     };
-    relation_graph::render_relation_components(boxes, layouts, options, resources, &adapter)
+    relation_graph::render_relation_components_with_deferred(
+        boxes,
+        layouts,
+        options,
+        resources,
+        &adapter,
+        deferred_text,
+    )
 }
 
-fn render_class_component_lines(
+fn render_class_component_lines<'text>(
     boxes: &[RenderedClassBox],
     _box_by_id: &RenderedClassBoxIndex<'_>,
-    layouts: &[RelationLayout<'_>],
+    layouts: &[RelationLayout<'text>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     resources: &mut ResourceContext,
+    deferred_text: &mut DeferredTextRegistry<'text>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
     };
     Ok(relation_graph::render_relation_component_lines(
-        boxes, layouts, options, resources, &adapter,
+        boxes,
+        layouts,
+        options,
+        resources,
+        &adapter,
+        deferred_text,
     )?
     .unwrap_or_default())
 }
@@ -657,18 +710,19 @@ fn render_class_document_lines(
     lines: Vec<RelationGraphLine>,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
+    deferred_text: &DeferredTextRegistry<'_>,
 ) -> Result<String> {
-    relation_graph::render_lines_with_options(&lines, options, resources)
+    relation_graph::render_lines_with_deferred_options(&lines, options, resources, deferred_text)
 }
 
-fn render_horizontal_class_component_lines(
+fn render_horizontal_class_component_lines<'text>(
     boxes: &[RenderedClassBox],
-    _box_by_id: &RenderedClassBoxIndex<'_>,
-    layouts: &[RelationLayout<'_>],
+    layouts: &[RelationLayout<'text>],
     direction: ClassDirection,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     resources: &mut ResourceContext,
+    deferred_text: &mut DeferredTextRegistry<'text>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
         charset,
@@ -681,31 +735,47 @@ fn render_horizontal_class_component_lines(
         options,
         resources,
         &adapter,
+        deferred_text,
     )
 }
 
-fn render_class_box(
-    class: &ClassNode,
+fn render_class_box<'a>(
+    class: &'a ClassNode,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
-    let sections = class_sections(class, resources)?;
+    let sections = class_sections(
+        class,
+        options.terminal_width_profile,
+        deferred_text,
+        resources,
+    )?;
     render_box_sections(class.id.clone(), sections, options, charset, resources)
 }
 
-fn render_interface_box(
-    interface: &ClassInterface,
+fn render_interface_box<'a>(
+    interface: &'a ClassInterface,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
     let mut header = Vec::new();
     header
         .try_reserve_exact(2)
         .map_err(|_| layout_allocation_failed())?;
-    header.push("<<interface>>".to_string());
-    header.push(decode_html_entities_to_unicode(&interface.label).into_owned());
+    header.push(deferred_text.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push("<<interface>>"))?,
+        options.terminal_width_profile,
+        resources,
+    )?);
+    header.push(deferred_text.try_register(
+        ComposedTextPlan::try_new_html_decoded(&interface.label, resources)?,
+        options.terminal_width_profile,
+        resources,
+    )?);
     let mut sections = Vec::new();
     sections
         .try_reserve_exact(1)
@@ -714,16 +784,21 @@ fn render_interface_box(
     render_box_sections(interface.id.clone(), sections, options, charset, resources)
 }
 
-fn render_note_box(
-    note: &ClassNote,
+fn render_note_box<'a>(
+    note: &'a ClassNote,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
-    let label = RelationGraphLabel::try_new(&note.text, options.terminal_width_profile, resources)?;
+    let label = deferred_text.try_register_label_lines(
+        &note.text,
+        options.terminal_width_profile,
+        resources,
+    )?;
     let capacity = label
         .as_ref()
-        .map(RelationGraphLabel::line_count)
+        .map(Vec::len)
         .unwrap_or(0)
         .checked_add(1)
         .ok_or_else(|| work_overflow(resources))?;
@@ -731,9 +806,13 @@ fn render_note_box(
     lines
         .try_reserve_exact(capacity)
         .map_err(|_| layout_allocation_failed())?;
-    lines.push("note".to_string());
+    lines.push(deferred_text.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push("note"))?,
+        options.terminal_width_profile,
+        resources,
+    )?);
     if let Some(label) = label {
-        lines.extend(label.lines().iter().cloned());
+        lines.extend(label);
     }
 
     let mut sections = Vec::new();
@@ -746,12 +825,23 @@ fn render_note_box(
 
 fn render_box_sections(
     id: String,
-    sections: Vec<Vec<String>>,
+    sections: Vec<Vec<DeferredTextLine>>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
-    let style = RelationGraphBoxStyle {
+    relation_graph::RelationGraphBox::from_deferred_sections(
+        id,
+        &sections,
+        options.box_border_padding,
+        class_box_style(charset),
+        options.terminal_width_profile,
+        resources,
+    )
+}
+
+fn class_box_style(charset: ClassCharset) -> RelationGraphBoxStyle {
+    RelationGraphBoxStyle {
         top_left: charset.top_left,
         top_right: charset.top_right,
         bottom_left: charset.bottom_left,
@@ -762,18 +852,15 @@ fn render_box_sections(
         separator_right: charset.separator_right,
         border_role: AsciiColorRole::NodeBorder,
         text_role: AsciiColorRole::Text,
-    };
-    relation_graph::RelationGraphBox::from_sections(
-        id,
-        &sections,
-        options.box_border_padding,
-        style,
-        options.terminal_width_profile,
-        resources,
-    )
+    }
 }
 
-fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<Vec<String>>> {
+fn class_sections<'a>(
+    class: &'a ClassNode,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<Vec<Vec<DeferredTextLine>>> {
     let header_capacity = class
         .annotations
         .len()
@@ -783,13 +870,19 @@ fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<
     header
         .try_reserve_exact(header_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    header.extend(
-        class
-            .annotations
-            .iter()
-            .map(|annotation| format!("<<{annotation}>>")),
-    );
-    header.push(class_title(class));
+    for annotation in &class.annotations {
+        let plan = ComposedTextPlan::try_new(resources, 1, |push| {
+            push("<<")?;
+            push(annotation)?;
+            push(">>")
+        })?;
+        header.push(deferred_text.try_register(plan, width_profile, resources)?);
+    }
+    header.push(deferred_text.try_register(
+        ComposedTextPlan::try_new_html_decoded(&class.text, resources)?,
+        width_profile,
+        resources,
+    )?);
 
     let mut sections = Vec::new();
     sections
@@ -802,8 +895,12 @@ fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<
         .try_reserve_exact(class.members.len())
         .map_err(|_| layout_allocation_failed())?;
     for member in &class.members {
-        let line = member_text(member, resources)?;
-        if !line.is_empty() {
+        let line = deferred_text.try_register(
+            ClassMemberTextPlan::try_new(member, resources)?.into_text(),
+            width_profile,
+            resources,
+        )?;
+        if line.width() > 0 {
             members.push(line);
         }
     }
@@ -816,8 +913,12 @@ fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<
         .try_reserve_exact(class.methods.len())
         .map_err(|_| layout_allocation_failed())?;
     for method in &class.methods {
-        let line = member_text(method, resources)?;
-        if !line.is_empty() {
+        let line = deferred_text.try_register(
+            ClassMemberTextPlan::try_new(method, resources)?.into_text(),
+            width_profile,
+            resources,
+        )?;
+        if line.width() > 0 {
             methods.push(line);
         }
     }
@@ -828,14 +929,7 @@ fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<
     Ok(sections)
 }
 
-fn class_title(class: &ClassNode) -> String {
-    decode_html_entities_to_unicode(&class.text).into_owned()
-}
-
-fn member_text(member: &ClassMember, resources: &ResourceContext) -> Result<String> {
-    member_text_with_probe(member, resources, || {})
-}
-
+#[cfg(test)]
 fn member_text_with_probe(
     member: &ClassMember,
     resources: &ResourceContext,
@@ -915,12 +1009,17 @@ impl<'a> ClassMemberTextPlan<'a> {
         Ok(Self { text })
     }
 
+    #[cfg(test)]
     fn materialize(
         self,
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> Result<String> {
         self.text.materialize(resources, before_materialize)
+    }
+
+    fn into_text(self) -> ComposedTextPlan<'a> {
+        self.text
     }
 }
 
@@ -948,6 +1047,7 @@ fn relation_layout<'a>(
     relation: &'a ClassRelation,
     namespace_facade_aliases: &'a HashMap<String, String>,
     width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<RelationLayout<'a>> {
     let line = if relation.relation.line_type == model.constants.line_type.line {
@@ -973,11 +1073,20 @@ fn relation_layout<'a>(
         });
     }
 
-    let label = RelationGraphLabel::try_new(&relation.title, width_profile, resources)?;
-    let left_endpoint_label =
-        relation_endpoint_label(&relation.relation_title_1, width_profile, resources)?;
-    let right_endpoint_label =
-        relation_endpoint_label(&relation.relation_title_2, width_profile, resources)?;
+    let label =
+        RelationGraphLabel::try_new(&relation.title, width_profile, deferred_text, resources)?;
+    let left_endpoint_label = relation_endpoint_label(
+        &relation.relation_title_1,
+        width_profile,
+        deferred_text,
+        resources,
+    )?;
+    let right_endpoint_label = relation_endpoint_label(
+        &relation.relation_title_2,
+        width_profile,
+        deferred_text,
+        resources,
+    )?;
 
     if left_marker == Some(RelationMarker::Extension) && right_marker.is_none() {
         return Ok(RelationLayout {
@@ -1140,9 +1249,12 @@ fn note_relation_layouts_for_notes<'a>(
     Ok(layouts)
 }
 
-fn external_namespace_note_summary_rows(
-    model: &ClassDiagram,
-    namespace_facade_aliases: &HashMap<String, String>,
+fn external_namespace_note_summary_rows<'a>(
+    model: &'a ClassDiagram,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphSummaryRow>> {
     let mut rows = Vec::new();
     rows.try_reserve_exact(model.notes.len())
@@ -1157,24 +1269,42 @@ fn external_namespace_note_summary_rows(
         };
         let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
         if model.classes.contains_key(target_id) {
-            rows.push(RelationGraphSummaryRow::new("note", "..", target_id));
+            let source = deferred_text.try_register(
+                ComposedTextPlan::try_new(resources, 1, |push| push("note"))?,
+                width_profile,
+                resources,
+            )?;
+            let connector = deferred_text.try_register(
+                ComposedTextPlan::try_new(resources, 1, |push| push(".."))?,
+                width_profile,
+                resources,
+            )?;
+            let target = deferred_text.try_register(
+                ComposedTextPlan::try_new(resources, 1, |push| push(target_id))?,
+                width_profile,
+                resources,
+            )?;
+            rows.push(RelationGraphSummaryRow::new(
+                source,
+                connector,
+                target,
+                std::rc::Rc::new(Vec::new()),
+            ));
         }
     }
     Ok(rows)
 }
 
-fn relation_endpoint_label(
-    label: &str,
+fn relation_endpoint_label<'a>(
+    label: &'a str,
     width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Option<RelationGraphLabel>> {
-    let label = RelationGraphLabel::try_new(label, width_profile, resources)?;
-    if label.as_ref().is_some_and(|label| {
-        label.lines().len() == 1 && label.lines()[0].eq_ignore_ascii_case("none")
-    }) {
+    if label.trim().eq_ignore_ascii_case("none") {
         return Ok(None);
     }
-    Ok(label)
+    RelationGraphLabel::try_new(label, width_profile, deferred_text, resources)
 }
 
 fn plan_vertical_relation<'plan>(
@@ -1384,13 +1514,14 @@ fn class_relation_rows(
     Ok(relation_lines)
 }
 
-fn plan_parallel_vertical_relations<'plan>(
+fn plan_parallel_vertical_relations<'plan, 'text>(
     boxes: Vec<&'plan RenderedClassBox>,
-    layouts: Vec<&'plan RelationLayout<'_>>,
+    layouts: Vec<&'plan RelationLayout<'text>>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    deferred_text: &mut DeferredTextRegistry<'text>,
 ) -> Result<RelationRegionPlan<'plan>> {
     let first = layouts
         .first()
@@ -1439,7 +1570,12 @@ fn plan_parallel_vertical_relations<'plan>(
         rows.try_reserve_exact(layouts.len())
             .map_err(|_| layout_allocation_failed())?;
         for layout in layouts {
-            rows.push(class_relation_summary_row(layout, resources)?);
+            rows.push(class_relation_summary_row(
+                layout,
+                resources,
+                width_profile,
+                deferred_text,
+            )?);
         }
         return Ok(RelationRegionPlan::Summary(
             RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
@@ -1646,157 +1782,120 @@ fn parallel_class_lane_rows(
     Ok(rows)
 }
 
-fn class_relation_summary_row(
-    layout: &RelationLayout<'_>,
+fn class_relation_summary_row<'a>(
+    layout: &RelationLayout<'a>,
     resources: &ResourceContext,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
 ) -> Result<RelationGraphSummaryRow> {
+    let source = deferred_text.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push(layout.top_id))?,
+        width_profile,
+        resources,
+    )?;
+    let connector =
+        class_relation_summary_connector(layout, width_profile, resources, deferred_text)?;
+    let target = deferred_text.try_register(
+        ComposedTextPlan::try_new(resources, 1, |push| push(layout.bottom_id))?,
+        width_profile,
+        resources,
+    )?;
+    let label = layout
+        .label
+        .as_ref()
+        .map(RelationGraphLabel::shared_lines)
+        .unwrap_or_else(|| std::rc::Rc::new(Vec::new()));
     Ok(RelationGraphSummaryRow::new(
-        layout.top_id,
-        class_relation_summary_connector(layout, resources)?,
-        layout.bottom_id,
-    )
-    .with_label(layout.label.as_ref()))
+        source, connector, target, label,
+    ))
 }
 
-fn class_relation_summary_row_for_reason(
-    layout: &RelationLayout<'_>,
+fn class_relation_summary_row_for_reason<'a>(
+    layout: &RelationLayout<'a>,
     reason: relation_graph::LayeredRelationSummaryReason,
     resources: &ResourceContext,
+    width_profile: TerminalWidthProfile,
+    deferred_text: &mut DeferredTextRegistry<'a>,
 ) -> Result<RelationGraphSummaryRow> {
     match reason {
         relation_graph::LayeredRelationSummaryReason::Crossing
         | relation_graph::LayeredRelationSummaryReason::RouteCollision
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
-            class_relation_summary_row(layout, resources)
+            class_relation_summary_row(layout, resources, width_profile, deferred_text)
         }
     }
 }
 
 fn class_relation_summary_connector(
     layout: &RelationLayout<'_>,
+    width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
-) -> Result<String> {
-    class_relation_summary_connector_with_probe(layout, resources, || {})
-}
-
-fn class_relation_summary_connector_with_probe(
-    layout: &RelationLayout<'_>,
-    resources: &ResourceContext,
-    before_materialize: impl FnOnce(),
-) -> Result<String> {
-    resources.transaction(|resources| {
-        let work_before_measure = resources.layout_work_used();
-        let mut output_bytes = 0usize;
-        visit_class_relation_summary_connector(layout, resources, |fragment| {
-            output_bytes = output_bytes
-                .checked_add(fragment.len())
-                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
-            Ok(())
-        })?;
-        let replay_work = resources
-            .layout_work_used()
-            .checked_sub(work_before_measure)
-            .ok_or_else(|| work_overflow(resources))?;
-        let scan_work = output_bytes.max(1);
-        let materialization_work = output_bytes.max(1);
-        let pending_work = resources.checked_work_add(
-            resources.checked_work_add(scan_work, replay_work)?,
-            materialization_work,
-        )?;
-        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
-        resources.check_usage(pending_work, 0)?;
-        resources
-            .charge_layout_work(resources.checked_work_add(scan_work, materialization_work)?)?;
-
-        before_materialize();
-        let mut connector = String::new();
-        connector
-            .try_reserve_exact(output_bytes)
-            .map_err(|_| layout_allocation_failed())?;
-        visit_class_relation_summary_connector(layout, resources, |fragment| {
-            connector.push_str(fragment);
-            Ok(())
-        })?;
-        if connector.len() != output_bytes {
-            return Err(layout_allocation_failed());
+    deferred_text: &mut DeferredTextRegistry<'_>,
+) -> Result<DeferredTextLine> {
+    let top_lines = layout
+        .top_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::shared_lines);
+    let bottom_lines = layout
+        .bottom_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::shared_lines);
+    let producer_work = top_lines.as_ref().map_or(0, |lines| lines.len())
+        + bottom_lines.as_ref().map_or(0, |lines| lines.len())
+        + 5;
+    deferred_text.try_register_parts(width_profile, resources, producer_work, |push| {
+        if let Some(lines) = top_lines.as_ref() {
+            push(DeferredTextPart::Static("endpoint1=["))?;
+            visit_endpoint_label_summary_parts(lines, push)?;
+            push(DeferredTextPart::Static("] "))?;
         }
-        Ok(connector)
+
+        if let Some(marker) = layout.top_marker {
+            push(DeferredTextPart::Static(match marker {
+                RelationMarker::Extension => "<|",
+                RelationMarker::Dependency => "<",
+                RelationMarker::Aggregation => "o",
+                RelationMarker::Composition => "*",
+                RelationMarker::Lollipop => "()",
+            }))?;
+        }
+        push(DeferredTextPart::Static(match layout.line {
+            RelationLine::Solid => "--",
+            RelationLine::Dotted => "..",
+        }))?;
+        if let Some(marker) = layout.bottom_marker {
+            push(DeferredTextPart::Static(match marker {
+                RelationMarker::Extension => "|>",
+                RelationMarker::Dependency => ">",
+                RelationMarker::Aggregation => "o",
+                RelationMarker::Composition => "*",
+                RelationMarker::Lollipop => "()",
+            }))?;
+        }
+
+        if let Some(lines) = bottom_lines.as_ref() {
+            push(DeferredTextPart::Static(" endpoint2=["))?;
+            visit_endpoint_label_summary_parts(lines, push)?;
+            push(DeferredTextPart::Static("]"))?;
+        }
+        Ok(())
     })
 }
 
-fn visit_class_relation_summary_connector(
-    layout: &RelationLayout<'_>,
-    resources: &ResourceContext,
-    mut visit: impl FnMut(&str) -> Result<()>,
+fn visit_endpoint_label_summary_parts<'a>(
+    lines: &'a std::rc::Rc<Vec<DeferredTextLine>>,
+    push: &mut dyn FnMut(DeferredTextPart<'a>) -> Result<()>,
 ) -> Result<()> {
-    if let Some(label) = layout.top_endpoint_label.as_ref() {
-        visit("endpoint1=[")?;
-        visit_endpoint_label_summary(label, resources, &mut visit)?;
-        visit("] ")?;
-    }
-
-    if let Some(marker) = layout.top_marker {
-        visit(match marker {
-            RelationMarker::Extension => "<|",
-            RelationMarker::Dependency => "<",
-            RelationMarker::Aggregation => "o",
-            RelationMarker::Composition => "*",
-            RelationMarker::Lollipop => "()",
-        })?;
-    }
-    visit(match layout.line {
-        RelationLine::Solid => "--",
-        RelationLine::Dotted => "..",
-    })?;
-    if let Some(marker) = layout.bottom_marker {
-        visit(match marker {
-            RelationMarker::Extension => "|>",
-            RelationMarker::Dependency => ">",
-            RelationMarker::Aggregation => "o",
-            RelationMarker::Composition => "*",
-            RelationMarker::Lollipop => "()",
-        })?;
-    }
-
-    if let Some(label) = layout.bottom_endpoint_label.as_ref() {
-        visit(" endpoint2=[")?;
-        visit_endpoint_label_summary(label, resources, &mut visit)?;
-        visit("]")?;
+    for (line_index, line) in lines.iter().enumerate() {
+        if line_index > 0 {
+            push(DeferredTextPart::Static(", "))?;
+        }
+        push(DeferredTextPart::Static("bytes="))?;
+        push(DeferredTextPart::Decimal(line.plain_bytes()))?;
+        push(DeferredTextPart::Static(" "))?;
+        push(DeferredTextPart::QuotedLine(line))?;
     }
     Ok(())
-}
-
-fn visit_endpoint_label_summary(
-    label: &RelationGraphLabel,
-    resources: &ResourceContext,
-    mut visit: impl FnMut(&str) -> Result<()>,
-) -> Result<()> {
-    for (index, line) in label.lines().iter().enumerate() {
-        if index > 0 {
-            visit(", ")?;
-        }
-        visit("bytes=")?;
-        visit_decimal(line.len(), &mut visit)?;
-        visit(" ")?;
-        visit_quoted_terminal_text(line, resources, &mut visit)?;
-    }
-    Ok(())
-}
-
-fn visit_decimal(value: usize, mut visit: impl FnMut(&str) -> Result<()>) -> Result<()> {
-    let mut buffer = [0u8; usize::MAX.ilog10() as usize + 1];
-    let mut value = value;
-    let mut start = buffer.len();
-    loop {
-        start -= 1;
-        buffer[start] = b'0' + (value % 10) as u8;
-        value /= 10;
-        if value == 0 {
-            break;
-        }
-    }
-    let digits = std::str::from_utf8(&buffer[start..]).map_err(|_| layout_allocation_failed())?;
-    visit(digits)
 }
 
 fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
@@ -1835,7 +1934,7 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relation>>
+impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayout<'relation>>
     for ClassRelationComponentAdapter
 {
     fn build_edges(&self, layout: &RelationLayout<'relation>) -> LayeredRelationEdge {
@@ -2011,6 +2110,7 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
         layouts: Vec<&'plan RelationLayout<'relation>>,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
+        deferred: &mut DeferredTextRegistry<'relation>,
     ) -> Result<RelationRegionPlan<'plan>> {
         plan_parallel_vertical_relations(
             boxes,
@@ -2019,6 +2119,7 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
             self.charset,
             self.width_profile,
             resources,
+            deferred,
         )
     }
 
@@ -2027,8 +2128,15 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
         layout: &RelationLayout<'relation>,
         reason: relation_graph::LayeredRelationSummaryReason,
         resources: &ResourceContext,
+        deferred: &mut DeferredTextRegistry<'relation>,
     ) -> Result<RelationGraphSummaryRow> {
-        class_relation_summary_row_for_reason(layout, reason, resources)
+        class_relation_summary_row_for_reason(
+            layout,
+            reason,
+            resources,
+            self.width_profile,
+            deferred,
+        )
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
@@ -2196,22 +2304,10 @@ fn self_loop_rows_for_class_layout(
             continue;
         }
         for line in label.lines() {
-            let capacity = prefix
-                .len()
-                .checked_add(line.len())
-                .ok_or_else(|| work_overflow(resources))?;
-            let mut disclosed = String::new();
-            disclosed
-                .try_reserve_exact(capacity)
-                .map_err(|_| layout_allocation_failed())?;
-            disclosed.push_str(prefix);
-            disclosed.push_str(line);
-            label_lines.push(RelationGraphLine::try_with_role(
-                &disclosed,
-                AsciiColorRole::EdgeLabel,
-                width_profile,
-                resources,
-            )?);
+            let mut disclosed = crate::text::StyledLine::with_resources(width_profile, resources);
+            disclosed.try_push_role_text(prefix, AsciiColorRole::EdgeLabel)?;
+            disclosed.try_push_deferred_text(line, AsciiColorRole::EdgeLabel)?;
+            label_lines.push(RelationGraphLine::from_styled(disclosed));
         }
     }
 
@@ -2448,6 +2544,7 @@ fn layout_allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::AsciiColorMode;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagram::RenderSemanticModel;
     use merman_core::resources::ResourceProfile;
@@ -2493,6 +2590,280 @@ mod tests {
         match parsed.into_parts().1 {
             RenderSemanticModel::Class(model) => model,
             other => panic!("expected class render model, got {}", other.kind()),
+        }
+    }
+
+    fn render_class_section_fixture(
+        class: &ClassNode,
+        options: &AsciiRenderOptions,
+        materialized: &Cell<bool>,
+    ) -> (Result<String>, (usize, usize), (usize, usize)) {
+        let mut resources = ResourceContext::new(options.resources);
+        let mut deferred = DeferredTextRegistry::new();
+        let relation_box = render_class_box(
+            class,
+            options,
+            ClassCharset::for_options(options),
+            &mut deferred,
+            &mut resources,
+        )
+        .expect("class section fixture should plan before final output admission");
+        let lines = relation_graph::stacked_box_lines(
+            std::slice::from_ref(&relation_box),
+            options.terminal_width_profile,
+            &mut resources,
+        )
+        .expect("class section fixture should build relation rows");
+        let before = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        let result = relation_graph::render_lines_with_deferred_probe(
+            &lines,
+            options,
+            &mut resources,
+            &deferred,
+            || materialized.set(true),
+        );
+        let after = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        (result, before, after)
+    }
+
+    fn class_summary_model() -> ClassDiagram {
+        let mut model =
+            parsed_class_model("classDiagram\nclass A\nclass B\nA --> A : self\nA --> B : linked");
+        let mut source = model.classes.shift_remove("A").expect("A should exist");
+        source.id = "Source<&中".to_string();
+        source.dom_id = source.id.clone();
+        source.text = source.id.clone();
+        let source_id = source.id.clone();
+        model.classes.insert(source_id.clone(), source);
+        let mut target = model.classes.shift_remove("B").expect("B should exist");
+        target.id = "Target<&中".to_string();
+        target.dom_id = target.id.clone();
+        target.text = target.id.clone();
+        let target_id = target.id.clone();
+        model.classes.insert(target_id.clone(), target);
+        for relation in &mut model.relations {
+            if relation.id1 == "A" {
+                relation.id1.clone_from(&source_id);
+            }
+            if relation.id2 == "A" {
+                relation.id2.clone_from(&source_id);
+            } else if relation.id2 == "B" {
+                relation.id2.clone_from(&target_id);
+            }
+        }
+        model.relations[0].title = "self<&中".to_string();
+        model.relations[0].relation_title_1 = "a<&中<br>b".to_string();
+        model.relations[0].relation_title_2 = "a/b<&中".to_string();
+        model.relations[1].title = "linked<&中".to_string();
+        model
+    }
+
+    fn render_class_summary_fixture(
+        model: &ClassDiagram,
+        options: &AsciiRenderOptions,
+        materialized: &Cell<bool>,
+    ) -> (Result<String>, (usize, usize), (usize, usize)) {
+        let mut resources = ResourceContext::new(options.resources);
+        let charset = ClassCharset::for_options(options);
+        let direction = ClassDirection::try_from_model(&model.direction)
+            .expect("class summary direction should be valid");
+        let aliases = namespace_facade_aliases(model).expect("class summary aliases should plan");
+        let mut deferred = DeferredTextRegistry::new();
+        let boxes = render_class_boxes(
+            model,
+            options,
+            charset,
+            direction,
+            &aliases,
+            &mut deferred,
+            &mut resources,
+        )
+        .expect("class summary boxes should plan");
+        let mut layouts = Vec::new();
+        layouts
+            .try_reserve_exact(model.relations.len())
+            .expect("class summary layout allocation should succeed");
+        for relation in &model.relations {
+            layouts.push(
+                relation_layout(
+                    model,
+                    relation,
+                    &aliases,
+                    options.terminal_width_profile,
+                    &mut deferred,
+                    &resources,
+                )
+                .expect("class summary relation should plan"),
+            );
+        }
+        let adapter = ClassRelationComponentAdapter {
+            charset,
+            width_profile: options.terminal_width_profile,
+        };
+        let lines = relation_graph::render_relation_component_lines(
+            &boxes,
+            &layouts,
+            options,
+            &mut resources,
+            &adapter,
+            &mut deferred,
+        )
+        .expect("class summary should plan")
+        .expect("class summary should produce lines");
+        let before = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        let result = relation_graph::render_lines_with_deferred_probe(
+            &lines,
+            options,
+            &mut resources,
+            &deferred,
+            || materialized.set(true),
+        );
+        let after = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        (result, before, after)
+    }
+
+    #[test]
+    fn class_summary_admits_exact_encoded_output_before_deferred_materialization() {
+        let model = class_summary_model();
+        for mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let base = AsciiRenderOptions::unicode()
+                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_color_mode(mode);
+            let measured_probe = Cell::new(false);
+            let (measured, _, _) = render_class_summary_fixture(&model, &base, &measured_probe);
+            let expected = measured.expect("unbounded class summary should render");
+            assert!(measured_probe.get(), "mode={mode:?}");
+            assert!(expected.contains("relations:"), "mode={mode:?}");
+            if mode == AsciiColorMode::Html {
+                assert!(expected.contains("Source&lt;&amp;中"), "mode={mode:?}");
+                assert!(expected.contains("self&lt;&amp;中"), "mode={mode:?}");
+            } else {
+                assert!(expected.contains("Source<&中"), "mode={mode:?}");
+                assert!(expected.contains("self<&中"), "mode={mode:?}");
+                assert!(expected.contains("endpoint1=[bytes=6 \"a<&中\", bytes=1 \"b\"]"));
+            }
+
+            let exact = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .expect("exact class summary output limit should be valid");
+            let exact_probe = Cell::new(false);
+            let (rendered, _, _) = render_class_summary_fixture(&model, &exact, &exact_probe);
+            assert_eq!(
+                rendered.expect("exact class summary should materialize"),
+                expected,
+                "mode={mode:?}"
+            );
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                .expect("max-minus-one class summary limit should be valid");
+            let below_probe = Cell::new(false);
+            let (error, before, after) = render_class_summary_fixture(&model, &below, &below_probe);
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert_eq!(after, before, "mode={mode:?}");
+            assert!(matches!(
+                error.expect_err("max-minus-one class summary must reject"),
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                        && details.actual == expected.len()
+                        && details.max == expected.len() - 1
+            ));
+        }
+    }
+
+    #[test]
+    fn class_sections_admit_exact_encoded_output_before_deferred_materialization() {
+        let mut model = parsed_class_model("classDiagram\nclass Service");
+        let class = model
+            .classes
+            .get_mut("Service")
+            .expect("Service class should exist");
+        class.text = "&lt;&amp;中".to_string();
+        class.annotations = vec!["authored<&中".to_string()];
+        class.members = vec![ClassMember {
+            member_type: "attribute".to_string(),
+            visibility: "+".to_string(),
+            id: "value<&中".to_string(),
+            classifier: "*".to_string(),
+            parameters: String::new(),
+            return_type: String::new(),
+            display_text: String::new(),
+            css_style: String::new(),
+        }];
+        let class = model
+            .classes
+            .get("Service")
+            .expect("Service class should remain available");
+
+        for mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let base = AsciiRenderOptions::unicode()
+                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_color_mode(mode);
+            let measured_probe = Cell::new(false);
+            let (measured, _, _) = render_class_section_fixture(class, &base, &measured_probe);
+            let expected = measured.expect("unbounded class section should render");
+            assert!(measured_probe.get(), "mode={mode:?}");
+            if mode == AsciiColorMode::Html {
+                assert!(expected.contains("&lt;&amp;中"), "mode={mode:?}");
+            } else {
+                assert!(expected.contains("<&中"), "mode={mode:?}");
+                assert!(expected.contains("+value<&中*"), "mode={mode:?}");
+            }
+
+            let exact = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .expect("exact class output limit should be valid");
+            let exact_probe = Cell::new(false);
+            let (rendered, _, _) = render_class_section_fixture(class, &exact, &exact_probe);
+            assert_eq!(
+                rendered.expect("exact class output should materialize"),
+                expected,
+                "mode={mode:?}"
+            );
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                .expect("max-minus-one class output limit should be valid");
+            let below_probe = Cell::new(false);
+            let (error, before, after) = render_class_section_fixture(class, &below, &below_probe);
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert_eq!(after, before, "mode={mode:?}");
+            assert!(
+                matches!(
+                    error.expect_err("max-minus-one class output must reject"),
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                            && details.actual == expected.len()
+                            && details.max == expected.len() - 1
+                ),
+                "mode={mode:?}"
+            );
         }
     }
 
@@ -2649,84 +3020,6 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 3);
         assert_eq!(resources.document_cells_used(), 5);
-    }
-
-    #[test]
-    fn relation_summary_connector_admits_fixed_resources_before_materializing() {
-        const EXPECTED: &str =
-            "endpoint1=[bytes=1 \"a\", bytes=1 \"b\"] -- endpoint2=[bytes=3 \"a/b\"]";
-        const SOURCE_GRAPHEME_WORK_PER_PASS: usize = 5;
-        const EXPECTED_WORK: usize = EXPECTED.len() * 2 + SOURCE_GRAPHEME_WORK_PER_PASS * 2;
-
-        let layout = RelationLayout {
-            top_id: "A",
-            bottom_id: "B",
-            top_marker: None,
-            bottom_marker: None,
-            line: RelationLine::Solid,
-            label: None,
-            top_endpoint_label: RelationGraphLabel::new("a<br>b", TerminalWidthProfile::Unicode),
-            bottom_endpoint_label: RelationGraphLabel::new("a/b", TerminalWidthProfile::Unicode),
-            top_endpoint_role: EndpointLabelRole::First,
-            bottom_endpoint_role: EndpointLabelRole::Second,
-        };
-        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-
-        for (limit, exact) in [
-            (AsciiResourceLimitId::MaxOutputBytes, EXPECTED.len()),
-            (AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK),
-        ] {
-            let exact_policy = unbounded
-                .with_limit(limit, exact)
-                .expect("exact relation-summary limit should be valid");
-            let exact_resources = ResourceContext::new(exact_policy);
-            let exact_materialized = Cell::new(false);
-            let connector =
-                class_relation_summary_connector_with_probe(&layout, &exact_resources, || {
-                    exact_materialized.set(true)
-                })
-                .expect("the fixed relation-summary boundary should be admitted");
-            assert!(exact_materialized.get());
-            assert_eq!(connector, EXPECTED);
-            if limit == AsciiResourceLimitId::MaxLayoutWorkUnits {
-                assert_eq!(exact_resources.layout_work_used(), EXPECTED_WORK);
-            }
-
-            let prior_work = 3usize;
-            let below_max = if limit == AsciiResourceLimitId::MaxLayoutWorkUnits {
-                prior_work + exact - 1
-            } else {
-                exact - 1
-            };
-            let below_actual = if limit == AsciiResourceLimitId::MaxLayoutWorkUnits {
-                prior_work + exact
-            } else {
-                exact
-            };
-            let below_policy = unbounded
-                .with_limit(limit, below_max)
-                .expect("max-minus-one relation-summary limit should be valid");
-            let below_resources = ResourceContext::new(below_policy);
-            below_resources
-                .charge_usage(prior_work, 5)
-                .expect("test checkpoint should fit");
-            let below_materialized = Cell::new(false);
-            let error =
-                class_relation_summary_connector_with_probe(&layout, &below_resources, || {
-                    below_materialized.set(true)
-                })
-                .expect_err("max-minus-one must reject before connector allocation");
-            assert!(!below_materialized.get());
-            assert!(matches!(
-                error,
-                AsciiError::ResourceLimitExceeded(details)
-                    if details.limit == limit
-                        && details.actual == below_actual
-                        && details.max == below_max
-            ));
-            assert_eq!(below_resources.layout_work_used(), prior_work);
-            assert_eq!(below_resources.document_cells_used(), 5);
-        }
     }
 
     #[test]

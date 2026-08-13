@@ -240,12 +240,35 @@ fn parallel_relation_lane_offsets_group_reverse_endpoint_pairs() {
 fn relation_graph_label_splits_breaks_and_tracks_line_count() {
     let options = AsciiRenderOptions::ascii();
     let resources = test_resources(&options);
-    let label =
-        RelationGraphLabel::try_new("north<br>south", TerminalWidthProfile::Unicode, &resources)
-            .expect("label should fit the selected resource policy")
-            .expect("label should be present");
+    let mut deferred = DeferredTextRegistry::new();
+    let label = RelationGraphLabel::try_new(
+        "north<br>south",
+        TerminalWidthProfile::Unicode,
+        &mut deferred,
+        &resources,
+    )
+    .expect("label should fit the selected resource policy")
+    .expect("label should be present");
 
-    assert_eq!(label.lines(), ["north", "south"]);
+    let mut lines = Vec::new();
+    for line in label.lines() {
+        let mut styled =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &resources);
+        styled
+            .try_push_deferred_text(line, AsciiColorRole::EdgeLabel)
+            .expect("deferred label line should fit");
+        lines.push(styled);
+    }
+    let mut output_resources = test_resources(&options);
+    let rendered = crate::canvas::finish_styled_line_iter_with_deferred_resources(
+        lines.iter(),
+        &options,
+        true,
+        &mut output_resources,
+        &deferred,
+    )
+    .expect("deferred label should encode");
+    assert_eq!(rendered, "north\nsouth\n");
     assert_eq!(label.half_width(), 2);
     assert_eq!(label.line_count(), 2);
 }
@@ -254,18 +277,35 @@ fn relation_graph_label_splits_breaks_and_tracks_line_count() {
 fn write_centered_relation_label_draws_each_line() {
     let options = AsciiRenderOptions::ascii();
     let resources = test_resources(&options);
-    let label = RelationGraphLabel::try_new("A<br>B", TerminalWidthProfile::Unicode, &resources)
-        .expect("label should fit the selected resource policy")
-        .expect("label should be present");
+    let mut deferred = DeferredTextRegistry::new();
+    let label = RelationGraphLabel::try_new(
+        "A<br>B",
+        TerminalWidthProfile::Unicode,
+        &mut deferred,
+        &resources,
+    )
+    .expect("label should fit the selected resource policy")
+    .expect("label should be present");
     let mut canvas = Canvas::new(3, 3);
 
     write_centered_relation_label(&mut canvas, 1, 1, &label, AsciiColorRole::EdgeLabel)
         .expect("test relation label should fit");
 
-    assert_eq!(canvas.get(1, 1), Some('A'));
-    assert_eq!(canvas.get(1, 2), Some('B'));
+    let lines = canvas
+        .into_styled_lines_preserving_extent()
+        .expect("deferred canvas should convert to styled lines");
+    let mut output_resources = test_resources(&options);
+    let rendered = crate::canvas::finish_styled_line_iter_with_deferred_resources(
+        lines.iter(),
+        &options,
+        false,
+        &mut output_resources,
+        &deferred,
+    )
+    .expect("deferred canvas should encode");
+    assert_eq!(rendered, "   \n A \n B \n");
     assert_eq!(
-        canvas.get_color(1, 1),
+        lines[1].surface_cells()[1].raw_style().foreground,
         Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
     );
 }

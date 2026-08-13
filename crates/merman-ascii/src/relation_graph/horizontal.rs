@@ -10,6 +10,7 @@ use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{LogicalExtent, ResourceContext};
+use crate::safe_text::DeferredTextRegistry;
 
 mod collision;
 
@@ -264,16 +265,17 @@ impl HorizontalEdgePlan {
     }
 }
 
-pub(crate) fn render_horizontal_relation_components<R, A>(
+pub(crate) fn render_horizontal_relation_components<'text, R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     direction: RelationGraphHorizontalDirection,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<Vec<RelationGraphLine>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     if boxes.is_empty() {
         return Ok(Vec::new());
@@ -323,6 +325,7 @@ where
             component.edge_indices(),
             &context,
             resources,
+            deferred,
         )?);
     }
 
@@ -392,14 +395,15 @@ pub(crate) fn horizontal_box_strip_ref_extent(
     resources.grid_extent(width, height)
 }
 
-fn plan_horizontal_component<'plan, R, A>(
+fn plan_horizontal_component<'plan, 'text, R, A>(
     boxes: &[&'plan RelationGraphBox],
     edge_indices: &[usize],
     context: &HorizontalComponentPlanContext<'plan, R, A>,
     resources: &mut ResourceContext,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let adapter = context.adapter;
     let relations = context.relations;
@@ -432,6 +436,7 @@ where
                 options,
                 resources,
                 adapter,
+                deferred,
             )?,
         ));
     }
@@ -594,6 +599,7 @@ where
                 options,
                 resources,
                 adapter,
+                deferred,
             )?,
         ));
     }
@@ -609,7 +615,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn plan_horizontal_relation_summary<'plan, R, A>(
+fn plan_horizontal_relation_summary<'plan, 'text, R, A>(
     boxes: &[&'plan RelationGraphBox],
     order: &[usize],
     edge_indices: &[usize],
@@ -617,9 +623,10 @@ fn plan_horizontal_relation_summary<'plan, R, A>(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
 ) -> Result<RelationSummaryPaintPlan<'plan>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     let mut ordered_boxes = Vec::new();
     ordered_boxes
@@ -640,7 +647,7 @@ where
         let relation = relations
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        rows.push(adapter.build_summary_row(relation, reason, resources)?);
+        rows.push(adapter.build_summary_row(relation, reason, resources, deferred)?);
     }
     let gap = adapter.layered_horizontal_gap();
     RelationSummaryPaintPlan::horizontal(
@@ -654,7 +661,7 @@ where
     )
 }
 
-fn stable_horizontal_order<R, A>(
+fn stable_horizontal_order<'text, R, A>(
     boxes: &[&RelationGraphBox],
     edge_indices: &[usize],
     edges: &[LayeredRelationEdge],
@@ -663,7 +670,7 @@ fn stable_horizontal_order<R, A>(
     adapter: &A,
 ) -> Result<Vec<usize>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<'text, R>,
 {
     resources.charge_layout_work_product(boxes.len().max(1), edge_indices.len().max(1))?;
     let mut indegree = Vec::new();
@@ -986,7 +993,7 @@ fn draw_label_at(
 ) -> Result<()> {
     for (offset, line) in label.lines().iter().enumerate() {
         let row = resources.checked_grid_add(y, offset)?;
-        canvas.write_text_role(x, row, line, AsciiColorRole::EdgeLabel)?;
+        canvas.write_deferred_text_role(x, row, line, AsciiColorRole::EdgeLabel)?;
     }
     Ok(())
 }

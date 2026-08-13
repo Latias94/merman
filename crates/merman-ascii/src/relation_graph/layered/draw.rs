@@ -1,4 +1,6 @@
-use super::super::{RelationGraphLabel, RelationGraphLine, try_concat_relation_lines};
+use super::super::{
+    RelationGraphLabel, RelationGraphLine, grid_overflow, try_concat_relation_lines,
+};
 use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
@@ -94,13 +96,14 @@ pub(crate) fn centered_label_lines_with_role(
         }
     })?;
     for line in label.lines() {
-        lines.push(centered_text_line_with_role(
-            line,
-            center,
-            role,
-            label.width_profile(),
-            resources,
-        )?);
+        let half_width = line.width() / 2;
+        let left_padding = center
+            .checked_sub(half_width)
+            .ok_or_else(|| grid_overflow(resources))?;
+        let mut styled = crate::text::StyledLine::with_resources(label.width_profile(), resources);
+        styled.try_push_role_repeat(' ', left_padding, role)?;
+        styled.try_push_deferred_text(line, role)?;
+        lines.push(RelationGraphLine::from_styled(styled));
     }
     Ok(lines)
 }
@@ -117,12 +120,9 @@ pub(crate) fn label_lines_with_role(
         }
     })?;
     for line in label.lines() {
-        lines.push(RelationGraphLine::try_with_role(
-            line,
-            role,
-            label.width_profile(),
-            resources,
-        )?);
+        let mut styled = crate::text::StyledLine::with_resources(label.width_profile(), resources);
+        styled.try_push_deferred_text(line, role)?;
+        lines.push(RelationGraphLine::from_styled(styled));
     }
     Ok(lines)
 }
@@ -173,7 +173,10 @@ pub(crate) fn write_centered_relation_label(
         let Some(y) = start_y.checked_add(offset) else {
             return Ok(());
         };
-        write_centered_relation_text(canvas, center_x, y, line, role, label.width_profile())?;
+        let Some(start_x) = center_x.checked_sub(line.width() / 2) else {
+            continue;
+        };
+        canvas.write_deferred_text_role(start_x, y, line, role)?;
     }
     Ok(())
 }

@@ -4,12 +4,10 @@ use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::TerminalWidthProfile;
 use crate::resource::ResourceContext;
+use crate::safe_text::{DeferredTextLine, DeferredTextRegistry};
+use crate::text::StyledLine;
 #[cfg(test)]
-use crate::safe_text::normalize_terminal_text;
-use crate::safe_text::try_build_normalized_label_lines;
-#[cfg(test)]
-use crate::text::split_label_lines;
-use crate::text::{StyledLine, display_width_with_profile};
+use crate::text::display_width_with_profile;
 use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -47,53 +45,58 @@ pub(crate) struct RelationGraphBoxStyle {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphLabel {
-    lines: Vec<String>,
+    lines: Rc<Vec<DeferredTextLine>>,
     width: usize,
     width_profile: TerminalWidthProfile,
 }
 impl RelationGraphLabel {
-    pub(crate) fn try_new(
-        raw: &str,
+    pub(crate) fn try_new<'a>(
+        raw: &'a str,
         width_profile: TerminalWidthProfile,
+        deferred: &mut DeferredTextRegistry<'a>,
         resources: &ResourceContext,
     ) -> Result<Option<Self>> {
-        let Some(normalized) =
-            try_build_normalized_label_lines(raw, width_profile, true, None, resources)?
-        else {
+        let Some(lines) = deferred.try_register_label_lines(raw, width_profile, resources)? else {
             return Ok(None);
         };
-        let (lines, width) = normalized.into_parts();
-        Ok(Some(Self {
-            lines,
-            width,
-            width_profile,
-        }))
+        Self::try_from_lines(lines, width_profile, resources).map(Some)
     }
 
     #[cfg(test)]
-    pub(crate) fn new(raw: &str, width_profile: TerminalWidthProfile) -> Option<Self> {
-        let normalized = normalize_terminal_text(raw);
-        let trimmed = normalized.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
+    pub(crate) fn new<'a>(
+        raw: &'a str,
+        width_profile: TerminalWidthProfile,
+        deferred: &mut DeferredTextRegistry<'a>,
+        resources: &ResourceContext,
+    ) -> Option<Self> {
+        Self::try_new(raw, width_profile, deferred, resources)
+            .expect("test relation label should plan")
+    }
 
-        let lines = split_label_lines(trimmed);
+    pub(crate) fn try_from_lines(
+        lines: Vec<DeferredTextLine>,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
         let width = lines
             .iter()
-            .map(|line| display_width_with_profile(line, width_profile))
+            .map(DeferredTextLine::width)
             .max()
             .unwrap_or_default();
-
-        Some(Self {
-            lines,
+        resources.grid_extent(width.max(1), lines.len().max(1))?;
+        Ok(Self {
+            lines: Rc::new(lines),
             width,
             width_profile,
         })
     }
 
-    pub(crate) fn lines(&self) -> &[String] {
+    pub(crate) fn lines(&self) -> &[DeferredTextLine] {
         &self.lines
+    }
+
+    pub(crate) fn shared_lines(&self) -> Rc<Vec<DeferredTextLine>> {
+        Rc::clone(&self.lines)
     }
 
     pub(crate) fn half_width(&self) -> usize {
@@ -199,6 +202,7 @@ impl RelationGraphLine {
         Ok(Self::from_styled(line))
     }
 
+    #[cfg(test)]
     pub(crate) fn box_content(
         text: &str,
         content_width: usize,
@@ -217,6 +221,28 @@ impl RelationGraphLine {
         line.try_push_role_char(style.vertical, style.border_role)?;
         line.try_push_spaces(padding)?;
         line.try_push_role_text(text, style.text_role)?;
+        line.try_push_spaces(trailing)?;
+        line.try_push_role_char(style.vertical, style.border_role)?;
+        Ok(Self::from_styled(line))
+    }
+
+    pub(crate) fn deferred_box_content(
+        text: &DeferredTextLine,
+        content_width: usize,
+        padding: usize,
+        style: RelationGraphBoxStyle,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let used_width = resources.checked_grid_add(padding, text.width())?;
+        let trailing = content_width
+            .checked_sub(used_width)
+            .ok_or_else(|| grid_overflow(resources))?;
+
+        let mut line = StyledLine::with_resources(width_profile, resources);
+        line.try_push_role_char(style.vertical, style.border_role)?;
+        line.try_push_spaces(padding)?;
+        line.try_push_deferred_text(text, style.text_role)?;
         line.try_push_spaces(trailing)?;
         line.try_push_role_char(style.vertical, style.border_role)?;
         Ok(Self::from_styled(line))
@@ -304,6 +330,7 @@ impl RelationGraphBox {
         Ok(Self::new_with_lines(id, lines, width, width_profile))
     }
 
+    #[cfg(test)]
     pub(crate) fn from_sections(
         id: String,
         sections: &[Vec<String>],
@@ -375,6 +402,84 @@ impl RelationGraphBox {
         Ok(Self::new_with_lines(id, lines, width, width_profile))
     }
 
+    pub(crate) fn from_deferred_sections(
+        id: String,
+        sections: &[Vec<DeferredTextLine>],
+        padding: usize,
+        style: RelationGraphBoxStyle,
+        width_profile: TerminalWidthProfile,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        let max_line_width = sections
+            .iter()
+            .flat_map(|section| section.iter())
+            .map(DeferredTextLine::width)
+            .max()
+            .unwrap_or(0)
+            .max(1);
+        let content_width =
+            resources.checked_grid_add(max_line_width, resources.checked_grid_mul(padding, 2)?)?;
+        let separator_count = sections.len().saturating_sub(1);
+        let text_line_count = sections.iter().try_fold(0usize, |total, section| {
+            resources.checked_grid_add(total, section.len())
+        })?;
+        let height = resources.checked_grid_add(
+            resources.checked_grid_add(text_line_count, separator_count)?,
+            2,
+        )?;
+        let width = resources.checked_grid_add(content_width, 2)?;
+        let extent = resources.grid_extent(width, height)?;
+        resources.charge_layout_work(extent.cells())?;
+        let mut lines = Vec::new();
+        lines
+            .try_reserve_exact(height)
+            .map_err(|_| layout_allocation_failed())?;
+
+        lines.push(RelationGraphLine::try_box_border(
+            style.top_left,
+            style.top_right,
+            style.horizontal,
+            content_width,
+            style.border_role,
+            width_profile,
+            resources,
+        )?);
+        for (section_index, section) in sections.iter().enumerate() {
+            if section_index > 0 {
+                lines.push(RelationGraphLine::try_box_border(
+                    style.separator_left,
+                    style.separator_right,
+                    style.horizontal,
+                    content_width,
+                    style.border_role,
+                    width_profile,
+                    resources,
+                )?);
+            }
+            for line in section {
+                lines.push(RelationGraphLine::deferred_box_content(
+                    line,
+                    content_width,
+                    padding,
+                    style,
+                    width_profile,
+                    resources,
+                )?);
+            }
+        }
+        lines.push(RelationGraphLine::try_box_border(
+            style.bottom_left,
+            style.bottom_right,
+            style.horizontal,
+            content_width,
+            style.border_role,
+            width_profile,
+            resources,
+        )?);
+
+        Ok(Self::new_with_lines(id, lines, width, width_profile))
+    }
+
     pub(crate) fn id(&self) -> &str {
         self.id.as_str()
     }
@@ -421,6 +526,7 @@ impl RelationGraphBox {
     }
 }
 
+#[cfg(test)]
 fn sectioned_box_content_width(
     sections: &[Vec<String>],
     padding: usize,

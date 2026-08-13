@@ -93,6 +93,26 @@ impl GlyphSlice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct GlyphId(u32);
 
+/// Identifies one borrowed terminal-text token retained by a render-scoped resolver.
+///
+/// Unlike [`GlyphId`], this id never addresses bytes owned by a terminal surface. It may be
+/// copied across lines and canvases without importing an arena entry; the final document encoder
+/// resolves it only after the complete output-byte count has been admitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct DeferredTextId(u32);
+
+impl DeferredTextId {
+    pub(crate) fn try_from_index(index: usize) -> Result<Self> {
+        u32::try_from(index)
+            .map(Self)
+            .map_err(|_| document_allocation_failed())
+    }
+
+    pub(crate) const fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// Append-only UTF-8 storage for complex grapheme clusters owned by one terminal surface.
 ///
 /// Scalar graphemes stay entirely inside the cell token. Clones share the UTF-8 backing until a
@@ -355,18 +375,23 @@ impl GlyphArena {
 pub(crate) enum TerminalGlyph {
     Scalar(char, u8),
     Arena(GlyphId, u8),
+    Deferred(DeferredTextId),
     Continuation(u32),
 }
 
 impl TerminalGlyph {
     fn try_with_primary_width(self, width: usize) -> Result<Self> {
-        let width = u8::try_from(width).map_err(|_| document_allocation_failed())?;
         if width == 0 {
             return Err(document_allocation_failed());
         }
         match self {
-            Self::Scalar(ch, _) => Ok(Self::Scalar(ch, width)),
-            Self::Arena(id, _) => Ok(Self::Arena(id, width)),
+            Self::Scalar(ch, _) => u8::try_from(width)
+                .map(|width| Self::Scalar(ch, width))
+                .map_err(|_| document_allocation_failed()),
+            Self::Arena(id, _) => u8::try_from(width)
+                .map(|width| Self::Arena(id, width))
+                .map_err(|_| document_allocation_failed()),
+            Self::Deferred(id) => Ok(Self::Deferred(id)),
             Self::Continuation(_) => Err(document_allocation_failed()),
         }
     }
@@ -374,7 +399,7 @@ impl TerminalGlyph {
     const fn primary_width(self) -> Option<usize> {
         match self {
             Self::Scalar(_, width) | Self::Arena(_, width) => Some(width as usize),
-            Self::Continuation(_) => None,
+            Self::Deferred(_) | Self::Continuation(_) => None,
         }
     }
 
@@ -432,7 +457,9 @@ impl TerminalCell {
     pub(crate) fn output_char(self) -> Option<char> {
         match self.glyph {
             TerminalGlyph::Scalar(ch, _) => Some(ch),
-            TerminalGlyph::Arena(_, _) | TerminalGlyph::Continuation(_) => None,
+            TerminalGlyph::Arena(_, _)
+            | TerminalGlyph::Deferred(_)
+            | TerminalGlyph::Continuation(_) => None,
         }
     }
 
@@ -452,7 +479,17 @@ impl TerminalCell {
                 .map(TerminalCellText::Grapheme)
                 .map(Some)
                 .ok_or_else(glyph_allocation_failed),
+            TerminalGlyph::Deferred(_) => Err(deferred_text_requires_resolver()),
             TerminalGlyph::Continuation(_) => Ok(None),
+        }
+    }
+
+    pub(crate) const fn deferred_text_id(self) -> Option<DeferredTextId> {
+        match self.glyph {
+            TerminalGlyph::Deferred(id) => Some(id),
+            TerminalGlyph::Scalar(_, _)
+            | TerminalGlyph::Arena(_, _)
+            | TerminalGlyph::Continuation(_) => None,
         }
     }
 
@@ -489,7 +526,9 @@ impl TerminalCell {
     pub(crate) fn owner_back(self) -> Option<usize> {
         match self.glyph {
             TerminalGlyph::Continuation(owner_back) => Some(owner_back as usize),
-            TerminalGlyph::Scalar(_, _) | TerminalGlyph::Arena(_, _) => None,
+            TerminalGlyph::Scalar(_, _)
+            | TerminalGlyph::Arena(_, _)
+            | TerminalGlyph::Deferred(_) => None,
         }
     }
 
@@ -560,6 +599,39 @@ pub(crate) fn try_push_primary_grapheme_style_with_policy(
     };
     push_terminal_glyph_prepared(cells, glyph, width, style)?;
     Ok(())
+}
+
+pub(crate) fn try_push_primary_deferred_style_with_policy(
+    cells: &mut Vec<TerminalCell>,
+    id: DeferredTextId,
+    width: usize,
+    style: CanvasStyle,
+    policy: AsciiResourcePolicy,
+) -> Result<()> {
+    if width == 0 {
+        return Ok(());
+    }
+    let final_len = cells
+        .len()
+        .checked_add(width)
+        .ok_or_else(document_allocation_failed)?;
+    check_document_cell_extent(policy, final_len)?;
+    check_primary_cell_extent(policy, final_len)?;
+    validate_continuation_width(width)?;
+    cells
+        .try_reserve(width)
+        .map_err(|_| document_allocation_failed())?;
+    push_terminal_glyph_prepared(cells, TerminalGlyph::Deferred(id), width, style)
+}
+
+pub(crate) fn try_write_primary_deferred_style_with_policy(
+    cells: &mut [TerminalCell],
+    index: usize,
+    id: DeferredTextId,
+    width: usize,
+    style: CanvasStyle,
+) -> Result<bool> {
+    write_terminal_glyph(cells, index, TerminalGlyph::Deferred(id), width, style)
 }
 
 pub(crate) fn try_append_cells_from_surface(
@@ -777,7 +849,9 @@ fn try_remap_cell(
             .copied()
             .map(|target_id| cell.with_arena_id(target_id))
             .ok_or_else(glyph_allocation_failed),
-        TerminalGlyph::Scalar(_, _) | TerminalGlyph::Continuation(_) => Ok(cell),
+        TerminalGlyph::Scalar(_, _)
+        | TerminalGlyph::Deferred(_)
+        | TerminalGlyph::Continuation(_) => Ok(cell),
     }
 }
 
@@ -792,6 +866,15 @@ pub(crate) fn try_write_primary_cell_from_surface(
 ) -> Result<bool> {
     if source_cell.is_continuation() {
         return Ok(false);
+    }
+    if let Some(id) = source_cell.deferred_text_id() {
+        return write_terminal_glyph(
+            cells,
+            index,
+            TerminalGlyph::Deferred(id),
+            width,
+            source_cell.raw_style(),
+        );
     }
     let Some(text) = source_cell.try_output_text(source_arena)? else {
         return Ok(false);
@@ -822,8 +905,23 @@ pub(crate) fn try_write_primary_cell_from_surface(
 }
 
 pub(crate) fn primary_width(cells: &[TerminalCell], index: usize) -> usize {
-    let Some(width) = cells.get(index).and_then(|cell| cell.primary_width_hint()) else {
+    let Some(cell) = cells.get(index).copied() else {
         return 0;
+    };
+    let width = match cell.primary_width_hint() {
+        Some(width) => width,
+        None if cell.deferred_text_id().is_some() => {
+            let mut width = 1usize;
+            while index
+                .checked_add(width)
+                .and_then(|position| cells.get(position))
+                .is_some_and(|cell| cell.owner_back() == Some(width))
+            {
+                width += 1;
+            }
+            width
+        }
+        None => return 0,
     };
     debug_assert!(
         (1..width).all(|offset| cells
@@ -1057,6 +1155,13 @@ fn document_allocation_failed() -> AsciiError {
     }
 }
 
+fn deferred_text_requires_resolver() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "terminal_text",
+        feature: "deferred terminal text requires a document resolver",
+    }
+}
+
 #[cfg(test)]
 fn unbounded_test_policy() -> AsciiResourcePolicy {
     AsciiResourcePolicy::for_profile(
@@ -1074,6 +1179,42 @@ mod tests {
     fn typed_glyph_keeps_the_complete_cell_at_the_prototype_gate_size() {
         assert_eq!(size_of::<TerminalGlyph>(), 8);
         assert_eq!(size_of::<TerminalCell>(), 40);
+    }
+
+    #[test]
+    fn deferred_glyph_preserves_width_beyond_the_inline_u8_range() {
+        const WIDTH: usize = 300;
+
+        let id = DeferredTextId::try_from_index(0).expect("test deferred id should fit");
+        let mut source = Vec::new();
+        try_push_primary_deferred_style_with_policy(
+            &mut source,
+            id,
+            WIDTH,
+            CanvasStyle::default(),
+            unbounded_test_policy(),
+        )
+        .expect("wide deferred text should fit the trusted-input policy");
+
+        assert_eq!(source.len(), WIDTH);
+        assert_eq!(primary_width(&source, 0), WIDTH);
+        assert_eq!(source[WIDTH - 1].owner_back(), Some(WIDTH - 1));
+
+        let mut target = vec![TerminalCell::blank(); WIDTH];
+        assert!(
+            try_write_primary_cell_from_surface(
+                &mut target,
+                &mut GlyphArena::default(),
+                0,
+                source[0],
+                WIDTH,
+                &GlyphArena::default(),
+                unbounded_test_policy(),
+            )
+            .expect("wide deferred surface copy should remain fallible")
+        );
+        assert_eq!(primary_width(&target, 0), WIDTH);
+        assert_eq!(target[0].deferred_text_id(), Some(id));
     }
 
     #[test]

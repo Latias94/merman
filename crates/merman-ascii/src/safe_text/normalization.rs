@@ -55,6 +55,29 @@ pub(crate) fn terminal_text_requires_normalization(
     Ok(false)
 }
 
+/// Reports whether terminal-safe normalization would contain only trim whitespace without
+/// retaining the normalized representation.
+pub(crate) fn terminal_text_is_blank(value: &str, resources: &ResourceContext) -> Result<bool> {
+    resources.transaction(|resources| {
+        let mut blank = true;
+        visit_normalized_segments(value, |segment| {
+            segment.check_grapheme_budget(resources)?;
+            resources.charge_layout_work(segment.layout_work())?;
+            match segment.kind {
+                NormalizedSegmentKind::Grapheme(grapheme) => {
+                    if grapheme.chars().any(|ch| !ch.is_whitespace()) {
+                        blank = false;
+                    }
+                }
+                NormalizedSegmentKind::VisibleEscape(_) => blank = false,
+                NormalizedSegmentKind::LineBreak => {}
+            }
+            Ok::<(), crate::AsciiError>(())
+        })?;
+        Ok(blank)
+    })
+}
+
 /// Produces a bounded, terminal-safe human-readable diagnostic.
 ///
 /// This is the display boundary for errors that may contain authored identifiers or parser text.

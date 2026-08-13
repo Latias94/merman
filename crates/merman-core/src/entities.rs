@@ -121,12 +121,206 @@ pub fn decode_html_entities_to_unicode(input: &str) -> Cow<'_, str> {
     htmlize::unescape(input)
 }
 
+/// Visits browser-facing HTML text as decoded Unicode without retaining an intermediate string.
+///
+/// The matcher follows the same general-text rules as [`decode_html_entities_to_unicode`],
+/// including legacy bare named references and WHATWG numeric-reference corrections. Borrowed
+/// source ranges and static entity expansions are forwarded directly to `visit`; numeric scalar
+/// expansions use one stack buffer whose lifetime is limited to the callback.
+pub fn visit_decoded_html_entities<E>(
+    input: &str,
+    mut visit: impl FnMut(&str) -> Result<(), E>,
+) -> Result<(), E> {
+    visit_decoded_html_entity_fragments(input, |fragment| match fragment {
+        DecodedHtmlFragment::Borrowed(value) => visit(value),
+        DecodedHtmlFragment::Scalar(ch) => {
+            let mut buffer = [0u8; 4];
+            visit(ch.encode_utf8(&mut buffer))
+        }
+    })
+}
+
+/// One allocation-free fragment produced by [`visit_decoded_html_entity_fragments`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecodedHtmlFragment<'a> {
+    Borrowed(&'a str),
+    Scalar(char),
+}
+
+/// Visits decoded HTML text while preserving scalar expansions as values rather than temporary
+/// string slices. This form is intended for borrowed render plans that must retain the replay
+/// recipe without copying authored text.
+pub fn visit_decoded_html_entity_fragments<'a, E>(
+    input: &'a str,
+    mut visit: impl FnMut(DecodedHtmlFragment<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut scan = 0usize;
+    let mut emitted = 0usize;
+    while let Some(relative) = input[scan..].find('&') {
+        let amp = scan + relative;
+        let Some(entity) = match_html_entity(&input.as_bytes()[amp..]) else {
+            scan = amp + 1;
+            continue;
+        };
+        if emitted < amp {
+            visit(DecodedHtmlFragment::Borrowed(&input[emitted..amp]))?;
+        }
+        match entity.expansion {
+            HtmlEntityExpansion::Static(bytes) => {
+                visit(DecodedHtmlFragment::Borrowed(
+                    std::str::from_utf8(bytes).expect("HTML entities expand to UTF-8"),
+                ))?;
+            }
+            HtmlEntityExpansion::Scalar(ch) => {
+                visit(DecodedHtmlFragment::Scalar(ch))?;
+            }
+        }
+        scan = amp + entity.consumed;
+        emitted = scan;
+    }
+    if emitted < input.len() {
+        visit(DecodedHtmlFragment::Borrowed(&input[emitted..]))?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HtmlEntityMatch {
+    consumed: usize,
+    expansion: HtmlEntityExpansion,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum HtmlEntityExpansion {
+    Static(&'static [u8]),
+    Scalar(char),
+}
+
+fn match_html_entity(input: &[u8]) -> Option<HtmlEntityMatch> {
+    debug_assert_eq!(input.first(), Some(&b'&'));
+    if input.get(1) == Some(&b'#') {
+        return match_numeric_html_entity(input);
+    }
+
+    let mut candidate_end = 1usize;
+    while candidate_end < input.len()
+        && candidate_end < htmlize::ENTITY_MAX_LENGTH
+        && input[candidate_end].is_ascii_alphanumeric()
+    {
+        candidate_end += 1;
+    }
+    let has_semicolon = input.get(candidate_end) == Some(&b';');
+    let closed_end = candidate_end + usize::from(has_semicolon);
+    if has_semicolon && let Some(&expansion) = htmlize::ENTITIES.get(&input[..closed_end]) {
+        return Some(HtmlEntityMatch {
+            consumed: closed_end,
+            expansion: HtmlEntityExpansion::Static(expansion),
+        });
+    }
+
+    let candidate = &input[..closed_end.min(input.len())];
+    let max_bare = candidate.len().min(htmlize::BARE_ENTITY_MAX_LENGTH);
+    for length in htmlize::ENTITY_MIN_LENGTH..=max_bare {
+        if let Some(&expansion) = htmlize::ENTITIES.get(&candidate[..length]) {
+            return Some(HtmlEntityMatch {
+                consumed: length,
+                expansion: HtmlEntityExpansion::Static(expansion),
+            });
+        }
+    }
+    None
+}
+
+fn match_numeric_html_entity(input: &[u8]) -> Option<HtmlEntityMatch> {
+    let (radix, digits_start) = match input.get(2) {
+        Some(b'x' | b'X') => (16, 3),
+        Some(_) => (10, 2),
+        None => return None,
+    };
+    let mut digits_end = digits_start;
+    while digits_end < input.len()
+        && match radix {
+            16 => input[digits_end].is_ascii_hexdigit(),
+            _ => input[digits_end].is_ascii_digit(),
+        }
+    {
+        digits_end += 1;
+    }
+    if digits_end == digits_start {
+        return None;
+    }
+    let consumed = digits_end + usize::from(input.get(digits_end) == Some(&b';'));
+    let digits = std::str::from_utf8(&input[digits_start..digits_end])
+        .expect("numeric HTML entities contain only ASCII digits");
+    let expansion = match u32::from_str_radix(digits, radix) {
+        Ok(number) => corrected_numeric_html_entity(number),
+        Err(error) if matches!(error.kind(), std::num::IntErrorKind::PosOverflow) => {
+            HtmlEntityExpansion::Scalar('\u{fffd}')
+        }
+        Err(_) => return None,
+    };
+    Some(HtmlEntityMatch {
+        consumed,
+        expansion,
+    })
+}
+
+fn corrected_numeric_html_entity(number: u32) -> HtmlEntityExpansion {
+    let corrected = match number {
+        0 | 0x11_0000.. | 0xD800..=0xDFFF => '\u{fffd}',
+        0x80 => '\u{20ac}',
+        0x82 => '\u{201a}',
+        0x83 => '\u{0192}',
+        0x84 => '\u{201e}',
+        0x85 => '\u{2026}',
+        0x86 => '\u{2020}',
+        0x87 => '\u{2021}',
+        0x88 => '\u{02c6}',
+        0x89 => '\u{2030}',
+        0x8a => '\u{0160}',
+        0x8b => '\u{2039}',
+        0x8c => '\u{0152}',
+        0x8e => '\u{017d}',
+        0x91 => '\u{2018}',
+        0x92 => '\u{2019}',
+        0x93 => '\u{201c}',
+        0x94 => '\u{201d}',
+        0x95 => '\u{2022}',
+        0x96 => '\u{2013}',
+        0x97 => '\u{2014}',
+        0x98 => '\u{02dc}',
+        0x99 => '\u{2122}',
+        0x9a => '\u{0161}',
+        0x9b => '\u{203a}',
+        0x9c => '\u{0153}',
+        0x9e => '\u{017e}',
+        0x9f => '\u{0178}',
+        value => char::from_u32(value).unwrap_or('\u{fffd}'),
+    };
+    HtmlEntityExpansion::Scalar(corrected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode,
         decode_mermaid_entity_placeholders, restore_mermaid_entity_spelling,
+        visit_decoded_html_entities,
     };
+
+    fn assert_streaming_html_decode_matches_owned(input: &str) {
+        let mut streamed = String::new();
+        visit_decoded_html_entities(input, |fragment| {
+            streamed.push_str(fragment);
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .expect("infallible visitor should complete");
+        assert_eq!(
+            streamed,
+            decode_html_entities_to_unicode(input),
+            "{input:?}"
+        );
+    }
 
     #[test]
     fn html_entity_decode_does_not_apply_mermaid_shorthand() {
@@ -135,6 +329,60 @@ mod tests {
             "Tom & Jerry <ok> 'x'"
         );
         assert_eq!(decode_html_entities_to_unicode("#quot;"), "#quot;");
+    }
+
+    #[test]
+    fn streaming_html_entity_decode_matches_the_owned_decoder() {
+        for input in [
+            "plain",
+            "Tom &amp; Jerry &lt;ok&gt; &#39;x&#39;",
+            "&times &times; &timesb; &timesbar; &timesd;",
+            "&#0; &#x80; &#x110000; &unknown;",
+            "&nGg; and &nLl;",
+        ] {
+            assert_streaming_html_decode_matches_owned(input);
+        }
+
+        for (entity, _) in htmlize::ENTITIES.entries() {
+            let entity = std::str::from_utf8(entity).expect("HTML entity keys are ASCII");
+            assert_streaming_html_decode_matches_owned(entity);
+            assert_streaming_html_decode_matches_owned(&format!("before{entity}after"));
+            assert_streaming_html_decode_matches_owned(&format!("{entity}suffix"));
+
+            if let Some(bare) = entity.strip_suffix(';') {
+                assert_streaming_html_decode_matches_owned(bare);
+                assert_streaming_html_decode_matches_owned(&format!("{bare}suffix"));
+            }
+        }
+
+        for value in 0..=0xffu32 {
+            assert_streaming_html_decode_matches_owned(&format!("&#{value};"));
+            assert_streaming_html_decode_matches_owned(&format!("&#{value}suffix"));
+            assert_streaming_html_decode_matches_owned(&format!("&#x{value:x};"));
+            assert_streaming_html_decode_matches_owned(&format!("&#X{value:X}suffix"));
+        }
+        for value in [
+            0x7ff,
+            0x800,
+            0xd7ff,
+            0xd800,
+            0xdfff,
+            0xe000,
+            0x10ffff,
+            0x110000,
+            u32::MAX,
+        ] {
+            assert_streaming_html_decode_matches_owned(&format!("&#{value};"));
+            assert_streaming_html_decode_matches_owned(&format!("&#x{value:x};"));
+        }
+        for input in [
+            "&#999999999999999999999999999999;",
+            "&#xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;",
+            "&#;",
+            "&#x;",
+        ] {
+            assert_streaming_html_decode_matches_owned(input);
+        }
     }
 
     #[test]

@@ -60,10 +60,6 @@ impl<'a> SafeLine<'a> {
         Self { value }
     }
 
-    pub(crate) fn as_str(&self) -> &str {
-        self.value.as_ref()
-    }
-
     pub(crate) fn graphemes(
         &self,
         profile: TerminalWidthProfile,

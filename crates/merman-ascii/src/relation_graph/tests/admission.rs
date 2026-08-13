@@ -452,9 +452,21 @@ fn stack_and_horizontal_strip_reject_grid_extent_at_n_minus_one() {
 #[test]
 fn relation_document_admits_exact_extent_before_materializing() {
     let boxes = admission_test_boxes();
-    let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
     let default_options = AsciiRenderOptions::ascii();
     let default_resources = test_resources(&default_options);
+    let mut deferred = DeferredTextRegistry::new();
+    let rows = vec![
+        test_summary_row(
+            "A",
+            "-->",
+            "B",
+            None,
+            default_options.terminal_width_profile,
+            &mut deferred,
+            &default_resources,
+        )
+        .expect("summary row should plan"),
+    ];
     let base_extent = stacked_box_extent(&boxes, &default_resources)
         .expect("base stack should have a checked extent");
     let summary_extent = relation_summary_extent(&rows, None, &default_options, &default_resources)
@@ -496,9 +508,21 @@ fn relation_document_admits_exact_extent_before_materializing() {
 #[test]
 fn relation_document_rejects_n_minus_one_before_materializing() {
     let boxes = admission_test_boxes();
-    let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
     let options = options_with_grid_limit(89);
     let mut resources = test_resources(&options);
+    let mut deferred = DeferredTextRegistry::new();
+    let rows = vec![
+        test_summary_row(
+            "A",
+            "-->",
+            "B",
+            None,
+            options.terminal_width_profile,
+            &mut deferred,
+            &resources,
+        )
+        .expect("summary row should plan"),
+    ];
     let base_extent = stacked_box_extent(&boxes, &resources)
         .expect("base stack should fit before aggregate admission");
     let materialized = Cell::new(false);

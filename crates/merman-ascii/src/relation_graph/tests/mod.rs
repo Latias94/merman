@@ -1,5 +1,6 @@
 use super::*;
 use crate::canvas::Canvas;
+use crate::safe_text::ComposedTextPlan;
 use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
 use std::cell::Cell;
 
@@ -50,7 +51,7 @@ impl TestRelationEndpoints for NonCloneTestRelation {
     }
 }
 
-impl<R> RelationComponentAdapter<R> for TestRelationAdapter
+impl<'text, R> RelationComponentAdapter<'text, R> for TestRelationAdapter
 where
     R: TestRelationEndpoints,
 {
@@ -154,13 +155,13 @@ where
         resources: &mut ResourceContext,
     ) -> Result<RelationRegionPlan<'plan>> {
         let top = find_box_ref(boxes, relation.source_id()).ok_or_else(|| {
-            <Self as RelationComponentAdapter<R>>::layered_error(
+            <Self as RelationComponentAdapter<'text, R>>::layered_error(
                 self,
                 LayeredRelationError::MissingEndpoint,
             )
         })?;
         let bottom = find_box_ref(boxes, relation.target_id()).ok_or_else(|| {
-            <Self as RelationComponentAdapter<R>>::layered_error(
+            <Self as RelationComponentAdapter<'text, R>>::layered_error(
                 self,
                 LayeredRelationError::MissingEndpoint,
             )
@@ -181,6 +182,7 @@ where
         _relations: Vec<&'plan R>,
         _options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
+        _deferred: &mut DeferredTextRegistry<'text>,
     ) -> Result<RelationRegionPlan<'plan>> {
         Ok(RelationRegionPlan::BoxStrip(RelationBoxStripPlan::stacked(
             boxes, resources,
@@ -191,10 +193,31 @@ where
         &self,
         _relation: &R,
         reason: LayeredRelationSummaryReason,
-        _resources: &ResourceContext,
+        resources: &ResourceContext,
+        deferred: &mut DeferredTextRegistry<'text>,
     ) -> Result<RelationGraphSummaryRow> {
         self.summary_reason.set(Some(reason));
-        Ok(RelationGraphSummaryRow::new("A", "-->", "B"))
+        let source = deferred.try_register(
+            ComposedTextPlan::try_new(resources, 1, |push| push("A"))?,
+            TerminalWidthProfile::Unicode,
+            resources,
+        )?;
+        let connector = deferred.try_register(
+            ComposedTextPlan::try_new(resources, 1, |push| push("-->"))?,
+            TerminalWidthProfile::Unicode,
+            resources,
+        )?;
+        let target = deferred.try_register(
+            ComposedTextPlan::try_new(resources, 1, |push| push("B"))?,
+            TerminalWidthProfile::Unicode,
+            resources,
+        )?;
+        Ok(RelationGraphSummaryRow::new(
+            source,
+            connector,
+            target,
+            std::rc::Rc::new(Vec::new()),
+        ))
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {

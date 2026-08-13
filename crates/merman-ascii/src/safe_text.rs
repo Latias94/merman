@@ -1,4 +1,5 @@
 mod composed;
+mod deferred;
 mod document;
 mod encode;
 mod framing;
@@ -9,6 +10,7 @@ mod width;
 mod wrapped;
 
 pub(crate) use composed::ComposedTextPlan;
+pub(crate) use deferred::{DeferredTextLine, DeferredTextPart, DeferredTextRegistry};
 #[cfg(test)]
 use document::encode_text_lines;
 pub(crate) use document::{
@@ -21,19 +23,20 @@ pub(crate) use framing::{
     visit_quoted_terminal_text,
 };
 pub(crate) use label::{
-    LabelBreakPolicy, NormalizedLabelPlan, try_build_normalized_label_lines,
-    try_measure_normalized_label_lines, try_plan_normalized_label_lines_with_policy,
+    LabelBreakPolicy, NormalizedLabelPlan, try_measure_normalized_label_lines,
+    try_plan_normalized_label_lines_with_policy,
 };
 #[cfg(test)]
 pub(crate) use label::{
-    try_build_normalized_label_lines_with_probe, try_plan_normalized_label_lines,
+    try_build_normalized_label_lines, try_build_normalized_label_lines_with_probe,
+    try_plan_normalized_label_lines,
 };
 pub(crate) use layout::{
     NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
     try_plan_normalized_trimmed_text, try_repeat_layout_char,
 };
-pub(crate) use normalization::terminal_text_requires_normalization;
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
+pub(crate) use normalization::{terminal_text_is_blank, terminal_text_requires_normalization};
 pub(crate) use width::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
 };

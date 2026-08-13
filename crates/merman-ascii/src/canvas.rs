@@ -5,13 +5,14 @@ use crate::resource::{
     LogicalExtent, ResourceContext,
 };
 use crate::safe_text::{
-    terminal_char_display_width, visit_html_escaped_text, visit_safe_line_graphemes,
+    DeferredTextLine, DeferredTextRegistry, terminal_char_display_width, visit_html_escaped_text,
+    visit_safe_line_graphemes,
 };
 pub(crate) use crate::terminal::CanvasColor;
 use crate::terminal::{
     CanvasStyle, GlyphArena, ResolvedCanvasStyle, TerminalCell, TerminalCellText, owner_index,
     primary_width, style_at, try_write_primary_cell_from_surface,
-    try_write_primary_grapheme_style_with_policy,
+    try_write_primary_deferred_style_with_policy, try_write_primary_grapheme_style_with_policy,
 };
 
 #[derive(Debug)]
@@ -26,6 +27,15 @@ pub(crate) struct Canvas {
 
 trait TerminalOutputSink {
     fn push_str(&mut self, value: &str) -> crate::Result<()>;
+
+    fn count_only(&self) -> bool {
+        false
+    }
+
+    fn push_encoded_bytes(&mut self, bytes: usize) -> crate::Result<()> {
+        let _ = bytes;
+        Err(invalid_encoded_output_plan())
+    }
 
     fn push_char(&mut self, value: char) -> crate::Result<()> {
         let mut encoded = [0u8; 4];
@@ -102,6 +112,18 @@ impl TerminalOutputSink for CountingTerminalOutput {
         self.bytes = self
             .bytes
             .checked_add(value.len())
+            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        Ok(())
+    }
+
+    fn count_only(&self) -> bool {
+        true
+    }
+
+    fn push_encoded_bytes(&mut self, bytes: usize) -> crate::Result<()> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes)
             .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
         Ok(())
     }
@@ -341,6 +363,54 @@ impl Canvas {
         role: AsciiColorRole,
     ) -> crate::Result<()> {
         self.write_text_style(x, y, text, CanvasStyle::foreground(CanvasColor::Role(role)))
+    }
+
+    pub(crate) fn write_deferred_text_role(
+        &mut self,
+        x: usize,
+        y: usize,
+        text: &DeferredTextLine,
+        role: AsciiColorRole,
+    ) -> crate::Result<()> {
+        if y >= self.height {
+            return Ok(());
+        }
+        let end_x = x.checked_add(text.width()).ok_or_else(|| {
+            self.resources
+                .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+        })?;
+        if end_x > self.width {
+            return Ok(());
+        }
+        let row_start = y.checked_mul(self.width).ok_or_else(|| {
+            self.resources
+                .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+        })?;
+        let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        let mut offset = 0usize;
+        for glyph in text.glyphs() {
+            let target_x = x.checked_add(offset).ok_or_else(|| {
+                self.resources
+                    .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+            })?;
+            let target_index = row_start.checked_add(target_x).ok_or_else(|| {
+                self.resources
+                    .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+            })?;
+            try_write_primary_deferred_style_with_policy(
+                &mut self.cells,
+                target_index,
+                glyph.id(),
+                glyph.width(),
+                style,
+            )?;
+            offset = offset.checked_add(glyph.width()).ok_or_else(|| {
+                self.resources
+                    .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
+            })?;
+        }
+        debug_assert_eq!(offset, text.width());
+        Ok(())
     }
 
     pub(crate) fn write_text_color(
@@ -661,6 +731,7 @@ impl Canvas {
                 &self.arena,
                 color_mode,
                 color_theme,
+                None,
             )?;
             output.push_char('\n')?;
         }
@@ -748,7 +819,42 @@ pub(crate) fn finish_styled_line_iter_with_resources<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    finish_styled_line_iter_with_probe(lines, options, trim, resources, || {})
+    finish_styled_line_iter_with_probe(lines, options, trim, resources, None, || {})
+}
+
+pub(crate) fn finish_styled_line_iter_with_deferred_resources<'a, 'text, I>(
+    lines: I,
+    options: &AsciiRenderOptions,
+    trim: bool,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'text>,
+) -> crate::Result<String>
+where
+    I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
+{
+    finish_styled_line_iter_with_probe(lines, options, trim, resources, Some(deferred), || {})
+}
+
+#[cfg(test)]
+pub(crate) fn finish_styled_line_iter_with_deferred_probe<'a, 'text, I>(
+    lines: I,
+    options: &AsciiRenderOptions,
+    trim: bool,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'text>,
+    before_materialize: impl FnOnce(),
+) -> crate::Result<String>
+where
+    I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
+{
+    finish_styled_line_iter_with_probe(
+        lines,
+        options,
+        trim,
+        resources,
+        Some(deferred),
+        before_materialize,
+    )
 }
 
 fn finish_styled_line_iter_with_probe<'a, I>(
@@ -756,6 +862,7 @@ fn finish_styled_line_iter_with_probe<'a, I>(
     options: &AsciiRenderOptions,
     trim: bool,
     resources: &mut ResourceContext,
+    deferred: Option<&DeferredTextRegistry<'_>>,
     before_materialize: impl FnOnce(),
 ) -> crate::Result<String>
 where
@@ -768,6 +875,7 @@ where
             options,
             trim,
             resources,
+            deferred,
             before_materialize,
         )
     })
@@ -778,6 +886,7 @@ fn finish_styled_line_iter_after_transaction<'a, I>(
     options: &AsciiRenderOptions,
     trim: bool,
     resources: &ResourceContext,
+    deferred: Option<&DeferredTextRegistry<'_>>,
     before_materialize: impl FnOnce(),
 ) -> crate::Result<String>
 where
@@ -808,13 +917,21 @@ where
             .ok_or_else(|| document_resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         encoder_pass_work =
             document_resources.checked_work_add(encoder_pass_work, row_end.max(1))?;
+        if let Some(deferred) = deferred {
+            for cell in &line.surface_cells()[..row_end] {
+                if let Some(id) = cell.deferred_text_id() {
+                    encoder_pass_work = document_resources
+                        .checked_work_add(encoder_pass_work, deferred.replay_work_units(id)?)?;
+                }
+            }
+        }
     }
     let encoder_work = document_resources.checked_work_mul(encoder_pass_work, 2)?;
     document_resources.check_usage(encoder_work, document_cells)?;
     document_resources.charge_usage(encoder_work, document_cells)?;
 
     let mut counted = CountingTerminalOutput::new(options.resources);
-    encode_styled_line_iter_to_sink(lines.clone(), options, trim, &mut counted)?;
+    encode_styled_line_iter_to_sink(lines.clone(), options, trim, deferred, &mut counted)?;
     let encoded_bytes = counted.bytes();
     options
         .resources
@@ -822,7 +939,7 @@ where
 
     before_materialize();
     let mut output = CheckedOutput::new(options.resources);
-    encode_styled_line_iter_to_sink(lines, options, trim, &mut output)?;
+    encode_styled_line_iter_to_sink(lines, options, trim, deferred, &mut output)?;
     let output = output.finish();
     if output.len() != encoded_bytes {
         return Err(invalid_encoded_output_plan());
@@ -834,6 +951,7 @@ fn encode_styled_line_iter_to_sink<'a, I>(
     lines: I,
     options: &AsciiRenderOptions,
     trim: bool,
+    deferred: Option<&DeferredTextRegistry<'_>>,
     output: &mut impl TerminalOutputSink,
 ) -> crate::Result<()>
 where
@@ -847,7 +965,7 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_plain(output, line, row_end)?;
+                encode_styled_line_plain(output, line, row_end, deferred)?;
                 output.push_char('\n')?;
             }
         }
@@ -859,7 +977,14 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_ansi(output, line, row_end, options.color_theme, mode)?;
+                encode_styled_line_ansi(
+                    output,
+                    line,
+                    row_end,
+                    options.color_theme,
+                    mode,
+                    deferred,
+                )?;
                 output.push_char('\n')?;
             }
         }
@@ -870,7 +995,7 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_html(output, line, row_end, options.color_theme)?;
+                encode_styled_line_html(output, line, row_end, options.color_theme, deferred)?;
                 output.push_char('\n')?;
             }
         }
@@ -882,6 +1007,7 @@ fn encode_styled_line_plain(
     output: &mut impl TerminalOutputSink,
     line: &crate::text::StyledLine,
     row_end: usize,
+    deferred: Option<&DeferredTextRegistry<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -889,6 +1015,7 @@ fn encode_styled_line_plain(
         line.surface_arena(),
         AsciiColorMode::Plain,
         AsciiColorTheme::default(),
+        deferred,
     )
 }
 
@@ -898,6 +1025,7 @@ fn encode_styled_line_ansi(
     row_end: usize,
     theme: AsciiColorTheme,
     mode: AsciiColorMode,
+    deferred: Option<&DeferredTextRegistry<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -905,6 +1033,7 @@ fn encode_styled_line_ansi(
         line.surface_arena(),
         mode,
         theme,
+        deferred,
     )
 }
 
@@ -913,6 +1042,7 @@ fn encode_styled_line_html(
     line: &crate::text::StyledLine,
     row_end: usize,
     theme: AsciiColorTheme,
+    deferred: Option<&DeferredTextRegistry<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -920,6 +1050,7 @@ fn encode_styled_line_html(
         line.surface_arena(),
         AsciiColorMode::Html,
         theme,
+        deferred,
     )
 }
 
@@ -929,9 +1060,15 @@ fn encode_surface_row(
     arena: &GlyphArena,
     mode: AsciiColorMode,
     theme: AsciiColorTheme,
+    deferred: Option<&DeferredTextRegistry<'_>>,
 ) -> crate::Result<()> {
     if mode == AsciiColorMode::Plain {
         return visit_primary_cells(cells, |cell| {
+            if let Some(id) = cell.deferred_text_id() {
+                let deferred = deferred.ok_or_else(missing_deferred_text_resolver)?;
+                push_deferred_terminal_text(output, deferred, id, mode)?;
+                return Ok(());
+            }
             if let Some(text) = cell.try_output_text(arena)? {
                 push_terminal_text(output, text)?;
             }
@@ -941,7 +1078,8 @@ fn encode_surface_row(
 
     let mut active_style = ResolvedCanvasStyle::default();
     visit_primary_cells(cells, |cell| {
-        if let Some(text) = cell.try_output_text(arena)? {
+        let has_text = cell.deferred_text_id().is_some() || cell.try_output_text(arena)?.is_some();
+        if has_text {
             let desired_style = cell.raw_style().resolve(theme);
             if desired_style != active_style {
                 if !active_style.is_plain() {
@@ -966,10 +1104,18 @@ fn encode_surface_row(
                 }
                 active_style = desired_style;
             }
-            if mode == AsciiColorMode::Html {
-                push_html_escaped_terminal_text(output, text)?;
+            if let Some(id) = cell.deferred_text_id() {
+                let deferred = deferred.ok_or_else(missing_deferred_text_resolver)?;
+                push_deferred_terminal_text(output, deferred, id, mode)?;
             } else {
-                push_terminal_text(output, text)?;
+                let text = cell
+                    .try_output_text(arena)?
+                    .ok_or_else(missing_deferred_text_resolver)?;
+                if mode == AsciiColorMode::Html {
+                    push_html_escaped_terminal_text(output, text)?;
+                } else {
+                    push_terminal_text(output, text)?;
+                }
             }
         }
         Ok(())
@@ -986,18 +1132,50 @@ fn encode_surface_row(
     Ok(())
 }
 
+fn push_deferred_terminal_text(
+    output: &mut impl TerminalOutputSink,
+    deferred: &DeferredTextRegistry<'_>,
+    id: crate::terminal::DeferredTextId,
+    mode: AsciiColorMode,
+) -> crate::Result<()> {
+    if output.count_only() {
+        return output
+            .push_encoded_bytes(deferred.encoded_bytes(id, mode == AsciiColorMode::Html)?);
+    }
+    deferred.try_visit(id, &mut |text| push_terminal_fragment(output, text, mode))
+}
+
+fn push_terminal_fragment(
+    output: &mut impl TerminalOutputSink,
+    text: &str,
+    mode: AsciiColorMode,
+) -> crate::Result<()> {
+    if mode == AsciiColorMode::Html {
+        visit_html_escaped_text(text, |fragment| output.push_str(fragment))
+    } else {
+        output.push_str(text)
+    }
+}
+
+fn missing_deferred_text_resolver() -> crate::AsciiError {
+    crate::AsciiError::UnsupportedFeature {
+        diagram_type: "terminal_text",
+        feature: "deferred text resolver",
+    }
+}
+
 fn visit_primary_cells(
     cells: &[TerminalCell],
     mut visit: impl FnMut(TerminalCell) -> crate::Result<()>,
 ) -> crate::Result<()> {
     let mut offset = 0usize;
     while let Some(cell) = cells.get(offset).copied() {
-        let width = cell
-            .primary_width_hint()
-            .ok_or_else(|| {
-                crate::AsciiError::allocation_failed(AsciiResourceLimitPhase::Document.as_str())
-            })?
-            .max(1);
+        let width = primary_width(cells, offset);
+        if width == 0 {
+            return Err(crate::AsciiError::allocation_failed(
+                AsciiResourceLimitPhase::Document.as_str(),
+            ));
+        }
         visit(cell)?;
         offset = offset.checked_add(width).ok_or_else(|| {
             crate::AsciiError::allocation_failed(AsciiResourceLimitPhase::Document.as_str())
@@ -1485,6 +1663,7 @@ mod tests {
                     &exact,
                     true,
                     &mut exact_resources,
+                    None,
                     || exact_probe.set(true),
                 )
                 .expect("exact output byte limit should fit"),
@@ -1504,6 +1683,7 @@ mod tests {
                 &below,
                 true,
                 &mut below_resources,
+                None,
                 || below_probe.set(true),
             )
             .expect_err("output byte limit below the encoded size must fail");
@@ -1518,6 +1698,138 @@ mod tests {
                 }) if actual == expected.len() && max == expected.len() - 1
             ));
         }
+    }
+
+    #[test]
+    fn deferred_styled_line_encoder_counts_exact_output_before_materializing() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let cases = [
+            (AsciiColorMode::Plain, "<&中\n"),
+            (AsciiColorMode::Ansi16, "\u{1b}[30m<&中\u{1b}[0m\n"),
+            (AsciiColorMode::Ansi256, "\u{1b}[38;5;16m<&中\u{1b}[0m\n"),
+            (
+                AsciiColorMode::TrueColor,
+                "\u{1b}[38;2;1;2;3m<&中\u{1b}[0m\n",
+            ),
+            (
+                AsciiColorMode::Html,
+                "<span style=\"color:#010203\">&lt;&amp;中</span>\n",
+            ),
+        ];
+
+        for (mode, expected) in cases {
+            let base = AsciiRenderOptions::unicode()
+                .with_color_mode(mode)
+                .with_color_theme(theme);
+            let build = |options: &AsciiRenderOptions| {
+                let resources = ResourceContext::new(options.resources);
+                let mut deferred = DeferredTextRegistry::new();
+                let text = deferred
+                    .try_register(
+                        crate::safe_text::ComposedTextPlan::try_new(&resources, 1, |push| {
+                            push("<")?;
+                            push("&中")
+                        })
+                        .expect("deferred text should plan"),
+                        TerminalWidthProfile::Unicode,
+                        &resources,
+                    )
+                    .expect("deferred text should register");
+                let mut line = crate::text::StyledLine::with_resources(
+                    TerminalWidthProfile::Unicode,
+                    &resources,
+                );
+                line.try_push_deferred_text(&text, AsciiColorRole::Text)
+                    .expect("deferred text should fit the line");
+                (line, deferred, resources)
+            };
+
+            let exact = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .expect("valid exact output limit");
+            let (exact_line, exact_deferred, mut exact_resources) = build(&exact);
+            let exact_probe = std::cell::Cell::new(false);
+            assert_eq!(
+                finish_styled_line_iter_with_probe(
+                    std::iter::once(&exact_line),
+                    &exact,
+                    true,
+                    &mut exact_resources,
+                    Some(&exact_deferred),
+                    || exact_probe.set(true),
+                )
+                .expect("exact output byte limit should fit deferred text"),
+                expected,
+                "mode={mode:?}"
+            );
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                .expect("valid below-exact output limit");
+            let (below_line, below_deferred, mut below_resources) = build(&below);
+            let work_before = below_resources.layout_work_used();
+            let document_before = below_resources.document_cells_used();
+            let below_probe = std::cell::Cell::new(false);
+            let error = finish_styled_line_iter_with_probe(
+                std::iter::once(&below_line),
+                &below,
+                true,
+                &mut below_resources,
+                Some(&below_deferred),
+                || below_probe.set(true),
+            )
+            .expect_err("output byte limit below the encoded size must reject deferred text");
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert_eq!(below_resources.layout_work_used(), work_before);
+            assert_eq!(below_resources.document_cells_used(), document_before);
+            assert!(matches!(
+                error,
+                crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                    limit: AsciiResourceLimitId::MaxOutputBytes,
+                    actual,
+                    max,
+                    ..
+                }) if actual == expected.len() && max == expected.len() - 1
+            ));
+        }
+    }
+
+    #[test]
+    fn deferred_styled_line_encoder_preserves_text_wider_than_u8() {
+        let text = "x".repeat(300);
+        let expected = format!("{text}\n");
+        let options = AsciiRenderOptions::unicode()
+            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            .expect("valid exact output limit");
+        let mut resources = ResourceContext::new(options.resources);
+        let mut deferred = DeferredTextRegistry::new();
+        let planned = deferred
+            .try_register(
+                crate::safe_text::ComposedTextPlan::try_new(&resources, 1, |push| push(&text))
+                    .expect("wide deferred text should plan"),
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )
+            .expect("wide deferred text should register");
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &resources);
+        line.try_push_deferred_text(&planned, AsciiColorRole::Text)
+            .expect("wide deferred text should fit the line");
+
+        assert_eq!(
+            finish_styled_line_iter_with_probe(
+                std::iter::once(&line),
+                &options,
+                true,
+                &mut resources,
+                Some(&deferred),
+                || {},
+            )
+            .expect("wide deferred text should encode"),
+            expected
+        );
     }
 
     #[test]

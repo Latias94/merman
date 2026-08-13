@@ -25,6 +25,7 @@ impl NormalizedLabelLines {
 /// grapheme, work, document-cell, and retained row-byte bounds. Only an admitted label is
 /// materialized. `trim` matches relation labels, whose terminal-normalized authored text is
 /// trimmed before Mermaid `<br>`/`\\n` label breaks are interpreted.
+#[cfg(test)]
 pub(crate) fn try_build_normalized_label_lines(
     raw: &str,
     width_profile: TerminalWidthProfile,
@@ -35,6 +36,7 @@ pub(crate) fn try_build_normalized_label_lines(
     try_build_normalized_label_lines_impl(raw, width_profile, trim, wrap_width, resources, || {})
 }
 
+#[cfg(test)]
 fn try_build_normalized_label_lines_impl(
     raw: &str,
     width_profile: TerminalWidthProfile,
@@ -55,6 +57,7 @@ fn try_build_normalized_label_lines_impl(
     })
 }
 
+#[cfg(test)]
 fn try_build_normalized_label_lines_transactional(
     raw: &str,
     width_profile: TerminalWidthProfile,
@@ -111,6 +114,76 @@ pub(crate) struct NormalizedLabelRowMetrics {
     pub(crate) width: usize,
     pub(crate) retained_width: usize,
     materialized_bytes: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DeferredLabelPiece<'a> {
+    fragment: DeferredLabelFragment<'a>,
+    display_width: u8,
+    plain_bytes: usize,
+    html_bytes: usize,
+    replay_work_units: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeferredLabelFragment<'a> {
+    Borrowed(&'a str),
+    Scalar(char),
+    VisibleEscape(char),
+}
+
+impl DeferredLabelFragment<'_> {
+    fn try_visit(self, visit: &mut dyn FnMut(&str) -> Result<()>) -> Result<()> {
+        match self {
+            Self::Borrowed(value) => visit(value),
+            Self::Scalar(value) => {
+                let mut buffer = [0u8; 4];
+                visit(value.encode_utf8(&mut buffer))
+            }
+            Self::VisibleEscape(value) => {
+                let mut buffer = [0u8; 10];
+                visit(super::normalization::visible_escape(value, &mut buffer))
+            }
+        }
+    }
+}
+
+impl DeferredLabelPiece<'_> {
+    pub(super) const fn display_width(self) -> usize {
+        self.display_width as usize
+    }
+
+    pub(super) const fn replay_work_units(self) -> usize {
+        self.replay_work_units
+    }
+
+    pub(super) const fn encoded_bytes(self, html: bool) -> usize {
+        if html {
+            self.html_bytes
+        } else {
+            self.plain_bytes
+        }
+    }
+
+    pub(super) fn try_visit(self, visit: &mut dyn FnMut(&str) -> Result<()>) -> Result<()> {
+        self.fragment.try_visit(visit)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct DeferredLabelRow<'a> {
+    pieces: Vec<DeferredLabelPiece<'a>>,
+    width: usize,
+}
+
+impl<'a> DeferredLabelRow<'a> {
+    pub(super) fn pieces(&self) -> &[DeferredLabelPiece<'a>] {
+        &self.pieces
+    }
+
+    pub(super) const fn width(&self) -> usize {
+        self.width
+    }
 }
 
 impl NormalizedLabelMetrics {
@@ -286,6 +359,86 @@ impl NormalizedLabelPlan {
         self.materialize_impl(raw, || {})
     }
 
+    pub(super) fn try_deferred_rows<'a>(
+        self,
+        raw: &'a str,
+        resources: &ResourceContext,
+    ) -> Result<Vec<DeferredLabelRow<'a>>> {
+        resources.transaction(|resources| {
+            if self.wrap_width.is_some() {
+                return Err(invalid_label_extent_plan());
+            }
+            resources.charge_layout_work(self.replay_work_units)?;
+
+            let mut rows = Vec::new();
+            rows.try_reserve_exact(self.output_metrics.line_count)
+                .map_err(|_| document_allocation_error())?;
+            let mut pieces = Vec::new();
+            let mut row_width = 0usize;
+            visit_selected_label_output(
+                raw,
+                self.selection,
+                self.break_policy,
+                self.policy,
+                |_source, output| {
+                    match output {
+                        LabelOutputSegment::LineBreak => {
+                            rows.push(DeferredLabelRow {
+                                pieces: std::mem::take(&mut pieces),
+                                width: row_width,
+                            });
+                            row_width = 0;
+                        }
+                        LabelOutputSegment::Segment(segment) => {
+                            let width = segment.display_width(self.width_profile);
+                            let mut buffer = [0u8; 10];
+                            let text = segment.text(&mut buffer);
+                            let mut html_bytes = 0usize;
+                            super::encode::visit_html_escaped_text(text, |fragment| {
+                                html_bytes = checked_add_with_policy(
+                                    self.policy,
+                                    AsciiResourceLimitId::MaxOutputBytes,
+                                    html_bytes,
+                                    fragment.len(),
+                                )?;
+                                Ok(())
+                            })?;
+                            row_width = checked_add_with_policy(
+                                self.policy,
+                                AsciiResourceLimitId::MaxDocumentCells,
+                                row_width,
+                                width,
+                            )?;
+                            pieces
+                                .try_reserve(1)
+                                .map_err(|_| document_allocation_error())?;
+                            pieces.push(DeferredLabelPiece {
+                                fragment: deferred_label_fragment(raw, segment)?,
+                                display_width: u8::try_from(width)
+                                    .map_err(|_| invalid_label_extent_plan())?,
+                                plain_bytes: text.len(),
+                                html_bytes,
+                                replay_work_units: text.len().max(1),
+                            });
+                        }
+                    }
+                    Ok(())
+                },
+            )?;
+            rows.push(DeferredLabelRow {
+                pieces,
+                width: row_width,
+            });
+            if rows.len() != self.output_metrics.line_count
+                || rows.iter().map(DeferredLabelRow::width).max().unwrap_or(0)
+                    != self.output_metrics.max_width
+            {
+                return Err(invalid_label_extent_plan());
+            }
+            Ok(rows)
+        })
+    }
+
     fn materialize_with(
         self,
         raw: &str,
@@ -355,6 +508,42 @@ impl NormalizedLabelPlan {
         materialized: &std::cell::Cell<bool>,
     ) -> Result<NormalizedLabelLines> {
         self.materialize_with(raw, resources, || materialized.set(true))
+    }
+}
+
+fn deferred_label_fragment<'a>(
+    raw: &'a str,
+    segment: NormalizedSegment<'_>,
+) -> Result<DeferredLabelFragment<'a>> {
+    match segment.kind {
+        NormalizedSegmentKind::Grapheme(value) => {
+            let raw_start = raw.as_ptr() as usize;
+            let raw_end = raw_start
+                .checked_add(raw.len())
+                .ok_or_else(invalid_label_extent_plan)?;
+            let value_start = value.as_ptr() as usize;
+            let value_end = value_start
+                .checked_add(value.len())
+                .ok_or_else(invalid_label_extent_plan)?;
+            if raw_start <= value_start && value_end <= raw_end {
+                let start = value_start - raw_start;
+                let end = value_end - raw_start;
+                return raw
+                    .get(start..end)
+                    .map(DeferredLabelFragment::Borrowed)
+                    .ok_or_else(invalid_label_extent_plan);
+            }
+            let mut chars = value.chars();
+            let scalar = chars.next().ok_or_else(invalid_label_extent_plan)?;
+            if chars.next().is_some() {
+                return Err(invalid_label_extent_plan());
+            }
+            Ok(DeferredLabelFragment::Scalar(scalar))
+        }
+        NormalizedSegmentKind::VisibleEscape(value) => {
+            Ok(DeferredLabelFragment::VisibleEscape(value))
+        }
+        NormalizedSegmentKind::LineBreak => Err(invalid_label_extent_plan()),
     }
 }
 

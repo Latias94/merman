@@ -1785,17 +1785,17 @@ mod tests {
     fn xychart_layout_work_budget_covers_series_values_categories_paint_and_encoding() {
         let model = compact_vertical_model(None);
         let accepted = compact_options(AsciiColorMode::Plain)
-            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 21)
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 22)
             .expect("valid exact work limit");
         render_xychart_diagram(&model, &accepted)
             .expect("the exact XYChart layout-work limit should succeed");
 
         let rejected = compact_options(AsciiColorMode::Plain)
-            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 20)
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 21)
             .expect("valid below-boundary work limit");
         let error = render_xychart_diagram(&model, &rejected)
             .expect_err("the final encoder count/write passes should cross the work boundary");
-        assert_resource_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 21, 20);
+        assert_resource_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 22, 21);
     }
 
     #[test]
