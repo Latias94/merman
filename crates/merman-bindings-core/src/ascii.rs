@@ -1,7 +1,7 @@
 use crate::common::{
-    BindingDiagnosticErrorDetails, BindingDiagnosticSpan, BindingError, BindingStatus,
-    binding_ascii_resource_policy, binding_input_resource_policy, binding_site_config,
-    no_diagram_error, source_text,
+    BindingDiagnosticErrorDetails, BindingDiagnosticSpan, BindingError, BindingResourceLimitCause,
+    BindingStatus, binding_ascii_resource_policy, binding_input_resource_policy,
+    binding_site_config, no_diagram_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -301,7 +301,19 @@ fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError 
             }
             merman::ascii::AsciiError::ResourceLimitExceeded(details) => {
                 let descriptor = details.limit.descriptor();
-                BindingError::resource_limit(
+                let cause = match details.cause {
+                    merman::ascii::AsciiResourceLimitCause::Ceiling => {
+                        BindingResourceLimitCause::Ceiling
+                    }
+                    merman::ascii::AsciiResourceLimitCause::ArithmeticOverflow => {
+                        BindingResourceLimitCause::ArithmeticOverflow
+                    }
+                    // Preserve forward compatibility with future renderer-local causes until the
+                    // public binding schema grows a matching stable value.
+                    _ => BindingResourceLimitCause::Ceiling,
+                };
+                BindingError::resource_limit_with_cause(
+                    cause,
                     descriptor.phase.as_str(),
                     descriptor.stable_id,
                     u64::try_from(details.actual).unwrap_or(u64::MAX),
@@ -779,6 +791,29 @@ mod tests {
         assert_eq!(details.phase, "ascii_layout");
         assert_eq!(details.max, 1);
         assert_eq!(details.profile, "interactive");
+        assert_eq!(details.cause, BindingResourceLimitCause::Ceiling);
+    }
+
+    #[test]
+    fn ascii_arithmetic_overflow_preserves_the_public_resource_cause() {
+        let options = format!(
+            r#"{{"resources":{{"profile":"unbounded-for-trusted-input"}},"ascii":{{"boxBorderPadding":{}}}}}"#,
+            usize::MAX
+        );
+        let error = render_ascii(b"classDiagram\nclass A", options.as_bytes())
+            .expect_err("box padding arithmetic must overflow before allocation");
+        let resource = error
+            .resource_details()
+            .expect("ASCII overflow should expose structured details");
+        assert_eq!(
+            resource.cause,
+            BindingResourceLimitCause::ArithmeticOverflow
+        );
+        assert_eq!(resource.limit_id, "max_ascii_grid_cells");
+        assert_eq!(
+            resource.actual,
+            u64::try_from(usize::MAX).unwrap_or(u64::MAX)
+        );
     }
 
     #[test]

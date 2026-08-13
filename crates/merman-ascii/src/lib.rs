@@ -41,12 +41,13 @@ pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, Ascii
 pub use error::{AsciiError, Result};
 pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions, TerminalWidthProfile};
 pub use resource::{
-    ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiResourceLimitDescriptor,
-    AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourceLimitOverrideError,
-    AsciiResourceLimitPhase, AsciiResourcePolicy, MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID,
-    MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-    MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID,
-    MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, ascii_resource_profile_value,
+    ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiResourceLimitCause,
+    AsciiResourceLimitDescriptor, AsciiResourceLimitExceeded, AsciiResourceLimitId,
+    AsciiResourceLimitOverrideError, AsciiResourceLimitPhase, AsciiResourcePolicy,
+    MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID,
+    MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID, MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID,
+    ascii_resource_profile_value,
 };
 pub use safe_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 

@@ -27,6 +27,31 @@ pub enum AsciiResourceLimitPhase {
     Nesting,
 }
 
+/// Stable reason why an ASCII resource check failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AsciiResourceLimitCause {
+    /// The requested work exceeded the configured policy ceiling.
+    Ceiling,
+    /// Computing cumulative work overflowed the platform counter.
+    ArithmeticOverflow,
+}
+
+impl AsciiResourceLimitCause {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ceiling => "ceiling",
+            Self::ArithmeticOverflow => "arithmetic_overflow",
+        }
+    }
+}
+
+impl fmt::Display for AsciiResourceLimitCause {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 impl AsciiResourceLimitPhase {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -235,6 +260,7 @@ impl AsciiResourcePolicy {
             && actual > max
         {
             return Err(AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::Ceiling,
                 limit: id,
                 actual,
                 max,
@@ -252,6 +278,7 @@ impl AsciiResourcePolicy {
         // otherwise-unbounded policy or an explicit `usize::MAX` override.
         let max = self.value(id).unwrap_or(usize::MAX - 1).min(usize::MAX - 1);
         AsciiResourceLimitExceeded {
+            cause: AsciiResourceLimitCause::ArithmeticOverflow,
             limit: id,
             actual: usize::MAX,
             max,
@@ -276,6 +303,7 @@ pub enum AsciiResourceLimitOverrideError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct AsciiResourceLimitExceeded {
+    pub cause: AsciiResourceLimitCause,
     pub limit: AsciiResourceLimitId,
     pub actual: usize,
     pub max: usize,
@@ -298,7 +326,11 @@ impl fmt::Display for AsciiResourceLimitExceeded {
             self.actual,
             self.max,
             self.profile.id()
-        )
+        )?;
+        if self.cause == AsciiResourceLimitCause::ArithmeticOverflow {
+            write!(formatter, " (cause `{}`)", self.cause)?;
+        }
+        Ok(())
     }
 }
 
@@ -677,6 +709,7 @@ mod tests {
                 policy.check(id, 4),
                 Err(AsciiError::ResourceLimitExceeded(
                     AsciiResourceLimitExceeded {
+                        cause: AsciiResourceLimitCause::Ceiling,
                         limit: id,
                         actual: 4,
                         max: 3,
@@ -724,6 +757,7 @@ mod tests {
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected resource error");
         };
+        assert_eq!(details.cause, AsciiResourceLimitCause::ArithmeticOverflow);
         assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
         assert_eq!(details.actual, usize::MAX);
     }
@@ -741,6 +775,7 @@ mod tests {
             else {
                 panic!("expected a resource overflow");
             };
+            assert_eq!(details.cause, AsciiResourceLimitCause::ArithmeticOverflow);
             assert_eq!(details.actual, usize::MAX);
             assert_eq!(details.max, usize::MAX - 1);
             assert!(details.actual > details.max);
