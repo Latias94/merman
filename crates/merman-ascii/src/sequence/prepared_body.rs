@@ -235,11 +235,7 @@ impl<'diagram> SequencePreparedBody<'diagram> {
                     resources,
                 )?;
             }
-            SequenceEvent::ActivationStart { .. }
-            | SequenceEvent::ActivationEnd { .. }
-            | SequenceEvent::ControlStart(_)
-            | SequenceEvent::ControlEnd { .. }
-            | SequenceEvent::ControlSeparator(_) => {}
+            SequenceEvent::ActivationStart { .. } | SequenceEvent::ActivationEnd { .. } => {}
         }
         Ok(())
     }

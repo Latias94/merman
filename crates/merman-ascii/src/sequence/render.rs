@@ -421,7 +421,7 @@ mod tests {
             }],
             lifecycles: vec![SequenceActorLifecycle::default()],
             boxes: Vec::new(),
-            events: Vec::new(),
+            body: crate::sequence::tree::SequenceBody::default(),
         }
     }
 }

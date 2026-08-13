@@ -70,7 +70,7 @@ pub(super) fn apply_note_gutters(
     resources: &mut ResourceContext,
 ) -> Result<()> {
     let mut left_gutter = 0;
-    for event in &diagram.events {
+    for event in diagram.body.event_items() {
         let SequenceEvent::Note(note) = event else {
             continue;
         };

@@ -9,6 +9,7 @@ mod plan;
 mod prepared_body;
 mod render;
 mod text;
+mod tree;
 mod validate;
 
 pub(crate) use model::from_sequence_model;

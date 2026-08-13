@@ -1,3 +1,4 @@
+use super::tree::{SequenceBody, SequenceTreeBuilder};
 use super::{
     SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, lifecycle::resolve_actor_lifecycles,
     projection_allocation_failed, validate::validate_supported_sequence_model,
@@ -50,7 +51,7 @@ pub(crate) struct AsciiSequenceDiagram {
     pub(super) participants: Vec<SequenceParticipant>,
     pub(super) lifecycles: Vec<SequenceActorLifecycle>,
     pub(super) boxes: Vec<SequenceGroupBox>,
-    pub(super) events: Vec<SequenceEvent>,
+    pub(super) body: SequenceBody,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,20 +212,8 @@ pub(super) struct SequenceGroupBox {
 pub(super) enum SequenceEvent {
     Message(SequenceMessage),
     Note(SequenceNote),
-    ActivationStart {
-        actor: usize,
-        model_index: usize,
-    },
-    ActivationEnd {
-        actor: usize,
-        model_index: usize,
-    },
-    ControlStart(SequenceControlStart),
-    ControlEnd {
-        kind: SequenceControlKind,
-        model_index: usize,
-    },
-    ControlSeparator(SequenceControlSeparator),
+    ActivationStart { actor: usize, model_index: usize },
+    ActivationEnd { actor: usize, model_index: usize },
 }
 
 impl SequenceEvent {
@@ -235,26 +224,27 @@ impl SequenceEvent {
             Self::ActivationStart { model_index, .. } | Self::ActivationEnd { model_index, .. } => {
                 *model_index
             }
-            Self::ControlStart(start) => start.model_index,
-            Self::ControlEnd { model_index, .. } => *model_index,
-            Self::ControlSeparator(separator) => separator.model_index,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SequenceControlStart {
-    pub(super) model_index: usize,
-    pub(super) kind: SequenceControlKind,
-    pub(super) label: String,
-    pub(super) background: Option<AsciiRgb>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SequenceControlSeparator {
-    pub(super) model_index: usize,
-    pub(super) kind: SequenceControlKind,
-    pub(super) label: String,
+enum SequenceControlRecord {
+    Start {
+        model_index: usize,
+        kind: SequenceControlKind,
+        label: String,
+        background: Option<AsciiRgb>,
+    },
+    Separator {
+        model_index: usize,
+        kind: SequenceControlKind,
+        label: String,
+    },
+    End {
+        model_index: usize,
+        kind: SequenceControlKind,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,7 +368,6 @@ fn preflight_sequence_projection(
         }
     }
 
-    let mut nesting_depth = 0usize;
     for message in &model.messages {
         resources.charge_layout_work(1)?;
         if let Some(from) = message.from.as_deref() {
@@ -388,17 +377,6 @@ fn preflight_sequence_projection(
             charge_text_layout(resources, to)?;
         }
         charge_text_layout(resources, message.message_text())?;
-
-        if is_control_start_message(message.message_type) {
-            nesting_depth = nesting_depth.checked_add(1).ok_or_else(|| {
-                resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxNestingDepth)
-            })?;
-            resources.check_nesting_depth(nesting_depth)?;
-        } else if is_control_end_message(message.message_type) {
-            nesting_depth = nesting_depth.saturating_sub(1);
-        }
     }
 
     for actor_id in model
@@ -410,33 +388,6 @@ fn preflight_sequence_projection(
         charge_text_layout(resources, actor_id)?;
     }
     Ok(())
-}
-
-fn is_control_start_message(message_type: i32) -> bool {
-    matches!(
-        message_type,
-        LOOP_START_MESSAGE_TYPE
-            | ALT_START_MESSAGE_TYPE
-            | OPT_START_MESSAGE_TYPE
-            | PAR_START_MESSAGE_TYPE
-            | RECT_START_MESSAGE_TYPE
-            | CRITICAL_START_MESSAGE_TYPE
-            | BREAK_START_MESSAGE_TYPE
-            | PAR_OVER_START_MESSAGE_TYPE
-    )
-}
-
-fn is_control_end_message(message_type: i32) -> bool {
-    matches!(
-        message_type,
-        LOOP_END_MESSAGE_TYPE
-            | ALT_END_MESSAGE_TYPE
-            | OPT_END_MESSAGE_TYPE
-            | PAR_END_MESSAGE_TYPE
-            | RECT_END_MESSAGE_TYPE
-            | CRITICAL_END_MESSAGE_TYPE
-            | BREAK_END_MESSAGE_TYPE
-    )
 }
 
 pub(crate) fn from_sequence_model(
@@ -464,10 +415,7 @@ pub(crate) fn from_sequence_model(
     }
     let boxes = sequence_boxes(model, &participant_index)?;
     let lifecycles = resolve_actor_lifecycles(model, &participant_index, resources)?;
-    let mut events = Vec::new();
-    events
-        .try_reserve_exact(model.messages.len())
-        .map_err(|_| projection_allocation_failed())?;
+    let mut body = SequenceTreeBuilder::new(model.messages.len(), resources)?;
     let mut autonumber = AutonumberState::default();
 
     for (model_index, message) in model.messages.iter().enumerate() {
@@ -480,8 +428,23 @@ pub(crate) fn from_sequence_model(
             continue;
         }
 
-        if let Some(event) = sequence_control_event(message, model_index)? {
-            events.push(event);
+        if let Some(record) = sequence_control_record(message, model_index)? {
+            match record {
+                SequenceControlRecord::Start {
+                    model_index,
+                    kind,
+                    label,
+                    background,
+                } => body.start_control(model_index, kind, label, background, resources)?,
+                SequenceControlRecord::Separator {
+                    model_index,
+                    kind,
+                    label,
+                } => body.start_section(model_index, kind, label, resources)?,
+                SequenceControlRecord::End { model_index, kind } => {
+                    body.end_control(model_index, kind, resources)?
+                }
+            }
             continue;
         }
 
@@ -507,7 +470,7 @@ pub(crate) fn from_sequence_model(
             } else {
                 SequenceEvent::ActivationEnd { actor, model_index }
             };
-            events.push(event);
+            body.push_event(event, resources)?;
             continue;
         }
 
@@ -542,14 +505,17 @@ pub(crate) fn from_sequence_model(
         if semantic_kind == CoreSequenceMessageKind::Note {
             let placement = SequenceNotePlacement::from_model(message.placement)?;
             let label = message.message_text();
-            events.push(SequenceEvent::Note(SequenceNote {
-                model_index,
-                from,
-                to,
-                label: try_clone_projection_string(label)?,
-                wrap: message.wrap,
-                placement,
-            }));
+            body.push_event(
+                SequenceEvent::Note(SequenceNote {
+                    model_index,
+                    from,
+                    to,
+                    label: try_clone_projection_string(label)?,
+                    wrap: message.wrap,
+                    placement,
+                }),
+                resources,
+            )?;
             continue;
         }
 
@@ -575,18 +541,21 @@ pub(crate) fn from_sequence_model(
                 })?;
         let label = autonumber.label(message.message_text())?;
 
-        events.push(SequenceEvent::Message(SequenceMessage {
-            model_index,
-            from,
-            to,
-            label,
-            wrap: message.wrap,
-            style: semantics.stroke,
-            source_marker: semantics.source_marker,
-            target_marker: semantics.target_marker,
-            direction: semantics.direction,
-            central_decoration,
-        }));
+        body.push_event(
+            SequenceEvent::Message(SequenceMessage {
+                model_index,
+                from,
+                to,
+                label,
+                wrap: message.wrap,
+                style: semantics.stroke,
+                source_marker: semantics.source_marker,
+                target_marker: semantics.target_marker,
+                direction: semantics.direction,
+                central_decoration,
+            }),
+            resources,
+        )?;
     }
 
     Ok(AsciiSequenceDiagram {
@@ -599,14 +568,14 @@ pub(crate) fn from_sequence_model(
         participants,
         lifecycles,
         boxes,
-        events,
+        body: body.finish()?,
     })
 }
 
-fn sequence_control_event(
+fn sequence_control_record(
     message: &CoreSequenceMessage,
     model_index: usize,
-) -> Result<Option<SequenceEvent>> {
+) -> Result<Option<SequenceControlRecord>> {
     let kind = match message.message_type {
         LOOP_START_MESSAGE_TYPE => Some((SequenceControlKind::Loop, true)),
         LOOP_END_MESSAGE_TYPE => Some((SequenceControlKind::Loop, false)),
@@ -636,13 +605,11 @@ fn sequence_control_event(
     let Some((kind, is_start)) = kind else {
         if let Some(kind) = separator_kind {
             ensure_endpointless_control_message(message)?;
-            return Ok(Some(SequenceEvent::ControlSeparator(
-                SequenceControlSeparator {
-                    model_index,
-                    kind,
-                    label: try_clone_projection_string(message.message_text())?,
-                },
-            )));
+            return Ok(Some(SequenceControlRecord::Separator {
+                model_index,
+                kind,
+                label: try_clone_projection_string(message.message_text())?,
+            }));
         }
         return Ok(None);
     };
@@ -652,14 +619,14 @@ fn sequence_control_event(
     if is_start {
         let raw_label = message.message_text();
         let (label, background) = sequence_control_start_label(kind, raw_label)?;
-        Ok(Some(SequenceEvent::ControlStart(SequenceControlStart {
+        Ok(Some(SequenceControlRecord::Start {
             model_index,
             kind,
             label,
             background,
-        })))
+        }))
     } else {
-        Ok(Some(SequenceEvent::ControlEnd { kind, model_index }))
+        Ok(Some(SequenceControlRecord::End { kind, model_index }))
     }
 }
 

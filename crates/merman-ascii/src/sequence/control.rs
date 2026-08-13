@@ -1,7 +1,8 @@
 mod geometry;
 mod paint;
 
-pub(super) use geometry::{SequenceControlBoundaryState, SequenceParticipantSpan};
+pub(super) use super::tree::SequenceParticipantSpan;
+pub(super) use geometry::SequenceControlBoundaryState;
 
 use super::layout::SequenceLayout;
 use super::model::SequenceControlKind;
@@ -46,16 +47,22 @@ impl SequenceControlFrame<'_> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct SequenceControlFrameNode {
-    frame_index: usize,
-    children: Vec<usize>,
-    depth: usize,
+pub(super) struct SequenceControlFrameNode {
+    pub(super) frame_index: usize,
+    pub(super) children: Vec<usize>,
+    pub(super) depth: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct SequenceControlFrameForest {
-    nodes: Vec<SequenceControlFrameNode>,
-    roots: Vec<usize>,
+pub(super) struct SequenceControlFrameForest {
+    pub(super) nodes: Vec<SequenceControlFrameNode>,
+    pub(super) roots: Vec<usize>,
+}
+
+#[derive(Debug)]
+pub(super) struct SequenceControlFrameTree<'diagram> {
+    pub(super) forest: SequenceControlFrameForest,
+    pub(super) frames: Vec<SequenceControlFrame<'diagram>>,
 }
 
 #[derive(Debug)]
@@ -212,62 +219,13 @@ struct SequenceControlOutputAdmission {
     work_units: usize,
 }
 
-#[cfg(test)]
-pub(super) fn render_sequence_control_frames(
-    lines: Vec<SequenceLine>,
-    frames: &[SequenceControlFrame<'_>],
-    layout: &SequenceLayout,
-    chars: &SequenceChars,
-    resources: &mut ResourceContext,
-) -> Result<Vec<SequenceLine>> {
-    if frames.is_empty() || lines.is_empty() {
-        return Ok(lines);
-    }
-
-    let line_count = lines.len();
-    let width_profile = lines[0].width_profile();
-    let input_width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
-    let footprints = lines
-        .iter()
-        .map(line_footprint)
-        .collect::<Result<Vec<_>>>()?;
-    resources.grid_extent(input_width, line_count)?;
-    charge_work_product(resources, frames.len(), 2)?;
-    resources.grid_extent(frames.len(), 1)?;
-    let forest = control_frame_tree(frames, line_count, resources)?;
-    if forest.nodes.is_empty() {
-        return Ok(lines);
-    }
-    let frame_plans = plan_control_frames(
-        &forest,
-        frames,
-        &footprints,
-        layout,
-        width_profile,
-        resources,
-    )?;
-    let output_admission =
-        admit_control_output(&footprints, &forest, frames, &frame_plans, resources)?;
-    resources.charge_layout_work(control_materialization_work_units(&frame_plans, resources)?)?;
-    materialize_control_frames(
-        lines,
-        &forest,
-        frames,
-        &frame_plans,
-        output_admission,
-        layout,
-        chars,
-        resources,
-    )
-}
-
 pub(super) fn prepare_sequence_control_frames<'diagram>(
-    frames: Vec<SequenceControlFrame<'diagram>>,
+    tree: SequenceControlFrameTree<'diagram>,
     footprints: &[SequenceRowFootprint],
     layout: &SequenceLayout,
     resources: &mut ResourceContext,
 ) -> Result<Option<PreparedSequenceControlFrames<'diagram>>> {
-    if frames.is_empty() || footprints.is_empty() {
+    if tree.frames.is_empty() || footprints.is_empty() {
         return Ok(None);
     }
 
@@ -277,25 +235,29 @@ pub(super) fn prepare_sequence_control_frames<'diagram>(
         .max()
         .unwrap_or(0);
     resources.grid_extent(input_width, footprints.len())?;
-    charge_work_product(resources, frames.len(), 2)?;
-    resources.grid_extent(frames.len(), 1)?;
-    let forest = control_frame_tree(&frames, footprints.len(), resources)?;
-    if forest.nodes.is_empty() {
+    charge_work_product(resources, tree.frames.len(), 2)?;
+    resources.grid_extent(tree.frames.len(), 1)?;
+    if tree.forest.nodes.is_empty() {
         return Ok(None);
     }
     let frame_plans = plan_control_frames(
-        &forest,
-        &frames,
+        &tree.forest,
+        &tree.frames,
         footprints,
         layout,
         layout.width_profile,
         resources,
     )?;
-    let output_admission =
-        admit_control_output(footprints, &forest, &frames, &frame_plans, resources)?;
+    let output_admission = admit_control_output(
+        footprints,
+        &tree.forest,
+        &tree.frames,
+        &frame_plans,
+        resources,
+    )?;
     Ok(Some(PreparedSequenceControlFrames {
-        forest,
-        frames,
+        forest: tree.forest,
+        frames: tree.frames,
         frame_plans,
         output_admission,
     }))
@@ -393,7 +355,7 @@ fn plan_control_frames<'diagram>(
         } else {
             let span = match frame.participant_span {
                 Some(span) => span,
-                None => SequenceParticipantSpan::all(layout)?,
+                None => SequenceParticipantSpan::all(layout.participant_centers.len())?,
             };
             (
                 Some(span),
@@ -633,89 +595,6 @@ impl SequenceControlOutputAdmission {
     }
 }
 
-fn control_frame_tree(
-    frames: &[SequenceControlFrame<'_>],
-    line_count: usize,
-    resources: &mut ResourceContext,
-) -> Result<SequenceControlFrameForest> {
-    let mut forest = SequenceControlFrameForest {
-        nodes: Vec::<SequenceControlFrameNode>::new(),
-        roots: Vec::new(),
-    };
-    let mut active = Vec::<usize>::new();
-
-    for (frame_index, frame) in frames.iter().enumerate() {
-        resources.charge_layout_work(1)?;
-        if valid_frame_end_row(frame, line_count).is_none() {
-            continue;
-        }
-
-        while let Some(node_index) = active.last().copied() {
-            let node = forest
-                .nodes
-                .get(node_index)
-                .ok_or_else(invalid_control_frame)?;
-            let active_frame = frames
-                .get(node.frame_index)
-                .ok_or_else(invalid_control_frame)?;
-            if active_frame
-                .end_row
-                .is_some_and(|end_row| end_row < frame.start_row)
-            {
-                active.pop();
-            } else {
-                break;
-            }
-        }
-
-        let depth = active
-            .len()
-            .checked_add(1)
-            .ok_or_else(|| nesting_overflow(resources))?;
-        resources.check_nesting_depth(depth)?;
-        forest
-            .nodes
-            .try_reserve(1)
-            .map_err(|_| allocation_failed())?;
-        active.try_reserve(1).map_err(|_| allocation_failed())?;
-        let parent_index = active.last().copied();
-        if let Some(parent_index) = parent_index {
-            forest
-                .nodes
-                .get_mut(parent_index)
-                .ok_or_else(invalid_control_frame)?
-                .children
-                .try_reserve(1)
-                .map_err(|_| allocation_failed())?;
-        } else {
-            forest
-                .roots
-                .try_reserve(1)
-                .map_err(|_| allocation_failed())?;
-        }
-
-        let node_index = forest.nodes.len();
-        forest.nodes.push(SequenceControlFrameNode {
-            frame_index,
-            children: Vec::new(),
-            depth,
-        });
-
-        if let Some(parent_index) = parent_index {
-            let parent = forest
-                .nodes
-                .get_mut(parent_index)
-                .ok_or_else(invalid_control_frame)?;
-            parent.children.push(node_index);
-        } else {
-            forest.roots.push(node_index);
-        }
-        active.push(node_index);
-    }
-
-    Ok(forest)
-}
-
 fn valid_frame_end_row(frame: &SequenceControlFrame<'_>, line_count: usize) -> Option<usize> {
     let end_row = frame.end_row?;
     (frame.start_row < line_count && end_row < line_count && frame.start_row <= end_row)
@@ -755,10 +634,6 @@ fn work_overflow(resources: &ResourceContext) -> AsciiError {
     resources.work_overflow()
 }
 
-fn nesting_overflow(resources: &ResourceContext) -> AsciiError {
-    resources.nesting_overflow()
-}
-
 fn invalid_control_frame() -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "sequence",
@@ -779,37 +654,6 @@ mod tests {
     use crate::sequence::text::blank_line;
     #[cfg(not(target_arch = "wasm32"))]
     use merman_core::resources::ResourceProfile;
-
-    #[test]
-    fn nested_frames_fail_at_the_configured_depth_before_rendering() {
-        let policy = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxNestingDepth, 1)
-            .expect("the nesting override should be valid");
-        let mut resources = ResourceContext::new(policy);
-        let line = blank_line(1, TerminalWidthProfile::Unicode, &resources)
-            .expect("the seed row should fit");
-        let frames = vec![
-            test_frame(SequenceControlKind::Loop, "", 0, 0),
-            test_frame(SequenceControlKind::Opt, "", 0, 0),
-        ];
-
-        let error = render_sequence_control_frames(
-            vec![line],
-            &frames,
-            &test_layout(),
-            &ascii_chars(),
-            &mut resources,
-        )
-        .expect_err("the second frame should exceed the nesting policy");
-
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxNestingDepth
-                    && details.actual == 2
-                    && details.max == 1
-        ));
-    }
 
     #[test]
     fn control_output_admits_aggregate_extent_before_frame_materialization() {
@@ -867,21 +711,26 @@ mod tests {
             test_frame(SequenceControlKind::Loop, "batch", 0, 0),
             test_frame(SequenceControlKind::Loop, "batch", 1, 1),
         ];
+        let tree = disjoint_tree(frames);
         let footprints = lines
             .iter()
             .map(line_footprint)
             .collect::<Result<Vec<_>>>()?;
-        let forest = control_frame_tree(&frames, lines.len(), &mut resources)?;
         let frame_plans = plan_control_frames(
-            &forest,
-            &frames,
+            &tree.forest,
+            &tree.frames,
             &footprints,
             &test_layout(),
             TerminalWidthProfile::Unicode,
             &mut resources,
         )?;
-        let admission =
-            admit_control_output(&footprints, &forest, &frames, &frame_plans, &mut resources)?;
+        let admission = admit_control_output(
+            &footprints,
+            &tree.forest,
+            &tree.frames,
+            &frame_plans,
+            &mut resources,
+        )?;
         assert_eq!(admission.max_width, 14);
         assert_eq!(admission.height, 6);
         frame_plans[0]
@@ -905,10 +754,11 @@ mod tests {
                 let line = blank_line(1, TerminalWidthProfile::Unicode, &resources)
                     .expect("the seed row should fit");
                 let frames = vec![test_frame(SequenceControlKind::Loop, "", 0, 0); DEPTH];
+                let tree = nested_tree(frames);
 
-                render_sequence_control_frames(
+                render_control_tree(
                     vec![line],
-                    &frames,
+                    tree,
                     &test_layout(),
                     &ascii_chars(),
                     &mut resources,
@@ -940,13 +790,73 @@ mod tests {
             test_frame(SequenceControlKind::Loop, "", 1, 1),
         ];
 
-        render_sequence_control_frames(
+        render_control_tree(
             lines,
-            &frames,
+            disjoint_tree(frames),
             &test_layout(),
             &ascii_chars(),
             &mut resources,
         )
+    }
+
+    fn render_control_tree(
+        lines: Vec<SequenceLine>,
+        tree: SequenceControlFrameTree<'_>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<SequenceLine>> {
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()?;
+        let Some(prepared) = prepare_sequence_control_frames(tree, &footprints, layout, resources)?
+        else {
+            return Ok(lines);
+        };
+        resources.charge_layout_work(prepared.materialization_work_units(resources)?)?;
+        prepared.materialize(lines, layout, chars, resources)
+    }
+
+    fn disjoint_tree(
+        frames: Vec<SequenceControlFrame<'static>>,
+    ) -> SequenceControlFrameTree<'static> {
+        let nodes = (0..frames.len())
+            .map(|frame_index| SequenceControlFrameNode {
+                frame_index,
+                children: Vec::new(),
+                depth: 1,
+            })
+            .collect();
+        SequenceControlFrameTree {
+            forest: SequenceControlFrameForest {
+                nodes,
+                roots: (0..frames.len()).collect(),
+            },
+            frames,
+        }
+    }
+
+    fn nested_tree(
+        frames: Vec<SequenceControlFrame<'static>>,
+    ) -> SequenceControlFrameTree<'static> {
+        let nodes = (0..frames.len())
+            .map(|frame_index| SequenceControlFrameNode {
+                frame_index,
+                children: (frame_index + 1 < frames.len())
+                    .then_some(frame_index + 1)
+                    .into_iter()
+                    .collect(),
+                depth: frame_index + 1,
+            })
+            .collect();
+        SequenceControlFrameTree {
+            forest: SequenceControlFrameForest {
+                nodes,
+                roots: (!frames.is_empty()).then_some(0).into_iter().collect(),
+            },
+            frames,
+        }
     }
 
     fn test_frame(

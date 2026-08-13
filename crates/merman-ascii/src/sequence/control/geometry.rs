@@ -1,66 +1,13 @@
 use super::super::layout::SequenceLayout;
-use super::super::model::SequenceEvent;
 use super::super::render::{SequenceChars, build_lifeline_line};
 use super::super::text::{SequenceLine, SequenceRowFootprint};
+use super::super::tree::SequenceParticipantSpan;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
 const PARTICIPANT_FRAME_MARGIN: usize = 2;
 const CONTENT_FRAME_MARGIN: usize = 1;
 const NESTED_FRAME_MARGIN: usize = 2;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::sequence) struct SequenceParticipantSpan {
-    first: usize,
-    last: usize,
-}
-
-impl SequenceParticipantSpan {
-    pub(in crate::sequence) fn from_event(event: &SequenceEvent) -> Option<Self> {
-        match event {
-            SequenceEvent::Message(message) => Some(Self::between(message.from, message.to)),
-            SequenceEvent::Note(note) => Some(Self::between(note.from, note.to)),
-            SequenceEvent::ActivationStart { actor, .. }
-            | SequenceEvent::ActivationEnd { actor, .. } => Some(Self::single(*actor)),
-            SequenceEvent::ControlStart(_)
-            | SequenceEvent::ControlEnd { .. }
-            | SequenceEvent::ControlSeparator(_) => None,
-        }
-    }
-
-    pub(in crate::sequence) fn include(&mut self, other: Self) {
-        self.first = self.first.min(other.first);
-        self.last = self.last.max(other.last);
-    }
-
-    pub(in crate::sequence) fn all(layout: &SequenceLayout) -> Result<Self> {
-        let last = layout
-            .participant_centers
-            .len()
-            .checked_sub(1)
-            .ok_or_else(invalid_control_geometry)?;
-        Ok(Self { first: 0, last })
-    }
-
-    fn single(actor: usize) -> Self {
-        Self {
-            first: actor,
-            last: actor,
-        }
-    }
-
-    fn between(first: usize, second: usize) -> Self {
-        Self {
-            first: first.min(second),
-            last: first.max(second),
-        }
-    }
-
-    #[cfg(test)]
-    fn contains(self, actor: usize) -> bool {
-        (self.first..=self.last).contains(&actor)
-    }
-}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(in crate::sequence) struct SequenceControlBoundaryState {

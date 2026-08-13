@@ -600,7 +600,7 @@ mod tests {
                 background: None,
                 wrap: false,
             }],
-            events: Vec::new(),
+            body: crate::sequence::tree::SequenceBody::default(),
         };
         let layout = empty_layout();
         let lines = vec![blank_line(4, layout.width_profile, &resources)?];
