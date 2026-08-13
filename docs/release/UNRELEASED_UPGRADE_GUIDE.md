@@ -10,6 +10,7 @@ generated bindings together.
 
 | Alpha.5 or development-snapshot API | Unreleased replacement |
 | --- | --- |
+| Options JSON schema `2` with `presentation`, `raster.background`, `pdf.background`, or general-binding raw CSS | Options JSON schema `3`; use top-level typed `theme`, `raster.matte`, and `pdf.page_paint`. Trusted Rust/native CLI hosts keep explicit postprocessing/CSS escape hatches outside the general binding contract. Regenerate SDK projections and deploy them with a runtime catalog that advertises schema `3`; schema `2` is rejected rather than partially translated. |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
 | `PreparedSemantic`, public SVG `PreparedRender`, or SVG-owned `HeadlessOperation` | Format-neutral `SemanticArtifact`, consumed once by a typed SVG, ASCII, layout, or export target |
 | `ParseControl`, `ParseCancelled`, or `ParseControlResult` | `OperationControl`, `OperationCancelled`, and `OperationControlResult`; analysis may keep its domain token but it shares the same operation state |

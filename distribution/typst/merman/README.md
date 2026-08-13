@@ -30,7 +30,7 @@ flowchart TD
 | `0.2.0` (source tree, unreleased) | `0.8.0-alpha.5` | `2` | Requires a local package build and Typst `--package-path`. |
 | `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Current published wrapper. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
 
 The remaining API and example sections describe the unreleased `0.2.0` source tree. Build the
 package as described in [Development](#development) and compile with the generated local package
@@ -175,7 +175,7 @@ This refactor intentionally removes compatibility-only context wrappers:
 
 `context` is a Typst keyword, so the public parameter is named `document-context`.
 
-The current development package also moves measurement and math selection to the binding options schema `2` render environment:
+The current development package also moves measurement and math selection to the binding options schema `3` render environment:
 
 ```typst
 #mermaid(source, text-measurement: "deterministic", math-renderer: "none")

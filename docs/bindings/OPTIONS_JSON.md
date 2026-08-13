@@ -15,17 +15,17 @@ may select it while constructing their temporary engine. Resource options are de
 stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
 explicit limit must belong to the selected operation.
 
-Schema `2` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
+Schema `3` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
 or removed path cannot be silently ignored. Invalid JSON, invalid UTF-8,
 unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
-Omitting `version` selects the current schema `2`; explicit legacy versions are rejected rather
+Omitting `version` selects the current schema `3`; explicit legacy versions are rejected rather
 than translated implicitly.
 
 ## Full Shape
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
@@ -117,14 +117,14 @@ than translated implicitly.
   },
   "raster": {
     "scale": 2,
-    "background": "#ffffff",
+    "matte": "#ffffff",
     "fit_to": { "width": 1200 }
   },
   "jpeg": {
     "quality": 85
   },
   "pdf": {
-    "background": "transparent",
+    "page_paint": "transparent",
     "page_policy": {
       "kind": "fit-css-width",
       "max_width_px": 1200
@@ -139,7 +139,7 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | `2` | Options-schema version. Version `1` is the incompatible alpha.3 grammar and is rejected. Omitting the field uses the current schema-2 grammar for convenience callers; durable SDK integrations should send `2` explicitly. |
+| `version` | integer | `3` | Options-schema version. Version `2` is the published alpha.4/alpha.5 grammar and is rejected because the current typed-theme and export-paint contract is not wire-compatible with it. Omitting the field uses the current schema-3 grammar for convenience callers; durable SDK integrations should send `3` explicitly. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
@@ -577,7 +577,7 @@ Do not infer a safe limit from a single warm render: compare cold parse, layout,
 failure paths separately. The benchmark methodology documents the phase boundaries and evidence
 format used by the Playground and comparison tools.
 
-Limit ids are closed under Options JSON schema `2`: an unknown id, a value below the
+Limit ids are closed under Options JSON schema `3`: an unknown id, a value below the
 descriptor's minimum, a non-overridable hard cap, or a removed flat or family-specific field is
 rejected.
 The runtime contract publishes every accepted id, its phase, whether it is overridable, and the

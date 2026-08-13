@@ -7,6 +7,7 @@
 - The current ABI 3 table appends `operation_control_new`, `operation_control_cancel`, `operation_control_release`, and `execute_collect_controlled`; the Dart wrapper now requires the complete table through slot 10 and maps status 17 to structured cancellation details. Upgrade the Dart package and native artifacts together.
 - Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `themeCatalog()` for open-ended compiled-theme discovery.
+- Advanced Options JSON to schema `3`; regenerate Dart helpers and use `theme`, `raster.matte`, and `pdf.page_paint`. Published schema `2` requests are rejected rather than partially translated.
 
 ### Changed
 

@@ -85,7 +85,7 @@ One-shot `Merman` methods accept the complete options document for that operatio
 final engine = MermanEngine(
   optionsJson: '''
     {
-      "version": 2,
+      "version": 3,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }

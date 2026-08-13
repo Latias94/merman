@@ -107,7 +107,7 @@ flat schema-1 JSON catalog. This abridged example shows every top-level field:
   "schema_version": 1,
   "transport_api_version": 3,
   "package_version": "...",
-  "options_schema_versions": [2],
+  "options_schema_versions": [3],
   "payload_schemas": [
     { "id": "binding-result", "version": 1 },
     { "id": "operation-metadata", "version": 1 }

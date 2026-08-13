@@ -79,7 +79,7 @@ val svg = Merman.renderSvg(
 )
 ```
 
-`MermanResourceOptionsBuilder` emits Options JSON schema `2`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
+`MermanResourceOptionsBuilder` emits Options JSON schema `3`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
 
 The default AAR is deterministic and does not bundle native clock, time-zone, or random adapters. A source build may enable the atomic `native-runtime` feature and then select `"runtime_policy":"native"`; requesting native policy from the default AAR fails with a typed unsupported-operation error. Runtime discovery reports concrete adapter IDs only when the loaded artifact contains them.
 

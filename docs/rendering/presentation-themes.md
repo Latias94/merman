@@ -134,13 +134,13 @@ request; it is not implied by successful compilation.
 
 ## Options JSON
 
-Bindings use Options JSON schema 2. The alpha.4 theme field is top-level and is a closed tagged
+Bindings use Options JSON schema 3. The current theme field is top-level and is a closed tagged
 union: exactly one of `preset` or `spec` must be present. An empty object, both members, or a null
 member is invalid.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "theme": {
     "preset": "one-dark"
   },

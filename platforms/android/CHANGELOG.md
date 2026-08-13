@@ -10,6 +10,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `themeCatalogJson()` for open-ended compiled-theme discovery.
+- Advanced Options JSON to schema `3`; regenerate Kotlin helpers and use `theme`, `raster.matte`, and `pdf.page_paint`. Published schema `2` requests are rejected rather than partially translated.
 - Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
 
 ### Changed

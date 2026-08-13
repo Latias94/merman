@@ -158,7 +158,7 @@ process isolation for hard preemption.
 
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
-`ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
+`ResourceOptionsBuilder` emits Options JSON schema `3`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.

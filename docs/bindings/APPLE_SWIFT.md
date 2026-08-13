@@ -125,7 +125,7 @@ shape and its local relations, such as every output also being an operation and 
 system adapter also being a capability. They must tolerate newly introduced stable IDs rather than
 embedding a second copy of Merman's global vocabulary.
 
-Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
+Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `3`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
 
 ## Text Measurement
 

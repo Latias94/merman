@@ -211,7 +211,7 @@ Pass SVG, resource, layout, environment, and theme options to engine constructio
 final engine = MermanEngine(
   optionsJson: '''
     {
-      "version": 2,
+      "version": 3,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }
