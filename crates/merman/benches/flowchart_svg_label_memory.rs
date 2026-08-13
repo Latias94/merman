@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::RuntimePolicy;
+use merman::runtime::RuntimePolicy;
 use merman::{
     Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SemanticArtifact,
 };

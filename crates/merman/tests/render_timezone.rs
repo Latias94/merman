@@ -11,9 +11,7 @@ use std::process::Command;
 
 use merman::{
     Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderSemanticModel,
-    Renderer, SvgRequest,
-    svg::{RenderEnvironment, RuntimePolicy},
-    time::CivilDate,
+    Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy, time::CivilDate,
 };
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
@@ -59,8 +57,7 @@ fn assert_new_york_winter_semantics() {
     assert_eq!(winter_midnight.timestamp_millis(), 1_768_453_200_000);
     assert_eq!(winter_midnight.offset().minutes(), -5 * 60);
 
-    let environment =
-        RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
+    let environment = SvgEnvironment::deterministic();
     let renderer = Renderer::new()
         .with_runtime_policy(runtime_policy.clone())
         .with_parse_options(ParseOptions::strict());
@@ -109,7 +106,7 @@ fn assert_new_york_winter_semantics() {
 
 fn render_layout(
     renderer: &Renderer,
-    environment: RenderEnvironment,
+    environment: SvgEnvironment,
     source: &str,
 ) -> merman::SvgLayoutOutput {
     let output = renderer
@@ -174,8 +171,7 @@ fn emit_timezone_provenance(expected_identifier: &str) {
     let runtime_policy = RuntimePolicy::try_native()
         .expect("native runtime policy")
         .with_fixed_unix_millis(1_768_478_400_000);
-    let environment =
-        RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
+    let environment = SvgEnvironment::deterministic();
     let renderer = Renderer::new().with_runtime_policy(runtime_policy);
     let output = renderer
         .render(RenderRequest::svg(

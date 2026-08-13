@@ -5,10 +5,9 @@ mod allocator;
 
 use allocator::{AllocationMetrics, CountingSystemAllocator};
 use merman::svg::{
-    IconPack, IconRegistry, IconRegistryResourceLimitId, RenderEnvironment,
-    icon_registry_resource_limit_descriptors,
+    IconPack, IconRegistry, IconRegistryResourceLimitId, icon_registry_resource_limit_descriptors,
 };
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -478,7 +477,7 @@ fn measure_render(
     }
     let renderer = Renderer::new();
     let request = SvgRequest {
-        environment: RenderEnvironment::deterministic().with_icon_registry(registry),
+        environment: SvgEnvironment::deterministic().with_icon_registry(registry),
         ..Default::default()
     };
 

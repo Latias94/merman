@@ -305,7 +305,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),
         _ => merman::svg::TextMeasurementPolicy::parity(),
     };
-    let verification_environment = merman::svg::RenderEnvironment::deterministic()
+    let verification_environment = merman::SvgEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy.clone());
     let mut observed_operations =
         super::ObservedRenderOperations::from_environment(&verification_environment)?;
@@ -502,26 +502,33 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let mut environment = if diagram == "gantt" {
-                super::gantt_compare_environment(super::gantt_baseline_local_offset_minutes())
-                    .map_err(|err| {
-                        XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}"))
-                    })?
-            } else {
-                merman::svg::RenderEnvironment::deterministic()
-            }
-            .with_text_measurement_policy(text_measurement_policy.clone());
+            let mut environment = merman::SvgEnvironment::deterministic()
+                .with_text_measurement_policy(text_measurement_policy.clone());
             if matches!(diagram.as_str(), "flowchart" | "sequence")
                 && let Some(renderer) = node_math_renderer.clone()
             {
                 environment = environment.with_math_renderer(renderer);
             }
-            let renderer = merman::Renderer::new()
-                .with_engine(
-                    engine
-                        .clone()
-                        .with_runtime_policy(environment.runtime_policy().clone()),
+            let runtime_policy = if diagram == "gantt" {
+                Some(
+                    super::gantt_baseline_runtime_policy(
+                        super::gantt_baseline_local_offset_minutes(),
+                    )
+                    .map_err(|error| {
+                        XtaskError::SvgCompareFailed(format!(
+                            "invalid Gantt baseline runtime policy: {error}"
+                        ))
+                    })?,
                 )
+            } else {
+                None
+            };
+            let render_engine = runtime_policy.clone().map_or_else(
+                || engine.clone(),
+                |policy| engine.clone().with_runtime_policy(policy),
+            );
+            let renderer = merman::Renderer::new()
+                .with_engine(render_engine)
                 .with_parse_options(merman::ParseOptions {
                     suppress_errors: true,
                 });
@@ -581,19 +588,15 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                         "invalid calibrated Gantt baseline time for {stem}: {err}"
                     ))
                 })?;
-                let (render_renderer, render_environment) = if let Some(runtime_policy) = calibrated
-                {
-                    (
-                        renderer.clone().with_runtime_policy(runtime_policy.clone()),
-                        environment.clone().with_runtime_policy(runtime_policy),
-                    )
+                let render_renderer = if let Some(runtime_policy) = calibrated {
+                    renderer.clone().with_runtime_policy(runtime_policy)
                 } else {
-                    (renderer.clone(), environment.clone())
+                    renderer.clone()
                 };
                 match render_source_svg(
                     &render_renderer,
                     &text,
-                    svg_request(render_environment, layout_opts.clone(), Some(diagram_id)),
+                    svg_request(environment.clone(), layout_opts.clone(), Some(diagram_id)),
                 ) {
                     Ok(rendered) => rendered,
                     Err(err) => {
@@ -786,7 +789,7 @@ mod tests {
 
     #[test]
     fn svg_xml_report_does_not_claim_an_unobserved_operation() {
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let observed = super::super::ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let pinned = svg_xml_report_header(

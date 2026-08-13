@@ -1,12 +1,10 @@
 #![forbid(unsafe_code)]
 
-use merman::svg::{
-    RenderEnvironment, RenderResourcePolicy, ResourceLimitId, RuntimePolicy, SvgPipeline,
-    TextMeasurementPolicy, finalize_resvg_svg,
-};
+use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgPipeline, TextMeasurementPolicy};
 use merman::time::CivilDate;
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest, runtime::RuntimePolicy,
 };
 use roxmltree::Document;
 
@@ -75,7 +73,7 @@ pub fn bounded_renderer() -> BoundedRenderer {
         .with_parse_options(ParseOptions::strict())
         .with_resource_policy(input_policy);
     let mut request = SvgRequest::default();
-    request.environment = RenderEnvironment::deterministic()
+    request.environment = SvgEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_resource_policy(limits);
     request.options.diagram_id = Some("fuzz".to_string());
@@ -95,10 +93,10 @@ pub fn is_well_formed_svg(svg: &str) -> bool {
 }
 
 pub fn assert_resvg_safe_svg(svg: &str) {
-    let session = RenderEnvironment::deterministic()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("parity render session must be constructible");
-    let normalized = finalize_resvg_svg(svg, &session)
+    let normalized = merman_render::svg::finalize_resvg_svg(svg, &session)
         .unwrap_or_else(|error| panic!("resvg-safe output failed terminal validation: {error}"));
     assert_eq!(
         normalized.as_str(),

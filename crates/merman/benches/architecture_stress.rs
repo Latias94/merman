@@ -1,6 +1,7 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use merman::svg::{LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions};
+use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions};
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use std::hint::black_box;
 
 const ARCH_MANY_SERVICES_ONE_GROUP: &str =

@@ -116,7 +116,7 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
                 )
                 .unwrap();
             let request = SvgRequest {
-                environment: merman::svg::RenderEnvironment::deterministic()
+                environment: merman::SvgEnvironment::deterministic()
                     .with_resource_policy(resources),
                 ..svg_request("swimlane-budget-probe")
             };
@@ -134,7 +134,7 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
         })
         .expect("layout must fit within the bounded probe range");
     let request = SvgRequest {
-        environment: merman::svg::RenderEnvironment::deterministic().with_resource_policy(
+        environment: merman::SvgEnvironment::deterministic().with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
@@ -159,7 +159,7 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
     let without_line_hops =
         format!("---\nconfig:\n  swimlane:\n    lineHops: false\n---\n{DOCS_BASIC}");
     let request = SvgRequest {
-        environment: merman::svg::RenderEnvironment::deterministic().with_resource_policy(
+        environment: merman::SvgEnvironment::deterministic().with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,

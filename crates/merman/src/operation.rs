@@ -77,6 +77,7 @@ impl Operation {
             .map_err(RenderError::Cancelled)?;
         Ok(Some(SemanticArtifact {
             parsed,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             operation: self.clone(),
         }))
     }
@@ -89,6 +90,7 @@ impl Operation {
 #[derive(Debug)]
 pub struct SemanticArtifact {
     pub(crate) parsed: ParsedDiagramRender,
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) operation: Operation,
 }
 
@@ -108,6 +110,7 @@ impl SemanticArtifact {
         &self.metadata().diagram_type
     }
 
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) fn into_parts(self) -> (ParsedDiagramRender, Operation) {
         (self.parsed, self.operation)
     }

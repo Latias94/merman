@@ -2,10 +2,11 @@
 
 #[cfg(feature = "png")]
 use merman::PngRequest;
-use merman::svg::{
-    RenderEnvironment, RenderResourcePolicy, RenderResourceProfile, SvgPipeline, SvgRenderOptions,
+use merman::svg::{RenderResourcePolicy, RenderResourceProfile, SvgPipeline, SvgRenderOptions};
+use merman::{
+    OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest,
 };
-use merman::{OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -43,7 +44,7 @@ fn render_with_profile(
         source,
         OperationControl::new(),
         SvgRequest {
-            environment: RenderEnvironment::deterministic().with_resource_policy(policy),
+            environment: SvgEnvironment::deterministic().with_resource_policy(policy),
             options: SvgRenderOptions {
                 diagram_id: Some(name.to_string()),
                 ..Default::default()
@@ -296,7 +297,7 @@ fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
             OperationControl::new(),
             PngRequest {
                 svg: SvgRequest {
-                    environment: RenderEnvironment::deterministic().with_resource_policy(policy),
+                    environment: SvgEnvironment::deterministic().with_resource_policy(policy),
                     options: SvgRenderOptions {
                         diagram_id: Some("zed-deep-flowchart-png".to_string()),
                         ..Default::default()

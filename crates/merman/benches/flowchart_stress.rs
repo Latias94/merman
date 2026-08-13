@@ -1,8 +1,8 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::svg::{LayoutOptions, RenderEnvironment, SvgRenderOptions};
+use merman::svg::{LayoutOptions, SvgRenderOptions};
 use merman::{
     OperationControl, RenderOutput, RenderRequest, RenderTarget, Renderer, SemanticArtifact,
-    SvgRequest,
+    SvgEnvironment, SvgRequest,
 };
 use merman_core::{Engine, ParseOptions};
 use sha2::{Digest, Sha256};
@@ -368,7 +368,7 @@ fn subgraph_depth(subgraphs: &[serde_json::Value]) -> usize {
 fn typed_svg_request(
     diagram_id: &str,
     layout: &LayoutOptions,
-    environment: &RenderEnvironment,
+    environment: &SvgEnvironment,
 ) -> SvgRequest {
     SvgRequest {
         environment: environment.clone(),
@@ -439,7 +439,7 @@ fn register_synthetic_cases(
     engine: &Engine,
     parse_opts: ParseOptions,
     layout: &LayoutOptions,
-    environment: &RenderEnvironment,
+    environment: &SvgEnvironment,
 ) {
     let renderer = Renderer::new()
         .with_engine(engine.clone())
@@ -493,7 +493,7 @@ fn bench_flowchart_curves(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
-    let environment = RenderEnvironment::deterministic();
+    let environment = SvgEnvironment::deterministic();
 
     // N is FlowchartComplexity::nodes, so each declared case includes its subgraph count. Build
     // and validate every source before registering any Criterion input; a bad generator therefore
@@ -600,7 +600,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout = LayoutOptions::headless_svg_defaults();
-    let environment = RenderEnvironment::deterministic();
+    let environment = SvgEnvironment::deterministic();
     let mut cases = vec![
         ("flowchart_medium".to_string(), FLOWCHART_MEDIUM.to_string()),
         (

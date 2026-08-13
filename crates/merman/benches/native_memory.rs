@@ -2,9 +2,10 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{RenderEnvironment, RenderResourcePolicy, RuntimePolicy, SvgRenderOptions};
+use merman::svg::{RenderResourcePolicy, SvgRenderOptions};
 use merman::{
-    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest, runtime::RuntimePolicy,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -270,7 +271,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
                         &source,
                         OperationControl::new(),
                         SvgRequest {
-                            environment: RenderEnvironment::deterministic()
+                            environment: SvgEnvironment::deterministic()
                                 .with_resource_policy(render_policy),
                             options: SvgRenderOptions {
                                 diagram_id: Some("native-memory-flowchart".to_string()),

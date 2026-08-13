@@ -1,6 +1,7 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::svg::{LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions};
+use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions};
 use merman_core::{DetectorRegistry, Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{hint::black_box, sync::OnceLock};

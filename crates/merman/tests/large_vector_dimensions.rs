@@ -46,10 +46,10 @@ fn render_resvg_safe(source: &str) -> merman::svg::ResvgCompatibleSvg {
             ..Default::default()
         },
     );
-    let session = merman::svg::RenderEnvironment::deterministic()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("deterministic render session");
-    merman::svg::finalize_resvg_svg(&svg, &session).expect("sealed resvg-compatible SVG")
+    merman_render::svg::finalize_resvg_svg(&svg, &session).expect("sealed resvg-compatible SVG")
 }
 
 #[test]

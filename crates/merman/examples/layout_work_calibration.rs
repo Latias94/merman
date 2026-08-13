@@ -1,10 +1,8 @@
 use merman::render::{ResourceLimitCause, ResourceLimitExceeded};
-use merman::svg::{
-    RenderEnvironment, RenderResourcePolicy, RenderResourceProfile, ResourceLimitId,
-};
+use merman::svg::{RenderResourcePolicy, RenderResourceProfile, ResourceLimitId};
 use merman::{
     OperationControl, RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer,
-    SemanticArtifact, SvgLayoutOutput, SvgOutput, SvgRequest,
+    SemanticArtifact, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
 };
 use merman_core::ParseOptions;
 use serde::{Deserialize, Serialize};
@@ -371,7 +369,7 @@ impl CalibrationRenderer {
                 .with_resource_policy(policy.input_policy().clone()),
             policy,
             svg_request: SvgRequest {
-                environment: RenderEnvironment::deterministic().with_resource_policy(policy),
+                environment: SvgEnvironment::deterministic().with_resource_policy(policy),
                 ..SvgRequest::default()
             },
         }

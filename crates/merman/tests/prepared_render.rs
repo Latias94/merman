@@ -165,6 +165,30 @@ Second: second,after first,2ms
 }
 
 #[test]
+fn renderer_is_the_only_runtime_policy_owner() {
+    let renderer = Renderer::new().with_runtime_policy(
+        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42),
+    );
+    let output = render_svg(&renderer, "info", SvgRequest::default());
+
+    assert_eq!(output.evidence().unix_millis(), 42);
+}
+
+#[test]
+fn cancellation_error_display_is_not_double_wrapped() {
+    let control = OperationControl::new();
+    control.cancel();
+    let error = Renderer::new()
+        .render(RenderRequest::svg("info", control, SvgRequest::default()))
+        .expect_err("pre-cancelled operations must stop at admission");
+
+    assert_eq!(
+        error.to_string(),
+        "operation cancelled during admission: requested"
+    );
+}
+
+#[test]
 #[cfg(feature = "layout-cytoscape")]
 fn architecture_render_is_stable_through_the_canonical_operation() {
     let source = r#"architecture-beta

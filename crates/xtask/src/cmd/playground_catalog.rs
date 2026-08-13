@@ -448,7 +448,7 @@ fn validate_manifest(
         if render_smoke {
             let diagram_id = format!("playground-example-{}", entry.id);
             let svg_request = merman::SvgRequest {
-                environment: merman::svg::RenderEnvironment::deterministic(),
+                environment: merman::SvgEnvironment::deterministic(),
                 layout: merman::svg::LayoutOptions::headless_svg_defaults(),
                 options: merman::svg::SvgRenderOptions {
                     diagram_id: Some(diagram_id),

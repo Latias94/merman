@@ -261,8 +261,8 @@ fn run_flowchart_compare_with_math_renderer(
             ));
         }
     };
-    let mut environment = merman::svg::RenderEnvironment::deterministic()
-        .with_text_measurement_policy(text_measurement);
+    let mut environment =
+        merman::SvgEnvironment::deterministic().with_text_measurement_policy(text_measurement);
     if let Some(renderer) = observed_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
@@ -1157,7 +1157,7 @@ mod tests {
             &renderer,
             source,
             svg_request(
-                merman::svg::RenderEnvironment::deterministic()
+                merman::SvgEnvironment::deterministic()
                     .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::parity()),
                 merman_render::LayoutOptions::default(),
                 Some(stem.to_string()),

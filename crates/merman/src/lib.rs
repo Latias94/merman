@@ -52,7 +52,9 @@ pub use render::PngRequest;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
-pub use render::{OperationExecutionPath, RenderEvidence, SvgLayoutOutput, SvgOutput, SvgRequest};
+pub use render::{
+    OperationExecutionPath, RenderEvidence, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+};
 #[cfg(feature = "pdf")]
 pub use render::{PdfOutput, PdfRequest};
 pub use render::{

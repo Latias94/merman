@@ -222,16 +222,11 @@ pub(crate) struct RenderOperationContract {
 
 impl RenderOperationContract {
     pub(crate) fn from_environment(
-        environment: &merman::svg::RenderEnvironment,
+        environment: &merman::SvgEnvironment,
     ) -> Result<Self, XtaskError> {
-        let session = environment.begin_session().map_err(|error| {
-            XtaskError::SvgCompareFailed(format!(
-                "failed to freeze compare render operation contract: {error}"
-            ))
-        })?;
         Ok(Self {
             render_path: merman::OperationExecutionPath::Renderer,
-            measurement_routes: session.report().measurement_routes().clone(),
+            measurement_routes: environment.text_measurement_routes(),
         })
     }
 
@@ -271,7 +266,7 @@ impl ObservedRenderEvidence {
 
 impl ObservedRenderOperations {
     pub(crate) fn from_environment(
-        environment: &merman::svg::RenderEnvironment,
+        environment: &merman::SvgEnvironment,
     ) -> Result<Self, XtaskError> {
         Ok(Self {
             expected: RenderOperationContract::from_environment(environment)?,
@@ -473,7 +468,7 @@ pub(crate) fn source_requires_math(
 }
 
 pub(crate) fn svg_request(
-    environment: merman::svg::RenderEnvironment,
+    environment: merman::SvgEnvironment,
     layout: merman::svg::LayoutOptions,
     diagram_id: Option<String>,
 ) -> merman::SvgRequest {
@@ -957,7 +952,7 @@ pub(crate) fn run_canonical_svg_compare(
         .map(ObservedNodeMathRenderer::new);
 
     let layout_options = super::svg_compare_layout_opts();
-    let mut environment = merman::svg::RenderEnvironment::deterministic();
+    let mut environment = merman::SvgEnvironment::deterministic();
     if let Some(renderer) = observed_node_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
@@ -1953,7 +1948,7 @@ mod tests {
     #[test]
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
         for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
-            let environment = merman::svg::RenderEnvironment::deterministic();
+            let environment = merman::SvgEnvironment::deterministic();
             let mut observed = ObservedRenderOperations::from_environment(&environment)
                 .expect("representative operation contract");
             let diagram_id = format!("computed-root-{}", fact.diagram);
@@ -2256,7 +2251,7 @@ mod tests {
             &merman::Renderer::new().with_engine(super::super::svg_compare_engine()),
             "info",
             svg_request(
-                merman::svg::RenderEnvironment::deterministic(),
+                merman::SvgEnvironment::deterministic(),
                 super::super::svg_compare_layout_opts(),
                 Some(stem.to_string()),
             ),
@@ -2550,7 +2545,7 @@ mod tests {
         let out_path = root.join("report.md");
         fs::create_dir_all(root.join("harness_probe").join("rendered.svg"))
             .expect("conflicting local SVG directory should be created");
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(
@@ -2622,7 +2617,7 @@ mod tests {
 
         let out_path = root.join("report.md");
         fs::create_dir_all(&out_path).expect("conflicting report directory should be created");
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(

@@ -1,10 +1,11 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{RenderEnvironment, RenderResourcePolicy, SvgPipeline};
+use merman::svg::{RenderResourcePolicy, SvgPipeline};
 use merman::{
     MermaidConfig, OperationControl, ParseOptions, RenderError, RenderOutput, RenderRequest,
-    Renderer, SvgRequest,
+    Renderer, SvgEnvironment, SvgRequest,
 };
+use merman_render::environment::RenderEnvironment as BackendRenderEnvironment;
 #[cfg(feature = "png")]
 use std::io::Cursor;
 
@@ -32,7 +33,7 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn with_environment(mut self, environment: RenderEnvironment) -> Self {
+    fn with_environment(mut self, environment: SvgEnvironment) -> Self {
         self.request.environment = environment;
         self
     }
@@ -177,8 +178,10 @@ fn assert_xml_parseable(name: &str, svg: &str) {
 
 #[cfg(any(feature = "png", feature = "pdf"))]
 fn finalize_raster_input(svg: &str) -> merman::svg::ResvgCompatibleSvg {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    merman::svg::finalize_resvg_svg(svg, &session).expect("valid resvg-compatible fixture")
+    let session = BackendRenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    merman_render::svg::finalize_resvg_svg(svg, &session).expect("valid resvg-compatible fixture")
 }
 
 #[test]
@@ -399,8 +402,10 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 <rect width="16" height="16" fill="black"/>
 </svg>"##;
 
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let out = merman::svg::finalize_resvg_svg(svg, &session)
+    let session = BackendRenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let out = merman_render::svg::finalize_resvg_svg(svg, &session)
         .unwrap()
         .into_string();
 
@@ -492,7 +497,7 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
     let registry = merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack)])
         .expect("valid Iconify pack");
     let renderer = TypedSvgRenderer::new()
-        .with_environment(RenderEnvironment::deterministic().with_icon_registry(registry))
+        .with_environment(SvgEnvironment::deterministic().with_icon_registry(registry))
         .with_svg_options(merman::svg::SvgRenderOptions {
             diagram_id: Some("security-icon".to_string()),
             ..Default::default()
@@ -543,9 +548,7 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
                 .expect("positive SVG budget");
         }
         TypedSvgRenderer::new()
-            .with_environment(
-                RenderEnvironment::deterministic().with_icon_registry(registry.clone()),
-            )
+            .with_environment(SvgEnvironment::deterministic().with_icon_registry(registry.clone()))
             .with_resource_policy(policy)
             .with_diagram_id("maximum-icon-export")
     };

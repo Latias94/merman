@@ -83,8 +83,7 @@ pub(super) fn compare_gantt_request(
     let engine = crate::cmd::svg_compare_engine().with_runtime_policy(runtime_policy.clone());
     let baseline_container = GanttBaselineContainerProfile::MERMAID_CLI;
     let layout_opts = baseline_container.layout_options();
-    let environment =
-        merman::svg::RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
+    let environment = merman::SvgEnvironment::deterministic();
     let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
     let probe_renderer = merman::Renderer::new()
@@ -170,22 +169,16 @@ pub(super) fn compare_gantt_request(
                 baseline_local_offset_minutes,
             )
             .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?;
-            let (render_renderer, render_environment) =
-                if let Some(runtime_policy) = calibrated_runtime_policy {
-                    (
-                        fixture_renderer
-                            .clone()
-                            .with_runtime_policy(runtime_policy.clone()),
-                        environment.clone().with_runtime_policy(runtime_policy),
-                    )
-                } else {
-                    (fixture_renderer, environment.clone())
-                };
+            let render_renderer = if let Some(runtime_policy) = calibrated_runtime_policy {
+                fixture_renderer.clone().with_runtime_policy(runtime_policy)
+            } else {
+                fixture_renderer
+            };
             let rendered = render_source_svg(
                 &render_renderer,
                 input.text,
                 svg_request(
-                    render_environment,
+                    environment.clone(),
                     layout_opts.clone(),
                     Some(sanitize_svg_id(input.stem)),
                 ),
@@ -218,17 +211,7 @@ pub(crate) fn gantt_baseline_local_offset_minutes() -> i32 {
         .unwrap_or(480)
 }
 
-pub(crate) fn gantt_compare_environment(
-    baseline_local_offset_minutes: i32,
-) -> Result<merman::svg::RenderEnvironment, merman::runtime::RuntimePolicyError> {
-    Ok(
-        merman::svg::RenderEnvironment::deterministic().with_runtime_policy(
-            gantt_baseline_runtime_policy(baseline_local_offset_minutes)?,
-        ),
-    )
-}
-
-fn gantt_baseline_runtime_policy(
+pub(crate) fn gantt_baseline_runtime_policy(
     baseline_local_offset_minutes: i32,
 ) -> Result<merman::runtime::RuntimePolicy, merman::runtime::RuntimePolicyError> {
     const BASELINE_LOCAL_MIDNIGHT_UTC_MS: i64 = 1_771_113_600_000;
@@ -291,15 +274,15 @@ mod tests {
     }
 
     #[test]
-    fn compare_environment_preserves_gantt_baseline_offset() {
-        let session = gantt_compare_environment(480)
-            .expect("valid Gantt baseline environment")
-            .begin_session()
-            .expect("begin Gantt baseline session");
+    fn baseline_runtime_policy_preserves_gantt_offset() {
+        let context = gantt_baseline_runtime_policy(480)
+            .expect("valid Gantt baseline runtime policy")
+            .begin_operation()
+            .expect("begin Gantt baseline operation");
 
-        assert_eq!(session.local_time_zone().fixed_offset_minutes(), Some(480));
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
         assert_eq!(
-            session.local_date(),
+            context.local_date(),
             merman_core::time::CivilDate::new(2026, 2, 15).unwrap()
         );
     }

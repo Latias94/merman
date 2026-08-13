@@ -17,13 +17,99 @@ use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
 use merman_render::{
-    LayoutOptions, ResourceLimitExceeded as SvgResourceLimitExceeded,
-    environment::RenderEnvironment,
+    LayoutOptions, RenderCapabilityPolicy, ResourceLimitExceeded as SvgResourceLimitExceeded,
+    environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
+    math::MathRenderer,
     presentation::PresentationRenderPolicy,
+    resources::RenderResourcePolicy,
     svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions},
 };
 
 pub use crate::operation_runner::SemanticArtifact;
+
+/// SVG-only host services and rendering limits.
+///
+/// Operation time, timezone, randomness, cancellation, and deadlines deliberately do not live
+/// here. [`Renderer`] owns those operation-wide concerns and injects the already captured context
+/// into the private SVG session. This keeps `SvgRequest` from becoming a second operation owner.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone)]
+pub struct SvgEnvironment {
+    backend: BackendRenderEnvironment,
+    text_measurement_routes: [merman_render::environment::TextMeasurementRoute; 4],
+}
+
+#[cfg(feature = "svg")]
+impl SvgEnvironment {
+    /// Creates the deterministic default SVG service set.
+    pub fn deterministic() -> Self {
+        let text_measurement = TextMeasurementPolicy::parity();
+        Self {
+            backend: BackendRenderEnvironment::deterministic()
+                .with_text_measurement_policy(text_measurement.clone()),
+            text_measurement_routes: text_measurement.routes(),
+        }
+    }
+
+    pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
+        self.text_measurement_routes = policy.routes();
+        self.backend = self.backend.with_text_measurement_policy(policy);
+        self
+    }
+
+    pub fn with_capability_policy(mut self, policy: RenderCapabilityPolicy) -> Self {
+        self.backend = self.backend.with_capability_policy(policy);
+        self
+    }
+
+    pub fn with_compiled_math_renderer(mut self) -> Self {
+        self.backend = self.backend.with_compiled_math_renderer();
+        self
+    }
+
+    pub fn with_math_renderer(
+        mut self,
+        renderer: std::sync::Arc<dyn MathRenderer + Send + Sync>,
+    ) -> Self {
+        self.backend = self.backend.with_math_renderer(renderer);
+        self
+    }
+
+    pub fn without_math_renderer(mut self) -> Self {
+        self.backend = self.backend.without_math_renderer();
+        self
+    }
+
+    pub fn with_icon_registry(mut self, registry: merman_render::svg::IconRegistry) -> Self {
+        self.backend = self.backend.with_icon_registry(registry);
+        self
+    }
+
+    pub fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
+        self.backend = self.backend.with_resource_policy(policy);
+        self
+    }
+
+    /// Returns the configured text-measurement routes without creating an operation session.
+    pub fn text_measurement_routes(&self) -> [merman_render::environment::TextMeasurementRoute; 4] {
+        self.text_measurement_routes.clone()
+    }
+
+    fn begin_session_in_context(
+        &self,
+        context: merman_core::runtime::OperationContext,
+        control: OperationControl,
+    ) -> merman_render::environment::RenderSession {
+        self.backend.begin_session_in_context(context, control)
+    }
+}
+
+#[cfg(feature = "svg")]
+impl Default for SvgEnvironment {
+    fn default() -> Self {
+        Self::deterministic()
+    }
+}
 
 /// Identifies the canonical source-to-target operation path that produced an artifact.
 ///
@@ -177,7 +263,7 @@ impl SvgLayoutOutput {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RenderError {
-    #[error("operation cancelled during {0}")]
+    #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
     #[error(transparent)]
     Parse(#[from] merman_core::Error),
@@ -353,7 +439,7 @@ pub enum RenderTarget {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub struct SvgRequest {
-    pub environment: RenderEnvironment,
+    pub environment: SvgEnvironment,
     pub layout: LayoutOptions,
     pub options: SvgRenderOptions,
     pub debug: SvgDebugOptions,
@@ -365,7 +451,7 @@ pub struct SvgRequest {
 impl Default for SvgRequest {
     fn default() -> Self {
         Self {
-            environment: RenderEnvironment::deterministic(),
+            environment: SvgEnvironment::deterministic(),
             layout: LayoutOptions::headless_svg_defaults(),
             options: SvgRenderOptions::default(),
             debug: SvgDebugOptions::default(),
@@ -622,7 +708,6 @@ impl Renderer {
 
 impl SemanticArtifact {
     /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
-    #[cfg(feature = "svg")]
     pub fn compatibility_json(&self) -> Result<serde_json::Value, RenderError> {
         self.parsed
             .model()

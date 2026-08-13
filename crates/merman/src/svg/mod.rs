@@ -5,17 +5,14 @@
 //! to construct a typed [`crate::SvgRequest`]; it does not contain a second source-to-SVG
 //! orchestration path.
 
-pub use merman_core::runtime::{
-    OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
-};
+pub use crate::SvgEnvironment;
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
-    HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    RenderSession, RenderSessionReport, TEXT_MEASUREMENT_PROTOCOL_VERSION,
-    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementResultKind,
-    TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
-    validate_host_text_measurement,
+    HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+    TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    TextMeasurementReport, TextMeasurementResultKind, TextMeasurementRoute, TextMeasurementSource,
+    TextMeasurementSummary, validate_host_text_measurement,
 };
 pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 #[cfg(feature = "math")]
@@ -43,7 +40,7 @@ pub use merman_render::svg::{
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
     ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy,
     SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgRenderOptions, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
+    SvgPostprocessor, SvgRenderOptions, foreign_object_label_fallback_svg_text,
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{

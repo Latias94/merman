@@ -1,8 +1,7 @@
-use merman::svg::{
-    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, sanitize_svg_id,
-};
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use std::env;
 use std::fs;
 use std::hint::black_box;
@@ -285,7 +284,7 @@ fn run_end_to_end(
         .with_engine(case.engine.clone())
         .with_parse_options(case.parse_options);
     let request = || SvgRequest {
-        environment: case.environment.clone(),
+        environment: SvgEnvironment::deterministic(),
         layout: case.layout_options.clone(),
         options: case.svg_options.clone(),
         ..Default::default()
