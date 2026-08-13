@@ -92,6 +92,7 @@ struct OperationState {
     parent: Option<Arc<OperationState>>,
     deadline: OnceLock<Instant>,
     clock: Clock,
+    #[cfg(any(test, feature = "test-support"))]
     successful_checkpoints_before_cancellation: AtomicU64,
 }
 
@@ -116,6 +117,7 @@ impl OperationState {
             parent,
             deadline: OnceLock::new(),
             clock,
+            #[cfg(any(test, feature = "test-support"))]
             successful_checkpoints_before_cancellation: AtomicU64::new(u64::MAX),
         }
     }
@@ -206,6 +208,7 @@ impl OperationControl {
 
     /// Checks cancellation/deadline at a named phase.
     pub fn checkpoint_at(&self, phase: OperationPhase) -> Result<(), OperationCancelled> {
+        #[cfg(any(test, feature = "test-support"))]
         if self.consume_scheduled_checkpoint() {
             self.cancel();
         }
@@ -260,6 +263,7 @@ impl OperationControl {
         None
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     fn consume_scheduled_checkpoint(&self) -> bool {
         self.state
             .successful_checkpoints_before_cancellation
@@ -269,7 +273,8 @@ impl OperationControl {
             .is_ok_and(|remaining| remaining == 0)
     }
 
-    #[doc(hidden)]
+    /// Schedules deterministic cancellation for tests after the requested successful checkpoints.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
         self.state
             .successful_checkpoints_before_cancellation

@@ -2278,6 +2278,7 @@ dependencies = [
  "criterion",
  "merman",
  "merman-analysis",
+ "merman-core",
  "merman-render",
  "roxmltree 0.21.1",
  "serde",

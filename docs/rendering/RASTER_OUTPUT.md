@@ -171,25 +171,28 @@ encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman-core = { version = "=0.8.0-alpha.5", default-features = false }
+merman-render = { version = "=0.8.0-alpha.5", default-features = false }
+merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "jpeg", "pdf"] }
 ```
 
 ```rust
-use merman::svg::{
-    RenderEnvironment, finalize_resvg_svg,
-    export::{
-        PdfOptions, RasterOptions, svg_to_jpeg, svg_to_pdf_with_options, svg_to_png,
-    },
+use merman_core::OperationControl;
+use merman_export::{
+    PdfOptions, RasterOptions, svg_to_jpeg_controlled, svg_to_pdf_controlled,
+    svg_to_png_controlled,
 };
+use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
 let source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>";
-let session = RenderEnvironment::parity().begin_session()?;
+let control = OperationControl::new();
+let session = RenderEnvironment::parity().begin_session_with_control(control.clone())?;
 let svg = finalize_resvg_svg(source, &session)?;
 
 let raster = RasterOptions::default().with_scale(2.0);
-let png = svg_to_png(&svg, &raster)?;
-let jpeg = svg_to_jpeg(&svg, &raster)?;
-let pdf = svg_to_pdf_with_options(&svg, &PdfOptions::default())?;
+let png = svg_to_png_controlled(&svg, &raster, control.clone())?;
+let jpeg = svg_to_jpeg_controlled(&svg, &raster, control.clone())?;
+let pdf = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)?;
 
 # let _ = (png, jpeg, pdf);
 # Ok::<(), Box<dyn std::error::Error>>(())

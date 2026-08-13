@@ -64,14 +64,15 @@ operation control:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"] }
+merman-core = { version = "=0.8.0-alpha.5", default-features = false }
+merman-render = { version = "=0.8.0-alpha.5", default-features = false }
 merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
 ```
 
 ```rust
-use merman::svg::{RenderEnvironment, finalize_resvg_svg};
-use merman::OperationControl;
+use merman_core::OperationControl;
 use merman_export::{RasterOptions, svg_to_png_controlled};
+use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let control = OperationControl::new();

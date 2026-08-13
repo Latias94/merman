@@ -40,7 +40,8 @@ impl AnalysisCancellationToken {
         &self.operation
     }
 
-    #[doc(hidden)]
+    /// Schedules deterministic cancellation for tests after the requested successful checkpoints.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
         self.operation
             .cancel_after_checkpoints(successful_checkpoints);

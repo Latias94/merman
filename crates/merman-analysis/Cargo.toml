@@ -19,6 +19,7 @@ fixed-capabilities = ["analysis"]
 
 [features]
 default = []
+test-support = ["merman-core/test-support"]
 system-clock = ["merman-core/system-clock"]
 system-timezone = ["merman-core/system-timezone"]
 system-random = ["merman-core/system-random"]
@@ -30,3 +31,6 @@ serde.workspace = true
 serde_json.workspace = true
 serde-saphyr = { workspace = true, features = ["serialize"] }
 thiserror.workspace = true
+
+[dev-dependencies]
+merman-core = { workspace = true, features = ["test-support"] }
