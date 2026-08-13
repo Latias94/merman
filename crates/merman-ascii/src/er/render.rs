@@ -10,9 +10,9 @@ use crate::relation_graph::{
     RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
     RelationSummaryPaintPlan,
 };
-#[cfg(test)]
-use crate::resource::AsciiResourceLimitId;
-use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
+};
 use crate::safe_text::{charge_text_layout, terminal_char_display_width};
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
@@ -289,7 +289,7 @@ fn render_entity_box(
     charset: ErCharset,
     resources: &mut ResourceContext,
 ) -> Result<RenderedEntityBox> {
-    let sections = entity_sections(entity)?;
+    let sections = entity_sections(entity, resources)?;
     render_box_sections(entity.id.clone(), sections, options, charset, resources)
 }
 
@@ -322,7 +322,10 @@ fn render_box_sections(
     )
 }
 
-fn entity_sections(entity: &ErEntityRenderModel) -> Result<Vec<Vec<String>>> {
+fn entity_sections(
+    entity: &ErEntityRenderModel,
+    resources: &ResourceContext,
+) -> Result<Vec<Vec<String>>> {
     let mut header = Vec::new();
     header
         .try_reserve_exact(1)
@@ -338,13 +341,12 @@ fn entity_sections(entity: &ErEntityRenderModel) -> Result<Vec<Vec<String>>> {
     attributes
         .try_reserve_exact(entity.attributes.len())
         .map_err(|_| layout_allocation_failed())?;
-    attributes.extend(
-        entity
-            .attributes
-            .iter()
-            .map(attribute_text)
-            .filter(|line| !line.is_empty()),
-    );
+    for attribute in &entity.attributes {
+        let line = attribute_text(attribute, resources)?;
+        if !line.is_empty() {
+            attributes.push(line);
+        }
+    }
     if !attributes.is_empty() {
         sections.push(attributes);
     }
@@ -360,32 +362,139 @@ fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
     }
 }
 
-fn attribute_text(attribute: &ErAttributeRenderModel) -> String {
-    let mut parts = Vec::new();
-    if !attribute.ty.is_empty() {
-        parts.push(attribute.ty.as_str());
-    }
-    if !attribute.name.is_empty() {
-        parts.push(attribute.name.as_str());
-    }
-    let mut text = parts.join(" ");
-    if !attribute.keys.is_empty() {
-        if !text.is_empty() {
-            text.push(' ');
+fn attribute_text(
+    attribute: &ErAttributeRenderModel,
+    resources: &ResourceContext,
+) -> Result<String> {
+    attribute_text_with_probe(attribute, resources, || {})
+}
+
+fn attribute_text_with_probe(
+    attribute: &ErAttributeRenderModel,
+    resources: &ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> Result<String> {
+    resources.transaction(move |resources| {
+        let plan = ErAttributeTextPlan::try_new(attribute, resources)?;
+        plan.materialize(resources, before_materialize)
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ErAttributeTextPlan<'a> {
+    attribute: &'a ErAttributeRenderModel,
+    output_bytes: usize,
+    materialization_work: usize,
+}
+
+impl<'a> ErAttributeTextPlan<'a> {
+    fn try_new(attribute: &'a ErAttributeRenderModel, resources: &ResourceContext) -> Result<Self> {
+        // The only input-sized planning loop is the key list. Admit it before traversing the list.
+        resources.charge_layout_work(attribute.keys.len().max(1))?;
+
+        let mut output_bytes = 0usize;
+        let mut has_text = false;
+        if !attribute.ty.is_empty() {
+            output_bytes =
+                checked_attribute_output_add(resources, output_bytes, attribute.ty.len())?;
+            has_text = true;
         }
-        text.push_str("[keys: ");
-        text.push_str(&attribute.keys.join(","));
-        text.push(']');
-    }
-    if !attribute.comment.is_empty() {
-        if !text.is_empty() {
-            text.push(' ');
+        if !attribute.name.is_empty() {
+            if has_text {
+                output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+            }
+            output_bytes =
+                checked_attribute_output_add(resources, output_bytes, attribute.name.len())?;
+            has_text = true;
         }
-        text.push_str("[comment: ");
-        text.push_str(&attribute.comment);
-        text.push(']');
+        if !attribute.keys.is_empty() {
+            if has_text {
+                output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+            }
+            output_bytes = checked_attribute_output_add(resources, output_bytes, "[keys: ".len())?;
+            for (index, key) in attribute.keys.iter().enumerate() {
+                if index > 0 {
+                    output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+                }
+                output_bytes = checked_attribute_output_add(resources, output_bytes, key.len())?;
+            }
+            output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+            has_text = true;
+        }
+        if !attribute.comment.is_empty() {
+            if has_text {
+                output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+            }
+            output_bytes =
+                checked_attribute_output_add(resources, output_bytes, "[comment: ".len())?;
+            output_bytes =
+                checked_attribute_output_add(resources, output_bytes, attribute.comment.len())?;
+            output_bytes = checked_attribute_output_add(resources, output_bytes, 1)?;
+        }
+
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+        let materialization_work = output_bytes.max(1);
+        resources.check_usage(materialization_work, 0)?;
+        Ok(Self {
+            attribute,
+            output_bytes,
+            materialization_work,
+        })
     }
-    text
+
+    fn materialize(
+        self,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<String> {
+        resources.charge_usage(self.materialization_work, 0)?;
+        before_materialize();
+
+        let mut text = String::new();
+        text.try_reserve_exact(self.output_bytes)
+            .map_err(|_| layout_allocation_failed())?;
+        if !self.attribute.ty.is_empty() {
+            text.push_str(&self.attribute.ty);
+        }
+        if !self.attribute.name.is_empty() {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str(&self.attribute.name);
+        }
+        if !self.attribute.keys.is_empty() {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str("[keys: ");
+            for (index, key) in self.attribute.keys.iter().enumerate() {
+                if index > 0 {
+                    text.push(',');
+                }
+                text.push_str(key);
+            }
+            text.push(']');
+        }
+        if !self.attribute.comment.is_empty() {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str("[comment: ");
+            text.push_str(&self.attribute.comment);
+            text.push(']');
+        }
+        debug_assert_eq!(text.len(), self.output_bytes);
+        Ok(text)
+    }
+}
+
+fn checked_attribute_output_add(
+    resources: &ResourceContext,
+    left: usize,
+    right: usize,
+) -> Result<usize> {
+    left.checked_add(right)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
 }
 
 fn render_er_document_lines(
@@ -1210,12 +1319,133 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
+    use merman_core::resources::ResourceProfile;
+    use std::cell::Cell;
 
     fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
         let policy = AsciiResourcePolicy::default()
             .with_limit(id, max)
             .expect("resource test limit should be valid");
         ResourceContext::new(policy)
+    }
+
+    fn composite_attribute() -> ErAttributeRenderModel {
+        ErAttributeRenderModel {
+            ty: "string".to_string(),
+            name: "owner_id".to_string(),
+            keys: vec!["PK".to_string(), "FK".to_string()],
+            comment: "record owner".to_string(),
+        }
+    }
+
+    fn unbounded_policy() -> AsciiResourcePolicy {
+        AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
+    #[test]
+    fn er_attribute_composition_admits_exact_work_before_materializing() {
+        let attribute = composite_attribute();
+        let expected = "string owner_id [keys: PK,FK] [comment: record owner]";
+        let prior_work = 2;
+        let prior_document = 3;
+
+        let measured = ResourceContext::new(unbounded_policy());
+        measured
+            .charge_usage(prior_work, prior_document)
+            .expect("the test checkpoint should fit");
+        let measured_probe = Cell::new(false);
+        let rendered =
+            attribute_text_with_probe(&attribute, &measured, || measured_probe.set(true))
+                .expect("unbounded ER attribute composition should render");
+        let exact_work = measured.layout_work_used();
+        assert_eq!(rendered, expected);
+        assert!(measured_probe.get());
+        assert!(exact_work > prior_work);
+        assert_eq!(measured.document_cells_used(), prior_document);
+
+        let exact_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact ER attribute work limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_usage(prior_work, prior_document)
+            .expect("the exact checkpoint should fit");
+        let exact_probe = Cell::new(false);
+        let exact_rendered =
+            attribute_text_with_probe(&attribute, &exact_resources, || exact_probe.set(true))
+                .expect("exact ER attribute work should permit materialization");
+        assert_eq!(exact_rendered, expected);
+        assert!(exact_probe.get());
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+        assert_eq!(exact_resources.document_cells_used(), prior_document);
+
+        let below_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one ER attribute work limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        below_resources
+            .charge_usage(prior_work, prior_document)
+            .expect("the below-limit checkpoint should fit");
+        let below_probe = Cell::new(false);
+        let error =
+            attribute_text_with_probe(&attribute, &below_resources, || below_probe.set(true))
+                .expect_err("max-minus-one ER attribute work must reject before materialization");
+        assert!(!below_probe.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == exact_work
+                    && details.max == exact_work - 1
+        ));
+        assert_eq!(below_resources.layout_work_used(), prior_work);
+        assert_eq!(below_resources.document_cells_used(), prior_document);
+    }
+
+    #[test]
+    fn er_attribute_composition_admits_exact_output_before_materializing() {
+        let attribute = composite_attribute();
+        let expected = "string owner_id [keys: PK,FK] [comment: record owner]";
+        let prior_work = 2;
+        let prior_document = 3;
+
+        let exact_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            .expect("exact ER attribute output limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_usage(prior_work, prior_document)
+            .expect("the exact checkpoint should fit");
+        let exact_probe = Cell::new(false);
+        let rendered =
+            attribute_text_with_probe(&attribute, &exact_resources, || exact_probe.set(true))
+                .expect("exact ER attribute output should permit materialization");
+        assert_eq!(rendered, expected);
+        assert!(exact_probe.get());
+        assert!(exact_resources.layout_work_used() > prior_work);
+        assert_eq!(exact_resources.document_cells_used(), prior_document);
+
+        let below_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+            .expect("max-minus-one ER attribute output limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        below_resources
+            .charge_usage(prior_work, prior_document)
+            .expect("the below-limit checkpoint should fit");
+        let below_probe = Cell::new(false);
+        let error =
+            attribute_text_with_probe(&attribute, &below_resources, || below_probe.set(true))
+                .expect_err("max-minus-one ER attribute output must reject before materialization");
+        assert!(!below_probe.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == expected.len()
+                    && details.max == expected.len() - 1
+        ));
+        assert_eq!(below_resources.layout_work_used(), prior_work);
+        assert_eq!(below_resources.document_cells_used(), prior_document);
     }
 
     #[test]
