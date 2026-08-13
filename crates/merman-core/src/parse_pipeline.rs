@@ -439,12 +439,16 @@ impl<'a> ParsePipeline<'a> {
         let control = operation.clone();
         control.checkpoint_at(OperationPhase::Parse)?;
         runtime::with_operation_context(operation_context, || {
+            let timing = ParseTiming::Render;
+            let operation_timing = timing.operation_timing(operation_context);
+            let total_start = operation_timing.map(runtime::OperationTiming::start);
             operation.checkpoint_at(OperationPhase::Parse)?;
             let directive_recovery = if self.options.suppress_errors {
                 DirectiveRecoveryMode::RecoverLine
             } else {
                 DirectiveRecoveryMode::Strict
             };
+            let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
             let preprocessed = self.preprocess_for_with_directive_recovery_controlled(
                 PreprocessPath::Render,
                 directive_recovery,
@@ -456,33 +460,48 @@ impl<'a> ParsePipeline<'a> {
             }) else {
                 return Ok(Ok(None));
             };
+            let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
             let source_map = EditorParseSourceMap::new(&code);
+            let parse_start = operation_timing.map(runtime::OperationTiming::start);
             let parsed = self.parse_render_semantic_model_controlled(
                 source_map.parser_input(),
                 &meta,
                 &control,
             )?;
+            let parse = parse_start.map(runtime::OperationTimer::elapsed);
             let mut output = match parsed {
                 Ok(output) => output,
                 Err(error) => {
                     if !self.options.suppress_errors {
                         return Ok(Err(source_map.remap_parse_error(error)));
                     }
+                    timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
                     return Ok(Ok(Some(error_diagram::suppressed_error_render_diagram(
                         &meta,
                     ))));
                 }
             };
             operation.checkpoint_at(OperationPhase::Semantic)?;
+            let sanitize_start = operation_timing.map(runtime::OperationTiming::start);
             output
                 .model_mut()
                 .sanitize_common_db_fields(&meta.effective_config);
+            let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
             operation.checkpoint_at(OperationPhase::Semantic)?;
             output.model_mut().remap_warning_fact_spans(|fact| {
                 Self::remap_warning_fact_spans(fact, &source_map);
             });
             operation.checkpoint_at(OperationPhase::Semantic)?;
+            timing.log_success(ParseTimingSuccess {
+                total_start,
+                meta: &meta,
+                model_kind: Some(output.model().kind()),
+                preprocess,
+                parse,
+                sanitize,
+                input_bytes: self.text.len(),
+            });
             Ok(Ok(Some(ParsedDiagramRender::from_parse_output(
                 meta, output,
             ))))

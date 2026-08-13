@@ -223,10 +223,6 @@ impl BackendAdmission {
         })
     }
 
-    pub(super) fn acquire(&self) -> Result<BackendPermit, ResourceLedgerError> {
-        self.budget.acquire(self.weight)
-    }
-
     /// Admits one backend operation while observing its cooperative control at the blocking
     /// boundary. The short timed waits keep cancellation and deadlines responsive without
     /// introducing an asynchronous executor into the synchronous CLI path.
@@ -330,33 +326,6 @@ impl BackendAdmissionBudget {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .check_single(requested)
-    }
-
-    fn acquire(self: &Arc<Self>, requested: u64) -> Result<BackendPermit, ResourceLedgerError> {
-        let mut in_flight = self
-            .in_flight
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        in_flight.check_single(requested)?;
-        loop {
-            match in_flight.try_acquire(requested) {
-                Ok(()) => break,
-                Err(
-                    ResourceLedgerError::LimitExceeded { .. }
-                    | ResourceLedgerError::ArithmeticOverflow { .. },
-                ) if in_flight.max().is_some() => {
-                    in_flight = self
-                        .capacity_changed
-                        .wait(in_flight)
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(BackendPermit {
-            budget: Arc::clone(self),
-            weight: requested,
-        })
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -521,13 +490,17 @@ mod tests {
             .apply_override("max_scheduling_weight_bytes", 10)
             .unwrap();
         let admission = BackendAdmission::bounded(&policy, 6).unwrap();
-        let first = admission.acquire().unwrap();
+        let first = admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .unwrap();
         let worker_admission = admission.clone();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (acquired_tx, acquired_rx) = mpsc::channel();
         let worker = std::thread::spawn(move || {
             ready_tx.send(()).unwrap();
-            let _second = worker_admission.acquire().unwrap();
+            let _second = worker_admission
+                .acquire_controlled(&merman::OperationControl::new())
+                .unwrap();
             acquired_tx.send(()).unwrap();
         });
         ready_rx.recv().unwrap();
@@ -647,7 +620,9 @@ mod tests {
             .apply_override("max_scheduling_weight_bytes", u64::MAX)
             .unwrap();
         let admission = BackendAdmission::bounded(&policy, u64::MAX).unwrap();
-        let first = admission.acquire().unwrap();
+        let first = admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .unwrap();
         let worker_admission = BackendAdmission::bounded(&policy, 1).unwrap();
         let shared_budget = Arc::clone(&admission.budget);
         let worker_admission = BackendAdmission {
@@ -658,7 +633,9 @@ mod tests {
         let (acquired_tx, acquired_rx) = mpsc::channel();
         let worker = std::thread::spawn(move || {
             ready_tx.send(()).unwrap();
-            let _second = worker_admission.acquire().unwrap();
+            let _second = worker_admission
+                .acquire_controlled(&merman::OperationControl::new())
+                .unwrap();
             acquired_tx.send(()).unwrap();
         });
         ready_rx.recv().unwrap();
