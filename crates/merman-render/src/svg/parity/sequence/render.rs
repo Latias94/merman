@@ -88,8 +88,8 @@ fn render_sequence_diagram_svg_inner(
         sanitize_config,
         "themeVariables.actorBorder",
     );
-    let typed_actor_fill = sequence_typed_actor_fill(options, sanitize_config)?;
-    let typed_actor_stroke = sequence_typed_actor_stroke(options, sanitize_config)?;
+    let mut actor_theme =
+        resolve_sequence_actor_theme(options, sanitize_config, !model.actor_order.is_empty())?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
@@ -144,18 +144,19 @@ fn render_sequence_diagram_svg_inner(
             diagram_id,
             settings.actor_label_font_size,
             effective_config,
-            typed_actor_fill.as_deref(),
-            typed_actor_stroke.as_deref(),
+            actor_theme.typed_fill.as_deref(),
+            actor_theme.typed_stroke.as_deref(),
         )
     );
     let mut actor_fill_emitted = false;
     let mut actor_fill_unhandled = false;
     let mut actor_stroke_emitted = false;
     let mut actor_stroke_unhandled = false;
-    for actor_id in &model.actor_order {
+    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
         };
+        actor_theme.record_ordinal(options, actor_index + 1)?;
         let coverage = actor_fill_coverage(actor);
         match coverage {
             ActorFillCoverage::TypedCss => actor_fill_emitted = true,
@@ -166,10 +167,10 @@ fn render_sequence_diagram_svg_inner(
             ActorStrokeCoverage::Unhandled => actor_stroke_unhandled = true,
         }
     }
-    actor_fill_emitted &= typed_actor_fill.is_some();
-    actor_fill_unhandled &= typed_actor_fill.is_some();
-    actor_stroke_emitted &= typed_actor_stroke.is_some();
-    actor_stroke_unhandled &= typed_actor_stroke.is_some();
+    actor_fill_emitted &= actor_theme.typed_fill.is_some();
+    actor_fill_unhandled &= actor_theme.typed_fill.is_some();
+    actor_stroke_emitted &= actor_theme.typed_stroke.is_some();
+    actor_stroke_unhandled &= actor_theme.typed_stroke.is_some();
     prepared.theme_evidence().record_actor_emission(
         model.actor_order.len(),
         actor_fill_emitted,
@@ -178,6 +179,7 @@ fn render_sequence_diagram_svg_inner(
         actor_stroke_emitted,
         actor_stroke_unhandled,
         actor_stroke_overridden,
+        actor_theme.receipt,
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
@@ -270,25 +272,59 @@ fn render_sequence_diagram_svg_inner(
     root_metrics.document.complete(out)
 }
 
-fn sequence_typed_actor_fill(
+struct SequenceActorThemeResolution {
+    typed_fill: Option<String>,
+    typed_stroke: Option<String>,
+    has_ordinal_routes: bool,
+    receipt: crate::sequence::SequenceActorThemeReceipt,
+}
+
+impl SequenceActorThemeResolution {
+    fn record_ordinal(&mut self, options: &SvgExecution<'_>, ordinal: usize) -> Result<()> {
+        if !self.has_ordinal_routes {
+            return Ok(());
+        }
+        let theme = options
+            .resolved_theme()
+            .expect("ordinal Sequence Actor routes require a resolved theme");
+        let style = theme.style_with_work_meter(
+            crate::diagram_theme::ThemeTarget::Actor,
+            crate::diagram_theme::ThemeVariant::Default,
+            Some(ordinal),
+            options.work_meter(),
+        )?;
+        self.receipt.record_ordinal_style(&style);
+        Ok(())
+    }
+}
+
+fn resolve_sequence_actor_theme(
     options: &SvgExecution<'_>,
     sanitize_config: &merman_core::MermaidConfig,
-) -> Result<Option<String>> {
+    has_actors: bool,
+) -> Result<SequenceActorThemeResolution> {
     use crate::diagram_theme::{
-        CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind,
-        FamilyThemeRuleFacet, ThemeTarget, ThemeVariant,
+        FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
+        FamilyThemeSelectorShape, ThemeTarget, ThemeVariant,
     };
-
-    if merman_core::__private::config_path_overrides_typed_default(
-        sanitize_config,
-        "themeVariables.actorBkg",
-    ) {
-        return Ok(None);
-    }
 
     let Some(theme) = options.resolved_theme() else {
-        return Ok(None);
+        return Ok(SequenceActorThemeResolution {
+            typed_fill: None,
+            typed_stroke: None,
+            has_ordinal_routes: false,
+            receipt: crate::sequence::SequenceActorThemeReceipt::default(),
+        });
     };
+    let has_actor_rule_routes = theme.family_mechanism_routes().iter().any(|route| {
+        matches!(
+            route.mechanism(),
+            FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Actor,
+                ..
+            }
+        )
+    });
     let has_typed_actor_fill = theme.family_mechanism_routes().iter().any(|route| {
         route.disposition() == FamilyThemeDisposition::TypedAdapter
             && matches!(
@@ -302,44 +338,6 @@ fn sequence_typed_actor_fill(
                 }
             )
     });
-    if !has_typed_actor_fill {
-        return Ok(None);
-    }
-
-    let style = theme.style_with_work_meter(
-        ThemeTarget::Actor,
-        ThemeVariant::Default,
-        None,
-        options.work_meter(),
-    )?;
-    Ok(style.fill().and_then(|paint| match paint {
-        CanvasPaint::Transparent => Some("transparent".to_string()),
-        CanvasPaint::Solid(color) => Some(color.as_css()),
-        CanvasPaint::LinearGradient(_)
-        | CanvasPaint::RadialGradient(_)
-        | CanvasPaint::Pattern(_) => None,
-    }))
-}
-
-fn sequence_typed_actor_stroke(
-    options: &SvgExecution<'_>,
-    sanitize_config: &merman_core::MermaidConfig,
-) -> Result<Option<String>> {
-    use crate::diagram_theme::{
-        CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind,
-        FamilyThemeRuleFacet, ThemeTarget, ThemeVariant,
-    };
-
-    if merman_core::__private::config_path_overrides_typed_default(
-        sanitize_config,
-        "themeVariables.actorBorder",
-    ) {
-        return Ok(None);
-    }
-
-    let Some(theme) = options.resolved_theme() else {
-        return Ok(None);
-    };
     let has_typed_actor_stroke = theme.family_mechanism_routes().iter().any(|route| {
         route.disposition() == FamilyThemeDisposition::TypedAdapter
             && matches!(
@@ -353,21 +351,60 @@ fn sequence_typed_actor_stroke(
                 }
             )
     });
-    if !has_typed_actor_stroke {
-        return Ok(None);
-    }
+    let has_ordinal_routes = theme.family_mechanism_routes().iter().any(|route| {
+        matches!(
+            route.mechanism(),
+            FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Actor,
+                selector: FamilyThemeSelectorShape::Ordinal {
+                    variant: None | Some(ThemeVariant::Default),
+                    ..
+                },
+                ..
+            }
+        )
+    });
+    let mut receipt = crate::sequence::SequenceActorThemeReceipt::default();
+    let style = if has_actors && has_actor_rule_routes {
+        let style = theme.style_with_work_meter(
+            ThemeTarget::Actor,
+            ThemeVariant::Default,
+            None,
+            options.work_meter(),
+        )?;
+        receipt.record_static_style(&style);
+        Some(style)
+    } else {
+        None
+    };
+    let typed_fill = (!merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorBkg",
+    ) && has_typed_actor_fill)
+        .then(|| style.as_ref().and_then(|style| css_paint(style.fill())))
+        .flatten();
+    let typed_stroke = (!merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorBorder",
+    ) && has_typed_actor_stroke)
+        .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
+        .flatten();
+    Ok(SequenceActorThemeResolution {
+        typed_fill,
+        typed_stroke,
+        has_ordinal_routes,
+        receipt,
+    })
+}
 
-    let style = theme.style_with_work_meter(
-        ThemeTarget::Actor,
-        ThemeVariant::Default,
-        None,
-        options.work_meter(),
-    )?;
-    Ok(style.stroke().and_then(|paint| match paint {
+fn css_paint(paint: Option<&crate::diagram_theme::CanvasPaint>) -> Option<String> {
+    use crate::diagram_theme::CanvasPaint;
+
+    match paint? {
         CanvasPaint::Transparent => Some("transparent".to_string()),
         CanvasPaint::Solid(color) => Some(color.as_css()),
         CanvasPaint::LinearGradient(_)
         | CanvasPaint::RadialGradient(_)
         | CanvasPaint::Pattern(_) => None,
-    }))
+    }
 }

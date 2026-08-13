@@ -8458,6 +8458,136 @@ Alice->>Bob: Hello
     }
 
     #[test]
+    fn sequence_actor_ordinal_evidence_charges_once_per_actual_actor() {
+        let ordinal = OrdinalSelector::cycle(1, 0).unwrap();
+        let mut radius = ThemeStylePatch::default();
+        radius.geometry.radius = Specified::Value(6.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Actor,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                            )
+                            .with_ordinal(ordinal)
+                            .for_family(RenderFamilyKind::Sequence),
+                        )
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Actor,
+                                ThemeStylePatch::default()
+                                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                            )
+                            .with_ordinal(ordinal)
+                            .for_family(RenderFamilyKind::Sequence),
+                        )
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Actor, radius)
+                                .with_ordinal(ordinal)
+                                .for_family(RenderFamilyKind::Sequence),
+                        ),
+                ),
+            )
+            .expect("compile ordinal Sequence actor theme");
+        let source =
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model")
+        };
+        let environment_with_limit = |limit| {
+            crate::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(
+                            crate::resources::ResourceLimitId::MaxLayoutWorkUnits,
+                            limit,
+                        )
+                        .unwrap(),
+                )
+                .begin_session_with_theme(&theme)
+                .expect("begin bounded Sequence session")
+        };
+
+        let unbounded = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin unbounded Sequence session"),
+        )
+        .expect("prepare unbounded Sequence artifact");
+        let layout_work_units = unbounded.context.session.work_meter().used();
+        drop(unbounded);
+
+        // Three ordinal candidates are resolved once for each of the two actual actors. The
+        // three facets must share those two resolutions instead of each rescanning both actors.
+        let evidence_work_units = 3 * 2;
+        let exact_limit = layout_work_units + evidence_work_units;
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            environment_with_limit(exact_limit),
+        )
+        .expect("exact limit must admit Sequence layout")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("one ordinal resolution per actual actor must fit the exact limit");
+        assert_eq!(rendered.session.work_meter().used(), exact_limit);
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[
+                FamilyThemeResidual {
+                    key: FamilyThemeMechanismKey::Rule {
+                        index: 0,
+                        target: ThemeTarget::Actor,
+                    },
+                    reason: FamilyThemeResidualReason::UnsupportedPaint,
+                },
+                FamilyThemeResidual {
+                    key: FamilyThemeMechanismKey::Rule {
+                        index: 1,
+                        target: ThemeTarget::Actor,
+                    },
+                    reason: FamilyThemeResidualReason::UnsupportedPaint,
+                },
+                FamilyThemeResidual {
+                    key: FamilyThemeMechanismKey::Rule {
+                        index: 2,
+                        target: ThemeTarget::Actor,
+                    },
+                    reason: FamilyThemeResidualReason::UnsupportedGeometry,
+                },
+            ]
+        );
+
+        let short_limit = exact_limit - 1;
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            environment_with_limit(short_limit),
+        )
+        .expect("short limit must still admit Sequence layout");
+        let error = match artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        {
+            Ok(_) => panic!("ordinal evidence must fail closed when its work exceeds the limit"),
+            Err(error) => error,
+        };
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_layout_work_units resource rejection")
+        };
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert_eq!(limit.max, short_limit);
+        assert_eq!(limit.actual, exact_limit);
+    }
+
+    #[test]
     fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
         let mut winning_style =
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2563eb").unwrap());

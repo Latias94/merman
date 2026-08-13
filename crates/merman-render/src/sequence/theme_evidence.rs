@@ -2,13 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedThemeStyle,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
     ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 struct SequenceThemeEvidenceState {
     actor_count: usize,
     actor_fill_emitted: bool,
@@ -17,6 +17,55 @@ struct SequenceThemeEvidenceState {
     actor_stroke_emitted: bool,
     actor_stroke_unhandled: bool,
     actor_stroke_overridden: bool,
+    actor_style_receipt: SequenceActorThemeReceipt,
+}
+
+/// Winner facts produced by the terminal Sequence Actor writer.
+///
+/// Static and ordinal winners remain separate because a static rule is resolved against the
+/// family default while ordinal selectors are evaluated against each concrete one-based actor
+/// ordinal. The writer resolves each ordinal exactly once and records every facet winner from
+/// that result; evidence finalization only consumes these facts and performs no selector scan.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SequenceActorThemeReceipt {
+    static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    ordinal_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+}
+
+impl SequenceActorThemeReceipt {
+    pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
+        record_style_winners(&mut self.static_winners, style);
+    }
+
+    pub(crate) fn record_ordinal_style(&mut self, style: &ResolvedThemeStyle) {
+        record_style_winners(&mut self.ordinal_winners, style);
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.static_winners.extend(other.static_winners);
+        self.ordinal_winners.extend(other.ordinal_winners);
+    }
+
+    fn route_won(
+        &self,
+        rule_index: usize,
+        selector: FamilyThemeSelectorShape,
+        facet: FamilyThemeRuleFacet,
+    ) -> bool {
+        let property = style_property_for_facet(facet);
+        match selector {
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default),
+            } => self.static_winners.contains(&(rule_index, property)),
+            FamilyThemeSelectorShape::Ordinal {
+                variant: None | Some(ThemeVariant::Default),
+                ..
+            } => self.ordinal_winners.contains(&(rule_index, property)),
+            FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => {
+                false
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -43,6 +92,7 @@ impl SequenceThemeEvidenceRecorder {
         actor_stroke_emitted: bool,
         actor_stroke_unhandled: bool,
         actor_stroke_overridden: bool,
+        actor_style_receipt: SequenceActorThemeReceipt,
     ) {
         let mut state = self
             .state
@@ -55,19 +105,20 @@ impl SequenceThemeEvidenceRecorder {
         state.actor_stroke_emitted |= actor_count != 0 && actor_stroke_emitted;
         state.actor_stroke_unhandled |= actor_count != 0 && actor_stroke_unhandled;
         state.actor_stroke_overridden |= actor_count != 0 && actor_stroke_overridden;
+        state.actor_style_receipt.merge(actor_style_receipt);
     }
 
     pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
-        let state = *self
+        let state = self
             .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         let Some(theme) = theme else {
             return evidence;
         };
 
-        let default_actor_style = theme.style(ThemeTarget::Actor, ThemeVariant::Default, None);
         let mut rules = BTreeMap::<usize, SequenceRuleObservation>::new();
 
         // Seed every Actor rule before checking winners. This keeps superseded rules, unmatched
@@ -113,13 +164,11 @@ impl SequenceThemeEvidenceRecorder {
                     facet,
                 } => {
                     let observation = rules.entry(rule_index).or_default();
-                    if !route_matches_actual_actor(
-                        theme,
-                        rule_index,
-                        selector,
-                        facet,
-                        state.actor_count,
-                    ) {
+                    if state.actor_count == 0
+                        || !state
+                            .actor_style_receipt
+                            .route_won(rule_index, selector, facet)
+                    {
                         continue;
                     }
                     observation.applicable = true;
@@ -150,13 +199,13 @@ impl SequenceThemeEvidenceRecorder {
                             if !state.actor_fill_emitted {
                                 continue;
                             }
-                            match default_actor_style.fill() {
-                                Some(CanvasPaint::Transparent) => {
+                            match facet {
+                                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent) => {
                                     observation
                                         .capabilities
                                         .insert(ThemeCapability::TransparentPaint);
                                 }
-                                Some(CanvasPaint::Solid(_)) => {
+                                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid) => {
                                     observation.capabilities.insert(ThemeCapability::SolidPaint);
                                 }
                                 _ => {
@@ -183,13 +232,13 @@ impl SequenceThemeEvidenceRecorder {
                             if !state.actor_stroke_emitted {
                                 continue;
                             }
-                            match default_actor_style.stroke() {
-                                Some(CanvasPaint::Transparent) => {
+                            match facet {
+                                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Transparent) => {
                                     observation
                                         .capabilities
                                         .insert(ThemeCapability::TransparentPaint);
                                 }
-                                Some(CanvasPaint::Solid(_)) => {
+                                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Solid) => {
                                     observation.capabilities.insert(ThemeCapability::SolidPaint);
                                 }
                                 _ => {
@@ -265,58 +314,34 @@ impl SequenceThemeEvidenceRecorder {
     }
 }
 
-fn route_matches_actual_actor(
-    theme: &ResolvedDiagramTheme,
-    rule_index: usize,
-    selector: FamilyThemeSelectorShape,
-    facet: FamilyThemeRuleFacet,
-    actor_count: usize,
-) -> bool {
-    if actor_count == 0 {
-        return false;
-    }
-    match selector {
-        FamilyThemeSelectorShape::Static {
-            variant: None | Some(ThemeVariant::Default),
-        } => {
-            facet_winner(
-                &theme.style(ThemeTarget::Actor, ThemeVariant::Default, None),
-                facet,
-            ) == Some(rule_index)
-        }
-        FamilyThemeSelectorShape::Ordinal {
-            variant: None | Some(ThemeVariant::Default),
-            selector,
-        } => (1..=actor_count).any(|ordinal| {
-            selector.matches(ordinal)
-                && facet_winner(
-                    &theme.style(ThemeTarget::Actor, ThemeVariant::Default, Some(ordinal)),
-                    facet,
-                ) == Some(rule_index)
-        }),
-        FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => false,
-    }
+fn record_style_winners(
+    winners: &mut BTreeSet<(usize, ResolvedStyleProperty)>,
+    style: &ResolvedThemeStyle,
+) {
+    winners.extend(
+        style
+            .winner_rule_properties()
+            .into_iter()
+            .map(|(property, origin)| (origin.rule_index(), property)),
+    );
 }
 
-fn facet_winner(style: &ResolvedThemeStyle, facet: FamilyThemeRuleFacet) -> Option<usize> {
-    let winner = match facet {
-        FamilyThemeRuleFacet::Fill(_) => style.fill_resolution().winner(),
-        FamilyThemeRuleFacet::Stroke(_) => style.stroke_resolution().winner(),
-        FamilyThemeRuleFacet::StrokeWidth => style.stroke_width_resolution().winner(),
-        FamilyThemeRuleFacet::StrokeDasharray => style.stroke_dasharray_resolution().winner(),
-        FamilyThemeRuleFacet::StrokeLinecap => style.stroke_linecap_resolution().winner(),
-        FamilyThemeRuleFacet::StrokeLinejoin => style.stroke_linejoin_resolution().winner(),
-        FamilyThemeRuleFacet::Opacity => style.opacity_resolution().winner(),
-        FamilyThemeRuleFacet::FillOpacity => style.fill_opacity_resolution().winner(),
-        FamilyThemeRuleFacet::StrokeOpacity => style.stroke_opacity_resolution().winner(),
-        FamilyThemeRuleFacet::Radius => style.radius_resolution().winner(),
-        FamilyThemeRuleFacet::Padding => style.padding_resolution().winner(),
-        FamilyThemeRuleFacet::Typography(property) => {
-            style.typography_resolution().winner(property)
-        }
-        FamilyThemeRuleFacet::Effect => style.effect_resolution().winner(),
-    };
-    winner.map(|origin| origin.rule_index())
+const fn style_property_for_facet(facet: FamilyThemeRuleFacet) -> ResolvedStyleProperty {
+    match facet {
+        FamilyThemeRuleFacet::Fill(_) => ResolvedStyleProperty::Fill,
+        FamilyThemeRuleFacet::Stroke(_) => ResolvedStyleProperty::Stroke,
+        FamilyThemeRuleFacet::StrokeWidth => ResolvedStyleProperty::StrokeWidth,
+        FamilyThemeRuleFacet::StrokeDasharray => ResolvedStyleProperty::StrokeDasharray,
+        FamilyThemeRuleFacet::StrokeLinecap => ResolvedStyleProperty::StrokeLinecap,
+        FamilyThemeRuleFacet::StrokeLinejoin => ResolvedStyleProperty::StrokeLinejoin,
+        FamilyThemeRuleFacet::Opacity => ResolvedStyleProperty::Opacity,
+        FamilyThemeRuleFacet::FillOpacity => ResolvedStyleProperty::FillOpacity,
+        FamilyThemeRuleFacet::StrokeOpacity => ResolvedStyleProperty::StrokeOpacity,
+        FamilyThemeRuleFacet::Radius => ResolvedStyleProperty::Radius,
+        FamilyThemeRuleFacet::Padding => ResolvedStyleProperty::Padding,
+        FamilyThemeRuleFacet::Typography(property) => ResolvedStyleProperty::Typography(property),
+        FamilyThemeRuleFacet::Effect => ResolvedStyleProperty::Effect,
+    }
 }
 
 fn unsupported_reason_for_facet(facet: FamilyThemeRuleFacet) -> FamilyThemeResidualReason {
