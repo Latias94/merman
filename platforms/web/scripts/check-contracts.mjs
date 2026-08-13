@@ -59,10 +59,8 @@ const stableWrapperOnlyExports = new Set([
   "isAsciiDiagramType",
   "isBindingErrorPayload",
   "isBindingStatusCodeName",
-  "isBundledThemePresetName",
   "isDiagramType",
   "isThemeName",
-  "normalizeBundledThemePresetName",
   "normalizeThemeName",
 ]);
 const stablePublicTypes = new Set([

@@ -261,6 +261,7 @@ struct BindingThemeCatalog {
 struct BindingThemePreset {
     id: &'static str,
     appearance: &'static str,
+    maturity: &'static str,
     required_capability_ids: Vec<&'static str>,
     required_text_capability_ids: Vec<&'static str>,
 }
@@ -651,6 +652,7 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
                     } else {
                         "light"
                     },
+                    maturity: descriptor.maturity(),
                     required_capability_ids: sorted_theme_ids(
                         theme
                             .report()
@@ -1639,6 +1641,13 @@ mod tests {
                 ]
             );
             assert_eq!(catalog["presets"][1]["appearance"], "dark");
+            assert!(
+                catalog["presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["maturity"] == "alpha")
+            );
             assert!(
                 catalog["presets"][1]["required_capability_ids"]
                     .as_array()

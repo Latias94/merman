@@ -14,6 +14,7 @@ void main() {
   projectsCurrentAbi3TableBoundaries();
   decodesTypedMetadataCatalogs();
   acceptsAdditiveTypedMetadataFields();
+  rejectsMalformedThemePresetMaturity();
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
   acceptsAdditiveConstructorResourceLimits();
@@ -393,6 +394,7 @@ void decodesTypedMetadataCatalogs() {
       {
         'id': 'one-dark',
         'appearance': 'dark',
+        'maturity': 'alpha',
         'required_capability_ids': ['semantic-rules'],
         'required_text_capability_ids': <String>[],
       },
@@ -432,6 +434,7 @@ void decodesTypedMetadataCatalogs() {
         theme.structuredSpecAvailable &&
         theme.supportedOutputIds.single == 'svg' &&
         theme.presets.single.id == 'one-dark' &&
+        theme.presets.single.maturity == 'alpha' &&
         theme.presets.single.requiredCapabilityIds.single == 'semantic-rules' &&
         theme.knownSemanticTargetIds.last == 'state-label' &&
         theme.knownFontContainerIds.single == 'woff2' &&
@@ -472,6 +475,7 @@ void acceptsAdditiveTypedMetadataFields() {
       {
         'id': 'future-theme',
         'appearance': 'adaptive',
+        'maturity': 'experimental',
         'required_capability_ids': ['future-capability'],
         'required_text_capability_ids': ['future-text-capability'],
         'future_field': true,
@@ -500,10 +504,45 @@ void acceptsAdditiveTypedMetadataFields() {
     ascii.diagramType == 'flowchart-v2' &&
         family.metadataId == null &&
         theme.presets.single.appearance == 'adaptive' &&
+        theme.presets.single.maturity == 'experimental' &&
         theme.knownSemanticTargetIds.single == 'future-target' &&
         theme.resourceLimits.single.effectiveValue == null,
     'typed metadata decoders must ignore additive JSON fields',
   );
+}
+
+void rejectsMalformedThemePresetMaturity() {
+  Map<String, Object?> preset({required Object? maturity}) => {
+        'id': 'one-dark',
+        'appearance': 'dark',
+        'maturity': maturity,
+        'required_capability_ids': ['semantic-rules'],
+        'required_text_capability_ids': <String>[],
+      };
+
+  Map<String, Object?> catalog(Map<String, Object?> preset) => {
+        'schema_version': 2,
+        'structured_spec_available': true,
+        'supported_output_ids': ['svg'],
+        'presets': [preset],
+        'known_capability_ids': ['semantic-rules'],
+        'known_text_capability_ids': <String>[],
+        'known_font_container_ids': <String>[],
+        'known_font_source_ids': <String>[],
+        'known_semantic_target_ids': <String>[],
+        'known_variant_ids': <String>[],
+        'resource_limits': <Object?>[],
+      };
+
+  final missing = preset(maturity: 'alpha')..remove('maturity');
+  _expectContractFailure(() => MermanThemeCatalog.fromJson(catalog(missing)));
+  for (final maturity in <Object?>[null, 1, '', 'Alpha Candidate']) {
+    _expectContractFailure(
+      () => MermanThemeCatalog.fromJson(
+        catalog(preset(maturity: maturity)),
+      ),
+    );
+  }
 }
 
 void matchesThePubPackageVersionProjection() {

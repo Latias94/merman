@@ -24,15 +24,19 @@ fn theme_catalog_contains_only_visual_presets() {
             "ayu-dark",
         ]
     );
-    assert_eq!(ThemePreset::ALL.len(), 7);
     assert!(ThemePreset::from_id("merman-modern").is_err());
+    assert!(
+        theme_preset_descriptors()
+            .iter()
+            .all(|descriptor| descriptor.maturity() == "alpha")
+    );
 }
 
 #[test]
 fn built_in_presets_compile_without_selecting_layout_or_look() {
-    for preset in ThemePreset::ALL.iter().copied() {
+    for descriptor in theme_preset_descriptors() {
         DiagramThemeCompiler::new()
-            .compile_preset(preset)
+            .compile_preset(descriptor.preset())
             .expect("built-in theme preset should compile");
     }
 }

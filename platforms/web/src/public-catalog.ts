@@ -48,18 +48,6 @@ export const SUPPORTED_THEMES = [
 
 export type ThemeName = (typeof SUPPORTED_THEMES)[number];
 
-export const BUNDLED_THEME_PRESETS = [
-  "editor-light",
-  "editor-dark",
-  "one-dark",
-  "gruvbox-light",
-  "gruvbox-dark",
-  "ayu-light",
-  "ayu-dark",
-] as const;
-
-export type BundledThemePresetName = (typeof BUNDLED_THEME_PRESETS)[number];
-
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
 export const SUPPORTED_ASCII_DIAGRAMS = [
@@ -250,12 +238,6 @@ export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
 
-export function isBundledThemePresetName(
-  preset: string
-): preset is BundledThemePresetName {
-  return (BUNDLED_THEME_PRESETS as readonly string[]).includes(preset);
-}
-
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
 }
@@ -327,10 +309,4 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
 
 export function normalizeThemeName(theme: string | null | undefined): ThemeName {
   return theme && isThemeName(theme) ? theme : "default";
-}
-
-export function normalizeBundledThemePresetName(
-  preset: string | null | undefined
-): BundledThemePresetName | null {
-  return preset && isBundledThemePresetName(preset) ? preset : null;
 }

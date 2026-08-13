@@ -381,10 +381,8 @@ assert.equal(themeCatalog.schema_version, 2);
 if (hasCapability("svg")) {
   assert.equal(themeCatalog.structured_spec_available, true);
   assert.deepEqual(themeCatalog.supported_output_ids, ["svg"]);
-  assert.deepEqual(
-    themeCatalog.presets.map(({ id }) => id),
-    [...api.BUNDLED_THEME_PRESETS],
-  );
+  assert.ok(themeCatalog.presets.length > 0);
+  assert.ok(themeCatalog.presets.every(({ maturity }) => maturity === "alpha"));
   assert.ok(themeCatalog.known_capability_ids.includes("semantic-rules"));
   assert.ok(themeCatalog.known_text_capability_ids.includes("opentype-shaping"));
   assert.ok(themeCatalog.known_font_container_ids.includes("woff2"));

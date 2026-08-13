@@ -24,12 +24,14 @@ function themeCatalogFixture(overrides = {}) {
       {
         id: "editor-light",
         appearance: "light",
+        maturity: "alpha",
         required_capability_ids: ["semantic-rules"],
         required_text_capability_ids: [],
       },
       {
         id: "future-theme",
         appearance: "adaptive",
+        maturity: "experimental",
         required_capability_ids: ["future-capability", "semantic-rules"],
         required_text_capability_ids: ["opentype-shaping"],
       },
@@ -107,6 +109,8 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
 
   const firstFull = full.themeCatalog();
   assert.equal(firstFull.presets[1].id, "future-theme");
+  assert.equal(firstFull.presets[0].maturity, "alpha");
+  assert.equal(firstFull.presets[1].maturity, "experimental");
   assert.equal(firstFull.known_semantic_target_ids[0], "future-target");
   assert.equal(firstFull.resource_limits[0].hard_cap, true);
   firstFull.presets[0].required_capability_ids[0] = "mutated-by-caller";
@@ -119,6 +123,23 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
   assert.notEqual(full.themeCatalog().resource_limits[0].description, "mutated-by-caller");
   assert.equal(fullCalls, 1);
   assert.equal(analysisCalls, 1);
+});
+
+test("theme catalog rejects missing or malformed preset maturity", async () => {
+  const invalidMaturities = [
+    { label: "missing", mutate: (preset) => delete preset.maturity },
+    { label: "null", mutate: (preset) => { preset.maturity = null; } },
+    { label: "numeric", mutate: (preset) => { preset.maturity = 1; } },
+    { label: "empty", mutate: (preset) => { preset.maturity = ""; } },
+    { label: "malformed", mutate: (preset) => { preset.maturity = "Alpha Candidate"; } },
+  ];
+
+  for (const { label, mutate } of invalidMaturities) {
+    const presets = themeCatalogFixture().presets;
+    mutate(presets[0]);
+    const runtime = await runtimeReturning(themeCatalogFixture({ presets }));
+    assert.throws(() => runtime.themeCatalog(), /maturity|required fields/, label);
+  }
 });
 
 test("theme catalog rejects unsupported schemas", async () => {

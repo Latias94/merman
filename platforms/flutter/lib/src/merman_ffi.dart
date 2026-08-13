@@ -798,12 +798,14 @@ class MermanThemePreset {
   const MermanThemePreset({
     required this.id,
     required this.appearance,
+    required this.maturity,
     required this.requiredCapabilityIds,
     required this.requiredTextCapabilityIds,
   });
 
   final String id;
   final String appearance;
+  final String maturity;
   final List<String> requiredCapabilityIds;
   final List<String> requiredTextCapabilityIds;
 
@@ -811,6 +813,11 @@ class MermanThemePreset {
       MermanThemePreset(
         id: _requiredString(json, 'id', 'theme preset'),
         appearance: _requiredString(json, 'appearance', 'theme preset'),
+        maturity: _requiredRuntimeIdentifier(
+          json,
+          'maturity',
+          'theme preset',
+        ),
         requiredCapabilityIds: List.unmodifiable(
           _requiredSortedUniqueStrings(
             json,
@@ -3838,6 +3845,20 @@ String _requiredString(Map<String, Object?> source, String key, String label) {
   final value = source[key];
   if (value is! String) {
     throw MermanException.contract('$label.$key must be a string');
+  }
+  return value;
+}
+
+String _requiredRuntimeIdentifier(
+  Map<String, Object?> source,
+  String key,
+  String label,
+) {
+  final value = _requiredString(source, key, label);
+  if (!_isRuntimeIdentifier(value)) {
+    throw MermanException.contract(
+      '$label.$key must be a stable runtime identifier',
+    );
   }
   return value;
 }

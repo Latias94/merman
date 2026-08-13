@@ -2,6 +2,9 @@ use super::{DiagramThemeSpec, MermaidThemeCompatibility, ThemeTokens};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
+/// Alpha selection handle for a built-in diagram theme preset.
+///
+/// Use [`theme_preset_descriptors`] for discovery so callers also observe each preset's maturity.
 pub enum ThemePreset {
     #[default]
     EditorLight,
@@ -14,9 +17,11 @@ pub enum ThemePreset {
 }
 
 impl ThemePreset {
-    /// Stable catalog view; keep the collection behind a slice so adding a preset does not
-    /// change a public array length/type.
-    pub const ALL: &'static [Self] = &[
+    /// Current built-in preset inventory.
+    ///
+    /// The slice avoids freezing a public array length. Individual IDs remain alpha inventory
+    /// until their descriptors are qualified by the preset maturity gate.
+    const ALL: &'static [Self] = &[
         Self::EditorLight,
         Self::EditorDark,
         Self::OneDark,
@@ -107,6 +112,7 @@ impl ThemePresetParseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemePresetDescriptor {
     preset: ThemePreset,
+    maturity: &'static str,
 }
 
 impl ThemePresetDescriptor {
@@ -118,6 +124,15 @@ impl ThemePresetDescriptor {
         self.preset.is_dark()
     }
 
+    /// Returns the open-string maturity reported by discovery surfaces.
+    ///
+    /// Built-in presets are usable alpha inventory, not stable compatibility promises. A future
+    /// maturity promotion is backed by a different qualified descriptor revision rather than by
+    /// the preset's presence in this catalog alone.
+    pub const fn maturity(self) -> &'static str {
+        self.maturity
+    }
+
     pub const fn preset(self) -> ThemePreset {
         self.preset
     }
@@ -126,24 +141,31 @@ impl ThemePresetDescriptor {
 const THEME_PRESET_DESCRIPTORS: [ThemePresetDescriptor; 7] = [
     ThemePresetDescriptor {
         preset: ThemePreset::EditorLight,
+        maturity: "alpha",
     },
     ThemePresetDescriptor {
         preset: ThemePreset::EditorDark,
+        maturity: "alpha",
     },
     ThemePresetDescriptor {
         preset: ThemePreset::OneDark,
+        maturity: "alpha",
     },
     ThemePresetDescriptor {
         preset: ThemePreset::GruvboxLight,
+        maturity: "alpha",
     },
     ThemePresetDescriptor {
         preset: ThemePreset::GruvboxDark,
+        maturity: "alpha",
     },
     ThemePresetDescriptor {
         preset: ThemePreset::AyuLight,
+        maturity: "alpha",
     },
     ThemePresetDescriptor {
         preset: ThemePreset::AyuDark,
+        maturity: "alpha",
     },
 ];
 
@@ -429,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn built_in_presets_publish_stable_semantic_representatives() {
+    fn built_in_alpha_presets_materialize_expected_semantic_representatives() {
         let expected = [
             (ThemePreset::EditorLight, "#ffffff", "#64748b", "#2563eb"),
             (ThemePreset::EditorDark, "#0f172a", "#94a3b8", "#60a5fa"),

@@ -148,7 +148,6 @@ export const resourceContractValueExportNames = [
 export const packageStableValueExportNames = [
   "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION",
   "UNAVAILABLE_DIAGRAM_DETECTION",
-  "BUNDLED_THEME_PRESETS",
   "SUPPORTED_THEMES",
   "SUPPORTED_DIAGRAMS",
   "SUPPORTED_ASCII_DIAGRAMS",
@@ -157,10 +156,8 @@ export const packageStableValueExportNames = [
   "isDiagramType",
   "isAsciiDiagramType",
   "isBindingStatusCodeName",
-  "isBundledThemePresetName",
   "isBindingErrorPayload",
   "normalizeThemeName",
-  "normalizeBundledThemePresetName",
   "encodeOptions",
   ...resourceContractValueExportNames,
 ];

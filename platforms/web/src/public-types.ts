@@ -92,6 +92,7 @@ export interface ThemeCatalog {
 export interface ThemePresetCatalogEntry {
   id: string;
   appearance: string;
+  maturity: string;
   required_capability_ids: string[];
   required_text_capability_ids: string[];
 }

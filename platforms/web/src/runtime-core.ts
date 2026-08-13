@@ -804,6 +804,7 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       [
         "appearance",
         "id",
+        "maturity",
         "required_capability_ids",
         "required_text_capability_ids",
       ],
@@ -815,6 +816,10 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       appearance: assertRuntimeIdentifier(
         entry.appearance,
         `theme preset ${id} appearance`
+      ),
+      maturity: assertRuntimeIdentifier(
+        entry.maturity,
+        `theme preset ${id} maturity`
       ),
       required_capability_ids: normalizeSortedIdentifierIds(
         entry.required_capability_ids,

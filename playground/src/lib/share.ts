@@ -1,4 +1,4 @@
-import { isBundledThemePresetName, isThemeName } from "@mermanjs/web";
+import { isThemeName } from "@mermanjs/web";
 
 import { isDiagramFont } from "./diagram-font.ts";
 import { exceedsUtf8ByteBudget, utf8ByteLength } from "./utf8.ts";
@@ -12,6 +12,17 @@ const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
 const SHARE_CONFIG_BYTES = 1024 * 1024;
 const SHARE_JSON_OVERHEAD_BYTES = 16 * 1024;
 const SHARE_THEME_PRESET_ID_BYTES = 16 * 1024;
+// Frozen legacy share-wire values, not the live preset catalog. Current snapshots carry the
+// pipeline explicitly and discover preset IDs from the selected artifact.
+const LEGACY_RESVG_SAFE_HOST_THEME_IDS = new Set([
+  "editor-light",
+  "editor-dark",
+  "one-dark",
+  "gruvbox-light",
+  "gruvbox-dark",
+  "ayu-light",
+  "ayu-dark",
+]);
 export const SHARE_LIMITS = Object.freeze({
   jsonBytes:
     SHARE_SOURCE_BYTES + SHARE_CONFIG_BYTES + SHARE_JSON_OVERHEAD_BYTES,
@@ -148,7 +159,9 @@ export function migrateLegacyHostTheme(
   }
   return {
     themePresetId: value,
-    svgPipeline: isBundledThemePresetName(value) ? "resvg-safe" : "parity",
+    svgPipeline: LEGACY_RESVG_SAFE_HOST_THEME_IDS.has(value)
+      ? "resvg-safe"
+      : "parity",
   };
 }
 
