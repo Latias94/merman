@@ -1212,6 +1212,27 @@ mod tests {
     }
 
     #[test]
+    fn escaped_mermaid_newline_keeps_the_literal_backslash_sequence() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(options.resources);
+        let label = try_build_normalized_label_lines(
+            r"literal\\nvalue\ntail",
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect("escaped and authored line breaks should normalize")
+        .expect("the label should remain visible");
+
+        assert_eq!(
+            label.into_parts(),
+            (vec![r"literal\\nvalue".to_string(), "tail".to_string()], 15)
+        );
+    }
+
+    #[test]
     fn authored_empty_rows_are_grid_admitted_before_row_allocation() {
         let raw = "<br><br><br>";
         let exact = options_with_limit(AsciiResourceLimitId::MaxGridCells, 4);

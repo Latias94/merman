@@ -1195,11 +1195,8 @@ fn visit_label_tokens<E>(
     let mut chunk_start = 0usize;
     let mut index = 0usize;
     while index < raw.len() {
-        let label_break_end = html_break_end(raw, index).or_else(|| {
-            raw[index..]
-                .starts_with("\\n")
-                .then_some(index.saturating_add(2))
-        });
+        let label_break_end =
+            html_break_end(raw, index).or_else(|| mermaid_escaped_newline_end(raw, index));
         if let Some(end) = label_break_end {
             visit_normalized_segments(&raw[chunk_start..index], |segment| {
                 visit(LabelToken::Segment(segment))
@@ -1218,6 +1215,19 @@ fn visit_label_tokens<E>(
     visit_normalized_segments(&raw[chunk_start..], |segment| {
         visit(LabelToken::Segment(segment))
     })
+}
+
+fn mermaid_escaped_newline_end(raw: &str, index: usize) -> Option<usize> {
+    if !raw.get(index..)?.starts_with("\\n") {
+        return None;
+    }
+
+    let preceding_backslashes = raw[..index]
+        .bytes()
+        .rev()
+        .take_while(|byte| *byte == b'\\')
+        .count();
+    (preceding_backslashes % 2 == 0).then_some(index.saturating_add(2))
 }
 
 fn with_token_trim_text<T, E>(
