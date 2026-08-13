@@ -47,10 +47,8 @@ fn semantic_artifact_is_format_neutral_before_target_layout() {
 
     assert_eq!(semantic.metadata().diagram_type, "info");
     assert_eq!(semantic.semantic_kind(), "info");
-    assert_eq!(
-        semantic.compatibility_json().expect("compatibility JSON")["meta"]["diagram_type"],
-        "info"
-    );
+    let compatibility = semantic.compatibility_json().expect("compatibility JSON");
+    assert_eq!(compatibility["type"], "info");
 
     let layout = semantic
         .render(merman::RenderTarget::LayoutJson(SvgRequest::default()))
@@ -59,6 +57,7 @@ fn semantic_artifact_is_format_neutral_before_target_layout() {
         panic!("expected layout output");
     };
     assert_eq!(layout.layout()["meta"]["diagram_type"], "info");
+    assert_eq!(layout.layout()["semantic"], compatibility);
     assert!(layout.layout()["layout"]["InfoDiagram"].is_object());
 }
 

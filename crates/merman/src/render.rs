@@ -251,9 +251,14 @@ impl ResourceLimitExceeded {
 
     #[cfg(feature = "ascii")]
     fn from_operation(error: merman_core::OperationResourceLimitExceeded) -> Self {
+        let phase = if error.id == merman_ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID {
+            merman_ascii::ASCII_RESOURCE_LIMIT_DESCRIPTORS[0].phase
+        } else {
+            error.phase.as_str()
+        };
         Self {
             id: error.id,
-            phase: error.phase.as_str(),
+            phase,
             actual: error.consumed.saturating_add(error.requested),
             maximum: error.limit,
             cause: ResourceLimitCause::Ceiling,

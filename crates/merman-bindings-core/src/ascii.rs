@@ -589,7 +589,10 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        assert!(error.message().contains("ASCII render grid"), "{error:?}");
+        assert!(
+            error.message().contains("max_ascii_grid_cells"),
+            "{error:?}"
+        );
         let details = error
             .resource_details()
             .expect("structured resource details");
