@@ -370,18 +370,34 @@ fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> S
     local_time_zone
         .at_instant(ms)
         .map(|local| {
-            let datetime = local.local_datetime();
-            if datetime.hour() == 0
-                && datetime.minute() == 0
-                && datetime.second() == 0
-                && datetime.millisecond() == 0
-            {
-                local.date().to_string()
-            } else {
-                datetime.to_string()
-            }
+            format_resolved_date(
+                ms,
+                local,
+                local_time_zone.resolve_local(local.local_datetime()),
+            )
         })
         .unwrap_or_else(|| ms.to_string())
+}
+
+fn format_resolved_date(
+    ms: i64,
+    local: merman_core::time::OffsetDateTime,
+    compatible: Option<merman_core::time::OffsetDateTime>,
+) -> String {
+    let datetime = local.local_datetime();
+    let mut formatted = if datetime.hour() == 0
+        && datetime.minute() == 0
+        && datetime.second() == 0
+        && datetime.millisecond() == 0
+    {
+        local.date().to_string()
+    } else {
+        datetime.to_string()
+    };
+    if compatible.is_some_and(|compatible| compatible.timestamp_millis() != ms) {
+        formatted.push_str(&local.offset().to_string());
+    }
+    formatted
 }
 
 fn layout_allocation_error() -> crate::error::AsciiError {
@@ -396,6 +412,7 @@ mod tests {
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
+    use merman_core::time::{OffsetDateTime, UtcOffset};
     use std::cell::Cell;
 
     fn direct_model() -> GanttDiagramRenderModel {
@@ -414,6 +431,26 @@ mod tests {
             },
         ];
         model
+    }
+
+    #[test]
+    fn repeated_local_time_discloses_the_later_absolute_instant() {
+        let daylight_offset = UtcOffset::from_minutes(-4 * 60).expect("valid EDT offset");
+        let standard_offset = UtcOffset::from_minutes(-5 * 60).expect("valid EST offset");
+        let earlier_ms = 1_793_511_000_000;
+        let later_ms = 1_793_514_600_000;
+        let earlier = OffsetDateTime::from_unix_millis(earlier_ms, daylight_offset);
+        let later = OffsetDateTime::from_unix_millis(later_ms, standard_offset);
+
+        assert_eq!(earlier.local_datetime(), later.local_datetime());
+        assert_eq!(
+            format_resolved_date(earlier_ms, earlier, Some(earlier)),
+            "2026-11-01T01:30:00.000"
+        );
+        assert_eq!(
+            format_resolved_date(later_ms, later, Some(earlier)),
+            "2026-11-01T01:30:00.000-05:00"
+        );
     }
 
     fn admission_work(model: &GanttDiagramRenderModel) -> usize {

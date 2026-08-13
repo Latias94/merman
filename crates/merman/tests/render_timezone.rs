@@ -14,6 +14,11 @@ use merman::{
     svg::{HeadlessRenderer, RenderEnvironment, RuntimePolicy},
     time::CivilDate,
 };
+#[cfg(feature = "ascii")]
+use merman::{
+    ascii::{AsciiRenderOptions, HeadlessAsciiRenderer},
+    diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask},
+};
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
 const PROVENANCE_CHILD: &str = "MERMAN_TZ_PROVENANCE_CHILD";
@@ -47,6 +52,9 @@ fn assert_new_york_winter_semantics() {
     let runtime_policy = RuntimePolicy::try_native()
         .expect("native runtime policy")
         .with_fixed_unix_millis(1_784_390_400_000);
+    #[cfg(feature = "ascii")]
+    assert_gantt_fold_identity(runtime_policy.clone());
+
     let winter_midnight = runtime_policy
         .local_time_zone()
         .resolve_local(
@@ -104,6 +112,50 @@ fn assert_new_york_winter_semantics() {
     );
 
     assert_timezone_rules_are_captured_and_reported();
+}
+
+#[cfg(feature = "ascii")]
+fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
+    const EARLIER_MS: i64 = 1_793_511_000_000;
+    const LATER_MS: i64 = 1_793_514_600_000;
+
+    let mut model = GanttDiagramRenderModel::default();
+    model.sections.push("Fold".to_string());
+    model.tasks = vec![
+        GanttRenderTask {
+            id: "earlier".to_string(),
+            task: "Earlier instant".to_string(),
+            section: "Fold".to_string(),
+            order: 0,
+            start_ms: EARLIER_MS,
+            end_ms: EARLIER_MS,
+            ..GanttRenderTask::default()
+        },
+        GanttRenderTask {
+            id: "later".to_string(),
+            task: "Later instant".to_string(),
+            section: "Fold".to_string(),
+            order: 1,
+            start_ms: LATER_MS,
+            end_ms: LATER_MS,
+            ..GanttRenderTask::default()
+        },
+    ];
+
+    let rendered = HeadlessAsciiRenderer::new()
+        .with_runtime_policy(runtime_policy)
+        .with_ascii_options(AsciiRenderOptions::ascii())
+        .render_model(&RenderSemanticModel::Gantt(model))
+        .expect("render repeated New York local time");
+
+    assert!(
+        rendered.contains("range=2026-11-01T01:30:00.000 -> 2026-11-01T01:30:00.000"),
+        "the compatible earlier instant should keep the ordinary local display:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("range=2026-11-01T01:30:00.000-05:00 -> 2026-11-01T01:30:00.000-05:00"),
+        "the later repeated instant must disclose its actual offset:\n{rendered}"
+    );
 }
 
 fn assert_timezone_rules_are_captured_and_reported() {
