@@ -39,6 +39,22 @@ pub fn normalize_terminal_text(value: &str) -> Cow<'_, str> {
     }
 }
 
+/// Reports whether terminal-safe normalization changes the authored text without materializing
+/// the normalized form.
+pub(crate) fn terminal_text_requires_normalization(
+    value: &str,
+    resources: &ResourceContext,
+) -> Result<bool> {
+    for grapheme in value.graphemes(true) {
+        resources.check_grapheme_bytes(grapheme.len())?;
+        resources.charge_layout_work(grapheme.len().max(1))?;
+        if grapheme_needs_normalization(grapheme) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Produces a bounded, terminal-safe human-readable diagnostic.
 ///
 /// This is the display boundary for errors that may contain authored identifiers or parser text.
@@ -246,12 +262,14 @@ pub(super) fn visible_escape(ch: char, buffer: &mut [u8; 10]) -> &str {
 }
 
 fn needs_normalization(value: &str) -> bool {
-    value.graphemes(true).any(|grapheme| {
-        grapheme == "\r\n"
-            || (grapheme != "\n"
-                && (grapheme.chars().any(needs_control_escape)
-                    || UnicodeWidthStr::width(grapheme) == 0))
-    })
+    value.graphemes(true).any(grapheme_needs_normalization)
+}
+
+fn grapheme_needs_normalization(grapheme: &str) -> bool {
+    grapheme == "\r\n"
+        || (grapheme != "\n"
+            && (grapheme.chars().any(needs_control_escape)
+                || UnicodeWidthStr::width(grapheme) == 0))
 }
 
 fn needs_control_escape(ch: char) -> bool {

@@ -4,6 +4,7 @@ use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, LogicalExtent,
     ResourceContext,
 };
+use crate::safe_text::terminal_text_requires_normalization;
 use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
 use crate::{AsciiCharset, AsciiError, AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
@@ -574,15 +575,18 @@ impl TerminalChartPlan {
         };
         let implicit_band_domain =
             matches!(&self.x_axis, AxisPlan::Band { categories } if categories.is_empty());
+        let has_band_domain = matches!(&self.x_axis, AxisPlan::Band { .. });
         for (index, category) in axis_labels.iter().enumerate() {
             resources.charge_layout_work(1)?;
             let category_loses_geometry = !horizontal
                 && display_width_with_profile(category, plot_area.width_profile)
                     > plot_area.category_band_width;
-            if category_loses_geometry {
+            let category_changes_during_normalization =
+                has_band_domain && terminal_text_requires_normalization(category, resources)?;
+            if category_loses_geometry || category_changes_during_normalization {
                 return Ok(TerminalDisclosurePlan {
                     values: true,
-                    band_domain: matches!(&self.x_axis, AxisPlan::Band { .. }),
+                    band_domain: has_band_domain,
                 });
             }
             for previous in &axis_labels[..index] {
@@ -590,7 +594,7 @@ impl TerminalChartPlan {
                 if category == previous {
                     return Ok(TerminalDisclosurePlan {
                         values: true,
-                        band_domain: matches!(&self.x_axis, AxisPlan::Band { .. }),
+                        band_domain: has_band_domain,
                     });
                 }
             }

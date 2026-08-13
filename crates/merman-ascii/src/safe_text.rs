@@ -32,6 +32,7 @@ pub(crate) use layout::{
     NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
     try_plan_normalized_trimmed_text, try_repeat_layout_char,
 };
+pub(crate) use normalization::terminal_text_requires_normalization;
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use width::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
