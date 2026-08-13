@@ -626,6 +626,8 @@ pub enum C6RuntimeError {
     EmptyTranche,
     #[error("no render-group or target adapter exists for enforced C6 cell {key:?}")]
     UnsupportedEnforcedCell { key: C6CellKey },
+    #[error("multiple C6 render-group adapters match `{group}`")]
+    AmbiguousRenderGroupAdapter { group: String },
     #[error("C6 render group `{group}` failed invariant `{field}`")]
     RenderGroupEvidenceMismatch { group: String, field: &'static str },
     #[error("C6 evidence for {key:?} failed invariant `{field}`")]

@@ -37,6 +37,7 @@ use c6_pdf_proof::prove_brutalist_state_pdf;
 use c6_raster_proof::{PngArtifactProof, prove_brutalist_state_jpeg, prove_brutalist_state_png};
 
 const SHADOW_EFFECT_ID: &str = "c6-brutalist-state-shadow";
+const BRUTALIST_STATE_FIXTURE_ID: &str = "fixture-c6-brutalist-state";
 
 fn themes_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -73,16 +74,58 @@ fn run_catalog(
         .evaluate(acceptance, theme_catalog)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum C6RenderGroupAdapter {
-    BrutalistState,
+type C6RenderGroupExecutor =
+    fn(&ThemeFixtureCatalog, C6RenderGroupWork) -> Result<C6CompletedRenderGroup, C6RuntimeError>;
+
+#[derive(Clone, Copy, Debug)]
+struct C6RenderGroupAdapter {
+    theme: C6ProofTheme,
+    family: C6ProofFamily,
+    source_fixture_id: &'static str,
+    lane: C6RenderLane,
+    supported_targets: &'static [ExpectedOutputTarget],
+    execute: C6RenderGroupExecutor,
+}
+
+impl C6RenderGroupAdapter {
+    fn supports_target(&self, target: ExpectedOutputTarget) -> bool {
+        self.supported_targets.contains(&target)
+    }
+
+    fn matches_group(&self, key: &C6RenderGroupKey) -> bool {
+        self.theme == key.theme()
+            && self.family == key.family()
+            && self.source_fixture_id == key.source_fixture_id()
+            && self.lane == key.lane()
+    }
+}
+
+const BRUTALIST_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
+    theme: C6ProofTheme::Brutalist,
+    family: C6ProofFamily::State,
+    source_fixture_id: BRUTALIST_STATE_FIXTURE_ID,
+    lane: C6RenderLane::Native,
+    supported_targets: &[
+        ExpectedOutputTarget::StandaloneSvg,
+        ExpectedOutputTarget::Png,
+        ExpectedOutputTarget::Jpeg,
+        ExpectedOutputTarget::Pdf,
+    ],
+    execute: execute_brutalist_state_group,
+};
+
+static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] = &[BRUTALIST_STATE_ADAPTER];
+
+#[derive(Debug)]
+struct C6RenderGroupWork {
+    key: C6RenderGroupKey,
+    cells: Vec<C6EnforcedCell>,
 }
 
 #[derive(Debug)]
 struct C6RenderGroupPlan {
-    key: C6RenderGroupKey,
-    adapter: C6RenderGroupAdapter,
-    cells: Vec<C6EnforcedCell>,
+    adapter: &'static C6RenderGroupAdapter,
+    work: C6RenderGroupWork,
 }
 
 #[derive(Debug)]
@@ -97,15 +140,18 @@ impl C6ExecutionPlan {
             return Err(C6RuntimeError::EmptyTranche);
         }
 
-        let mut grouped =
-            BTreeMap::<C6RenderGroupKey, (C6RenderGroupAdapter, Vec<C6EnforcedCell>)>::new();
+        let mut grouped = BTreeMap::<
+            C6RenderGroupKey,
+            (&'static C6RenderGroupAdapter, Vec<C6EnforcedCell>),
+        >::new();
         for cell in enforced {
-            let adapter = adapter_for_cell(cell)?;
             let key = C6RenderGroupKey::for_cell(cell);
-            let entry = grouped.entry(key).or_insert_with(|| (adapter, Vec::new()));
-            if entry.0 != adapter {
+            let adapter = adapter_for_group(C6_RENDER_GROUP_ADAPTERS, &key)?
+                .ok_or_else(|| C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() })?;
+            if !adapter.supports_target(cell.key().target()) {
                 return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
             }
+            let entry = grouped.entry(key).or_insert_with(|| (adapter, Vec::new()));
             entry.1.push(cell.clone());
         }
 
@@ -113,29 +159,26 @@ impl C6ExecutionPlan {
             groups: grouped
                 .into_iter()
                 .map(|(key, (adapter, cells))| C6RenderGroupPlan {
-                    key,
                     adapter,
-                    cells,
+                    work: C6RenderGroupWork { key, cells },
                 })
                 .collect(),
         })
     }
 }
 
-fn adapter_for_cell(cell: &C6EnforcedCell) -> Result<C6RenderGroupAdapter, C6RuntimeError> {
-    let key = C6RenderGroupKey::for_cell(cell);
-    match (key.theme(), key.family(), key.lane(), cell.key().target()) {
-        (
-            C6ProofTheme::Brutalist,
-            C6ProofFamily::State,
-            C6RenderLane::Native,
-            ExpectedOutputTarget::StandaloneSvg
-            | ExpectedOutputTarget::Png
-            | ExpectedOutputTarget::Jpeg
-            | ExpectedOutputTarget::Pdf,
-        ) => Ok(C6RenderGroupAdapter::BrutalistState),
-        _ => Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() }),
+fn adapter_for_group<'a>(
+    adapters: &'a [C6RenderGroupAdapter],
+    key: &C6RenderGroupKey,
+) -> Result<Option<&'a C6RenderGroupAdapter>, C6RuntimeError> {
+    let mut matching = adapters.iter().filter(|adapter| adapter.matches_group(key));
+    let Some(adapter) = matching.next() else {
+        return Ok(None);
+    };
+    if matching.next().is_some() {
+        return Err(C6RuntimeError::AmbiguousRenderGroupAdapter { group: key.label() });
     }
+    Ok(Some(adapter))
 }
 
 struct C6CompletedRenderGroup {
@@ -147,14 +190,12 @@ fn execute_render_group(
     theme_catalog: &ThemeFixtureCatalog,
     group: C6RenderGroupPlan,
 ) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
-    match group.adapter {
-        C6RenderGroupAdapter::BrutalistState => execute_brutalist_state_group(theme_catalog, group),
-    }
+    (group.adapter.execute)(theme_catalog, group.work)
 }
 
 fn execute_brutalist_state_group(
     theme_catalog: &ThemeFixtureCatalog,
-    group: C6RenderGroupPlan,
+    group: C6RenderGroupWork,
 ) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
     let fixture = theme_catalog
         .fixture(group.key.source_fixture_id())
@@ -1022,7 +1063,7 @@ mod tests {
                 cell["enforcement"] = if target == selected {
                     json!({
                         "kind": "enforced",
-                        "sourceFixtureId": "fixture-c6-brutalist-state"
+                        "sourceFixtureId": BRUTALIST_STATE_FIXTURE_ID
                     })
                 } else {
                     json!({
@@ -1037,6 +1078,163 @@ mod tests {
                 });
             }
         }
+    }
+
+    fn enforced_brutalist_state_native_key(acceptance: &C6AcceptanceCatalog) -> C6RenderGroupKey {
+        C6RenderGroupKey::for_cell(
+            acceptance
+                .enforced_tranche()
+                .cells()
+                .find(|cell| {
+                    cell.key().theme() == C6ProofTheme::Brutalist
+                        && cell.key().family() == C6ProofFamily::State
+                        && cell.source_fixture_id() == BRUTALIST_STATE_FIXTURE_ID
+                        && cell.key().target() == ExpectedOutputTarget::StandaloneSvg
+                })
+                .expect("enforced Brutalist State native cell"),
+        )
+    }
+
+    #[test]
+    fn native_brutalist_state_cells_share_one_registered_adapter() {
+        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
+        let acceptance = C6AcceptanceCatalog::load(&theme_catalog).expect("load C6 acceptance");
+
+        let plan = C6ExecutionPlan::from_catalog(&acceptance).expect("plan enforced C6 tranche");
+
+        let group = plan
+            .groups
+            .iter()
+            .find(|group| {
+                group.work.key.theme() == C6ProofTheme::Brutalist
+                    && group.work.key.family() == C6ProofFamily::State
+                    && group.work.key.source_fixture_id() == BRUTALIST_STATE_FIXTURE_ID
+                    && group.work.key.lane() == C6RenderLane::Native
+            })
+            .expect("registered Brutalist State native group");
+        assert_eq!(group.adapter.theme, C6ProofTheme::Brutalist);
+        assert_eq!(group.adapter.family, C6ProofFamily::State);
+        assert_eq!(group.adapter.source_fixture_id, BRUTALIST_STATE_FIXTURE_ID);
+        assert_eq!(group.adapter.lane, C6RenderLane::Native);
+        assert_eq!(
+            group
+                .work
+                .cells
+                .iter()
+                .map(|cell| cell.key().target())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                ExpectedOutputTarget::StandaloneSvg,
+                ExpectedOutputTarget::Png,
+                ExpectedOutputTarget::Jpeg,
+                ExpectedOutputTarget::Pdf,
+            ])
+        );
+        assert!(
+            group
+                .work
+                .cells
+                .iter()
+                .all(|cell| group.adapter.supports_target(cell.key().target()))
+        );
+        assert!(
+            !group
+                .adapter
+                .supports_target(ExpectedOutputTarget::BrowserSvg)
+        );
+    }
+
+    #[test]
+    fn duplicate_render_group_adapter_identity_fails_closed() {
+        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
+        let acceptance = C6AcceptanceCatalog::load(&theme_catalog).expect("load C6 acceptance");
+        let key = enforced_brutalist_state_native_key(&acceptance);
+        let adapters = [BRUTALIST_STATE_ADAPTER; 2];
+
+        let error = adapter_for_group(&adapters, &key)
+            .expect_err("duplicate adapter identity must fail closed");
+
+        assert!(matches!(
+            error,
+            C6RuntimeError::AmbiguousRenderGroupAdapter { group }
+                if group == key.label()
+        ));
+    }
+
+    #[test]
+    fn render_group_adapter_identity_requires_every_dimension() {
+        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
+        let acceptance = C6AcceptanceCatalog::load(&theme_catalog).expect("load C6 acceptance");
+        let key = enforced_brutalist_state_native_key(&acceptance);
+
+        assert!(
+            adapter_for_group(&[BRUTALIST_STATE_ADAPTER], &key)
+                .expect("match exact adapter identity")
+                .is_some()
+        );
+
+        let mismatched_adapters = [
+            (
+                "theme",
+                C6RenderGroupAdapter {
+                    theme: C6ProofTheme::Spotless,
+                    ..BRUTALIST_STATE_ADAPTER
+                },
+            ),
+            (
+                "family",
+                C6RenderGroupAdapter {
+                    family: C6ProofFamily::Flowchart,
+                    ..BRUTALIST_STATE_ADAPTER
+                },
+            ),
+            (
+                "fixture",
+                C6RenderGroupAdapter {
+                    source_fixture_id: "fixture-c6-brutalist-state-other",
+                    ..BRUTALIST_STATE_ADAPTER
+                },
+            ),
+            (
+                "lane",
+                C6RenderGroupAdapter {
+                    lane: C6RenderLane::Browser,
+                    ..BRUTALIST_STATE_ADAPTER
+                },
+            ),
+        ];
+
+        for (dimension, adapter) in mismatched_adapters {
+            assert!(
+                adapter_for_group(std::slice::from_ref(&adapter), &key)
+                    .expect("evaluate adapter identity")
+                    .is_none(),
+                "{dimension} mismatch must not select the adapter"
+            );
+        }
+    }
+
+    #[test]
+    fn enforced_browser_cell_without_registered_adapter_fails_closed() {
+        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
+        let mut value = acceptance_value(&theme_catalog);
+        retain_only_brutalist_state_target(&mut value, ExpectedOutputTarget::BrowserSvg);
+        let acceptance = C6AcceptanceCatalog::from_json(
+            &serde_json::to_string(&value).expect("serialize C6 acceptance catalog"),
+            &theme_catalog,
+        )
+        .expect("load browser-only C6 acceptance catalog");
+
+        let error = C6ExecutionPlan::from_catalog(&acceptance)
+            .expect_err("browser cell must not be silently omitted");
+
+        assert!(matches!(
+            error,
+            C6RuntimeError::UnsupportedEnforcedCell { key }
+                if key.theme() == C6ProofTheme::Brutalist
+                    && key.family() == C6ProofFamily::State
+                    && key.target() == ExpectedOutputTarget::BrowserSvg
+        ));
     }
 
     #[test]
