@@ -46,7 +46,10 @@ The configured `SourceDescriptor` selects the canonical capture path. `SourceKin
 
 Caller cancellation is exposed only by the `*_cancellable` entry points and remains outside `AnalysisCaptureOutcome`. Rich cancellable capture consumes caller-owned `Arc<str>` through `Analyzer::analyze_generation_shared_cancellable`; ownership promotion therefore happens before the cancellable operation instead of hiding an uninterruptible full-source copy inside it. Use `Analyzer::analyze_generation_shared` when a non-cancellable caller also wants to retain the same allocation. The borrowed `Analyzer::analyze_generation` entry point remains the non-cancellable convenience API.
 
-A parser-controlled path that returns outer cancellation to a non-cancellable facade violates that facade's contract: core exposes `Error::ParseCancelled`, while analysis projects the protected `merman.internal.parser_contract_violation` diagnostic. Use the cancellable lifecycle whenever cancellation is expected control flow.
+A parser-controlled path that returns outer cancellation to a non-cancellable facade violates that
+facade's contract: core exposes `Error::OperationCancelled`, while analysis projects the protected
+`merman.internal.parser_contract_violation` diagnostic. Use the cancellable lifecycle whenever
+cancellation is expected control flow.
 
 ## Analyze Markdown And MDX
 

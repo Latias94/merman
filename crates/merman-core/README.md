@@ -78,7 +78,12 @@ Common internal ids include `flowchart-v2`, `sequence`, `classDiagram`, `stateDi
 
 ## Rendering Handoff
 
-If the next step is layout or SVG rendering, prefer `Engine::parse_diagram_for_render_model_sync`. It returns the typed render projection of the same family-owned semantics and avoids building a large compatibility JSON tree. Applications that want complete SVG or layout JSON should normally use `merman::svg::HeadlessRenderer`, which carries this typed projection through the canonical render operation.
+If the next step is low-level layout or SVG rendering, prefer
+`Engine::parse_diagram_for_render_model_sync`. It returns the typed render projection of the same
+family-owned semantics and avoids building a large compatibility JSON tree. Applications that
+start with Mermaid source and want complete SVG, ASCII, layout JSON, or binary output should
+normally use `merman::Renderer` with a typed target request; that facade carries the same
+projection through the canonical operation control, runtime context, and resource policy.
 
 ```rust
 use merman_core::{Engine, ParseOptions};

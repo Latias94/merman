@@ -87,11 +87,11 @@ flowchart LR
 
 | Use case | Recommended path | Extra controls |
 | --- | --- | --- |
-| Golden parity tests | `render_svg_sync` | Only compare or store as artifact; do not expose as trusted browser HTML. |
+| Golden parity tests | Default typed `RenderTarget::Svg` request | Only compare or store as artifact; do not expose as trusted browser HTML. |
 | Editor preview for untrusted markdown | Parity/readable SVG followed by `assertSelfContainedSvgForDom()` or `assertNavigableSvgForDom()`; keep the returned capability opaque and use the matching `prepareSelfContainedSvgForDomMount()` or `prepareNavigableSvgForDomMount()` helper on the actual parsed root and owner document; resvg-safe cleanup is optional preprocessing, not DOM admission | `base-uri 'none'` where possible, CSP, no user-controlled site config, stable diagram IDs, and host-owned iframe/origin isolation where required. |
 | Server-side PNG/JPG | Raster APIs, which apply the resvg-safe pipeline and `RasterOptions` pixmap budgets | Keep budgets enabled for untrusted input; use `with_fit_to` for previews and `with_unbounded_size` only for trusted oversized exports. Embedded-image budgets remain independent. |
 | Server-side vector PDF | PDF APIs with `PdfOptions` | Select an explicit page policy. Keep filter-rasterization and embedded-image budgets enabled for untrusted input; do not use PNG/JPG unbounded settings as a PDF policy. |
-| Trusted internal design system diagrams | `render_svg_sync` or host theme pipeline | Keep trusted theme/icon sources reviewable. |
+| Trusted internal design system diagrams | Typed SVG request, optionally with a host theme pipeline | Keep trusted theme/icon sources reviewable. |
 | User-uploaded Iconify packs | Construct a bounded immutable registry, then render with strict/default configuration | Keep the fixed constructor limits, use a DOM insertion policy plus CSP/sandbox for browser output, or prefer `resvg_safe`/raster export. |
 
 ## Alternatives Considered

@@ -81,11 +81,11 @@ the helper that executes a resolved parser from caller-supplied `ParseMetadata` 
 capability discovery uses `supported_diagrams()` and `diagram_family_capabilities()` instead of
 parser lookup.
 
-Custom semantic overlays receive the operation's `ParseControl`. Their function signature returns
-`ParseControlResult<Result<Value>>`: the outer result is cooperative cancellation and the inner
+Custom semantic overlays receive the operation's `OperationControl`. Their function signature
+returns `OperationControlResult<Result<Value>>`: the outer result is cooperative cancellation and the inner
 result is Mermaid parse success or failure. Implementations must checkpoint long-running loops.
 The non-cancellable `Engine` facades convert an unexpected outer cancellation into
-`Error::ParseCancelled`; controlled snapshot facades preserve it in the outer result.
+`Error::OperationCancelled`; controlled snapshot facades preserve it in the outer result.
 
 This is an intentional API break. The former per-family `parse_*`, typed parser,
 `*_model_for_render`, and `*_editor_facts` entrypoints have no deprecated aliases. Tests that need
@@ -119,7 +119,7 @@ This payload version is unrelated to LSP document revision numbers, Mermaid ids 
 
 ### Rendering is one typed operation
 
-`merman::render::HeadlessRenderer` and the public prepared-render APIs execute the canonical
+`merman::Renderer` and its typed target requests execute the canonical
 headless operation. Successful built-in rendering remains typed from family semantic construction
 through layout and SVG.
 
@@ -135,9 +135,10 @@ families.
 
 The old public `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, and
 per-family pass-through SVG wrappers are not compatibility layers. They are removed. Applications
-should use `HeadlessRenderer`, `layout_json_sync`, `render_svg_sync`, or the consuming
-`prepare_render_sync` stages. Direct `merman-render` users use `family::prepare` and retain the
-operation's `RenderSession`.
+should use `Renderer`, `RenderRequest`, and `RenderTarget`; callers that need admission or metadata
+before choosing an output use `Renderer::prepare_semantic` and consume the returned
+`SemanticArtifact`. Direct `merman-render` users use `family::prepare` and retain the operation's
+`RenderSession`.
 
 ### The operation owns its render environment
 
@@ -179,7 +180,7 @@ tuning.
 
 ### Verification exercises the same operation
 
-Parity comparison commands render through the canonical typed `HeadlessRenderer` operation and
+Parity comparison commands render through the canonical typed `Renderer` operation and
 report the actual render path and environment policy. The compare harness owns fixture locking,
 upstream provenance, DOM modes, normalization, accepted residuals, and root coverage. Family hooks
 may add narrow diagnostics, but they may not rebuild parsing, layout, or SVG rendering.

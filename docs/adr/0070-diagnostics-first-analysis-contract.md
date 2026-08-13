@@ -120,8 +120,8 @@ ready generation, diagnostic, or cache entry. Rich cancellable capture consumes 
 `Arc<str>` through `Analyzer::analyze_generation_shared_cancellable`, so the operation never hides
 a full-source ownership promotion inside its cancellation boundary. Borrowed rich capture remains
 the non-cancellable convenience path. A parser-controlled path that returns outer cancellation to
-a non-cancellable facade violates that facade's parser contract and is represented by the existing
-`Error::ParseCancelled` compatibility error. Analysis projects that contract violation as the
+a non-cancellable facade violates that facade's parser contract and is represented by
+`Error::OperationCancelled`. Analysis projects that contract violation as the
 protected `merman.internal.parser_contract_violation` internal diagnostic instead of a Mermaid
 syntax error. Controlled facades preserve the same outer cancellation for the caller.
 
