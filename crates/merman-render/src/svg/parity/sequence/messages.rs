@@ -6,18 +6,12 @@ use crate::sequence::{
     sequence_text_line_step_px,
 };
 use merman_core::diagrams::sequence::{
-    SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke,
+    SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
+    SequenceMessageMarker, SequenceMessageStroke,
 };
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
-const LINETYPE_NOTE: i32 = 2;
-const LINETYPE_ACTIVE_START: i32 = 17;
-const LINETYPE_ACTIVE_END: i32 = 18;
-const LINETYPE_AUTONUMBER: i32 = 26;
-const LINETYPE_CENTRAL_CONNECTION: i32 = 59;
-const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
-const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
 const CENTRAL_CONNECTION_CIRCLE_OFFSET: f64 = 16.5;
 
 pub(super) struct SequenceMessageRenderContext<'a> {
@@ -77,15 +71,6 @@ fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
     )
 }
 
-fn has_central_connection(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
-    matches!(
-        msg.central_connection,
-        LINETYPE_CENTRAL_CONNECTION
-            | LINETYPE_CENTRAL_CONNECTION_REVERSE
-            | LINETYPE_CENTRAL_CONNECTION_DUAL
-    )
-}
-
 fn is_reverse_arrow_type(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
     msg.signal_semantics()
         .is_some_and(|semantics| semantics.direction == SequenceMessageDirection::Reverse)
@@ -115,8 +100,8 @@ impl SequenceAutonumberActivationBounds {
         msg: &merman_core::diagrams::sequence::SequenceMessage,
         ctx: &SequenceMessageRenderContext<'_>,
     ) -> bool {
-        match msg.message_type {
-            LINETYPE_ACTIVE_START => {
+        match msg.semantic_kind() {
+            SequenceMessageKind::ActivationStart => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
@@ -127,7 +112,7 @@ impl SequenceAutonumberActivationBounds {
                 *depth = depth.saturating_add(1);
                 true
             }
-            LINETYPE_ACTIVE_END => {
+            SequenceMessageKind::ActivationEnd => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
@@ -191,7 +176,10 @@ fn write_central_connection_circles(
     line_y: f64,
     sequence_number_visible: bool,
 ) {
-    if !has_central_connection(msg) {
+    let Some(decoration) = msg.central_decoration() else {
+        return;
+    };
+    if decoration == SequenceCentralDecoration::None {
         return;
     }
 
@@ -216,14 +204,14 @@ fn write_central_connection_circles(
     };
 
     if sequence_number_visible {
-        match msg.central_connection {
-            LINETYPE_CENTRAL_CONNECTION if is_reverse => {
+        match decoration {
+            SequenceCentralDecoration::Target if is_reverse => {
                 to_center += circle_offset(is_left_to_right, true);
             }
-            LINETYPE_CENTRAL_CONNECTION_REVERSE if !is_reverse => {
+            SequenceCentralDecoration::Source if !is_reverse => {
                 from_center += circle_offset(is_left_to_right, false);
             }
-            LINETYPE_CENTRAL_CONNECTION_DUAL => {
+            SequenceCentralDecoration::Both => {
                 if is_reverse {
                     to_center += circle_offset(is_left_to_right, true);
                 } else {
@@ -236,8 +224,8 @@ fn write_central_connection_circles(
 
     out.push_str("<g>");
     if matches!(
-        msg.central_connection,
-        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
+        decoration,
+        SequenceCentralDecoration::Source | SequenceCentralDecoration::Both
     ) {
         let _ = write!(
             out,
@@ -247,8 +235,8 @@ fn write_central_connection_circles(
         );
     }
     if matches!(
-        msg.central_connection,
-        LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_DUAL
+        decoration,
+        SequenceCentralDecoration::Target | SequenceCentralDecoration::Both
     ) {
         let _ = write!(
             out,
@@ -266,18 +254,18 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
     let mut sequence_number_step = 1.0;
     let mut activation_bounds = SequenceAutonumberActivationBounds::new(ctx.activation_width);
 
-    for _ in ctx.model.messages.iter().filter(|msg| {
-        matches!(
-            msg.message_type,
-            LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_REVERSE
-        )
-    }) {
+    for _ in ctx
+        .model
+        .messages
+        .iter()
+        .filter(|msg| msg.semantic_kind() == SequenceMessageKind::CentralDecorationRecord)
+    {
         out.push_str("<g/>");
     }
 
     for msg in &ctx.model.messages {
-        match msg.message_type {
-            LINETYPE_AUTONUMBER => {
+        match msg.semantic_kind() {
+            SequenceMessageKind::Autonumber => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
                     sequence_number_visible = autonumber.visible;
                     if let Some(start) = autonumber.start {
@@ -289,16 +277,16 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 }
                 continue;
             }
-            LINETYPE_ACTIVE_START | LINETYPE_ACTIVE_END => {
+            SequenceMessageKind::ActivationStart | SequenceMessageKind::ActivationEnd => {
                 let _ = activation_bounds.handle_directive(msg, ctx);
                 continue;
             }
-            LINETYPE_NOTE => continue,
-            // CENTRAL_CONNECTION / CENTRAL_CONNECTION_REVERSE. Upstream routes these through
-            // the activation drawing path, which leaves an empty group even without a visible
-            // activation rectangle.
-            LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_REVERSE => continue,
-            _ => {}
+            SequenceMessageKind::Note => continue,
+            // Central decoration records are routed through the activation drawing path by
+            // upstream Mermaid, which leaves an empty group without a visible rectangle.
+            SequenceMessageKind::CentralDecorationRecord => continue,
+            SequenceMessageKind::Signal => {}
+            SequenceMessageKind::Control | SequenceMessageKind::Unknown => continue,
         }
 
         let Some(signal_semantics) = msg.signal_semantics() else {
