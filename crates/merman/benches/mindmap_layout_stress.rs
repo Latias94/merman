@@ -1,7 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::svg::RenderEnvironment;
 use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, family};
+use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
 use std::hint::black_box;
 
 const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_009.mmd");

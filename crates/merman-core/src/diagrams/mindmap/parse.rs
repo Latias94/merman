@@ -40,8 +40,8 @@ pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_mindmap_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
     let construction = match construct_mindmap_semantic_source_controlled(code, meta, control)? {
         Ok(source) => {
@@ -79,7 +79,7 @@ struct MindmapSemanticSource {
 
 impl MindmapSemanticSource {
     fn into_render_model(self, meta: &ParseMetadata) -> Result<MindmapDiagramRenderModel> {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         self.into_render_model_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -87,8 +87,8 @@ impl MindmapSemanticSource {
     fn into_render_model_controlled(
         self,
         meta: &ParseMetadata,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<MindmapDiagramRenderModel>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<MindmapDiagramRenderModel>> {
         control.checkpoint()?;
         let mut db = self.db;
         let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
@@ -116,16 +116,17 @@ fn construct_mindmap_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<MindmapSemanticSource, CombinedSemanticFailure> {
-    construct_mindmap_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_mindmap_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_mindmap_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<MindmapSemanticSource, CombinedSemanticFailure>>
-{
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
+    std::result::Result<MindmapSemanticSource, CombinedSemanticFailure>,
+> {
     control.checkpoint()?;
     #[cfg(test)]
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -164,8 +165,8 @@ fn construct_mindmap_semantic_source_controlled(
 fn mindmap_db_from_events(
     events: Vec<MindmapParsedEvent>,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<MindmapDb>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<MindmapDb>> {
     let mut db = MindmapDb::default();
     db.clear();
     let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
@@ -251,8 +252,8 @@ struct MindmapParseOutcome {
 
 fn mindmap_editor_facts_from_parsed(
     parsed: &MindmapParsedLines,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<EditorSemanticFacts> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
     for (index, prefix) in parsed.directive_prefixes.iter().enumerate() {
         if index % 128 == 0 {
@@ -720,8 +721,8 @@ fn parse_mindmap_lines(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<MindmapParseOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<MindmapParseOutcome> {
     control.checkpoint()?;
     let mut lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;

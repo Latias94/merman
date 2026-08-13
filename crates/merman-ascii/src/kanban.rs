@@ -1,3 +1,5 @@
+use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
@@ -5,23 +7,29 @@ use std::collections::HashMap;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_kanban_diagram(
+pub(super) fn render_kanban_diagram(
     model: &KanbanDiagramRenderModel,
     _options: &AsciiRenderOptions,
-) -> String {
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     let mut lines = Vec::new();
-    let groups: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|node| node.is_group).collect();
+    let mut groups = Vec::new();
     let mut children_by_parent: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
-    for node in model.nodes.iter().filter(|node| !node.is_group) {
-        if let Some(parent_id) = node.parent_id.as_deref() {
+    for node in &model.nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        if node.is_group {
+            groups.push(node);
+        } else if let Some(parent_id) = node.parent_id.as_deref() {
             children_by_parent.entry(parent_id).or_default().push(node);
         }
     }
 
     for group in groups {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         lines.push(group.label.clone());
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 push_wrapped_prefixed_line(
                     &mut lines,
                     "  - ",
@@ -35,6 +43,7 @@ pub fn render_kanban_diagram(
 
     if lines.is_empty() {
         for node in &model.nodes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             if !node.is_group {
                 push_wrapped_prefixed_line(
                     &mut lines,
@@ -47,7 +56,7 @@ pub fn render_kanban_diagram(
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    Ok(trim_trailing_blank_lines(lines).join("\n"))
 }
 
 fn render_metadata(node: &KanbanRenderNode) -> String {

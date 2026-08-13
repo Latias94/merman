@@ -6,10 +6,7 @@ void _expect(bool condition, String message) {
   }
 }
 
-void _expectMissingCapability(
-  String capabilityId,
-  void Function() operation,
-) {
+void _expectMissingCapability(String capabilityId, void Function() operation) {
   try {
     operation();
   } on MermanMissingCapabilityException catch (error) {

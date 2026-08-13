@@ -3,7 +3,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
@@ -557,14 +557,13 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
     let (class_name, class_marker, label_input) = if let Some(marker) = find_class_marker(head.text)
     {
         let class = head.subslice(marker + 3, head.text.len()).trim();
-        if !class.text.is_empty()
-            && class
-                .text
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        if class
+            .text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
         {
             (
-                Some(class),
+                (!class.text.is_empty()).then_some(class),
                 Some(SourceSpan::new(
                     head.start + marker,
                     head.start + marker + 3,
@@ -845,7 +844,7 @@ fn push_quadrant_class_fact(
         EditorExpectedSyntaxKind::NodeIdentifier,
         span,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::class_definition(
         name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
@@ -874,10 +873,22 @@ fn push_quadrant_point_facts(
         ));
     }
 
+    let Some(class_marker) = point.class_marker else {
+        return;
+    };
+    let class_span = point
+        .class_name
+        .map(SourceSlice::span)
+        .unwrap_or_else(|| SourceSpan::new(class_marker.end, class_marker.end));
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::ClassName,
+        class_span,
+    ));
+
     let Some(class_name) = point.class_name else {
         return;
     };
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::payload(
         class_name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
@@ -921,15 +932,15 @@ fn construct_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure> {
-    construct_quadrant_chart_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_quadrant_chart_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_quadrant_chart_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.set(QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -953,8 +964,8 @@ fn parse_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = QuadrantDb::default();
     db.clear();
@@ -1493,8 +1504,8 @@ pub(crate) fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<V
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_quadrant_chart_semantic_source_controlled(code, meta, control)?;
     Ok(crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -1691,6 +1702,77 @@ mod tests {
     }
 
     #[test]
+    fn quadrant_class_definitions_and_uses_have_typed_roles() {
+        let text = concat!(
+            "quadrantChart\n",
+            "classDef priority color: #109060\n",
+            "Project A:::priority: [0.2, 0.8]\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
+            .unwrap()
+            .expect("quadrant editor facts");
+
+        let class_definition = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "priority" && symbol.role == EditorSemanticRole::ClassDefinition
+            })
+            .expect("quadrant class definition");
+        assert_eq!(class_definition.kind, EditorSemanticKind::Class);
+        assert!(class_definition.role.contributes_completion());
+        assert!(class_definition.role.contributes_outline());
+        assert!(!class_definition.role.contributes_references());
+
+        let class_use = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "priority" && symbol.role == EditorSemanticRole::Payload)
+            .expect("quadrant class use");
+        assert_eq!(class_use.kind, EditorSemanticKind::Class);
+        assert!(!class_use.role.contributes_completion());
+        assert!(!class_use.role.contributes_outline());
+        assert!(!class_use.role.contributes_references());
+
+        let class_names = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role == EditorSemanticRole::ClassDefinition)
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(class_names, vec!["priority"]);
+
+        let node_ids = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role == EditorSemanticRole::Entity)
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            !node_ids.contains(&"priority"),
+            "class names must not enter node-id completion"
+        );
+
+        let outline_names = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role.contributes_outline())
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(outline_names.contains(&"priority"));
+        assert!(outline_names.contains(&"Project A"));
+        assert_eq!(
+            outline_names
+                .iter()
+                .filter(|name| **name == "priority")
+                .count(),
+            1,
+            "class use must not create a second outline entry"
+        );
+    }
+
+    #[test]
     fn parses_whole_chart_example() {
         let model = parse(
             "quadrantChart\n\
@@ -1843,10 +1925,13 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(quadrant_syntax_construction_count(), 1);
 
         reset_quadrant_syntax_construction_count();
-        let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_quadrant_chart_json_and_editor_facts(text, &parsed.meta, &ParseControl::new()),
-        )
-        .expect("Quadrant combined projection succeeds");
+        let (combined_json, combined_editor) =
+            crate::family::test_support::into_result(parse_quadrant_chart_json_and_editor_facts(
+                text,
+                &parsed.meta,
+                &OperationControl::new(),
+            ))
+            .expect("Quadrant combined projection succeeds");
         assert_eq!(quadrant_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
         assert!(!combined_editor.symbols.is_empty());

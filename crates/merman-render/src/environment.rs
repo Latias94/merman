@@ -19,6 +19,7 @@ use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::__private::ThemeCompatibilityRecipe;
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_core::time::LocalTimeZoneProvenance;
+use merman_core::{OperationControl, OperationPhase};
 use std::fmt;
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -1747,16 +1748,23 @@ impl RenderEnvironment {
 
     /// Captures time, timezone rules, random seed, and provenance exactly once.
     pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
-        self.begin_session_with_theme_resources(SessionThemeResources::Environment {
-            font_catalog: self.font_catalog.clone(),
-            font_source_policy: self.font_source_policy.clone(),
-        })
-        .map_err(|error| match error {
-            RenderEnvironmentError::Runtime(error) => error,
-            RenderEnvironmentError::ThemeAdmission(_) => {
-                unreachable!("an unthemed session cannot resolve theme admission")
-            }
-        })
+        self.begin_session_with_control(OperationControl::new())
+    }
+
+    /// Captures one unthemed render session using caller-owned cancellation/deadline state.
+    pub fn begin_session_with_control(
+        &self,
+        control: OperationControl,
+    ) -> Result<RenderSession, RuntimePolicyError> {
+        let operation_context = self.runtime_policy.begin_operation()?;
+        Ok(self.begin_session_with_theme_resources_in_context(
+            SessionThemeResources::Environment {
+                font_catalog: self.font_catalog.clone(),
+                font_source_policy: self.font_source_policy.clone(),
+            },
+            operation_context,
+            control,
+        ))
     }
 
     /// Captures one operation while atomically binding the selected compiled theme.
@@ -1773,17 +1781,69 @@ impl RenderEnvironment {
             &self.theme_measurement_fallbacks,
             self.theme_portability,
         )?;
-        self.begin_session_with_theme_resources(SessionThemeResources::Theme {
-            theme: theme.clone(),
-            admission,
-        })
+        let operation_context = self.runtime_policy.begin_operation()?;
+        Ok(self.begin_session_with_theme_resources_in_context(
+            SessionThemeResources::Theme {
+                theme: theme.clone(),
+                admission,
+            },
+            operation_context,
+            OperationControl::new(),
+        ))
     }
 
-    fn begin_session_with_theme_resources(
+    /// Begins one unthemed render session from caller-captured operation state.
+    ///
+    /// This entry point deliberately does not call [`RuntimePolicy::begin_operation`]. Facades
+    /// that already own the source-to-output operation use it to keep parsing and rendering on
+    /// the same runtime context and cancellation/deadline control.
+    pub fn begin_session_in_context(
+        &self,
+        operation_context: OperationContext,
+        control: OperationControl,
+    ) -> RenderSession {
+        self.begin_session_with_theme_resources_in_context(
+            SessionThemeResources::Environment {
+                font_catalog: self.font_catalog.clone(),
+                font_source_policy: self.font_source_policy.clone(),
+            },
+            operation_context,
+            control,
+        )
+    }
+
+    /// Begins one themed render session from caller-captured operation state.
+    ///
+    /// The caller remains the sole owner of runtime context and cancellation while the
+    /// environment atomically resolves theme admission and resources for that same operation.
+    pub fn begin_session_with_theme_in_context(
+        &self,
+        theme: &DiagramTheme,
+        operation_context: OperationContext,
+        control: OperationControl,
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        let admission = theme.resolve_runtime_admission(
+            &self.theme_admission_policy,
+            &self.font_source_policy,
+            &self.theme_measurement_fallbacks,
+            self.theme_portability,
+        )?;
+        Ok(self.begin_session_with_theme_resources_in_context(
+            SessionThemeResources::Theme {
+                theme: theme.clone(),
+                admission,
+            },
+            operation_context,
+            control,
+        ))
+    }
+
+    fn begin_session_with_theme_resources_in_context(
         &self,
         theme_resources: SessionThemeResources,
-    ) -> Result<RenderSession, RenderEnvironmentError> {
-        let operation_context = self.runtime_policy.begin_operation()?;
+        operation_context: OperationContext,
+        control: OperationControl,
+    ) -> RenderSession {
         let theme_compatibility_recipe = theme_resources
             .theme()
             .map(|theme| theme.parse_compatibility().recipe().clone());
@@ -1793,7 +1853,7 @@ impl RenderEnvironment {
             .map(ResolvedThemeAdmission::trusted_lanes)
             .unwrap_or_else(|| self.theme_admission_policy.trusted_lanes())
             .clone();
-        Ok(RenderSession {
+        RenderSession {
             text_measurement: self.text_measurement.clone(),
             prepared_text_layout,
             text_layout_error,
@@ -1803,12 +1863,15 @@ impl RenderEnvironment {
             icon_registry: self.icon_registry.clone(),
             operation_context,
             resource_policy: self.resource_policy,
-            work_meter: Arc::new(OperationWorkMeter::new(self.resource_policy)),
+            work_meter: Arc::new(OperationWorkMeter::new_with_control(
+                self.resource_policy,
+                control,
+            )),
             trusted_theme_lanes,
             trusted_theme_lane_usage: AtomicU64::new(0),
             theme_compatibility_recipe,
             theme_resources,
-        })
+        }
     }
 
     fn prepare_text_layout(
@@ -2151,6 +2214,11 @@ impl RenderSession {
         &self.work_meter
     }
 
+    /// Checks the operation-owned control at an SVG/render phase boundary.
+    pub(crate) fn checkpoint(&self, phase: OperationPhase) -> crate::Result<()> {
+        self.work_meter().checkpoint(phase).map_err(Into::into)
+    }
+
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
         if self.supports_capability(RenderCapability::Math) {
             self.math_renderer.as_deref()
@@ -2387,6 +2455,30 @@ mod tests {
             report.local_time_zone(),
             captured.local_time_zone().provenance()
         );
+    }
+
+    #[test]
+    fn caller_captured_context_and_control_define_one_render_session() {
+        let operation_context = RuntimePolicy::deterministic()
+            .with_fixed_unix_millis(1_704_067_200_123)
+            .with_fixed_seed(91)
+            .begin_operation()
+            .expect("caller operation context");
+        let control = OperationControl::new();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_in_context(operation_context.clone(), control.clone());
+
+        assert_eq!(session.operation_context(), &operation_context);
+
+        control.cancel();
+        let error = session
+            .checkpoint(OperationPhase::Layout)
+            .expect_err("shared control should cancel the render session");
+        let crate::Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
     }
 
     #[test]

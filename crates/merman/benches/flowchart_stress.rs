@@ -1,9 +1,10 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::svg::{
-    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
+use merman::svg::{LayoutOptions, SvgRenderOptions};
+use merman::{
+    OperationControl, RenderOutput, RenderRequest, RenderTarget, Renderer, SemanticArtifact,
+    SvgEnvironment, SvgRequest,
 };
-use merman_core::resources::FlowchartComplexity;
-use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{Engine, ParseOptions};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -205,40 +206,47 @@ impl FlowchartSpec {
 struct SyntheticCase {
     source: String,
     case_id: String,
-    parsed: ParsedDiagramRender,
 }
 
 fn source_digest(source: &str) -> String {
     format!("{:x}", Sha256::digest(source.as_bytes()))
 }
 
-fn assert_cluster_edge_panel_roles(model: &merman_core::diagrams::flowchart::FlowchartModel) {
-    let subgraph_ids = model
-        .subgraphs
+fn assert_cluster_edge_panel_roles(model: &serde_json::Value) {
+    let edges = model["edges"]
+        .as_array()
+        .expect("synthetic Flowchart edges");
+    let subgraphs = model["subgraphs"]
+        .as_array()
+        .expect("synthetic Flowchart subgraphs");
+    let subgraph_ids = subgraphs
         .iter()
-        .map(|subgraph| subgraph.id.as_str())
+        .map(|subgraph| subgraph["id"].as_str().expect("synthetic subgraph id"))
         .collect::<HashSet<_>>();
     let mut boundary_connected = 0usize;
     let mut isolated = 0usize;
     let mut extractable = 0usize;
 
-    for subgraph in &model.subgraphs {
-        let members = subgraph
-            .nodes
+    for subgraph in subgraphs {
+        let members = subgraph["nodes"]
+            .as_array()
+            .expect("synthetic subgraph members")
             .iter()
-            .map(String::as_str)
+            .map(|member| member.as_str().expect("synthetic member id"))
             .filter(|member| !subgraph_ids.contains(member))
             .collect::<HashSet<_>>();
         assert!(!members.is_empty(), "panel clusters must contain a node");
 
-        let has_boundary_edge = model
-            .edges
-            .iter()
-            .any(|edge| members.contains(edge.from.as_str()) ^ members.contains(edge.to.as_str()));
-        let has_incident_edge = model
-            .edges
-            .iter()
-            .any(|edge| members.contains(edge.from.as_str()) || members.contains(edge.to.as_str()));
+        let has_boundary_edge = edges.iter().any(|edge| {
+            let from = edge["from"].as_str().expect("synthetic edge source");
+            let to = edge["to"].as_str().expect("synthetic edge target");
+            members.contains(from) ^ members.contains(to)
+        });
+        let has_incident_edge = edges.iter().any(|edge| {
+            let from = edge["from"].as_str().expect("synthetic edge source");
+            let to = edge["to"].as_str().expect("synthetic edge target");
+            members.contains(from) || members.contains(to)
+        });
         boundary_connected += usize::from(has_boundary_edge);
         isolated += usize::from(!has_incident_edge);
         extractable += usize::from(!has_boundary_edge);
@@ -268,43 +276,133 @@ fn validated_synthetic_case(
     assert_eq!(digest, source_digest(&repeated_source));
     let case_id = spec.case_id(&digest);
 
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(&source, parse_opts)
-        .expect("parse synthetic flowchart")
-        .expect("supported synthetic flowchart");
-    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-        panic!("synthetic flowchart must produce a typed flowchart model");
-    };
-    let complexity = FlowchartComplexity::from_model(model);
+    let renderer = Renderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(parse_opts);
+    let semantic = prepare_semantic(&renderer, &source);
+    assert_eq!(semantic.semantic_kind(), "flowchart");
+    let model = semantic
+        .compatibility_json()
+        .expect("project synthetic flowchart");
+    let nodes = model["nodes"]
+        .as_array()
+        .expect("synthetic Flowchart nodes");
+    let edges = model["edges"]
+        .as_array()
+        .expect("synthetic Flowchart edges");
+    let subgraphs = model["subgraphs"]
+        .as_array()
+        .expect("synthetic Flowchart subgraphs");
     assert_eq!(
         (
-            complexity.nodes,
-            complexity.edges,
-            complexity.subgraphs,
-            complexity.subgraph_depth,
+            nodes.len().saturating_add(subgraphs.len()),
+            edges.len(),
+            subgraphs.len(),
+            subgraph_depth(subgraphs),
         ),
         (spec.nodes, spec.edges, spec.clusters, spec.depth),
         "synthetic case dimensions must match its case id: {case_id}"
     );
 
-    let mut endpoints = HashSet::with_capacity(model.edges.len());
-    for edge in &model.edges {
+    let mut endpoints = HashSet::with_capacity(edges.len());
+    for edge in edges {
+        let from = edge["from"].as_str().expect("synthetic edge source");
+        let to = edge["to"].as_str().expect("synthetic edge target");
         assert!(
-            endpoints.insert((edge.from.as_str(), edge.to.as_str())),
+            endpoints.insert((from, to)),
             "synthetic case contains duplicate directed endpoints: {case_id} {} -> {}",
-            edge.from,
-            edge.to
+            from,
+            to
         );
     }
     if spec.edge_topology == EdgeTopology::PreserveIsolatedCluster {
-        assert_cluster_edge_panel_roles(model);
+        assert_cluster_edge_panel_roles(&model);
     }
 
-    SyntheticCase {
-        source,
-        case_id,
-        parsed,
+    SyntheticCase { source, case_id }
+}
+
+fn subgraph_depth(subgraphs: &[serde_json::Value]) -> usize {
+    let subgraph_index = subgraphs
+        .iter()
+        .enumerate()
+        .map(|(index, subgraph)| {
+            (
+                subgraph["id"].as_str().expect("synthetic subgraph id"),
+                index,
+            )
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    let parents = subgraphs
+        .iter()
+        .enumerate()
+        .flat_map(|(parent, subgraph)| {
+            subgraph["nodes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|member| member.as_str())
+                .filter_map(|member| subgraph_index.get(member).copied())
+                .map(move |child| (child, parent))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    subgraphs
+        .iter()
+        .enumerate()
+        .map(|(mut current, _)| {
+            let mut depth = 1usize;
+            while let Some(parent) = parents.get(&current) {
+                depth = depth.saturating_add(1);
+                assert!(
+                    depth <= subgraphs.len(),
+                    "synthetic subgraph hierarchy contains a cycle"
+                );
+                current = *parent;
+            }
+            depth
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+fn typed_svg_request(
+    diagram_id: &str,
+    layout: &LayoutOptions,
+    environment: &SvgEnvironment,
+) -> SvgRequest {
+    SvgRequest {
+        environment: environment.clone(),
+        layout: layout.clone(),
+        options: SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
     }
+}
+
+fn prepare_semantic(renderer: &Renderer, source: &str) -> SemanticArtifact {
+    let output = renderer
+        .render(RenderRequest::semantic(source, OperationControl::new()))
+        .expect("prepare semantic artifact");
+    let RenderOutput::Semantic(Some(semantic)) = output else {
+        panic!("typed semantic target returned no diagram");
+    };
+    semantic
+}
+
+fn svg_len(output: RenderOutput) -> usize {
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("typed SVG target returned no diagram");
+    };
+    svg.svg().len()
+}
+
+fn layout_output(output: RenderOutput) -> merman::SvgLayoutOutput {
+    let RenderOutput::LayoutJson(Some(layout)) = output else {
+        panic!("typed layout target returned no diagram");
+    };
+    layout
 }
 
 fn emit_cluster(
@@ -341,29 +439,27 @@ fn register_synthetic_cases(
     engine: &Engine,
     parse_opts: ParseOptions,
     layout: &LayoutOptions,
-    environment: &RenderEnvironment,
+    environment: &SvgEnvironment,
 ) {
+    let renderer = Renderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(parse_opts);
     let mut public = c.benchmark_group(public_group_name);
     for case in cases {
-        let svg_opts = SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            ..SvgRenderOptions::default()
-        };
+        let request = typed_svg_request(diagram_id, layout, environment);
         public.bench_with_input(
             BenchmarkId::from_parameter(case.case_id.as_str()),
             &case.source,
             |b, source| {
                 b.iter(|| {
-                    let svg = merman::svg::render_svg_sync(
-                        engine,
-                        black_box(source.as_str()),
-                        parse_opts,
-                        layout,
-                        &svg_opts,
-                    )
-                    .expect("render")
-                    .expect("supported diagram");
-                    black_box(svg.len());
+                    let output = renderer
+                        .render(RenderRequest::svg(
+                            black_box(source.as_str()),
+                            OperationControl::new(),
+                            request.clone(),
+                        ))
+                        .expect("render");
+                    black_box(svg_len(output));
                 });
             },
         );
@@ -372,22 +468,18 @@ fn register_synthetic_cases(
 
     let mut prepare = c.benchmark_group(prepare_group_name);
     for case in cases {
+        let request = typed_svg_request(diagram_id, layout, environment);
         prepare.bench_with_input(
             BenchmarkId::from_parameter(case.case_id.as_str()),
-            &case.parsed,
-            |b, parsed| {
+            &case.source,
+            |b, source| {
                 b.iter_batched(
-                    || {
-                        (
-                            (*parsed).clone(),
-                            environment.begin_session().expect("render session"),
-                        )
-                    },
-                    |(parsed, session)| {
-                        black_box(
-                            merman_render::family::prepare(parsed, layout, session)
-                                .expect("prepare"),
-                        );
+                    || prepare_semantic(&renderer, black_box(source.as_str())),
+                    |semantic| {
+                        let output = semantic
+                            .render(RenderTarget::LayoutJson(request.clone()))
+                            .expect("prepare typed layout");
+                        black_box(layout_output(output));
                     },
                     BatchSize::SmallInput,
                 );
@@ -400,8 +492,8 @@ fn register_synthetic_cases(
 fn bench_flowchart_curves(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout = headless_layout_options();
-    let environment = RenderEnvironment::deterministic();
+    let layout = LayoutOptions::headless_svg_defaults();
+    let environment = SvgEnvironment::deterministic();
 
     // N is FlowchartComplexity::nodes, so each declared case includes its subgraph count. Build
     // and validate every source before registering any Criterion input; a bad generator therefore
@@ -507,8 +599,8 @@ flowchart LR
 fn bench_emit_svg_controls(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout: LayoutOptions = headless_layout_options();
-    let environment = RenderEnvironment::deterministic();
+    let layout = LayoutOptions::headless_svg_defaults();
+    let environment = SvgEnvironment::deterministic();
     let mut cases = vec![
         ("flowchart_medium".to_string(), FLOWCHART_MEDIUM.to_string()),
         (
@@ -543,54 +635,39 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
         );
     }
 
-    let parsed_cases = cases
-        .iter()
-        .map(|(name, input)| {
-            let parsed = engine
-                .parse_diagram_for_render_model_sync(input, parse_opts)
-                .expect("parse")
-                .expect("supported diagram");
-            (name, input, parsed)
-        })
-        .collect::<Vec<_>>();
+    let renderer = Renderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(parse_opts);
 
     let mut public = c.benchmark_group("flowchart_label_public");
-    for (name, input, _) in &parsed_cases {
-        let svg_opts = SvgRenderOptions {
-            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
-            ..SvgRenderOptions::default()
-        };
-        public.bench_function(*name, |b| {
+    for (name, input) in &cases {
+        let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
+        public.bench_function(name.as_str(), |b| {
             b.iter(|| {
-                let svg = merman::svg::render_svg_sync(
-                    &engine,
-                    black_box(input.as_str()),
-                    parse_opts,
-                    &layout,
-                    &svg_opts,
-                )
-                .expect("render")
-                .expect("supported diagram");
-                black_box(svg.len());
+                let output = renderer
+                    .render(RenderRequest::svg(
+                        black_box(input.as_str()),
+                        OperationControl::new(),
+                        request.clone(),
+                    ))
+                    .expect("render");
+                black_box(svg_len(output));
             });
         });
     }
     public.finish();
 
     let mut prepare = c.benchmark_group("flowchart_label_prepare");
-    for (name, _, parsed) in &parsed_cases {
-        prepare.bench_function(*name, |b| {
+    for (name, input) in &cases {
+        let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
+        prepare.bench_function(name.as_str(), |b| {
             b.iter_batched(
-                || {
-                    (
-                        parsed.clone(),
-                        environment.begin_session().expect("render session"),
-                    )
-                },
-                |(parsed, session)| {
-                    black_box(
-                        merman_render::family::prepare(parsed, &layout, session).expect("prepare"),
-                    );
+                || prepare_semantic(&renderer, black_box(input.as_str())),
+                |semantic| {
+                    let output = semantic
+                        .render(RenderTarget::LayoutJson(request.clone()))
+                        .expect("prepare typed layout");
+                    black_box(layout_output(output));
                 },
                 BatchSize::SmallInput,
             );
@@ -600,26 +677,16 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("emit_svg_stress");
 
-    for (name, _, parsed) in &parsed_cases {
-        let svg_opts = SvgRenderOptions {
-            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
-            ..SvgRenderOptions::default()
-        };
-        group.bench_function(*name, |b| {
+    for (name, input) in &cases {
+        let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
+        group.bench_function(name.as_str(), |b| {
             b.iter_batched(
-                || {
-                    merman_render::family::prepare(
-                        parsed.clone(),
-                        &layout,
-                        environment.begin_session().expect("render session"),
-                    )
-                    .expect("prepare")
-                },
-                |artifact| {
-                    let svg = artifact
-                        .render_svg(&svg_opts, &SvgDebugOptions::default())
-                        .expect("render");
-                    black_box(svg.svg().len());
+                || prepare_semantic(&renderer, black_box(input.as_str())),
+                |semantic| {
+                    let output = semantic
+                        .render(RenderTarget::Svg(request.clone()))
+                        .expect("render typed SVG");
+                    black_box(svg_len(output));
                 },
                 BatchSize::SmallInput,
             );

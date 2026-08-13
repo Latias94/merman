@@ -137,3 +137,9 @@ A policy change is complete only when it includes:
 5. profile monotonicity and hard-guard tests; and
 6. dependency-closure and artifact-size evidence when the implementation adds
    a runtime, resolver, codec, or other non-trivial dependency.
+## Cancellation is separate from resource policy
+
+The CLI's resource profile bounds deterministic work and output. A caller-owned operation control
+may additionally cancel a request or provide a monotonic deadline; those outcomes are surfaced as
+structured cancellation rather than being rewritten as a resource failure. Synchronous rendering
+is cooperative, so a hard timeout for an opaque encoder requires worker/process isolation.

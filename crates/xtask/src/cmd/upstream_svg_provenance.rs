@@ -46,7 +46,10 @@ use transaction::{
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
 const MANIFEST_SCHEMA_VERSION: u32 = 3;
-const RENDERER_REVISION: &str = "xtask-upstream-svg-v3";
+const RENDERER_REVISION: &str = "xtask-upstream-svg-v4";
+pub(crate) const UPSTREAM_SVG_FIXED_WALL_CLOCK_MS: i64 = 1_704_067_200_000;
+pub(crate) const GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX: u32 = 1_200;
+pub(crate) const GANTT_UPSTREAM_CONTAINER_WIDTH_PX: u32 = 1_184;
 
 #[derive(Debug)]
 pub(crate) struct UpstreamSvgRenderContextSnapshot {
@@ -1409,20 +1412,30 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
     })
 }
 
-fn base_renderer_profile(diagram: &str) -> &'static str {
+fn base_renderer_profile(diagram: &str) -> String {
+    let fixed_wall_clock_ms = UPSTREAM_SVG_FIXED_WALL_CLOCK_MS;
     match diagram {
-        "sequence" => "seeded-puppeteer-seed-1-date-now-1704067200000-sequence-math-settled-v1",
-        "architecture" | "gitgraph" => "seeded-puppeteer-seed-1-date-now-1704067200000",
-        "error" => "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1",
-        "gantt" => "mmdc-default-width-1200",
-        _ => "mmdc-default",
+        "sequence" => format!(
+            "seeded-puppeteer-seed-1-fixed-date-{fixed_wall_clock_ms}-sequence-math-settled-v1"
+        ),
+        "architecture" | "gitgraph" => {
+            format!("seeded-puppeteer-seed-1-fixed-date-{fixed_wall_clock_ms}")
+        }
+        "error" => {
+            format!("seeded-puppeteer-seed-1-fixed-date-{fixed_wall_clock_ms}-error-fallback-v1")
+        }
+        "gantt" => format!(
+            "seeded-puppeteer-seed-1-fixed-date-{fixed_wall_clock_ms}-viewport-{}-container-{}",
+            GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX, GANTT_UPSTREAM_CONTAINER_WIDTH_PX,
+        ),
+        _ => "mmdc-default".to_string(),
     }
 }
 
 fn renderer_profile(diagram: &str, fixture_context: Option<&FixtureRenderContext>) -> String {
     let base = base_renderer_profile(diagram);
     match fixture_context.map(FixtureRenderContext::security_level) {
-        None => base.to_string(),
+        None => base,
         Some(SecurityLevel::Loose) => format!("{base}-host-security-loose-v1"),
         Some(SecurityLevel::Sandbox) => {
             format!("{base}-host-security-sandbox-to-strict-v1")

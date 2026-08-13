@@ -64,6 +64,7 @@ function themeRuntime(loader) {
 async function runtimeReturning(catalog) {
   const runtime = themeRuntime(async () => ({
     default: async () => {},
+    transportApiVersion: () => coreRuntime.WEB_TRANSPORT_API_VERSION,
     themeCatalog: () => catalog,
   }));
   await runtime.initMerman();
@@ -75,6 +76,7 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
   let analysisCalls = 0;
   const full = themeRuntime(async () => ({
     default: async () => {},
+    transportApiVersion: () => coreRuntime.WEB_TRANSPORT_API_VERSION,
     themeCatalog() {
       fullCalls += 1;
       return themeCatalogFixture();
@@ -82,6 +84,7 @@ test("theme catalog accepts future IDs, caches per surface, and returns defensiv
   }));
   const analysis = themeRuntime(async () => ({
     default: async () => {},
+    transportApiVersion: () => coreRuntime.WEB_TRANSPORT_API_VERSION,
     themeCatalog() {
       analysisCalls += 1;
       return themeCatalogFixture({

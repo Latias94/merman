@@ -1,7 +1,7 @@
 use crate::types::Range;
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticSeverity,
-    DiagnosticSpan,
+    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisPayload, DiagnosticCategory, DiagnosticFix,
+    DiagnosticSeverity, DiagnosticSpan,
 };
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +40,7 @@ pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorD
         severity: diagnostic.severity,
         code: diagnostic.id.clone(),
         source: "merman".to_string(),
+        tags: diagnostic.tags.clone(),
         message: diagnostic.message.clone(),
         related: diagnostic
             .related
@@ -80,6 +81,8 @@ pub struct EditorDiagnostic {
     pub severity: DiagnosticSeverity,
     pub code: String,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<AnalysisDiagnosticTag>,
     pub message: String,
     pub related: Vec<EditorDiagnosticRelated>,
     pub data: Option<DiagnosticCodeActionData>,

@@ -82,3 +82,8 @@ output-contract conversion, not comparator color equivalence.
 - Public API review must treat pass ordering, error handling, and ownership as semver-significant.
 - A future advanced event-stream API remains possible if profiling proves string-oriented custom
   passes are a real bottleneck.
+The SVG pipeline is a target-local adapter of the common operation boundary. A pipeline receives
+the caller-owned operation control and must checkpoint before and after each postprocessor. A
+cancelled operation is distinct from a deterministic resource-limit rejection, and no partial SVG
+is returned for either terminal outcome. Custom postprocessors remain cooperative: the host can
+cancel between callbacks, but cannot forcibly stop arbitrary synchronous callback code.

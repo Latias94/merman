@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "3c5c2a775be381bf1c27a8ada85f55e9ffc1a0e406d0dffa4ad6aed39f4aa919"
+    "sha256": "e3421aa286ef6e7957b81e7f001d493ff34ca3353deb57ef0f46d1d9f6a3b9be"
   },
   "release": {
     "id": "mermaid",
@@ -285,10 +285,75 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "77c7d37873d20c9ef1a2ef267911835e666537decc341722aa8d2f0170d06b42",
-    "packageLockSha256": "aea75ff98014fe1ad3a410aeec334f1676ec41d2f81e96787b50768f81d3e97d",
+    "packageJsonSha256": "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377",
+    "packageLockSha256": "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
+  "rendererTools": [
+    {
+      "id": "puppeteer-browsers",
+      "role": "renderer-tool",
+      "package": "@puppeteer/browsers",
+      "version": "3.2.0",
+      "declaredRange": "3.2.0",
+      "integrity": "sha512-LlBrE8oqGfU7b1Nk2d5Q1SbuPhZxTj0cJEMDPEws28OjNMELlflekmPPuf4FnK03x0ZRjKaYwJElUcKK4kyqJA==",
+      "tarballUrl": "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.0.tgz",
+      "installedContentSha256": "19471ee170159334103c514581e661d261cf7f78637d331f1e856df799d0444a",
+      "source": {
+        "repository": "https://github.com/puppeteer/puppeteer.git",
+        "reference": "browsers-v3.2.0",
+        "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+        "checkoutPath": null,
+        "packagePath": "packages/browsers"
+      },
+      "requiredSurfaces": [
+        "upstream-svg",
+        "provenance"
+      ]
+    },
+    {
+      "id": "puppeteer",
+      "role": "renderer-tool",
+      "package": "puppeteer",
+      "version": "25.6.0",
+      "declaredRange": "25.6.0",
+      "integrity": "sha512-TXUolDddU4AwISjOOrGk2AhJDpbM/ZDt2KvGIqz74EOk+8bKwXFo+acUvP1sQx3hUda7owOeNuuT1UnJT1o0qA==",
+      "tarballUrl": "https://registry.npmjs.org/puppeteer/-/puppeteer-25.6.0.tgz",
+      "installedContentSha256": "477011bd9dec4b70bb3c7f9a7f6665f47861064861d8c38a6bf194bb44d6d3a7",
+      "source": {
+        "repository": "https://github.com/puppeteer/puppeteer.git",
+        "reference": "puppeteer-v25.6.0",
+        "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+        "checkoutPath": null,
+        "packagePath": "packages/puppeteer"
+      },
+      "requiredSurfaces": [
+        "upstream-svg",
+        "provenance"
+      ]
+    },
+    {
+      "id": "puppeteer-core",
+      "role": "renderer-tool",
+      "package": "puppeteer-core",
+      "version": "25.6.0",
+      "declaredRange": "25.6.0",
+      "integrity": "sha512-GJ67rjZdVQzZmD2Ab0cgttfQN9j387QYMv3t6MN3/4nmjursNt6M5Utj4/T/4y0AwNrSwJzjw6Q/zuWFEIizOg==",
+      "tarballUrl": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-25.6.0.tgz",
+      "installedContentSha256": "ca5e31e7c6d9bbbe018da519c153d024647486d0dcf3280633240d1a03bfbaee",
+      "source": {
+        "repository": "https://github.com/puppeteer/puppeteer.git",
+        "reference": "puppeteer-core-v25.6.0",
+        "commit": "d484e21c17f6023826fefdcdeeb553e04a7aaed8",
+        "checkoutPath": null,
+        "packagePath": "packages/puppeteer-core"
+      },
+      "requiredSurfaces": [
+        "upstream-svg",
+        "provenance"
+      ]
+    }
+  ],
   "installPolicy": {
     "registry": "https://registry.npmjs.org/",
     "defaultIgnoreScripts": true,
@@ -308,7 +373,7 @@
       },
       {
         "workspace": "tools/mermaid-cli",
-        "package": "puppeteer@23.11.1",
+        "package": "puppeteer@25.6.0",
         "action": "ignored",
         "reason": "CI and local parity commands provide an audited browser executable."
       }

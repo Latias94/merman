@@ -117,6 +117,7 @@ export {
 export {
   createEditorSession,
   editorCodeActions,
+  editorCompletionTriggerCharacters,
   editorCompletions,
   editorDefinition,
   editorDiagnostics,

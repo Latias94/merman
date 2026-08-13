@@ -44,7 +44,7 @@ layered draw policy, and dense/grid-budget summary fallback should stay shared.
   chains, stars, same-endpoint lanes, bidirectional same-pair lanes, simple spanning lanes, and
   cycle-closing lanes.
 - Use structured relation-summary fixtures when a relation graph is too dense for a readable
-  deterministic layered layout, or when the routed scene exceeds `AsciiRenderOptions::max_grid_cells`.
+  deterministic layered layout, or when the routed scene exceeds the operation's `AsciiResourcePolicy` grid budget.
 - Summary fixtures must keep every endpoint, connector, and label line visible; multiline Mermaid
   labels should become continuation rows rather than slash-joined text or leaked `<br>` markup.
 

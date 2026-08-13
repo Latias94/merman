@@ -19,6 +19,7 @@ pdf = ["merman/pdf", "merman-export/pdf"]
 [dependencies]
 merman.workspace = true
 merman-export.workspace = true
+merman-render.workspace = true
 merman-theme-fixtures = { path = "../merman-theme-fixtures" }
 image.workspace = true
 lopdf.workspace = true

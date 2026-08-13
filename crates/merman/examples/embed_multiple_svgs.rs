@@ -1,4 +1,4 @@
-use merman::render_svg_with_id;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const FLOWCHART: &str = r#"flowchart LR
     Edit --> Preview --> Export
@@ -23,11 +23,31 @@ const HTML_START: &str = r#"<!doctype html>
 
 const HTML_END: &str = "</body>\n</html>\n";
 
-fn main() -> Result<(), merman::RenderSvgError> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // IDs must remain unique after normalization when the SVGs share one document.
-    let flowchart = render_svg_with_id(FLOWCHART, "editor-flow")?;
-    let sequence = render_svg_with_id(SEQUENCE, "render-sequence")?;
+    let renderer = Renderer::new();
+    let flowchart = render(&renderer, FLOWCHART, "editor-flow")?;
+    let sequence = render(&renderer, SEQUENCE, "render-sequence")?;
 
     print!("{HTML_START}{flowchart}{sequence}{HTML_END}");
     Ok(())
+}
+
+fn render(
+    renderer: &Renderer,
+    source: &str,
+    diagram_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let request = SvgRequest {
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some(merman::svg::sanitize_svg_id(diagram_id)),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = renderer.render(RenderRequest::svg(source, OperationControl::new(), request))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    Ok(svg.svg().to_string())
 }

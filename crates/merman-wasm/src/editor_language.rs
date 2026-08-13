@@ -2,18 +2,18 @@ use crate::binding_error_to_js;
 #[cfg(test)]
 use merman_analysis::AnalysisPayload;
 use merman_analysis::{
-    AnalysisOptions, AnalysisRejection, Analyzer, EditorSymbolKind, FenceTextIndexSource,
-    SourceDescriptor, Summary,
+    AnalysisOptions, AnalysisRejection, Analyzer, FenceTextIndexSource, SourceDescriptor, Summary,
 };
 use merman_bindings_core::{BindingError, BindingStatus};
+use merman_core::EditorSemanticKind;
 use merman_editor_core::{
-    DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind, DocumentSnapshot,
-    DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
+    COMPLETION_TRIGGER_CHARACTERS, DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind,
+    DocumentSnapshot, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
     EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
-    RenameError, SemanticTokenDescriptor, analysis_payload_to_diagnostics, code_actions_from_fixes,
-    completion_for_snapshot, document_symbols, goto_definition, hover,
-    plan_semantic_tokens_for_snapshot, prepare_rename, references, rename, search_document_symbols,
-    semantic_token_descriptor,
+    RenameError, SemanticTokenDescriptor, analysis_payload_to_diagnostics,
+    analyze_document_context_with_shared_text, code_actions_from_fixes, completion_for_snapshot,
+    document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
+    references, rename, search_document_symbols, semantic_token_descriptor,
 };
 use serde::Serialize;
 use std::{
@@ -700,6 +700,11 @@ pub fn editor_semantic_token_descriptor() -> Result<JsValue, JsValue> {
     ))
 }
 
+#[wasm_bindgen(js_name = editorCompletionTriggerCharacters)]
+pub fn editor_completion_trigger_characters() -> Result<JsValue, JsValue> {
+    js_value(&COMPLETION_TRIGGER_CHARACTERS)
+}
+
 #[wasm_bindgen(js_name = editorSemanticTokens)]
 pub fn editor_semantic_tokens(
     source: &str,
@@ -817,15 +822,8 @@ fn build_editor_document_analysis(
     let kind = document_kind_for_uri(uri);
     let text = Arc::<str>::from(source);
     record_editor_document_context_build();
-    DocumentWorkspace::build_analysis_context_with_shared_text(
-        &analyzer,
-        uri.to_string(),
-        version,
-        text,
-        kind,
-    )
-    .into_ready()
-    .map_err(editor_rejection_to_binding_error)
+    analyze_document_context_with_shared_text(&analyzer, uri.to_string(), version, text, kind)
+        .map_err(editor_rejection_to_binding_error)
 }
 
 fn editor_rejection_to_binding_error(rejection: AnalysisRejection) -> BindingError {
@@ -871,7 +869,7 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
     let resource_limits = normalized_editor_analysis_resource_limits(&normalized, ceiling)?;
 
     let mut analysis_value = normalized;
-    remove_resource_profile_for_analysis(&mut analysis_value);
+    prepare_binding_options_for_analysis(&mut analysis_value);
     let options = merman_analysis::analysis_options_from_json_value(&analysis_value)
         .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
     Ok(options
@@ -1048,10 +1046,13 @@ fn normalized_editor_analysis_limit(
     }
 }
 
-fn remove_resource_profile_for_analysis(value: &mut serde_json::Value) {
+fn prepare_binding_options_for_analysis(value: &mut serde_json::Value) {
     let Some(root) = value.as_object_mut() else {
         return;
     };
+    // The shared binding envelope owns render parsing policy. Editor analysis accepts the same
+    // transport string, but only consumes analysis-owned fields from its root.
+    root.remove("parse");
     remove_resource_profile(root);
     for wrapper in ["analysis", "merman"] {
         if let Some(options) = root
@@ -1111,19 +1112,19 @@ fn code_actions_for_diagnostics(
         .collect()
 }
 
-fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
+fn symbol_kind_name(kind: EditorSemanticKind) -> &'static str {
     match kind {
-        EditorSymbolKind::Class => "class",
-        EditorSymbolKind::Event => "event",
-        EditorSymbolKind::Function => "function",
-        EditorSymbolKind::Module => "module",
-        EditorSymbolKind::Namespace => "namespace",
-        EditorSymbolKind::Object => "object",
-        EditorSymbolKind::Package => "package",
-        EditorSymbolKind::Property => "property",
-        EditorSymbolKind::String => "string",
-        EditorSymbolKind::Struct => "struct",
-        EditorSymbolKind::Variable => "variable",
+        EditorSemanticKind::Class => "class",
+        EditorSemanticKind::Event => "event",
+        EditorSemanticKind::Function => "function",
+        EditorSemanticKind::Module => "module",
+        EditorSemanticKind::Namespace => "namespace",
+        EditorSemanticKind::Object => "object",
+        EditorSemanticKind::Package => "package",
+        EditorSemanticKind::Property => "property",
+        EditorSemanticKind::String => "string",
+        EditorSemanticKind::Struct => "struct",
+        EditorSemanticKind::Variable => "variable",
     }
 }
 
@@ -1306,6 +1307,29 @@ mod tests {
                 error.message()
             );
         }
+    }
+
+    #[test]
+    fn editor_language_extracts_analysis_options_from_the_shared_binding_envelope() {
+        let options = parse_analysis_options(Some(
+            r#"{
+                "version": 2,
+                "parse": { "suppress_errors": true },
+                "resources": { "profile": "constrained" }
+            }"#,
+        ))
+        .expect("binding-owned parse policy must not leak into analysis decoding");
+        assert_eq!(options.max_source_bytes(), Some(1024 * 1024));
+
+        let error =
+            parse_analysis_options(Some(r#"{"analysis":{"parse":{"suppress_errors":true}}}"#))
+                .expect_err("removed analysis parse policy must remain rejected inside wrappers");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("analysis option `parse` was removed")
+        );
     }
 
     #[test]
@@ -1688,6 +1712,7 @@ mod tests {
             severity: merman_analysis::DiagnosticSeverity::Warning,
             code: "merman.test".to_string(),
             source: "merman".to_string(),
+            tags: Vec::new(),
             message: "test".to_string(),
             related: Vec::new(),
             data: Some(merman_editor_core::DiagnosticCodeActionData {

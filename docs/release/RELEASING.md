@@ -4,7 +4,9 @@ Status: maintained release operator guide.
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
-push a `v*` tag whose version matches every package manifest that will publish in that release.
+push a `v*` workspace tag for the ordinary release surfaces. Flutter uses its own
+`flutter-v<version>` tag because pub.dev requires a tag-triggered workflow and a Flutter package
+version may be published from a newer reviewed commit without moving an existing workspace tag.
 
 Release classification follows SemVer syntax, not the major version number. Versions without a
 prerelease suffix, including `0.7.0` and `0.8.0`, are regular releases. Only versions with a
@@ -22,7 +24,7 @@ is zero.
 | `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | `Merman.xcframework-<tag>.zip` and checksum | GitHub Release artifact upload |
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release + PyPI |
-| `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
+| `release-flutter.yml` | `merman` with Native Assets for Android, iOS, macOS, Windows, and Linux | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 | `release-web.yml` | admitted `@mermanjs/web` browser package group | npm |
 | `release-node.yml` | experimental `@mermanjs/node` loader and five native platform packages | npm |
@@ -34,12 +36,13 @@ Apple accept a `release_tag`, resolve the matching immutable tag commit and tree
 artifacts from that source. The workflow definition may be dispatched from `main`, but `main` is
 never an artifact source for those releases. Web, Node, and VS Code expose an explicit `source_ref`
 for owner-specific prerelease or recovery flows; their workflows resolve it to an immutable commit
-before building. Flutter is the exception: pub.dev automated publishing
-only accepts GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes
-from the `v*` tag push and uses manual runs for validation only. The crates.io workflow is
-idempotent only when deterministic local re-packaging produces the checksum already recorded by
-the registry. Before each topological batch it packages every member from the unchanged source,
-writes a source/tool/artifact receipt, and preflights existing registry checksums. Every missing
+before building. Flutter is the exception: pub.dev automated publishing only accepts GitHub
+Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes from a
+`flutter-v<version>` tag and uses manual runs with an explicit `source_ref` for validation only.
+The pub.dev trusted publisher must use the matching `flutter-v{{version}}` tag pattern. The
+crates.io workflow is idempotent only when deterministic local re-packaging produces the checksum
+already recorded by the registry. Before each topological batch it packages every member from the
+unchanged source, writes a source/tool/artifact receipt, and preflights existing registry checksums. Every missing
 member in the batch must pass its locked publish dry-run before the first member is published; each
 then receives one publish attempt. The workflow does not enter the next
 batch until every checksum in the current batch matches; delayed visibility or a lost response
@@ -51,7 +54,7 @@ produces a durable pending-recovery receipt instead of a blind retry.
 | --- | --- |
 | crates.io publish | `CARGO_REGISTRY_TOKEN` secret in the `crates.io` environment |
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
-| pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and the release tag pattern |
+| pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and `flutter-v{{version}}` |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` and `@mermanjs/node*` package, this repository, its owning release workflow, and the `npm` environment |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
@@ -163,7 +166,7 @@ Preparation or pre-apply validation failures leave the caller worktree unchanged
 reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
 partial files out of the disposable worktree or hand-edit generated locks.
 
-The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, Android and Flutter manifests, CocoaPods metadata, and iOS framework bundle versions.
+The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests.
 
 Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Use an unversioned `[Unreleased]` heading while the next workspace version is undecided, then add the selected version before release preflight. Immediately before the immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
 
@@ -241,8 +244,8 @@ python3 -m py_compile \
   scripts/verify-platform-bindings.py \
   scripts/build-python-uniffi-wheel.py \
   platforms/android/build-android.py \
-  platforms/flutter/tool/android-smoke.py
-bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
+  platforms/flutter/build-native.py
+bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
@@ -256,17 +259,20 @@ swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 For Flutter:
 
 ```bash
+python3 platforms/flutter/build-native.py host
 cd platforms/flutter
 flutter pub get
 flutter analyze
-dart format --set-exit-if-changed lib example
+dart format --set-exit-if-changed \
+  lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
+  example tool hook
+dart run tool/abi3_contract_test.dart
+dart run example/main.dart
 dart pub publish --dry-run
 ```
 
-The Flutter dry run should be executed from a clean working tree. The release workflow injects
-generated Android, iOS, macOS, Windows, and Linux native artifacts and then publishes with
-`--force`; a full local pub package dry run should first run the same artifact injection steps from
-`.github/workflows/release-flutter.yml`.
+The host smoke is the ordinary local gate. The release and preflight workflows additionally build
+all Android, iOS, macOS, Windows, and Linux Native Assets before the pub dry run.
 
 For local npm validation:
 
@@ -414,8 +420,18 @@ The VS Code workflow currently packages and verifies platform VSIX artifacts onl
 Open VSX publishing requires a separate credential-backed release workflow.
 
 Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A manual run still builds,
-injects native artifacts, analyzes, formats, and performs `dart pub publish --dry-run`, but the real
-`dart pub publish --force` step only runs from the pushed `v*` tag.
+bundles native artifacts, analyzes, formats, and performs `dart pub publish --dry-run`, but the real
+`dart pub publish --force` step only runs from the pushed `flutter-v<version>` tag. For an
+independent Flutter release, first validate the intended source, then create the package tag on the
+resolved reviewed commit:
+
+```bash
+gh workflow run release-flutter.yml \
+  -f release_tag="flutter-v<version>" \
+  -f source_ref="<reviewed-commit>"
+git tag "flutter-v<version>" "<reviewed-commit>"
+git push origin "flutter-v<version>"
+```
 
 The Flutter build job emits a package archive receipt binding the release commit, tree, version, and
 archive digest. The pub.dev job runs the trusted verifier from the workflow revision, enforces

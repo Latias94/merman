@@ -45,7 +45,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-ascii", &[]),
     ("merman-bindings-core", &["native-runtime"]),
     ("merman-cli", &[]),
-    ("merman-core", &[]),
+    ("merman-core", &["operation-deadlines", "test-support"]),
     ("merman-editor-core", &[]),
     ("merman-export", &[]),
     ("merman-ffi", &["native-runtime"]),

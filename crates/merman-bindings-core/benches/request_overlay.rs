@@ -57,7 +57,7 @@ fn bench_request_options(
         |b, request| {
             b.iter(|| {
                 let result = engine
-                    .execute(black_box(*request))
+                    .execute(black_box(request.clone()))
                     .expect("semantic operation");
                 black_box(result);
             });

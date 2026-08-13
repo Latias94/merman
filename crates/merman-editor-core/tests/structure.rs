@@ -1,15 +1,18 @@
+mod support;
+
 use merman_analysis::FenceTextIndexSource;
+use merman_core::EditorSemanticKind;
 use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, Position, Range, RenameError, document_symbols,
-    folding_ranges, goto_definition, hover, prepare_rename, references, rename,
-    search_document_symbols, selection_range,
+    DocumentKind, Position, Range, RenameError, document_symbols, folding_ranges, goto_definition,
+    hover, prepare_rename, references, rename, search_document_symbols, selection_range,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn document_symbols_include_root_and_child_items() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
@@ -21,6 +24,7 @@ fn document_symbols_include_root_and_child_items() {
 
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].name, "flowchart-v2 diagram");
+    assert_eq!(symbols[0].kind, EditorSemanticKind::Module);
     assert_eq!(symbols[0].fact_source, FenceTextIndexSource::ParserComplete);
     assert!(
         symbols[0]
@@ -31,10 +35,34 @@ fn document_symbols_include_root_and_child_items() {
 }
 
 #[test]
+fn root_semantic_kind_is_independent_of_flowchart_variant_name() {
+    let harness = SnapshotHarness::new();
+
+    for (version, source, expected_name) in [
+        (1, "flowchart TD\nA-->B\n", "flowchart-v2 diagram"),
+        (2, "flowchart-elk TD\nA-->B\n", "flowchart-elk diagram"),
+    ] {
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/flowchart-variant-{version}.mmd"),
+                version,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("flowchart variant should be accepted");
+        let symbols = document_symbols(&snapshot);
+
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, expected_name);
+        assert_eq!(symbols[0].kind, EditorSemanticKind::Module);
+    }
+}
+
+#[test]
 fn unavailable_body_does_not_manufacture_structure_or_navigation() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/unknown.mmd",
             1,
             "unknownDiagram\nPretendNode --> OtherNode\n".to_string(),
@@ -57,9 +85,9 @@ fn unavailable_body_does_not_manufacture_structure_or_navigation() {
 
 #[test]
 fn hover_reports_the_active_outline_entry() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\n".to_string(),
@@ -76,9 +104,9 @@ fn hover_reports_the_active_outline_entry() {
 
 #[test]
 fn hover_reports_payload_semantic_items() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
@@ -95,10 +123,10 @@ fn hover_reports_payload_semantic_items() {
 
 #[test]
 fn hover_escapes_markdown_control_text_from_parser_snapshot() {
-    let mut workspace = DocumentWorkspace::new();
+    let harness = SnapshotHarness::new();
     let title = "[link](https://example.invalid) ![img](x) `detail`";
-    let snapshot = workspace
-        .upsert(
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             format!("sequenceDiagram\ntitle: {title}\nAlice->>Bob: Hello\n"),
@@ -127,9 +155,9 @@ fn hover_escapes_markdown_control_text_from_parser_snapshot() {
 
 #[test]
 fn payload_semantic_items_are_not_navigation_targets() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
@@ -144,10 +172,33 @@ fn payload_semantic_items_are_not_navigation_targets() {
 }
 
 #[test]
+fn quadrant_class_use_is_not_a_generic_navigation_target() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/quadrant.mmd",
+            1,
+            concat!(
+                "quadrantChart\n",
+                "classDef priority color: #109060\n",
+                "Project A:::priority: [0.2, 0.8]\n",
+            )
+            .to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("quadrant chart should be accepted");
+
+    let position = Position::new(2, "Project A:::".len());
+    assert!(goto_definition(&snapshot, position).is_none());
+    assert!(references(&snapshot, position, true).is_none());
+    assert!(prepare_rename(&snapshot, position).is_none());
+}
+
+#[test]
 fn navigation_ignores_payload_spans_and_tracks_entities() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nA-->C\n".to_string(),
@@ -179,9 +230,9 @@ fn navigation_ignores_payload_spans_and_tracks_entities() {
 
 #[test]
 fn rename_obeys_eventmodeling_family_grammar_policies() {
-    let mut workspace = DocumentWorkspace::new();
-    let entities = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let entities = harness
+        .analyze(
             "file:///tmp/entities.mmd",
             1,
             "eventmodeling\nentity Sales.Order\n".to_string(),
@@ -199,8 +250,8 @@ fn rename_obeys_eventmodeling_family_grammar_policies() {
         Err(merman_editor_core::RenameError::InvalidName)
     ));
 
-    let frames = workspace
-        .upsert(
+    let frames = harness
+        .analyze(
             "file:///tmp/frames.mmd",
             1,
             "eventmodeling\ntf 01 ui Shop.Cart\n".to_string(),
@@ -215,8 +266,8 @@ fn rename_obeys_eventmodeling_family_grammar_policies() {
         Err(merman_editor_core::RenameError::InvalidName)
     ));
 
-    let grouped = workspace
-        .upsert(
+    let grouped = harness
+        .analyze(
             "file:///tmp/grouped.mmd",
             1,
             concat!(
@@ -247,9 +298,9 @@ fn rename_obeys_eventmodeling_family_grammar_policies() {
 
 #[test]
 fn flowchart_rename_accepts_parser_legal_dotted_id() {
-    let mut workspace = DocumentWorkspace::new();
-    let flowchart = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let flowchart = harness
+        .analyze(
             "file:///tmp/flowchart.mmd",
             1,
             "flowchart TD\nfoo.bar-->target\n".to_string(),
@@ -264,8 +315,8 @@ fn flowchart_rename_accepts_parser_legal_dotted_id() {
     assert_eq!(replacement, "renamed.node");
 
     let renamed_text = flowchart.text().replacen("foo.bar", replacement, 1);
-    let reparsed = workspace
-        .upsert(
+    let reparsed = harness
+        .analyze(
             flowchart.uri().clone(),
             2,
             renamed_text,
@@ -280,9 +331,9 @@ fn flowchart_rename_accepts_parser_legal_dotted_id() {
 
 #[test]
 fn flowchart_rename_rejects_keyword_prefixed_dotted_ids() {
-    let mut workspace = DocumentWorkspace::new();
-    let flowchart = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let flowchart = harness
+        .analyze(
             "file:///tmp/flowchart-keyword.mmd",
             1,
             "flowchart TD\nsource-->target\n".to_string(),
@@ -301,9 +352,9 @@ fn flowchart_rename_rejects_keyword_prefixed_dotted_ids() {
 
 #[test]
 fn abnf_rename_rejects_parser_illegal_underscore() {
-    let mut workspace = DocumentWorkspace::new();
-    let abnf = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let abnf = harness
+        .analyze(
             "file:///tmp/grammar.mmd",
             1,
             "railroad-abnf-beta\nrule = \"a\";\n".to_string(),
@@ -319,9 +370,9 @@ fn abnf_rename_rejects_parser_illegal_underscore() {
 
 #[test]
 fn git_graph_rename_accepts_reference_punctuation() {
-    let mut workspace = DocumentWorkspace::new();
-    let git_graph = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let git_graph = harness
+        .analyze(
             "file:///tmp/git-graph.mmd",
             1,
             concat!(
@@ -349,9 +400,9 @@ fn git_graph_rename_accepts_reference_punctuation() {
 
 #[test]
 fn architecture_rename_rejects_reserved_identifier() {
-    let mut workspace = DocumentWorkspace::new();
-    let architecture = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let architecture = harness
+        .analyze(
             "file:///tmp/architecture.mmd",
             1,
             "architecture-beta\n  service server\n".to_string(),
@@ -367,10 +418,42 @@ fn architecture_rename_rejects_reserved_identifier() {
 }
 
 #[test]
+fn architecture_recovery_preserves_junction_navigation_kind() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/architecture-recovery.mmd",
+            1,
+            concat!(
+                "architecture-beta\n",
+                "junction hub\n",
+                "service api\n",
+                "api:R -- L:hub\n",
+                "missing:R -- L:api\n",
+            )
+            .to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("recovered architecture source should be accepted");
+
+    let position = Position::new(3, "api:R -- L:".len());
+    let definition = goto_definition(&snapshot, position).expect("hub definition");
+    assert_eq!(definition.range.start, Position::new(1, "junction ".len()));
+
+    let refs = references(&snapshot, position, true).expect("hub references");
+    assert_eq!(refs.len(), 2);
+
+    let edit = rename(&snapshot, position, "gateway")
+        .expect("valid architecture identifier")
+        .expect("hub rename edit");
+    assert_eq!(edit.changes.get(snapshot.uri()).unwrap().len(), 2);
+}
+
+#[test]
 fn shape_data_nodes_are_navigation_targets_but_edge_shape_data_is_not() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nD@{ shape: rounded }\nD --> E\nA e1@--> B\ne1@{ curve: basis }\n"
@@ -393,9 +476,9 @@ fn shape_data_nodes_are_navigation_targets_but_edge_shape_data_is_not() {
 
 #[test]
 fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "mindmap\nroot(Root Node)\n child1(Child 1)\n".to_string(),
@@ -428,9 +511,9 @@ fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
 
 #[test]
 fn typed_reference_groups_keep_same_name_different_kinds_separate() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             concat!(
@@ -467,9 +550,9 @@ fn typed_reference_groups_keep_same_name_different_kinds_separate() {
 
 #[test]
 fn document_symbol_search_filters_and_includes_outline_items() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
@@ -498,9 +581,9 @@ fn document_symbol_search_filters_and_includes_outline_items() {
 
 #[test]
 fn selection_range_returns_parser_backed_symbol_chain() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
@@ -522,9 +605,9 @@ fn selection_range_returns_parser_backed_symbol_chain() {
 
 #[test]
 fn selection_range_ignores_markdown_prose() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.md",
             1,
             "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
@@ -539,9 +622,9 @@ fn selection_range_ignores_markdown_prose() {
 
 #[test]
 fn folding_ranges_include_markdown_fences() {
-    let mut workspace = DocumentWorkspace::new();
-    let markdown = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let markdown = harness
+        .analyze(
             "file:///tmp/example.md",
             1,
             "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),

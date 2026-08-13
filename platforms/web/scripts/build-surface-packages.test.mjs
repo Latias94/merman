@@ -134,6 +134,7 @@ describe("browser package assembly", () => {
       async default(input) {
         receivedInput = input;
       },
+      transportApiVersion: () => 4,
     };
     const runtime = bindSurfaceRuntime(
       async () => {

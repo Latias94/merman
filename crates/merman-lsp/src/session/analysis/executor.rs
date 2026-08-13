@@ -1,11 +1,11 @@
 use super::AnalysisJobGeneration;
 use crate::session::analysis::request::{
-    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionKey,
-    DiagnosticReprojectionRequest, DiagnosticReprojectionResult,
+    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionRequest,
 };
-#[cfg(test)]
-use crate::snapshot::{DiagnosticGeneration, DocumentEpoch, SnapshotGeneration};
-use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot};
+use crate::snapshot::{
+    AnalysisResultIdentity, DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch,
+    DocumentSnapshot, SnapshotGeneration,
+};
 use crate::sync::lock_recovering_poison;
 use merman_analysis::AnalysisCancellationToken;
 #[cfg(test)]
@@ -52,8 +52,10 @@ struct AnalysisExecutorInner {
 
 #[derive(Default)]
 struct AnalysisRegistry {
-    jobs: HashMap<AnalysisWorkKey, Arc<AnalysisJob>>,
-    pending: Option<Arc<PendingAnalysis>>,
+    build_jobs: HashMap<AnalysisBuildKey, Arc<AnalysisJob<Arc<AnalysisBuildOutput>>>>,
+    reprojection_jobs:
+        HashMap<ReprojectionWorkIdentity, Arc<AnalysisJob<Arc<DocumentAnalysisContext>>>>,
+    pending: Option<PendingAnalysis>,
     next_generation: u64,
     document_generations: HashMap<Uri, AnalysisJobGeneration>,
 }
@@ -187,34 +189,34 @@ impl TestWorkerExitGate {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum AnalysisWorkKey {
-    Build(AnalysisBuildKey),
-    Reproject(DiagnosticReprojectionKey),
+struct ReprojectionWorkIdentity {
+    uri: Uri,
+    analysis_job_generation: AnalysisJobGeneration,
+    document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    target_diagnostic_generation: DiagnosticGeneration,
+    analysis_result_identity: AnalysisResultIdentity,
 }
 
-impl AnalysisWorkKey {
-    fn is_reprojection(&self) -> bool {
-        matches!(self, Self::Reproject(_))
+impl ReprojectionWorkIdentity {
+    fn from_request(request: &DiagnosticReprojectionRequest) -> Self {
+        Self {
+            uri: request.uri().clone(),
+            analysis_job_generation: request.analysis_job_generation(),
+            document_epoch: request.document_epoch(),
+            snapshot_generation: request.snapshot_generation(),
+            target_diagnostic_generation: request.target_diagnostic_generation(),
+            analysis_result_identity: request.analysis_result_identity(),
+        }
     }
 
     fn uri(&self) -> &Uri {
-        match self {
-            Self::Build(key) => key.uri(),
-            Self::Reproject(key) => key.uri(),
-        }
+        &self.uri
     }
 
     fn analysis_job_generation(&self) -> AnalysisJobGeneration {
-        match self {
-            Self::Build(key) => key.analysis_job_generation(),
-            Self::Reproject(key) => key.analysis_job_generation(),
-        }
+        self.analysis_job_generation
     }
-}
-
-enum AnalysisWork {
-    Build(Box<AnalysisBuildRequest>),
-    Reproject(Box<DiagnosticReprojectionRequest>),
 }
 
 /// One bounded admission rendezvous outside the eight physical worker slots.
@@ -223,15 +225,25 @@ enum AnalysisWork {
 /// request payloads into the semaphore's unbounded waiter queue. A different key is rejected
 /// while this slot is occupied; compliant transports never reach that path because they retain
 /// at most eight handler futures.
-struct PendingAnalysis {
-    key: AnalysisWorkKey,
-    job: Arc<AnalysisJob>,
+enum PendingAnalysis {
+    Build(Arc<PendingRegistration<BuildOperation>>),
+    Reproject(Arc<PendingRegistration<ReprojectionOperation>>),
 }
 
-#[derive(Clone)]
-enum AnalysisWorkOutput {
-    Build(Arc<AnalysisBuildOutput>),
-    Reproject(Arc<DiagnosticReprojectionResult>),
+impl PendingAnalysis {
+    fn uri(&self) -> &Uri {
+        match self {
+            Self::Build(pending) => pending.key.uri(),
+            Self::Reproject(pending) => pending.key.uri(),
+        }
+    }
+
+    fn cancel(&self, error: AnalysisExecutionError) {
+        match self {
+            Self::Build(pending) => pending.job.cancel(error),
+            Self::Reproject(pending) => pending.job.cancel(error),
+        }
+    }
 }
 
 struct AnalysisBuildOutput {
@@ -251,6 +263,175 @@ impl AnalysisBuildOutput {
         self.cache_admission_claimed
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
+    }
+}
+
+trait AnalysisOperation: Sized + Send + 'static {
+    type Key: Clone + Eq + std::hash::Hash + Send + Sync + 'static;
+    type Request: Clone + Send + 'static;
+    type Output: Clone + Send + 'static;
+
+    fn key(request: &Self::Request) -> Self::Key;
+    fn uri(key: &Self::Key) -> &Uri;
+    fn analysis_job_generation(key: &Self::Key) -> AnalysisJobGeneration;
+    fn jobs(registry: &AnalysisRegistry) -> &HashMap<Self::Key, Arc<AnalysisJob<Self::Output>>>;
+    fn jobs_mut(
+        registry: &mut AnalysisRegistry,
+    ) -> &mut HashMap<Self::Key, Arc<AnalysisJob<Self::Output>>>;
+    fn pending(pending: &PendingAnalysis) -> Option<&Arc<PendingRegistration<Self>>>;
+    fn wrap_pending(pending: Arc<PendingRegistration<Self>>) -> PendingAnalysis;
+    fn run(
+        request: Self::Request,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self::Output, AnalysisExecutionError>;
+
+    #[cfg(test)]
+    fn record_execution(inner: &AnalysisExecutorInner);
+}
+
+struct BuildOperation;
+
+impl AnalysisOperation for BuildOperation {
+    type Key = AnalysisBuildKey;
+    type Request = AnalysisBuildRequest;
+    type Output = Arc<AnalysisBuildOutput>;
+
+    fn key(request: &Self::Request) -> Self::Key {
+        request.key()
+    }
+
+    fn uri(key: &Self::Key) -> &Uri {
+        key.uri()
+    }
+
+    fn analysis_job_generation(key: &Self::Key) -> AnalysisJobGeneration {
+        key.analysis_job_generation()
+    }
+
+    fn jobs(registry: &AnalysisRegistry) -> &HashMap<Self::Key, Arc<AnalysisJob<Self::Output>>> {
+        &registry.build_jobs
+    }
+
+    fn jobs_mut(
+        registry: &mut AnalysisRegistry,
+    ) -> &mut HashMap<Self::Key, Arc<AnalysisJob<Self::Output>>> {
+        &mut registry.build_jobs
+    }
+
+    fn pending(pending: &PendingAnalysis) -> Option<&Arc<PendingRegistration<Self>>> {
+        match pending {
+            PendingAnalysis::Build(pending) => Some(pending),
+            PendingAnalysis::Reproject(_) => None,
+        }
+    }
+
+    fn wrap_pending(pending: Arc<PendingRegistration<Self>>) -> PendingAnalysis {
+        PendingAnalysis::Build(pending)
+    }
+
+    fn run(
+        request: Self::Request,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self::Output, AnalysisExecutionError> {
+        match request.build_cancellable(cancellation) {
+            Ok(snapshot) => Ok(Arc::new(AnalysisBuildOutput::new(snapshot))),
+            Err(AnalysisBuildError::Cancelled(_)) => Err(AnalysisExecutionError::cancelled()),
+            Err(AnalysisBuildError::Rejected(rejection)) => {
+                Err(AnalysisExecutionError::resource_rejected(rejection))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn record_execution(inner: &AnalysisExecutorInner) {
+        inner.execution_count.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+struct ReprojectionOperation;
+
+impl AnalysisOperation for ReprojectionOperation {
+    type Key = ReprojectionWorkIdentity;
+    type Request = DiagnosticReprojectionRequest;
+    type Output = Arc<DocumentAnalysisContext>;
+
+    fn key(request: &Self::Request) -> Self::Key {
+        ReprojectionWorkIdentity::from_request(request)
+    }
+
+    fn uri(key: &Self::Key) -> &Uri {
+        key.uri()
+    }
+
+    fn analysis_job_generation(key: &Self::Key) -> AnalysisJobGeneration {
+        key.analysis_job_generation()
+    }
+
+    fn jobs(registry: &AnalysisRegistry) -> &HashMap<Self::Key, Arc<AnalysisJob<Self::Output>>> {
+        &registry.reprojection_jobs
+    }
+
+    fn jobs_mut(
+        registry: &mut AnalysisRegistry,
+    ) -> &mut HashMap<Self::Key, Arc<AnalysisJob<Self::Output>>> {
+        &mut registry.reprojection_jobs
+    }
+
+    fn pending(pending: &PendingAnalysis) -> Option<&Arc<PendingRegistration<Self>>> {
+        match pending {
+            PendingAnalysis::Build(_) => None,
+            PendingAnalysis::Reproject(pending) => Some(pending),
+        }
+    }
+
+    fn wrap_pending(pending: Arc<PendingRegistration<Self>>) -> PendingAnalysis {
+        PendingAnalysis::Reproject(pending)
+    }
+
+    fn run(
+        request: Self::Request,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self::Output, AnalysisExecutionError> {
+        request
+            .project_with_cancellation(cancellation)
+            .map_err(|_| AnalysisExecutionError::cancelled())
+    }
+
+    #[cfg(test)]
+    fn record_execution(inner: &AnalysisExecutorInner) {
+        inner.reprojection_count.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+struct PendingRegistration<O: AnalysisOperation> {
+    key: O::Key,
+    job: Arc<AnalysisJob<O::Output>>,
+}
+
+enum AdmissionState<O: AnalysisOperation> {
+    Join(Arc<AnalysisJob<O::Output>>),
+    Vacant,
+    Stale,
+    Overloaded,
+}
+
+fn admission_state<O: AnalysisOperation>(
+    registry: &AnalysisRegistry,
+    key: &O::Key,
+) -> AdmissionState<O> {
+    if Some(O::analysis_job_generation(key)) != registry.current_generation_for(O::uri(key)) {
+        return AdmissionState::Stale;
+    }
+    if let Some(job) = O::jobs(registry).get(key) {
+        return AdmissionState::Join(Arc::clone(job));
+    }
+    match &registry.pending {
+        Some(pending) => O::pending(pending)
+            .filter(|pending| &pending.key == key)
+            .map_or(AdmissionState::Overloaded, |pending| {
+                AdmissionState::Join(Arc::clone(&pending.job))
+            }),
+        None => AdmissionState::Vacant,
     }
 }
 
@@ -274,15 +455,15 @@ impl AnalysisRegistry {
     }
 }
 
-struct AnalysisJob {
-    result: Mutex<Option<Result<AnalysisWorkOutput, AnalysisExecutionError>>>,
+struct AnalysisJob<T: Clone> {
+    result: Mutex<Option<Result<T, AnalysisExecutionError>>>,
     ready: Notify,
     cancellation: AnalysisCancellationToken,
     cancellation_signal: Notify,
     waiters: AtomicUsize,
 }
 
-impl AnalysisJob {
+impl<T: Clone> AnalysisJob<T> {
     fn new(cancellation: AnalysisCancellationToken) -> Self {
         Self {
             result: Mutex::new(None),
@@ -293,7 +474,7 @@ impl AnalysisJob {
         }
     }
 
-    async fn wait(&self) -> Result<AnalysisWorkOutput, AnalysisExecutionError> {
+    async fn wait(&self) -> Result<T, AnalysisExecutionError> {
         loop {
             let notified = self.ready.notified();
             tokio::pin!(notified);
@@ -313,7 +494,7 @@ impl AnalysisJob {
         matches!(&*lock_recovering_poison(&self.result), Some(Err(_)))
     }
 
-    fn complete(&self, result: Result<AnalysisWorkOutput, AnalysisExecutionError>) {
+    fn complete(&self, result: Result<T, AnalysisExecutionError>) {
         let mut stored = lock_recovering_poison(&self.result);
         if stored.is_none() {
             *stored = Some(result);
@@ -345,17 +526,17 @@ impl AnalysisJob {
     }
 }
 
-struct AnalysisWaiter {
+struct AnalysisWaiter<O: AnalysisOperation> {
     inner: Weak<AnalysisExecutorInner>,
-    key: AnalysisWorkKey,
-    job: Arc<AnalysisJob>,
+    key: O::Key,
+    job: Arc<AnalysisJob<O::Output>>,
 }
 
-impl AnalysisWaiter {
+impl<O: AnalysisOperation> AnalysisWaiter<O> {
     fn new(
         inner: &Arc<AnalysisExecutorInner>,
-        key: AnalysisWorkKey,
-        job: Arc<AnalysisJob>,
+        key: O::Key,
+        job: Arc<AnalysisJob<O::Output>>,
     ) -> Self {
         job.waiters.fetch_add(1, Ordering::Relaxed);
         Self {
@@ -365,14 +546,14 @@ impl AnalysisWaiter {
         }
     }
 
-    async fn wait(&self) -> Result<AnalysisWorkOutput, AnalysisExecutionError> {
+    async fn wait(&self) -> Result<O::Output, AnalysisExecutionError> {
         self.job.wait().await
     }
 }
 
 pub(in crate::session) struct AnalysisExecutionLease {
     output: Arc<AnalysisBuildOutput>,
-    _waiter: AnalysisWaiter,
+    _waiter: AnalysisWaiter<BuildOperation>,
 }
 
 impl fmt::Debug for AnalysisExecutionLease {
@@ -395,61 +576,52 @@ impl AnalysisExecutionLease {
 }
 
 pub(in crate::session) struct DiagnosticReprojectionLease {
-    result: Arc<DiagnosticReprojectionResult>,
-    _waiter: AnalysisWaiter,
+    projected: Arc<DocumentAnalysisContext>,
+    _waiter: AnalysisWaiter<ReprojectionOperation>,
 }
 
 impl fmt::Debug for DiagnosticReprojectionLease {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("DiagnosticReprojectionLease")
-            .field("result", &self.result)
+            .field("projected", &self.projected)
             .finish_non_exhaustive()
     }
 }
 
 impl DiagnosticReprojectionLease {
-    pub(in crate::session) fn key(&self) -> &DiagnosticReprojectionKey {
-        self.result.key()
-    }
-
     pub(in crate::session) fn projected(&self) -> &Arc<DocumentAnalysisContext> {
-        self.result.projected()
-    }
-
-    #[cfg(test)]
-    pub(in crate::session) fn shares_result_with(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.result, &other.result)
+        &self.projected
     }
 }
 
-impl Drop for AnalysisWaiter {
+impl<O: AnalysisOperation> Drop for AnalysisWaiter<O> {
     fn drop(&mut self) {
         let Some(inner) = self.inner.upgrade() else {
             return;
         };
 
-        let should_cancel = {
-            let mut registry = lock_recovering_poison(&inner.registry);
-            let previous = self.job.waiters.fetch_sub(1, Ordering::Relaxed);
-            debug_assert!(previous > 0, "analysis waiter count underflow");
-            if previous == 1 {
-                if registry
-                    .jobs
-                    .get(&self.key)
-                    .is_some_and(|registered| Arc::ptr_eq(registered, &self.job))
-                {
-                    registry.jobs.remove(&self.key);
-                } else if registry.pending.as_ref().is_some_and(|pending| {
-                    pending.key == self.key && Arc::ptr_eq(&pending.job, &self.job)
-                }) {
-                    registry.pending = None;
+        let should_cancel =
+            {
+                let mut registry = lock_recovering_poison(&inner.registry);
+                let previous = self.job.waiters.fetch_sub(1, Ordering::Relaxed);
+                debug_assert!(previous > 0, "analysis waiter count underflow");
+                if previous == 1 {
+                    if O::jobs(&registry)
+                        .get(&self.key)
+                        .is_some_and(|registered| Arc::ptr_eq(registered, &self.job))
+                    {
+                        O::jobs_mut(&mut registry).remove(&self.key);
+                    } else if registry.pending.as_ref().and_then(O::pending).is_some_and(
+                        |pending| pending.key == self.key && Arc::ptr_eq(&pending.job, &self.job),
+                    ) {
+                        registry.pending = None;
+                    }
+                    !self.job.is_complete()
+                } else {
+                    false
                 }
-                !self.job.is_complete()
-            } else {
-                false
-            }
-        };
+            };
 
         if should_cancel {
             self.job.cancel(AnalysisExecutionError::cancelled());
@@ -562,18 +734,11 @@ impl AnalysisExecutor {
         &self,
         request: &AnalysisBuildRequest,
     ) -> Result<AnalysisExecutionLease, AnalysisExecutionError> {
-        let key = AnalysisWorkKey::Build(request.key());
-        let waiter = self.execute_work(key, self.inner.cancellation_parent.child(), || {
-            AnalysisWork::Build(Box::new(request.clone()))
-        })?;
+        let waiter = self
+            .execute_operation::<BuildOperation>(request, self.inner.cancellation_parent.child())?;
         let output = waiter.wait().await?;
-        let AnalysisWorkOutput::Build(context) = output else {
-            return Err(AnalysisExecutionError::new(
-                "analysis executor returned a diagnostic projection for a build request",
-            ));
-        };
         Ok(AnalysisExecutionLease {
-            output: context,
+            output,
             _waiter: waiter,
         })
     }
@@ -582,58 +747,35 @@ impl AnalysisExecutor {
         &self,
         request: &DiagnosticReprojectionRequest,
     ) -> Result<DiagnosticReprojectionLease, AnalysisExecutionError> {
-        let key = AnalysisWorkKey::Reproject(request.key());
-        let waiter = self.execute_work(key, request.cancellation_child(), || {
-            AnalysisWork::Reproject(Box::new(request.clone()))
-        })?;
-        let output = waiter.wait().await?;
-        let AnalysisWorkOutput::Reproject(result) = output else {
-            return Err(AnalysisExecutionError::new(
-                "analysis executor returned a build result for a diagnostic projection request",
-            ));
-        };
+        let waiter =
+            self.execute_operation::<ReprojectionOperation>(request, request.cancellation_child())?;
+        let projected = waiter.wait().await?;
         Ok(DiagnosticReprojectionLease {
-            result,
+            projected,
             _waiter: waiter,
         })
     }
 
-    fn execute_work<F>(
+    fn execute_operation<O: AnalysisOperation>(
         &self,
-        key: AnalysisWorkKey,
+        request: &O::Request,
         cancellation: AnalysisCancellationToken,
-        make_work: F,
-    ) -> Result<AnalysisWaiter, AnalysisExecutionError>
-    where
-        F: FnOnce() -> AnalysisWork,
-    {
+    ) -> Result<AnalysisWaiter<O>, AnalysisExecutionError> {
         if cancellation.is_cancelled() {
             return Err(AnalysisExecutionError::stale());
         }
-        let mut make_work = Some(make_work);
+        let key = O::key(request);
         let existing = {
             let registry = lock_recovering_poison(&self.inner.registry);
-            if Some(key.analysis_job_generation()) != registry.current_generation_for(key.uri()) {
-                return Err(AnalysisExecutionError::stale());
-            }
-            if let Some(job) = registry.jobs.get(&key) {
-                Some(AnalysisWaiter::new(
-                    &self.inner,
-                    key.clone(),
-                    Arc::clone(job),
-                ))
-            } else if let Some(pending) = &registry.pending {
-                if pending.key == key {
-                    Some(AnalysisWaiter::new(
-                        &self.inner,
-                        key.clone(),
-                        Arc::clone(&pending.job),
-                    ))
-                } else {
+            match admission_state::<O>(&registry, &key) {
+                AdmissionState::Join(job) => {
+                    Some(AnalysisWaiter::new(&self.inner, key.clone(), job))
+                }
+                AdmissionState::Vacant => None,
+                AdmissionState::Stale => return Err(AnalysisExecutionError::stale()),
+                AdmissionState::Overloaded => {
                     return Err(AnalysisExecutionError::overloaded());
                 }
-            } else {
-                None
             }
         };
         if let Some(waiter) = existing {
@@ -649,47 +791,34 @@ impl AnalysisExecutor {
                 let mut task_permit = Some(task_permit);
                 let (waiter, start) = {
                     let mut registry = lock_recovering_poison(&self.inner.registry);
-                    if Some(key.analysis_job_generation())
-                        != registry.current_generation_for(key.uri())
-                    {
-                        return Err(AnalysisExecutionError::stale());
-                    }
-                    if let Some(job) = registry.jobs.get(&key) {
-                        (
-                            AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(job)),
-                            None,
-                        )
-                    } else if let Some(pending) = &registry.pending {
-                        if pending.key != key {
+                    match admission_state::<O>(&registry, &key) {
+                        AdmissionState::Join(job) => {
+                            (AnalysisWaiter::new(&self.inner, key.clone(), job), None)
+                        }
+                        AdmissionState::Vacant => {
+                            let job = Arc::new(AnalysisJob::new(cancellation.clone()));
+                            let waiter =
+                                AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
+                            // Track the worker before publishing the job so shutdown cannot observe an
+                            // empty worker set and then race with this already-admitted spawn.
+                            let worker_lease = self.inner.task_capacity.start_worker(
+                                task_permit
+                                    .take()
+                                    .expect("new analysis worker must retain its task permit"),
+                            );
+                            O::jobs_mut(&mut registry).insert(key.clone(), Arc::clone(&job));
+                            (waiter, Some((request.clone(), job, worker_lease)))
+                        }
+                        AdmissionState::Stale => return Err(AnalysisExecutionError::stale()),
+                        AdmissionState::Overloaded => {
                             return Err(AnalysisExecutionError::overloaded());
                         }
-                        (
-                            AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&pending.job)),
-                            None,
-                        )
-                    } else {
-                        let job = Arc::new(AnalysisJob::new(cancellation.clone()));
-                        let waiter =
-                            AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
-                        // Track the worker before publishing the job so shutdown cannot observe an
-                        // empty worker set and then race with this already-admitted spawn.
-                        let worker_lease = self.inner.task_capacity.start_worker(
-                            task_permit
-                                .take()
-                                .expect("new analysis worker must retain its task permit"),
-                        );
-                        registry.jobs.insert(key.clone(), Arc::clone(&job));
-                        let work = make_work
-                            .take()
-                            .expect("new analysis work must retain its factory")(
-                        );
-                        (waiter, Some((work, job, worker_lease)))
                     }
                 };
                 drop(task_permit);
 
-                if let Some((work, job, worker_lease)) = start {
-                    self.start(key, work, job, worker_lease);
+                if let Some((request, job, worker_lease)) = start {
+                    self.start::<O>(key, request, job, worker_lease);
                 }
                 if cancellation.is_cancelled() {
                     drop(waiter);
@@ -700,43 +829,30 @@ impl AnalysisExecutor {
             Err(tokio::sync::TryAcquireError::NoPermits) => {
                 let (waiter, pending) = {
                     let mut registry = lock_recovering_poison(&self.inner.registry);
-                    if Some(key.analysis_job_generation())
-                        != registry.current_generation_for(key.uri())
-                    {
-                        return Err(AnalysisExecutionError::stale());
-                    }
-                    if let Some(job) = registry.jobs.get(&key) {
-                        (
-                            AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(job)),
-                            None,
-                        )
-                    } else if let Some(pending) = &registry.pending {
-                        if pending.key != key {
+                    match admission_state::<O>(&registry, &key) {
+                        AdmissionState::Join(job) => {
+                            (AnalysisWaiter::new(&self.inner, key.clone(), job), None)
+                        }
+                        AdmissionState::Vacant => {
+                            let job = Arc::new(AnalysisJob::new(cancellation.clone()));
+                            let waiter =
+                                AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
+                            let pending = Arc::new(PendingRegistration::<O> {
+                                key: key.clone(),
+                                job,
+                            });
+                            registry.pending = Some(O::wrap_pending(Arc::clone(&pending)));
+                            (waiter, Some((pending, request.clone())))
+                        }
+                        AdmissionState::Stale => return Err(AnalysisExecutionError::stale()),
+                        AdmissionState::Overloaded => {
                             return Err(AnalysisExecutionError::overloaded());
                         }
-                        (
-                            AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&pending.job)),
-                            None,
-                        )
-                    } else {
-                        let job = Arc::new(AnalysisJob::new(cancellation.clone()));
-                        let waiter =
-                            AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
-                        let work = make_work
-                            .take()
-                            .expect("pending analysis work must retain its factory")(
-                        );
-                        let pending = Arc::new(PendingAnalysis {
-                            key: key.clone(),
-                            job,
-                        });
-                        registry.pending = Some(Arc::clone(&pending));
-                        (waiter, Some((pending, work)))
                     }
                 };
 
-                if let Some((pending, work)) = pending {
-                    self.start_pending(pending, work);
+                if let Some((pending, request)) = pending {
+                    self.start_pending::<O>(pending, request);
                 }
                 if cancellation.is_cancelled() {
                     drop(waiter);
@@ -750,7 +866,11 @@ impl AnalysisExecutor {
         }
     }
 
-    fn start_pending(&self, pending: Arc<PendingAnalysis>, work: AnalysisWork) {
+    fn start_pending<O: AnalysisOperation>(
+        &self,
+        pending: Arc<PendingRegistration<O>>,
+        request: O::Request,
+    ) {
         let executor = self.clone();
         tokio::spawn(async move {
             let task_permit = tokio::select! {
@@ -758,7 +878,7 @@ impl AnalysisExecutor {
                 permit = executor.inner.task_capacity.acquire() => match permit {
                     Ok(permit) => permit,
                     Err(error) => {
-                        remove_pending_if_registered(&executor.inner, &pending);
+                        remove_pending_if_registered::<O>(&executor.inner, &pending);
                         pending.job.cancel(AnalysisExecutionError::new(format!(
                             "document analysis task capacity closed: {error}"
                         )));
@@ -776,13 +896,14 @@ impl AnalysisExecutor {
                 let registered = registry
                     .pending
                     .as_ref()
+                    .and_then(O::pending)
                     .is_some_and(|registered| Arc::ptr_eq(registered, &pending));
                 if !registered {
                     (None, false)
                 } else {
                     registry.pending = None;
-                    if Some(pending.key.analysis_job_generation())
-                        != registry.current_generation_for(pending.key.uri())
+                    if Some(O::analysis_job_generation(&pending.key))
+                        != registry.current_generation_for(O::uri(&pending.key))
                     {
                         (None, true)
                     } else {
@@ -791,11 +912,10 @@ impl AnalysisExecutor {
                                 .take()
                                 .expect("promoted analysis must retain its task permit"),
                         );
-                        let previous = registry
-                            .jobs
+                        let previous = O::jobs_mut(&mut registry)
                             .insert(pending.key.clone(), Arc::clone(&pending.job));
                         debug_assert!(previous.is_none(), "pending analysis key was started twice");
-                        (Some((work, worker_lease)), false)
+                        (Some(worker_lease), false)
                     }
                 }
             };
@@ -805,10 +925,10 @@ impl AnalysisExecutor {
                 pending.job.cancel(AnalysisExecutionError::stale());
                 return;
             }
-            if let Some((work, worker_lease)) = start {
-                executor.start(
+            if let Some(worker_lease) = start {
+                executor.start::<O>(
                     pending.key.clone(),
-                    work,
+                    request,
                     Arc::clone(&pending.job),
                     worker_lease,
                 );
@@ -816,11 +936,11 @@ impl AnalysisExecutor {
         });
     }
 
-    fn start(
+    fn start<O: AnalysisOperation>(
         &self,
-        key: AnalysisWorkKey,
-        work: AnalysisWork,
-        job: Arc<AnalysisJob>,
+        key: O::Key,
+        request: O::Request,
+        job: Arc<AnalysisJob<O::Output>>,
         worker_lease: AnalysisWorkerLease,
     ) {
         let inner = Arc::clone(&self.inner);
@@ -832,29 +952,11 @@ impl AnalysisExecutor {
                 permit = Arc::clone(&inner.cpu_permits).acquire_owned() => match permit {
                 Ok(permit) if !job.is_cancelled() => {
                     #[cfg(test)]
-                    match &work {
-                        AnalysisWork::Build(_) => {
-                            inner.execution_count.fetch_add(1, Ordering::Relaxed);
-                        }
-                        AnalysisWork::Reproject(_) => {
-                            inner.reprojection_count.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
+                    O::record_execution(&inner);
                     let cancellation = job.cancellation.clone();
                     tokio::task::spawn_blocking(move || {
                         let _permit = permit;
-                        match work {
-                            AnalysisWork::Build(request) => request
-                                .build_cancellable(&cancellation)
-                                .map(AnalysisBuildOutput::new)
-                                .map(Arc::new)
-                                .map(AnalysisWorkOutput::Build)
-                                .map_err(AnalysisWorkError::Build),
-                            AnalysisWork::Reproject(request) => request
-                                .project_with_cancellation(&cancellation)
-                                .map(|result| AnalysisWorkOutput::Reproject(Arc::new(result)))
-                                .map_err(|_| AnalysisWorkError::Cancelled),
-                        }
+                        O::run(request, &cancellation)
                     })
                     .await
                     .map_err(|error| {
@@ -862,16 +964,7 @@ impl AnalysisExecutor {
                             "document analysis worker failed: {error}"
                         ))
                     })
-                    .and_then(|result| match result {
-                        Ok(output) => Ok(output),
-                        Err(AnalysisWorkError::Build(AnalysisBuildError::Cancelled(_)))
-                        | Err(AnalysisWorkError::Cancelled) => {
-                            Err(AnalysisExecutionError::cancelled())
-                        }
-                        Err(AnalysisWorkError::Build(AnalysisBuildError::Rejected(rejection))) => {
-                            Err(AnalysisExecutionError::resource_rejected(rejection))
-                        }
-                    })
+                    .and_then(|result| result)
                 }
                 Ok(_) => Err(AnalysisExecutionError::cancelled()),
                 Err(error) => Err(AnalysisExecutionError::new(format!(
@@ -882,7 +975,7 @@ impl AnalysisExecutor {
 
             job.complete(result);
             if job.is_cancelled() || job.has_error() {
-                remove_job_if_registered(&inner, &key, &job);
+                remove_job_if_registered::<O>(&inner, &key, &job);
             }
             #[cfg(test)]
             if let Some(gate) = worker_exit_gate {
@@ -903,83 +996,95 @@ impl AnalysisExecutor {
     /// Drops every diagnostic-only projection from admission without disturbing
     /// the canonical snapshot builds that may still be needed by a later policy.
     pub(in crate::session) fn invalidate_reprojections(&self) {
-        let cancelled = {
+        let (cancelled, pending) = {
             let mut registry = lock_recovering_poison(&self.inner.registry);
-            let mut cancelled = Vec::new();
-            if registry
-                .pending
-                .as_ref()
-                .is_some_and(|pending| pending.key.is_reprojection())
-            {
-                let pending = registry
-                    .pending
-                    .take()
-                    .expect("checked pending analysis must remain registered");
-                cancelled.push(Arc::clone(&pending.job));
-            }
-            registry.jobs.retain(|key, job| {
-                if !key.is_reprojection() {
-                    return true;
-                }
-
-                cancelled.push(Arc::clone(job));
-                false
-            });
-            cancelled
+            let pending = matches!(registry.pending, Some(PendingAnalysis::Reproject(_)))
+                .then(|| registry.pending.take())
+                .flatten();
+            let cancelled = registry
+                .reprojection_jobs
+                .drain()
+                .map(|(_, job)| job)
+                .collect::<Vec<_>>();
+            (cancelled, pending)
         };
 
         for job in cancelled {
             job.cancel(AnalysisExecutionError::stale());
         }
+        if let Some(pending) = pending {
+            pending.cancel(AnalysisExecutionError::stale());
+        }
     }
 
     fn invalidate_uri(&self, uri: &Uri) {
-        let cancelled = {
+        let (builds, reprojections, pending) = {
             let mut registry = lock_recovering_poison(&self.inner.registry);
             registry.document_generations.remove(uri);
-            let mut cancelled = Vec::new();
-            if registry
+            let pending = if registry
                 .pending
                 .as_ref()
-                .is_some_and(|pending| pending.key.uri() == uri)
+                .is_some_and(|pending| pending.uri() == uri)
             {
-                let pending = registry
-                    .pending
-                    .take()
-                    .expect("checked pending analysis must remain registered");
-                cancelled.push(Arc::clone(&pending.job));
-            }
-            registry.jobs.retain(|key, job| {
+                registry.pending.take()
+            } else {
+                None
+            };
+            let mut builds = Vec::new();
+            registry.build_jobs.retain(|key, job| {
                 if key.uri() == uri {
-                    cancelled.push(Arc::clone(job));
+                    builds.push(Arc::clone(job));
                     false
                 } else {
                     true
                 }
             });
-            cancelled
+            let mut reprojections = Vec::new();
+            registry.reprojection_jobs.retain(|key, job| {
+                if key.uri() == uri {
+                    reprojections.push(Arc::clone(job));
+                    false
+                } else {
+                    true
+                }
+            });
+            (builds, reprojections, pending)
         };
-        for job in cancelled {
+        for job in builds {
             job.cancel(AnalysisExecutionError::stale());
+        }
+        for job in reprojections {
+            job.cancel(AnalysisExecutionError::stale());
+        }
+        if let Some(pending) = pending {
+            pending.cancel(AnalysisExecutionError::stale());
         }
     }
 
     pub(in crate::session) fn invalidate_all(&self) {
-        let cancelled = {
+        let (builds, reprojections, pending) = {
             let mut registry = lock_recovering_poison(&self.inner.registry);
             registry.document_generations.clear();
-            let mut cancelled = registry
-                .jobs
+            let builds = registry
+                .build_jobs
                 .drain()
                 .map(|(_, job)| job)
                 .collect::<Vec<_>>();
-            if let Some(pending) = registry.pending.take() {
-                cancelled.push(Arc::clone(&pending.job));
-            }
-            cancelled
+            let reprojections = registry
+                .reprojection_jobs
+                .drain()
+                .map(|(_, job)| job)
+                .collect::<Vec<_>>();
+            (builds, reprojections, registry.pending.take())
         };
-        for job in cancelled {
+        for job in builds {
             job.cancel(AnalysisExecutionError::stale());
+        }
+        for job in reprojections {
+            job.cancel(AnalysisExecutionError::stale());
+        }
+        if let Some(pending) = pending {
+            pending.cancel(AnalysisExecutionError::stale());
         }
     }
 
@@ -994,10 +1099,13 @@ impl AnalysisExecutor {
     }
 
     #[cfg(test)]
-    pub(in crate::session) fn registry_state(&self) -> (usize, usize, usize) {
+    fn registry_state(&self) -> (usize, usize, usize) {
         let registry = lock_recovering_poison(&self.inner.registry);
         (
-            registry.jobs.len(),
+            registry
+                .build_jobs
+                .len()
+                .saturating_add(registry.reprojection_jobs.len()),
             self.inner.task_capacity.running_workers(),
             self.inner.cpu_permits.available_permits(),
         )
@@ -1013,7 +1121,7 @@ impl AnalysisExecutor {
     }
 
     #[cfg(test)]
-    pub(in crate::session) fn running_worker_count(&self) -> usize {
+    fn running_worker_count(&self) -> usize {
         self.inner.task_capacity.running_workers()
     }
 
@@ -1041,54 +1149,35 @@ impl AnalysisExecutor {
             tokio::task::yield_now().await;
         }
     }
-
-    #[cfg(test)]
-    pub(in crate::session) fn waiter_count_for_uri(&self, uri: &Uri) -> usize {
-        let registry = lock_recovering_poison(&self.inner.registry);
-        let registered = registry
-            .jobs
-            .iter()
-            .filter(|(key, _)| key.uri() == uri)
-            .map(|(_, job)| job.waiters.load(Ordering::Acquire))
-            .sum::<usize>();
-        let pending = registry
-            .pending
-            .as_ref()
-            .filter(|pending| pending.key.uri() == uri)
-            .map_or(0, |pending| pending.job.waiters.load(Ordering::Acquire));
-        registered.saturating_add(pending)
-    }
 }
 
-fn remove_pending_if_registered(inner: &AnalysisExecutorInner, pending: &Arc<PendingAnalysis>) {
+fn remove_pending_if_registered<O: AnalysisOperation>(
+    inner: &AnalysisExecutorInner,
+    pending: &Arc<PendingRegistration<O>>,
+) {
     let mut registry = lock_recovering_poison(&inner.registry);
     if registry
         .pending
         .as_ref()
+        .and_then(O::pending)
         .is_some_and(|registered| Arc::ptr_eq(registered, pending))
     {
         registry.pending = None;
     }
 }
 
-fn remove_job_if_registered(
+fn remove_job_if_registered<O: AnalysisOperation>(
     inner: &AnalysisExecutorInner,
-    key: &AnalysisWorkKey,
-    job: &Arc<AnalysisJob>,
+    key: &O::Key,
+    job: &Arc<AnalysisJob<O::Output>>,
 ) {
     let mut registry = lock_recovering_poison(&inner.registry);
-    if registry
-        .jobs
+    if O::jobs(&registry)
         .get(key)
         .is_some_and(|registered| Arc::ptr_eq(registered, job))
     {
-        registry.jobs.remove(key);
+        O::jobs_mut(&mut registry).remove(key);
     }
-}
-
-enum AnalysisWorkError {
-    Build(AnalysisBuildError),
-    Cancelled,
 }
 
 #[cfg(test)]
@@ -1174,22 +1263,29 @@ mod tests {
         DiagnosticReprojectionRequest::new(
             analyzer.options().diagnostic_policy().clone(),
             AnalysisCancellationToken::new(),
-            DiagnosticReprojectionKey::new(
-                uri,
-                build.analysis_job_generation(),
-                build.document_epoch(),
-                build.snapshot_generation(),
-                DiagnosticGeneration(2),
-                context.as_ref(),
-            ),
+            DiagnosticGeneration(2),
             context,
+            crate::session::analysis_cache::AnalysisCacheStamp {
+                document_epoch: build.document_epoch(),
+                snapshot_generation: build.snapshot_generation(),
+                analysis_job_generation: build.analysis_job_generation(),
+            },
+            None,
         )
     }
 
     async fn wait_for_job_count(executor: &AnalysisExecutor, expected: usize) {
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
-                if lock_recovering_poison(&executor.inner.registry).jobs.len() == expected {
+                let matches = {
+                    let registry = lock_recovering_poison(&executor.inner.registry);
+                    registry
+                        .build_jobs
+                        .len()
+                        .saturating_add(registry.reprojection_jobs.len())
+                        == expected
+                };
+                if matches {
                     return;
                 }
                 tokio::task::yield_now().await;
@@ -1200,12 +1296,11 @@ mod tests {
     }
 
     async fn wait_for_registered_job(executor: &AnalysisExecutor, key: &AnalysisBuildKey) {
-        let key = AnalysisWorkKey::Build(key.clone());
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 if lock_recovering_poison(&executor.inner.registry)
-                    .jobs
-                    .contains_key(&key)
+                    .build_jobs
+                    .contains_key(key)
                 {
                     return;
                 }
@@ -1254,12 +1349,11 @@ mod tests {
         key: &AnalysisBuildKey,
         expected: usize,
     ) {
-        let key = AnalysisWorkKey::Build(key.clone());
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 let waiters = lock_recovering_poison(&executor.inner.registry)
-                    .jobs
-                    .get(&key)
+                    .build_jobs
+                    .get(key)
                     .map(|job| job.waiters.load(std::sync::atomic::Ordering::Acquire));
                 if waiters == Some(expected) {
                     return;
@@ -1284,12 +1378,11 @@ mod tests {
     async fn admit_build(
         executor: &AnalysisExecutor,
         request: &AnalysisBuildRequest,
-    ) -> AnalysisWaiter {
+    ) -> AnalysisWaiter<BuildOperation> {
         executor
-            .execute_work(
-                AnalysisWorkKey::Build(request.key()),
+            .execute_operation::<BuildOperation>(
+                request,
                 executor.inner.cancellation_parent.child(),
-                || AnalysisWork::Build(Box::new(request.clone())),
             )
             .expect("analysis work should be admitted")
     }
@@ -1297,7 +1390,10 @@ mod tests {
     async fn fill_task_capacity_waiting_for_cpu(
         executor: &AnalysisExecutor,
         name: &str,
-    ) -> (tokio::sync::OwnedSemaphorePermit, Vec<AnalysisWaiter>) {
+    ) -> (
+        tokio::sync::OwnedSemaphorePermit,
+        Vec<AnalysisWaiter<BuildOperation>>,
+    ) {
         let cpu_permits = executor
             .inner
             .cpu_permits
@@ -1378,6 +1474,20 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_analysis_leases_expose_one_cache_admission_claim() {
+        let executor = test_executor();
+        let request = build_request(&executor, "shared-cache-admission");
+
+        let first = executor.execute(&request).await.unwrap();
+        let second = executor.execute(&request).await.unwrap();
+
+        assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+        assert!(first.claim_cache_admission());
+        assert!(!second.claim_cache_admission());
+        assert!(!first.claim_cache_admission());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn completed_reprojection_stays_single_flight_until_all_leases_drop() {
         let executor = test_executor();
         let request = diagnostic_reprojection_request(&executor, "reprojection-single-flight");
@@ -1391,7 +1501,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(first.shares_result_with(&second));
+        assert!(Arc::ptr_eq(first.projected(), second.projected()));
         assert_eq!(executor.reprojection_count(), 1);
         wait_for_registry_state(&executor, (1, 0, LSP_ANALYSIS_CONCURRENCY)).await;
         assert_eq!(executor.registry_state(), (1, 0, LSP_ANALYSIS_CONCURRENCY));
@@ -1475,7 +1585,7 @@ mod tests {
 
         assert!(
             lock_recovering_poison(&executor.inner.registry)
-                .jobs
+                .build_jobs
                 .is_empty(),
             "the final waiter should remove each job from the single-flight registry immediately"
         );
@@ -1584,7 +1694,7 @@ mod tests {
 
         assert!(
             lock_recovering_poison(&executor.inner.registry)
-                .jobs
+                .build_jobs
                 .is_empty(),
             "invalidation should clear the single-flight registry synchronously"
         );
@@ -1767,7 +1877,7 @@ mod tests {
         assert_eq!(executor.execution_count(), 0);
         assert!(
             lock_recovering_poison(&executor.inner.registry)
-                .jobs
+                .build_jobs
                 .is_empty()
         );
     }
@@ -1935,11 +2045,11 @@ mod tests {
         assert_eq!(executor.pending_admission_count(), 1);
         let ninth = tokio::spawn(ninth_future);
         let duplicate = tokio::spawn(duplicate_future);
-        assert_eq!(
-            lock_recovering_poison(&executor.inner.registry).jobs.len(),
-            LSP_ANALYSIS_IN_FLIGHT_LIMIT,
-            "the ninth distinct request must remain outside the job registry"
-        );
+        {
+            let registry = lock_recovering_poison(&executor.inner.registry);
+            assert_eq!(registry.build_jobs.len(), LSP_ANALYSIS_IN_FLIGHT_LIMIT - 1);
+            assert_eq!(registry.reprojection_jobs.len(), 1);
+        }
 
         projection.abort();
         let _ = projection.await;

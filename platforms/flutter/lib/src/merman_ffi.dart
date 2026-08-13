@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -15,23 +14,6 @@ import 'generated/text_measurement_protocol.dart';
 import 'operation_metadata.dart';
 
 export 'generated/native_operations.dart' show MermanOperation;
-
-/// Opens the bundled native `merman-ffi` library for the current platform.
-ffi.DynamicLibrary openMermanLibrary() {
-  if (Platform.isAndroid) {
-    return ffi.DynamicLibrary.open('libmerman_ffi.so');
-  }
-  if (Platform.isIOS || Platform.isMacOS) {
-    return ffi.DynamicLibrary.process();
-  }
-  if (Platform.isWindows) {
-    return ffi.DynamicLibrary.open('merman_ffi.dll');
-  }
-  if (Platform.isLinux) {
-    return ffi.DynamicLibrary.open('libmerman_ffi.so');
-  }
-  throw UnsupportedError('Unsupported platform: ${Platform.operatingSystem}');
-}
 
 /// Opens a native `merman-ffi` library at [path].
 ///
@@ -58,6 +40,48 @@ class MermanOperationResult {
 
   /// Decodes a JSON object output.
   Map<String, Object?> get jsonObject => _decodeJsonObject(bytes, 'output');
+}
+
+/// Opaque native control shared with one or more synchronous operations.
+///
+/// Cancellation is cooperative: an in-flight operation stops at its next
+/// checkpoint. [release] retires only the token; an operation that already
+/// cloned the control remains safe until that call returns.
+final class MermanOperationControl {
+  MermanOperationControl._(this._native, this._token);
+
+  final _NativeApi _native;
+  int? _token;
+
+  bool get isReleased => _token == null;
+
+  void cancel() => _native.cancelOperationControl(_requireToken());
+
+  void release() {
+    final token = _token;
+    if (token == null) {
+      return;
+    }
+    _native.releaseOperationControl(token);
+    _token = null;
+  }
+
+  int _borrowFor(_NativeApi nativeApi) {
+    if (!identical(_native, nativeApi)) {
+      throw MermanException.contract(
+        'operation control belongs to a different native ABI table',
+      );
+    }
+    return _requireToken();
+  }
+
+  int _requireToken() {
+    final token = _token;
+    if (token == null) {
+      throw MermanException.contract('operation control has been released');
+    }
+    return token;
+  }
 }
 
 /// Stable machine-readable classification for a binding failure.
@@ -110,6 +134,17 @@ class MermanIconRegistryErrorDetails {
   final String? registrationName;
 }
 
+/// Stable details attached to a cooperative operation cancellation.
+class MermanCancellationErrorDetails {
+  const MermanCancellationErrorDetails({
+    required this.reason,
+    required this.phase,
+  });
+
+  final String reason;
+  final String phase;
+}
+
 /// Error returned by the native ABI or by a local contract validation failure.
 class MermanException implements Exception {
   const MermanException({
@@ -120,6 +155,7 @@ class MermanException implements Exception {
     this.capabilityId,
     this.resourceDetails,
     this.iconRegistryDetails,
+    this.cancellationDetails,
   });
 
   final int code;
@@ -129,6 +165,7 @@ class MermanException implements Exception {
   final String? capabilityId;
   final MermanResourceErrorDetails? resourceDetails;
   final MermanIconRegistryErrorDetails? iconRegistryDetails;
+  final MermanCancellationErrorDetails? cancellationDetails;
 
   factory MermanException.contract(String message) => MermanException(
         code: -1,
@@ -152,6 +189,7 @@ class MermanException implements Exception {
     String? capabilityId;
     MermanResourceErrorDetails? resourceDetails;
     MermanIconRegistryErrorDetails? iconRegistryDetails;
+    MermanCancellationErrorDetails? cancellationDetails;
     if (metadata.isNotEmpty) {
       try {
         final decoded = _decodeJsonObject(metadata, 'native error metadata');
@@ -217,6 +255,20 @@ class MermanException implements Exception {
               );
             }
           }
+          final cancellation = details['cancellation'];
+          if (cancellation is Map) {
+            final reason = cancellation['reason'];
+            final phase = cancellation['phase'];
+            if (reason is String &&
+                reason.isNotEmpty &&
+                phase is String &&
+                phase.isNotEmpty) {
+              cancellationDetails = MermanCancellationErrorDetails(
+                reason: reason,
+                phase: phase,
+              );
+            }
+          }
         }
         if (decodedCodeName is String) {
           codeName = decodedCodeName;
@@ -270,6 +322,15 @@ class MermanException implements Exception {
         message: message,
       );
     }
+    if (status == native.MERMAN_NATIVE_STATUS_CANCELLED &&
+        cancellationDetails != null) {
+      return MermanCancelledException(
+        code: status,
+        codeName: codeName,
+        message: message,
+        cancellationDetails: cancellationDetails,
+      );
+    }
     return MermanException(
       code: status,
       codeName: codeName,
@@ -278,6 +339,7 @@ class MermanException implements Exception {
       capabilityId: capabilityId,
       resourceDetails: resourceDetails,
       iconRegistryDetails: iconRegistryDetails,
+      cancellationDetails: cancellationDetails,
     );
   }
 
@@ -301,6 +363,16 @@ class MermanBusyException extends MermanException {
     required super.codeName,
     required super.message,
   }) : super(kind: MermanErrorKind.busy);
+}
+
+/// A synchronous operation stopped at a cooperative cancellation checkpoint.
+class MermanCancelledException extends MermanException {
+  const MermanCancelledException({
+    required super.code,
+    required super.codeName,
+    required super.message,
+    required MermanCancellationErrorDetails cancellationDetails,
+  }) : super(cancellationDetails: cancellationDetails);
 }
 
 /// A typed native failure indicating an unknown or unavailable operation.
@@ -527,6 +599,7 @@ class MermanLintRuleCatalogEntry {
     required this.evidence,
     required this.defaultSeverity,
     required this.category,
+    required this.tags,
     required this.defaultEnabled,
     required this.defaultProfile,
     required this.origin,
@@ -539,13 +612,16 @@ class MermanLintRuleCatalogEntry {
   final List<String> evidence;
   final String defaultSeverity;
   final String category;
+  final List<String> tags;
   final bool defaultEnabled;
   final String defaultProfile;
   final String origin;
   final bool configurable;
   final bool fixable;
 
-  factory MermanLintRuleCatalogEntry.fromJson(Map<String, Object?> json) =>
+  factory MermanLintRuleCatalogEntry.fromJson(
+    Map<String, Object?> json,
+  ) =>
       MermanLintRuleCatalogEntry(
         id: _requiredString(json, 'id', 'lint rule catalog entry'),
         description: _requiredString(
@@ -555,10 +631,7 @@ class MermanLintRuleCatalogEntry {
         ),
         evidence: List.unmodifiable(
           _requiredStringList(
-            json,
-            'evidence',
-            'lint rule catalog entry.evidence',
-          ),
+              json, 'evidence', 'lint rule catalog entry.evidence'),
         ),
         defaultSeverity: _requiredString(
           json,
@@ -566,6 +639,12 @@ class MermanLintRuleCatalogEntry {
           'lint rule catalog entry',
         ),
         category: _requiredString(json, 'category', 'lint rule catalog entry'),
+        tags: List.unmodifiable(
+          json.containsKey('tags')
+              ? _requiredStringList(
+                  json, 'tags', 'lint rule catalog entry.tags')
+              : const <String>[],
+        ),
         defaultEnabled: _requiredBool(
           json,
           'default_enabled',
@@ -1646,11 +1725,20 @@ final class _LoadedNativeLibrary {
   final MermanRuntimeCatalog runtimeCatalog;
 }
 
-_LoadedNativeLibrary _loadNativeLibrary(
-  ffi.DynamicLibrary library, {
+typedef _MermanGetNativeApiNative = native.MermanNativeStatus Function(
+  ffi.Pointer<native.MermanNativeApiRequest>,
+  ffi.Pointer<native.MermanNativeApi>,
+);
+typedef _MermanGetNativeApiDart = int Function(
+  ffi.Pointer<native.MermanNativeApiRequest>,
+  ffi.Pointer<native.MermanNativeApi>,
+);
+
+_LoadedNativeLibrary _loadNativeEntry(
+  _MermanGetNativeApiDart getNativeApi, {
   required String? expectedPackageVersion,
 }) {
-  final nativeApi = _NativeApi.discover(library);
+  final nativeApi = _NativeApi.discover(getNativeApi);
   if (expectedPackageVersion != null &&
       nativeApi.packageVersion != expectedPackageVersion) {
     throw MermanException.contract(
@@ -1663,8 +1751,20 @@ _LoadedNativeLibrary _loadNativeLibrary(
   return _LoadedNativeLibrary(nativeApi, catalog);
 }
 
-final _LoadedNativeLibrary _packageNativeLibrary = _loadNativeLibrary(
-  openMermanLibrary(),
+_LoadedNativeLibrary _loadDynamicLibrary(
+  ffi.DynamicLibrary library, {
+  required String? expectedPackageVersion,
+}) {
+  return _loadNativeEntry(
+    library.lookupFunction<_MermanGetNativeApiNative, _MermanGetNativeApiDart>(
+      'merman_get_native_api',
+    ),
+    expectedPackageVersion: expectedPackageVersion,
+  );
+}
+
+final _LoadedNativeLibrary _packageNativeLibrary = _loadNativeEntry(
+  native.merman_get_native_api,
   expectedPackageVersion: mermanPackageVersion,
 );
 
@@ -1697,7 +1797,7 @@ class Merman {
     ffi.DynamicLibrary library, {
     String? expectedPackageVersion,
   }) {
-    final loaded = _loadNativeLibrary(
+    final loaded = _loadDynamicLibrary(
       library,
       expectedPackageVersion: expectedPackageVersion,
     );
@@ -1726,11 +1826,16 @@ class Merman {
   /// Native package version reported by the discovered table.
   String get packageVersion => _native.packageVersion;
 
+  /// Creates a control with an optional relative monotonic timeout.
+  MermanOperationControl createOperationControl({Duration? timeout}) =>
+      _native.createOperationControl(timeout: timeout);
+
   MermanOperationResult execute(
     MermanOperation operation,
     String source, {
     String? uri,
     String? optionsJson,
+    MermanOperationControl? control,
   }) {
     final engine = _native.createEngine(
       runtimeCatalog: runtimeCatalog,
@@ -1743,6 +1848,7 @@ class Merman {
         source,
         uri: uri,
         optionsJson: _oneShotRequestOptionsJson(optionsJson),
+        control: control,
       );
     } finally {
       engine.close();
@@ -1936,7 +2042,7 @@ class MermanEngine {
     MermanEngineServices services = const MermanEngineServices(),
     String? expectedPackageVersion,
   }) {
-    final loaded = _loadNativeLibrary(
+    final loaded = _loadDynamicLibrary(
       library,
       expectedPackageVersion: expectedPackageVersion,
     );
@@ -1969,11 +2075,16 @@ class MermanEngine {
   String get packageVersion => _native.packageVersion;
   bool get isClosed => _state == _MermanEngineState.closed;
 
+  /// Creates a control that may be attached to this engine's operations.
+  MermanOperationControl createOperationControl({Duration? timeout}) =>
+      _native.createOperationControl(timeout: timeout);
+
   MermanOperationResult execute(
     MermanOperation operation,
     String source, {
     String? uri,
     String? optionsJson,
+    MermanOperationControl? control,
   }) {
     final token = _requireToken();
     final requestUri = uri == null || uri.isEmpty ? null : uri;
@@ -1989,6 +2100,7 @@ class MermanEngine {
         source,
         uri: requestUri,
         optionsJson: optionsJson,
+        operationControl: control?._borrowFor(_native) ?? 0,
       ),
     );
   }
@@ -2154,28 +2266,47 @@ class _NativeApi {
     required native.DartMermanNativeRuntimeCatalogFnFunction runtimeCatalog,
     required _NativeEngineCloser engineCloser,
     required native.DartMermanNativeExecuteCollectFnFunction executeCollect,
+    required native.DartMermanNativeExecuteCollectControlledFnFunction
+        executeCollectControlled,
     required native.DartMermanNativeResultFreeFnFunction resultFree,
     required native.DartMermanNativeMetadataCollectFnFunction metadataCollect,
     required native.DartMermanNativeEngineNewWithServicesFnFunction
         engineNewWithServices,
+    required native.DartMermanNativeOperationControlNewFnFunction
+        operationControlNew,
+    required native.DartMermanNativeOperationControlCancelFnFunction
+        operationControlCancel,
+    required native.DartMermanNativeOperationControlReleaseFnFunction
+        operationControlRelease,
   })  : _runtimeCatalog = runtimeCatalog,
         _engineCloser = engineCloser,
         _executeCollect = executeCollect,
+        _executeCollectControlled = executeCollectControlled,
         _resultFree = resultFree,
         _metadataCollect = metadataCollect,
-        _engineNewWithServices = engineNewWithServices;
+        _engineNewWithServices = engineNewWithServices,
+        _operationControlNew = operationControlNew,
+        _operationControlCancel = operationControlCancel,
+        _operationControlRelease = operationControlRelease;
 
   final String packageVersion;
   final native.DartMermanNativeRuntimeCatalogFnFunction _runtimeCatalog;
   final _NativeEngineCloser _engineCloser;
   final native.DartMermanNativeExecuteCollectFnFunction _executeCollect;
+  final native.DartMermanNativeExecuteCollectControlledFnFunction
+      _executeCollectControlled;
   final native.DartMermanNativeResultFreeFnFunction _resultFree;
   final native.DartMermanNativeMetadataCollectFnFunction _metadataCollect;
   final native.DartMermanNativeEngineNewWithServicesFnFunction
       _engineNewWithServices;
+  final native.DartMermanNativeOperationControlNewFnFunction
+      _operationControlNew;
+  final native.DartMermanNativeOperationControlCancelFnFunction
+      _operationControlCancel;
+  final native.DartMermanNativeOperationControlReleaseFnFunction
+      _operationControlRelease;
 
-  factory _NativeApi.discover(ffi.DynamicLibrary library) {
-    final entry = native.MermanNativeBindings(library);
+  factory _NativeApi.discover(_MermanGetNativeApiDart getNativeApi) {
     final request = calloc<native.MermanNativeApiRequest>();
     final api = calloc<native.MermanNativeApi>();
     final allocations = _NativeAllocationScope();
@@ -2188,14 +2319,15 @@ class _NativeApi {
       request.ref.struct_size = ffi.sizeOf<native.MermanNativeApiRequest>();
       request.ref.expected_abi_version = native.MERMAN_NATIVE_ABI_VERSION;
       final consumerTableSize = ffi.sizeOf<native.MermanNativeApi>();
-      if (consumerTableSize < native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE) {
+      if (consumerTableSize <
+          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE) {
         throw MermanException.contract(
           'generated native API table is smaller than the current ABI 3 table',
         );
       }
       api.ref.struct_size = consumerTableSize;
 
-      final status = entry.merman_get_native_api(request, api);
+      final status = getNativeApi(request, api);
       if (status != native.MERMAN_NATIVE_STATUS_OK) {
         throw MermanException(
           code: status,
@@ -2254,6 +2386,22 @@ class _NativeApi {
         table.engine_new_with_services,
         'engine_new_with_services',
       );
+      _requireFunctionPointer(
+        table.operation_control_new,
+        'operation_control_new',
+      );
+      _requireFunctionPointer(
+        table.operation_control_cancel,
+        'operation_control_cancel',
+      );
+      _requireFunctionPointer(
+        table.operation_control_release,
+        'operation_control_release',
+      );
+      _requireFunctionPointer(
+        table.execute_collect_controlled,
+        'execute_collect_controlled',
+      );
 
       return _NativeApi._(
         packageVersion: packageVersion,
@@ -2266,12 +2414,20 @@ class _NativeApi {
         ),
         executeCollect: table.execute_collect
             .asFunction<native.DartMermanNativeExecuteCollectFnFunction>(),
+        executeCollectControlled: table.execute_collect_controlled.asFunction<
+            native.DartMermanNativeExecuteCollectControlledFnFunction>(),
         resultFree: table.result_free
             .asFunction<native.DartMermanNativeResultFreeFnFunction>(),
         metadataCollect: table.metadata_collect
             .asFunction<native.DartMermanNativeMetadataCollectFnFunction>(),
         engineNewWithServices: table.engine_new_with_services.asFunction<
             native.DartMermanNativeEngineNewWithServicesFnFunction>(),
+        operationControlNew: table.operation_control_new
+            .asFunction<native.DartMermanNativeOperationControlNewFnFunction>(),
+        operationControlCancel: table.operation_control_cancel.asFunction<
+            native.DartMermanNativeOperationControlCancelFnFunction>(),
+        operationControlRelease: table.operation_control_release.asFunction<
+            native.DartMermanNativeOperationControlReleaseFnFunction>(),
       );
     } finally {
       allocations.dispose();
@@ -2448,22 +2604,86 @@ class _NativeApi {
     }
   }
 
+  MermanOperationControl createOperationControl({Duration? timeout}) {
+    final timeoutMs = timeout?.inMilliseconds ?? 0;
+    if (timeoutMs < 0) {
+      throw RangeError.value(timeoutMs, 'timeout', 'must not be negative');
+    }
+    final control = calloc<native.MermanNativeOperationControlToken>();
+    final result = _NativeResult.allocate(_resultFree);
+    var unownedControl = 0;
+    try {
+      final status = _operationControlNew(
+        timeoutMs,
+        timeout == null ? 0 : 1,
+        control,
+        result.pointer,
+      );
+      unownedControl = control.value;
+      result.requireWritten(status);
+      final record = result.pointer.ref;
+      final metadata = _copyBuffer(record.metadata_or_error_json);
+      _ensureResultStatus(status, record.status, metadata);
+      if (record.operation != native.MERMAN_NATIVE_OPERATION_NONE ||
+          record.data.len != 0 ||
+          unownedControl == 0) {
+        throw MermanException.contract(
+          'native operation-control creation returned an invalid result',
+        );
+      }
+      final operationControl = MermanOperationControl._(this, unownedControl);
+      unownedControl = 0;
+      return operationControl;
+    } catch (_) {
+      if (unownedControl != 0) {
+        _operationControlRelease(unownedControl);
+      }
+      rethrow;
+    } finally {
+      result.dispose();
+      calloc.free(control);
+    }
+  }
+
+  void cancelOperationControl(int control) {
+    final status = _operationControlCancel(control);
+    if (status != native.MERMAN_NATIVE_STATUS_OK) {
+      throw MermanException.fromNative(status, Uint8List(0));
+    }
+  }
+
+  void releaseOperationControl(int control) {
+    final status = _operationControlRelease(control);
+    if (status != native.MERMAN_NATIVE_STATUS_OK) {
+      throw MermanException.fromNative(status, Uint8List(0));
+    }
+  }
+
   MermanOperationResult execute(
     int engine,
     MermanOperation operation,
     String source, {
     String? uri,
     String? optionsJson,
+    int operationControl = 0,
   }) {
     final request = _newRequest(
       operation,
       source,
       uri: uri,
       optionsJson: optionsJson,
+      operationControl: operationControl,
     );
     final result = _NativeResult.allocate(_resultFree);
     try {
-      final status = _executeCollect(engine, request.pointer, result.pointer);
+      final status = operationControl == 0
+          ? _executeCollect(engine, request.pointer, result.pointer)
+          : _executeCollectControlled(
+              engine,
+              operationControl,
+              request.pointer,
+              result.pointer,
+            );
       result.requireWritten(status);
       final record = result.pointer.ref;
       final metadata = _copyBuffer(record.metadata_or_error_json);
@@ -2519,6 +2739,7 @@ class _NativeApi {
     String source, {
     String? uri,
     String? optionsJson,
+    required int operationControl,
   }) {
     final request = calloc<native.MermanNativeOperationRequest>();
     final allocations = _NativeAllocationScope();
@@ -2585,7 +2806,8 @@ bool nativeApiHasCurrentTableForTesting(int producerTableSize) =>
     _nativeApiHasCurrentTable(producerTableSize);
 
 bool _nativeApiHasCurrentTable(int producerTableSize) =>
-    producerTableSize >= native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE;
+    producerTableSize >=
+    native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE;
 
 void _requireNativeResultWritten(
   native.MermanNativeResult result,

@@ -1,4 +1,5 @@
-use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};
+use merman::ascii::AsciiRenderOptions;
+use merman::{AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
 
 const SOURCE: &str = r#"sequenceDiagram
     participant User
@@ -13,10 +14,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         AsciiRenderOptions::unicode()
     };
-    let renderer = HeadlessAsciiRenderer::new()
-        .with_strict_parsing()
-        .with_ascii_options(options);
-    let Some(text) = renderer.render_ascii_sync(SOURCE)? else {
+    let renderer = Renderer::new().with_parse_options(merman::ParseOptions::strict());
+    let output = renderer.render(RenderRequest::ascii(
+        SOURCE,
+        OperationControl::new(),
+        AsciiRequest {
+            options,
+            ..Default::default()
+        },
+    ))?;
+    let RenderOutput::Ascii(Some(text)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
 

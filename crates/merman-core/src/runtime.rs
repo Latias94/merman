@@ -264,6 +264,10 @@ impl RuntimePolicy {
         self.local_time_zone.fixed_offset_minutes()
     }
 
+    pub fn fixed_today(&self) -> Option<CivilDate> {
+        self.fixed_today_local
+    }
+
     pub fn local_time_zone(&self) -> &crate::time::LocalTimeZone {
         &self.local_time_zone
     }

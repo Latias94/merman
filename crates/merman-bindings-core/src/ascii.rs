@@ -1,6 +1,6 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_ascii_grid_cells, binding_input_resource_policy,
-    binding_site_config, no_diagram_error, source_text,
+    BindingError, BindingResourceLimitCause, BindingStatus, binding_ascii_resource_policy,
+    binding_input_resource_policy, binding_site_config, no_diagram_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -9,21 +9,43 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
 
 #[derive(Clone)]
 pub(crate) struct CachedAsciiEngine {
-    renderer: merman::ascii::HeadlessAsciiRenderer,
+    renderer: merman::Renderer,
+    request: merman::AsciiRequest,
+    resource_profile: merman::resources::ResourceProfile,
 }
 
 pub(crate) struct AsciiOperationConfig {
     runtime_policy: merman::runtime::RuntimePolicy,
     parse_options: merman::ParseOptions,
     render_options: merman::ascii::AsciiRenderOptions,
+    ascii_resources: merman::ascii::AsciiResourcePolicy,
     resources: merman::resources::InputResourcePolicy,
     site_config: Option<merman::MermaidConfig>,
 }
 
 impl CachedAsciiEngine {
-    pub(crate) fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn render_ascii(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        render_ascii_with_renderer(&self.renderer, source)
+        let output = self
+            .renderer
+            .render(merman::RenderRequest::ascii(
+                source,
+                control,
+                self.request.clone(),
+            ))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let merman::RenderOutput::Ascii(rendered) = output else {
+            return Err(BindingError::internal(
+                "canonical renderer returned the wrong output variant for `ascii`",
+            ));
+        };
+        rendered
+            .map(String::into_bytes)
+            .ok_or_else(no_diagram_error)
     }
 }
 
@@ -42,30 +64,39 @@ impl AsciiOperationConfig {
         } else {
             merman::ParseOptions::strict()
         };
-        let mut render_options = ascii_options_from_json(options)?;
-        render_options.max_grid_cells =
-            binding_ascii_grid_cells(options.analysis.resources.as_ref())?;
+        let render_options = ascii_options_from_json(options)?;
+        let ascii_resources = binding_ascii_resource_policy(options.analysis.resources.as_ref())?;
         let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
         let site_config = binding_site_config(options)?;
         Ok(Self {
             runtime_policy,
             parse_options,
             render_options,
+            ascii_resources,
             resources,
             site_config,
         })
     }
 
     pub(crate) fn materialize(self) -> CachedAsciiEngine {
-        let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
-            .with_runtime_policy(self.runtime_policy)
-            .with_parse_options(self.parse_options)
-            .with_ascii_options(self.render_options)
-            .with_resource_policy(self.resources);
+        let resource_profile = self.resources.profile();
+        let request = merman::AsciiRequest {
+            options: self.render_options,
+            resources: self.ascii_resources,
+        };
+        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
-            renderer = renderer.with_site_config(site_config);
+            engine = engine.with_site_config(site_config);
         }
-        CachedAsciiEngine { renderer }
+        let renderer = merman::Renderer::new()
+            .with_engine(engine)
+            .with_parse_options(self.parse_options)
+            .with_resource_policy(self.resources);
+        CachedAsciiEngine {
+            renderer,
+            request,
+            resource_profile,
+        }
     }
 }
 
@@ -246,34 +277,31 @@ fn invalid_ascii_option(field: &'static str, message: &'static str) -> BindingEr
     BindingError::new(BindingStatus::InvalidArgument, format!("{field} {message}"))
 }
 
-fn render_ascii_with_renderer(
-    renderer: &merman::ascii::HeadlessAsciiRenderer,
-    source: &str,
-) -> Result<Vec<u8>, BindingError> {
-    let resource_profile = renderer.resource_policy().profile();
-    let rendered = renderer
-        .render_ascii_sync(source)
-        .map_err(|error| classify_ascii_error(error, resource_profile))?
-        .ok_or_else(no_diagram_error)?;
-
-    Ok(rendered.into_bytes())
-}
-
-fn classify_ascii_error(
-    err: merman::ascii::HeadlessAsciiError,
+fn classify_render_error(
+    err: merman::RenderError,
     resource_profile: merman::resources::ResourceProfile,
 ) -> BindingError {
     match err {
-        merman::ascii::HeadlessAsciiError::RuntimePolicy(err) => {
-            crate::common::runtime_policy_error(err)
-        }
-        merman::ascii::HeadlessAsciiError::Parse(err) => {
+        merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
+        merman::RenderError::RuntimePolicy(err) => crate::common::runtime_policy_error(err),
+        merman::RenderError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
-        merman::ascii::HeadlessAsciiError::Resource(err) => {
-            crate::common::input_resource_limit_error(err)
-        }
-        merman::ascii::HeadlessAsciiError::Ascii(err) => match err {
+        merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
+            match err.cause {
+                merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
+                merman::render::ResourceLimitCause::ArithmeticOverflow => {
+                    BindingResourceLimitCause::ArithmeticOverflow
+                }
+            },
+            err.phase,
+            err.id,
+            err.actual,
+            err.maximum,
+            resource_profile.id(),
+            err.to_string(),
+        ),
+        merman::RenderError::Ascii(err) => match err {
             merman::ascii::AsciiError::InvalidOption { .. } => {
                 BindingError::new(BindingStatus::InvalidArgument, err.to_string())
             }
@@ -281,20 +309,12 @@ fn classify_ascii_error(
             | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
                 BindingError::new(BindingStatus::UnsupportedOperation, err.to_string())
             }
-            merman::ascii::AsciiError::RenderLimitExceeded { actual, limit } => {
-                BindingError::resource_limit(
-                    merman::ascii::ASCII_RESOURCE_LIMIT_DESCRIPTORS[0].phase,
-                    merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-                    actual as u64,
-                    limit as u64,
-                    resource_profile.id(),
-                    format!(
-                        "ASCII render grid has {actual} cells, exceeding configured limit {limit}"
-                    ),
-                )
-            }
             _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },
+        merman::RenderError::UnsupportedTarget(target) => BindingError::internal(format!(
+            "renderer returned unsupported target `{target}` for an admitted ASCII operation"
+        )),
+        _ => BindingError::internal("unknown canonical ASCII renderer failure"),
     }
 }
 
@@ -403,17 +423,15 @@ mod tests {
     fn render_ascii_accepts_relation_summary_diagnostics_option() {
         let text = String::from_utf8(
             render_ascii(
-                b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
-                br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
+                b"classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
+                br#"{ "resources": { "limits": { "max_ascii_grid_cells": 10000 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
             )
             .unwrap(),
         )
         .unwrap();
 
         assert!(text.contains("relations:"), "{text}");
-        assert!(text.contains("reason: grid_budget"), "{text}");
-        assert!(text.contains("actual="), "{text}");
-        assert!(text.contains("limit=1"), "{text}");
+        assert!(text.contains("reason: crossing"), "{text}");
     }
 
     #[test]
@@ -570,7 +588,10 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        assert!(error.message().contains("ASCII render grid"), "{error:?}");
+        assert!(
+            error.message().contains("max_ascii_grid_cells"),
+            "{error:?}"
+        );
         let details = error
             .resource_details()
             .expect("structured resource details");

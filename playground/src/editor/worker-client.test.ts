@@ -18,6 +18,7 @@ import {
 } from "./protocol.ts";
 
 const LEGEND_DIGEST = "legend-digest";
+const COMPLETION_TRIGGER_CHARACTERS = [" ", "\n", "-", ":"];
 
 class PendingWorkerPort implements EditorWorkerPort {
   readonly messages: EditorWorkerRequest[] = [];
@@ -804,6 +805,7 @@ function ready(worker: PendingWorkerPort): void {
     protocol: EDITOR_WORKER_PROTOCOL,
     requestId: initialize.requestId,
     type: "ready",
+    completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
     transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: LEGEND_DIGEST,

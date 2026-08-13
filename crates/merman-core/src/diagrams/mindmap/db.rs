@@ -5,7 +5,7 @@ use super::{
     NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
 };
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseControl, ParseControlResult, Result};
+use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 
 const MINDMAP_SECTION_COUNT: usize = 11;
 
@@ -179,7 +179,7 @@ impl MindmapDb {
         config: &MermaidConfig,
         parse_config: MindmapParseConfig,
     ) -> Result<()> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.add_node_controlled(input, config, parse_config, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -189,8 +189,8 @@ impl MindmapDb {
         input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
         parse_config: MindmapParseConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<()>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<()>> {
         control.checkpoint()?;
         let mut level = input.indent_level;
         let is_root;
@@ -295,7 +295,7 @@ impl MindmapDb {
 
     #[cfg(test)]
     pub(super) fn assign_sections(&mut self, node_id: i32, section: Option<i32>) {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.assign_sections_controlled(node_id, section, &control)
             .expect("a private parse control cannot be cancelled");
     }
@@ -304,8 +304,8 @@ impl MindmapDb {
         &mut self,
         node_id: i32,
         section: Option<i32>,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let mut stack = vec![(node_id, section)];
         let mut visited = 0usize;
         while let Some((node_id, section)) = stack.pop() {
@@ -347,8 +347,8 @@ impl MindmapDb {
         &self,
         root_id: i32,
         config: &MermaidConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<Vec<MindmapDiagramRenderNode>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Vec<MindmapDiagramRenderNode>> {
         let mut out = Vec::new();
         let look = mindmap_look(config);
         let default_shape = mindmap_default_shape(config);
@@ -380,8 +380,8 @@ impl MindmapDb {
         &self,
         root_id: i32,
         config: &MermaidConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<Vec<MindmapDiagramRenderEdge>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Vec<MindmapDiagramRenderEdge>> {
         struct EdgeFrame {
             node_id: i32,
             next_child_index: usize,

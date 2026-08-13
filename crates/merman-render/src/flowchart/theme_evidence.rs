@@ -9,7 +9,7 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug)]
 enum FlowchartPaintOutcome {
@@ -220,7 +220,7 @@ impl FlowchartEdgeThemeStyle {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<Self, ResourceLimitExceeded> {
+    ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
             return Ok(Self::default());
         };
@@ -315,7 +315,7 @@ impl FlowchartNodeThemeStyle {
         theme: Option<&ResolvedDiagramTheme>,
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<Self, ResourceLimitExceeded> {
+    ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
             return Ok(Self::default());
         };

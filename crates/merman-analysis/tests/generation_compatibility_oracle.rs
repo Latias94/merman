@@ -1,13 +1,13 @@
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity,
-    SourceDescriptor, analyze_document, analyze_document_facts,
-    source_descriptor_for_markdown_path,
+    FenceTextIndexSource, SourceDescriptor, analyze_document, source_descriptor_for_markdown_path,
 };
 use serde_json::{Value, json};
 
 const BASELINE_COMMIT: &str = "0be1a409286f044f40954aec686bd316ff78cb16";
-// This fixture was emitted by the public analysis APIs at BASELINE_COMMIT before U1 replaced
-// the retained evidence path. Never regenerate it from the current implementation.
+// This fixture was emitted by the public diagnostics APIs at BASELINE_COMMIT before U1 replaced
+// the retained evidence path. It intentionally excludes facts because their approved schema-2
+// break is characterized separately below. Never regenerate this oracle from the current code.
 const ORACLE: &str = include_str!("fixtures/pre_generation_analysis_oracle.json");
 
 struct CaseSpec {
@@ -72,7 +72,6 @@ fn diagram_case(name: &str, source: &str, analyzer: &Analyzer) -> Value {
         "name": name,
         "source": source,
         "diagnostics": analyzer.analyze(source),
-        "facts": analyzer.analyze_facts(source),
     })
 }
 
@@ -85,13 +84,12 @@ fn document_case(
     json!({
         "name": name,
         "source": source,
-        "diagnostics": analyze_document(source, analyzer, descriptor.clone()),
-        "facts": analyze_document_facts(source, analyzer, descriptor),
+        "diagnostics": analyze_document(source, analyzer, descriptor),
     })
 }
 
 #[test]
-fn generation_refactor_preserves_pre_u1_analysis_json() {
+fn generation_refactor_preserves_independent_public_diagnostics_json() {
     let oracle: Value = serde_json::from_str(ORACLE).expect("valid compatibility oracle JSON");
     assert_eq!(oracle["oracle_version"], 1);
     assert_eq!(oracle["baseline_commit"], BASELINE_COMMIT);
@@ -122,4 +120,20 @@ fn generation_refactor_preserves_pre_u1_analysis_json() {
         .collect::<Vec<_>>();
 
     assert_eq!(actual_cases, *expected_cases);
+}
+
+#[test]
+fn facts_schema2_keeps_generic_parser_semantics_without_flowchart_graph() {
+    let facts = Analyzer::new().analyze_facts("flowchart TD\nA-->B\n");
+    assert_eq!(facts.version, 2);
+
+    let diagram = &facts.diagrams[0];
+    assert_eq!(
+        diagram.syntax.fact_source,
+        FenceTextIndexSource::ParserComplete
+    );
+    assert!(diagram.syntax.node_ids.iter().any(|id| id == "A"));
+    assert!(diagram.syntax.node_ids.iter().any(|id| id == "B"));
+    let value = serde_json::to_value(facts).expect("facts should serialize");
+    assert!(value["diagrams"][0]["syntax"].get("flowchart").is_none());
 }

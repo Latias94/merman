@@ -1,6 +1,7 @@
-use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
-};
+mod support;
+
+use merman_editor_core::{DocumentKind, PlannedTokenKind, plan_semantic_tokens_for_snapshot};
+use support::SnapshotHarness;
 
 #[test]
 fn ishikawa_parser_tokens_plan_across_crlf_and_unicode() {
@@ -10,9 +11,9 @@ fn ishikawa_parser_tokens_plan_across_crlf_and_unicode() {
     ];
 
     for (index, source) in cases.into_iter().enumerate() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/ishikawa-{index}.mmd"),
                 1,
                 source.to_string(),

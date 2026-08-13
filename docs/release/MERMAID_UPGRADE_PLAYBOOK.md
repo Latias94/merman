@@ -63,7 +63,8 @@ Move the source graph and all reference workspaces together. Before running the 
 4. Recompute the descriptor's workspace hashes from those reviewed manifests, locks, and reference
    config. Record `installedContentSha256` for every package that can participate in reference
    execution: Mermaid, the parser, the sanitizer, the reference CLI, every external diagram and
-   layout module, and each selected behavior package. Do not copy old hashes forward.
+   layout module, each selected behavior package, and the complete browser-driver toolchain loaded
+   by the renderer. Do not copy old hashes forward.
 
 When the selected identity changes, write a new `MERMAID_SELECTION_DECISION.json` from the reviewed
 admission outputs. Its previous/current identity digests, exact changed fields, npm version and
@@ -206,7 +207,7 @@ repository gates:
 
 ```bash
 cargo run -p xtask -- verify-mermaid-reference --materialized
-cargo run -p xtask -- verify-editor-token-descriptor
+cargo run -p xtask -- verify-editor-language-contract
 cargo run -p xtask -- verify-playground-example-catalog
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment

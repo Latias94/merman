@@ -99,6 +99,7 @@ const editorRuntimeExportNames = [
   "editorReferences",
   "editorPrepareRename",
   "editorRename",
+  "editorCompletionTriggerCharacters",
   "editorSemanticTokenDescriptor",
   "editorSemanticTokens",
 ];
@@ -116,6 +117,7 @@ const editorWasmExportNames = [
   "editorReferences",
   "editorPrepareRename",
   "editorRename",
+  "editorCompletionTriggerCharacters",
   "editorSemanticTokenDescriptor",
   "editorSemanticTokens",
 ];

@@ -1,34 +1,31 @@
-# Diagnostics-only capture decision — 2026-08-08
+# Diagnostics-only capture decision — 2026-08-08 (superseded 2026-08-10)
 
 ## Decision
 
-The deeper U12 diagnostics-only specialization is **rejected-not-admitted**. The current
-`CaptureMode::DiagnosticsOnly` split remains as the behavior-preserving baseline: it omits
-navigation/text-index and rich Flowchart facts from the retained `AnalysisSyntaxFacts`, but it
-still performs the diagnostic-bearing Flowchart projection needed for recovery and projection
-diagnostics. No new parser capture policy, family registry mode, or candidate-only branch is left
-in the tree.
+The deeper U12 diagnostics-only specialization was **rejected-not-admitted** on August 8, 2026.
+The later architecture convergence unit completed on August 10, 2026 and deliberately removed
+the public Flowchart-only facts projection together with its internal diagnostic. The current
+`CaptureMode::DiagnosticsOnly` split remains, but both modes now share only generic typed warning,
+source-lint, and editor-recovery candidates; no Flowchart facts projection exists in production.
 
 No diagnostics latency or transient-memory claim is made.
 
 ## Current semantic boundary
 
 `Analyzer::capture_from_evidence_cancellable` shares one parse/evidence snapshot for diagnostics
-and rich analysis. In the parsed path, both modes still run source lints, semantic warnings,
-editor-recovery candidates, and `flowchart_facts_projection_cancellable`. Only the finishing
-projection differs:
+and rich analysis. In the parsed path, both modes run source lints, semantic warnings, and
+editor-recovery candidates. Only the finishing projection differs:
 
-- `DiagnosticsOnly` retains the diagram type and an unavailable `FenceTextIndex`; it does not
-  materialize the editor text index or `AnalysisFlowchartFacts` in the returned syntax object.
-- `RichFacts` materializes the complete editor text index, effective layout, and Flowchart facts.
+- `DiagnosticsOnly` retains no syntax/index object in the returned capture.
+- `RichFacts` materializes the complete editor text index and effective layout; generic node,
+  reference, outline, semantic, and expected-syntax facts are derived from that index.
 - Parse failures retain parser/recovery diagnostics in both modes and preserve the same
   disposition, spans, related notes, fixes, and cancellation behavior.
 
-The Flowchart projection cannot be removed from the diagnostics path by a local branch: its
-candidate list carries schema/projection failures and diagnostics that are observable even when
-the rich facts value is discarded. A parser-side capture policy would therefore have to preserve
-those facts and recovery anchors across every combined-parser family before it could be evaluated
-as a new candidate.
+The former Flowchart projection was removed as part of the schema-2 wire break because no editor or
+LSP operation consumed its graph. Its deletion is cross-binding API work, not a local performance
+branch; diagnostics retain the generic parser-owned evidence required for recovery and policy
+projection.
 
 ## Evidence and parity controls
 
@@ -38,9 +35,7 @@ The existing owner tests establish the safe baseline:
   object has no parser text index, semantic items, node IDs, or Flowchart facts.
 - `rich_capture_materializes_parser_syntax_indexes` proves the rich oracle still retains the
   complete projections.
-- `diagnostics_only_capture_reports_the_canonical_flowchart_projection_failure` and
-  `diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure` preserve the
-  malformed-Flowchart error contract.
+- facts schema tests reject schema 1 after envelope discrimination and preserve diagnostics schema 1.
 - Public diagnostics and rich generation compare equal for representative parsed, recovered,
   Unicode, frontmatter, and custom-parser cases; cancellation checkpoints remain observable.
 

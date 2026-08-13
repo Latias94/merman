@@ -4,6 +4,7 @@ use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
 use super::model::{AsciiGraph, AsciiGraphEdge, GraphNodeShape, GraphNodeStyle};
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 
 mod cell;
 mod label;
@@ -55,6 +56,18 @@ impl RouteScene {
         }
     }
 
+    pub(super) fn paint_routes_with_execution(
+        &self,
+        drawing: &mut RouteDrawing<'_>,
+        execution: AsciiExecution<'_>,
+    ) -> Result<()> {
+        for route in &self.routes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            route.paint(drawing);
+        }
+        Ok(())
+    }
+
     pub(super) fn draw_labels(&self, canvas: &mut Canvas, transform: RouteLabelTransform) {
         for route in &self.routes {
             for label in &route.plan.labels {
@@ -66,6 +79,27 @@ impl RouteScene {
                 draw_routed_label(canvas, &label);
             }
         }
+    }
+
+    pub(super) fn draw_labels_with_execution(
+        &self,
+        canvas: &mut Canvas,
+        transform: RouteLabelTransform,
+        execution: AsciiExecution<'_>,
+    ) -> Result<()> {
+        for route in &self.routes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            for label in &route.plan.labels {
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                let label = transform.apply(EdgeLabel {
+                    text: label.text.clone(),
+                    placement: label.placement,
+                    color: label.paint.color,
+                });
+                draw_routed_label(canvas, &label);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -110,11 +144,34 @@ pub(super) fn prepare_route_scene(
     edges: &[AsciiGraphEdge],
     charset: &GraphCharset,
 ) -> Result<RouteScene> {
+    prepare_route_scene_inner(graph, graph_layout, edges, charset, None)
+}
+
+pub(super) fn prepare_route_scene_with_execution(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    charset: &GraphCharset,
+    execution: AsciiExecution<'_>,
+) -> Result<RouteScene> {
+    prepare_route_scene_inner(graph, graph_layout, edges, charset, Some(execution))
+}
+
+fn prepare_route_scene_inner(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    charset: &GraphCharset,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<RouteScene> {
     let mut routes = Vec::with_capacity(edges.len());
     let mut width = 0;
     let mut height = 0;
 
     for (edge_index, edge) in edges.iter().enumerate() {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        }
         let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
@@ -151,6 +208,10 @@ pub(super) fn prepare_route_scene(
         width = width.max(plan_width);
         height = height.max(plan_height);
         routes.push(PreparedRoute { plan });
+    }
+
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
     }
 
     Ok(RouteScene {
@@ -225,6 +286,8 @@ mod tests {
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
     use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
+    use crate::operation::{AsciiExecution, AsciiResourcePolicy};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -452,6 +515,40 @@ mod tests {
         }
 
         assert_eq!(scene.canvas_extent(), (expected_width, expected_height));
+    }
+
+    #[test]
+    fn prepare_route_scene_stops_during_edge_planning() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for index in 0..10 {
+            graph.add_node(format!("n{index}"), format!("N{index}"));
+            if index > 0 {
+                graph.add_edge(format!("n{}", index - 1), format!("n{index}"));
+            }
+        }
+        let graph_layout = layout_graph(&graph, &options);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let execution = AsciiExecution::new(&control, AsciiResourcePolicy::default());
+
+        let error = match prepare_route_scene_with_execution(
+            &graph,
+            &graph_layout,
+            &graph.edges,
+            &charset,
+            execution,
+        ) {
+            Ok(_) => panic!("route planning must stop without publishing a scene"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
     }
 
     fn planned_cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {

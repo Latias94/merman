@@ -1,6 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
+    DocumentKind, PlannedTokenKind, PlannedTokenModifier, SemanticTokenSupport,
+    plan_semantic_tokens_for_snapshot, plan_semantic_tokens_for_snapshot_with_support,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
@@ -26,9 +30,9 @@ fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
     ];
 
     for (index, source) in cases.into_iter().enumerate() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/block-{index}.mmd"),
                 1,
                 source.to_string(),
@@ -67,6 +71,67 @@ fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
             plan.tokens()
         );
     }
+}
+
+#[test]
+fn block_definition_modifier_survives_negotiated_type_projection() {
+    let source = "block-beta\n  db((\"DB\"))\n";
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/block-negotiated.mmd",
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+    let support = SemanticTokenSupport::from_support(
+        |kind| {
+            matches!(
+                kind,
+                PlannedTokenKind::Keyword
+                    | PlannedTokenKind::Comment
+                    | PlannedTokenKind::Operator
+                    | PlannedTokenKind::Number
+                    | PlannedTokenKind::String
+                    | PlannedTokenKind::Namespace
+                    | PlannedTokenKind::Class
+                    | PlannedTokenKind::Struct
+                    | PlannedTokenKind::Variable
+                    | PlannedTokenKind::Property
+                    | PlannedTokenKind::Event
+                    | PlannedTokenKind::Function
+            )
+        },
+        |modifier| {
+            matches!(
+                modifier,
+                PlannedTokenModifier::Declaration
+                    | PlannedTokenModifier::Definition
+                    | PlannedTokenModifier::Readonly
+                    | PlannedTokenModifier::Documentation
+                    | PlannedTokenModifier::DefaultLibrary
+            )
+        },
+    );
+    let plan = plan_semantic_tokens_for_snapshot_with_support(&snapshot, support)
+        .expect("negotiated block semantic token plan");
+    let db_start = snapshot
+        .source_map()
+        .utf16_position(source.find("db").expect("db offset"))
+        .expect("db UTF-16 position");
+    let db = plan
+        .tokens()
+        .iter()
+        .find(|token| {
+            token.line == db_start.line as u32
+                && token.start == db_start.character as u32
+                && token.length == 2
+        })
+        .expect("negotiated db token");
+
+    assert_eq!(db.kind, PlannedTokenKind::Variable);
+    assert!(db.has_modifier(PlannedTokenModifier::Definition));
 }
 
 fn assert_non_overlapping(tokens: &[merman_editor_core::PlannedToken]) {

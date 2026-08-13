@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use merman_core::__private::{
     ThemeFamilyCompatibilityOverlay, ThemeFamilyCompatibilityOverlayBuilder,
 };
-use merman_core::{MermaidConfig, ParseControl, ParseControlResult};
+use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 
 use crate::DiagramFamilyId;
@@ -100,8 +100,8 @@ impl LegacyFamilyThemeBridge {
     pub(super) fn overlay_for_family(
         &self,
         family: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<Option<ThemeFamilyCompatibilityOverlay>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<ThemeFamilyCompatibilityOverlay>> {
         control.checkpoint()?;
         let Some(family) = DiagramFamilyId::from_id(family) else {
             return Ok(None);
@@ -1407,7 +1407,7 @@ mod tests {
         );
         let family_programs = Arc::new(FamilyThemeProgramCache::new(Arc::clone(&spec)));
         let bridge = LegacyFamilyThemeBridge::new(Arc::clone(&family_programs));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
 
         assert_eq!(bridge.cached_family_count(), 0);
         assert_eq!(family_programs.len(), 0);

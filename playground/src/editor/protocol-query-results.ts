@@ -26,6 +26,7 @@ import type {
   EditorTextEdit,
   EditorWorkspaceEdit,
   DiagramDetectionFacts,
+  LintRuleTag,
 } from "@mermanjs/web";
 
 import { EDITOR_SCHEMA_VERSION } from "./protocol-version.ts";
@@ -111,6 +112,7 @@ const DIAGNOSTIC_SEVERITIES = new Set<EditorDiagnosticSeverity>([
   "info",
   "hint",
 ]);
+const DIAGNOSTIC_TAGS = new Set<LintRuleTag>(["deprecated"]);
 const COMPLETION_ITEM_KINDS = new Set<EditorCompletionItemKind>([
   "keyword",
   "variable",
@@ -314,6 +316,9 @@ function projectDiagnostic(value: unknown): EditorDiagnostic {
     ),
     code,
     source: expectString(diagnostic.source, "diagnostic source"),
+    ...optionalArrayProperty(diagnostic, "tags", "diagnostic tags", (tag) =>
+      expectSetValue(tag, DIAGNOSTIC_TAGS, "diagnostic tag"),
+    ),
     message: expectString(diagnostic.message, "diagnostic message"),
     related: projectArray(
       diagnostic.related,

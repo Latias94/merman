@@ -369,6 +369,8 @@ pub use resources::{
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error(transparent)]
+    Cancelled(#[from] merman_core::OperationCancelled),
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
     #[error("render session lacks capability `{capability}` required by diagram `{diagram_type}`")]
@@ -472,6 +474,17 @@ impl From<dugong::LayoutError> for Error {
     fn from(error: dugong::LayoutError) -> Self {
         Self::InvalidModel {
             message: error.to_string(),
+        }
+    }
+}
+
+impl From<crate::resources::OperationWorkError> for Error {
+    fn from(error: crate::resources::OperationWorkError) -> Self {
+        match error {
+            crate::resources::OperationWorkError::Cancelled(error) => Self::Cancelled(error),
+            crate::resources::OperationWorkError::ResourceLimitExceeded(error) => {
+                Self::ResourceLimitExceeded(error)
+            }
         }
     }
 }

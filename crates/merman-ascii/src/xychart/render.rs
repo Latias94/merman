@@ -4,7 +4,7 @@ use super::plot::{
 };
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
-use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::text::{StyledLine, display_width, truncate_display_width};
 use crate::{AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
@@ -14,10 +14,22 @@ use merman_core::diagrams::xychart::{
 
 type ChartLine = StyledLine;
 
-pub(crate) fn render_xychart_diagram(
+pub(crate) fn render_xychart_diagram_with_execution(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    render_xychart_diagram_inner(model, options, Some(execution))
+}
+
+fn render_xychart_diagram_inner(
+    model: &XyChartDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     if model.plots.is_empty() {
         return Ok(String::new());
     }
@@ -31,37 +43,34 @@ pub(crate) fn render_xychart_diagram(
     let y_range = y_value_range(model);
     let plot_area = XyChartPlotArea::from_options(options);
     if model.orientation.eq_ignore_ascii_case("horizontal") {
-        enforce_plot_cell_limit(plot_area.horizontal_cell_count(categories.len()), options)?;
-        return Ok(render_horizontal(
+        let cell_count = plot_area.horizontal_cell_count(categories.len());
+        if let Some(execution) = execution {
+            execution.admit_grid(cell_count)?;
+        }
+        return render_horizontal(
             model,
             &categories,
             y_range,
             chars,
             plot_area,
             options,
-        ));
+            execution,
+        );
     }
 
-    enforce_plot_cell_limit(plot_area.vertical_cell_count(categories.len()), options)?;
-    Ok(render_vertical(
+    let cell_count = plot_area.vertical_cell_count(categories.len());
+    if let Some(execution) = execution {
+        execution.admit_grid(cell_count)?;
+    }
+    render_vertical(
         model,
         &categories,
         y_range,
         chars,
         plot_area,
         options,
-    ))
-}
-
-fn enforce_plot_cell_limit(actual: usize, options: &AsciiRenderOptions) -> Result<()> {
-    if actual > options.max_grid_cells {
-        return Err(AsciiError::RenderLimitExceeded {
-            actual,
-            limit: options.max_grid_cells,
-        });
-    }
-
-    Ok(())
+        execution,
+    )
 }
 
 fn render_vertical(
@@ -71,7 +80,8 @@ fn render_vertical(
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     options: &AsciiRenderOptions,
-) -> String {
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
     let mut plot = build_vertical_plot(model, categories.len(), y_range, chars, plot_area);
 
     let mut out = Vec::new();
@@ -108,6 +118,9 @@ fn render_vertical(
     }
 
     for (idx, row) in plot.rows.into_iter().enumerate() {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         let label = &tick_labels[idx];
         let mut line = ChartLine::new();
         push_axis_prefix(&mut line, label, gutter, show_y_labels, y_axis_mark);
@@ -168,7 +181,7 @@ fn render_vertical(
         out.push(line);
     }
 
-    finish_chart_lines(out, options)
+    finish_chart_lines_controlled(out, options, execution)
 }
 
 fn render_horizontal(
@@ -178,7 +191,8 @@ fn render_horizontal(
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     options: &AsciiRenderOptions,
-) -> String {
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
     push_legend_line(&mut out, model, chars);
@@ -201,6 +215,9 @@ fn render_horizontal(
     let plot_prefix_width = plot_prefix_width(show_x_labels, x_axis_mark.is_some(), gutter);
 
     for (idx, category) in categories.iter().enumerate() {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         let plot_row = &plot_rows[idx];
 
         let mut line = ChartLine::new();
@@ -268,7 +285,7 @@ fn render_horizontal(
         out.push(line);
     }
 
-    finish_chart_lines(out, options)
+    finish_chart_lines_controlled(out, options, execution)
 }
 
 fn push_title_lines(out: &mut Vec<ChartLine>, model: &XyChartDiagramRenderModel) {
@@ -690,6 +707,44 @@ fn finish_chart_lines(lines: Vec<ChartLine>, options: &AsciiRenderOptions) -> St
     }
 
     canvas.finish_trimmed_with_options(options)
+}
+
+fn finish_chart_lines_controlled(
+    lines: Vec<ChartLine>,
+    options: &AsciiRenderOptions,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
+    let Some(execution) = execution else {
+        return Ok(finish_chart_lines(lines, options));
+    };
+
+    let width = lines.iter().map(ChartLine::len).max().unwrap_or(0);
+    execution.admit_grid(width.saturating_mul(lines.len()))?;
+    if options.color_mode == AsciiColorMode::Plain {
+        let mut output = String::new();
+        for line in lines {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            output.push_str(line.text().trim_end());
+            output.push('\n');
+        }
+        return Ok(output);
+    }
+
+    if lines.is_empty() || width == 0 {
+        return Ok(if lines.is_empty() {
+            String::new()
+        } else {
+            "\n".repeat(lines.len())
+        });
+    }
+
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        line.write_to(&mut canvas, y);
+    }
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    canvas.finish_trimmed_with_options_with_execution(options, execution)
 }
 
 fn finish_lines(lines: Vec<String>) -> String {

@@ -475,9 +475,9 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
             .map(|scalar| scalar.id.as_str()),
         "native ABI opaque scalar ids",
     )?;
-    if descriptor.opaque_scalars.len() != 2 {
+    if descriptor.opaque_scalars.len() != 3 {
         return Err(descriptor_error(
-            "native ABI must define exactly the engine_token and result_allocation_token roles",
+            "native ABI must define exactly the engine_token, result_allocation_token, and operation_control_token roles",
         ));
     }
     let engine = descriptor
@@ -491,6 +491,13 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
         .find(|scalar| scalar.id == "result_allocation_token")
         .ok_or_else(|| {
             descriptor_error("native ABI must define the result_allocation_token role")
+        })?;
+    let control = descriptor
+        .opaque_scalars
+        .iter()
+        .find(|scalar| scalar.id == "operation_control_token")
+        .ok_or_else(|| {
+            descriptor_error("native ABI must define the operation_control_token role")
         })?;
 
     let mut tags = BTreeSet::new();
@@ -557,6 +564,9 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
     if engine.domain.mask != result.domain.mask
         || engine.domain.counter_shift != result.domain.counter_shift
         || engine.domain.maximum_counter != result.domain.maximum_counter
+        || control.domain.mask != engine.domain.mask
+        || control.domain.counter_shift != engine.domain.counter_shift
+        || control.domain.maximum_counter != engine.domain.maximum_counter
     {
         return Err(descriptor_error(
             "native ABI opaque token roles must share one mask, shift, and counter range",
@@ -578,6 +588,15 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
     {
         return Err(descriptor_error(
             "native ABI result_allocation_token must retain its anonymous uint64_t/u64 record-field representation",
+        ));
+    }
+    if control.c_name.as_deref() != Some("MermanNativeOperationControlToken")
+        || control.rust_name.as_deref() != Some("MermanNativeOperationControlToken")
+        || control.c_type != "uint64_t"
+        || control.rust_type != "u64"
+    {
+        return Err(descriptor_error(
+            "native ABI operation_control_token must project the MermanNativeOperationControlToken uint64_t/u64 alias",
         ));
     }
     Ok(())
@@ -827,9 +846,9 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "native ABI status codes",
         "MERMAN_NATIVE_STATUS_",
     )?;
-    if descriptor.status_codes.len() != minimum_prefix.status_code_count {
+    if descriptor.status_codes.len() < minimum_prefix.status_code_count {
         return Err(descriptor_error(format!(
-            "native ABI status vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            "native ABI status vocabulary minimum prefix selects {} entries, but the descriptor defines {}",
             minimum_prefix.status_code_count,
             descriptor.status_codes.len()
         )));
@@ -1572,17 +1591,20 @@ fn render_c_header(
     );
     render_c_operation_type(&mut out, operations);
     render_c_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
-    let engine_token = opaque_scalar(descriptor, "engine_token");
-    writeln!(
-        out,
-        "typedef {} {};\n",
-        engine_token.c_type,
-        engine_token
-            .c_name
-            .as_deref()
-            .expect("validated engine token has a C name")
-    )
-    .unwrap();
+    for scalar_id in ["engine_token", "operation_control_token"] {
+        let scalar = opaque_scalar(descriptor, scalar_id);
+        writeln!(
+            out,
+            "typedef {} {};",
+            scalar.c_type,
+            scalar
+                .c_name
+                .as_deref()
+                .expect("validated named opaque scalar has a C name")
+        )
+        .unwrap();
+    }
+    out.push('\n');
 
     for record in &descriptor.records {
         writeln!(out, "typedef struct {} {};", record.c_name, record.c_name).unwrap();
@@ -1853,6 +1875,7 @@ fn render_rust(
     render_rust_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
     let engine_token = opaque_scalar(descriptor, "engine_token");
     let result_token = opaque_scalar(descriptor, "result_allocation_token");
+    let control_token = opaque_scalar(descriptor, "operation_control_token");
     writeln!(
         out,
         "pub type {} = {};",
@@ -1891,6 +1914,22 @@ fn render_rust(
         out,
         "pub(crate) const MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG: u64 = {};\n",
         result_token.domain.tag
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub type {} = {};",
+        control_token
+            .rust_name
+            .as_deref()
+            .expect("validated operation control token has a Rust name"),
+        control_token.rust_type
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub(crate) const MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG: u64 = {};\n",
+        control_token.domain.tag
     )
     .unwrap();
 

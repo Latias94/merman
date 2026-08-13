@@ -1,59 +1,63 @@
 # Headless Layout
 
-Merman lays out Mermaid `@11.16.1` diagrams in Rust without a browser or JavaScript runtime. Layout
-is part of the canonical typed headless operation, not a JSON-first stage that can be paired with an
-unrelated semantic model.
+Merman lays out Mermaid `@11.16.1` diagrams in Rust without a browser or JavaScript runtime.
+Layout is a target-local phase of one operation-scoped render, not a JSON-first stage that can be
+paired with an unrelated semantic model.
 
 ## Public API
 
-Most callers should use `merman::svg::HeadlessRenderer`:
+Most callers should request layout JSON through `Renderer`:
 
 ```rust
-use merman::svg::{HeadlessRenderer, RenderEnvironment};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let renderer = HeadlessRenderer::new()
-        .with_environment(RenderEnvironment::parity())
-        .with_strict_parsing();
-
-    let layout = renderer
-        .layout_json_sync("flowchart TD\nA --> B")?
-        .expect("diagram detected");
-    println!("{layout}");
+    let output = Renderer::new().render(RenderRequest::layout_json(
+        "flowchart TD\nA --> B",
+        OperationControl::new(),
+        SvgRequest::default(),
+    ))?;
+    let RenderOutput::LayoutJson(Some(layout)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    println!("{}", layout.layout());
     Ok(())
 }
 ```
 
-When one caller needs layout JSON and SVG from the same operation, use the consuming prepared stage:
+When a caller must inspect metadata before choosing an output, prepare a format-neutral semantic
+artifact, then consume it into exactly one target:
 
 ```rust
-use merman::svg::HeadlessRenderer;
+use merman::{OperationControl, RenderOutput, RenderTarget, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let renderer = HeadlessRenderer::new().with_diagram_id("layout-example");
-    let prepared = renderer
-        .prepare_render_sync("flowchart TD\nA --> B")?
-        .expect("diagram detected");
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", OperationControl::new())?
+        .ok_or("no Mermaid diagram detected")?;
+    assert_eq!(artifact.metadata().diagram_type, "flowchart-v2");
 
-    let layout = prepared.layout_json()?;
-    let svg = prepared.render_svg(renderer.svg_options())?;
-    assert_eq!(layout["meta"]["diagram_type"], "flowchart-v2");
-    println!("{svg}");
+    let output = artifact.render(RenderTarget::LayoutJson(SvgRequest::default()))?;
+    let RenderOutput::LayoutJson(Some(layout)) = output else {
+        return Err("layout target returned no diagram".into());
+    };
+    println!("{}", layout.layout());
     Ok(())
 }
 ```
 
-The free `layout_json_sync` helper delegates to the same operation. The removed
-`layout_parsed*`/`LayoutedDiagram` APIs are not compatibility entry points.
+Opening separate layout and SVG requests intentionally creates separate operations. This keeps
+target ownership and resource accounting explicit instead of exposing a reusable SVG-only layout
+artifact.
 
 ## Typed Ownership
 
-1. `merman-core` detects the diagram and constructs family semantics once.
-2. The family projects its typed render model.
-3. `merman-render::family::prepare` computes the matching typed layout and returns an opaque
-   `FamilyRenderArtifact`.
-4. `FamilyRenderArtifact::layout_json` projects compatibility layout JSON.
-5. `FamilyRenderArtifact::render_svg` consumes the same semantic/layout pair.
+1. `merman-core` detects the diagram and constructs family semantics under one
+   `OperationControl` and runtime context.
+2. The public facade owns the format-neutral `SemanticArtifact`.
+3. `RenderTarget::LayoutJson` or `RenderTarget::Svg` enters the SVG adapter.
+4. `merman-render::family::prepare` computes the matching typed layout behind the facade.
+5. Layout JSON or SVG is projected from that same target-local artifact.
 
 The opaque artifact makes cross-family combinations unrepresentable. Compatibility semantic or
 layout JSON remains an output format; it is not the master built-in render input.
@@ -63,26 +67,20 @@ unless a renderer capability is designed and registered separately.
 
 ## Render Environment
 
-`RenderEnvironment` selects text measurement, math and icon services, time, randomness, and
-resource limits before the operation begins. `begin_session()` freezes those choices once. Layout
-uses named measurement phases rather than constructing a family-local production measurer.
+`SvgRequest.environment` selects text measurement, math and icon services, and SVG resource limits.
+`Renderer` owns the operation runtime policy, parser defaults, and input admission. The facade
+captures one operation context and passes it into the SVG session; the target adapter does not
+create a replacement operation.
 
-Use `RenderEnvironment::parity()` for deterministic vendored measurement and pinned operation
-policy. Host builds can supply host services explicitly; a successful host measurement bypasses
-vendored fallback facts. `LayoutOptions` contains layout request values; it does not own environment
-services.
+Use `RenderEnvironment::parity()` for deterministic vendored measurement. Host builds can supply
+host services explicitly; a successful host measurement bypasses vendored fallback facts.
+`LayoutOptions` contains layout request values and does not own environment services.
 
 ## Low-Level Use
 
-Direct `merman-render` callers can use this sequence:
-
-1. `Engine::parse_diagram_for_render_model_sync`
-2. `RenderEnvironment::begin_session`
-3. `merman_render::family::prepare`
-4. `FamilyRenderArtifact::layout_json` and optionally consuming `render_svg`
-
-The session must travel with the artifact so layout, SVG, postprocessing, and operation reporting
-observe the same policy snapshot.
+Direct `merman-render` callers can still use its typed model-level adapter, but they must explicitly
+own the controlled parse, `OperationContext`, `OperationControl`, `RenderSession`, and resource
+projection. This is a low-level integration boundary, not a second source-to-output facade.
 
 ## Compatibility and Verification
 

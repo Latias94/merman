@@ -20,7 +20,7 @@ The public Rust API is intentionally safe and modular:
 
 - `merman-core` parses Mermaid into metadata, semantic JSON, and typed render models.
 - `merman-render` lays out diagrams and emits Mermaid-parity SVG.
-- `merman` exposes convenience wrappers such as `HeadlessRenderer`.
+- `merman` exposes the operation-scoped `Renderer` and typed target requests.
 
 Those crates currently forbid unsafe code. FFI will require unsafe boundary handling, memory
 ownership rules, panic containment, and ABI compatibility commitments. That work should not leak

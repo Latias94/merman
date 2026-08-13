@@ -23,6 +23,7 @@ import {
   expectString,
   fail,
   isPositiveSafeInteger,
+  projectStringArray,
   schema,
 } from "./protocol-schema.ts";
 import {
@@ -95,6 +96,7 @@ interface EditorWorkerResponseBase {
 
 export interface EditorWorkerReadyResponse extends EditorWorkerResponseBase {
   readonly type: "ready";
+  readonly completionTriggerCharacters: string[];
   readonly transportApiVersion: number;
   readonly editorSchema: typeof EDITOR_SCHEMA_VERSION;
   readonly legendDigest: string;
@@ -152,6 +154,7 @@ const READY_RESPONSE_SCHEMA = schema([
   "protocol",
   "requestId",
   "type",
+  "completionTriggerCharacters",
   "transportApiVersion",
   "editorSchema",
   "legendDigest",
@@ -340,6 +343,9 @@ export function projectEditorWorkerResponse(
         protocol: EDITOR_WORKER_PROTOCOL,
         requestId,
         type: "ready",
+        completionTriggerCharacters: projectCompletionTriggerCharacters(
+          response.completionTriggerCharacters,
+        ),
         transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
         editorSchema: EDITOR_SCHEMA_VERSION,
         legendDigest: expectNonEmptyString(
@@ -397,6 +403,20 @@ export function projectEditorWorkerResponse(
     default:
       fail("Editor worker response type is invalid.");
   }
+}
+
+function projectCompletionTriggerCharacters(value: unknown): string[] {
+  const triggers = projectStringArray(
+    value,
+    "completion trigger characters",
+  );
+  if (
+    triggers.length === 0 ||
+    triggers.some((trigger) => [...trigger].length !== 1)
+  ) {
+    fail("Editor completion trigger characters must contain one character each.");
+  }
+  return triggers;
 }
 
 export function requestIdFromEditorWorkerMessage(value: unknown): number | null {

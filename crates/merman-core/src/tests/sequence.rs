@@ -277,11 +277,8 @@ Alice->>Bob: Hello"#;
     let bob = facts
         .symbols
         .iter()
-        .find(|symbol| {
-            symbol.name == "Bob"
-                && symbol.detail.as_deref() == Some("sequence participant reference")
-        })
-        .expect("Bob participant reference");
+        .find(|symbol| symbol.name == "Bob" && symbol.role == EditorSemanticRole::Entity)
+        .expect("implicit Bob participant definition");
     let bob_start = text.find("Bob").unwrap();
     assert_eq!(bob.selection.start, bob_start);
     assert_eq!(bob.selection.end, bob_start + "Bob".len());
@@ -306,11 +303,8 @@ fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
     let bob = facts
         .symbols
         .iter()
-        .find(|symbol| {
-            symbol.name == "Bob"
-                && symbol.detail.as_deref() == Some("sequence participant reference")
-        })
-        .expect("Bob participant reference");
+        .find(|symbol| symbol.name == "Bob" && symbol.role == EditorSemanticRole::Entity)
+        .expect("implicit Bob participant definition");
     let bob_start = text.find("Bob").unwrap();
     assert_eq!(bob.selection.start, bob_start);
     assert_eq!(bob.selection.end, bob_start + "Bob".len());
@@ -374,13 +368,34 @@ fn parse_sequence_editor_facts_preserve_every_repeated_unicode_occurrence() {
             .match_indices(name)
             .map(|(start, _)| SourceSpan::new(start, start + name.len()))
             .collect::<Vec<_>>();
-        let actual = facts
+        let occurrences = facts
             .symbols
             .iter()
-            .filter(|symbol| symbol.name == name && symbol.role == EditorSemanticRole::Entity)
+            .filter(|symbol| {
+                symbol.name == name
+                    && matches!(
+                        symbol.role,
+                        EditorSemanticRole::Entity | EditorSemanticRole::Reference
+                    )
+            })
+            .collect::<Vec<_>>();
+        let actual = occurrences
+            .iter()
             .map(|symbol| symbol.selection)
             .collect::<Vec<_>>();
         assert_eq!(actual, expected, "lost or reordered {name} occurrences");
+        assert_eq!(
+            occurrences.first().map(|symbol| symbol.role),
+            Some(EditorSemanticRole::Entity),
+            "the first {name} occurrence must own the participant definition"
+        );
+        assert!(
+            occurrences
+                .iter()
+                .skip(1)
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference),
+            "later {name} occurrences must remain navigation-only references"
+        );
     }
 }
 
@@ -402,20 +417,24 @@ fn parse_sequence_editor_facts_remap_entity_normalization_without_losing_other_f
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert!(facts.symbols.iter().any(|symbol| {
-        symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
-    }));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Alice" && symbol.role == EditorSemanticRole::Entity)
+    );
     let alice = facts
         .symbols
         .iter()
-        .find(|symbol| {
-            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
-        })
+        .find(|symbol| symbol.name == "Alice" && symbol.role == EditorSemanticRole::Entity)
         .expect("Alice participant");
     assert_eq!(alice.selection.start, text.find("Alice").unwrap());
-    assert!(facts.symbols.iter().any(|symbol| {
-        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
-    }));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Bob" && symbol.role == EditorSemanticRole::Entity)
+    );
     assert!(
         facts.diagnostics.is_empty(),
         "editor facts must parse the preprocessed Mermaid body, not the original frontmatter-bearing source"

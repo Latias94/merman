@@ -14,8 +14,6 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::Notify;
 use tower::Service;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
-#[cfg(test)]
-use tower_lsp_server::ls_types::Uri;
 use tower_lsp_server::{ExitedError, LspService};
 
 mod analysis;
@@ -28,17 +26,17 @@ mod documents;
 mod lifecycle;
 
 use client_effects::ClientEffectDispatcher;
-pub(crate) use client_effects::ClientEffectKey;
+pub(crate) use client_effects::ClientEffects;
 #[cfg(test)]
-pub(crate) use client_effects::LSP_CLIENT_EFFECT_QUEUE_LIMIT;
+pub(crate) use client_effects::{
+    CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, bounded_client_log_message,
+};
 
 pub(crate) use documents::{
     DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
-    DocumentDiagnosticState, DocumentSyncError, SemanticTokensState, StoredDocument,
+    DocumentDiagnosticState, DocumentSyncLoss, DocumentUnavailableDiagnostic, SemanticTokensState,
     analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
-#[cfg(test)]
-pub(crate) use documents::{DocumentDiscardedSource, DocumentResourceLimit};
 
 /// Owns all mutable language state and the workers derived from that state.
 #[derive(Debug, Clone)]
@@ -151,18 +149,6 @@ impl LanguageSession {
         Self::from_state(state, cancellation, refresh_client)
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_analyzer_for_tests(analyzer: merman_analysis::Analyzer) -> Self {
-        let cancellation = merman_analysis::AnalysisCancellationToken::new();
-        let state = SessionState::with_analyzer_and_cache_budget(
-            analyzer,
-            cancellation.clone(),
-            documents::DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
-        );
-        let (refresh_client, _, _) = RefreshClient::channel();
-        Self::from_state(state, cancellation, refresh_client)
-    }
-
     pub(crate) fn endpoint_guard(&self) -> SessionEndpointGuard {
         SessionEndpointGuard {
             session: Arc::downgrade(&self.inner),
@@ -202,18 +188,36 @@ impl LanguageSession {
         self.inner.lifecycle.terminated().await;
     }
 
-    pub(crate) async fn enqueue_latest_client_effect(
+    async fn enqueue_latest_client_effect(
         &self,
-        key: ClientEffectKey,
+        key: client_effects::ClientEffectKey,
         effect: impl Future<Output = ()> + Send + 'static,
     ) {
         self.inner.client_effects.enqueue_latest(key, effect).await;
     }
 
-    pub(crate) fn request_refresh(&self, semantic_tokens: bool, diagnostics: bool) {
+    async fn enqueue_latest_client_effect_with_transport_admission<F, Fut>(
+        &self,
+        key: client_effects::ClientEffectKey,
+        effect: F,
+    ) where
+        F: FnOnce(client_effects::ClientEffectTransportAdmission) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.inner
+            .client_effects
+            .enqueue_latest_with_transport_admission(key, effect)
+            .await;
+    }
+
+    fn request_semantic_tokens_refresh(&self) {
         self.inner
             .refresh_coordinator
-            .request(semantic_tokens, diagnostics);
+            .request_semantic_tokens_refresh();
+    }
+
+    fn request_diagnostic_refresh(&self) {
+        self.inner.refresh_coordinator.request_diagnostic_refresh();
     }
 
     #[cfg(test)]
@@ -234,16 +238,6 @@ impl LanguageSession {
     #[cfg(test)]
     pub(crate) fn diagnostic_reprojection_count(&self) -> usize {
         self.inner.analysis_executor.reprojection_count()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn analysis_registry_state(&self) -> (usize, usize, usize) {
-        self.inner.analysis_executor.registry_state()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn analysis_waiter_count(&self, uri: &Uri) -> usize {
-        self.inner.analysis_executor.waiter_count_for_uri(uri)
     }
 
     #[cfg(test)]
@@ -289,18 +283,6 @@ impl SessionProbe {
         uri: &tower_lsp_server::ls_types::Uri,
     ) -> Option<documents::StoredDocument> {
         self.state.lock().await.get(uri).cloned()
-    }
-
-    pub(crate) async fn cache_state(&self, uri: &tower_lsp_server::ls_types::Uri) -> (bool, bool) {
-        let state = self.state.lock().await;
-        (state.has_snapshot(uri), state.has_analysis_payload(uri))
-    }
-
-    pub(crate) async fn cached_snapshot(
-        &self,
-        uri: &tower_lsp_server::ls_types::Uri,
-    ) -> Option<Arc<crate::snapshot::DocumentSnapshot>> {
-        self.state.lock().await.cached_snapshot_for_probe(uri)
     }
 }
 

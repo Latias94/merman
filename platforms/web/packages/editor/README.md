@@ -1,48 +1,47 @@
 # @mermanjs/web-editor
 
-Browser-only Merman package for parser-backed editor intelligence. Use it from a dedicated module Worker when an editor workflow has independently justified a split from the complete package.
+Parser-backed diagnostics, symbols, and editor intelligence for browser-based Mermaid editors. Use
+retained sessions from a dedicated module Worker when the editor benefits from an isolated runtime.
 
-## Install
+This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
+matter.
 
-This package belongs to the experimental Merman `0.8.0-alpha.5` browser group. Install the current alpha and verify the resolved version and provenance before depending on prerelease-only behavior:
+## Quick start
 
 ```sh
 npm install @mermanjs/web-editor@alpha
 ```
 
-For local source development, build the package group and install this package from the checkout:
-
-```sh
-npm ci --prefix /path/to/merman/platforms/web
-npm run build --prefix /path/to/merman/platforms/web
-npm install /path/to/merman/platforms/web/packages/editor
-```
-
 ```ts
-import {
-  createEditorSession,
-  editorSearchDocumentSymbols,
-  initMerman,
-} from "@mermanjs/web-editor";
+import { createEditorSession, initMerman } from "@mermanjs/web-editor";
 
 await initMerman();
+
 const session = createEditorSession(
   `flowchart TD
   A -->`,
   1,
   "file:///diagram.mmd",
 );
-const diagnostics = session.diagnostics();
-const symbols = session.searchDocumentSymbols("A");
-const oneShotSymbols = editorSearchDocumentSymbols(
-  "flowchart TD\nA --> B",
-  "A",
-);
-session.dispose();
+
+try {
+  const diagnostics = session.diagnostics();
+  const symbols = session.searchDocumentSymbols("A");
+  console.log({ diagnostics, symbols });
+} finally {
+  session.dispose();
+}
 ```
 
-For one-shot queries without a retained session, call `editorSearchDocumentSymbols(source, query)`. The search is scoped to the supplied document; it does not scan a workspace.
+For one-shot queries without retained state, use functions such as
+`editorSearchDocumentSymbols(source, query, uri)`. Search remains scoped to the supplied document;
+it does not scan a workspace.
 
-The package exports analysis and editor workflows, but intentionally exposes no callable SVG or ASCII rendering workflow. Shared package-group catalogs and types remain available for integration code. It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport.
+## Scope and lifecycle
 
-See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for lifecycle and resource-policy guidance.
+The package includes analysis and editor workflows but no callable SVG or ASCII rendering. Load it
+only in a browser main thread or Web Worker. Dispose every retained session, and terminate a Worker
+after failure, replacement, or application teardown.
+
+See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
+for runtime lifecycle, resource policy, package selection, and source-checkout development.

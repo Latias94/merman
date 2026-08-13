@@ -1,11 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::Engine;
-use merman::svg::{
-    DiagramTheme, DiagramThemeCompiler, HeadlessRenderer, SvgPipeline, SvgPipelinePreset,
-    ThemePreset,
+use merman::svg::{DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemePreset};
+use merman::{
+    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
-use merman_core::MermaidConfig;
 use serde_json::{Value, json};
 
 const SOURCE: &str = "sequenceDiagram\nAlice->>Bob: Hello";
@@ -20,69 +18,74 @@ fn one_dark() -> DiagramTheme {
         .expect("one-dark preset should compile")
 }
 
-fn effective_config(renderer: &HeadlessRenderer, source: &str) -> Value {
-    renderer
-        .parse_metadata_sync(source)
-        .expect("metadata parse should succeed")
-        .effective_config
-        .as_value()
-        .clone()
+fn effective_config(
+    renderer: &Renderer,
+    source: &str,
+    request: SvgRequest,
+    theme: Option<DiagramTheme>,
+) -> Value {
+    let request = RenderRequest::layout_json(source, OperationControl::new(), request);
+    let request = match theme {
+        Some(theme) => request.with_theme(theme),
+        None => request,
+    };
+    let output = renderer
+        .render(request)
+        .expect("layout projection should succeed");
+    let RenderOutput::LayoutJson(Some(output)) = output else {
+        panic!("expected layout JSON for a detected diagram");
+    };
+    output.layout()["meta"]["effective_config"].clone()
+}
+
+fn capability_plan(
+    renderer: &Renderer,
+    source: &str,
+    request: SvgRequest,
+    theme: Option<DiagramTheme>,
+) -> merman::svg::RenderCapabilityPlan {
+    let request = RenderRequest::svg_plan(source, OperationControl::new(), request);
+    let request = match theme {
+        Some(theme) => request.with_theme(theme),
+        None => request,
+    };
+    let output = renderer
+        .render(request)
+        .expect("SVG capability planning should succeed");
+    let RenderOutput::SvgPlan(Some(plan)) = output else {
+        panic!("expected an SVG capability plan for a detected diagram");
+    };
+    plan
 }
 
 #[test]
-fn renderer_configuration_precedence_is_independent_of_builder_order() {
-    let base = Engine::new().with_site_config(config(json!({
+fn site_config_overrides_theme_mermaid_compatibility() {
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
         "theme": "forest",
-        "look": "classic",
-        "flowchart": { "defaultRenderer": "dagre" },
-    })));
-    let explicit = config(json!({
-        "theme": "dark",
+        "darkMode": false,
         "look": "handDrawn",
-        "themeVariables": { "lineColor": "#123456" },
-    }));
+        "themeVariables": {
+            "darkMode": false,
+            "lineColor": "#123456"
+        },
+        "flowchart": { "defaultRenderer": "dagre" },
+    }))));
 
-    let forward = HeadlessRenderer::new()
-        .with_engine(base.clone())
-        .with_theme(one_dark())
-        .with_site_config(explicit.clone());
-    let reverse = HeadlessRenderer::new()
-        .with_site_config(explicit)
-        .with_theme(one_dark())
-        .with_engine(base);
-
-    let forward = effective_config(&forward, SOURCE);
-    let reverse = effective_config(&reverse, SOURCE);
-    assert_eq!(forward, reverse);
-    assert_eq!(forward["theme"], "dark");
-    assert_eq!(forward["look"], "handDrawn");
-    assert_eq!(forward["themeVariables"]["lineColor"], "#123456");
-    assert_eq!(forward["flowchart"]["defaultRenderer"], "dagre");
-}
-
-#[test]
-fn explicit_mermaid_values_override_the_compiled_theme() {
-    let renderer = HeadlessRenderer::new()
-        .with_theme(one_dark())
-        .with_site_config(config(json!({
-            "theme": "base",
-            "themeVariables": {
-                "primaryColor": "#abcdef",
-                "lineColor": "#123456"
-            },
-        })));
-
-    let effective = effective_config(&renderer, SOURCE);
-    assert_eq!(effective["theme"], "base");
-    assert_eq!(effective["themeVariables"]["primaryColor"], "#abcdef");
+    let effective = effective_config(&renderer, SOURCE, SvgRequest::default(), Some(one_dark()));
+    assert_eq!(effective["theme"], "forest");
+    assert_eq!(effective["darkMode"], false);
+    assert_eq!(effective["look"], "handDrawn");
+    assert_eq!(effective["themeVariables"]["darkMode"], false);
     assert_eq!(effective["themeVariables"]["lineColor"], "#123456");
+    assert_eq!(effective["flowchart"]["defaultRenderer"], "dagre");
 }
 
 #[test]
-fn visual_theme_does_not_select_mermaid_behavior() {
+fn typed_theme_does_not_select_mermaid_layout_or_look() {
     let source = "flowchart TD\nA --> B";
-    let baseline = effective_config(&HeadlessRenderer::new(), source);
-    let themed = effective_config(&HeadlessRenderer::new().with_theme(one_dark()), source);
+    let renderer = Renderer::new();
+    let baseline = effective_config(&renderer, source, SvgRequest::default(), None);
+    let themed = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
 
     assert_eq!(themed.get("look"), baseline.get("look"));
     assert_eq!(
@@ -96,92 +99,81 @@ fn source_config_remains_the_final_nonsecure_mermaid_layer() {
     let source = r##"%%{init: {"theme": "neutral", "sequence": {"actorMargin": 88}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = HeadlessRenderer::new()
-        .with_theme(one_dark())
-        .with_site_config(config(json!({
-            "theme": "dark",
-            "sequence": { "actorMargin": 64 },
-        })));
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
+        "theme": "dark",
+        "sequence": { "actorMargin": 64 },
+    }))));
 
-    let effective = effective_config(&renderer, source);
+    let effective = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
     assert_eq!(effective["theme"], "neutral");
     assert_eq!(effective["sequence"]["actorMargin"], 88);
 }
 
 #[test]
-fn source_config_cannot_override_secure_theme_variables() {
+fn source_config_cannot_override_secure_site_values() {
     let source = r##"%%{init: {"themeVariables": {"lineColor": "#abcdef"}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = HeadlessRenderer::new().with_site_config(config(json!({
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
         "themeVariables": { "lineColor": "#123456" },
-    })));
+    }))));
 
-    let effective = effective_config(&renderer, source);
+    let effective = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
     assert_eq!(effective["themeVariables"]["lineColor"], "#123456");
 }
 
 #[test]
-fn theme_does_not_select_or_override_svg_output_policy() {
-    let no_output = HeadlessRenderer::new().with_theme(one_dark());
-    assert!(no_output.svg_pipeline().is_none());
+fn svg_pipeline_selection_does_not_change_theme_identity() {
+    let theme = one_dark();
+    let renderer = Renderer::new();
+    let plain = renderer
+        .render(
+            RenderRequest::svg(SOURCE, OperationControl::new(), SvgRequest::default())
+                .with_theme(theme.clone()),
+        )
+        .expect("themed SVG should render");
+    let RenderOutput::Svg(Some(plain)) = plain else {
+        panic!("expected a themed SVG");
+    };
 
-    let forward = HeadlessRenderer::new()
-        .with_theme(one_dark())
-        .with_svg_pipeline(SvgPipeline::readable());
-    let reverse = HeadlessRenderer::new()
-        .with_svg_pipeline(SvgPipeline::readable())
-        .with_theme(one_dark());
+    let mut readable_request = SvgRequest::default();
+    readable_request.pipeline = Some(SvgPipeline::readable());
+    let readable = renderer
+        .render(
+            RenderRequest::svg(SOURCE, OperationControl::new(), readable_request)
+                .with_theme(theme.clone()),
+        )
+        .expect("themed readable SVG should render");
+    let RenderOutput::Svg(Some(readable)) = readable else {
+        panic!("expected a themed readable SVG");
+    };
 
     assert_eq!(
-        forward.svg_pipeline().map(SvgPipeline::preset),
-        Some(SvgPipelinePreset::Readable)
+        plain.evidence().family_report().theme_recipe_fingerprint(),
+        Some(theme.recipe_fingerprint())
     );
     assert_eq!(
-        reverse.svg_pipeline().map(SvgPipeline::preset),
-        Some(SvgPipelinePreset::Readable)
+        readable
+            .evidence()
+            .family_report()
+            .theme_recipe_fingerprint(),
+        Some(theme.recipe_fingerprint())
     );
-}
-
-#[test]
-fn direct_parse_and_prepared_semantic_share_the_same_materialized_engine() {
-    let renderer = HeadlessRenderer::new()
-        .with_theme(one_dark())
-        .with_site_config(config(json!({ "theme": "dark" })));
-
-    let direct = effective_config(&renderer, SOURCE);
-    let exposed = renderer
-        .engine()
-        .parse_metadata_sync(SOURCE)
-        .expect("materialized engine metadata should succeed")
-        .effective_config
-        .as_value()
-        .clone();
-    let prepared = renderer
-        .prepare_semantic_sync(SOURCE)
-        .expect("prepared semantic should succeed")
-        .expect("sequence diagram should be detected")
-        .metadata()
-        .effective_config
-        .as_value()
-        .clone();
-
-    assert_eq!(exposed, direct);
-    assert_eq!(prepared, direct);
 }
 
 #[test]
 fn render_plan_reports_renderer_capabilities_only() {
-    let plain = HeadlessRenderer::new()
-        .plan_svg_sync(SOURCE)
-        .expect("plain plan should succeed")
-        .expect("sequence diagram should be detected");
-    let themed = HeadlessRenderer::new()
-        .with_theme(one_dark())
-        .plan_svg_sync(SOURCE)
-        .expect("themed plan should succeed")
-        .expect("sequence diagram should be detected");
+    const PLAN_SOURCE: &str = "mindmap\n  root((Root))\n    Child";
+    let renderer = Renderer::new();
+    let plain = capability_plan(&renderer, PLAN_SOURCE, SvgRequest::default(), None);
+    let themed = capability_plan(
+        &renderer,
+        PLAN_SOURCE,
+        SvgRequest::default(),
+        Some(one_dark()),
+    );
 
+    assert!(!plain.required_capabilities().is_empty());
     assert_eq!(
         plain.required_capabilities(),
         themed.required_capabilities()

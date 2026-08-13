@@ -1,31 +1,41 @@
 # @mermanjs/web
 
-The complete browser-only Merman SDK. Its single WASM artifact includes SVG rendering with Cytoscape, ELK, and math support, semantic analysis, ASCII output, and parser-backed editor APIs.
+The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-backed editor
+intelligence. Start here when evaluating Merman or when one browser realm needs more than one
+workflow.
 
-## Install
+This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
+matter.
 
-Install the current alpha from npm:
+## Quick start
 
 ```sh
 npm install @mermanjs/web@alpha
 ```
 
-For local source development, build the package group and install this package from the checkout:
-
-```sh
-npm ci --prefix /path/to/merman/platforms/web
-npm run build --prefix /path/to/merman/platforms/web
-npm install /path/to/merman/platforms/web/packages/full
-```
-
 ```ts
-import { initMerman, renderSvg } from "@mermanjs/web";
+import { initMerman, renderSvgToElement } from "@mermanjs/web";
 
 await initMerman();
-const svg = renderSvg(`flowchart TD
+
+const target = document.querySelector("#diagram");
+if (!target) throw new Error("missing #diagram mount point");
+
+renderSvgToElement(target, `flowchart TD
   A[Start] --> B[Done]`);
 ```
 
-Use this package for the first implementation and for applications that need more than one Merman workflow. It is not a Node.js or SSR transport. Load it only in a browser main-thread or Web Worker realm; a separate native transport is required for server-side rendering.
+Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
 
-See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for custom WASM loading, resource policy, and the slim package admission rules.
+## Runtime boundary
+
+Load this package only in a browser main thread or Web Worker. It is not a Node.js or SSR transport;
+use [`@mermanjs/node`](https://github.com/Latias94/merman/blob/main/platforms/node/packages/node/README.md)
+for supported native Node.js hosts.
+
+Initialize Merman once per realm and reuse it. A host that creates a Worker owns Worker termination.
+Dispose retained editor and text-measurement sessions when they are no longer needed.
+
+See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
+for package selection, safe DOM mounting, custom WASM loading, resource limits, and source-checkout
+development.

@@ -68,7 +68,8 @@ pub(crate) struct DirectionStatementToken {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<SourceSpan>,
-    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
+    pub expected_syntax: Vec<crate::EditorExpectedSyntax>,
+    pub directive_prefix: Option<&'static str>,
 }
 
 impl LexError {
@@ -76,7 +77,8 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
-            expected_syntax: None,
+            expected_syntax: Vec::new(),
+            directive_prefix: None,
         }
     }
 
@@ -84,7 +86,8 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
-            expected_syntax: None,
+            expected_syntax: Vec::new(),
+            directive_prefix: None,
         }
     }
 
@@ -93,8 +96,16 @@ impl LexError {
         kind: crate::EditorExpectedSyntaxKind,
         span: SourceSpan,
     ) -> Self {
-        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+        let expected = crate::EditorExpectedSyntax::new(kind, span);
+        if !self.expected_syntax.contains(&expected) {
+            self.expected_syntax.push(expected);
+        }
         self
+    }
+
+    pub(crate) fn in_directive(mut self, prefix: &'static str, span: SourceSpan) -> Self {
+        self.directive_prefix = Some(prefix);
+        self.expecting(crate::EditorExpectedSyntaxKind::Directive, span)
     }
 }
 

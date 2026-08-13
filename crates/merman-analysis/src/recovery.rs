@@ -1,37 +1,22 @@
-use crate::diagnostic_projection::{ParseDiagnosticLocation, rule_diagnostic};
-use crate::rules::{DIAGRAM_PARSE_RULE_ID, RECOVERED_EDITOR_FACTS_RULE_ID};
+use crate::diagnostic_projection::{DiagnosticCandidate, ParseDiagnosticLocation, rule_candidate};
+use crate::rules::{
+    DIAGRAM_PARSE_RULE_ID, RECOVERED_EDITOR_FACTS_RULE, RECOVERED_EDITOR_FACTS_RULE_ID,
+};
 use crate::{AnalysisDiagnostic, AnalysisStatus, SourceMap};
 use merman_core::{EditorSemanticDiagnostic, EditorSemanticDiagnosticKind};
-
-#[derive(Debug, Clone)]
-pub(crate) struct AnalysisRecoveryDiagnostic {
-    pub(crate) diagnostic: AnalysisDiagnostic,
-    kind: Option<EditorSemanticDiagnosticKind>,
-}
-
-impl AnalysisRecoveryDiagnostic {
-    pub(crate) fn parser_backed(
-        diagnostic: AnalysisDiagnostic,
-        kind: EditorSemanticDiagnosticKind,
-    ) -> Self {
-        Self {
-            diagnostic,
-            kind: Some(kind),
-        }
-    }
-}
 
 pub(crate) fn merge_duplicate_parse_recovery_diagnostic(
     primary: &mut AnalysisDiagnostic,
     primary_trailing_source_context_count: usize,
-    recovery: &AnalysisRecoveryDiagnostic,
+    recovery: &AnalysisDiagnostic,
+    recovery_kind: EditorSemanticDiagnosticKind,
     primary_parse_location: Option<ParseDiagnosticLocation>,
 ) -> bool {
-    if recovery.kind != Some(EditorSemanticDiagnosticKind::ParserRecovery) {
+    if recovery_kind != EditorSemanticDiagnosticKind::ParserRecovery {
         return false;
     }
 
-    if !is_same_parse_recovery_problem(primary, &recovery.diagnostic, primary_parse_location) {
+    if !is_same_parse_recovery_problem(primary, recovery, primary_parse_location) {
         return false;
     }
 
@@ -42,7 +27,7 @@ pub(crate) fn merge_duplicate_parse_recovery_diagnostic(
 
     // Host-document context is normalized onto candidates during capture but remains the final
     // related location on the wire. Insert recovery refinements immediately before that tail.
-    if is_better_primary_parse_span(primary, &recovery.diagnostic) {
+    if is_better_primary_parse_span(primary, recovery) {
         if let Some(previous_span) = primary.span {
             primary.related.insert(
                 related_insertion_index,
@@ -55,7 +40,7 @@ pub(crate) fn merge_duplicate_parse_recovery_diagnostic(
             );
             related_insertion_index = related_insertion_index.saturating_add(1);
         }
-        primary.span = recovery.diagnostic.span;
+        primary.span = recovery.span;
     }
     primary.related.insert(
         related_insertion_index,
@@ -63,7 +48,7 @@ pub(crate) fn merge_duplicate_parse_recovery_diagnostic(
             message:
                 "Parser recovery produced the same syntax problem while preserving editor facts."
                     .to_string(),
-            span: recovery.diagnostic.span,
+            span: recovery.span,
         },
     );
     true
@@ -141,18 +126,23 @@ fn point_touches_span(point: &crate::DiagnosticSpan, span: &crate::DiagnosticSpa
         && point.byte_start <= span.byte_end
 }
 
+#[cfg(test)]
 pub(crate) fn editor_recovery_diagnostics(
     diagnostics: impl IntoIterator<Item = EditorSemanticDiagnostic>,
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Vec<AnalysisRecoveryDiagnostic> {
-    diagnostics
-        .into_iter()
-        .filter_map(|diagnostic| {
-            recovered_editor_diagnostic(diagnostic, diagram_type, source_map, rule_config)
-        })
-        .collect()
+) -> Vec<AnalysisDiagnostic> {
+    let cancellation = crate::AnalysisCancellationToken::new();
+    let candidates = editor_recovery_candidates(diagnostics, diagram_type, source_map);
+    crate::diagnostic_projection::project_diagnostic_candidates(
+        &candidates,
+        &crate::AnalysisDiagnosticPolicy {
+            rule_config: rule_config.clone(),
+        },
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
 pub(crate) fn editor_recovery_candidates(
@@ -160,38 +150,24 @@ pub(crate) fn editor_recovery_candidates(
     diagram_type: &str,
     source_map: &SourceMap,
 ) -> Vec<crate::diagnostic_projection::DiagnosticCandidate> {
-    editor_recovery_diagnostics(
-        diagnostics,
-        diagram_type,
-        source_map,
-        crate::rules::capture_rule_config(),
-    )
-    .into_iter()
-    .map(|recovery| {
-        let mut candidate =
-            crate::diagnostic_projection::DiagnosticCandidate::new(recovery.diagnostic);
-        if let Some(kind) = recovery.kind {
-            candidate = candidate.with_recovery_kind(kind);
-        }
-        candidate
-    })
-    .collect()
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| recovered_editor_candidate(diagnostic, diagram_type, source_map))
+        .collect()
 }
 
-fn recovered_editor_diagnostic(
+fn recovered_editor_candidate(
     diagnostic: EditorSemanticDiagnostic,
     diagram_type: &str,
     source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<AnalysisRecoveryDiagnostic> {
+) -> DiagnosticCandidate {
     let kind = diagnostic.kind;
-    let mut out = rule_diagnostic(
-        RECOVERED_EDITOR_FACTS_RULE_ID,
+    let mut out = rule_candidate(
+        RECOVERED_EDITOR_FACTS_RULE,
         AnalysisStatus::ParseError,
         diagnostic.message,
         source_map,
-        rule_config,
-    )?
+    )
     .with_diagram_type(diagram_type);
 
     if let Some(span) = diagnostic
@@ -201,5 +177,5 @@ fn recovered_editor_diagnostic(
         out = out.with_span(span);
     }
 
-    Some(AnalysisRecoveryDiagnostic::parser_backed(out, kind))
+    out.with_recovery_kind(kind)
 }

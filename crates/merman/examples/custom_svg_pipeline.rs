@@ -1,7 +1,7 @@
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor,
-    SvgPipeline,
+    CssOverridePolicy, RootBackgroundPostprocessor, ScopedCssPostprocessor, SvgPipeline,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const SOURCE: &str = r#"flowchart TD
     Mermaid --> Pipeline[Host output pipeline]
@@ -27,14 +27,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ScopedCssPostprocessor::new(HOST_CSS)
                 .with_override_policy(CssOverridePolicy::StripExistingImportant),
         );
-    let renderer = HeadlessRenderer::new()
-        .with_svg_pipeline(pipeline)
-        .with_vendored_text_measurer()
-        .with_diagram_id("custom-svg-pipeline-example");
-    let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
+    let renderer = Renderer::new();
+    let request = SvgRequest {
+        pipeline: Some(pipeline),
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some("custom-svg-pipeline-example".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = renderer.render(RenderRequest::svg(SOURCE, OperationControl::new(), request))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
 
-    print!("{svg}");
+    print!("{}", svg.svg());
     Ok(())
 }

@@ -24,6 +24,11 @@ admission, the behavior outcome, and the admission output digest. The one bootst
 its digest as a historical aggregate because the original npm stdout was not archived; it does not
 pretend that aggregate is official-tool output.
 
+Packages loaded by reference execution, including the Puppeteer browser-driver closure, are
+selected packages rather than ambient tooling. They carry registry integrity, source identity,
+installed-content digests, lock verification, and selection-receipt coverage alongside Mermaid and
+its runtime companions.
+
 Run the offline-capable standing gate with:
 
 ```bash

@@ -3,6 +3,14 @@ pub(crate) fn strip_line_ending(segment: &str) -> &str {
     segment.strip_suffix('\r').unwrap_or(segment)
 }
 
+pub(crate) fn consume_line_ending(source: &str, offset: usize) -> Option<usize> {
+    match source.as_bytes().get(offset).copied()? {
+        b'\r' if source.as_bytes().get(offset + 1) == Some(&b'\n') => Some(offset + 2),
+        b'\r' | b'\n' => Some(offset + 1),
+        _ => None,
+    }
+}
+
 pub(crate) struct LineCursor<'a> {
     source: &'a str,
     segments: std::str::SplitInclusive<'a, char>,
@@ -127,9 +135,9 @@ pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        LineCursor, leading_whitespace_len, physical_line_at, split_ascii_indent, split_indent,
-        split_indent_by, split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
-        strip_line_ending,
+        LineCursor, consume_line_ending, leading_whitespace_len, physical_line_at,
+        split_ascii_indent, split_indent, split_indent_by, split_statement_suffix_hash_or_semi,
+        starts_with_case_insensitive, strip_line_ending,
     };
 
     #[test]
@@ -137,6 +145,14 @@ mod tests {
         assert_eq!(strip_line_ending("line\n"), "line");
         assert_eq!(strip_line_ending("line\r\n"), "line");
         assert_eq!(strip_line_ending("line"), "line");
+    }
+
+    #[test]
+    fn consume_line_ending_accepts_cr_lf_and_crlf() {
+        assert_eq!(consume_line_ending("\r", 0), Some(1));
+        assert_eq!(consume_line_ending("\n", 0), Some(1));
+        assert_eq!(consume_line_ending("\r\n", 0), Some(2));
+        assert_eq!(consume_line_ending("x", 0), None);
     }
 
     #[test]

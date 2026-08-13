@@ -1,15 +1,21 @@
 use super::LanguageSession;
-use super::analysis::executor::{LSP_ANALYSIS_CONCURRENCY, LSP_ANALYSIS_IN_FLIGHT_LIMIT};
+use super::analysis::executor::LSP_ANALYSIS_CONCURRENCY;
 use super::analysis::request::TestAnalysisGate;
 use super::documents::{SemanticTokensState, default_lsp_analysis_options};
+use crate::client_profile::ClientProtocolProfile;
+use crate::snapshot::{AnalysisResultIdentity, SnapshotContext};
 use merman_analysis::{AnalysisRuleConfig, DiagnosticSeverity};
 use merman_editor_core::DocumentKind;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::task::Poll;
 use std::time::Duration;
 use tower_lsp_server::jsonrpc::ErrorCode;
-use tower_lsp_server::ls_types::{TextDocumentContentChangeEvent, Uri};
+use tower_lsp_server::ls_types::{
+    DiagnosticSeverity as LspDiagnosticSeverity, NumberOrString, TextDocumentContentChangeEvent,
+    Uri,
+};
 
 fn session() -> LanguageSession {
     LanguageSession::with_cancellation(merman_analysis::AnalysisCancellationToken::new())
@@ -17,6 +23,18 @@ fn session() -> LanguageSession {
 
 fn uri(name: &str) -> Uri {
     Uri::from_str(&format!("file:///tmp/{name}.mmd")).unwrap()
+}
+
+fn projected_severity(context: &SnapshotContext, code: &str) -> LspDiagnosticSeverity {
+    context
+        .diagnostic_round_trip()
+        .diagnostics_with_profile(&ClientProtocolProfile::permissive())
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code.as_ref() == Some(&NumberOrString::String(code.to_owned()))
+        })
+        .and_then(|diagnostic| diagnostic.severity)
+        .expect("expected projected diagnostic severity")
 }
 
 async fn open(session: &LanguageSession, uri: &Uri, version: i32, text: &str) {
@@ -27,6 +45,18 @@ async fn open(session: &LanguageSession, uri: &Uri, version: i32, text: &str) {
     );
 }
 
+async fn structure_identity(
+    session: &LanguageSession,
+    uri: &Uri,
+) -> Option<AnalysisResultIdentity> {
+    session
+        .query_structure(uri, |snapshot| {
+            Ok(Some(snapshot.analysis_result_identity()))
+        })
+        .await
+        .expect("test structure query should not fail")
+}
+
 async fn wait_for_gate(gate: &TestAnalysisGate, expected: usize) {
     tokio::time::timeout(Duration::from_secs(1), async {
         while gate.started() != expected {
@@ -35,64 +65,6 @@ async fn wait_for_gate(gate: &TestAnalysisGate, expected: usize) {
     })
     .await
     .expect("analysis did not reach its deterministic gate");
-}
-
-async fn wait_for_analysis_waiters(session: &LanguageSession, uri: &Uri, expected: usize) {
-    tokio::time::timeout(Duration::from_secs(1), async {
-        while session.analysis_waiter_count(uri) != expected {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("analysis job did not reach the expected waiter count");
-}
-
-async fn wait_for_analysis_registry_state(
-    session: &LanguageSession,
-    expected: (usize, usize, usize),
-) {
-    tokio::time::timeout(Duration::from_secs(1), async {
-        while session.analysis_registry_state() != expected {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("analysis registry did not reach the expected state");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn identical_queries_share_one_session_analysis_and_context() {
-    let session = session();
-    let uri = uri("shared-context");
-    open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
-    let gate = Arc::new(TestAnalysisGate::default());
-    session
-        .inner
-        .state
-        .lock()
-        .await
-        .set_analysis_test_gate(Some(Arc::clone(&gate)));
-
-    let first = tokio::spawn({
-        let session = session.clone();
-        let uri = uri.clone();
-        async move { session.structure_snapshot(&uri).await }
-    });
-    wait_for_gate(&gate, 1).await;
-    let second = tokio::spawn({
-        let session = session.clone();
-        let uri = uri.clone();
-        async move { session.structure_snapshot(&uri).await }
-    });
-    wait_for_analysis_waiters(&session, &uri, 2).await;
-    assert_eq!(gate.started(), 1);
-    gate.release();
-
-    let first = first.await.unwrap();
-    let second = second.await.unwrap();
-
-    assert!(Arc::ptr_eq(&first.unwrap(), &second.unwrap()));
-    assert_eq!(session.analysis_execution_count(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -239,7 +211,7 @@ async fn termination_fences_a_ready_semantic_token_state_before_final_commit() {
                     Ok(Some((
                         (),
                         Some(SemanticTokensState::new(
-                            Some("terminated".to_owned()),
+                            "terminated".to_owned(),
                             Vec::new(),
                         )),
                     )))
@@ -250,21 +222,11 @@ async fn termination_fences_a_ready_semantic_token_state_before_final_commit() {
     entered.wait();
 
     let state = session.inner.state.lock().await;
-    assert!(state.semantic_tokens_state(&uri).is_none());
     release.wait();
     assert!(session.terminate());
     drop(state);
 
     assert!(query.await.unwrap().unwrap().is_none());
-    assert!(
-        session
-            .inner
-            .state
-            .lock()
-            .await
-            .semantic_tokens_state(&uri)
-            .is_none()
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -285,9 +247,9 @@ async fn pull_diagnostics_retries_an_execution_that_becomes_stale() {
         let uri = uri.clone();
         async move {
             session
-                .pull_diagnostics(&uri, |document, _| {
+                .pull_diagnostics(&uri, |context, _| {
                     super::documents::DocumentDiagnosticState {
-                        result_id: document.version.to_string(),
+                        result_id: context.document.version.to_string(),
                         diagnostics: Vec::new(),
                     }
                 })
@@ -314,24 +276,207 @@ async fn pull_diagnostics_retries_an_execution_that_becomes_stale() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pull_diagnostics_recaptures_a_document_that_becomes_unavailable() {
+    let session = session();
+    let uri = uri("diagnostic-unavailable-retry");
+    open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
+    let gate = Arc::new(TestAnalysisGate::default());
+    session
+        .inner
+        .state
+        .lock()
+        .await
+        .set_analysis_test_gate(Some(Arc::clone(&gate)));
+    let compute_calls = Arc::new(AtomicUsize::new(0));
+
+    let pull = tokio::spawn({
+        let session = session.clone();
+        let uri = uri.clone();
+        let compute_calls = Arc::clone(&compute_calls);
+        async move {
+            session
+                .pull_diagnostics(&uri, move |context, analysis| {
+                    compute_calls.fetch_add(1, Ordering::SeqCst);
+                    assert!(context.document.is_analysis_unavailable());
+                    assert!(analysis.is_none());
+                    super::documents::DocumentDiagnosticState {
+                        result_id: "unavailable".to_owned(),
+                        diagnostics: Vec::new(),
+                    }
+                })
+                .await
+        }
+    });
+    wait_for_gate(&gate, 1).await;
+
+    let change = session
+        .update_configuration(default_lsp_analysis_options().with_max_source_bytes(Some(1)))
+        .await;
+    assert!(change.affects_snapshots());
+    gate.release();
+
+    let state = pull.await.unwrap().unwrap().unwrap();
+    assert_eq!(state.result_id, "unavailable");
+    assert_eq!(compute_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn pull_diagnostics_stops_after_three_total_stale_attempts() {
+    let session = session();
+    let uri = uri("diagnostic-retry-budget");
+    open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let entered = Arc::new(
+        (0..3)
+            .map(|_| Arc::new(Barrier::new(2)))
+            .collect::<Vec<_>>(),
+    );
+    let releases = Arc::new(
+        (0..3)
+            .map(|_| Arc::new(Barrier::new(2)))
+            .collect::<Vec<_>>(),
+    );
+
+    let pull = tokio::spawn({
+        let session = session.clone();
+        let uri = uri.clone();
+        let attempts = Arc::clone(&attempts);
+        let entered = Arc::clone(&entered);
+        let releases = Arc::clone(&releases);
+        async move {
+            session
+                .pull_diagnostics(&uri, move |context, _| {
+                    let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                    entered[attempt].wait();
+                    releases[attempt].wait();
+                    super::documents::DocumentDiagnosticState {
+                        result_id: context.document.version.to_string(),
+                        diagnostics: Vec::new(),
+                    }
+                })
+                .await
+        }
+    });
+
+    for attempt in 0..3 {
+        entered[attempt].wait();
+        session
+            .change_document(
+                uri.clone(),
+                i32::try_from(attempt + 2).unwrap(),
+                vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: format!("flowchart TD\nA-->N{attempt}\n"),
+                }],
+            )
+            .await;
+        releases[attempt].wait();
+    }
+
+    let error = pull.await.unwrap().unwrap_err();
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    assert_eq!(error.code, ErrorCode::ContentModified);
+    assert_eq!(
+        error.message,
+        "diagnostic document changed repeatedly while computing"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pull_diagnostics_starts_at_most_three_stale_reprojections() {
+    let session = session();
+    let uri = uri("diagnostic-reprojection-budget");
+    open(&session, &uri, 1, "").await;
+    structure_identity(&session, &uri)
+        .await
+        .expect("snapshot-only query should populate parse evidence");
+    assert!(
+        session
+            .update_configuration(
+                default_lsp_analysis_options().with_rule_config(
+                    AnalysisRuleConfig::default()
+                        .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                        .unwrap(),
+                )
+            )
+            .await
+            .affects_diagnostics()
+    );
+
+    let gates = (0..4)
+        .map(|_| Arc::new(TestAnalysisGate::default()))
+        .collect::<Vec<_>>();
+    session
+        .inner
+        .state
+        .lock()
+        .await
+        .set_analysis_test_gate(Some(Arc::clone(&gates[0])));
+    let compute_calls = Arc::new(AtomicUsize::new(0));
+    let pull = tokio::spawn({
+        let session = session.clone();
+        let uri = uri.clone();
+        let compute_calls = Arc::clone(&compute_calls);
+        async move {
+            session
+                .pull_diagnostics(&uri, move |context, _| {
+                    compute_calls.fetch_add(1, Ordering::SeqCst);
+                    super::documents::DocumentDiagnosticState {
+                        result_id: context.document.version.to_string(),
+                        diagnostics: Vec::new(),
+                    }
+                })
+                .await
+        }
+    });
+
+    for attempt in 0..3 {
+        wait_for_gate(&gates[attempt], 1).await;
+        session
+            .inner
+            .state
+            .lock()
+            .await
+            .set_analysis_test_gate(Some(Arc::clone(&gates[attempt + 1])));
+        let severity = if attempt.is_multiple_of(2) {
+            DiagnosticSeverity::Warning
+        } else {
+            DiagnosticSeverity::Hint
+        };
+        assert!(
+            session
+                .update_configuration(
+                    default_lsp_analysis_options().with_rule_config(
+                        AnalysisRuleConfig::default()
+                            .with_rule_severity("merman.parse.no_diagram", severity)
+                            .unwrap(),
+                    )
+                )
+                .await
+                .affects_diagnostics()
+        );
+    }
+
+    let error = pull.await.unwrap().unwrap_err();
+    assert_eq!(error.code, ErrorCode::ContentModified);
+    assert_eq!(session.diagnostic_reprojection_count(), 3);
+    assert_eq!(gates[3].started(), 0);
+    assert_eq!(compute_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn diagnostic_policy_reprojects_without_rebuilding_the_snapshot() {
     let session = session();
     let uri = uri("diagnostic-reprojection");
     open(&session, &uri, 1, "").await;
-    let initial = session.structure_snapshot(&uri).await.unwrap();
+    let initial = structure_identity(&session, &uri).await.unwrap();
     let executions = session.analysis_execution_count();
     assert_eq!(
         session.diagnostic_reprojection_count(),
         0,
         "a snapshot-only structure query must not project diagnostics"
     );
-    assert_eq!(
-        session.inner.state.lock().await.analysis_cache_len(),
-        1,
-        "a snapshot-only structure query must retain reusable parse evidence"
-    );
-    assert!(!session.inner.state.lock().await.has_analysis_payload(&uri));
-
     let options = default_lsp_analysis_options().with_rule_config(
         AnalysisRuleConfig::default()
             .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
@@ -340,27 +485,19 @@ async fn diagnostic_policy_reprojects_without_rebuilding_the_snapshot() {
     let change = session.update_configuration(options).await;
     assert!(change.affects_diagnostics());
     assert!(!change.affects_snapshots());
-    let projected = session.structure_snapshot(&uri).await.unwrap();
+    let projected = structure_identity(&session, &uri).await.unwrap();
     let severity = session
         .query_code_actions(&uri, |context| {
-            Ok(Some(
-                context
-                    .analysis_payload()
-                    .diagnostics
-                    .iter()
-                    .find(|diagnostic| diagnostic.id == "merman.parse.no_diagram")
-                    .expect("expected reprojected no-diagram diagnostic")
-                    .severity,
-            ))
+            Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
         })
         .await
         .unwrap()
         .unwrap();
 
-    assert!(Arc::ptr_eq(&initial, &projected));
+    assert_eq!(initial, projected);
     assert_eq!(session.analysis_execution_count(), executions);
     assert_eq!(session.diagnostic_reprojection_count(), 1);
-    assert_eq!(severity, DiagnosticSeverity::Hint);
+    assert_eq!(severity, LspDiagnosticSeverity::HINT);
 }
 
 #[tokio::test]
@@ -369,24 +506,20 @@ async fn sequential_snapshot_queries_reuse_parse_evidence_without_diagnostics() 
     let uri = uri("sequential-snapshot-reuse");
     open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
 
-    let first = session.structure_snapshot(&uri).await.unwrap();
+    let first = structure_identity(&session, &uri).await.unwrap();
     session
         .query_semantic_tokens(&uri, None, |snapshot, _| {
-            assert!(std::ptr::eq(snapshot, first.as_ref()));
+            assert_eq!(snapshot.analysis_result_identity(), first);
             Ok(Some(((), None)))
         })
         .await
         .unwrap()
         .unwrap();
-    let second = session.structure_snapshot(&uri).await.unwrap();
+    let second = structure_identity(&session, &uri).await.unwrap();
 
-    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(first, second);
     assert_eq!(session.analysis_execution_count(), 1);
     assert_eq!(session.diagnostic_reprojection_count(), 0);
-    let state = session.inner.state.lock().await;
-    assert_eq!(state.analysis_cache_len(), 1);
-    assert!(state.has_snapshot(&uri));
-    assert!(!state.has_analysis_payload(&uri));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -420,16 +553,10 @@ async fn diagnostic_configuration_commits_without_waiting_for_projection_capacit
         .cloned()
         .map(|uri| {
             let session = session.clone();
-            tokio::spawn(async move { session.structure_snapshot(&uri).await })
+            tokio::spawn(async move { structure_identity(&session, &uri).await })
         })
         .collect::<Vec<_>>();
     wait_for_gate(&gate, LSP_ANALYSIS_CONCURRENCY).await;
-    wait_for_analysis_registry_state(
-        &session,
-        (LSP_ANALYSIS_CONCURRENCY, LSP_ANALYSIS_CONCURRENCY, 0),
-    )
-    .await;
-
     let options = default_lsp_analysis_options().with_rule_config(
         AnalysisRuleConfig::default()
             .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
@@ -454,28 +581,12 @@ async fn diagnostic_configuration_commits_without_waiting_for_projection_capacit
         async move {
             session
                 .query_code_actions(&target, |context| {
-                    Ok(Some(
-                        context
-                            .analysis_payload()
-                            .diagnostics
-                            .iter()
-                            .find(|diagnostic| diagnostic.id == "merman.parse.no_diagram")
-                            .expect("expected no-diagram diagnostic")
-                            .severity,
-                    ))
+                    Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
                 })
                 .await
         }
     });
-    wait_for_analysis_registry_state(
-        &session,
-        (
-            LSP_ANALYSIS_CONCURRENCY + 1,
-            LSP_ANALYSIS_CONCURRENCY + 1,
-            0,
-        ),
-    )
-    .await;
+    tokio::task::yield_now().await;
     assert!(
         !query.is_finished(),
         "the subsequent lazy reprojection should wait behind the occupied CPU permits"
@@ -493,174 +604,7 @@ async fn diagnostic_configuration_commits_without_waiting_for_projection_capacit
         .expect("lazy diagnostic query should not panic")
         .unwrap()
         .expect("lazy diagnostic query should return a result");
-    assert_eq!(severity, DiagnosticSeverity::Hint);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn diagnostic_policy_update_reclaims_capacity_after_queued_reprojection_workers_exit() {
-    let session = session();
-    let targets = (0..LSP_ANALYSIS_IN_FLIGHT_LIMIT - LSP_ANALYSIS_CONCURRENCY)
-        .map(|index| uri(&format!("diagnostic-policy-queue-{index}")))
-        .collect::<Vec<_>>();
-    for target in &targets {
-        open(&session, target, 1, "").await;
-        session
-            .query_code_actions(target, |_| Ok(Some(())))
-            .await
-            .unwrap()
-            .expect("initial code-action query should populate the complete cache");
-    }
-
-    let gate = Arc::new(TestAnalysisGate::default());
-    session
-        .inner
-        .state
-        .lock()
-        .await
-        .set_analysis_test_gate(Some(Arc::clone(&gate)));
-    let blockers = [
-        uri("diagnostic-policy-blocker-a"),
-        uri("diagnostic-policy-blocker-b"),
-    ];
-    for blocker in &blockers {
-        open(&session, blocker, 1, "flowchart TD\nA-->B\n").await;
-    }
-    let blocker_queries = blockers
-        .iter()
-        .cloned()
-        .map(|uri| {
-            let session = session.clone();
-            tokio::spawn(async move { session.structure_snapshot(&uri).await })
-        })
-        .collect::<Vec<_>>();
-    wait_for_gate(&gate, LSP_ANALYSIS_CONCURRENCY).await;
-    wait_for_analysis_registry_state(
-        &session,
-        (LSP_ANALYSIS_CONCURRENCY, LSP_ANALYSIS_CONCURRENCY, 0),
-    )
-    .await;
-
-    let hint = default_lsp_analysis_options().with_rule_config(
-        AnalysisRuleConfig::default()
-            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
-            .unwrap(),
-    );
-    assert!(
-        session
-            .update_configuration(hint)
-            .await
-            .affects_diagnostics()
-    );
-    let requests = {
-        let state = session.inner.state.lock().await;
-        targets
-            .iter()
-            .map(|target| {
-                state
-                    .diagnostic_reprojection_request(target)
-                    .expect("policy change should leave a lazy reprojection for each cached target")
-            })
-            .collect::<Vec<_>>()
-    };
-    let reprojections = requests
-        .into_iter()
-        .map(|request| {
-            let executor = session.inner.analysis_executor.clone();
-            tokio::spawn(async move {
-                executor
-                    .execute_diagnostic_reprojection(request.request())
-                    .await
-            })
-        })
-        .collect::<Vec<_>>();
-    wait_for_analysis_registry_state(
-        &session,
-        (
-            LSP_ANALYSIS_IN_FLIGHT_LIMIT,
-            LSP_ANALYSIS_IN_FLIGHT_LIMIT,
-            0,
-        ),
-    )
-    .await;
-
-    let warning = default_lsp_analysis_options().with_rule_config(
-        AnalysisRuleConfig::default()
-            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Warning)
-            .unwrap(),
-    );
-    assert!(
-        session
-            .update_configuration(warning)
-            .await
-            .affects_diagnostics(),
-        "the newer policy must supersede every queued diagnostic reprojection"
-    );
-    for reprojection in reprojections {
-        assert!(
-            reprojection
-                .await
-                .expect("queued reprojection should not panic")
-                .expect_err("superseded reprojection must be cancelled without committing")
-                .is_stale()
-        );
-    }
-    wait_for_analysis_registry_state(
-        &session,
-        (LSP_ANALYSIS_CONCURRENCY, LSP_ANALYSIS_CONCURRENCY, 0),
-    )
-    .await;
-
-    let latest = uri("diagnostic-policy-admission-after-cancel");
-    open(&session, &latest, 1, "flowchart TD\nA-->C\n").await;
-    let latest_query = tokio::spawn({
-        let session = session.clone();
-        async move { session.structure_snapshot(&latest).await }
-    });
-    wait_for_analysis_registry_state(
-        &session,
-        (
-            LSP_ANALYSIS_CONCURRENCY + 1,
-            LSP_ANALYSIS_CONCURRENCY + 1,
-            0,
-        ),
-    )
-    .await;
-    assert!(
-        !latest_query.is_finished(),
-        "a fresh build may enter only after superseded projection workers exit, while the preserved builds still own both CPU permits"
-    );
-
-    gate.release();
-    for blocker in blocker_queries {
-        blocker
-            .await
-            .expect("blocker query should not panic")
-            .expect("blocker snapshot should complete");
-    }
-    latest_query
-        .await
-        .expect("fresh query should not panic")
-        .expect("fresh snapshot should complete");
-    let severity = session
-        .query_code_actions(&targets[0], |context| {
-            Ok(Some(
-                context
-                    .analysis_payload()
-                    .diagnostics
-                    .iter()
-                    .find(|diagnostic| diagnostic.id == "merman.parse.no_diagram")
-                    .expect("expected no-diagram diagnostic")
-                    .severity,
-            ))
-        })
-        .await
-        .expect("latest diagnostic query should succeed")
-        .expect("latest diagnostic query should return a severity");
-    assert_eq!(
-        severity,
-        DiagnosticSeverity::Warning,
-        "the superseded hint projection must not commit over the latest policy"
-    );
+    assert_eq!(severity, LspDiagnosticSeverity::HINT);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -679,7 +623,7 @@ async fn diagnostic_policy_change_during_build_reuses_the_canonical_generation()
     let first = tokio::spawn({
         let session = session.clone();
         let uri = uri.clone();
-        async move { session.structure_snapshot(&uri).await }
+        async move { structure_identity(&session, &uri).await }
     });
     wait_for_gate(&gate, 1).await;
 
@@ -692,35 +636,23 @@ async fn diagnostic_policy_change_during_build_reuses_the_canonical_generation()
     assert!(change.affects_diagnostics());
     assert!(!change.affects_snapshots());
 
-    let second = tokio::spawn({
-        let session = session.clone();
-        let uri = uri.clone();
-        async move { session.structure_snapshot(&uri).await }
-    });
-    wait_for_analysis_waiters(&session, &uri, 2).await;
     gate.release();
 
     let first = first.await.unwrap().expect("first structure snapshot");
-    let second = second.await.unwrap().expect("second structure snapshot");
-    assert!(Arc::ptr_eq(&first, &second));
+    let second = structure_identity(&session, &uri)
+        .await
+        .expect("second structure snapshot");
+    assert_eq!(first, second);
     assert_eq!(session.analysis_execution_count(), 1);
 
     let severity = session
         .query_code_actions(&uri, |context| {
-            Ok(Some(
-                context
-                    .analysis_payload()
-                    .diagnostics
-                    .iter()
-                    .find(|diagnostic| diagnostic.id == "merman.parse.no_diagram")
-                    .expect("expected latest no-diagram diagnostic")
-                    .severity,
-            ))
+            Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
         })
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(severity, DiagnosticSeverity::Hint);
+    assert_eq!(severity, LspDiagnosticSeverity::HINT);
     assert_eq!(session.analysis_execution_count(), 1);
 }
 
@@ -743,15 +675,7 @@ async fn diagnostic_policy_change_reprojects_an_uncached_request_local_generatio
         async move {
             session
                 .query_code_actions(&uri, |context| {
-                    Ok(Some(
-                        context
-                            .analysis_payload()
-                            .diagnostics
-                            .iter()
-                            .find(|diagnostic| diagnostic.id == "merman.parse.no_diagram")
-                            .expect("expected no-diagram diagnostic")
-                            .severity,
-                    ))
+                    Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
                 })
                 .await
         }
@@ -769,10 +693,26 @@ async fn diagnostic_policy_change_reprojects_an_uncached_request_local_generatio
     gate.release();
 
     let severity = query.await.unwrap().unwrap().unwrap();
-    assert_eq!(severity, DiagnosticSeverity::Hint);
+    assert_eq!(severity, LspDiagnosticSeverity::HINT);
     assert_eq!(session.analysis_execution_count(), 1);
     assert_eq!(session.diagnostic_reprojection_count(), 1);
-    assert_eq!(session.inner.state.lock().await.analysis_cache_len(), 0);
+
+    session
+        .inner
+        .state
+        .lock()
+        .await
+        .set_analysis_test_gate(None);
+    let severity = session
+        .query_code_actions(&uri, |context| {
+            Ok(Some(projected_severity(context, "merman.parse.no_diagram")))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(severity, LspDiagnosticSeverity::HINT);
+    assert_eq!(session.analysis_execution_count(), 2);
+    assert_eq!(session.diagnostic_reprojection_count(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -805,37 +745,6 @@ async fn snapshot_policy_change_cancels_an_older_session_query() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn evicted_generation_rebuilds_once_for_concurrent_session_queries() {
-    let a = uri("evicted-a");
-    let b = uri("evicted-b");
-    let text = "flowchart TD\nA-->B\n";
-    let sizing = session();
-    open(&sizing, &a, 1, text).await;
-    sizing.structure_snapshot(&a).await.unwrap();
-    let budget = sizing
-        .inner
-        .state
-        .lock()
-        .await
-        .analysis_cache_total_weight();
-
-    let session = LanguageSession::with_analysis_cache_budget(budget);
-    open(&session, &a, 1, text).await;
-    open(&session, &b, 1, text).await;
-    session.structure_snapshot(&a).await.unwrap();
-    session.structure_snapshot(&b).await.unwrap();
-    assert!(!session.inner.state.lock().await.has_snapshot(&a));
-    let executions = session.analysis_execution_count();
-
-    let (first, second) = tokio::join!(
-        session.structure_snapshot(&a),
-        session.structure_snapshot(&a),
-    );
-    assert!(Arc::ptr_eq(&first.unwrap(), &second.unwrap()));
-    assert_eq!(session.analysis_execution_count(), executions + 1);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dropping_the_last_session_waiter_does_not_admit_a_cache_entry() {
     let session = session();
     let uri = uri("last-waiter");
@@ -850,29 +759,22 @@ async fn dropping_the_last_session_waiter_does_not_admit_a_cache_entry() {
     let query = tokio::spawn({
         let session = session.clone();
         let uri = uri.clone();
-        async move { session.structure_snapshot(&uri).await }
+        async move { structure_identity(&session, &uri).await }
     });
     wait_for_gate(&gate, 1).await;
     query.abort();
     let _ = query.await;
     gate.release();
-    tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            let (registered, running_workers, available_cpu) = session.analysis_registry_state();
-            if (registered, running_workers, available_cpu)
-                == (0, 0, super::analysis::executor::LSP_ANALYSIS_CONCURRENCY)
-            {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("cancelled analysis did not release its registry and CPU admission");
-
-    let state = session.inner.state.lock().await;
-    assert_eq!(state.analysis_cache_len(), 0);
-    assert!(!state.has_snapshot(&uri));
+    session.inner.analysis_executor.wait_idle().await;
+    session
+        .inner
+        .state
+        .lock()
+        .await
+        .set_analysis_test_gate(None);
+    let executions = session.analysis_execution_count();
+    assert!(structure_identity(&session, &uri).await.is_some());
+    assert_eq!(session.analysis_execution_count(), executions + 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -891,18 +793,15 @@ async fn termination_rejects_a_finished_analysis_waiting_for_its_final_commit() 
     let query = tokio::spawn({
         let session = session.clone();
         let uri = uri.clone();
-        async move { session.structure_snapshot(&uri).await }
+        async move { structure_identity(&session, &uri).await }
     });
     wait_for_gate(&gate, 1).await;
 
     let state = session.inner.state.lock().await;
     gate.release();
-    wait_for_analysis_registry_state(&session, (1, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+    session.inner.analysis_executor.wait_idle().await;
     assert!(session.terminate());
     drop(state);
 
     assert!(query.await.unwrap().is_none());
-    let state = session.inner.state.lock().await;
-    assert_eq!(state.analysis_cache_len(), 0);
-    assert!(!state.has_snapshot(&uri));
 }

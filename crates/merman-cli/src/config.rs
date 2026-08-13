@@ -17,13 +17,48 @@ use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
+use merman::SvgEnvironment;
+#[cfg(feature = "svg")]
 use merman::svg::{
-    __private::trusted_rust_cli_environment, DiagramThemeCompiler, HeadlessRenderer, IconRegistry,
-    LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP, MathRenderer, SvgRenderOptions,
-    TextMeasurementPolicy, ThemePreset, ThemeResourcePolicy,
+    DiagramThemeCompiler, IconRegistry, LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP,
+    MathRenderer, SvgRenderOptions, TextMeasurementPolicy, ThemeAdmissionPolicy, ThemePreset,
+    ThemeResourcePolicy, TrustedThemeLane, TrustedThemeLanes,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::compile_theme_selection_json_with;
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+#[derive(Clone)]
+pub(crate) struct ConfiguredRenderer {
+    pub(crate) renderer: merman::Renderer,
+    #[cfg(feature = "svg")]
+    pub(crate) svg: merman::SvgRequest,
+    #[cfg(feature = "svg")]
+    theme: Option<merman::svg::DiagramTheme>,
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+impl ConfiguredRenderer {
+    #[cfg(feature = "svg")]
+    pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
+        self.svg.environment = environment;
+        self
+    }
+
+    pub(crate) fn request<'a>(
+        &self,
+        source: &'a str,
+        target: merman::RenderTarget,
+        control: merman::OperationControl,
+    ) -> merman::RenderRequest<'a> {
+        let request = merman::RenderRequest::new(source, target, control);
+        #[cfg(feature = "svg")]
+        if let Some(theme) = self.theme.as_ref() {
+            return request.with_theme(theme.clone());
+        }
+        request
+    }
+}
 
 pub(crate) fn engine_for(
     parse: &ParseCliArgs,
@@ -31,16 +66,6 @@ pub(crate) fn engine_for(
 ) -> Result<Engine, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
     let site_config = site_config_for(parse, resources)?;
-    Ok(engine_from_config(runtime, site_config))
-}
-
-#[cfg(feature = "ascii")]
-pub(crate) fn engine_for_resolved(
-    parse: &ResolvedParseOptions,
-    resources: &ResolvedResourcePolicy,
-) -> Result<Engine, CliError> {
-    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let site_config = site_config_for_resolved(parse, resources)?;
     Ok(engine_from_config(runtime, site_config))
 }
 
@@ -203,7 +228,7 @@ pub(crate) fn renderer_for(
     render: &RenderCliArgs,
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
-) -> Result<HeadlessRenderer, CliError> {
+) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
     let site_config = site_config_for(parse, resources)?;
     renderer_from_config(
@@ -222,7 +247,7 @@ pub(crate) fn renderer_for_resolved(
     render: &ResolvedRenderOptions,
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
-) -> Result<HeadlessRenderer, CliError> {
+) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let site_config = site_config_for_resolved(parse, resources)?;
     renderer_from_config(
@@ -285,10 +310,13 @@ fn renderer_from_config(
     render: RendererInputs<'_>,
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
-) -> Result<HeadlessRenderer, CliError> {
-    let mut environment = trusted_rust_cli_environment(runtime.runtime_policy.clone())
+) -> Result<ConfiguredRenderer, CliError> {
+    let mut environment = SvgEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
-        .with_resource_policy(resources.render_policy());
+        .with_resource_policy(resources.render_policy())
+        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
+        ));
     if let Some(kind) = render.math_renderer {
         environment = match math_renderer(kind)? {
             Some(renderer) => environment.with_math_renderer(renderer),
@@ -307,14 +335,6 @@ fn renderer_from_config(
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
 
-    let engine = runtime.apply_engine(Engine::new());
-    let mut renderer = HeadlessRenderer::from_engine_and_environment(engine, environment)
-        .with_parse_options(parse_options)
-        .with_layout_options(LayoutOptions::default().with_container_size(
-            render.container_width.unwrap_or(800.0),
-            render.container_height.unwrap_or(600.0),
-        ))
-        .with_svg_options(svg);
     let compiler = DiagramThemeCompiler::new()
         .with_resource_policy(ThemeResourcePolicy::for_profile(resources.profile()));
     let selected_theme =
@@ -348,10 +368,45 @@ fn renderer_from_config(
             }
             (None, None) => None,
         };
-    if let Some(theme) = selected_theme {
-        renderer = renderer.with_theme(theme);
-    }
-    Ok(renderer.with_site_config(site_config))
+    let renderer = merman::Renderer::new()
+        .with_engine(runtime.apply_engine(Engine::new().with_site_config(site_config)))
+        .with_parse_options(parse_options)
+        .with_resource_policy(*resources.input_policy());
+    let svg_request = merman::SvgRequest {
+        environment,
+        layout: LayoutOptions::default().with_container_size(
+            render.container_width.unwrap_or(800.0),
+            render.container_height.unwrap_or(600.0),
+        ),
+        options: svg,
+        debug: Default::default(),
+        pipeline: None,
+    };
+    Ok(ConfiguredRenderer {
+        renderer,
+        svg: svg_request,
+        theme: selected_theme,
+    })
+}
+
+#[cfg(feature = "ascii")]
+pub(crate) fn ascii_renderer_for_resolved(
+    parse: &ResolvedParseOptions,
+    resources: &ResolvedResourcePolicy,
+) -> Result<ConfiguredRenderer, CliError> {
+    let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
+    let site_config = site_config_for_resolved(parse, resources)?;
+    let renderer = merman::Renderer::new()
+        .with_engine(engine_from_config(runtime, site_config))
+        .with_parse_options(parse_options_for_resolved(parse))
+        .with_resource_policy(*resources.input_policy());
+    Ok(ConfiguredRenderer {
+        renderer,
+        #[cfg(feature = "svg")]
+        svg: merman::SvgRequest::default(),
+        #[cfg(feature = "svg")]
+        theme: None,
+    })
 }
 
 #[cfg(feature = "svg")]
@@ -397,11 +452,16 @@ mod tests {
         )
         .expect("CLI renderer");
         let error = renderer
-            .render_svg_sync("flowchart TD\nA[\"$$x^2$$\"] --> B[Done]")
+            .renderer
+            .render(renderer.request(
+                "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]",
+                merman::RenderTarget::Svg(renderer.svg.clone()),
+                merman::OperationControl::new(),
+            ))
             .expect_err("explicitly disabling math must reject math labels");
 
         match error {
-            merman::svg::HeadlessError::Render(merman::svg::RenderError::MissingCapability {
+            merman::RenderError::Svg(merman::svg::RenderError::MissingCapability {
                 capability,
                 diagram_type: _,
             }) => assert_eq!(capability, merman::svg::RenderCapability::Math),
@@ -419,16 +479,27 @@ mod tests {
             &default_resources(),
         )
         .expect("CLI renderer");
-        let svg = renderer
-            .render_svg_sync("flowchart TD\nA[\"$$x^2$$\"] --> B[Done]")
-            .expect("the default CLI renderer should use compiled RaTeX support")
-            .expect("successful rendering should return SVG output");
+        let output = renderer
+            .renderer
+            .render(renderer.request(
+                "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]",
+                merman::RenderTarget::Svg(renderer.svg.clone()),
+                merman::OperationControl::new(),
+            ))
+            .expect("the default CLI renderer should use compiled RaTeX support");
+        let merman::RenderOutput::Svg(Some(svg)) = output else {
+            panic!("successful rendering should return SVG output");
+        };
 
         assert!(
-            svg.contains("<path"),
-            "expected rendered math glyphs: {svg}"
+            svg.svg().contains("<path"),
+            "expected rendered math glyphs: {}",
+            svg.svg()
         );
-        assert!(!svg.contains("$$x^2$$"), "math delimiters must be replaced");
+        assert!(
+            !svg.svg().contains("$$x^2$$"),
+            "math delimiters must be replaced"
+        );
     }
 
     #[test]

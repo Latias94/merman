@@ -1,61 +1,50 @@
-# Merman Browser Packages
+# Merman for browsers
 
-This workspace builds the lockstep, browser-only Merman package group. Each admitted package contains one matching WASM artifact, its TypeScript wrapper, provenance, and legal material.
+Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
-> These commands build and install a source checkout. Published npm packages are versioned independently of this documentation.
+Start with `@mermanjs/web` when evaluating Merman or when one browser realm needs several
+workflows. Choose a focused package when the application has one isolated workflow and the smaller
+boundary is useful. These packages require a browser main thread or Web Worker; for Node.js and
+static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 
-Do not use these packages for Node.js or SSR. They require a browser main-thread or Web Worker realm when loading the WASM module. A future Node transport, if admitted, will be a separate package rather than a browser-WASM fallback.
+## Choose a package
 
-## Choose A Package
-
-| Package | Use it for | Status |
+| Need | Package | Includes |
 | --- | --- | --- |
-| `@mermanjs/web` | Complete browser rendering, analysis, ASCII output, and editor APIs. | Required complete release surface. |
-| `@mermanjs/web-analysis` | Detection, validation, facts, and semantic analysis without SVG, ASCII, or editor sessions. | Admitted slim release surface. |
-| `@mermanjs/web-editor` | Parser-backed editor sessions in a dedicated browser Worker. | Admitted slim release surface. |
-| `@mermanjs/web-ascii` | Supported ASCII diagram output. | Admitted slim release surface. |
-| `@mermanjs/web-render` | Complete SVG-only workflow with both layouts and math. | Admitted complete rendering surface. |
+| A complete SDK or a starting point | [`@mermanjs/web`](packages/full/README.md) | SVG, analysis, ASCII, and editor APIs |
+| SVG rendering only | [`@mermanjs/web-render`](packages/render/README.md) | Cytoscape and ELK layouts plus math |
+| Validation and semantic facts | [`@mermanjs/web-analysis`](packages/analysis/README.md) | Detection, validation, analysis, and lint facts |
+| Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
+| ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-Public packages use one version and one release contract. Workflow-specific slim packages are published only when their independently measured installed size is at least 15% below the complete package. The complete SVG-only renderer is admitted for its distinct capability contract, with its smaller artifact recorded separately. The Playground uses `@mermanjs/web` in both the main renderer and editor Worker because its same-revision whole-site R16 measurement found that adding the editor artifact did not lower cold transfer or preserve peak memory. That application-specific result does not change the supported `@mermanjs/web-editor` package surface.
+All public browser packages use one lockstep version. The current prerelease is published on npm's
+`alpha` dist-tag; pin an exact version when reproducible installs matter.
 
-## Browser Quick Start
+Prefer one Merman package per browser realm. Combining the complete package with a focused package
+creates another WASM runtime unless that duplication has been measured and is intentional.
 
-Build the local package group and install the complete browser package:
+## Quick start
 
 ```sh
-npm ci --prefix /path/to/merman/platforms/web
-npm run build --prefix /path/to/merman/platforms/web
-npm install /path/to/merman/platforms/web/packages/full
+npm install @mermanjs/web@alpha
 ```
 
 ```ts
-import { initMerman, renderSvg } from "@mermanjs/web";
+import { initMerman, renderSvgToElement } from "@mermanjs/web";
 
 await initMerman();
 
-const svg = renderSvg(`flowchart TD
+const target = document.querySelector("#diagram");
+if (!target) throw new Error("missing #diagram mount point");
+
+renderSvgToElement(target, `flowchart TD
   A[Start] --> B[Done]`);
 ```
 
-For a custom cache, service worker, or fetch policy, retain the wrapper's loader and pass the actual response or bytes through wasm-bindgen's `module_or_path` contract:
+Initialize Merman once per browser realm and reuse it. Call `renderSvg()` instead when the host
+needs the serialized SVG string rather than a mounted element.
 
-```ts
-import {
-  initMerman,
-  loadMermanWasmModule,
-  MERMAN_WASM_URL,
-} from "@mermanjs/web";
-
-const wasm = await fetch(MERMAN_WASM_URL, { cache: "reload" });
-await initMerman({ loader: loadMermanWasmModule, wasm });
-```
-
-The generated raw wasm-bindgen shim intentionally has no implicit module-path fallback. The public
-package loader supplies `MERMAN_WASM_URL` when its returned module is initialized without an input,
-and forwards an explicit input unchanged. This keeps URL and cache policy at the package/host
-boundary and prevents internal bundles from acquiring a hidden second WASM asset.
-
-## Mounting SVG
+## Mount SVG safely
 
 `renderSvg()` returns Mermaid-parity source and deliberately makes no browser DOM-safety claim.
 Use `renderSvgToElement(target, source)` for the standard navigable authoring surface: it validates
@@ -65,7 +54,7 @@ mount boundary, and hardens external anchors with a new browsing context plus
 
 Hosts that own parsing themselves must choose one explicit capability:
 
-- `assertSelfContainedSvgForDom()` rejects navigation as well as external rendering resources;
+- `assertSelfContainedSvgForDom()` rejects navigation as well as external rendering resources.
 - `assertNavigableSvgForDom()` admits Mermaid-compatible anchor navigation while continuing to
   reject external images, styles, filters, scripts, tracking, and automatic resource loads.
 
@@ -74,26 +63,93 @@ the real owner document is known. For navigable SVG, call `prepareNavigableSvgFo
 importing the parsed root into that document; for a closed preview, call
 `prepareSelfContainedSvgForDomMount()`. Both helpers revalidate the actual parsed root immediately
 before insertion. Object literals, structured clones, source/tree substitution, and a
-self-contained admission cannot stand in for a navigable admission. CSP, iframe/origin
-isolation, and whether navigation is enabled during stale UI states remain host responsibilities.
+self-contained admission cannot stand in for a navigable admission. CSP, iframe/origin isolation,
+and whether navigation remains enabled during stale UI states are host responsibilities.
 
-## Runtime Lifecycle
+## Runtime lifecycle and resource limits
 
-Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the cached initialization and module. There is no separate WASM unload API, so a main-thread runtime lives for the page realm. The package does not create or own a Worker: a host that loads Merman in a dedicated Worker must terminate that Worker after initialization failure, replacement, or application teardown. Synchronous WASM calls cannot be interrupted from the same realm, so Worker termination is the hard cancellation boundary. Dispose every `BrowserTextMeasurementSession` created by `createBrowserTextMeasurementSession()` as soon as it is no longer needed.
+Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the
+cached initialization and module. There is no separate WASM unload API, so a main-thread runtime
+lives for the page realm. The package does not create or own a Worker: a host that loads Merman in
+a dedicated Worker must terminate that Worker after initialization failure, replacement, or
+application teardown. Dispose every `BrowserTextMeasurementSession` created by
+`createBrowserTextMeasurementSession()` as soon as it is no longer needed.
 
-Call `runtimeCatalog()` after initialization when an integration needs to inspect the compiled capabilities, operations, and resource profiles. Validate the flat catalog's local relations and tolerate newly introduced stable IDs; do not infer availability from package names or Cargo feature names. Resource limits are described in [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md); browser preview normally uses the `interactive` profile, while a public submission service needs host-level timeout, memory, concurrency, and process-isolation controls in addition to `constrained` limits.
+Call `runtimeCatalog()` after initialization when an integration needs to inspect compiled
+capabilities, operations, and resource profiles. Validate the flat catalog's local relations and
+tolerate newly introduced stable IDs; do not infer availability from package names or Cargo feature
+names. Browser previews normally use the `interactive` profile. Public submission services also
+need host-level timeout, memory, concurrency, and process isolation around the `constrained`
+profile. See the [binding options guide](../../docs/bindings/OPTIONS_JSON.md) for the full resource
+contract.
 
-## Maintainer Build
+## Deadlines and cancellation
+
+The current browser transport API is `4`, reported by `transportApiVersion()` and the runtime
+catalog. Transport-dispatched one-shot operations accept a transport-owned top-level `timeout_ms`
+field in their options JSON. Because this field is not part of the shared binding-options schema,
+pass it through the public functions' JSON-string form:
+
+```ts
+const svg = renderSvg(
+  source,
+  JSON.stringify({
+    timeout_ms: 250,
+    resources: { profile: "interactive" },
+  })
+);
+```
+
+`timeout_ms` must be an integer from `0` through `4294967295` milliseconds. The transport removes
+it before shared option validation and installs the corresponding relative monotonic deadline on
+the operation control. Expiry is reported as `MERMAN_CANCELLED` with
+`details.cancellation.reason = "deadline_exceeded"` and a checkpoint phase.
+
+This deadline is cooperative: Rust observes it only at operation checkpoints, and it cannot
+preempt a host text-measurement callback that is already running. The synchronous WASM exports do
+not expose a mid-call `AbortSignal`; JavaScript in the same realm cannot run an abort listener
+until Rust returns. A host can check a signal before entering a call or discard its result after
+return. If hard termination is required, run Merman in a dedicated Worker and terminate that
+Worker from its parent realm.
+
+## Custom WASM loading
+
+Keep the package loader and pass a response, URL, request, module, or bytes through wasm-bindgen's
+`module_or_path` contract when the host owns cache, service-worker, or fetch policy:
+
+```ts
+import {
+  initMerman,
+  loadMermanWasmModule,
+  MERMAN_WASM_URL,
+} from "@mermanjs/web";
+
+const wasm = await fetch(MERMAN_WASM_URL, { cache: "reload" });
+if (!wasm.ok) {
+  throw new Error(`Failed to load Merman WASM: ${wasm.status}`);
+}
+await initMerman({ loader: loadMermanWasmModule, wasm });
+```
+
+The generated raw wasm-bindgen shim has no implicit module-path fallback. The public loader supplies
+`MERMAN_WASM_URL` only when initialization receives no input, which keeps URL and cache policy at
+the package/host boundary and prevents internal bundles from acquiring a hidden second WASM asset.
+
+## Develop from source
 
 ```sh
-npm install --prefix platforms/web
+npm ci --prefix platforms/web
 npm run build --prefix platforms/web
-npm run test:wasm-inputs --prefix platforms/web
+npm test --prefix platforms/web
 npm run smoke --prefix platforms/web
 ```
 
-`web-surface-descriptor.json` maps package names to exact artifact profiles. Cargo feature selection lives in the artifact-profile authority; this workspace derives its WASM build and package assembly from that authority instead of maintaining a second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` to validate all generated WASM inputs and `npm run verify:packages --prefix platforms/web` to enforce the one-WASM, legal-material, provenance, export, and size-admission invariants.
+`web-surface-descriptor.json` maps package names to artifact profiles. The workspace derives Cargo
+features, generated entries, and package assembly from those authorities rather than maintaining a
+second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` and
+`npm run verify:packages --prefix platforms/web` for the package-specific contracts.
 
-Package evidence is intentionally layered. The artifact profile and runtime catalog prove the compiled Rust/WASM capabilities. The recorded static-module closure proves only the JavaScript and declaration files reachable from that package entry; explicit source tests independently require and forbid the workflow modules for each surface. Shared catalogs and types describe the lockstep package group and do not imply that a workflow implementation is compiled into a slim WASM artifact.
-
-The private workspace itself is never published. Release automation packs and verifies every admitted package as a version-locked group, then performs staged dist-tag reconciliation without rebuilding in the privileged publish job.
+The private workspace itself is never published. Release automation packs and verifies every
+admitted package as a version-locked group before reconciling dist-tags. See the [package surface
+guide](../../docs/release/PACKAGE_SURFACES.md) for artifact, provenance, legal-material, and
+size-admission details.

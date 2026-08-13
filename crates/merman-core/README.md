@@ -46,6 +46,11 @@ fn main() -> Result<(), merman_core::Error> {
 
 `merman-core` has no default Cargo features. Mermaid parsing, configuration, sanitization, detection, and family facts are unconditional; optional `system-*` features only make explicit host runtime adapters available.
 
+Relative operation deadlines use the native monotonic clock on supported targets. Browser-facing
+`wasm32-unknown-unknown` artifacts must enable `operation-deadlines` to expose the deadline methods
+and use the Web monotonic clock. This keeps browser adapters out of pure WASM dependency closures;
+cancellation remains available in every artifact.
+
 ## Deterministic Time
 
 Use `time::CivilDate` for date-only runtime controls such as `Engine::with_fixed_today`. Its canonical text syntax uses four unsigned digits for years `0000` through `9999`, a leading `+` for later years, and `-` plus at least four digits for negative years. The signed 32-bit year domain includes Mermaid's `+10000` and `-10000` boundaries. `time::CivilDateTime`, `time::UtcOffset`, and `time::OffsetDateTime` provide checked calendar and instant conversions without exposing a third-party time type in the public API.
@@ -78,7 +83,12 @@ Common internal ids include `flowchart-v2`, `sequence`, `classDiagram`, `stateDi
 
 ## Rendering Handoff
 
-If the next step is layout or SVG rendering, prefer `Engine::parse_diagram_for_render_model_sync`. It returns the typed render projection of the same family-owned semantics and avoids building a large compatibility JSON tree. Applications that want complete SVG or layout JSON should normally use `merman::svg::HeadlessRenderer`, which carries this typed projection through the canonical render operation.
+If the next step is low-level layout or SVG rendering, prefer
+`Engine::parse_diagram_for_render_model_sync`. It returns the typed render projection of the same
+family-owned semantics and avoids building a large compatibility JSON tree. Applications that
+start with Mermaid source and want complete SVG, ASCII, layout JSON, or binary output should
+normally use `merman::Renderer` with a typed target request; that facade carries the same
+projection through the canonical operation control, runtime context, and resource policy.
 
 ```rust
 use merman_core::{Engine, ParseOptions};

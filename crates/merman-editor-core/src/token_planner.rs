@@ -1,9 +1,10 @@
 use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::Range;
-use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
-    FenceSemanticRole, SourceMap,
+use merman_analysis::{ByteSpan, SourceMap};
+use merman_core::{
+    EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorSemanticKind,
+    EditorSemanticRole,
 };
 use std::fmt;
 
@@ -22,6 +23,109 @@ impl PlannedToken {
     }
 }
 
+/// Protocol-neutral client support negotiated before semantic-token planning.
+///
+/// The planner keeps the generated descriptor as the only source of canonical ordering and
+/// assigns compact type/modifier indices after unsupported entries have been removed. Hosts such
+/// as LSP may build this value from their capability objects without bringing protocol types into
+/// editor-core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticTokenSupport {
+    supported_types: [bool; PlannedTokenKind::ALL.len()],
+    supported_modifiers: [bool; PlannedTokenModifier::ALL.len()],
+    token_type_indices: [Option<u32>; PlannedTokenKind::ALL.len()],
+    canonical_modifier_mask: u32,
+    projected_modifier_bits: [u32; PlannedTokenModifier::ALL.len()],
+}
+
+impl SemanticTokenSupport {
+    pub fn all() -> Self {
+        Self::from_support(|_| true, |_| true)
+    }
+
+    pub fn from_support(
+        supports_type: impl Fn(PlannedTokenKind) -> bool,
+        supports_modifier: impl Fn(PlannedTokenModifier) -> bool,
+    ) -> Self {
+        let supported_types =
+            std::array::from_fn(|index| supports_type(PlannedTokenKind::ALL[index]));
+        let supported_modifiers =
+            std::array::from_fn(|index| supports_modifier(PlannedTokenModifier::ALL[index]));
+        let mut next_type_index = 0u32;
+        let token_type_indices = std::array::from_fn(|index| {
+            if !supported_types[index] {
+                return None;
+            }
+            let projected = next_type_index;
+            next_type_index += 1;
+            Some(projected)
+        });
+        let canonical_modifier_mask = PlannedTokenModifier::ALL
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| supported_modifiers[*index])
+            .fold(0, |mask, (_, modifier)| mask | modifier.bit());
+        let mut next_modifier_index = 0u32;
+        let projected_modifier_bits = std::array::from_fn(|index| {
+            if !supported_modifiers[index] {
+                return 0;
+            }
+            let projected = 1u32 << next_modifier_index;
+            next_modifier_index += 1;
+            projected
+        });
+
+        Self {
+            supported_types,
+            supported_modifiers,
+            token_type_indices,
+            canonical_modifier_mask,
+            projected_modifier_bits,
+        }
+    }
+
+    pub const fn supports_kind(self, kind: PlannedTokenKind) -> bool {
+        self.supported_types[kind.code() as usize]
+    }
+
+    pub const fn supports_modifier(self, modifier: PlannedTokenModifier) -> bool {
+        self.supported_modifiers[modifier.index() as usize]
+    }
+
+    pub fn supported_kinds(self) -> impl Iterator<Item = PlannedTokenKind> {
+        PlannedTokenKind::ALL
+            .into_iter()
+            .filter(move |kind| self.supports_kind(*kind))
+    }
+
+    pub fn supported_modifiers(self) -> impl Iterator<Item = PlannedTokenModifier> {
+        PlannedTokenModifier::ALL
+            .into_iter()
+            .filter(move |modifier| self.supports_modifier(*modifier))
+    }
+
+    fn mask_modifier_bits(self, canonical_bits: u32) -> u32 {
+        canonical_bits & self.canonical_modifier_mask
+    }
+
+    fn token_type_index(self, kind: PlannedTokenKind) -> Option<u32> {
+        self.token_type_indices[kind.code() as usize]
+    }
+
+    fn project_modifier_bits(self, canonical_bits: u32) -> u32 {
+        let mut remaining = canonical_bits;
+        let mut projected = 0u32;
+        while remaining != 0 {
+            let index = remaining.trailing_zeros() as usize;
+            if let Some(projected_bit) = self.projected_modifier_bits.get(index) {
+                projected |= projected_bit;
+            }
+            remaining &= remaining - 1;
+        }
+        projected
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticTokenPlan {
     tokens: Vec<PlannedToken>,
@@ -29,10 +133,15 @@ pub struct SemanticTokenPlan {
 }
 
 impl SemanticTokenPlan {
+    /// Returns canonical token kinds and modifier bits after negotiated filtering.
+    ///
+    /// Unlike [`Self::packed`], these values stay in the generated descriptor's canonical enum
+    /// and bit spaces rather than the negotiated compact legend space.
     pub fn tokens(&self) -> &[PlannedToken] {
         &self.tokens
     }
 
+    /// Returns the negotiated compact legend indices, modifier bits, and relative positions.
     pub fn packed(&self) -> &[u32] {
         &self.packed
     }
@@ -67,7 +176,7 @@ pub enum TokenPlanError {
     },
     UpstreamLexemeFailure {
         fence_index: usize,
-        failure: FenceLexemeFailure,
+        failure: EditorLexemeFailure,
     },
     InvalidSpan {
         span: ByteSpan,
@@ -210,32 +319,48 @@ impl TokenPlanError {
 pub fn plan_semantic_tokens_for_snapshot(
     snapshot: &DocumentSnapshot,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    plan_semantic_tokens(snapshot, None)
+    plan_semantic_tokens(snapshot, None, SemanticTokenSupport::all())
+}
+
+/// Plans semantic tokens for a negotiated, protocol-neutral client profile.
+pub fn plan_semantic_tokens_for_snapshot_with_support(
+    snapshot: &DocumentSnapshot,
+    support: SemanticTokenSupport,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens(snapshot, None, support)
 }
 
 /// Plans only the token candidates that overlap `range`.
 ///
 /// This is intentionally a planner operation rather than a post-processing filter: Markdown and
 /// MDX documents can contain many or very large Mermaid fences, and a range request must not
-/// allocate and sort candidates outside the requested lines.
+/// allocate and sort candidates outside the requested range.
 pub fn plan_semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    plan_semantic_tokens(snapshot, Some(range))
+    plan_semantic_tokens(snapshot, Some(range), SemanticTokenSupport::all())
+}
+
+/// Plans only the negotiated token candidates that overlap `range`.
+pub fn plan_semantic_tokens_for_snapshot_range_with_support(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+    support: SemanticTokenSupport,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens(snapshot, Some(range), support)
 }
 
 fn plan_semantic_tokens(
     snapshot: &DocumentSnapshot,
     range: Option<Range>,
+    support: SemanticTokenSupport,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    let requested = match range {
-        Some(range) => RequestedTokenRange::new(snapshot.source_map(), range)?,
-        None => None,
-    };
+    let request = TokenRangeRequest::new(snapshot.source_map(), range)?;
+    let requested = request.requested();
     let mut candidates = Vec::new();
     for fence in snapshot.fences() {
-        if range.is_some() && requested.is_none() {
+        if request.is_empty() {
             break;
         }
         if let Some(requested) = requested
@@ -246,15 +371,49 @@ fn plan_semantic_tokens(
         {
             continue;
         }
-        collect_fence_candidates(snapshot, fence, requested, &mut candidates)?;
+        collect_fence_candidates(snapshot, fence, requested, support, &mut candidates)?;
     }
-    let mut plan = plan_candidates(snapshot.source_map(), candidates)?;
-    if let Some(range) = range {
-        plan.tokens
-            .retain(|token| token_overlaps_range(*token, range));
-        plan.packed = pack_tokens(&plan.tokens);
+    plan_candidates_with_request(snapshot.source_map(), candidates, support, request)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TokenRangeRequest {
+    All,
+    Empty(Range),
+    Bounded {
+        requested: RequestedTokenRange,
+        range: Range,
+    },
+}
+
+impl TokenRangeRequest {
+    fn new(source_map: &SourceMap, range: Option<Range>) -> Result<Self, TokenPlanError> {
+        match range {
+            None => Ok(Self::All),
+            Some(range) => Ok(match RequestedTokenRange::new(source_map, range)? {
+                Some(requested) => Self::Bounded { requested, range },
+                None => Self::Empty(range),
+            }),
+        }
     }
-    Ok(plan)
+
+    const fn requested(self) -> Option<RequestedTokenRange> {
+        match self {
+            Self::Bounded { requested, .. } => Some(requested),
+            Self::All | Self::Empty(_) => None,
+        }
+    }
+
+    const fn is_empty(self) -> bool {
+        matches!(self, Self::Empty(_))
+    }
+
+    const fn range(self) -> Option<Range> {
+        match self {
+            Self::All => None,
+            Self::Empty(range) | Self::Bounded { range, .. } => Some(range),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,18 +428,14 @@ impl RequestedTokenRange {
         }
 
         let line_count = source_map.line_count();
-        let start_line =
-            validate_range_position(source_map, range, RangeEndpoint::Start, line_count)?;
-        let end_line = validate_range_position(source_map, range, RangeEndpoint::End, line_count)?;
+        let start = validate_range_position(source_map, range, RangeEndpoint::Start, line_count)?;
+        let end = validate_range_position(source_map, range, RangeEndpoint::End, line_count)?;
         if range.start == range.end {
             return Ok(None);
         }
 
         Ok(Some(Self {
-            byte_span: ByteSpan {
-                start: start_line.0,
-                end: end_line.1,
-            },
+            byte_span: ByteSpan { start, end },
         }))
     }
 
@@ -300,12 +455,12 @@ fn validate_range_position(
     range: Range,
     endpoint: RangeEndpoint,
     line_count: usize,
-) -> Result<(usize, usize), TokenPlanError> {
+) -> Result<usize, TokenPlanError> {
     let position = match endpoint {
         RangeEndpoint::Start => range.start,
         RangeEndpoint::End => range.end,
     };
-    let Some((line_start, line_end)) = source_map.line_bounds(position.line) else {
+    let Some((_, line_end)) = source_map.line_bounds(position.line) else {
         let error = match endpoint {
             RangeEndpoint::Start => TokenPlanError::RangeStartLineOutOfBounds { range, line_count },
             RangeEndpoint::End => TokenPlanError::RangeEndLineOutOfBounds { range, line_count },
@@ -341,18 +496,12 @@ fn validate_range_position(
         line: position.line,
         character: position.character,
     };
-    if source_map
+    source_map
         .byte_offset_for_utf16_position(position)
-        .is_none()
-    {
-        let error = match endpoint {
+        .ok_or(match endpoint {
             RangeEndpoint::Start => TokenPlanError::RangeStartCharacterNotBoundary { range },
             RangeEndpoint::End => TokenPlanError::RangeEndCharacterNotBoundary { range },
-        };
-        return Err(error);
-    }
-
-    Ok((line_start, line_end))
+        })
 }
 
 fn token_overlaps_range(token: PlannedToken, range: Range) -> bool {
@@ -395,6 +544,12 @@ struct ValidTokenCandidate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ModifierOnlyCandidate {
+    span: ByteSpan,
+    modifier_bits: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PlannedByteToken {
     span: ByteSpan,
     kind: PlannedTokenKind,
@@ -405,54 +560,82 @@ fn collect_fence_candidates(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
     requested: Option<RequestedTokenRange>,
+    support: SemanticTokenSupport,
     candidates: &mut Vec<TokenCandidate>,
 ) -> Result<(), TokenPlanError> {
     reject_upstream_lexeme_failure(fence.index(), fence.text_index().lexeme_failure())?;
 
     let mut previous_lexeme: Option<ByteSpan> = None;
     for lexeme in fence.text_index().lexemes() {
-        let span = absolute_fence_span(snapshot, fence, lexeme.span)?;
+        let kind = planned_kind_for_lexeme(lexeme.kind());
+        let kind_is_supported = support.supports_kind(kind);
+        let modifier_bits =
+            pack_modifier_bits(lexeme.modifiers().iter().map(planned_modifier_for_lexeme));
+        if !kind_is_supported
+            && modifier_bits
+                .as_ref()
+                .map_or(true, |bits| support.mask_modifier_bits(*bits) == 0)
+        {
+            continue;
+        }
+        let relative = lexeme.span();
+        let span = absolute_fence_span(
+            snapshot,
+            fence,
+            ByteSpan {
+                start: relative.start,
+                end: relative.end,
+            },
+        )?;
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
         }
-        if let Some(previous) = previous_lexeme {
-            if (previous.start, previous.end) > (span.start, span.end) {
-                return Err(TokenPlanError::UnsortedLexemes {
-                    previous,
-                    current: span,
-                });
+        if kind_is_supported {
+            if let Some(previous) = previous_lexeme {
+                if (previous.start, previous.end) > (span.start, span.end) {
+                    return Err(TokenPlanError::UnsortedLexemes {
+                        previous,
+                        current: span,
+                    });
+                }
+                if previous.end > span.start {
+                    return Err(TokenPlanError::OverlappingLexemes {
+                        left: previous,
+                        right: span,
+                    });
+                }
             }
-            if previous.end > span.start {
-                return Err(TokenPlanError::OverlappingLexemes {
-                    left: previous,
-                    right: span,
-                });
-            }
+            previous_lexeme = Some(span);
         }
-        previous_lexeme = Some(span);
         candidates.push(TokenCandidate {
             span,
-            kind: planned_kind_for_lexeme(lexeme.kind),
-            modifier_bits: pack_modifier_bits(
-                lexeme
-                    .modifiers
-                    .iter()
-                    .copied()
-                    .map(planned_modifier_for_lexeme),
-            ),
+            kind,
+            modifier_bits,
             origin: TokenOverlayKind::Lexeme,
         });
     }
 
     for item in fence.text_index().semantic_items() {
-        let span = absolute_fence_span(snapshot, fence, item.selection)?;
+        let kind = planned_kind_for_symbol(item.kind);
+        let modifier = planned_modifier_for_role(item.role);
+        if !support.supports_kind(kind) && !support.supports_modifier(modifier) {
+            continue;
+        }
+        let span = absolute_fence_span(
+            snapshot,
+            fence,
+            ByteSpan {
+                start: item.selection.start,
+                end: item.selection.end,
+            },
+        )?;
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
         }
         candidates.push(TokenCandidate {
             span,
-            kind: planned_kind_for_symbol(item.kind),
-            modifier_bits: Ok(planned_modifier_for_role(item.role).bit()),
+            kind,
+            modifier_bits: Ok(modifier.bit()),
             origin: token_overlay_for_role(item.role),
         });
     }
@@ -462,7 +645,7 @@ fn collect_fence_candidates(
 
 fn reject_upstream_lexeme_failure(
     fence_index: usize,
-    failure: Option<FenceLexemeFailure>,
+    failure: Option<EditorLexemeFailure>,
 ) -> Result<(), TokenPlanError> {
     match failure {
         Some(failure) => Err(TokenPlanError::UpstreamLexemeFailure {
@@ -577,12 +760,66 @@ fn collect_fence_delimiters(
     Ok(())
 }
 
+#[cfg(test)]
 fn plan_candidates(
     source_map: &SourceMap,
     candidates: Vec<TokenCandidate>,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    let mut candidates = validate_candidates(source_map.source(), candidates)?;
+    plan_candidates_with_support(source_map, candidates, SemanticTokenSupport::all(), None)
+}
+
+#[cfg(test)]
+fn plan_candidates_with_support(
+    source_map: &SourceMap,
+    candidates: Vec<TokenCandidate>,
+    support: SemanticTokenSupport,
+    range: Option<Range>,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    let request = TokenRangeRequest::new(source_map, range)?;
+    plan_candidates_with_request(source_map, candidates, support, request)
+}
+
+fn plan_candidates_with_request(
+    source_map: &SourceMap,
+    candidates: Vec<TokenCandidate>,
+    support: SemanticTokenSupport,
+    request: TokenRangeRequest,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    if request.is_empty() {
+        return Ok(SemanticTokenPlan {
+            tokens: Vec::new(),
+            packed: Vec::new(),
+        });
+    }
+    let requested = request.requested();
+    let mut supported_candidates = Vec::new();
+    let mut modifier_only_candidates = Vec::new();
+    for candidate in candidates
+        .into_iter()
+        .filter(|candidate| requested.is_none_or(|requested| requested.overlaps(candidate.span)))
+    {
+        if support.supports_kind(candidate.kind) {
+            supported_candidates.push(candidate);
+            continue;
+        }
+        let Ok(modifier_bits) = candidate.modifier_bits else {
+            continue;
+        };
+        let modifier_bits = support.mask_modifier_bits(modifier_bits);
+        if modifier_bits == 0 {
+            continue;
+        }
+        validate_span(source_map.source(), candidate.span)?;
+        modifier_only_candidates.push(ModifierOnlyCandidate {
+            span: candidate.span,
+            modifier_bits,
+        });
+    }
+    let mut candidates = validate_candidates(source_map.source(), supported_candidates)?;
     validate_lexical_non_overlap(&candidates)?;
+    for candidate in &mut candidates {
+        candidate.modifier_bits = support.mask_modifier_bits(candidate.modifier_bits);
+    }
     candidates.sort_by_key(|candidate| {
         (
             candidate.span.start,
@@ -592,7 +829,14 @@ fn plan_candidates(
             candidate.modifier_bits,
         )
     });
-    let byte_tokens = resolve_candidates(candidates)?;
+    modifier_only_candidates.sort_by_key(|candidate| {
+        (
+            candidate.span.start,
+            candidate.span.end,
+            candidate.modifier_bits,
+        )
+    });
+    let byte_tokens = resolve_candidates(candidates, modifier_only_candidates)?;
     let mut tokens = split_and_encode_tokens(source_map, &byte_tokens)?;
     tokens.sort_by_key(|token| {
         (
@@ -604,7 +848,9 @@ fn plan_candidates(
         )
     });
     validate_planned_non_overlap(&tokens)?;
-    let packed = pack_tokens(&tokens);
+    let range = request.range();
+    tokens.retain(|token| range.is_none_or(|range| token_overlaps_range(*token, range)));
+    let packed = pack_tokens(&tokens, support);
     Ok(SemanticTokenPlan { tokens, packed })
 }
 
@@ -680,16 +926,24 @@ fn validate_lexical_non_overlap(candidates: &[ValidTokenCandidate]) -> Result<()
 
 fn resolve_candidates(
     candidates: Vec<ValidTokenCandidate>,
+    modifier_only_candidates: Vec<ModifierOnlyCandidate>,
 ) -> Result<Vec<PlannedByteToken>, TokenPlanError> {
     let mut boundaries = candidates
         .iter()
         .flat_map(|candidate| [candidate.span.start, candidate.span.end])
+        .chain(
+            modifier_only_candidates
+                .iter()
+                .flat_map(|candidate| [candidate.span.start, candidate.span.end]),
+        )
         .collect::<Vec<_>>();
     boundaries.sort_unstable();
     boundaries.dedup();
 
     let mut next_candidate = 0usize;
     let mut active: Vec<usize> = Vec::new();
+    let mut next_modifier_only_candidate = 0usize;
+    let mut active_modifier_only: Vec<usize> = Vec::new();
     let mut resolved: Vec<PlannedByteToken> = Vec::new();
     for boundary_pair in boundaries.windows(2) {
         let start = boundary_pair[0];
@@ -701,15 +955,34 @@ fn resolve_candidates(
             }
             next_candidate += 1;
         }
+        active_modifier_only.retain(|index| modifier_only_candidates[*index].span.end > start);
+        while next_modifier_only_candidate < modifier_only_candidates.len()
+            && modifier_only_candidates[next_modifier_only_candidate]
+                .span
+                .start
+                <= start
+        {
+            if modifier_only_candidates[next_modifier_only_candidate]
+                .span
+                .end
+                > start
+            {
+                active_modifier_only.push(next_modifier_only_candidate);
+            }
+            next_modifier_only_candidate += 1;
+        }
         if active.is_empty() || start == end {
             continue;
         }
 
         let winner = choose_candidate(&candidates, &active)?;
+        let modifier_bits = active_modifier_only.iter().fold(winner.1, |bits, index| {
+            bits | modifier_only_candidates[*index].modifier_bits
+        });
         let token = PlannedByteToken {
             span: ByteSpan { start, end },
             kind: winner.0,
-            modifier_bits: winner.1,
+            modifier_bits,
         };
         if let Some(previous) = resolved.last_mut()
             && previous.span.end == token.span.start
@@ -865,7 +1138,7 @@ fn validate_planned_non_overlap(tokens: &[PlannedToken]) -> Result<(), TokenPlan
     Ok(())
 }
 
-fn pack_tokens(tokens: &[PlannedToken]) -> Vec<u32> {
+fn pack_tokens(tokens: &[PlannedToken], support: SemanticTokenSupport) -> Vec<u32> {
     let mut packed = Vec::with_capacity(tokens.len() * 5);
     let mut previous_line = 0u32;
     let mut previous_start = 0u32;
@@ -876,12 +1149,15 @@ fn pack_tokens(tokens: &[PlannedToken]) -> Vec<u32> {
         } else {
             token.start
         };
+        let token_type = support
+            .token_type_index(token.kind)
+            .expect("planned token kinds are filtered by the negotiated support set");
         packed.extend_from_slice(&[
             delta_line,
             delta_start,
             token.length,
-            token.kind.code(),
-            token.modifier_bits,
+            token_type,
+            support.project_modifier_bits(token.modifier_bits),
         ]);
         previous_line = token.line;
         previous_start = token.start;
@@ -889,65 +1165,72 @@ fn pack_tokens(tokens: &[PlannedToken]) -> Vec<u32> {
     packed
 }
 
-const fn planned_kind_for_lexeme(kind: FenceLexemeKind) -> PlannedTokenKind {
+const fn planned_kind_for_lexeme(kind: EditorLexemeKind) -> PlannedTokenKind {
     match kind {
-        FenceLexemeKind::Keyword => PlannedTokenKind::Keyword,
-        FenceLexemeKind::Comment => PlannedTokenKind::Comment,
-        FenceLexemeKind::Operator => PlannedTokenKind::Operator,
-        FenceLexemeKind::Delimiter => PlannedTokenKind::Delimiter,
-        FenceLexemeKind::Identifier => PlannedTokenKind::Identifier,
-        FenceLexemeKind::Number => PlannedTokenKind::Number,
-        FenceLexemeKind::Date => PlannedTokenKind::Date,
-        FenceLexemeKind::Duration => PlannedTokenKind::Duration,
-        FenceLexemeKind::Boolean => PlannedTokenKind::Boolean,
-        FenceLexemeKind::String => PlannedTokenKind::String,
-        FenceLexemeKind::Style => PlannedTokenKind::Style,
-        FenceLexemeKind::Color => PlannedTokenKind::Color,
-        FenceLexemeKind::Literal => PlannedTokenKind::Literal,
-        FenceLexemeKind::Frontmatter => PlannedTokenKind::Frontmatter,
-        FenceLexemeKind::Directive => PlannedTokenKind::Directive,
+        EditorLexemeKind::Keyword => PlannedTokenKind::Keyword,
+        EditorLexemeKind::Comment => PlannedTokenKind::Comment,
+        EditorLexemeKind::Operator => PlannedTokenKind::Operator,
+        EditorLexemeKind::Delimiter => PlannedTokenKind::Delimiter,
+        EditorLexemeKind::Identifier => PlannedTokenKind::Identifier,
+        EditorLexemeKind::Number => PlannedTokenKind::Number,
+        EditorLexemeKind::Date => PlannedTokenKind::Date,
+        EditorLexemeKind::Duration => PlannedTokenKind::Duration,
+        EditorLexemeKind::Boolean => PlannedTokenKind::Boolean,
+        EditorLexemeKind::String => PlannedTokenKind::String,
+        EditorLexemeKind::Style => PlannedTokenKind::Style,
+        EditorLexemeKind::Color => PlannedTokenKind::Color,
+        EditorLexemeKind::Literal => PlannedTokenKind::Literal,
+        EditorLexemeKind::Frontmatter => PlannedTokenKind::Frontmatter,
+        EditorLexemeKind::Directive => PlannedTokenKind::Directive,
     }
 }
 
-const fn planned_modifier_for_lexeme(modifier: FenceLexemeModifier) -> PlannedTokenModifier {
+const fn planned_modifier_for_lexeme(modifier: EditorLexemeModifier) -> PlannedTokenModifier {
     match modifier {
-        FenceLexemeModifier::Declaration => PlannedTokenModifier::Declaration,
-        FenceLexemeModifier::Definition => PlannedTokenModifier::Definition,
-        FenceLexemeModifier::Reference => PlannedTokenModifier::Reference,
-        FenceLexemeModifier::Readonly => PlannedTokenModifier::Readonly,
-        FenceLexemeModifier::Documentation => PlannedTokenModifier::Documentation,
-        FenceLexemeModifier::DefaultLibrary => PlannedTokenModifier::DefaultLibrary,
+        EditorLexemeModifier::Declaration => PlannedTokenModifier::Declaration,
+        EditorLexemeModifier::Definition => PlannedTokenModifier::Definition,
+        EditorLexemeModifier::Reference => PlannedTokenModifier::Reference,
+        EditorLexemeModifier::Readonly => PlannedTokenModifier::Readonly,
+        EditorLexemeModifier::Documentation => PlannedTokenModifier::Documentation,
+        EditorLexemeModifier::DefaultLibrary => PlannedTokenModifier::DefaultLibrary,
     }
 }
 
-const fn planned_kind_for_symbol(kind: EditorSymbolKind) -> PlannedTokenKind {
+const fn planned_kind_for_symbol(kind: EditorSemanticKind) -> PlannedTokenKind {
     match kind {
-        EditorSymbolKind::Class => PlannedTokenKind::Class,
-        EditorSymbolKind::Event => PlannedTokenKind::Event,
-        EditorSymbolKind::Function => PlannedTokenKind::Function,
-        EditorSymbolKind::Module | EditorSymbolKind::Namespace | EditorSymbolKind::Package => {
-            PlannedTokenKind::Namespace
+        EditorSemanticKind::Class => PlannedTokenKind::Class,
+        EditorSemanticKind::Event => PlannedTokenKind::Event,
+        EditorSemanticKind::Function => PlannedTokenKind::Function,
+        EditorSemanticKind::Module
+        | EditorSemanticKind::Namespace
+        | EditorSemanticKind::Package => PlannedTokenKind::Namespace,
+        EditorSemanticKind::Object | EditorSemanticKind::Variable => PlannedTokenKind::Variable,
+        EditorSemanticKind::Property => PlannedTokenKind::Property,
+        EditorSemanticKind::String => PlannedTokenKind::String,
+        EditorSemanticKind::Struct => PlannedTokenKind::Struct,
+    }
+}
+
+const fn planned_modifier_for_role(role: EditorSemanticRole) -> PlannedTokenModifier {
+    match role {
+        EditorSemanticRole::Entity => PlannedTokenModifier::Entity,
+        EditorSemanticRole::Reference => PlannedTokenModifier::Reference,
+        EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => {
+            PlannedTokenModifier::Outline
         }
-        EditorSymbolKind::Object | EditorSymbolKind::Variable => PlannedTokenKind::Variable,
-        EditorSymbolKind::Property => PlannedTokenKind::Property,
-        EditorSymbolKind::String => PlannedTokenKind::String,
-        EditorSymbolKind::Struct => PlannedTokenKind::Struct,
+        EditorSemanticRole::Payload => PlannedTokenModifier::Payload,
     }
 }
 
-const fn planned_modifier_for_role(role: FenceSemanticRole) -> PlannedTokenModifier {
+const fn token_overlay_for_role(role: EditorSemanticRole) -> TokenOverlayKind {
     match role {
-        FenceSemanticRole::Entity => PlannedTokenModifier::Entity,
-        FenceSemanticRole::Outline => PlannedTokenModifier::Outline,
-        FenceSemanticRole::Payload => PlannedTokenModifier::Payload,
-    }
-}
-
-const fn token_overlay_for_role(role: FenceSemanticRole) -> TokenOverlayKind {
-    match role {
-        FenceSemanticRole::Entity => TokenOverlayKind::SemanticEntity,
-        FenceSemanticRole::Outline => TokenOverlayKind::SemanticOutline,
-        FenceSemanticRole::Payload => TokenOverlayKind::SemanticPayload,
+        EditorSemanticRole::Entity | EditorSemanticRole::Reference => {
+            TokenOverlayKind::SemanticEntity
+        }
+        EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => {
+            TokenOverlayKind::SemanticOutline
+        }
+        EditorSemanticRole::Payload => TokenOverlayKind::SemanticPayload,
     }
 }
 
@@ -1132,55 +1415,63 @@ mod tests {
     #[test]
     fn descriptor_codes_and_lexeme_mapping_are_exact() {
         let mappings = [
-            (FenceLexemeKind::Keyword, PlannedTokenKind::Keyword, 0),
-            (FenceLexemeKind::Comment, PlannedTokenKind::Comment, 1),
-            (FenceLexemeKind::Operator, PlannedTokenKind::Operator, 2),
-            (FenceLexemeKind::Delimiter, PlannedTokenKind::Delimiter, 3),
-            (FenceLexemeKind::Identifier, PlannedTokenKind::Identifier, 4),
-            (FenceLexemeKind::Number, PlannedTokenKind::Number, 5),
-            (FenceLexemeKind::Date, PlannedTokenKind::Date, 6),
-            (FenceLexemeKind::Duration, PlannedTokenKind::Duration, 7),
-            (FenceLexemeKind::Boolean, PlannedTokenKind::Boolean, 8),
-            (FenceLexemeKind::String, PlannedTokenKind::String, 9),
-            (FenceLexemeKind::Style, PlannedTokenKind::Style, 10),
-            (FenceLexemeKind::Color, PlannedTokenKind::Color, 11),
-            (FenceLexemeKind::Literal, PlannedTokenKind::Literal, 12),
+            (EditorLexemeKind::Keyword, PlannedTokenKind::Keyword, 0),
+            (EditorLexemeKind::Comment, PlannedTokenKind::Comment, 1),
+            (EditorLexemeKind::Operator, PlannedTokenKind::Operator, 2),
+            (EditorLexemeKind::Delimiter, PlannedTokenKind::Delimiter, 3),
             (
-                FenceLexemeKind::Frontmatter,
+                EditorLexemeKind::Identifier,
+                PlannedTokenKind::Identifier,
+                4,
+            ),
+            (EditorLexemeKind::Number, PlannedTokenKind::Number, 5),
+            (EditorLexemeKind::Date, PlannedTokenKind::Date, 6),
+            (EditorLexemeKind::Duration, PlannedTokenKind::Duration, 7),
+            (EditorLexemeKind::Boolean, PlannedTokenKind::Boolean, 8),
+            (EditorLexemeKind::String, PlannedTokenKind::String, 9),
+            (EditorLexemeKind::Style, PlannedTokenKind::Style, 10),
+            (EditorLexemeKind::Color, PlannedTokenKind::Color, 11),
+            (EditorLexemeKind::Literal, PlannedTokenKind::Literal, 12),
+            (
+                EditorLexemeKind::Frontmatter,
                 PlannedTokenKind::Frontmatter,
                 13,
             ),
-            (FenceLexemeKind::Directive, PlannedTokenKind::Directive, 14),
+            (EditorLexemeKind::Directive, PlannedTokenKind::Directive, 14),
         ];
         for (lexeme, planned, code) in mappings {
             assert_eq!(planned_kind_for_lexeme(lexeme), planned);
             assert_eq!(planned.code(), code);
         }
         let semantic_mappings = [
-            (EditorSymbolKind::Namespace, PlannedTokenKind::Namespace, 15),
-            (EditorSymbolKind::Class, PlannedTokenKind::Class, 16),
-            (EditorSymbolKind::Struct, PlannedTokenKind::Struct, 17),
-            (EditorSymbolKind::Variable, PlannedTokenKind::Variable, 18),
-            (EditorSymbolKind::Property, PlannedTokenKind::Property, 19),
-            (EditorSymbolKind::Event, PlannedTokenKind::Event, 20),
-            (EditorSymbolKind::Function, PlannedTokenKind::Function, 21),
+            (
+                EditorSemanticKind::Namespace,
+                PlannedTokenKind::Namespace,
+                15,
+            ),
+            (EditorSemanticKind::Class, PlannedTokenKind::Class, 16),
+            (EditorSemanticKind::Struct, PlannedTokenKind::Struct, 17),
+            (EditorSemanticKind::Variable, PlannedTokenKind::Variable, 18),
+            (EditorSemanticKind::Property, PlannedTokenKind::Property, 19),
+            (EditorSemanticKind::Event, PlannedTokenKind::Event, 20),
+            (EditorSemanticKind::Function, PlannedTokenKind::Function, 21),
         ];
         for (symbol, planned, code) in semantic_mappings {
             assert_eq!(planned_kind_for_symbol(symbol), planned);
             assert_eq!(planned.code(), code);
         }
         for symbol in [
-            EditorSymbolKind::Module,
-            EditorSymbolKind::Namespace,
-            EditorSymbolKind::Package,
+            EditorSemanticKind::Module,
+            EditorSemanticKind::Namespace,
+            EditorSemanticKind::Package,
         ] {
             assert_eq!(planned_kind_for_symbol(symbol), PlannedTokenKind::Namespace);
         }
-        for symbol in [EditorSymbolKind::Object, EditorSymbolKind::Variable] {
+        for symbol in [EditorSemanticKind::Object, EditorSemanticKind::Variable] {
             assert_eq!(planned_kind_for_symbol(symbol), PlannedTokenKind::Variable);
         }
         assert_eq!(
-            planned_kind_for_symbol(EditorSymbolKind::String),
+            planned_kind_for_symbol(EditorSemanticKind::String),
             PlannedTokenKind::String
         );
         for (index, modifier) in [
@@ -1201,27 +1492,27 @@ mod tests {
         }
         for (lexeme, planned) in [
             (
-                FenceLexemeModifier::Declaration,
+                EditorLexemeModifier::Declaration,
                 PlannedTokenModifier::Declaration,
             ),
             (
-                FenceLexemeModifier::Definition,
+                EditorLexemeModifier::Definition,
                 PlannedTokenModifier::Definition,
             ),
             (
-                FenceLexemeModifier::Reference,
+                EditorLexemeModifier::Reference,
                 PlannedTokenModifier::Reference,
             ),
             (
-                FenceLexemeModifier::Readonly,
+                EditorLexemeModifier::Readonly,
                 PlannedTokenModifier::Readonly,
             ),
             (
-                FenceLexemeModifier::Documentation,
+                EditorLexemeModifier::Documentation,
                 PlannedTokenModifier::Documentation,
             ),
             (
-                FenceLexemeModifier::DefaultLibrary,
+                EditorLexemeModifier::DefaultLibrary,
                 PlannedTokenModifier::DefaultLibrary,
             ),
         ] {
@@ -1231,7 +1522,7 @@ mod tests {
 
     #[test]
     fn upstream_lexeme_failure_is_monotonic_and_blocks_planning() {
-        let failure = FenceLexemeFailure::InvalidProvenance;
+        let failure = EditorLexemeFailure::InvalidProvenance;
         assert_eq!(
             reject_upstream_lexeme_failure(7, Some(failure)),
             Err(TokenPlanError::UpstreamLexemeFailure {
@@ -1420,6 +1711,256 @@ mod tests {
             ]
         );
         assert_eq!(plan.packed, vec![0, 4, 7, 9, 0, 1, 0, 4, 9, 0]);
+    }
+
+    #[test]
+    fn negotiated_support_filters_and_packs_the_canonical_sequence_once() {
+        let source_map = SourceMap::new(Arc::<str>::from("aa bb cc"));
+        let support = SemanticTokenSupport::from_support(
+            |kind| matches!(kind, PlannedTokenKind::String | PlannedTokenKind::Variable),
+            |modifier| modifier == PlannedTokenModifier::Payload,
+        );
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..2,
+                    PlannedTokenKind::String,
+                    vec![PlannedTokenModifier::Payload, PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Keyword,
+                    vec![PlannedTokenModifier::Reference],
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    6..8,
+                    PlannedTokenKind::Variable,
+                    vec![PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+            ],
+            support,
+            None,
+        )
+        .expect("negotiated token plan");
+
+        assert_eq!(
+            plan.tokens,
+            vec![
+                PlannedToken {
+                    line: 0,
+                    start: 0,
+                    length: 2,
+                    kind: PlannedTokenKind::String,
+                    modifier_bits: PlannedTokenModifier::Payload.bit(),
+                },
+                PlannedToken {
+                    line: 0,
+                    start: 6,
+                    length: 2,
+                    kind: PlannedTokenKind::Variable,
+                    modifier_bits: 0,
+                },
+            ]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 2, 0, 1, 0, 6, 2, 1, 0]);
+        assert_eq!(
+            support.supported_kinds().collect::<Vec<_>>(),
+            vec![PlannedTokenKind::String, PlannedTokenKind::Variable]
+        );
+        assert_eq!(
+            support.supported_modifiers().collect::<Vec<_>>(),
+            vec![PlannedTokenModifier::Payload]
+        );
+    }
+
+    #[test]
+    fn unsupported_overlay_does_not_hide_a_supported_lexeme() {
+        let source_map = SourceMap::new(Arc::<str>::from("\"alpha\""));
+        let support =
+            SemanticTokenSupport::from_support(|kind| kind == PlannedTokenKind::String, |_| false);
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..7,
+                    PlannedTokenKind::String,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    1..6,
+                    PlannedTokenKind::Variable,
+                    vec![PlannedTokenModifier::Entity],
+                    TokenOverlayKind::SemanticEntity,
+                ),
+            ],
+            support,
+            None,
+        )
+        .expect("supported lexical fallback");
+
+        assert_eq!(
+            plan.tokens,
+            vec![PlannedToken {
+                line: 0,
+                start: 0,
+                length: 7,
+                kind: PlannedTokenKind::String,
+                modifier_bits: 0,
+            }]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 7, 0, 0]);
+    }
+
+    #[test]
+    fn unsupported_candidate_duplicate_modifier_is_filtered_before_validation() {
+        let source_map = SourceMap::new(Arc::<str>::from("aa bb"));
+        let support =
+            SemanticTokenSupport::from_support(|kind| kind == PlannedTokenKind::String, |_| false);
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..2,
+                    PlannedTokenKind::String,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Keyword,
+                    [
+                        PlannedTokenModifier::Reference,
+                        PlannedTokenModifier::Reference,
+                    ],
+                    TokenOverlayKind::Lexeme,
+                ),
+            ],
+            support,
+            None,
+        )
+        .expect("unsupported candidate must not participate in validation");
+
+        assert_eq!(
+            plan.tokens,
+            vec![PlannedToken {
+                line: 0,
+                start: 0,
+                length: 2,
+                kind: PlannedTokenKind::String,
+                modifier_bits: 0,
+            }]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 2, 0, 0]);
+    }
+
+    #[test]
+    fn exact_same_line_range_filters_outside_conflicts_before_resolution() {
+        let source_map = SourceMap::new(Arc::<str>::from("aa bb"));
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..2,
+                    PlannedTokenKind::String,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Variable,
+                    Vec::new(),
+                    TokenOverlayKind::SemanticEntity,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Class,
+                    Vec::new(),
+                    TokenOverlayKind::SemanticEntity,
+                ),
+            ],
+            SemanticTokenSupport::all(),
+            Some(Range::new(
+                crate::Position::new(0, 0),
+                crate::Position::new(0, 2),
+            )),
+        )
+        .expect("out-of-range conflicts must not affect a precise range request");
+
+        assert_eq!(
+            plan.tokens,
+            vec![PlannedToken {
+                line: 0,
+                start: 0,
+                length: 2,
+                kind: PlannedTokenKind::String,
+                modifier_bits: 0,
+            }]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 2, 9, 0]);
+    }
+
+    #[test]
+    fn negotiated_range_repacks_filtered_middle_tokens_after_astral_unicode() {
+        let source_map = SourceMap::new(Arc::<str>::from("🤓 aa bb cc"));
+        let support = SemanticTokenSupport::from_support(
+            |kind| matches!(kind, PlannedTokenKind::String | PlannedTokenKind::Variable),
+            |modifier| modifier == PlannedTokenModifier::Payload,
+        );
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    5..7,
+                    PlannedTokenKind::String,
+                    vec![PlannedTokenModifier::Payload, PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    8..10,
+                    PlannedTokenKind::Keyword,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    11..13,
+                    PlannedTokenKind::Variable,
+                    vec![PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+            ],
+            support,
+            Some(Range::new(
+                crate::Position::new(0, 4),
+                crate::Position::new(0, 10),
+            )),
+        )
+        .expect("negotiated ranged token plan");
+
+        assert_eq!(
+            plan.tokens,
+            vec![
+                PlannedToken {
+                    line: 0,
+                    start: 3,
+                    length: 2,
+                    kind: PlannedTokenKind::String,
+                    modifier_bits: PlannedTokenModifier::Payload.bit(),
+                },
+                PlannedToken {
+                    line: 0,
+                    start: 9,
+                    length: 2,
+                    kind: PlannedTokenKind::Variable,
+                    modifier_bits: 0,
+                },
+            ]
+        );
+        assert_eq!(plan.packed, vec![0, 3, 2, 0, 1, 0, 6, 2, 1, 0]);
     }
 
     #[test]

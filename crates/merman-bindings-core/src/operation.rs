@@ -3,6 +3,7 @@ use crate::capability::{OperationKey, operation_is_compiled};
 use crate::payload_contract::BINDING_OPERATION_SCHEMA_VERSION;
 use crate::resource_contract::BindingResourceScope;
 use crate::{BindingEngine, BindingError, BindingStatus};
+use merman::{OperationControl, OperationPhase};
 use serde::Serialize;
 use serde_json::{Map, Value};
 #[cfg(test)]
@@ -137,12 +138,13 @@ impl ValidatedArtifactContract {
 }
 
 /// Borrowed request consumed by the shared binding execution path.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct BindingOperationRequest<'a> {
     operation_id: &'a str,
     source: &'a [u8],
     uri: Option<&'a [u8]>,
     options_json: &'a [u8],
+    operation_control: Option<OperationControl>,
 }
 
 impl<'a> BindingOperationRequest<'a> {
@@ -157,6 +159,7 @@ impl<'a> BindingOperationRequest<'a> {
             source,
             uri: None,
             options_json: b"",
+            operation_control: None,
         }
     }
 
@@ -183,6 +186,14 @@ impl<'a> BindingOperationRequest<'a> {
         self
     }
 
+    /// Attaches a caller-owned operation control. The request clones the control's shared state;
+    /// cancellation and deadline changes made by the caller remain visible during execution.
+    #[must_use]
+    pub fn with_control(mut self, control: OperationControl) -> Self {
+        self.operation_control = Some(control);
+        self
+    }
+
     #[must_use]
     pub const fn operation_id(&self) -> &'a str {
         self.operation_id
@@ -201,6 +212,16 @@ impl<'a> BindingOperationRequest<'a> {
     #[must_use]
     pub const fn options_json(&self) -> &'a [u8] {
         self.options_json
+    }
+
+    #[must_use]
+    pub fn operation_control(&self) -> Option<&OperationControl> {
+        self.operation_control.as_ref()
+    }
+
+    #[must_use]
+    pub(crate) fn control_or_default(&self) -> OperationControl {
+        self.operation_control.clone().unwrap_or_default()
     }
 }
 
@@ -591,8 +612,7 @@ impl BindingOperationOutput {
     }
 
     #[cfg(any(feature = "png", feature = "jpeg"))]
-    pub(crate) fn raster(data: Vec<u8>, report: merman::svg::RasterRenderReport) -> Self {
-        let plan = report.export_report().raster();
+    pub(crate) fn raster(data: Vec<u8>, plan: merman::svg::export::RasterPlan) -> Self {
         Self {
             data,
             output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
@@ -608,8 +628,7 @@ impl BindingOperationOutput {
     }
 
     #[cfg(feature = "pdf")]
-    pub(crate) fn pdf(data: Vec<u8>, report: merman::svg::PdfRenderReport) -> Self {
-        let plan = report.export_report().filters();
+    pub(crate) fn pdf(data: Vec<u8>, plan: merman::svg::export::PdfFilterImagePlan) -> Self {
         Self {
             data,
             output_plan: Some(BindingOutputPlan::PdfFilterImages(
@@ -756,13 +775,20 @@ impl ValidatedArtifactContract {
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
         let operation = resolve_operation_request(&request)?;
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         crate::common::validate_one_shot_resource_options(
             request.options_json,
             operation.resource_scope(),
         )?;
         let engine = self.create_engine(request.options_json)?;
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         let admitted = self.admit_operation(operation)?;
-        engine.execute_admitted(admitted, request.source, request.uri)
+        engine.execute_admitted(admitted, request.source, request.uri, control)
     }
 
     pub(crate) fn execute_once_data(
@@ -770,13 +796,20 @@ impl ValidatedArtifactContract {
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
         let operation = resolve_operation_request(&request)?;
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         crate::common::validate_one_shot_resource_options(
             request.options_json,
             operation.resource_scope(),
         )?;
         let engine = self.create_engine(request.options_json)?;
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         let admitted = self.admit_operation(operation)?;
-        engine.execute_admitted_data(admitted, request.source, request.uri)
+        engine.execute_admitted_data(admitted, request.source, request.uri, control)
     }
 }
 
@@ -803,15 +836,24 @@ impl BindingEngine {
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = resolve_operation_request(&request)?;
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         let prepared = self.prepare_request_overlay(operation, request.options_json)?;
         let admitted = self.admit_operation(operation)?;
         let output = match prepared {
             crate::engine::PreparedRequestOverlay::Unchanged => {
-                self.execute_admitted_output(admitted, request.source, request.uri)
+                self.execute_admitted_output(admitted, request.source, request.uri, control.clone())
             }
-            crate::engine::PreparedRequestOverlay::Override(configs) => {
-                self.execute_request_projection(admitted, *configs, request.source, request.uri)
-            }
+            crate::engine::PreparedRequestOverlay::Override(configs) => self
+                .execute_request_projection(
+                    admitted,
+                    *configs,
+                    request.source,
+                    request.uri,
+                    control.clone(),
+                ),
         }?;
         Ok(BindingOperationExecution { operation, output })
     }
@@ -821,8 +863,9 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationResult, BindingError> {
-        self.execute_admitted_request(admitted, source, uri)
+        self.execute_admitted_request(admitted, source, uri, control)
             .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
@@ -831,8 +874,9 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        self.execute_admitted_request(admitted, source, uri)
+        self.execute_admitted_request(admitted, source, uri, control)
             .and_then(BindingOperationExecution::into_data)
     }
 
@@ -841,9 +885,10 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = admitted.operation();
-        let output = self.execute_admitted_output(admitted, source, uri)?;
+        let output = self.execute_admitted_output(admitted, source, uri, control)?;
         Ok(BindingOperationExecution { operation, output })
     }
 
@@ -852,46 +897,59 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationOutput, BindingError> {
+        control
+            .checkpoint_at(OperationPhase::Parse)
+            .map_err(BindingError::cancelled)?;
         let operation = admitted.operation();
-        match operation.key() {
-            OperationKey::Png => self.render_png_output(source),
-            OperationKey::Jpeg => self.render_jpeg_output(source),
-            OperationKey::Pdf => self.render_pdf_output(source),
+        let output = match operation.key() {
+            OperationKey::Png => self.render_png_output(source, control.clone()),
+            OperationKey::Jpeg => self.render_jpeg_output(source, control.clone()),
+            OperationKey::Pdf => self.render_pdf_output(source, control.clone()),
             OperationKey::Svg => self
-                .render_svg_data(source)
+                .render_svg_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::SvgPlanJson => self
-                .svg_plan_json_data(source)
+                .svg_plan_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::Ascii => self
-                .render_ascii_data(source)
+                .render_ascii_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::SemanticJson => self
-                .parse_json_data(source)
+                .parse_json_data_controlled(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::LayoutJson => self
-                .layout_json_data(source)
+                .layout_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::AnalysisJson => self
-                .analyze_json_data(source)
+                .analyze_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::AnalysisFactsJson => self
-                .analysis_facts_json_data(source)
+                .analysis_facts_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::ValidationJson => self
-                .validate_json_data(source)
+                .validate_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisJson => self
-                .analyze_document_json_data(source, uri.expect("validated document URI presence"))
+                .analyze_document_json_data(
+                    source,
+                    uri.expect("validated document URI presence"),
+                    &control,
+                )
                 .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisFactsJson => self
                 .analyze_document_facts_json_data(
                     source,
                     uri.expect("validated document URI presence"),
+                    &control,
                 )
                 .map(BindingOperationOutput::plain),
-        }
+        }?;
+        control
+            .checkpoint_at(OperationPhase::Postprocess)
+            .map_err(BindingError::cancelled)?;
+        Ok(output)
     }
 }
 
@@ -976,7 +1034,7 @@ mod tests {
         assert_eq!(defaults.uri(), None);
         assert_eq!(defaults.options_json(), b"");
 
-        assert_eq!(defaults.with_uri(b"").uri(), None);
+        assert_eq!(defaults.clone().with_uri(b"").uri(), None);
         assert_eq!(defaults.with_optional_uri(Some(b"")).uri(), None);
     }
 
@@ -1098,6 +1156,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
         let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
@@ -1114,6 +1173,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"runtime_policy":"native"}"#,
+                operation_control: None,
             })
             .unwrap_err();
 
@@ -1132,6 +1192,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"analysis":{"resources":{"limits":{"max_source_bytes":2048}}}}"#,
+                operation_control: None,
             })
             .unwrap();
         assert!(!result.data.is_empty());
@@ -1149,6 +1210,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json,
+                    operation_control: None,
                 })
                 .unwrap()
         };
@@ -1173,7 +1235,7 @@ mod tests {
     fn reusable_byte_execution_matches_result_data_and_errors_without_metadata() {
         let engine = BindingEngine::from_options(b"").unwrap();
         let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B");
-        let result = engine.execute(request).unwrap();
+        let result = engine.execute(request.clone()).unwrap();
 
         reset_metadata_serialization_count();
         assert_eq!(engine.parse_json(request.source()).unwrap(), result.data());
@@ -1193,7 +1255,7 @@ mod tests {
             BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
                 .with_options_json(br#"{"resources":{"limits":{"max_source_bytes":4}}}"#),
         ] {
-            let expected = engine.execute(request).unwrap_err();
+            let expected = engine.execute(request.clone()).unwrap_err();
 
             reset_metadata_serialization_count();
             assert_eq!(engine.execute_data(request).unwrap_err(), expected);
@@ -1204,7 +1266,7 @@ mod tests {
     #[test]
     fn one_shot_byte_execution_matches_result_data_and_errors_without_metadata() {
         let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B");
-        let result = execute_once(request).unwrap();
+        let result = execute_once(request.clone()).unwrap();
 
         reset_metadata_serialization_count();
         assert_eq!(
@@ -1227,7 +1289,7 @@ mod tests {
             BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
                 .with_options_json(br#"{"resources":{"limits":{"max_source_bytes":4}}}"#),
         ] {
-            let expected = execute_once(request).unwrap_err();
+            let expected = execute_once(request.clone()).unwrap_err();
 
             reset_metadata_serialization_count();
             assert_eq!(execute_once_data(request).unwrap_err(), expected);
@@ -1264,6 +1326,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("operation resolution runs before request option parsing");
 
@@ -1282,6 +1345,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("missing URI is rejected before malformed options");
         assert_eq!(missing.status(), BindingStatus::InvalidArgument);
@@ -1293,6 +1357,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: Some(b"file:///diagram.mmd"),
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("unexpected URI is rejected before malformed options");
         assert_eq!(unexpected.status(), BindingStatus::InvalidArgument);
@@ -1341,6 +1406,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: Some(&invalid_uri),
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("options are parsed before URI bytes are decoded");
         assert_eq!(options_error.status(), BindingStatus::OptionsJsonError);
@@ -1351,6 +1417,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: Some(&invalid_uri),
                 options_json: b"",
+                operation_control: None,
             })
             .expect_err("valid options allow execution to reach URI decoding");
         assert_eq!(uri_error.status(), BindingStatus::Utf8Error);
@@ -1367,6 +1434,7 @@ mod tests {
                 source: &invalid_source,
                 uri: None,
                 options_json: br#"{"svg":{"pipeline":"invalid-pipeline"}}"#,
+                operation_control: None,
             })
             .expect_err("artifact-wide request validation checks the render domain first");
 
@@ -1392,14 +1460,14 @@ mod tests {
                     "lint": { "profile": "invalid-profile" },
                     "svg": { "pipeline": "invalid-pipeline" }
                 }"#,
+                operation_control: None,
             })
             .expect_err("artifact-wide request validation checks analysis before rendering");
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(
-            error
-                .message()
-                .contains("lint.profile must be core, recommended, or strict"),
+            error.message().contains("lint.profile")
+                && error.message().contains("core, recommended, or strict"),
             "unexpected error: {error:?}"
         );
         assert!(!error.message().contains("svg.pipeline"));
@@ -1415,6 +1483,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("request options are validated before operation execution");
         assert_eq!(options_error.status(), BindingStatus::OptionsJsonError);
@@ -1425,6 +1494,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .expect_err("valid options reach the missing capability check");
         assert_eq!(
@@ -1454,8 +1524,9 @@ mod tests {
                         .requires_uri()
                         .then_some(b"file:///diagram.mmd".as_slice()),
                     options_json,
+                    operation_control: None,
                 };
-                let one_shot = execute_once(request).unwrap_or_else(|error| {
+                let one_shot = execute_once(request.clone()).unwrap_or_else(|error| {
                     panic!(
                         "one-shot operation `{}` failed: {}",
                         operation.operation_id(),
@@ -1503,6 +1574,149 @@ mod tests {
         }
     }
 
+    #[test]
+    fn one_shot_pre_cancelled_request_precedes_invalid_options_after_operation_resolution() {
+        let control = OperationControl::new();
+        control.cancel();
+
+        let error = execute_once(
+            BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                .with_options_json(b"{")
+                .with_control(control),
+        )
+        .expect_err("admission cancellation must skip option parsing and engine construction");
+        assert_structured_requested_cancellation(&error, "admission");
+
+        let unknown_control = OperationControl::new();
+        unknown_control.cancel();
+        let unknown = execute_once(
+            BindingOperationRequest::new("unknown-operation", b"flowchart TD\nA --> B")
+                .with_options_json(b"{")
+                .with_control(unknown_control),
+        )
+        .expect_err("operation resolution keeps precedence over cancellation");
+        assert_eq!(unknown.kind(), crate::BindingErrorKind::UnknownOperation);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_request_propagates_caller_control_into_the_canonical_renderer() {
+        assert_render_request_propagates_control("svg");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_request_propagates_caller_control_into_the_canonical_renderer() {
+        assert_render_request_propagates_control("ascii");
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn assert_render_request_propagates_control(operation_id: &'static str) {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let pre_cancelled = OperationControl::new();
+        pre_cancelled.cancel();
+        let error = engine
+            .execute(
+                BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+                    .with_control(pre_cancelled),
+            )
+            .expect_err("a pre-cancelled request must not produce render output");
+        assert_structured_requested_cancellation(&error, "admission");
+    }
+
+    fn assert_structured_requested_cancellation(error: &BindingError, phase: &'static str) {
+        assert_eq!(error.status(), BindingStatus::Cancelled);
+        assert_eq!(error.resource_details(), None);
+        assert_eq!(
+            error.cancellation_details(),
+            Some(crate::BindingCancellationErrorDetails {
+                reason: "requested",
+                phase,
+            })
+        );
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn every_analysis_operation_propagates_caller_cancellation_during_analysis() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        for operation_id in [
+            "analysis-json",
+            "analysis-facts-json",
+            "validation-json",
+            "document-analysis-json",
+            "document-analysis-facts-json",
+        ] {
+            let control = OperationControl::new();
+            control.cancel();
+            let mut request = BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+                .with_control(control);
+            if operation_id.starts_with("document-") {
+                request = request.with_uri(b"file:///diagram.md");
+            }
+
+            let error = engine
+                .execute(request)
+                .expect_err("caller cancellation must stop analysis before output escapes");
+
+            assert_eq!(error.status(), BindingStatus::Cancelled, "{operation_id}");
+            assert_eq!(error.resource_details(), None, "{operation_id}");
+            assert!(
+                matches!(
+                    error.cancellation_details(),
+                    Some(crate::BindingCancellationErrorDetails {
+                        reason: "requested",
+                        phase: "admission" | "analysis",
+                    })
+                ),
+                "{operation_id}",
+            );
+        }
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn every_analysis_operation_preserves_caller_deadline_reason() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        for operation_id in [
+            "analysis-json",
+            "analysis-facts-json",
+            "validation-json",
+            "document-analysis-json",
+            "document-analysis-facts-json",
+        ] {
+            let expired = OperationControl::new().with_deadline(std::time::Duration::ZERO);
+            let result = match operation_id {
+                "analysis-json" => engine.analyze_json_data(b"flowchart TD\nA --> B", &expired),
+                "analysis-facts-json" => {
+                    engine.analysis_facts_json_data(b"flowchart TD\nA --> B", &expired)
+                }
+                "validation-json" => engine.validate_json_data(b"flowchart TD\nA --> B", &expired),
+                "document-analysis-json" => engine.analyze_document_json_data(
+                    b"```mermaid\nflowchart TD\nA --> B\n```\n",
+                    b"file:///diagram.md",
+                    &expired,
+                ),
+                "document-analysis-facts-json" => engine.analyze_document_facts_json_data(
+                    b"```mermaid\nflowchart TD\nA --> B\n```\n",
+                    b"file:///diagram.md",
+                    &expired,
+                ),
+                _ => unreachable!(),
+            };
+            let error = result.expect_err("an expired caller deadline must stop analysis");
+            assert_eq!(error.status(), BindingStatus::Cancelled, "{operation_id}");
+            assert_eq!(
+                error.cancellation_details(),
+                Some(crate::BindingCancellationErrorDetails {
+                    reason: "deadline_exceeded",
+                    phase: "analysis",
+                }),
+                "{operation_id}",
+            );
+        }
+    }
+
     #[cfg(feature = "svg")]
     #[test]
     fn one_shot_options_reject_limits_owned_by_another_operation() {
@@ -1511,6 +1725,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"limits":{"max_svg_bytes":1024}}}"#,
+            operation_control: None,
         })
         .unwrap_err();
 
@@ -1537,6 +1752,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json,
+                    operation_control: None,
                 })
                 .unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -1554,8 +1770,9 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"limits":{"max_source_bytes":4}}}"#,
+            operation_control: None,
         };
-        let error = engine.execute(request).unwrap_err();
+        let error = engine.execute(request.clone()).unwrap_err();
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
 
         let baseline = engine
@@ -1580,6 +1797,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"resources":{"limits":{"max_ascii_grid_cells":2}}}"#,
+                operation_control: None,
             })
             .unwrap_err();
 
@@ -1594,6 +1812,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"profile":"trusted-native"}}"#,
+            operation_control: None,
         })
         .unwrap();
 
@@ -1613,6 +1832,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"resources":{"limits":{"max_svg_bytes":524288}}}"#,
+                operation_control: None,
             })
             .unwrap_err();
 
@@ -1633,6 +1853,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .expect("unrelated constructor options do not affect semantic operations");
 
@@ -1641,6 +1862,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"raster":{"scale":2}}"#,
+            operation_control: None,
         })
         .unwrap_err();
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -1690,6 +1912,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json: b"",
+                    operation_control: None,
                 })
                 .unwrap();
             let metadata: serde_json::Value =
@@ -1709,6 +1932,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
 
@@ -1732,6 +1956,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
 
@@ -1770,6 +1995,7 @@ mod tests {
                         source: b"flowchart TD\nA --> B",
                         uri: None,
                         options_json,
+                        operation_control: None,
                     })
                     .unwrap()
                     .data,
@@ -1813,6 +2039,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"svg":{"diagram_id":"request override"}}"#,
+                operation_control: None,
             })
             .unwrap();
         let request_svg = String::from_utf8(request_result.data).unwrap();
@@ -1825,6 +2052,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
         let baseline_svg = String::from_utf8(baseline_result.data).unwrap();
@@ -1840,6 +2068,7 @@ mod tests {
             source: b"---\nconfig:\n  layout: elk\n---\nflowchart TD\n  A --> B\n",
             uri: None,
             options_json: b"",
+            operation_control: None,
         });
 
         if cfg!(feature = "layout-elk") {
@@ -1863,6 +2092,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
 
@@ -1906,6 +2136,7 @@ mod tests {
                 "raster": {"scale": 20},
                 "resources": {"limits": {"max_raster_pixels": 4096}}
             }"#,
+            operation_control: None,
         })
         .unwrap();
 
@@ -1937,6 +2168,7 @@ mod tests {
                     "raster": {"scale": 20},
                     "resources": {"limits": {"max_raster_pixels": 4096}}
                 }"#,
+                operation_control: None,
             })
             .unwrap();
         let limited_metadata: serde_json::Value =
@@ -1958,6 +2190,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
         let baseline_metadata: serde_json::Value =
@@ -1974,6 +2207,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"version":2,"pdf":{"filterScale":0.1}}"#,
+            operation_control: None,
         })
         .unwrap();
 
@@ -2000,6 +2234,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .expect_err("PNG is not compiled");
 

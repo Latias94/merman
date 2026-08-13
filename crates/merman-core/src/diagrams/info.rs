@@ -43,8 +43,8 @@ pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_info_semantic_source_controlled(code, meta, control)?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
@@ -106,15 +106,15 @@ fn construct_info_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure> {
-    construct_info_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_info_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_info_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
@@ -291,8 +291,8 @@ struct InfoBodyStart {
 
 fn info_body_start_controlled(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<InfoHeader> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<InfoHeader> {
     let mut offset = 0usize;
     while offset < code.len() {
         control.checkpoint()?;
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn controlled_parse_can_cancel_after_the_info_header() {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
@@ -368,7 +368,7 @@ mod tests {
                 &test_meta(),
                 &control,
             ),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

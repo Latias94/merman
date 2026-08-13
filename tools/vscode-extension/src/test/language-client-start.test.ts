@@ -26,6 +26,7 @@ describe("language client startup cleanup", () => {
     const client = new FakeLanguageClient();
     let assigned: FakeLanguageClient | undefined;
     let pushCalls = 0;
+    const events: string[] = [];
 
     await startLanguageClientWithCleanup({
       client,
@@ -34,12 +35,16 @@ describe("language client startup cleanup", () => {
       failedTooltip: "Merman language server failed to start.",
       isCurrentGeneration: () => true,
       wireClient: () => {},
-      validateClient: () => {},
+      validateClient: () => {
+        events.push("validate");
+      },
       updateStatus: () => {},
       pushConfiguration: async () => {
+        events.push("push");
         pushCalls += 1;
       },
       assignClient: (activeClient) => {
+        events.push("assign");
         assigned = activeClient;
       },
       clearClientIfCurrent: () => {},
@@ -49,6 +54,7 @@ describe("language client startup cleanup", () => {
     assert.equal(client.startCalls, 1);
     assert.equal(pushCalls, 1);
     assert.equal(assigned, client);
+    assert.deepEqual(events, ["validate", "push", "assign"]);
   });
 
   it("clears and stops a client whose start rejects", async () => {

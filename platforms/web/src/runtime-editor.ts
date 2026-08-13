@@ -18,6 +18,7 @@ import type {
   BrowserEditorSession,
   DiagramDetectionFacts,
   EditorCodeAction,
+  EditorBindingOptions,
   EditorCompletionList,
   EditorDiagnosticsResult,
   EditorDocumentSymbol,
@@ -28,7 +29,6 @@ import type {
   EditorSemanticTokenDescriptor,
   EditorSymbolInformation,
   EditorWorkspaceEdit,
-  SvgBindingOptions,
   WasmEditorSessionBinding,
 } from "./public-types.js";
 
@@ -41,7 +41,7 @@ export function createEditorSession(
   source: string,
   version: number,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): BrowserEditorSession {
   const runtimeState = currentRuntimeState();
   const EditorSession = requireEditorLanguage(
@@ -161,7 +161,7 @@ class BrowserEditorSessionImpl implements BrowserEditorSession {
 
 export function editorDiagnostics(
   source: string,
-  options?: SvgBindingOptions | string,
+  options?: EditorBindingOptions | string,
   uri?: string
 ): EditorDiagnosticsResult {
   const diagnostics = requireEditorLanguage("editorDiagnostics", getMerman().editorDiagnostics);
@@ -170,7 +170,7 @@ export function editorDiagnostics(
 
 export function editorDiagramDetection(
   source: string,
-  options?: SvgBindingOptions | string,
+  options?: EditorBindingOptions | string,
   uri?: string
 ): DiagramDetectionFacts {
   const detection = requireEditorLanguage(
@@ -182,7 +182,7 @@ export function editorDiagramDetection(
 
 export function editorCodeActions(
   source: string,
-  options?: SvgBindingOptions | string,
+  options?: EditorBindingOptions | string,
   uri?: string
 ): EditorCodeAction[] {
   const codeActions = requireEditorLanguage("editorCodeActions", getMerman().editorCodeActions);
@@ -193,7 +193,7 @@ export function editorCompletions(
   source: string,
   position: EditorPosition,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorCompletionList {
   const completions = requireEditorLanguage("editorCompletions", getMerman().editorCompletions);
   return completions(source, position.line, position.character, uri, encodeOptions(options));
@@ -203,7 +203,7 @@ export function editorHover(
   source: string,
   position: EditorPosition,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorHover | null {
   const hover = requireEditorLanguage("editorHover", getMerman().editorHover);
   return hover(source, position.line, position.character, uri, encodeOptions(options));
@@ -212,7 +212,7 @@ export function editorHover(
 export function editorDocumentSymbols(
   source: string,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorDocumentSymbol[] {
   const documentSymbols = requireEditorLanguage(
     "editorDocumentSymbols",
@@ -225,7 +225,7 @@ export function editorSearchDocumentSymbols(
   source: string,
   query: string,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorSymbolInformation[] {
   const searchDocumentSymbols = requireEditorLanguage(
     "editorSearchDocumentSymbols",
@@ -238,7 +238,7 @@ export function editorDefinition(
   source: string,
   position: EditorPosition,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorLocation | null {
   const definition = requireEditorLanguage("editorDefinition", getMerman().editorDefinition);
   return definition(source, position.line, position.character, uri, encodeOptions(options));
@@ -249,7 +249,7 @@ export function editorReferences(
   position: EditorPosition,
   includeDeclaration = true,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorLocation[] {
   const refs = requireEditorLanguage("editorReferences", getMerman().editorReferences);
   return refs(source, position.line, position.character, includeDeclaration, uri, encodeOptions(options));
@@ -259,7 +259,7 @@ export function editorPrepareRename(
   source: string,
   position: EditorPosition,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorPrepareRename | null {
   const prepare = requireEditorLanguage("editorPrepareRename", getMerman().editorPrepareRename);
   return prepare(source, position.line, position.character, uri, encodeOptions(options));
@@ -270,7 +270,7 @@ export function editorRename(
   position: EditorPosition,
   newName: string,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): EditorWorkspaceEdit | null {
   const rename = requireEditorLanguage("editorRename", getMerman().editorRename);
   return rename(source, position.line, position.character, newName, uri, encodeOptions(options));
@@ -278,6 +278,23 @@ export function editorRename(
 
 export function editorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
   return cloneSemanticTokenDescriptor(cachedEditorSemanticTokenDescriptor());
+}
+
+export function editorCompletionTriggerCharacters(): string[] {
+  const triggers = requireEditorLanguage(
+    "editorCompletionTriggerCharacters",
+    getMerman().editorCompletionTriggerCharacters
+  )();
+  if (
+    !Array.isArray(triggers) ||
+    triggers.length === 0 ||
+    triggers.some(
+      (trigger) => typeof trigger !== "string" || [...trigger].length !== 1
+    )
+  ) {
+    throw new Error("Merman editor completion trigger characters are invalid.");
+  }
+  return [...triggers];
 }
 
 function cachedEditorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
@@ -316,7 +333,7 @@ function cloneSemanticTokenDescriptor(
 export function editorSemanticTokens(
   source: string,
   uri?: string,
-  options?: SvgBindingOptions | string
+  options?: EditorBindingOptions | string
 ): Uint32Array {
   cachedEditorSemanticTokenDescriptor();
   const tokens = requireEditorLanguage("editorSemanticTokens", getMerman().editorSemanticTokens);

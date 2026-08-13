@@ -97,13 +97,12 @@ impl RefreshCoordinator {
         }
     }
 
-    pub(crate) fn request(&self, semantic_tokens: bool, diagnostics: bool) {
-        if semantic_tokens {
-            self.request_lane(RefreshKind::SemanticTokens);
-        }
-        if diagnostics {
-            self.request_lane(RefreshKind::Diagnostics);
-        }
+    pub(crate) fn request_semantic_tokens_refresh(&self) {
+        self.request_lane(RefreshKind::SemanticTokens);
+    }
+
+    pub(crate) fn request_diagnostic_refresh(&self) {
+        self.request_lane(RefreshKind::Diagnostics);
     }
 
     fn request_lane(&self, kind: RefreshKind) {
@@ -271,15 +270,15 @@ mod tests {
         let (client, mut requests, responses) = RefreshClient::channel();
         let coordinator = RefreshCoordinator::new(client);
 
-        coordinator.request(true, false);
+        coordinator.request_semantic_tokens_refresh();
         let first = requests
             .next()
             .await
             .expect("expected first refresh request");
         assert_eq!(responses.pending_count(), 1);
 
-        coordinator.request(true, false);
-        coordinator.request(true, false);
+        coordinator.request_semantic_tokens_refresh();
+        coordinator.request_semantic_tokens_refresh();
         assert_eq!(coordinator.request_counts(), (3, 0));
         assert!(
             coordinator
@@ -333,12 +332,50 @@ mod tests {
         ));
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn semantic_token_and_diagnostic_refreshes_use_independent_lanes() {
+        let (client, mut requests, responses) = RefreshClient::channel();
+        let coordinator = RefreshCoordinator::new(client);
+
+        coordinator.request_semantic_tokens_refresh();
+        coordinator.request_diagnostic_refresh();
+
+        let first = requests
+            .next()
+            .await
+            .expect("expected first refresh request");
+        let second = requests
+            .next()
+            .await
+            .expect("expected second refresh request");
+        let methods = [first.method(), second.method()];
+        assert!(methods.contains(&"workspace/semanticTokens/refresh"));
+        assert!(methods.contains(&"workspace/diagnostic/refresh"));
+        assert_eq!(responses.pending_count(), 2);
+
+        for request in [first, second] {
+            assert!(
+                responses
+                    .route(Response::from_ok(
+                        request.id().cloned().expect("refresh request id"),
+                        serde_json::Value::Null,
+                    ))
+                    .is_none()
+            );
+        }
+        tokio::task::yield_now().await;
+        assert_eq!(responses.pending_count(), 0);
+
+        coordinator.cancel();
+        coordinator.wait_stopped().await;
+    }
+
     #[tokio::test(start_paused = true)]
     async fn timed_out_refresh_releases_waiter_and_allows_a_follow_up() {
         let (client, mut requests, responses) = RefreshClient::channel();
         let coordinator = RefreshCoordinator::new(client);
 
-        coordinator.request(true, false);
+        coordinator.request_semantic_tokens_refresh();
         let first = requests
             .next()
             .await
@@ -353,7 +390,7 @@ mod tests {
             "timed-out refresh must remove its response waiter"
         );
 
-        coordinator.request(true, false);
+        coordinator.request_semantic_tokens_refresh();
         let second = requests
             .next()
             .await
@@ -389,7 +426,7 @@ mod tests {
         let (client, mut requests, responses) = RefreshClient::channel();
         let coordinator = RefreshCoordinator::new(client);
 
-        coordinator.request(true, false);
+        coordinator.request_semantic_tokens_refresh();
         requests
             .next()
             .await
@@ -400,7 +437,8 @@ mod tests {
         coordinator.wait_stopped().await;
 
         assert_eq!(responses.pending_count(), 0);
-        coordinator.request(true, true);
+        coordinator.request_semantic_tokens_refresh();
+        coordinator.request_diagnostic_refresh();
         assert_eq!(responses.pending_count(), 0);
     }
 }

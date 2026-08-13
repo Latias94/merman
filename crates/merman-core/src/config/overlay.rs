@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::{ParseControl, ParseControlResult};
+use crate::{OperationControl, OperationControlResult};
 
 use super::MermaidConfig;
 
@@ -145,8 +145,8 @@ pub(crate) trait PostDetectionConfigOverlayProvider: std::fmt::Debug + Send + Sy
     fn overlay_for_family(
         &self,
         family: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<Option<Arc<PostDetectionConfigOverlay>>>;
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<Arc<PostDetectionConfigOverlay>>>;
 }
 
 impl PostDetectionConfigOverlay {
@@ -273,8 +273,8 @@ impl PostDetectionConfigOverlay {
         config_before_detection: &MermaidConfig,
         effective_config: &mut MermaidConfig,
         application: &mut ConfigOverlayApplication,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         self.apply_family_controlled_in_lane(
             family,
             explicit_site_config,
@@ -297,8 +297,8 @@ impl PostDetectionConfigOverlay {
         effective_config: &mut MermaidConfig,
         application: &mut ConfigOverlayApplication,
         lane: ConfigOverlayLane,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         control.checkpoint()?;
         let Some(family_overlay) = self.families.get(family) else {
             return Ok(());
@@ -669,7 +669,7 @@ mod tests {
                 before_detect,
                 effective,
                 &mut application,
-                &ParseControl::new(),
+                &OperationControl::new(),
             )
             .unwrap();
         application.finalize(effective)
@@ -905,7 +905,7 @@ mod tests {
                 &before_detect,
                 &mut effective,
                 &mut application,
-                &ParseControl::new(),
+                &OperationControl::new(),
             )
             .unwrap();
         effective.set_value("themeVariables.lineColor", json!("#abcdef"));
@@ -1001,7 +1001,7 @@ mod tests {
         let before_detect = MermaidConfig::empty_object();
         let mut effective = before_detect.clone();
         let mut application = ConfigOverlayApplication::default();
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(

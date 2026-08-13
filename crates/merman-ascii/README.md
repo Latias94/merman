@@ -14,25 +14,11 @@ This model renderer does not own a runtime-policy constructor, so it does not fo
 
 ## Quick Start
 
-Most applications should use the `merman` facade so parsing and text rendering stay in one operation:
+Most applications should use the `merman` facade so parsing and text rendering stay in one operation. The facade owns source parsing, operation control, and target selection; this crate exposes only the typed-model backend seam.
 
 ```toml
 [dependencies]
 merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["ascii"] }
-```
-
-```rust
-use merman::ascii::HeadlessAsciiRenderer;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let renderer = HeadlessAsciiRenderer::new().with_strict_parsing();
-    let output = renderer
-        .render_ascii_sync("flowchart LR\n  Source --> Terminal")?
-        .expect("diagram detected");
-
-    println!("{output}");
-    Ok(())
-}
 ```
 
 Depend on `merman-ascii` directly only when the application already owns a typed `merman-core::RenderSemanticModel`.
@@ -67,7 +53,7 @@ The renderer consumes the typed XYChart display policy from `merman-core`. `xyCh
 
 ## Relation Summary Diagnostics
 
-Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when class relationships cross namespace/container boundaries, when route or overlay collision checks would damage a box, or when the selected routed scene exceeds `AsciiRenderOptions::max_grid_cells`. Default output hides that internal reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: grid_budget actual=12 limit=1` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, `overlay_collision`, and `grid_budget`.
+Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when class relationships cross namespace/container boundaries, when route or overlay collision checks would damage a box, or when the selected routed scene exceeds the operation's `AsciiResourcePolicy` grid budget. Default output hides that internal reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: grid_budget actual=12 limit=1` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, `overlay_collision`, and `grid_budget`.
 
 ## Direct Model API
 

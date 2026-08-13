@@ -71,8 +71,8 @@ pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
@@ -130,15 +130,15 @@ fn construct_pie_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<PieSemanticSource, family::CombinedSemanticFailure> {
-    construct_pie_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_pie_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_pie_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<PieSemanticSource, family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
@@ -433,8 +433,8 @@ struct PieBodyStart {
 
 fn pie_body_start_controlled(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<PieHeader> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<PieHeader> {
     let mut offset = 0usize;
     while offset < code.len() {
         control.checkpoint()?;
@@ -514,7 +514,7 @@ mod tests {
 
     #[test]
     fn controlled_parse_can_cancel_after_the_pie_header() {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
@@ -523,7 +523,7 @@ mod tests {
                 &metadata(),
                 &control,
             ),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

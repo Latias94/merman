@@ -1,14 +1,17 @@
+use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_gantt_diagram(
+pub(super) fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
     _options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
-) -> String {
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     let mut lines = Vec::new();
 
     if let Some(title) = normalize_optional_text(model.title.as_deref()) {
@@ -29,6 +32,7 @@ pub fn render_gantt_diagram(
 
     let mut current_section: Option<&str> = None;
     for task in &model.tasks {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         if current_section != Some(task.section.as_str()) {
             current_section = Some(task.section.as_str());
             lines.push(format!("section: {}", task.section));
@@ -42,7 +46,7 @@ pub fn render_gantt_diagram(
         );
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    Ok(trim_trailing_blank_lines(lines).join("\n"))
 }
 
 fn render_task_text(

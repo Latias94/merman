@@ -5,28 +5,28 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.1",
     "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "77c7d37873d20c9ef1a2ef267911835e666537decc341722aa8d2f0170d06b42",
-    "package_lock_sha256": "aea75ff98014fe1ad3a410aeec334f1676ec41d2f81e96787b50768f81d3e97d",
+    "package_json_sha256": "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377",
+    "package_lock_sha256": "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v3"
+    "renderer_revision": "xtask-upstream-svg-v4"
   },
   "attestation": {
     "mode": "generated",
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "131.0.6778.204",
-        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
         "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
-        "version": "23.11.1"
+        "version": "25.6.0"
       },
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
         "esm_version": "11.16.1",
@@ -44,7 +44,7 @@
   "fixtures": {
     "upstream_cypress_venn_handdrawn_custom_styles_018": {
       "input_sha256": "567ca43bb5831f07711d9d41bad5b0d4a2f9258b367a4e035e1791c2a904e339",
-      "svg_sha256": "e1d2b3bcfa1d11f72cf17bc3f775e79a85c0ca6729c8902a194aaa899594d3e0",
+      "svg_sha256": "c9458127f2eaf76a0c31db999dbf2605b5e43f7ea08375b5e04937e4964fa4a6",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_handdrawn_three_set_title_015": {
@@ -54,7 +54,7 @@
     },
     "upstream_cypress_venn_handdrawn_two_set_014": {
       "input_sha256": "7a32e907225567352604410c43e3508399adfc59f036c8f352858c91036d3368",
-      "svg_sha256": "f307855a43b1f9e974b754cdf67e7007429433b0b8f2d7082e58cf999f9e3054",
+      "svg_sha256": "cc59b48c7dd3fc83adfb51a955b275618a28dc55da681c9461abcd99460d230e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_13_should_render_a_complex_venn_with_labels_text_nodes_and_style_013": {
@@ -64,7 +64,7 @@
     },
     "upstream_cypress_venn_spec_16_should_render_a_venn_diagram_with_a_3_set_union_without_expli_016": {
       "input_sha256": "9637022055e89a7518b9c3fd91c4ff0df68ff9b1bce87ecb307dca13867a842d",
-      "svg_sha256": "6682daa2e661386b01f4f80353511a07b2dc2006f827668416b891873ad381f1",
+      "svg_sha256": "a022de8325b3e447b75c53c7d4e33eb6ee5ce7bc337e520ebfc7facb8168c266",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_venn_spec_17_should_render_a_venn_diagram_with_partial_pairwise_subsets_017": {
@@ -89,17 +89,17 @@
     },
     "upstream_docs_venn_labels_and_sizes_002": {
       "input_sha256": "dbe2e15b8822e28a45210626bc600ead36dd030635490449f24091d953008c18",
-      "svg_sha256": "cb0c0064ed0fc6f83c5b76e36a8a52e407564c6b46d35565bd22c3cb4b7f1c0a",
+      "svg_sha256": "d7aca24246ea0bad178e739827bb23750bdfbef93f31acbedf5219077072fdef",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_venn_team_overlap_001": {
       "input_sha256": "7e1f629a073676a8e78837478b7c4351f087e557dd39b9ea1d7ecd0afd9f72ce",
-      "svg_sha256": "7abd9955db9419d037e241be6787a387f37bebcaf8086add4b41e9e13b9cac71",
+      "svg_sha256": "db89e18975b0554933a4586528dc880d95c87e4a6f46244eae3c471e31fa4c06",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_venn_text_nodes_and_style_003": {
       "input_sha256": "ac6de7c7813c6c4454972305ae734176395f3dc5b0be2c4ada601bd25815455d",
-      "svg_sha256": "40a2d3ded59c6f87f21a70804004209cbe6a6520ffffd511bca2f131a2432345",
+      "svg_sha256": "9c86af997fc92885ce59cac2368822e7872854440919949aabf4fad57d231a49",
       "renderer_profile": "mmdc-default"
     }
   },

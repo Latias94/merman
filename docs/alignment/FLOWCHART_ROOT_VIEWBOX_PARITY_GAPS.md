@@ -8,7 +8,7 @@ This note describes the current Flowchart root viewport contract and the focused
 
 Flowchart owns the content geometry used to derive its bounds. The shared Root Viewport module owns
 responsive or fixed sizing, accessibility attributes, root attribute ordering, and final SVG
-emission. The canonical `HeadlessRenderer` operation supplies the render environment and selected
+emission. The canonical typed `Renderer` operation supplies the render environment and selected
 text-measurement operations.
 
 Production rendering has no fixture-id lookup, complete-label answer table, root override policy,

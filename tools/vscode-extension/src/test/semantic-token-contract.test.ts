@@ -25,6 +25,8 @@ interface TokenEquivalenceCase {
   source_sha256: string;
   packed_words: number[];
   packed_sha256: string;
+  vscode_packed_words: number[];
+  vscode_packed_sha256: string;
   detection_validity: string;
 }
 
@@ -198,8 +200,14 @@ describe("generated semantic-token contract", () => {
         sha256(JSON.stringify(tokenCase.packed_words)),
         tokenCase.packed_sha256,
       );
+      assert.equal(
+        sha256(JSON.stringify(tokenCase.vscode_packed_words)),
+        tokenCase.vscode_packed_sha256,
+      );
       assert.ok(tokenCase.packed_words.length > 0);
       assert.equal(tokenCase.packed_words.length % evidence.words_per_token, 0);
+      assert.ok(tokenCase.vscode_packed_words.length > 0);
+      assert.equal(tokenCase.vscode_packed_words.length % evidence.words_per_token, 0);
     }
 
     const payload = {

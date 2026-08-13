@@ -1,5 +1,16 @@
-use merman_analysis::{FenceSemanticRole, FenceTextIndexSource};
-use merman_editor_core::{DocumentKind, DocumentWorkspace};
+mod support;
+
+use merman_analysis::{FenceTextIndex, FenceTextIndexSource};
+use merman_core::{EditorSemanticRole, EditorSemanticSymbol};
+use merman_editor_core::DocumentKind;
+use support::SnapshotHarness;
+
+fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &EditorSemanticSymbol> {
+    index
+        .semantic_items()
+        .iter()
+        .filter(|item| item.role.contributes_outline())
+}
 
 #[test]
 fn product_families_are_parser_backed_and_role_aware() {
@@ -129,10 +140,10 @@ fn product_families_are_parser_backed_and_role_aware() {
                 "commit id:\"F1\"\n",
                 "merge main id:\"M1\"\n",
             ),
-            required_ids: &["C1", "feature", "F1", "main", "M1"],
+            required_ids: &["C1", "feature", "F1", "M1"],
             required_outline: &[],
             required_prefixes: &[],
-            forbidden_ids: &[],
+            forbidden_ids: &["main"],
         },
         CapabilityCase {
             label: "radar",
@@ -249,9 +260,9 @@ fn product_families_are_parser_backed_and_role_aware() {
     ];
 
     for case in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 case.snippet.to_string(),
@@ -275,7 +286,7 @@ fn product_families_are_parser_backed_and_role_aware() {
         }
         for name in case.required_outline {
             assert!(
-                index.outline_items().iter().any(|item| item.name == *name),
+                outline_items(index).any(|item| item.name == *name),
                 "missing outline item {name:?} for {}",
                 case.label
             );
@@ -299,7 +310,7 @@ fn product_families_are_parser_backed_and_role_aware() {
 
 #[test]
 fn capability_matrix_families_are_parser_backed_in_editor_core() {
-    let mut workspace = DocumentWorkspace::new();
+    let harness = SnapshotHarness::new();
 
     for (label, snippet) in [
         ("info", "info showInfo\n"),
@@ -382,8 +393,8 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
         ),
         ("venn", "venn-beta\nset A\nset B\nunion A,B\n"),
     ] {
-        let snapshot = workspace
-            .upsert(
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/capability-matrix.mmd",
                 1,
                 snippet.to_string(),
@@ -397,8 +408,8 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
         );
     }
 
-    let snapshot = workspace
-        .upsert(
+    let snapshot = harness
+        .analyze(
             "file:///tmp/capability-matrix.mmd",
             1,
             "flowchart TD\nA-->B\n".to_string(),
@@ -413,6 +424,6 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "A" && item.role == FenceSemanticRole::Entity)
+            .any(|item| item.name == "A" && item.role == EditorSemanticRole::Entity)
     );
 }

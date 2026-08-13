@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a";
+    "sha256:c787f0510e088b3e0f5f39b8dc2b6f3159a1e3fe640ec6a46ba37ad91e783cd5";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -33,6 +33,7 @@ pub const MERMAN_NATIVE_STATUS_CALLBACK_ERROR: MermanNativeStatus = 13;
 pub const MERMAN_NATIVE_STATUS_REENTRANT_CALL: MermanNativeStatus = 14;
 pub const MERMAN_NATIVE_STATUS_INVALID_ENGINE: MermanNativeStatus = 15;
 pub const MERMAN_NATIVE_STATUS_BUSY: MermanNativeStatus = 16;
+pub const MERMAN_NATIVE_STATUS_CANCELLED: MermanNativeStatus = 17;
 
 pub const MERMAN_NATIVE_STATUSES: &[MermanNativeStatus] = &[
     MERMAN_NATIVE_STATUS_OK,
@@ -52,6 +53,7 @@ pub const MERMAN_NATIVE_STATUSES: &[MermanNativeStatus] = &[
     MERMAN_NATIVE_STATUS_REENTRANT_CALL,
     MERMAN_NATIVE_STATUS_INVALID_ENGINE,
     MERMAN_NATIVE_STATUS_BUSY,
+    MERMAN_NATIVE_STATUS_CANCELLED,
 ];
 
 pub fn merman_native_status_is_known(status: MermanNativeStatus) -> bool {
@@ -77,6 +79,7 @@ pub(crate) fn merman_native_status_name(status: MermanNativeStatus) -> &'static 
         MERMAN_NATIVE_STATUS_REENTRANT_CALL => "reentrant-call",
         MERMAN_NATIVE_STATUS_INVALID_ENGINE => "invalid-engine",
         MERMAN_NATIVE_STATUS_BUSY => "busy",
+        MERMAN_NATIVE_STATUS_CANCELLED => "cancelled",
         _ => "unknown-status",
     }
 }
@@ -177,6 +180,10 @@ pub(crate) fn merman_native_normalize_error_kind(
         MERMAN_NATIVE_STATUS_BUSY => match requested {
             merman_bindings_core::BindingErrorKind::Busy => requested,
             _ => merman_bindings_core::BindingErrorKind::Busy,
+        },
+        MERMAN_NATIVE_STATUS_CANCELLED => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
         },
         _ => merman_bindings_core::BindingErrorKind::Generic,
     }
@@ -475,6 +482,10 @@ pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT: MermanNativeFunctionSlot = 3;
 pub const MERMAN_NATIVE_FUNCTION_RESULT_FREE: MermanNativeFunctionSlot = 4;
 pub const MERMAN_NATIVE_FUNCTION_METADATA_COLLECT: MermanNativeFunctionSlot = 5;
 pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES: MermanNativeFunctionSlot = 6;
+pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW: MermanNativeFunctionSlot = 7;
+pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL: MermanNativeFunctionSlot = 8;
+pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE: MermanNativeFunctionSlot = 9;
+pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED: MermanNativeFunctionSlot = 10;
 
 pub type MermanNativeEngineToken = u64;
 pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = 3;
@@ -482,6 +493,9 @@ pub(crate) const MERMAN_NATIVE_TOKEN_COUNTER_SHIFT: u32 = 2;
 pub(crate) const MERMAN_NATIVE_TOKEN_COUNTER_MAX: u64 = 2305843009213693951;
 pub(crate) const MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG: u64 = 1;
 pub(crate) const MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG: u64 = 2;
+
+pub type MermanNativeOperationControlToken = u64;
+pub(crate) const MERMAN_NATIVE_OPERATION_CONTROL_TOKEN_DOMAIN_TAG: u64 = 3;
 
 /// A size-tagged borrowed byte slice. Null data is valid only with zero length.
 #[repr(C)]
@@ -607,6 +621,10 @@ pub struct MermanNativeApi {
     pub result_free: Option<MermanNativeResultFreeFn>,
     pub metadata_collect: Option<MermanNativeMetadataCollectFn>,
     pub engine_new_with_services: Option<MermanNativeEngineNewWithServicesFn>,
+    pub operation_control_new: Option<MermanNativeOperationControlNewFn>,
+    pub operation_control_cancel: Option<MermanNativeOperationControlCancelFn>,
+    pub operation_control_release: Option<MermanNativeOperationControlReleaseFn>,
+    pub execute_collect_controlled: Option<MermanNativeExecuteCollectControlledFn>,
 }
 
 /// One size-tagged borrowed IconifyJSON collection for transactional engine construction. A
@@ -662,13 +680,49 @@ pub type MermanNativeEngineNewWithServicesFn = unsafe extern "C" fn(
     out_engine: *mut MermanNativeEngineToken,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
+pub type MermanNativeOperationControlNewFn = unsafe extern "C" fn(
+    timeout_ms: u64,
+    has_timeout_ms: u8,
+    out_control: *mut MermanNativeOperationControlToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
+pub type MermanNativeOperationControlCancelFn =
+    unsafe extern "C" fn(control: MermanNativeOperationControlToken) -> MermanNativeStatus;
+pub type MermanNativeOperationControlReleaseFn =
+    unsafe extern "C" fn(control: MermanNativeOperationControlToken) -> MermanNativeStatus;
+pub type MermanNativeExecuteCollectControlledFn = unsafe extern "C" fn(
+    engine: MermanNativeEngineToken,
+    control: MermanNativeOperationControlToken,
+    request: *const MermanNativeOperationRequest,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, engine_new_with_services)
         + std::mem::size_of::<Option<MermanNativeEngineNewWithServicesFn>>()) as u32;
 
+pub const MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, operation_control_new)
+        + std::mem::size_of::<Option<MermanNativeOperationControlNewFn>>()) as u32;
+
+pub const MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, operation_control_cancel)
+        + std::mem::size_of::<Option<MermanNativeOperationControlCancelFn>>()) as u32;
+
+pub const MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, operation_control_release)
+        + std::mem::size_of::<Option<MermanNativeOperationControlReleaseFn>>()) as u32;
+
+pub const MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, execute_collect_controlled)
+        + std::mem::size_of::<Option<MermanNativeExecuteCollectControlledFn>>()) as u32;
+
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+    MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE,
+    MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
+    MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
+    MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
 ];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[

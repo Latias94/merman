@@ -8,6 +8,7 @@ import type {
   LintRuleCatalogResponse,
   LintRuleCategory,
   LintRuleSeverity,
+  LintRuleTag,
   RuntimeCapabilities,
   ThemeName,
 } from "./public-catalog.js";
@@ -20,8 +21,10 @@ import type {
 } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
 import type {
+  ResourceOverrideId,
   ResourceLimitId,
   ResourceOptions,
+  ResourceProfile,
 } from "./generated/resource-contract.js";
 
 export type {
@@ -420,12 +423,72 @@ export interface AnalysisBindingOptions {
   lint?: LintBindingOptions;
 }
 
-export interface CommonBindingOptions extends AnalysisBindingOptions {
-  version?: 2;
-  parse?: ParseOptions;
-  analysis?: AnalysisBindingOptions;
-  merman?: AnalysisBindingOptions;
+export type EditorResourceProfile = Extract<
+  ResourceProfile,
+  "interactive" | "constrained"
+>;
+export type EditorResourceLimitId = Extract<
+  ResourceOverrideId,
+  "max_source_bytes" | "max_document_diagrams"
+>;
+export type EditorResourceLimitOverrides = Partial<
+  Record<EditorResourceLimitId, number>
+>;
+
+export interface EditorResourceOptions {
+  profile?: EditorResourceProfile;
+  limits?: EditorResourceLimitOverrides;
 }
+
+export type EditorAnalysisBindingOptions = Omit<
+  AnalysisBindingOptions,
+  "resources"
+> & {
+  resources?: EditorResourceOptions;
+};
+
+interface BindingVersionOptions {
+  version?: 2;
+}
+
+type NoDirectAnalysisBindingOptions<Options extends AnalysisBindingOptions> = {
+  [Property in keyof Options]?: never;
+};
+
+type DirectAnalysisBindingRoot<Options extends AnalysisBindingOptions> = Options & {
+  analysis?: never;
+  merman?: never;
+};
+
+type AnalysisWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+  NoDirectAnalysisBindingOptions<Options> & {
+  analysis: Options;
+  merman?: never;
+};
+
+type MermanWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+  NoDirectAnalysisBindingOptions<Options> & {
+  analysis?: never;
+  merman: Options;
+};
+
+type AnalysisBindingRoot<Options extends AnalysisBindingOptions> =
+  (
+    | DirectAnalysisBindingRoot<Options>
+    | AnalysisWrappedBindingRoot<Options>
+    | MermanWrappedBindingRoot<Options>
+  );
+
+export type EditorBindingOptions = BindingVersionOptions &
+  AnalysisBindingRoot<EditorAnalysisBindingOptions>;
+
+interface CommonBindingFields {
+  parse?: ParseOptions;
+}
+
+export type CommonBindingOptions = BindingVersionOptions &
+  AnalysisBindingRoot<AnalysisBindingOptions> &
+  CommonBindingFields;
 
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiDirectionOption =
@@ -495,16 +558,20 @@ export interface AsciiRenderOptions {
   relationSummaryDiagnostics?: boolean;
 }
 
-export interface AsciiBindingOptions extends CommonBindingOptions {
+interface AsciiBindingFields {
   ascii?: AsciiRenderOptions;
 }
 
-export interface SvgBindingOptions extends CommonBindingOptions {
+export type AsciiBindingOptions = CommonBindingOptions & AsciiBindingFields;
+
+interface SvgBindingFields {
   theme?: DiagramThemeSelection | null;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
+
+export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
 
 export type BindingOptions = SvgBindingOptions;
 
@@ -640,6 +707,7 @@ export interface AnalysisDiagnostic {
   id: string;
   severity: LintRuleSeverity;
   category: LintRuleCategory | string;
+  tags?: LintRuleTag[];
   message: string;
   code?: number | null;
   code_name?: string | null;
@@ -694,16 +762,28 @@ export type AnalysisEditorSymbolKind =
   | "variable"
   | string;
 
-export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
+export type AnalysisSemanticRole =
+  | "entity"
+  | "class_definition"
+  | "reference"
+  | "outline"
+  | "payload"
+  | string;
 
 export type AnalysisRenamePolicy = EditorRenamePolicy;
 
 export type AnalysisExpectedSyntaxKind =
+  | "directive"
+  | "frontmatter"
   | "id_list"
   | "node_identifier"
+  | "class_name"
+  | "operator"
   | "shape"
   | "shape_trigger"
   | "direction"
+  | "style_value"
+  | "interaction_action"
   | "payload"
   | string;
 
@@ -731,67 +811,6 @@ export interface AnalysisExpectedSyntaxFacts {
   span: AnalysisFactSpan;
 }
 
-export interface AnalysisFlowchartEdgeDefaults {
-  interpolate?: string | null;
-  style: string[];
-}
-
-export interface AnalysisFlowchartNodeFacts {
-  id: string;
-  label?: string | null;
-  labelType?: string | null;
-  layoutShape?: string | null;
-  icon?: string | null;
-  form?: string | null;
-  pos?: string | null;
-  img?: string | null;
-  constraint?: string | null;
-  assetWidth?: number | null;
-  assetHeight?: number | null;
-  classes: string[];
-  styles: string[];
-  link?: string | null;
-  linkTarget?: string | null;
-  haveCallback: boolean;
-}
-
-export interface AnalysisFlowchartEdgeFacts {
-  id: string;
-  from: string;
-  to: string;
-  label?: string | null;
-  labelType?: string | null;
-  type?: string | null;
-  stroke?: string | null;
-  interpolate?: string | null;
-  classes: string[];
-  style: string[];
-  animate?: boolean | null;
-  animation?: string | null;
-  length: number;
-}
-
-export interface AnalysisFlowchartSubgraphFacts {
-  id: string;
-  title: string;
-  dir?: string | null;
-  labelType?: string | null;
-  classes: string[];
-  styles: string[];
-  nodes: string[];
-}
-
-export interface AnalysisFlowchartFacts {
-  direction?: string | null;
-  classDefs: Record<string, string[]>;
-  edgeDefaults?: AnalysisFlowchartEdgeDefaults | null;
-  vertexCalls: string[];
-  nodes: AnalysisFlowchartNodeFacts[];
-  edges: AnalysisFlowchartEdgeFacts[];
-  subgraphs: AnalysisFlowchartSubgraphFacts[];
-  tooltips: Record<string, string>;
-}
-
 export interface AnalysisDiagramSyntaxFacts {
   diagram_type?: string | null;
   effective_layout?: string | null;
@@ -799,7 +818,6 @@ export interface AnalysisDiagramSyntaxFacts {
   parser_backed: boolean;
   recovered: boolean;
   source_mapped_spans: boolean;
-  flowchart?: AnalysisFlowchartFacts | null;
   node_ids: string[];
   class_names: string[];
   directive_prefixes: string[];
@@ -825,7 +843,7 @@ export interface AnalysisDiagramFacts {
 }
 
 export interface AnalysisFactsResult extends AnalysisPayloadFields {
-  version: 1;
+  version: 2;
   diagrams: AnalysisDiagramFacts[];
 }
 
@@ -950,6 +968,7 @@ export interface EditorDiagnostic {
   severity: EditorDiagnosticSeverity;
   code: number | string;
   source: string;
+  tags?: LintRuleTag[];
   message: string;
   related: EditorDiagnosticRelated[];
   data?: EditorDiagnosticData | null;
@@ -1238,6 +1257,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
     optionsJson?: string | null
   ) => EditorWorkspaceEdit | null;
   editorSemanticTokenDescriptor?: () => WasmSemanticTokenDescriptor;
+  editorCompletionTriggerCharacters?: () => string[];
   editorSemanticTokens?: (
     source: string,
     uri?: string | null,

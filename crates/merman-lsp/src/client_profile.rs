@@ -1,5 +1,5 @@
-use crate::protocol::WorkspaceEditEncoding;
-use merman_editor_core::{PlannedTokenKind, semantic_token_descriptor};
+use crate::workspace_edit::WorkspaceEditEncoding;
+use merman_editor_core::SemanticTokenSupport;
 use std::sync::OnceLock;
 use tower_lsp_server::ls_types::{
     ClientCapabilities, CodeActionKind, DiagnosticTag, MarkupKind, SemanticTokenModifier,
@@ -46,8 +46,7 @@ pub(crate) struct CodeActionProjection {
 #[derive(Debug, Clone)]
 pub(crate) struct SemanticTokenProjection {
     legend: SemanticTokensLegend,
-    token_type_indices: Vec<Option<u32>>,
-    token_modifier_bitsets: Vec<u32>,
+    support: SemanticTokenSupport,
     range: bool,
     full: Option<SemanticTokensFullOptions>,
 }
@@ -71,75 +70,52 @@ impl SemanticTokenProjection {
             }
             _ => None,
         };
-        Self::from_descriptor_support(
-            |token_type| capabilities.token_types.contains(token_type),
-            |modifier| capabilities.token_modifiers.contains(modifier),
-            range,
-            full,
-        )
+        let support = SemanticTokenSupport::from_support(
+            |kind| {
+                capabilities
+                    .token_types
+                    .contains(&SemanticTokenType::new(kind.lsp_name()))
+            },
+            |modifier| {
+                capabilities
+                    .token_modifiers
+                    .contains(&SemanticTokenModifier::new(modifier.lsp_name()))
+            },
+        );
+        Self::from_support(support, range, full)
     }
 
     fn all() -> Self {
-        Self::from_descriptor_support(
-            |_| true,
-            |_| true,
+        Self::from_support(
+            SemanticTokenSupport::all(),
             true,
             Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
         )
         .expect("the generated descriptor always contains semantic token kinds")
     }
 
-    fn from_descriptor_support(
-        supports_token_type: impl Fn(&SemanticTokenType) -> bool,
-        supports_modifier: impl Fn(&SemanticTokenModifier) -> bool,
+    fn from_support(
+        support: SemanticTokenSupport,
         range: bool,
         full: Option<SemanticTokensFullOptions>,
     ) -> Option<Self> {
         if !range && full.is_none() {
             return None;
         }
-
-        let descriptor = semantic_token_descriptor();
-        let mut token_types = Vec::new();
-        let mut token_type_indices = vec![None; descriptor.valid_type_code_max as usize + 1];
-        for kind in descriptor.token_kinds {
-            let token_type = SemanticTokenType::new(kind.lsp_name);
-            if !supports_token_type(&token_type) {
-                continue;
-            }
-            let index = u32::try_from(token_types.len()).ok()?;
-            token_type_indices[kind.kind.code() as usize] = Some(index);
-            token_types.push(token_type);
-        }
-        if token_types.is_empty() {
-            return None;
-        }
-
-        let modifier_slots = descriptor
-            .modifiers
-            .iter()
-            .map(|modifier| modifier.modifier.index() as usize)
-            .max()
-            .map_or(0, |index| index + 1);
-        let mut token_modifiers = Vec::new();
-        let mut token_modifier_bitsets = vec![0; modifier_slots];
-        for modifier in descriptor.modifiers {
-            let token_modifier = SemanticTokenModifier::new(modifier.lsp_name);
-            if !supports_modifier(&token_modifier) {
-                continue;
-            }
-            let bit = 1u32.checked_shl(u32::try_from(token_modifiers.len()).ok()?)?;
-            token_modifier_bitsets[modifier.modifier.index() as usize] = bit;
-            token_modifiers.push(token_modifier);
-        }
+        support.supported_kinds().next()?;
 
         Some(Self {
             legend: SemanticTokensLegend {
-                token_types,
-                token_modifiers,
+                token_types: support
+                    .supported_kinds()
+                    .map(|kind| SemanticTokenType::new(kind.lsp_name()))
+                    .collect(),
+                token_modifiers: support
+                    .supported_modifiers()
+                    .map(|modifier| SemanticTokenModifier::new(modifier.lsp_name()))
+                    .collect(),
             },
-            token_type_indices,
-            token_modifier_bitsets,
+            support,
             range,
             full,
         })
@@ -154,28 +130,23 @@ impl SemanticTokenProjection {
         }
     }
 
-    pub(crate) fn token_type(&self, kind: PlannedTokenKind) -> Option<u32> {
-        self.token_type_indices
-            .get(kind.code() as usize)
-            .copied()
-            .flatten()
+    pub(crate) const fn support(&self) -> SemanticTokenSupport {
+        self.support
     }
 
-    pub(crate) fn token_modifier_bitset(&self, canonical_bits: u32) -> u32 {
-        semantic_token_descriptor()
-            .modifiers
-            .iter()
-            .fold(0, |projected_bits, modifier| {
-                if canonical_bits & modifier.bit == 0 {
-                    return projected_bits;
-                }
-                projected_bits
-                    | self
-                        .token_modifier_bitsets
-                        .get(modifier.modifier.index() as usize)
-                        .copied()
-                        .unwrap_or_default()
-            })
+    pub(crate) const fn supports_range(&self) -> bool {
+        self.range
+    }
+
+    pub(crate) const fn supports_full(&self) -> bool {
+        self.full.is_some()
+    }
+
+    pub(crate) fn supports_delta(&self) -> bool {
+        matches!(
+            self.full,
+            Some(SemanticTokensFullOptions::Delta { delta: Some(true) })
+        )
     }
 
     #[cfg(test)]
@@ -327,7 +298,7 @@ impl ClientProtocolProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_editor_core::PlannedTokenModifier;
+    use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier, semantic_token_descriptor};
 
     #[test]
     fn markup_negotiation_respects_client_preference_order() {
@@ -383,6 +354,10 @@ mod tests {
             .semantic_tokens
             .expect("supported semantic tokens should negotiate a projection");
 
+        assert!(projection.supports_range());
+        assert!(projection.supports_full());
+        assert!(projection.supports_delta());
+
         assert_eq!(
             projection.legend().token_types,
             vec![
@@ -398,21 +373,14 @@ mod tests {
                 SemanticTokenModifier::new("defaultLibrary"),
             ]
         );
-        assert_eq!(projection.token_type(PlannedTokenKind::Keyword), Some(0));
-        assert_eq!(projection.token_type(PlannedTokenKind::String), Some(1));
-        assert_eq!(projection.token_type(PlannedTokenKind::Variable), Some(2));
-        assert_eq!(projection.token_type(PlannedTokenKind::Comment), None);
-        assert_eq!(
-            projection.token_modifier_bitset(
-                PlannedTokenModifier::Declaration.bit()
-                    | PlannedTokenModifier::DefaultLibrary.bit()
-            ),
-            0b11
-        );
-        assert_eq!(
-            projection.token_modifier_bitset(PlannedTokenModifier::Entity.bit()),
-            0
-        );
+        let support = projection.support();
+        assert!(support.supports_kind(PlannedTokenKind::Keyword));
+        assert!(support.supports_kind(PlannedTokenKind::String));
+        assert!(support.supports_kind(PlannedTokenKind::Variable));
+        assert!(!support.supports_kind(PlannedTokenKind::Comment));
+        assert!(support.supports_modifier(PlannedTokenModifier::Declaration));
+        assert!(support.supports_modifier(PlannedTokenModifier::DefaultLibrary));
+        assert!(!support.supports_modifier(PlannedTokenModifier::Entity));
     }
 
     #[test]
@@ -438,6 +406,47 @@ mod tests {
                 .map(|modifier| SemanticTokenModifier::new(modifier.lsp_name))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn semantic_token_request_modes_are_negotiated_independently() {
+        let cases = [
+            (serde_json::json!({ "range": true }), true, false, false),
+            (serde_json::json!({ "full": true }), false, true, false),
+            (
+                serde_json::json!({ "full": { "delta": false } }),
+                false,
+                true,
+                false,
+            ),
+            (
+                serde_json::json!({ "full": { "delta": true } }),
+                false,
+                true,
+                true,
+            ),
+        ];
+
+        for (requests, expected_range, expected_full, expected_delta) in cases {
+            let capabilities: ClientCapabilities = serde_json::from_value(serde_json::json!({
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": requests,
+                        "tokenTypes": ["keyword"],
+                        "tokenModifiers": [],
+                        "formats": ["relative"]
+                    }
+                }
+            }))
+            .unwrap();
+            let projection = ClientProtocolProfile::negotiate(&capabilities)
+                .semantic_tokens
+                .expect("at least one semantic token request mode is enabled");
+
+            assert_eq!(projection.supports_range(), expected_range);
+            assert_eq!(projection.supports_full(), expected_full);
+            assert_eq!(projection.supports_delta(), expected_delta);
+        }
     }
 
     #[test]

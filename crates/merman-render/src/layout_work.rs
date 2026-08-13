@@ -1,4 +1,4 @@
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::{Error, Result};
 #[cfg(test)]
 use std::cell::Cell;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// prevents each family from inventing a subtly different sticky-error or overflow mapping.
 pub(crate) struct OperationLayoutWorkControl {
     meter: Arc<OperationWorkMeter>,
-    rejection: RefCell<Option<ResourceLimitExceeded>>,
+    rejection: RefCell<Option<OperationWorkError>>,
     #[cfg(test)]
     adapter_work: Cell<usize>,
 }
@@ -43,26 +43,33 @@ impl OperationLayoutWorkControl {
     }
 
     pub(crate) fn checked_add(&self, left: usize, right: usize) -> Result<usize> {
+        self.meter
+            .checkpoint(merman_core::OperationPhase::Layout)
+            .map_err(Error::from)?;
         left.checked_add(right)
             .ok_or_else(|| self.record_arithmetic_overflow().into())
     }
 
     pub(crate) fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
+        self.meter
+            .checkpoint(merman_core::OperationPhase::Layout)
+            .map_err(Error::from)?;
         left.checked_mul(right)
             .ok_or_else(|| self.record_arithmetic_overflow().into())
     }
 
-    pub(crate) fn record_arithmetic_overflow(&self) -> ResourceLimitExceeded {
+    pub(crate) fn record_arithmetic_overflow(&self) -> OperationWorkError {
         if let Some(error) = self.rejection.borrow().clone() {
             return error;
         }
         let error = self.meter.arithmetic_overflow();
+        let error = OperationWorkError::ResourceLimitExceeded(error);
         *self.rejection.borrow_mut() = Some(error.clone());
         error
     }
 
     #[cfg(feature = "layout-elk")]
-    pub(crate) fn arithmetic_overflow(&self) -> ResourceLimitExceeded {
+    pub(crate) fn arithmetic_overflow(&self) -> OperationWorkError {
         self.record_arithmetic_overflow()
     }
 
@@ -71,11 +78,11 @@ impl OperationLayoutWorkControl {
             dugong::LayoutError::Work(dugong::WorkError::Interrupted) => {
                 let rejection = self.rejection.borrow().clone();
                 rejection
-                    .unwrap_or_else(|| self.record_arithmetic_overflow())
-                    .into()
+                    .map(Error::from)
+                    .unwrap_or_else(|| Error::from(self.record_arithmetic_overflow()))
             }
             dugong::LayoutError::Work(dugong::WorkError::ArithmeticOverflow) => {
-                self.record_arithmetic_overflow().into()
+                Error::from(self.record_arithmetic_overflow())
             }
             error => error.into(),
         }
@@ -96,11 +103,11 @@ impl OperationLayoutWorkControl {
             Some(merman_layout_elk::WorkError::Interrupted) => {
                 let rejection = self.rejection.borrow_mut().take();
                 rejection
-                    .unwrap_or_else(|| self.record_arithmetic_overflow())
-                    .into()
+                    .map(Error::from)
+                    .unwrap_or_else(|| Error::from(self.record_arithmetic_overflow()))
             }
             Some(merman_layout_elk::WorkError::ArithmeticOverflow) => {
-                self.record_arithmetic_overflow().into()
+                Error::from(self.record_arithmetic_overflow())
             }
             None => Error::InvalidModel {
                 message: format!("{context} layout failed: {error}"),
@@ -121,7 +128,7 @@ impl OperationLayoutWorkControl {
                         .to_string(),
                 }),
             manatee::Error::WorkFailure(manatee::WorkFailure::ArithmeticOverflow) => {
-                self.record_arithmetic_overflow().into()
+                Error::from(self.record_arithmetic_overflow())
             }
             error => Error::InvalidModel {
                 message: format!("manatee layout failed: {error}"),

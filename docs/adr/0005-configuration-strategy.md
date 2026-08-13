@@ -26,6 +26,11 @@ However, fully hand-maintaining a large config schema in Rust is expensive.
   prototype-pollution keys are removed; trusted site config remains forward-compatible.
 - Keep Merman security policy separate from upstream data. The upstream artifact retains Mermaid's
   six secure keys; the default Engine uses the local ten-key hardened policy.
+- Keep host analysis options separate from Mermaid site configuration.
+  `merman-analysis::AnalysisConfigContract` owns direct/wrapped root selection, field constraints,
+  rule/profile/severity projections, resource descriptors, invalidation scope, and the standard
+  JSON Schema. LSP and editor manifests may add host defaults or unset-value UX, but not redefine
+  accepted analysis values.
 
 ## Consequences
 
@@ -33,3 +38,5 @@ However, fully hand-maintaining a large config schema in Rust is expensive.
 - We can incrementally “type” more config fields as needed without breaking consumers.
 - JSON value parity no longer loses legal function or `undefined` keys, because directive shape is
   generated and verified separately.
+- Analysis configuration runtime decoding and schema discovery cannot drift into transport-local
+  rule, profile, severity, wrapper, or resource tables.

@@ -1,6 +1,7 @@
-use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
-};
+mod support;
+
+use merman_editor_core::{DocumentKind, PlannedTokenKind, plan_semantic_tokens_for_snapshot};
+use support::SnapshotHarness;
 
 #[test]
 fn line_parser_families_produce_non_overlapping_semantic_token_plans() {
@@ -36,9 +37,9 @@ fn line_parser_families_produce_non_overlapping_semantic_token_plans() {
     ];
 
     for (family, source, distinctive_kind) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{family}-line-parser.mmd"),
                 1,
                 source.to_string(),
@@ -96,9 +97,9 @@ fn line_parser_recovery_plans_cover_tokens_before_and_after_the_error() {
     ];
 
     for (family, source) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{family}-line-recovery.mmd"),
                 1,
                 source.to_string(),

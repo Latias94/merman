@@ -83,7 +83,7 @@ jobs:
           cache-targets: false
 
       - name: Verify generated editor language contract
-        run: cargo run --locked -p xtask -- verify-editor-token-descriptor
+        run: cargo run --locked -p xtask -- verify-editor-language-contract
 
   package:
     needs: [validate-inputs, editor-language-contract]

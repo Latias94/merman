@@ -1,6 +1,6 @@
 #[cfg(feature = "svg")]
 use super::prepare::{PreparedGraphicalOutput, PreparedGraphicalRender, PreparedGraphicalSource};
-use super::prepare::{PreparedRender, PreparedSingleOutput};
+use super::prepare::{PreparedSingleOutput, PreparedWorkflow};
 #[cfg(feature = "markdown")]
 use super::svg_pipeline::svg_metadata;
 use crate::error::CliError;
@@ -12,27 +12,38 @@ use crate::runtime::ExecutionContext;
 use crate::runtime::SharedWriter;
 
 pub(crate) fn execute_render(
-    prepared: PreparedRender,
+    prepared: PreparedWorkflow,
     context: &mut ExecutionContext,
 ) -> Result<(), CliError> {
     match prepared {
-        PreparedRender::Single(single) => {
+        PreparedWorkflow::Single(single) => {
             let artifact = match &single.output {
                 #[cfg(feature = "ascii")]
                 PreparedSingleOutput::Text {
                     renderer,
+                    options,
+                    resources,
                     admission,
                     ..
                 } => {
-                    let permit = admission.acquire()?;
-                    let Some(rendered) = renderer.render_ascii_sync(&single.source)? else {
+                    let permit = admission.acquire_controlled(&single.control)?;
+                    let request = merman::AsciiRequest {
+                        options: *options,
+                        resources: *resources,
+                    };
+                    let output = renderer.renderer.render(renderer.request(
+                        &single.source,
+                        merman::RenderTarget::Ascii(request),
+                        single.control.clone(),
+                    ))?;
+                    let merman::RenderOutput::Ascii(Some(rendered)) = output else {
                         return Err(CliError::NoDiagram);
                     };
                     ExecutedArtifact::text(rendered.into_bytes(), permit)
                 }
                 #[cfg(feature = "svg")]
                 PreparedSingleOutput::Graphical { renderer, .. } => {
-                    execute_graphical(renderer, &single.source, &context.stderr)?
+                    execute_graphical(renderer, &single.source, &single.control, &context.stderr)?
                 }
             };
             let destination = match &single.output {
@@ -50,7 +61,7 @@ pub(crate) fn execute_render(
             )
         }
         #[cfg(feature = "markdown")]
-        PreparedRender::Markdown(batch) => crate::batch::execute(*batch, context),
+        PreparedWorkflow::Markdown(batch) => crate::batch::execute(*batch, context),
     }
 }
 
@@ -58,130 +69,104 @@ pub(crate) fn execute_render(
 pub(crate) fn execute_graphical(
     prepared: &PreparedGraphicalRender,
     source: &str,
+    control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     let _ = stderr;
-    let permit = prepared.admission.acquire()?;
+    let permit = prepared.admission.acquire_controlled(control)?;
     match &prepared.source {
-        PreparedGraphicalSource::Mermaid(renderer) => match &prepared.output {
-            PreparedGraphicalOutput::Svg => {
-                let Some(svg) =
-                    renderer.render_svg_with_pipeline_sync(source, &prepared.pipeline)?
-                else {
-                    return Err(CliError::NoDiagram);
-                };
-                #[cfg(feature = "markdown")]
-                let metadata = svg_metadata(&svg);
-                Ok(ExecutedArtifact {
-                    bytes: svg.into_bytes(),
-                    _permit: Some(permit),
+        PreparedGraphicalSource::Mermaid(renderer) => {
+            let mut svg = renderer.svg.clone();
+            svg.pipeline = Some(prepared.pipeline.clone());
+            let target = prepared.output.target(svg);
+            let output =
+                renderer
+                    .renderer
+                    .render(renderer.request(source, target, control.clone()))?;
+            match (&prepared.output, output) {
+                (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
+                    let (svg, _evidence) = svg.into_parts();
                     #[cfg(feature = "markdown")]
-                    title: metadata.0,
-                    #[cfg(feature = "markdown")]
-                    desc: metadata.1,
-                })
+                    let metadata = svg_metadata(&svg);
+                    Ok(ExecutedArtifact {
+                        bytes: svg.into_bytes(),
+                        _permit: Some(permit),
+                        #[cfg(feature = "markdown")]
+                        title: metadata.0,
+                        #[cfg(feature = "markdown")]
+                        desc: metadata.1,
+                    })
+                }
+                (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(None)) => {
+                    Err(CliError::NoDiagram)
+                }
+                #[cfg(feature = "png")]
+                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Png(Some(output))) => {
+                    report_raster_plan(prepared.quiet, output.plan, stderr);
+                    Ok(ExecutedArtifact {
+                        bytes: output.bytes,
+                        _permit: Some(permit),
+                        #[cfg(feature = "markdown")]
+                        title: None,
+                        #[cfg(feature = "markdown")]
+                        desc: None,
+                    })
+                }
+                #[cfg(feature = "png")]
+                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Png(None)) => {
+                    Err(CliError::NoDiagram)
+                }
+                #[cfg(feature = "jpeg")]
+                (
+                    PreparedGraphicalOutput::Jpeg { .. },
+                    merman::RenderOutput::Jpeg(Some(output)),
+                ) => {
+                    report_raster_plan(prepared.quiet, output.plan, stderr);
+                    Ok(ExecutedArtifact {
+                        bytes: output.bytes,
+                        _permit: Some(permit),
+                        #[cfg(feature = "markdown")]
+                        title: None,
+                        #[cfg(feature = "markdown")]
+                        desc: None,
+                    })
+                }
+                #[cfg(feature = "jpeg")]
+                (PreparedGraphicalOutput::Jpeg { .. }, merman::RenderOutput::Jpeg(None)) => {
+                    Err(CliError::NoDiagram)
+                }
+                #[cfg(feature = "pdf")]
+                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Pdf(Some(output))) => {
+                    report_pdf_filter_plan(prepared.quiet, output.plan, stderr);
+                    Ok(ExecutedArtifact {
+                        bytes: output.bytes,
+                        _permit: Some(permit),
+                        #[cfg(feature = "markdown")]
+                        title: None,
+                        #[cfg(feature = "markdown")]
+                        desc: None,
+                    })
+                }
+                #[cfg(feature = "pdf")]
+                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Pdf(None)) => {
+                    Err(CliError::NoDiagram)
+                }
+                (_, _) => Err(CliError::InvalidOutput(
+                    "typed renderer returned an unexpected output target".to_string(),
+                )),
             }
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            _ => {
-                let Some(document) =
-                    renderer.render_document_with_pipeline_sync(source, &prepared.pipeline)?
-                else {
-                    return Err(CliError::NoDiagram);
-                };
-                execute_encoded_document(prepared, document, permit, stderr)
-            }
-        },
+        }
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         PreparedGraphicalSource::RawSvg(environment) => {
             let session = environment
-                .begin_session()
-                .map_err(merman::svg::HeadlessError::from)?;
+                .begin_session_with_control(control.clone())
+                .map_err(|error| CliError::Render(merman::RenderError::RuntimePolicy(error)))?;
             let svg = prepared
                 .pipeline
                 .process_resvg_compatible(source, &session)
-                .map_err(merman::svg::HeadlessError::from)?;
-            execute_raw_svg(prepared, svg, permit, stderr)
-        }
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn execute_encoded_document(
-    prepared: &PreparedGraphicalRender,
-    document: merman::svg::RenderedDocument,
-    permit: super::admission::BackendPermit,
-    stderr: &SharedWriter,
-) -> Result<ExecutedArtifact, CliError> {
-    match &prepared.output {
-        PreparedGraphicalOutput::Svg => Err(CliError::InvalidOutput(
-            "SVG output entered the encoded backend".to_string(),
-        )),
-        #[cfg(feature = "png")]
-        PreparedGraphicalOutput::Png { options } => {
-            let prepared_export = document.prepare_png_export(options)?;
-            let report = prepared_export.export_report();
-            let actual_weight = super::admission::actual_raster_weight(
-                report.raster(),
-                report.embedded_images(),
-                8,
-            )?;
-            prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, report.raster(), stderr);
-            #[cfg(feature = "markdown")]
-            let metadata = output_metadata(prepared_export.metadata());
-            let (bytes, _report) = prepared_export.encode()?;
-            Ok(ExecutedArtifact {
-                bytes,
-                _permit: Some(permit),
-                #[cfg(feature = "markdown")]
-                title: metadata.0,
-                #[cfg(feature = "markdown")]
-                desc: metadata.1,
-            })
-        }
-        #[cfg(feature = "jpeg")]
-        PreparedGraphicalOutput::Jpeg { options } => {
-            let prepared_export = document.prepare_jpeg_export(options)?;
-            let report = prepared_export.export_report();
-            let actual_weight = super::admission::actual_raster_weight(
-                report.raster(),
-                report.embedded_images(),
-                10,
-            )?;
-            prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, report.raster(), stderr);
-            #[cfg(feature = "markdown")]
-            let metadata = output_metadata(prepared_export.metadata());
-            let (bytes, _report) = prepared_export.encode()?;
-            Ok(ExecutedArtifact {
-                bytes,
-                _permit: Some(permit),
-                #[cfg(feature = "markdown")]
-                title: metadata.0,
-                #[cfg(feature = "markdown")]
-                desc: metadata.1,
-            })
-        }
-        #[cfg(feature = "pdf")]
-        PreparedGraphicalOutput::Pdf { options } => {
-            let prepared_export = document.prepare_pdf_export(options)?;
-            let report = prepared_export.export_report();
-            let actual_weight =
-                super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
-            prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
-            #[cfg(feature = "markdown")]
-            let metadata = output_metadata(prepared_export.metadata());
-            let (bytes, _report) = prepared_export.encode()?;
-            Ok(ExecutedArtifact {
-                bytes,
-                _permit: Some(permit),
-                #[cfg(feature = "markdown")]
-                title: metadata.0,
-                #[cfg(feature = "markdown")]
-                desc: metadata.1,
-            })
+                .map_err(|error| CliError::Render(merman::RenderError::Svg(error)))?;
+            execute_raw_svg(prepared, svg, permit, control, stderr)
         }
     }
 }
@@ -191,6 +176,7 @@ fn execute_raw_svg(
     prepared: &PreparedGraphicalRender,
     svg: merman::svg::ResvgCompatibleSvg,
     permit: super::admission::BackendPermit,
+    control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "markdown")]
@@ -201,7 +187,9 @@ fn execute_raw_svg(
         )),
         #[cfg(feature = "png")]
         PreparedGraphicalOutput::Png { options } => {
-            let prepared_raster = merman::svg::export::prepare_raster(&svg, options)?;
+            let prepared_raster =
+                merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
+                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
             let report =
                 prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Png);
             let actual_weight = super::admission::actual_raster_weight(
@@ -212,7 +200,9 @@ fn execute_raw_svg(
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_raster_plan(prepared.quiet, report.raster(), stderr);
             Ok(ExecutedArtifact {
-                bytes: prepared_raster.encode_png()?,
+                bytes: prepared_raster
+                    .encode_png()
+                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -222,7 +212,9 @@ fn execute_raw_svg(
         }
         #[cfg(feature = "jpeg")]
         PreparedGraphicalOutput::Jpeg { options } => {
-            let prepared_raster = merman::svg::export::prepare_raster(&svg, options)?;
+            let prepared_raster =
+                merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
+                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
             let report =
                 prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Jpeg);
             let actual_weight = super::admission::actual_raster_weight(
@@ -233,7 +225,9 @@ fn execute_raw_svg(
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_raster_plan(prepared.quiet, report.raster(), stderr);
             Ok(ExecutedArtifact {
-                bytes: prepared_raster.encode_jpeg()?,
+                bytes: prepared_raster
+                    .encode_jpeg()
+                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -243,14 +237,18 @@ fn execute_raw_svg(
         }
         #[cfg(feature = "pdf")]
         PreparedGraphicalOutput::Pdf { options } => {
-            let prepared_pdf = merman::svg::export::prepare_pdf(&svg, options)?;
+            let prepared_pdf =
+                merman::svg::export::prepare_pdf_controlled(&svg, options, control.clone())
+                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?;
             let report = prepared_pdf.report();
             let actual_weight =
                 super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
             Ok(ExecutedArtifact {
-                bytes: prepared_pdf.encode()?,
+                bytes: prepared_pdf
+                    .encode()
+                    .map_err(|error| CliError::Render(merman::RenderError::Export(error)))?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
                 title: metadata.0,
@@ -259,17 +257,6 @@ fn execute_raw_svg(
             })
         }
     }
-}
-
-#[cfg(all(
-    feature = "markdown",
-    any(feature = "png", feature = "jpeg", feature = "pdf")
-))]
-fn output_metadata(metadata: &merman::svg::SvgOutputMetadata) -> (Option<String>, Option<String>) {
-    (
-        metadata.title().map(str::to_owned),
-        metadata.description().map(str::to_owned),
-    )
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]

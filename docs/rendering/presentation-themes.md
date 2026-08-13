@@ -2,7 +2,7 @@
 
 Alpha.4 exposes an **experimental** typed diagram-theme surface. A theme recipe is compiled from
 `DiagramThemeSpec` (or one of the first-party `ThemePreset` values) into an immutable
-`DiagramTheme`, then installed with `HeadlessRenderer::with_theme(...)`. This surface is not a
+`DiagramTheme`, then attached to the operation `RenderRequest`. This surface is not a
 completed cross-target compatibility promise: compilation reports required capabilities, while
 family, document, and export stages provide the evidence and target-specific admission decision.
 The C6 representative SVG/PNG/PDF matrix is not yet proven.
@@ -11,10 +11,10 @@ Merman keeps independent concerns in separate owners:
 
 | Owner | Public input | Use it for |
 | --- | --- | --- |
-| Compiled diagram theme | `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `HeadlessRenderer::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
-| Mermaid configuration | `HeadlessRenderer::with_site_config(...)` / bounded binding `site_config` | Official Mermaid `theme`, `themeVariables`, `look`, layout, and family configuration; raw `themeCSS` is limited to trusted Rust/native CLI hosts |
-| Layout and runtime | `HeadlessRenderer::with_layout_options(...)`, `RenderEnvironment`, and explicit layout configuration | Container dimensions, text measurement, math, resource policy, and renderer selection |
-| SVG output | `HeadlessRenderer::with_svg_pipeline(...)` / `svg` | Parity, readable, or `resvg-safe` post-processing and output policy |
+| Compiled diagram theme | `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `RenderRequest::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
+| Mermaid configuration | `Engine::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
+| Layout and runtime | `Renderer`, `RenderRequest`, `SvgRequest`, and explicit operation control | Container dimensions, text measurement, math, resource policy, renderer selection, cancellation, and deadlines |
+| SVG output | `SvgRequest.pipeline` / `svg` | Parity, readable, or `resvg-safe` post-processing and output-specific policy |
 
 There is no public `PresentationTheme`, `HostTheme`, `PresentationProfile`, or aggregate
 `Presentation` replacement. Product recipes belong in the host application and compose these
@@ -22,18 +22,33 @@ owners explicitly.
 
 ## Rust API
 
-Select a built-in typed preset and install the compiled value on a renderer:
+Select a built-in typed preset and attach the compiled value to the SVG request:
 
 ```rust
-use merman::svg::{DiagramThemeCompiler, HeadlessRenderer, SvgPipeline, ThemePreset};
+use merman::svg::{DiagramThemeCompiler, SvgPipeline, SvgRenderOptions, ThemePreset};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::OneDark)?;
-let renderer = HeadlessRenderer::new()
-    .with_theme(theme)
-    .with_svg_pipeline(SvgPipeline::resvg_safe())
-    .with_vendored_text_measurer()
-    .with_diagram_id("theme-preset-example");
-let svg = renderer.render_svg_sync(source)?;
+let output = Renderer::new().render(
+    RenderRequest::svg(
+        source,
+        OperationControl::new(),
+        SvgRequest {
+            pipeline: Some(SvgPipeline::resvg_safe()),
+            options: SvgRenderOptions {
+                diagram_id: Some("theme-preset-example".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .with_theme(theme),
+)?;
+let RenderOutput::Svg(Some(svg)) = output else {
+    return Err("no Mermaid diagram detected".into());
+};
+# let _ = svg;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 `ThemePreset` currently contains `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
@@ -45,7 +60,7 @@ For a design-system token record, use `ThemeTokens` as a small Rust-side adapter
 a complete spec before compiling:
 
 ```rust
-use merman::svg::{DiagramThemeCompiler, HeadlessRenderer, ThemeTokens};
+use merman::svg::{DiagramThemeCompiler, ThemeTokens};
 
 let spec = ThemeTokens::default()
     .with_canvas("#0f172a")?
@@ -56,7 +71,11 @@ let spec = ThemeTokens::default()
     .with_line("#94a3b8")?
     .with_series(["#60a5fa", "#34d399", "#f59e0b"])?.into_theme_spec();
 let theme = DiagramThemeCompiler::new().compile(spec)?;
-let renderer = HeadlessRenderer::new().with_theme(theme);
+# let request = merman::RenderRequest::svg(
+#     "flowchart TD\nA --> B",
+#     merman::OperationControl::new(),
+#     merman::SvgRequest::default(),
+# ).with_theme(theme);
 ```
 
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
@@ -69,17 +88,21 @@ read CSS variables, selectors, or host application state.
 The useful parts of a product recipe that used to be bundled under a named profile are explicit:
 
 ```rust
-use merman::svg::{DiagramThemeCompiler, HeadlessRenderer, ThemePreset};
-use merman_core::MermaidConfig;
+use merman::svg::{DiagramThemeCompiler, ThemePreset};
 use serde_json::json;
 
 let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::OneDark)?;
-let renderer = HeadlessRenderer::new()
-    .with_theme(theme)
-    .with_site_config(MermaidConfig::from_value(json!({
-        "look": "neo",
-        "flowchart": { "defaultRenderer": "elk" }
-    })));
+let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(json!({
+    "look": "neo",
+    "flowchart": { "defaultRenderer": "elk" }
+})));
+let renderer = merman::Renderer::new().with_engine(engine);
+let request = merman::RenderRequest::svg(
+    "flowchart TD\nA --> B",
+    merman::OperationControl::new(),
+    merman::SvgRequest::default(),
+).with_theme(theme);
+# let _ = (renderer, request);
 ```
 
 The configuration above is illustrative: ELK must be available in the selected artifact, and

@@ -8,6 +8,8 @@ pub(crate) mod cypress_collector;
 pub(crate) mod cypress_corpus;
 pub(crate) mod debug;
 pub(crate) mod default_config;
+pub(crate) mod editor_analysis_config;
+pub(crate) mod editor_language_contract;
 pub(crate) mod editor_token_descriptor;
 pub(crate) mod feature_matrix;
 pub(crate) mod fixtures;
@@ -50,7 +52,10 @@ pub(crate) use cypress_collector::*;
 pub(crate) use cypress_corpus::*;
 pub(crate) use debug::*;
 pub(crate) use default_config::*;
-pub(crate) use editor_token_descriptor::*;
+pub(crate) use editor_language_contract::{
+    gen_editor_language_contract, verify_editor_language_contract,
+    verify_editor_language_contract_artifacts,
+};
 pub(crate) use feature_matrix::*;
 pub(crate) use fixtures::*;
 pub(crate) use flowchart_elk_corpus::*;

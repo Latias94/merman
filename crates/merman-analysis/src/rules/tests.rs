@@ -1,6 +1,10 @@
 use super::*;
 use serde_json::json;
 
+fn warning_fact(rule_id: &str, message: &str) -> DiagramWarningFact {
+    DiagramWarningFact::new(rule_id, message)
+}
+
 #[test]
 fn source_lint_prefers_init_directive_and_provides_fix() {
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
@@ -203,6 +207,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
     source.push_str("flowchart TD\nA-->B\n");
     let source_map = SourceMap::new(source.as_str());
     let captured_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
+    let source_config = crate::test_support::capture_source_config_evidence(&source);
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(12);
 
@@ -211,6 +216,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
             &source,
             &source_map,
             Some(&captured_config),
+            &source_config,
             &cancellation,
         ),
         Err(crate::AnalysisCancelled)
@@ -388,9 +394,34 @@ fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
     assert_eq!(diagnostic.id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+    assert_eq!(diagnostic.tags, vec![AnalysisDiagnosticTag::Deprecated]);
     assert!(diagnostic.fixes.is_empty());
     let span = diagnostic.span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
+fn config_key_scan_observes_cancellation_without_matching_keys() {
+    let unrelated_keys = (0..512)
+        .map(|index| format!("unrelated{index}: false"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let source = format!("%%{{init: {{{unrelated_keys}}}}}%%\nflowchart TD\nA-->B\n");
+    let source_map = SourceMap::new(source.as_str());
+    let source_config = crate::test_support::capture_source_config_evidence(&source);
+    let cancellation = crate::AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(2);
+
+    assert!(matches!(
+        deprecated_flowchart_html_labels_candidates(
+            &source_map,
+            &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
+            &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
+            &source_config,
+            &cancellation,
+        ),
+        Err(crate::AnalysisCancelled)
+    ));
 }
 
 #[test]
@@ -404,6 +435,61 @@ fn source_lint_reports_deprecated_flowchart_html_labels_after_json5_key_comments
     assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
     let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
+fn source_lint_skips_unaddressable_escaped_json5_keys_but_keeps_migration_fix() {
+    let source = concat!(
+        r#"%%{init: { flowchart: { "html\u004cabels": false } }}%%"#,
+        "\nflowchart TD\nA-->B\n",
+    );
+    let source_map = SourceMap::new(source);
+    let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID })
+    );
+    let migration = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("the parsed directive remains safely removable");
+    assert_eq!(migration.fixes.len(), 1);
+}
+
+#[test]
+fn source_lint_does_not_flatten_object_keys_nested_in_json5_arrays() {
+    let source = concat!(
+        "%%{init: { values: [{ flowchart: { htmlLabels: false } }] }}%%\n",
+        "flowchart TD\nA-->B\n",
+    );
+    let source_map = SourceMap::new(source);
+    let config = AnalysisRuleConfig::default();
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID })
+    );
+}
+
+#[test]
+fn source_lint_keeps_unterminated_directive_evidence_non_diagnostic() {
+    let source = "%%{ initialize: { theme: 'dark' }\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+    let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+    assert!(!diagnostics.iter().any(|diagnostic| {
+        diagnostic.id == PREFER_INIT_DIRECTIVE_RULE_ID
+            || diagnostic.id == PREFER_FRONTMATTER_CONFIG_RULE_ID
+    }));
 }
 
 #[test]
@@ -600,6 +686,7 @@ fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
         diagnostic.id == DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID
             && diagnostic.severity == DiagnosticSeverity::Warning
             && diagnostic.category == DiagnosticCategory::Config
+            && diagnostic.tags == vec![AnalysisDiagnosticTag::Deprecated]
             && diagnostic.fixes.is_empty()
     }));
     let spans: Vec<_> = diagnostics
@@ -725,14 +812,10 @@ fn rule_config_can_disable_block_warning_rules() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "Block A exceeds configured column width 1"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "Block A exceeds configured column width 1",
+        )],
         &source_map,
         &config,
     );
@@ -747,14 +830,10 @@ fn semantic_warning_facts_use_rule_ids_when_present() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "Block A exceeds configured column width 1"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "Block A exceeds configured column width 1",
+        )],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -772,16 +851,12 @@ fn semantic_warning_facts_map_flowchart_missing_direction_rule_id() {
 
     let diagnostics = semantic_warning_diagnostics(
         "flowchart-v2",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-                    "message": "flowchart headers should declare an explicit direction",
-                    "span": { "start": 0, "end": 9 },
-                    "fixSpan": { "start": 9, "end": 9 }
-                }
-            ]
-        }),
+        &[warning_fact(
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+            "flowchart headers should declare an explicit direction",
+        )
+        .with_span(merman_core::SourceSpan::new(0, 9))
+        .with_fix_span(merman_core::SourceSpan::new(9, 9))],
         &source_map,
         &config,
     );
@@ -811,15 +886,11 @@ fn semantic_warning_facts_map_flowchart_unknown_style_target_rule_id() {
 
     let diagnostics = semantic_warning_diagnostics(
         "flowchart-v2",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-                    "message": "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
-                    "span": { "start": 19, "end": 20 }
-                }
-            ]
-        }),
+        &[warning_fact(
+            FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+            "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+        )
+        .with_span(merman_core::SourceSpan::new(19, 20))],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -839,16 +910,12 @@ fn semantic_authoring_warning_facts_are_not_enabled_by_core_profile() {
 
     let diagnostics = semantic_warning_diagnostics(
         "flowchart-v2",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-                    "message": "flowchart headers should declare an explicit direction",
-                    "span": { "start": 0, "end": 9 },
-                    "fixSpan": { "start": 9, "end": 9 }
-                }
-            ]
-        }),
+        &[warning_fact(
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+            "flowchart headers should declare an explicit direction",
+        )
+        .with_span(merman_core::SourceSpan::new(0, 9))
+        .with_fix_span(merman_core::SourceSpan::new(9, 9))],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -866,14 +933,10 @@ fn rule_config_can_override_block_warning_severity() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "Block A exceeds configured column width 1"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "Block A exceeds configured column width 1",
+        )],
         &source_map,
         &config,
     );
@@ -887,7 +950,7 @@ fn rule_config_can_override_block_warning_severity() {
 fn rule_descriptors_expose_stable_rule_metadata() {
     let descriptors = rule_descriptors();
 
-    assert_eq!(descriptors.len(), 22);
+    assert_eq!(descriptors.len(), 21);
     assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     assert!(descriptors[0].description.contains("canonical `init`"));
     assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1052,11 +1115,6 @@ fn rule_descriptors_expose_stable_rule_metadata() {
     assert!(
         descriptors
             .iter()
-            .any(|descriptor| descriptor.id == FLOWCHART_FACTS_PROJECTION_RULE_ID)
-    );
-    assert!(
-        descriptors
-            .iter()
             .any(|descriptor| descriptor.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
     );
     assert!(
@@ -1166,6 +1224,23 @@ fn rule_descriptors_enforce_governance_boundaries() {
             "{} must publish evidence",
             descriptor.id
         );
+        let mut tags = std::collections::BTreeSet::new();
+        assert!(
+            descriptor.tags.iter().copied().all(|tag| tags.insert(tag)),
+            "{} must not publish duplicate diagnostic tags",
+            descriptor.id
+        );
+        if descriptor.tags.contains(&AnalysisDiagnosticTag::Deprecated) {
+            assert!(
+                matches!(
+                    descriptor.id,
+                    DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID
+                        | DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID
+                ),
+                "{} must declare deprecation explicitly rather than inherit it from origin or wording",
+                descriptor.id
+            );
+        }
 
         match descriptor.origin {
             RuleOrigin::MermaidSyntax | RuleOrigin::MermaidCompatibility => {
@@ -1224,14 +1299,10 @@ fn semantic_warning_facts_use_rule_ids_even_when_messages_differ() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "this message does not need to mention width"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "this message does not need to mention width",
+        )],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -1247,14 +1318,10 @@ fn semantic_warning_facts_surface_unknown_rule_ids_as_internal_errors() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": "merman.block.unregistered_warning",
-                    "message": "Block A emitted a future warning"
-                }
-            ]
-        }),
+        &[warning_fact(
+            "merman.block.unregistered_warning",
+            "Block A emitted a future warning",
+        )],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -1275,20 +1342,20 @@ fn semantic_warning_fact_projection_observes_cancellation_between_facts() {
     source_map
         .whole_source_span()
         .expect("prewarm the line metric cache");
-    let warning = json!({
-        "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-        "message": "Use an explicit direction"
-    });
-    let model = json!({
-        "warningFacts": vec![warning; 1_024]
-    });
+    let warning_facts = vec![
+        warning_fact(
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+            "Use an explicit direction",
+        );
+        1_024
+    ];
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(8);
 
     assert!(matches!(
         semantic_warning_diagnostics_cancellable(
             "flowchart-v2",
-            &model,
+            &warning_facts,
             &source_map,
             &AnalysisRuleConfig::default(),
             &cancellation,
@@ -1296,31 +1363,6 @@ fn semantic_warning_fact_projection_observes_cancellation_between_facts() {
         Err(crate::AnalysisCancelled)
     ));
     assert!(cancellation.is_cancelled());
-}
-
-#[test]
-fn malformed_warning_fact_keeps_projection_all_or_nothing() {
-    let source = "flowchart TD\nA-->B\n";
-    let source_map = SourceMap::new(source);
-    let model = json!({
-        "warningFacts": [
-            {
-                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-                "message": "Use an explicit direction"
-            },
-            null
-        ]
-    });
-
-    assert!(
-        semantic_warning_diagnostics(
-            "flowchart-v2",
-            &model,
-            &source_map,
-            &AnalysisRuleConfig::default(),
-        )
-        .is_empty()
-    );
 }
 
 #[test]
@@ -1370,11 +1412,6 @@ fn configurable_rule_descriptors_exclude_internal_and_resource_rules() {
         descriptors
             .iter()
             .all(|descriptor| descriptor.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
-    );
-    assert!(
-        descriptors
-            .iter()
-            .all(|descriptor| descriptor.id != FLOWCHART_FACTS_PROJECTION_RULE_ID)
     );
 }
 
@@ -1447,6 +1484,10 @@ fn rule_catalog_serializes_public_rule_metadata() {
     );
     assert!(deprecated_html_labels.default_enabled);
     assert!(!deprecated_html_labels.fixable);
+    assert_eq!(
+        deprecated_html_labels.tags,
+        &[AnalysisDiagnosticTag::Deprecated]
+    );
     for rule_id in [RESOURCE_LIMIT_RULE_ID, DOCUMENT_DIAGRAM_LIMIT_RULE_ID] {
         let resource_limit = catalog
             .iter()
@@ -1473,6 +1514,7 @@ fn rule_catalog_serializes_public_rule_metadata() {
     assert_eq!(first["default_profile"], "recommended");
     assert_eq!(first["default_severity"], "hint");
     assert_eq!(first["category"], "config");
+    assert_eq!(first["tags"], json!([]));
     assert_eq!(first["configurable"], true);
     assert_eq!(first["fixable"], true);
     assert!(
@@ -1482,6 +1524,11 @@ fn rule_catalog_serializes_public_rule_metadata() {
             .iter()
             .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
     );
+    let deprecated = response_rules
+        .iter()
+        .find(|rule| rule["id"] == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+        .expect("deprecated rule catalog entry");
+    assert_eq!(deprecated["tags"], json!(["deprecated"]));
 }
 
 #[test]
@@ -1521,10 +1568,5 @@ fn configurable_rule_catalog_excludes_internal_and_resource_rules() {
         catalog
             .iter()
             .all(|entry| entry.id != DOCUMENT_DIAGRAM_LIMIT_RULE_ID)
-    );
-    assert!(
-        catalog
-            .iter()
-            .all(|entry| entry.id != FLOWCHART_FACTS_PROJECTION_RULE_ID)
     );
 }

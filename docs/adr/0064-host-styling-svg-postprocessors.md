@@ -41,8 +41,8 @@ Model host styling as draft postprocessors composed into the existing pipeline:
 - diagram title;
 - root SVG id.
 
-Default `render_svg_sync` remains parity output. Styling and override behavior only happen when the
-caller selects a pipeline or appends postprocessors.
+The default `RenderTarget::Svg` request remains parity output. Styling and override behavior only
+happen when the caller sets `SvgRequest.pipeline` or appends postprocessors.
 
 ## Consequences
 
@@ -58,5 +58,5 @@ caller selects a pipeline or appends postprocessors.
 - Do not encode Zed `player_colors`, `zed-accent-N`, GPUI color types, or dark/light theme models in
   `merman`.
 - Do not inject host CSS or strip `!important` by default.
-- Do not change Mermaid-parity SVG output from `render_svg_sync`.
+- Do not change Mermaid-parity SVG output from the default typed SVG request.
 - Do not expose a low-level XML event-stream API in this lane.

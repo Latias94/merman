@@ -58,9 +58,10 @@ Merman CI keeps publication separate from validation:
 
 - `cargo run -p xtask -- verify-mermaid-reference` checks that the selected Mermaid and companion
   behavior graph, package locks, generated runtime labels, and provenance agree.
-- `cargo run -p xtask -- verify-editor-token-descriptor` checks the single editor-language token
-  descriptor, its Rust/Web/VS Code projections, the generated VS Code token/theme contributions,
-  and the exact 35-family plus recovery packed-token evidence before LSP or browser packages build.
+- `cargo run -p xtask -- verify-editor-language-contract` checks the combined editor-language
+  contract, its Rust/Web/VS Code projections, the generated VS Code token/theme contributions,
+  analysis settings, and the exact 35-family plus recovery packed-token evidence before LSP or
+  browser packages build.
 - `cargo run -p xtask -- verify-web-diagram-catalog` and
   `verify-playground-example-catalog` keep the published full/editor family set and source-backed
   examples aligned.

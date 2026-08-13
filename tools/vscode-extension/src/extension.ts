@@ -3,6 +3,11 @@
 import * as vscode from "vscode";
 import { LanguageClient, State, StateChangeEvent } from "vscode-languageclient/node";
 
+import {
+  assertAnalysisConfigCapability,
+  negotiateAnalysisConfig,
+  type NegotiatedAnalysisConfig,
+} from "./analysis-config-contract.js";
 import { getDiagnosticsSettings, getLanguageIntelligenceSettings } from "./config.js";
 import {
   createLanguageClient,
@@ -34,6 +39,7 @@ import { runRestartLanguageServerCommand } from "./restart-command.js";
 import { runServerBackedCommand } from "./server-backed-command.js";
 
 let client: LanguageClient | undefined;
+let analysisConfigContract: NegotiatedAnalysisConfig | undefined;
 let statusItem: vscode.StatusBarItem | undefined;
 let lifecycleGeneration = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
@@ -113,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context,
         languageClientConfigurationAction({
           affectsMerman: true,
+          affectsAnalysis: event.affectsConfiguration("merman.analysis"),
           affectsLanguageIntelligence: event.affectsConfiguration(LANGUAGE_INTELLIGENCE_SETTING),
           diagnosticsEnabledChanged,
           diagnosticsEnabled: diagnosticsSettings.enabled,
@@ -162,6 +169,7 @@ async function deactivateClient(): Promise<void> {
 async function stopClient(activeClient: LanguageClient): Promise<void> {
   if (client === activeClient) {
     client = undefined;
+    analysisConfigContract = undefined;
   }
   await stopClientInstance(activeClient);
 }
@@ -226,6 +234,7 @@ async function startClient(
   if (!isCurrentLifecycleGeneration(generation)) {
     return;
   }
+  let pendingAnalysisConfigContract: NegotiatedAnalysisConfig | undefined;
   await startLanguageClientWithCleanup({
     client: nextClient,
     generation,
@@ -233,17 +242,33 @@ async function startClient(
     failedTooltip: "Merman language server failed to start.",
     isCurrentGeneration: isCurrentLifecycleGeneration,
     wireClient: wireClientStatus,
-    validateClient: (activeClient) => {
+    validateClient: async (activeClient) => {
       assertLanguageServerEditorContract(activeClient.initializeResult);
+      assertAnalysisConfigCapability(activeClient.initializeResult);
+      pendingAnalysisConfigContract = negotiateAnalysisConfig(
+        await fetchConfigSchema(activeClient),
+      );
     },
     updateStatus: updateStatusBar,
-    pushConfiguration,
+    pushConfiguration: async (activeClient) => {
+      const contract = pendingAnalysisConfigContract;
+      if (!contract) {
+        throw new Error("Merman analysis config schema was not negotiated.");
+      }
+      await pushConfiguration(activeClient, contract);
+    },
     assignClient: (activeClient) => {
+      const contract = pendingAnalysisConfigContract;
+      if (!contract) {
+        throw new Error("Merman analysis config schema was not negotiated.");
+      }
       client = activeClient;
+      analysisConfigContract = contract;
     },
     clearClientIfCurrent: (activeClient) => {
       if (client === activeClient) {
         client = undefined;
+        analysisConfigContract = undefined;
       }
     },
     showStartError: (message) => {
@@ -285,9 +310,14 @@ async function applyLanguageClientAction(
       return;
     case "pushConfiguration": {
       const activeClient = client;
-      if (activeClient && isCurrentLifecycleGeneration(generation)) {
-        await pushConfiguration(activeClient);
+      const contract = analysisConfigContract;
+      if (!activeClient || !isCurrentLifecycleGeneration(generation)) {
+        return;
       }
+      if (!contract) {
+        throw new Error("Merman analysis config schema was not negotiated.");
+      }
+      await pushConfiguration(activeClient, contract);
       return;
     }
   }
@@ -383,6 +413,7 @@ function renderRuleMarkdown(rule: LspRuleCatalogEntry): string {
     `- Default profile: ${rule.default_profile}`,
     `- Category: ${rule.category}`,
     `- Origin: ${rule.origin}`,
+    `- Tags: ${rule.tags?.join(", ") || "none"}`,
     `- Enabled by default: ${rule.default_enabled ? "yes" : "no"}`,
     `- Configurable: ${rule.configurable ? "yes" : "no"}`,
     `- Quickfix available: ${rule.fixable ? "yes" : "no"}`,

@@ -830,7 +830,7 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: &crate::resources::OperationWorkMeter,
-    ) -> Result<ResolvedThemeStyle, crate::resources::ResourceLimitExceeded> {
+    ) -> Result<ResolvedThemeStyle, crate::resources::OperationWorkError> {
         self.program
             .resolve_style_with_work_meter(target, variant, ordinal, work_meter)
     }
@@ -851,7 +851,7 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: &crate::resources::OperationWorkMeter,
-    ) -> Result<ResolvedThemeStyle, crate::resources::ResourceLimitExceeded> {
+    ) -> Result<ResolvedThemeStyle, crate::resources::OperationWorkError> {
         self.program
             .resolve_text_style_with_work_meter(target, variant, ordinal, work_meter)
     }

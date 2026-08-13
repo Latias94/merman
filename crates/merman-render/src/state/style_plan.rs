@@ -19,7 +19,7 @@ use crate::mermaid_style::{
     CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value,
 };
-use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitExceeded};
+use crate::resources::{OperationWorkError, OperationWorkMeter, RenderResourcePolicy};
 use crate::text::TextStyle;
 use crate::theme::MermaidThemeAdapter;
 
@@ -655,7 +655,7 @@ impl StateStylePlan {
         title: Option<&str>,
         prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
-    ) -> Result<(Self, FamilyThemeEvidence), ResourceLimitExceeded> {
+    ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
         Self::resolve_internal(
             model,
             effective_config,
@@ -673,7 +673,7 @@ impl StateStylePlan {
         title: Option<&str>,
         prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
-    ) -> Result<(Self, FamilyThemeEvidence), ResourceLimitExceeded> {
+    ) -> Result<(Self, FamilyThemeEvidence), OperationWorkError> {
         let compatibility = MermaidThemeAdapter::new(effective_config).state_diagram();
         let config_view = super::StateConfigView::new(effective_config);
         let config_text_style = config_view.text_style();
@@ -1899,7 +1899,7 @@ fn prepare_node(
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
     effects: &mut StateEffectPlan,
     work_meter: &OperationWorkMeter,
-) -> Result<StateNodeStylePlan, ResourceLimitExceeded> {
+) -> Result<StateNodeStylePlan, OperationWorkError> {
     let prepared_text_available = theme_evidence.prepared_text_available;
     let semantic_shape = resolve_theme_style(resolved_theme, target, variant, ordinal, work_meter)?;
     let semantic_label = resolve_theme_text_style(
@@ -2298,7 +2298,7 @@ fn prepare_edge(
     html_labels: bool,
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
     work_meter: &OperationWorkMeter,
-) -> Result<StateEdgeStylePlan, ResourceLimitExceeded> {
+) -> Result<StateEdgeStylePlan, OperationWorkError> {
     let prepared_text_available = theme_evidence.prepared_text_available;
     let semantic_path = resolve_theme_style(
         resolved_theme,
@@ -2447,7 +2447,7 @@ fn resolve_theme_style(
     variant: ThemeVariant,
     ordinal: Option<usize>,
     work_meter: &OperationWorkMeter,
-) -> Result<Option<ResolvedThemeStyle>, ResourceLimitExceeded> {
+) -> Result<Option<ResolvedThemeStyle>, OperationWorkError> {
     theme
         .map(|theme| theme.style_with_work_meter(target, variant, ordinal, work_meter))
         .transpose()
@@ -2459,7 +2459,7 @@ fn resolve_theme_text_style(
     variant: ThemeVariant,
     ordinal: Option<usize>,
     work_meter: &OperationWorkMeter,
-) -> Result<Option<ResolvedThemeStyle>, ResourceLimitExceeded> {
+) -> Result<Option<ResolvedThemeStyle>, OperationWorkError> {
     theme
         .map(|theme| theme.text_style_with_work_meter(target, variant, ordinal, work_meter))
         .transpose()

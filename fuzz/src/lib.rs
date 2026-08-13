@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 
-use merman::Engine;
+use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgPipeline, TextMeasurementPolicy};
 use merman::time::CivilDate;
-use merman::svg::{
-    HeadlessRenderer, RenderEnvironment, RenderResourcePolicy, ResourceLimitId, RuntimePolicy,
-    finalize_resvg_svg,
+use merman::{
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest, runtime::RuntimePolicy,
 };
 use roxmltree::Document;
 
@@ -28,7 +28,30 @@ pub fn deterministic_engine() -> Engine {
     Engine::new().with_runtime_policy(policy)
 }
 
-pub fn bounded_renderer() -> HeadlessRenderer {
+#[derive(Debug, Clone)]
+pub struct BoundedRenderer {
+    renderer: Renderer,
+    request: SvgRequest,
+}
+
+impl BoundedRenderer {
+    pub fn render_resvg_safe_svg(
+        &self,
+        source: &str,
+    ) -> Result<Option<String>, merman::RenderError> {
+        let output = self.renderer.render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            self.request.clone(),
+        ))?;
+        let RenderOutput::Svg(output) = output else {
+            unreachable!("an SVG request must produce an SVG output variant");
+        };
+        Ok(output.map(|output| output.into_parts().0))
+    }
+}
+
+pub fn bounded_renderer() -> BoundedRenderer {
     let mut limits = RenderResourcePolicy::interactive();
     for (id, value) in [
         (ResourceLimitId::MaxSourceBytes, MAX_RENDER_INPUT_BYTES),
@@ -42,14 +65,21 @@ pub fn bounded_renderer() -> HeadlessRenderer {
             .expect("fuzz resource policy uses overridable positive limits");
     }
 
-    HeadlessRenderer::new()
+    let input_policy = *limits.input_policy();
+    let renderer = Renderer::new()
         .with_runtime_policy(
             RuntimePolicy::deterministic().with_fixed_unix_millis(1_735_689_600_000),
         )
-        .with_strict_parsing()
-        .with_deterministic_text_measurer()
-        .with_resource_policy(limits)
-        .with_diagram_id("fuzz")
+        .with_parse_options(ParseOptions::strict())
+        .with_resource_policy(input_policy);
+    let mut request = SvgRequest::default();
+    request.environment = SvgEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .with_resource_policy(limits);
+    request.options.diagram_id = Some("fuzz".to_string());
+    request.pipeline = Some(SvgPipeline::resvg_safe());
+
+    BoundedRenderer { renderer, request }
 }
 
 pub fn is_well_formed_svg(svg: &str) -> bool {
@@ -63,10 +93,10 @@ pub fn is_well_formed_svg(svg: &str) -> bool {
 }
 
 pub fn assert_resvg_safe_svg(svg: &str) {
-    let session = RenderEnvironment::deterministic()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .expect("parity render session must be constructible");
-    let normalized = finalize_resvg_svg(svg, &session)
+    let normalized = merman_render::svg::finalize_resvg_svg(svg, &session)
         .unwrap_or_else(|error| panic!("resvg-safe output failed terminal validation: {error}"));
     assert_eq!(
         normalized.as_str(),

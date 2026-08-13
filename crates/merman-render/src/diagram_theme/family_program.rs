@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use crate::DiagramFamilyId;
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::DiagramThemeSpec;
 use super::family_mechanism_matrix::{
@@ -264,7 +264,7 @@ impl FamilyThemeProgram {
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<ResolvedThemeStyle, ResourceLimitExceeded> {
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
         self.resolve_style_internal(target, variant, ordinal, Some(work_meter))
     }
 
@@ -274,7 +274,7 @@ impl FamilyThemeProgram {
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: Option<&OperationWorkMeter>,
-    ) -> Result<ResolvedThemeStyle, ResourceLimitExceeded> {
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
         let mut resolved = ResolvedThemeStyle::new(self.base_typography.clone());
         if let Some(slot) = self.slots.get(&target) {
             slot.apply_static(&mut resolved, variant);
@@ -300,7 +300,7 @@ impl FamilyThemeProgram {
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
-    ) -> Result<ResolvedThemeStyle, ResourceLimitExceeded> {
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
         self.resolve_text_style_internal(target, variant, ordinal, Some(work_meter))
     }
 
@@ -310,7 +310,7 @@ impl FamilyThemeProgram {
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: Option<&OperationWorkMeter>,
-    ) -> Result<ResolvedThemeStyle, ResourceLimitExceeded> {
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
         let mut resolved = ResolvedThemeStyle::new(self.base_typography.clone());
         let ordinal_candidate_count = self.ordinal_candidate_count(ThemeTarget::Text, variant)
             + if target == ThemeTarget::Text {
@@ -421,7 +421,7 @@ fn charge_ordinal_candidates(
     work_meter: Option<&OperationWorkMeter>,
     ordinal: Option<usize>,
     candidates: usize,
-) -> Result<(), ResourceLimitExceeded> {
+) -> Result<(), OperationWorkError> {
     if ordinal.is_some()
         && let Some(work_meter) = work_meter
     {

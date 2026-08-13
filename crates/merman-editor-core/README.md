@@ -8,37 +8,41 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-Use the facade from the repository's default branch:
+Use the facade from the repository's default branch. Pin a reviewed full commit for reproducible
+unreleased integrations:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["analysis", "editor"] }
+merman = { git = "https://github.com/Latias94/merman", rev = "FULL_COMMIT_SHA", default-features = false, features = ["analysis", "editor"] }
 ```
 
 ```rust
+use merman::analysis::Analyzer;
 use merman::editor::{
-    DocumentKind, DocumentWorkspace, Position, completion_for_snapshot,
-    search_document_symbols,
+    DocumentKind, Position, analyze_document_snapshot_with_shared_text,
+    completion_for_snapshot, search_document_symbols,
 };
+use std::sync::Arc;
 
-let mut workspace = DocumentWorkspace::new();
-let snapshot = workspace
-    .upsert(
-        "file:///workspace/diagram.mmd",
-        1,
-        "flowchart TD\nA --> B\nB -->".to_owned(),
-        DocumentKind::Diagram,
-    )
-    .expect("source is within the configured analysis limit");
+let snapshot = analyze_document_snapshot_with_shared_text(
+    &Analyzer::new(),
+    "file:///workspace/diagram.mmd",
+    1,
+    Arc::from("flowchart TD\nA --> B\nB -->"),
+    DocumentKind::Diagram,
+)
+.expect("source is within the configured analysis limit");
 let completions = completion_for_snapshot(&snapshot, Position::new(2, 5));
 let symbols = search_document_symbols(&snapshot, "B");
 ```
 
-`DocumentWorkspace::upsert` returns `Result<DocumentSnapshot, AnalysisRejection>` and leaves the workspace unchanged when analysis rejects the source. `DocumentKind::Diagram` handles standalone Mermaid files. Markdown-family documents use the same parser-backed fence indexing and retain original-document source ranges.
+`analyze_document_snapshot_with_shared_text` returns `Result<DocumentSnapshot, AnalysisRejection>`. The caller owns document storage and passes an `Arc<str>`, so the editor boundary does not clone the complete source. `DocumentKind::Diagram` handles standalone Mermaid files; Markdown and MDX use the parser-backed host-fence pipeline and retain original-document source ranges.
+
+Use `analyze_document_context_with_shared_text` when the initial analysis payload is also needed. Its cancellable counterpart returns `Result<Result<DocumentAnalysisContext, AnalysisRejection>, AnalysisCancelled>`: cooperative cancellation is the outer channel, while a completed resource rejection remains the inner channel.
 
 ## Responsibilities
 
-- Own document, diagram, and Mermaid-fence snapshots through `DocumentWorkspace`, `DocumentSnapshot`, and `FenceSnapshot`.
+- Construct immutable document, diagram, and Mermaid-fence snapshots through one-shot analysis functions, `DocumentSnapshot`, and `FenceSnapshot`.
 - Project parser-backed facts into completion, hover, symbols, folding, definition, references, prepare-rename, rename, selection ranges, code actions, and semantic tokens.
 - Preserve source provenance with `FenceTextIndexSource`, distinguishing `ParserComplete`, `ParserRecovered`, and `Unavailable` facts.
 - Keep exact original-source spans when preprocessing can represent them; omit unrepresentable facts and emit recovery diagnostics.
@@ -48,17 +52,29 @@ let symbols = search_document_symbols(&snapshot, "B");
 
 ## Data Contract
 
-Editor queries operate directly on typed snapshots and shared `AnalysisGeneration` storage; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 1, and reject other schema versions at their boundary.
+Editor queries operate directly on typed snapshots and shared `AnalysisGeneration` storage; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 2, and reject other schema versions at their boundary.
 
 When a host already owns an `Arc<AnalysisGeneration>`, use `DocumentSnapshot::try_from_analysis_generation(version, generation)`. The snapshot derives its URI and `DocumentKind` from the generation's `SourceDescriptor`, so callers cannot pair parser evidence with a different document identity. Generations without a source path return `DocumentSnapshotError::MissingSourcePath` instead of creating an anonymous editor snapshot.
 
+The former stateful `DocumentWorkspace` map and `DocumentAnalysisOutcome` wrapper were removed. Hosts should keep their own URI/version lifecycle state and store the returned immutable snapshot or context directly; no deprecated alias or hidden document cache remains in editor-core.
+
 The removed TextScan implementation is not maintained in parallel. This does not change LSP document revision numbers or Mermaid's own `*-v2` diagram IDs.
+
+Completion policy is evaluated only by `completion_for_snapshot`. The former public
+`CompletionContext` accessor wrapper was removed rather than retained as a compatibility alias.
+
+```compile_fail
+use merman_editor_core::CompletionContext;
+```
 
 ## Semantic Token Planning
 
 Use `plan_semantic_tokens_for_snapshot` or `plan_semantic_tokens_for_snapshot_range`. Both return `Result<SemanticTokenPlan, TokenPlanError>`; range planning accepts editor-core's protocol-neutral `Range`. Inspect `SemanticTokenPlan::tokens()` for `PlannedToken` values or `packed()` for the generated five-word LSP-relative UTF-16 representation.
 
 `semantic_token_descriptor()` is the single descriptor for `PlannedTokenKind` codes, `PlannedTokenModifier` bits, LSP legend indices, and packed-field order. Hosts should derive protocol tables from that descriptor rather than maintaining a second legend or numeric mapping.
+
+Completion adapters should likewise derive activation characters from
+`COMPLETION_TRIGGER_CHARACTERS`; LSP and browser adapters project that one editor-owned list.
 
 ## Boundary
 

@@ -31,6 +31,7 @@ extern {
     "link" => Tok::LinkKw,
     "callback" => Tok::CallbackKw,
     "href" => Tok::HrefKw,
+    "call" => Tok::CallKw,
 
     StructStart => Tok::StructStart,
     StructStop => Tok::StructStop,
@@ -247,17 +248,17 @@ ClickStatement: Vec<Action> = {
     Action::SetTooltip { id, tooltip: tt },
   ],
 
-  "click" <id:Name> <fn_name:CallbackName> => vec![
+  "click" <id:Name> "call" <fn_name:CallbackName> => vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
   ],
-  "click" <id:Name> <fn_name:CallbackName> <tt:Str> => vec![
+  "click" <id:Name> "call" <fn_name:CallbackName> <tt:Str> => vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
     Action::SetTooltip { id, tooltip: tt },
   ],
-  "click" <id:Name> <fn_name:CallbackName> <args:CallbackArgs> => vec![
+  "click" <id:Name> "call" <fn_name:CallbackName> <args:CallbackArgs> => vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: Some(args) },
   ],
-  "click" <id:Name> <fn_name:CallbackName> <args:CallbackArgs> <tt:Str> => vec![
+  "click" <id:Name> "call" <fn_name:CallbackName> <args:CallbackArgs> <tt:Str> => vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: Some(args) },
     Action::SetTooltip { id, tooltip: tt },
   ],

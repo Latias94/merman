@@ -1157,6 +1157,7 @@ dependencies = [
  "image",
  "krilla",
  "krilla-svg",
+ "merman-core",
  "merman-render",
  "quick-xml",
  "resvg",
@@ -1171,6 +1172,7 @@ dependencies = [
 name = "merman-ffi"
 version = "0.8.0-alpha.5"
 dependencies = [
+ "merman",
  "merman-bindings-core",
  "serde_json",
  "sha2 0.10.9",

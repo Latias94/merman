@@ -54,10 +54,6 @@ PLAYGROUND_LICENSE_REPORT = Path(
 PYTHON_MANIFEST = release_version_owners.PYTHON_MANIFEST
 ANDROID_MANIFEST = release_version_owners.ANDROID_MANIFEST
 FLUTTER_MANIFEST = release_version_owners.FLUTTER_MANIFEST
-FLUTTER_ANDROID_MANIFEST = release_version_owners.FLUTTER_ANDROID_MANIFEST
-FLUTTER_IOS_PODSPEC = release_version_owners.FLUTTER_IOS_PODSPEC
-FLUTTER_MACOS_PODSPEC = release_version_owners.FLUTTER_MACOS_PODSPEC
-FLUTTER_IOS_BUILD = release_version_owners.FLUTTER_IOS_BUILD
 FLUTTER_PACKAGE_VERSION = release_version_owners.FLUTTER_PACKAGE_VERSION
 NPM_REGISTRY = "https://registry.npmjs.org/"
 
@@ -879,7 +875,6 @@ def _collect_platform_versions(
 ) -> None:
     canonical = release.canonical
     pep440 = release.to_pep440()
-    base = release.base
 
     def observe(label: str, path: Path, actual: Any, expected: str = canonical) -> None:
         _observe(observations, label, path, expected, actual)
@@ -970,30 +965,9 @@ def _collect_platform_versions(
             FLUTTER_PACKAGE_VERSION,
             r"^const String mermanPackageVersion = '([^']+)';\s*$",
         ),
-        (
-            "Flutter Android package",
-            FLUTTER_ANDROID_MANIFEST,
-            r"^version\s*=\s*'([^']+)'\s*$",
-        ),
-        (
-            "Flutter iOS Podspec",
-            FLUTTER_IOS_PODSPEC,
-            r"^\s*s\.version\s*=\s*'([^']+)'\s*$",
-        ),
-        (
-            "Flutter macOS Podspec",
-            FLUTTER_MACOS_PODSPEC,
-            r"^\s*s\.version\s*=\s*'([^']+)'\s*$",
-        ),
     )
     for label, path, pattern in assignments:
         _observe_assignment(view, observations, label, path, pattern, canonical)
-
-    build_text = view.text(FLUTTER_IOS_BUILD)
-    short_version = _plist_value(build_text, "CFBundleShortVersionString")
-    bundle_version = _plist_value(build_text, "CFBundleVersion")
-    observe("Flutter iOS framework short version", FLUTTER_IOS_BUILD, short_version, base)
-    observe("Flutter iOS framework bundle version", FLUTTER_IOS_BUILD, bundle_version, base)
 
 
 def _observe(
@@ -1043,16 +1017,6 @@ def _observe_text_match(
             f"{path} must contain exactly one {label}; found {len(matches)}"
         )
     _observe(observations, label, path, expected, matches[0])
-
-
-def _plist_value(text: str, key: str) -> str:
-    pattern = rf"<key>{re.escape(key)}</key>\s*<string>([^<]+)</string>"
-    matches = re.findall(pattern, text)
-    if len(matches) != 1:
-        raise ReleaseProjectionError(
-            f"{FLUTTER_IOS_BUILD} must contain exactly one {key}; found {len(matches)}"
-        )
-    return matches[0]
 
 
 def apply_version_update(root: Path, version: str) -> tuple[Path, ...]:

@@ -2,8 +2,8 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, ParseControl, ParseControlResult,
-    ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, OperationControl,
+    OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use serde::de::{self, Visitor};
@@ -496,32 +496,32 @@ pub(crate) fn parse_railroad_peg_model_for_render(
 pub(crate) fn parse_railroad_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir, control)
 }
 
 pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf, control)
 }
 
 pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf, control)
 }
 
 pub(crate) fn parse_railroad_peg_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg, control)
 }
 
@@ -601,8 +601,8 @@ fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_railroad_semantic_source(code, meta, dialect, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -634,7 +634,7 @@ fn parse_railroad_semantic_source(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> Result<RailroadSemanticSource> {
-    construct_railroad_semantic_source(code, meta, dialect, &ParseControl::new())
+    construct_railroad_semantic_source(code, meta, dialect, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)
 }
@@ -643,8 +643,8 @@ fn construct_railroad_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<RailroadSemanticSource, RailroadParseFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<RailroadSemanticSource, RailroadParseFailure>> {
     #[cfg(test)]
     RAILROAD_SYNTAX_CONSTRUCTION_COUNT.set(RAILROAD_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -1145,8 +1145,8 @@ impl<'a> RailroadParser<'a> {
 
     fn parse_recovering(
         mut self,
-        control: &ParseControl,
-    ) -> ParseControlResult<RailroadParserOutcome> {
+        control: &OperationControl,
+    ) -> OperationControlResult<RailroadParserOutcome> {
         control.checkpoint()?;
         let mut model = RailroadDiagramModel::new();
         let mut first_error = None;
@@ -1199,8 +1199,8 @@ impl<'a> RailroadParser<'a> {
     fn recover_to_next_rule(
         &mut self,
         checkpoint: usize,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let start = checkpoint.saturating_add(1).min(self.tokens.len());
         for index in start..self.tokens.len().saturating_sub(1) {
             if (index - start).is_multiple_of(128) {
@@ -2353,8 +2353,8 @@ impl<'a> Lexer<'a> {
 
     fn tokenize_recovering(
         mut self,
-        control: &ParseControl,
-    ) -> ParseControlResult<RailroadLexerOutcome> {
+        control: &OperationControl,
+    ) -> OperationControlResult<RailroadLexerOutcome> {
         let mut tokens = Vec::new();
         let mut first_error = None;
         loop {
@@ -2459,7 +2459,7 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    fn skip_trivia(&mut self, control: &ParseControl) -> Result<bool> {
+    fn skip_trivia(&mut self, control: &OperationControl) -> Result<bool> {
         loop {
             let before = self.pos;
             let mut last_checkpoint = self.pos;
@@ -3439,7 +3439,7 @@ fn push_ast_facts(
                 *selection,
             ));
             facts.push_symbol(
-                EditorSemanticSymbol::new(
+                EditorSemanticSymbol::reference(
                     name.clone(),
                     Some(format!("{detail_prefix} nonterminal reference")),
                     EditorSemanticKind::Function,
@@ -3516,7 +3516,8 @@ fn push_payload_fact(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeProducerKind, EditorSemanticCompleteness, MermaidConfig, ParseMetadata,
+        EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticRole, MermaidConfig,
+        ParseMetadata,
     };
 
     fn meta(dialect: RailroadDialect) -> ParseMetadata {
@@ -3949,6 +3950,67 @@ mod tests {
                     )
                 });
             assert_eq!(entry.rename_policy, expected_policy);
+        }
+    }
+
+    #[test]
+    fn railroad_rule_definitions_and_forward_references_have_distinct_roles() {
+        let cases = [
+            (
+                RailroadDialect::Ir,
+                concat!(
+                    "railroad-beta\n",
+                    "entry = nonterminal(\"later\") ;\n",
+                    "later = terminal(\"value\") ;\n",
+                ),
+            ),
+            (
+                RailroadDialect::Ebnf,
+                "railroad-ebnf-beta\nentry = later ;\nlater = \"value\" ;\n",
+            ),
+            (
+                RailroadDialect::Abnf,
+                "railroad-abnf-beta\nentry = later ;\nlater = \"value\" ;\n",
+            ),
+            (
+                RailroadDialect::Peg,
+                "railroad-peg-beta\nentry <- later ;\nlater <- \"value\" ;\n",
+            ),
+        ];
+
+        for (dialect, source) in cases {
+            let facts = combined_editor_facts(source, dialect);
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "entry" && symbol.role == EditorSemanticRole::Entity
+            }));
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "value" && symbol.role == EditorSemanticRole::Payload
+            }));
+            let later: Vec<_> = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "later")
+                .collect();
+
+            assert_eq!(later.len(), 2, "{}", dialect.diagram_type());
+            assert_eq!(
+                later[0].role,
+                EditorSemanticRole::Reference,
+                "{}",
+                dialect.diagram_type()
+            );
+            assert_eq!(
+                later[1].role,
+                EditorSemanticRole::Entity,
+                "{}",
+                dialect.diagram_type()
+            );
+            assert_eq!(
+                later[0].rename_policy,
+                later[1].rename_policy,
+                "{}",
+                dialect.diagram_type()
+            );
         }
     }
 

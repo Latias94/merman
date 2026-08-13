@@ -207,7 +207,9 @@ precedence. Severity overrides do not enable a rule whose profile is inactive; u
 `lint.profile = "recommended"` or `enable_rules` for Merman authoring recommendations.
 Bindings expose the same rule registry through their lint-rule catalog metadata surfaces; hosts
 should read that catalog when building settings UI instead of duplicating rule ids, evidence
-references, and origins.
+references, origins, or diagnostic tags. Catalog schema `1` treats a missing `tags` field as an
+empty list; current deprecation metadata is emitted explicitly as `"tags": ["deprecated"]` rather
+than inferred from rule ids or human-readable descriptions.
 
 Only Merman rule ids from the lint-rule catalog are accepted here. External linter ids such as
 markdownlint, remark, textlint, or `mermaid-lint` rules must stay in the host tool's own
@@ -217,7 +219,7 @@ configuration. For example, `mermaid-lint` rules such as `require-direction`, `d
 format, but they should not translate external rule ids into `lint.*` options unless Merman exposes
 a distinct source-backed `merman.*` rule.
 
-`analyzeDocument(source, options, uri)` uses this same options contract. The URI determines whether
+`analyzeDocument(source, uri, options)` uses this same options contract. The URI determines whether
 the payload source is a standalone Mermaid diagram, Markdown, or MDX document; Markdown and MDX
 diagnostics, related locations, and fixes are remapped to host-document coordinates. Use
 `analyze()` for a single Mermaid diagram body and `analyzeDocument()` for lint integrations that
@@ -246,8 +248,9 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 
 ## Site Config
 
-`site_config` accepts bounded Mermaid configuration values for host-level behavior defaults such as
-theme selection and `themeVariables`:
+`site_config` accepts a bounded Mermaid configuration object applied through
+`Engine::with_site_config(...)` before constructing a `Renderer`. It is intended for host-level
+defaults such as theme selection and `themeVariables`:
 
 ```json
 {

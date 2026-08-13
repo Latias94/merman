@@ -1,4 +1,4 @@
-use merman::svg::HeadlessRenderer;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use std::path::{Path, PathBuf};
 
 const DIAGRAMS: [(&str, &str); 3] = [
@@ -21,15 +21,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&output_dir)?;
 
     // Reuse one configured renderer when many independent files share the same policy.
-    let renderer = HeadlessRenderer::new()
-        .with_strict_parsing()
-        .with_vendored_text_measurer();
+    let renderer = Renderer::new().with_parse_options(merman::ParseOptions::strict());
 
     for (name, source) in DIAGRAMS {
-        let Some(svg) = renderer.render_svg_sync(source)? else {
+        let output = renderer.render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            SvgRequest::default(),
+        ))?;
+        let RenderOutput::Svg(Some(svg)) = output else {
             return Err(format!("no Mermaid diagram detected for {name}").into());
         };
-        write_svg(&output_dir, name, &svg)?;
+        write_svg(&output_dir, name, svg.svg())?;
     }
 
     Ok(())

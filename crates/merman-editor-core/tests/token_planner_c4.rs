@@ -1,7 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentWorkspace, PlannedToken, PlannedTokenKind,
-    PlannedTokenModifier, SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
+    DocumentKind, DocumentSnapshot, PlannedToken, PlannedTokenKind, PlannedTokenModifier,
+    SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn c4_complete_plan_merges_parser_lexemes_semantics_and_utf16_exactly() {
@@ -40,7 +43,7 @@ fn c4_complete_plan_merges_parser_lexemes_semantics_and_utf16_exactly() {
     let root_reference = exact_token(source, &snapshot, &plan, "root", 1);
     assert_eq!(root_reference.kind, PlannedTokenKind::Variable);
     assert!(root_reference.has_modifier(PlannedTokenModifier::Reference));
-    assert!(root_reference.has_modifier(PlannedTokenModifier::Entity));
+    assert!(!root_reference.has_modifier(PlannedTokenModifier::Entity));
     assert!(!root_reference.has_modifier(PlannedTokenModifier::Definition));
 
     let unicode_definition = exact_token(source, &snapshot, &plan, "用户", 0);
@@ -125,9 +128,9 @@ fn c4_recovery_plan_keeps_partial_color_number_and_later_semantics() {
 }
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             format!("file:///tmp/c4-{suffix}.mmd"),
             1,
             source.to_string(),

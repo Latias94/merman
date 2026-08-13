@@ -1,7 +1,7 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl, ParseControlResult,
+    EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl, OperationControlResult,
     ParseMetadata, Result, SourceSpan,
     family::{CombinedSemanticFailure, CombinedSemanticParse},
 };
@@ -101,6 +101,16 @@ struct ArchitectureDb {
 mod parse;
 
 impl ArchitectureDb {
+    fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
+        if self.groups.contains_key(id) {
+            return Some(EditorSemanticKind::Namespace);
+        }
+        self.nodes.get(id).map(|node| match node.ty {
+            ArchitectureNodeType::Service => EditorSemanticKind::Variable,
+            ArchitectureNodeType::Junction => EditorSemanticKind::Object,
+        })
+    }
+
     fn set_title(&mut self, title: String) {
         self.title = title;
     }
@@ -114,15 +124,15 @@ impl ArchitectureDb {
     }
 
     fn render_model(&self) -> ArchitectureDiagramRenderModel {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.render_model_controlled(&control)
             .expect("a private parse control cannot be cancelled")
     }
 
     fn render_model_controlled(
         &self,
-        control: &ParseControl,
-    ) -> ParseControlResult<ArchitectureDiagramRenderModel> {
+        control: &OperationControl,
+    ) -> OperationControlResult<ArchitectureDiagramRenderModel> {
         control.checkpoint()?;
         let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
         let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
@@ -505,8 +515,8 @@ impl ArchitectureDb {
         &mut self,
         direction: ArchitectureLayoutDirection,
         members: Vec<ArchitectureIdentifier>,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<()>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<()>> {
         control.checkpoint()?;
         if members.len() < 2 {
             return Ok(Err(Error::diagram_parse_fallback(
@@ -687,8 +697,8 @@ pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Val
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<CombinedSemanticParse> {
     control.checkpoint()?;
     let construction = match parse::parse_combined_semantic_source_controlled(code, meta, control)?
     {
@@ -734,7 +744,7 @@ pub(crate) fn render_model_to_compat_json(
     model: &ArchitectureDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -742,8 +752,8 @@ pub(crate) fn render_model_to_compat_json(
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ArchitectureDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
@@ -837,8 +847,8 @@ fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Val
 fn architecture_render_node_to_compat_json(
     node: &ArchitectureRenderNode,
     edges: &[Value],
-    control: &ParseControl,
-) -> ParseControlResult<Value> {
+    control: &OperationControl,
+) -> OperationControlResult<Value> {
     let mut node_edges = Vec::with_capacity(node.edge_indices.len());
     for (index, edge_index) in node.edge_indices.iter().enumerate() {
         if index % 128 == 0 {
@@ -1666,6 +1676,41 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    fn architecture_recovered_facts_preserve_declared_junction_kind() {
+        let text = "architecture-beta\n\
+junction hub\n\
+service api\n\
+api:R -- L:hub\n\
+missing:R -- L:api\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(!facts.diagnostics.is_empty());
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "hub")
+                .map(|symbol| (symbol.role, symbol.kind))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    crate::EditorSemanticRole::Entity,
+                    crate::EditorSemanticKind::Object,
+                ),
+                (
+                    crate::EditorSemanticRole::Reference,
+                    crate::EditorSemanticKind::Object,
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn architecture_rejects_group_ids_as_edge_endpoints() {
         let cases = [
             (
@@ -1808,8 +1853,8 @@ group child(cloud)[Child] in root\n";
         fn custom_architecture_parser(
             _code: &str,
             _meta: &ParseMetadata,
-            control: &crate::ParseControl,
-        ) -> crate::ParseControlResult<Result<Value>> {
+            control: &crate::OperationControl,
+        ) -> crate::OperationControlResult<Result<Value>> {
             control.checkpoint()?;
             Ok(Ok(json!({ "type": "custom-architecture" })))
         }
@@ -1976,26 +2021,155 @@ group root(cloud)[Root]\n";
             .collect::<Vec<_>>();
         assert_eq!(node_ids, ["api", "join"]);
 
-        let lexical_details = facts
+        let lexical_symbols = facts
+            .symbols
+            .iter()
+            .filter(|symbol| {
+                matches!(
+                    symbol.role,
+                    crate::EditorSemanticRole::Entity | crate::EditorSemanticRole::Reference
+                )
+            })
+            .map(|symbol| {
+                (
+                    symbol.name.as_str(),
+                    symbol.detail.as_deref().unwrap(),
+                    symbol.kind,
+                    symbol.role,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lexical_symbols,
+            [
+                (
+                    "api",
+                    "architecture edge endpoint",
+                    crate::EditorSemanticKind::Variable,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "join",
+                    "architecture edge endpoint",
+                    crate::EditorSemanticKind::Object,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "api",
+                    "architecture alignment member",
+                    crate::EditorSemanticKind::Variable,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "join",
+                    "architecture alignment member",
+                    crate::EditorSemanticKind::Object,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "join",
+                    "architecture junction",
+                    crate::EditorSemanticKind::Object,
+                    crate::EditorSemanticRole::Entity,
+                ),
+                (
+                    "root",
+                    "architecture junction parent",
+                    crate::EditorSemanticKind::Namespace,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "api",
+                    "architecture service",
+                    crate::EditorSemanticKind::Variable,
+                    crate::EditorSemanticRole::Entity,
+                ),
+                (
+                    "root",
+                    "architecture service parent",
+                    crate::EditorSemanticKind::Namespace,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "root",
+                    "architecture group",
+                    crate::EditorSemanticKind::Namespace,
+                    crate::EditorSemanticRole::Entity,
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn architecture_editor_roles_keep_declarations_and_references_in_separate_projections() {
+        let text = "architecture-beta\n\
+group platform\n\
+service api in platform\n\
+junction hub in platform\n\
+align row api hub\n\
+api:R -- L:hub\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
+
+        let declarations = facts
             .symbols
             .iter()
             .filter(|symbol| symbol.role == crate::EditorSemanticRole::Entity)
-            .map(|symbol| symbol.detail.as_deref().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(
-            lexical_details,
+            declarations
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.kind))
+                .collect::<Vec<_>>(),
             [
-                "architecture edge endpoint",
-                "architecture edge endpoint",
-                "architecture alignment member",
-                "architecture alignment member",
-                "architecture junction",
-                "architecture junction parent",
-                "architecture service",
-                "architecture service parent",
-                "architecture group",
+                ("platform", crate::EditorSemanticKind::Namespace),
+                ("api", crate::EditorSemanticKind::Variable),
+                ("hub", crate::EditorSemanticKind::Object),
             ]
         );
+
+        let references = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role == crate::EditorSemanticRole::Reference)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            references
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.kind))
+                .collect::<Vec<_>>(),
+            [
+                ("platform", crate::EditorSemanticKind::Namespace),
+                ("platform", crate::EditorSemanticKind::Namespace),
+                ("api", crate::EditorSemanticKind::Variable),
+                ("hub", crate::EditorSemanticKind::Object),
+                ("api", crate::EditorSemanticKind::Variable),
+                ("hub", crate::EditorSemanticKind::Object),
+            ]
+        );
+
+        for declaration in declarations {
+            assert!(declaration.role.contributes_completion());
+            assert!(declaration.role.contributes_outline());
+            assert!(declaration.role.contributes_references());
+        }
+        for reference in references {
+            assert!(!reference.role.contributes_completion());
+            assert!(!reference.role.contributes_outline());
+            assert!(reference.role.contributes_references());
+            assert_eq!(
+                reference.rename_policy,
+                crate::EditorRenamePolicy::ArchitectureIdentifier
+            );
+            assert!(facts.symbols.iter().any(|declaration| {
+                declaration.role == crate::EditorSemanticRole::Entity
+                    && declaration.name == reference.name
+                    && declaration.kind == reference.kind
+            }));
+        }
     }
 
     #[test]

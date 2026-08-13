@@ -1,6 +1,6 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model, render_sequence as render_sequence_model,
+    render_model,
 };
 use merman_core::diagrams::sequence::{
     SequenceActor, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
@@ -36,6 +36,13 @@ fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::R
         .expect("sequence diagram should be detected");
 
     render_model(parsed.model(), options)
+}
+
+fn render_sequence_model(
+    model: &SequenceDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> merman_ascii::Result<String> {
+    render_model(&RenderSemanticModel::Sequence(model.clone()), options)
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {
@@ -457,7 +464,11 @@ fn add_sequence_participant(model: &mut SequenceDiagramRenderModel, id: &str) {
 }
 
 fn assert_unsupported_sequence_model(model: SequenceDiagramRenderModel, feature: &'static str) {
-    let err = render_sequence_model(&model, &AsciiRenderOptions::unicode()).unwrap_err();
+    let err = render_model(
+        &RenderSemanticModel::Sequence(model),
+        &AsciiRenderOptions::unicode(),
+    )
+    .unwrap_err();
     assert_eq!(
         err,
         AsciiError::UnsupportedFeature {

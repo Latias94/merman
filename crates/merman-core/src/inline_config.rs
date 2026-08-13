@@ -2,8 +2,8 @@ use serde_json::Value;
 
 pub(crate) fn parse_mermaid_inline_object_controlled(
     input: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<Value, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value, String>> {
     let yaml_data = if input.contains('\n') {
         format!("{input}\n")
     } else {
@@ -54,7 +54,7 @@ mod tests {
     fn inline_shape_data_uses_the_canonical_yaml_parser() {
         let value = parse_mermaid_inline_object_controlled(
             r#"shape: rounded, label: "End", flag: true"#,
-            &crate::ParseControl::new(),
+            &crate::OperationControl::new(),
         )
         .expect("active parse control")
         .expect("valid Mermaid inline shape data");
@@ -66,12 +66,12 @@ mod tests {
 
     #[test]
     fn controlled_inline_shape_data_propagates_cancellation() {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel();
 
         assert!(matches!(
             parse_mermaid_inline_object_controlled("shape: rounded", &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 }

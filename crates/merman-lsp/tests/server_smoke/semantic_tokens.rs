@@ -213,7 +213,7 @@ async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
     let request = Request::build("textDocument/semanticTokens/full")
         .params(
             serde_json::to_value(SemanticTokensParams {
-                text_document: TextDocumentIdentifier { uri },
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),
             })
@@ -236,6 +236,10 @@ async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
         panic!("expected full semantic tokens")
     };
 
+    assert!(
+        tokens.result_id.is_none(),
+        "full-only clients do not need a delta baseline identity"
+    );
     assert!(!tokens.data.is_empty());
     assert!(tokens.data.iter().all(|token| token.token_type == 0));
     assert!(
@@ -250,6 +254,28 @@ async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
             .iter()
             .any(|token| token.token_modifiers_bitset == 1)
     );
+
+    let delta_request = Request::build("textDocument/semanticTokens/full/delta")
+        .params(
+            serde_json::to_value(SemanticTokensDeltaParams {
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+                text_document: TextDocumentIdentifier { uri },
+                previous_result_id: "not-negotiated".to_string(),
+            })
+            .unwrap(),
+        )
+        .id(3)
+        .finish();
+    let delta_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(delta_request)
+        .await
+        .unwrap()
+        .expect("delta response");
+    assert_eq!(delta_response.result(), Some(&serde_json::Value::Null));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -331,6 +357,36 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
         other => panic!("unexpected semantic tokens full result: {other:?}"),
     };
 
+    let forged_delta_request = Request::build("textDocument/semanticTokens/full/delta")
+        .params(
+            serde_json::to_value(SemanticTokensDeltaParams {
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                previous_result_id: "forged".to_string(),
+            })
+            .unwrap(),
+        )
+        .id(3)
+        .finish();
+    let forged_delta_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(forged_delta_request)
+        .await
+        .unwrap();
+    let forged_delta_value = forged_delta_response
+        .as_ref()
+        .and_then(|response| response.result().cloned())
+        .expect("expected full fallback for forged semantic token result id");
+    let forged_delta: SemanticTokensFullDeltaResult =
+        serde_json::from_value(forged_delta_value).unwrap();
+    let SemanticTokensFullDeltaResult::Tokens(forged_tokens) = forged_delta else {
+        panic!("forged result id should fall back to full semantic tokens");
+    };
+    assert!(forged_tokens.result_id.is_some());
+
     let change = Request::build("textDocument/didChange")
         .params(
             serde_json::to_value(DidChangeTextDocumentParams {
@@ -370,7 +426,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
             })
             .unwrap(),
         )
-        .id(3)
+        .id(4)
         .finish();
     let delta_response = service
         .ready()

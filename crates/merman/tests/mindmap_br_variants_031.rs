@@ -6,21 +6,26 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
 
     let input = include_str!("../../../fixtures/mindmap/stress_mindmap_br_variants_031.mmd");
 
-    let engine = merman_core::Engine::new();
-    let parse_options = merman_core::ParseOptions {
-        suppress_errors: false,
+    let output = merman::Renderer::new()
+        .render(
+            merman::RenderRequest::svg(
+                input,
+                merman::OperationControl::new(),
+                merman::SvgRequest {
+                    options: merman::svg::SvgRenderOptions {
+                        diagram_id: Some(DIAGRAM_ID.to_string()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )
+            .with_parse_options(merman::ParseOptions::strict()),
+        )
+        .expect("render svg");
+    let merman::RenderOutput::Svg(Some(svg)) = output else {
+        panic!("diagram detected");
     };
-
-    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
-
-    let svg_opts = merman::svg::SvgRenderOptions {
-        diagram_id: Some(DIAGRAM_ID.to_string()),
-        ..Default::default()
-    };
-
-    let svg = merman::svg::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
-        .expect("render svg")
-        .expect("diagram detected");
+    let svg = svg.svg();
     assert!(
         !svg.contains(r#"style="undefined"#),
         "mindmap edge paths should not leak invalid style tokens"

@@ -5,28 +5,28 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.1",
     "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "77c7d37873d20c9ef1a2ef267911835e666537decc341722aa8d2f0170d06b42",
-    "package_lock_sha256": "aea75ff98014fe1ad3a410aeec334f1676ec41d2f81e96787b50768f81d3e97d",
+    "package_json_sha256": "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377",
+    "package_lock_sha256": "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v3"
+    "renderer_revision": "xtask-upstream-svg-v4"
   },
   "attestation": {
     "mode": "generated",
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "131.0.6778.204",
-        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
         "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
-        "version": "23.11.1"
+        "version": "25.6.0"
       },
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
         "esm_version": "11.16.1",
@@ -79,7 +79,7 @@
     },
     "stress_many_siblings_005": {
       "input_sha256": "da144c900e87771f79afb8d7f54400e9b5f07e3baf46d6f1ec331f24db985c32",
-      "svg_sha256": "f849e3241af6ed1c1f723f37c08c35a70b32b79e9a4cb26779812c561a00bec0",
+      "svg_sha256": "4a57daf98c6c9c068ae1c52f9bd01ae4e665f11607d8fca125440225559047d1",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_br_variants_031": {
@@ -139,12 +139,12 @@
     },
     "stress_mindmap_many_siblings_decorators_015": {
       "input_sha256": "7b4fc307c48adb1e0f29485a23628e0af40a508c3ebca6a4a58f1637e2ed7deb",
-      "svg_sha256": "5c22967eb64a7bf6fa40daa6bcfb0709e061cde08bc5f36b6a114629b5ee701c",
+      "svg_sha256": "13a5bf6513f9a8c464102692edb6b517541431660ff2f4f27ab8fe50766ab37d",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_many_siblings_icons_classes_035": {
       "input_sha256": "3cab28c5248808070c1b3957368d881e1ad0ce23cd4fac4bebb82dff07e09463",
-      "svg_sha256": "fda7b04eed3ccc98cac9777ca3e4a9f1bb113ae4f15cfc1729f5b7bd9ea025a4",
+      "svg_sha256": "5a9b33759db56553b3801bb3283dba2cdaf4ef2de852690cd1723665abd60166",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_markdown_emphasis_icons_014": {
@@ -319,7 +319,7 @@
     },
     "upstream_cypress_mindmap_spec_should_render_all_level_2_nodes_correctly_when_there_are_more_th_019": {
       "input_sha256": "5e3336f6092129a69be4d61477b6b8fb904c8402aa5b235e941fa0a7fb514f23",
-      "svg_sha256": "a8ad0e44591ed356ad355fd46ecb974fd93849f45a6f1eba7838035fb156ec1a",
+      "svg_sha256": "68ed31f9361eb6d69890c1ba5bb9268d337e8e0cc74fe2e395b260de43a0feb7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_mindmap_spec_square_shape_011": {

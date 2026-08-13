@@ -8,7 +8,9 @@ use super::builtin::{
     presentation_fallback::resolve_resvg_presentation_fallbacks,
 };
 use super::context::SvgPostprocessMetadata;
+use crate::Result;
 use crate::environment::{RenderSession, TextMeasurementPhase};
+use merman_core::OperationPhase;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -103,14 +105,17 @@ pub(crate) fn apply_preset_cow<'a>(
     metadata: &SvgPostprocessMetadata,
     session: &RenderSession,
     drop_native_duplicates: bool,
-) -> Cow<'a, str> {
+) -> Result<Cow<'a, str>> {
     for stage in builtin_stages_for_preset(preset) {
+        session.checkpoint(OperationPhase::Postprocess)?;
         current = stage.apply(current, metadata, session);
+        session.checkpoint(OperationPhase::Postprocess)?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
             current = Cow::Owned(drop_native_duplicate_fallbacks(&current));
+            session.checkpoint(OperationPhase::Postprocess)?;
         }
     }
-    current
+    Ok(current)
 }
 
 #[cfg(test)]
@@ -151,7 +156,8 @@ mod tests {
             &SvgPostprocessMetadata::from_svg(svg),
             &session,
             false,
-        );
+        )
+        .unwrap();
 
         assert_eq!(output.as_str(), expected.as_ref());
     }
@@ -186,7 +192,8 @@ mod tests {
             &metadata,
             &session,
             false,
-        );
+        )
+        .unwrap();
 
         assert!(matches!(output, Cow::Borrowed(_)));
         assert_eq!(output, svg);
@@ -228,7 +235,8 @@ mod tests {
             &metadata,
             &session,
             false,
-        );
+        )
+        .unwrap();
 
         assert!(out.contains(r##"fill="#000000""##), "{out}");
         assert!(out.contains(r#"stroke="none""#), "{out}");

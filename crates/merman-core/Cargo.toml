@@ -20,6 +20,8 @@ artifact-profile-required = true
 # Mermaid language parsing, configuration, sanitization, detection, and family facts are the
 # unconditional core contract. Features only admit explicit system adapters.
 default = []
+operation-deadlines = ["dep:web-time"]
+test-support = []
 system-clock = []
 system-timezone = [
     "dep:jiff",

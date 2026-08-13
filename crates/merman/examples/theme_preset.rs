@@ -1,4 +1,5 @@
-use merman::svg::{DiagramThemeCompiler, HeadlessRenderer, SvgPipeline, ThemePreset};
+use merman::svg::{DiagramThemeCompiler, SvgPipeline, ThemePreset};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const SOURCE: &str = r#"flowchart LR
     Source[Mermaid source] --> Theme[One Dark]
@@ -7,15 +8,15 @@ const SOURCE: &str = r#"flowchart LR
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::OneDark)?;
-    let renderer = HeadlessRenderer::new()
-        .with_theme(theme)
-        .with_svg_pipeline(SvgPipeline::resvg_safe())
-        .with_vendored_text_measurer()
-        .with_diagram_id("theme-preset-example");
-    let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
+    let mut request = SvgRequest::default();
+    request.options.diagram_id = Some("theme-preset-example".to_owned());
+    request.pipeline = Some(SvgPipeline::resvg_safe());
+    let output = Renderer::new()
+        .render(RenderRequest::svg(SOURCE, OperationControl::new(), request).with_theme(theme))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
 
-    print!("{svg}");
+    print!("{}", svg.svg());
     Ok(())
 }

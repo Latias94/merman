@@ -75,7 +75,7 @@ Language behavior is driven by parser-backed facts from `merman-analysis` and qu
 
 `Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body text therefore receives no guessed body symbols, navigation, rename, or semantic tokens. Source-start diagram headers and templates remain available from the static family catalog.
 
-The LSP consumes typed snapshots directly; it does not serialize and decode `AnalysisFactsPayload` for normal requests. The separately exposed binding facts payload and diagnostics payload are independent schema-v1 wire contracts, not LSP document versions or Mermaid grammar IDs.
+The LSP consumes typed snapshots directly; it does not serialize and decode `AnalysisFactsPayload` for normal requests. The separately exposed binding facts payload and diagnostics payload are independent wire contracts (facts schema 2, diagnostics schema 1), not LSP document versions or Mermaid grammar IDs.
 
 Family-level maturity is defined only by [CAPABILITIES.md](CAPABILITIES.md). A family may parse or render without being a first-class LSP commitment. Payload-first families can be mature while intentionally exposing few rename or reference targets, and `error` remains an internal fallback family.
 

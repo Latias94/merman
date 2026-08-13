@@ -34,6 +34,8 @@ export 'src/merman_ffi.dart'
         MermanAsciiCapability,
         MermanAsciiCapabilityEvidence,
         MermanBusyException,
+        MermanCancellationErrorDetails,
+        MermanCancelledException,
         MermanDiagramFamilyCapability,
         MermanEngine,
         MermanEngineServices,
@@ -45,6 +47,7 @@ export 'src/merman_ffi.dart'
         MermanLintRuleCatalogEntry,
         MermanMissingCapabilityException,
         MermanOperation,
+        MermanOperationControl,
         MermanOperationResult,
         MermanThemeCatalog,
         MermanThemePreset,
@@ -67,5 +70,4 @@ export 'src/merman_ffi.dart'
         MermanUnknownOperationException,
         MermanUnsupportedOperationException,
         MermanValidationResult,
-        openMermanLibrary,
         openMermanLibraryFromPath;

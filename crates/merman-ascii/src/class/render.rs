@@ -1,6 +1,7 @@
 use crate::AsciiError;
 use crate::Result;
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
@@ -136,52 +137,81 @@ struct RelationLayout<'a> {
     bottom_endpoint_label: Option<RelationGraphLabel>,
 }
 
-pub(crate) fn render_class_diagram(
+pub(crate) fn render_class_diagram_with_execution(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let charset = ClassCharset::for_options(options);
-    let namespace_facade_aliases = namespace_facade_aliases(model);
-    if has_renderable_namespaces(model) {
-        return render_namespaced_class_diagram(model, options, charset, &namespace_facade_aliases);
+    let namespace_facade_aliases = namespace_facade_aliases(model, execution)?;
+    if has_renderable_namespaces(model, execution)? {
+        return render_namespaced_class_diagram(
+            model,
+            options,
+            charset,
+            &namespace_facade_aliases,
+            execution,
+        );
     }
 
-    let boxes = render_class_boxes(model, options, charset, &namespace_facade_aliases);
+    let boxes = render_class_boxes(
+        model,
+        options,
+        charset,
+        &namespace_facade_aliases,
+        execution,
+    )?;
     if boxes.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+        return relation_graph::render_stacked_boxes_with_options_with_execution(
+            &boxes, options, execution,
+        );
     }
 
-    let mut layouts = model
-        .relations
-        .iter()
-        .map(|relation| relation_layout(model, relation, &namespace_facade_aliases))
-        .collect::<Result<Vec<_>>>()?;
+    let mut layouts = Vec::with_capacity(model.relations.len());
+    for relation in &model.relations {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        layouts.push(relation_layout(model, relation, &namespace_facade_aliases)?);
+    }
     layouts.extend(note_relation_layouts(
         model,
         &namespace_facade_aliases,
         &boxes,
-    ));
-
+        execution,
+    )?);
     if layouts.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+        return relation_graph::render_stacked_boxes_with_options_with_execution(
+            &boxes, options, execution,
+        );
     }
 
-    render_class_components(&boxes, &layouts, options, charset)
+    let adapter = ClassRelationComponentAdapter { charset };
+    relation_graph::render_relation_components_with_execution(
+        &boxes, &layouts, options, &adapter, execution,
+    )
 }
 
-fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
-    model.namespaces.values().any(|namespace| {
-        namespace.explicit
+fn has_renderable_namespaces(model: &ClassDiagram, execution: AsciiExecution<'_>) -> Result<bool> {
+    let mut explicit_parents = HashSet::new();
+    for namespace in model.namespaces.values() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        if namespace.explicit
+            && let Some(parent) = namespace.parent.as_deref()
+        {
+            explicit_parents.insert(parent);
+        }
+    }
+    for namespace in model.namespaces.values() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        if namespace.explicit
             && (!namespace.class_ids.is_empty()
                 || !namespace.note_ids.is_empty()
-                || model.namespaces.values().any(|child| {
-                    child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
-                }))
-    })
+                || explicit_parents.contains(namespace.id.as_str()))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn render_namespaced_class_diagram(
@@ -189,37 +219,46 @@ fn render_namespaced_class_diagram(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let boxes = render_namespaced_class_boxes(model, options, charset, namespace_facade_aliases)?;
-    let external_layouts = model
-        .relations
-        .iter()
-        .filter(|relation| {
-            relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none()
-        })
-        .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
-        .collect::<Result<Vec<_>>>()?;
-    let mut summary_rows = external_layouts
-        .iter()
-        .map(class_relation_summary_row)
-        .collect::<Result<Vec<_>>>()?;
+    let boxes = render_namespaced_class_boxes(
+        model,
+        options,
+        charset,
+        namespace_facade_aliases,
+        execution,
+    )?;
+    let mut external_layouts = Vec::new();
+    for relation in &model.relations {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        if relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none() {
+            external_layouts.push(relation_layout(model, relation, namespace_facade_aliases)?);
+        }
+    }
+    let mut summary_rows = Vec::with_capacity(external_layouts.len());
+    for layout in &external_layouts {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        summary_rows.push(class_relation_summary_row(layout)?);
+    }
     summary_rows.extend(external_namespace_note_summary_rows(
         model,
         namespace_facade_aliases,
-    ));
+        execution,
+    )?);
 
     if summary_rows.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+        return relation_graph::render_stacked_boxes_with_options_with_execution(
+            &boxes, options, execution,
+        );
     }
 
-    Ok(relation_graph::render_stacked_boxes_with_relation_summary(
+    relation_graph::render_stacked_boxes_with_relation_summary_with_execution(
         &boxes,
         &summary_rows,
         None,
         options,
-    ))
+        execution,
+    )
 }
 
 fn render_class_boxes(
@@ -227,29 +266,27 @@ fn render_class_boxes(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
-) -> Vec<RenderedClassBox> {
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RenderedClassBox>> {
     let mut boxes =
         Vec::with_capacity(model.classes.len() + model.interfaces.len() + model.notes.len());
-    boxes.extend(
-        model
-            .classes
-            .values()
-            .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
-            .map(|class| render_class_box(class, options, charset)),
-    );
-    boxes.extend(
-        model
-            .interfaces
-            .iter()
-            .map(|interface| render_interface_box(interface, options, charset)),
-    );
-    boxes.extend(
-        model
-            .notes
-            .iter()
-            .map(|note| render_note_box(note, options, charset)),
-    );
-    boxes
+    for class in model
+        .classes
+        .values()
+        .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
+    {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_class_box(class, options, charset));
+    }
+    for interface in &model.interfaces {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_interface_box(interface, options, charset));
+    }
+    for note in &model.notes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_note_box(note, options, charset));
+    }
+    Ok(boxes)
 }
 
 fn render_namespaced_class_boxes(
@@ -257,6 +294,7 @@ fn render_namespaced_class_boxes(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RenderedClassBox>> {
     let mut rendered_namespace_ids = HashSet::new();
     let mut boxes = Vec::new();
@@ -266,6 +304,7 @@ fn render_namespaced_class_boxes(
         .values()
         .filter(|namespace| namespace.parent.is_none())
     {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         if namespace.explicit {
             boxes.push(render_namespace_box(
                 model,
@@ -274,11 +313,13 @@ fn render_namespaced_class_boxes(
                 charset,
                 namespace_facade_aliases,
                 &mut rendered_namespace_ids,
+                execution,
             )?);
         }
     }
 
     for namespace in model.namespaces.values() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         if namespace.explicit && !rendered_namespace_ids.contains(namespace.id.as_str()) {
             boxes.push(render_namespace_box(
                 model,
@@ -287,40 +328,33 @@ fn render_namespaced_class_boxes(
                 charset,
                 namespace_facade_aliases,
                 &mut rendered_namespace_ids,
+                execution,
             )?);
         }
     }
 
-    boxes.extend(
-        model
-            .classes
-            .values()
-            .filter(|class| {
-                !namespace_facade_aliases.contains_key(class.id.as_str())
-                    && class
-                        .parent
-                        .as_ref()
-                        .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
-            })
-            .map(|class| render_class_box(class, options, charset)),
-    );
-    boxes.extend(
-        model
-            .interfaces
-            .iter()
-            .map(|interface| render_interface_box(interface, options, charset)),
-    );
-    boxes.extend(
-        model
-            .notes
-            .iter()
-            .filter(|note| {
-                note.parent
-                    .as_ref()
-                    .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
-            })
-            .map(|note| render_note_box(note, options, charset)),
-    );
+    for class in model.classes.values().filter(|class| {
+        !namespace_facade_aliases.contains_key(class.id.as_str())
+            && class
+                .parent
+                .as_ref()
+                .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+    }) {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_class_box(class, options, charset));
+    }
+    for interface in &model.interfaces {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_interface_box(interface, options, charset));
+    }
+    for note in model.notes.iter().filter(|note| {
+        note.parent
+            .as_ref()
+            .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+    }) {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_note_box(note, options, charset));
+    }
 
     Ok(boxes)
 }
@@ -332,7 +366,9 @@ fn render_namespace_box(
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
     rendered_namespace_ids: &mut HashSet<String>,
+    execution: AsciiExecution<'_>,
 ) -> Result<RenderedClassBox> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     rendered_namespace_ids.insert(namespace.id.clone());
     let mut children = Vec::new();
 
@@ -341,6 +377,7 @@ fn render_namespace_box(
         .values()
         .filter(|child| child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit)
     {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         children.push(render_namespace_box(
             model,
             child,
@@ -348,11 +385,13 @@ fn render_namespace_box(
             charset,
             namespace_facade_aliases,
             rendered_namespace_ids,
+            execution,
         )?);
     }
 
     let mut direct_boxes = Vec::new();
     for class_id in &namespace.class_ids {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         if let Some(class) = model.classes.get(class_id)
             && !namespace_facade_aliases.contains_key(class.id.as_str())
         {
@@ -361,20 +400,21 @@ fn render_namespace_box(
     }
 
     for note_id in &namespace.note_ids {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         if let Some(note) = model.notes.iter().find(|note| note.id == *note_id) {
             direct_boxes.push(render_note_box(note, options, charset));
         }
     }
 
-    let mut direct_layouts = model
-        .relations
-        .iter()
-        .filter(|relation| {
-            relation_explicit_namespace_id(model, relation, namespace_facade_aliases)
-                == Some(namespace.id.as_str())
-        })
-        .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
-        .collect::<Result<Vec<_>>>()?;
+    let mut direct_layouts = Vec::new();
+    for relation in &model.relations {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        if relation_explicit_namespace_id(model, relation, namespace_facade_aliases)
+            == Some(namespace.id.as_str())
+        {
+            direct_layouts.push(relation_layout(model, relation, namespace_facade_aliases)?);
+        }
+    }
 
     direct_layouts.extend(note_relation_layouts_for_notes(
         model.notes.iter().filter(|note| {
@@ -382,22 +422,26 @@ fn render_namespace_box(
         }),
         namespace_facade_aliases,
         &direct_boxes,
-    ));
+        execution,
+    )?);
 
     if direct_layouts.is_empty() {
         children.extend(direct_boxes);
     } else {
-        let component_lines =
-            render_class_component_lines(&direct_boxes, &direct_layouts, options, charset)?;
+        let component_lines = render_class_component_lines(
+            &direct_boxes,
+            &direct_layouts,
+            options,
+            charset,
+            execution,
+        )?;
         children.push(RelationGraphBox::from_rendered_lines(
             format!("{}::relations", namespace.id),
             component_lines,
         ));
     }
 
-    Ok(render_namespace_container_box(
-        namespace, children, options, charset,
-    ))
+    render_namespace_container_box(namespace, children, options, charset, execution)
 }
 
 fn render_namespace_container_box(
@@ -405,7 +449,9 @@ fn render_namespace_container_box(
     children: Vec<RenderedClassBox>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> RenderedClassBox {
+    execution: AsciiExecution<'_>,
+) -> Result<RenderedClassBox> {
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     let title = namespace_title(namespace);
     let inner_gap = options.box_border_padding;
     let content_width = children
@@ -452,6 +498,7 @@ fn render_namespace_container_box(
     ));
 
     for (child_index, child) in children.iter().enumerate() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         if child_index > 0 {
             lines.push(namespace_empty_content_line(
                 content_width,
@@ -465,7 +512,8 @@ fn render_namespace_container_box(
             style.vertical,
             style.border_role,
             inner_gap,
-        ));
+            execution,
+        )?);
     }
 
     if children.is_empty() {
@@ -484,7 +532,12 @@ fn render_namespace_container_box(
         style.border_role,
     ));
 
-    RelationGraphBox::new_with_lines(namespace.id.clone(), lines, content_width + 2)
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(RelationGraphBox::new_with_lines(
+        namespace.id.clone(),
+        lines,
+        content_width + 2,
+    ))
 }
 
 fn namespace_child_lines(
@@ -493,21 +546,21 @@ fn namespace_child_lines(
     vertical: char,
     border_role: AsciiColorRole,
     inner_gap: usize,
-) -> Vec<RelationGraphLine> {
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationGraphLine>> {
     let trailing = content_width.saturating_sub(inner_gap + child.width());
-    child
-        .lines()
-        .iter()
-        .map(|line| {
-            relation_graph::concat_relation_lines(vec![
-                RelationGraphLine::with_role(vertical.to_string(), border_role),
-                RelationGraphLine::plain(" ".repeat(inner_gap)),
-                line.clone(),
-                RelationGraphLine::plain(" ".repeat(trailing)),
-                RelationGraphLine::with_role(vertical.to_string(), border_role),
-            ])
-        })
-        .collect()
+    let mut lines = Vec::with_capacity(child.lines().len());
+    for line in child.lines() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        lines.push(relation_graph::concat_relation_lines(vec![
+            RelationGraphLine::with_role(vertical.to_string(), border_role),
+            RelationGraphLine::plain(" ".repeat(inner_gap)),
+            line.clone(),
+            RelationGraphLine::plain(" ".repeat(trailing)),
+            RelationGraphLine::with_role(vertical.to_string(), border_role),
+        ]));
+    }
+    Ok(lines)
 }
 
 fn namespace_empty_content_line(
@@ -527,15 +580,19 @@ fn namespace_title(namespace: &Namespace) -> String {
     decode_html_entities_to_unicode(raw).into_owned()
 }
 
-fn namespace_facade_aliases(model: &ClassDiagram) -> HashMap<String, String> {
+fn namespace_facade_aliases(
+    model: &ClassDiagram,
+    execution: AsciiExecution<'_>,
+) -> Result<HashMap<String, String>> {
     let mut aliases = HashMap::new();
     for class in model.classes.values() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         let Some(local_id) = namespace_facade_local_id(model, class) else {
             continue;
         };
         aliases.insert(class.id.clone(), local_id.to_string());
     }
-    aliases
+    Ok(aliases)
 }
 
 fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) -> Option<&'a str> {
@@ -569,26 +626,19 @@ fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) 
         .and_then(|(_, local_id)| model.classes.contains_key(local_id).then_some(local_id))
 }
 
-fn render_class_components(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-) -> Result<String> {
-    let adapter = ClassRelationComponentAdapter { charset };
-    relation_graph::render_relation_components(boxes, layouts, options, &adapter)
-}
-
 fn render_class_component_lines(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter { charset };
     Ok(
-        relation_graph::render_relation_component_lines(boxes, layouts, options, &adapter)?
-            .unwrap_or_default(),
+        relation_graph::render_relation_component_lines_with_execution(
+            boxes, layouts, options, &adapter, execution,
+        )?
+        .unwrap_or_default(),
     )
 }
 
@@ -865,20 +915,31 @@ fn note_relation_layouts<'a>(
     model: &'a ClassDiagram,
     namespace_facade_aliases: &'a HashMap<String, String>,
     boxes: &[RenderedClassBox],
-) -> Vec<RelationLayout<'a>> {
-    note_relation_layouts_for_notes(model.notes.iter(), namespace_facade_aliases, boxes)
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationLayout<'a>>> {
+    note_relation_layouts_for_notes(
+        model.notes.iter(),
+        namespace_facade_aliases,
+        boxes,
+        execution,
+    )
 }
 
 fn note_relation_layouts_for_notes<'a>(
     notes: impl Iterator<Item = &'a ClassNote>,
     namespace_facade_aliases: &'a HashMap<String, String>,
     boxes: &[RenderedClassBox],
-) -> Vec<RelationLayout<'a>> {
-    notes
-        .filter_map(|note| {
-            let target_id = note.class_id.as_deref()?;
-            let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-            relation_graph::find_box(boxes, target_id).map(|_| RelationLayout {
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationLayout<'a>>> {
+    let mut layouts = Vec::new();
+    for note in notes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        let Some(target_id) = note.class_id.as_deref() else {
+            continue;
+        };
+        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+        if relation_graph::find_box(boxes, target_id).is_some() {
+            layouts.push(RelationLayout {
                 top_id: note.id.as_str(),
                 bottom_id: target_id,
                 endpoint_marker: None,
@@ -886,28 +947,32 @@ fn note_relation_layouts_for_notes<'a>(
                 label: None,
                 top_endpoint_label: None,
                 bottom_endpoint_label: None,
-            })
-        })
-        .collect()
+            });
+        }
+    }
+    Ok(layouts)
 }
 
 fn external_namespace_note_summary_rows(
     model: &ClassDiagram,
     namespace_facade_aliases: &HashMap<String, String>,
-) -> Vec<RelationGraphSummaryRow> {
-    model
-        .notes
-        .iter()
-        .filter(|note| note_explicit_namespace_id(model, note, namespace_facade_aliases).is_none())
-        .filter_map(|note| {
-            let target_id = note.class_id.as_deref()?;
-            let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-            model
-                .classes
-                .contains_key(target_id)
-                .then(|| RelationGraphSummaryRow::new("note", "..", target_id))
-        })
-        .collect()
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationGraphSummaryRow>> {
+    let mut rows = Vec::new();
+    for note in &model.notes {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        if note_explicit_namespace_id(model, note, namespace_facade_aliases).is_some() {
+            continue;
+        }
+        let Some(target_id) = note.class_id.as_deref() else {
+            continue;
+        };
+        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+        if model.classes.contains_key(target_id) {
+            rows.push(RelationGraphSummaryRow::new("note", "..", target_id));
+        }
+    }
+    Ok(rows)
 }
 
 fn relation_endpoint_label(label: &str) -> Option<RelationGraphLabel> {
@@ -1064,27 +1129,28 @@ fn render_parallel_vertical_relations(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
     charset: ClassCharset,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RelationGraphLine>> {
     let first = &layouts[0];
     let top = find_box(boxes, first.top_id)?;
     let bottom = find_box(boxes, first.bottom_id)?;
-    let reserve_top_endpoint_label = layouts
-        .iter()
-        .any(|layout| layout.top_endpoint_label.is_some());
-    let reserve_bottom_endpoint_label = layouts
-        .iter()
-        .any(|layout| layout.bottom_endpoint_label.is_some());
-    let lanes = layouts
-        .iter()
-        .map(|layout| {
-            parallel_class_lane_rows(
-                layout,
-                charset,
-                reserve_top_endpoint_label,
-                reserve_bottom_endpoint_label,
-            )
-        })
-        .collect::<Vec<_>>();
+    let mut reserve_top_endpoint_label = false;
+    let mut reserve_bottom_endpoint_label = false;
+    for layout in layouts {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        reserve_top_endpoint_label |= layout.top_endpoint_label.is_some();
+        reserve_bottom_endpoint_label |= layout.bottom_endpoint_label.is_some();
+    }
+    let mut lanes = Vec::with_capacity(layouts.len());
+    for layout in layouts {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        lanes.push(parallel_class_lane_rows(
+            layout,
+            charset,
+            reserve_top_endpoint_label,
+            reserve_bottom_endpoint_label,
+        ));
+    }
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
     Ok(plan.render_lines())
@@ -1290,7 +1356,9 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         relation_box: &RenderedClassBox,
         layout: &RelationLayout<'a>,
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let rows = self_loop_rows_for_class_layout(layout, self.charset);
 
         let _ = options;
@@ -1305,11 +1373,13 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         relation_box: &RenderedClassBox,
         layouts: &[RelationLayout<'a>],
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
-        let loops = layouts
-            .iter()
-            .map(|layout| self_loop_rows_for_class_layout(layout, self.charset))
-            .collect::<Vec<_>>();
+        let mut loops = Vec::with_capacity(layouts.len());
+        for layout in layouts {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            loops.push(self_loop_rows_for_class_layout(layout, self.charset));
+        }
 
         let _ = options;
         Ok(relation_graph::render_parallel_self_loops(
@@ -1396,7 +1466,9 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         boxes: &[RenderedClassBox],
         layout: &RelationLayout<'a>,
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let top = find_box(boxes, layout.top_id)?;
         let bottom = find_box(boxes, layout.bottom_id)?;
 
@@ -1409,9 +1481,10 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         boxes: &[RenderedClassBox],
         layouts: &[RelationLayout<'a>],
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
         let _ = options;
-        render_parallel_vertical_relations(boxes, layouts, self.charset)
+        render_parallel_vertical_relations(boxes, layouts, self.charset, execution)
     }
 
     fn build_summary_row(

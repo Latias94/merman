@@ -7,7 +7,7 @@ use crate::diagrams::scan::physical_line_at;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseMetadata, Result,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
     SourceSpan, family::CombinedSemanticFailure,
 };
 use indexmap::IndexMap;
@@ -212,8 +212,8 @@ pub(crate) fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_wardley_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
     let construction = match construct_wardley_semantic_source_controlled(code, meta, control)? {
         Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
@@ -241,16 +241,16 @@ pub(crate) fn render_model_to_compat_json(
     model: &WardleyDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
-fn render_model_to_compat_json_controlled(
+pub(crate) fn render_model_to_compat_json_controlled(
     model: &WardleyDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     let nodes = serialize_wardley_items_controlled(&model.nodes, control)?;
     let links = serialize_wardley_items_controlled(&model.links, control)?;
@@ -324,8 +324,8 @@ fn render_model_to_compat_json_controlled(
 
 fn serialize_wardley_items_controlled<T: Serialize>(
     items: &[T],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Value>> {
     let mut values = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
         if index % 128 == 0 {
@@ -338,8 +338,8 @@ fn serialize_wardley_items_controlled<T: Serialize>(
 
 fn strings_to_json_controlled(
     strings: &[String],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Value>> {
     let mut values = Vec::with_capacity(strings.len());
     for (index, value) in strings.iter().enumerate() {
         if index % 128 == 0 {
@@ -365,8 +365,8 @@ impl WardleySemanticSource {
     fn into_render_model_controlled(
         mut self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<WardleyDiagramRenderModel> {
+        control: &OperationControl,
+    ) -> OperationControlResult<WardleyDiagramRenderModel> {
         control.checkpoint()?;
         self.model.sanitize_common_db_fields(&meta.effective_config);
         control.checkpoint()?;
@@ -374,7 +374,7 @@ impl WardleySemanticSource {
     }
 
     fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.into_compat_json_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -382,8 +382,8 @@ impl WardleySemanticSource {
     fn into_compat_json_controlled(
         self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Value>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Value>> {
         let model = self.into_render_model_controlled(meta, control)?;
         render_model_to_compat_json_controlled(&model, meta, control)
     }
@@ -391,8 +391,8 @@ impl WardleySemanticSource {
     fn into_combined_parts_controlled(
         self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<(Result<Value>, EditorSemanticFacts)> {
+        control: &OperationControl,
+    ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self {
             mut model,
             editor_facts,
@@ -615,8 +615,8 @@ impl WardleyBuilder {
     fn resolve_node_id_controlled(
         &self,
         name: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<String> {
+        control: &OperationControl,
+    ) -> OperationControlResult<String> {
         if self.nodes.contains_key(name) {
             return Ok(name.to_string());
         }
@@ -634,8 +634,8 @@ impl WardleyBuilder {
     fn finish_controlled(
         self,
         common: LangiumCommonDbFields,
-        control: &ParseControl,
-    ) -> ParseControlResult<WardleyDiagramRenderModel> {
+        control: &OperationControl,
+    ) -> OperationControlResult<WardleyDiagramRenderModel> {
         let mut nodes = Vec::with_capacity(self.nodes.len());
         for (index, node) in self.nodes.into_values().enumerate() {
             if index % 128 == 0 {
@@ -760,15 +760,15 @@ fn construct_wardley_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<WardleySemanticSource, CombinedSemanticFailure> {
-    construct_wardley_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_wardley_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_wardley_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<WardleySemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<WardleySemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("wardley");
@@ -810,8 +810,8 @@ fn wardley_failure(
 
 fn parse_wardley_ast(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<WardleyParseOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<WardleyParseOutcome> {
     control.checkpoint()?;
     let mut ast = WardleyAst::default();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -1016,7 +1016,7 @@ fn parse_wardley_statement(
         editor_facts.push_directive_prefix("evolve");
         push_wardley_keyword(lexemes, statement_start, "evolve");
         let evolve = parse_evolve(body, body_start(statement, statement_start, body), lexemes)?;
-        push_entity_fact(editor_facts, &evolve.component, "wardley evolved component");
+        push_reference_fact(editor_facts, &evolve.component, "wardley evolved component");
         push_number_fact(editor_facts, evolve.target, "wardley evolution target");
         ast.evolves.push(evolve);
         return Ok(());
@@ -1084,8 +1084,8 @@ fn parse_wardley_statement(
     }
 
     let link = parse_link(statement, statement_start, lexemes)?;
-    push_entity_fact(editor_facts, &link.from, "wardley link source");
-    push_entity_fact(editor_facts, &link.to, "wardley link target");
+    push_reference_fact(editor_facts, &link.from, "wardley link source");
+    push_reference_fact(editor_facts, &link.to, "wardley link target");
     if let Some(label) = &link.label {
         push_payload_fact(editor_facts, label, "wardley link label");
     }
@@ -1142,7 +1142,7 @@ fn parse_pipeline(
         lexemes,
     ) {
         Ok(parent) => {
-            push_entity_fact(editor_facts, &parent, "wardley pipeline parent");
+            push_reference_fact(editor_facts, &parent, "wardley pipeline parent");
             Some(parent)
         }
         Err(problem) => {
@@ -2447,8 +2447,8 @@ fn trimmed_span(input: &str, base: usize) -> SourceSpan {
 
 fn build_wardley_model_controlled(
     ast: &WardleyAst,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<WardleyDiagramRenderModel, WardleyParseProblem>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<WardleyDiagramRenderModel, WardleyParseProblem>> {
     macro_rules! wardley_try {
         ($expression:expr) => {
             match $expression {
@@ -2766,16 +2766,6 @@ fn push_entity_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail
         EditorExpectedSyntaxKind::NodeIdentifier,
         value.selection,
     ));
-    let rename_policy = if !value.quoted
-        && value
-            .text
-            .chars()
-            .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
-    {
-        EditorRenamePolicy::Identifier
-    } else {
-        EditorRenamePolicy::None
-    };
     facts.push_symbol(
         EditorSemanticSymbol::new(
             value.text.clone(),
@@ -2784,8 +2774,38 @@ fn push_entity_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail
             value.span,
             value.selection,
         )
-        .with_rename_policy(rename_policy),
+        .with_rename_policy(wardley_rename_policy(value)),
     );
+}
+
+fn push_reference_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        value.selection,
+    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::reference(
+            value.text.clone(),
+            Some(detail.to_string()),
+            EditorSemanticKind::Object,
+            value.span,
+            value.selection,
+        )
+        .with_rename_policy(wardley_rename_policy(value)),
+    );
+}
+
+fn wardley_rename_policy(value: &SpannedText) -> EditorRenamePolicy {
+    if !value.quoted
+        && value
+            .text
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
+    {
+        EditorRenamePolicy::Identifier
+    } else {
+        EditorRenamePolicy::None
+    }
 }
 
 fn push_outline_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
@@ -3002,7 +3022,7 @@ mod tests {
                 .collect(),
             ..WardleyAst::default()
         };
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(build_wardley_model_controlled(&ast, &control).is_err());
@@ -3028,7 +3048,7 @@ mod tests {
                 .collect(),
             ..WardleyDiagramRenderModel::default()
         };
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(render_model_to_compat_json_controlled(&model, &meta(), &control).is_err());
@@ -3391,6 +3411,13 @@ pipeline Platform {
                 .count(),
             2
         );
+        let api: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "API")
+            .collect();
+        assert_eq!(api[0].role, crate::EditorSemanticRole::Entity);
+        assert_eq!(api[1].role, crate::EditorSemanticRole::Reference);
 
         let typed = engine
             .parse_diagram_for_render_model_with_type_sync(
@@ -3411,6 +3438,53 @@ pipeline Platform {
                 .parsed_model()
                 .expect("expected parsed snapshot")
         );
+    }
+
+    #[test]
+    fn wardley_reference_roles_cover_links_evolve_and_pipeline_parents() {
+        let source = concat!(
+            "wardley-beta\n",
+            "API -> DB\n",
+            "component API [0.6, 0.7]\n",
+            "component DB [0.4, 0.5]\n",
+            "API -> DB\n",
+            "evolve API 0.8\n",
+            "pipeline DB {\n",
+            "  component Storage [0.4]\n",
+            "}\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_wardley_json_and_editor_facts,
+            source,
+            &meta(),
+        );
+
+        for name in ["API", "DB"] {
+            let roles: Vec<_> = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .map(|symbol| symbol.role)
+                .collect();
+            assert_eq!(roles[0], crate::EditorSemanticRole::Reference);
+            assert_eq!(
+                roles
+                    .iter()
+                    .filter(|role| **role == crate::EditorSemanticRole::Entity)
+                    .count(),
+                1
+            );
+            assert_eq!(
+                roles
+                    .iter()
+                    .filter(|role| **role == crate::EditorSemanticRole::Reference)
+                    .count(),
+                roles.len() - 1
+            );
+        }
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Storage" && symbol.role == crate::EditorSemanticRole::Entity
+        }));
     }
 
     #[test]

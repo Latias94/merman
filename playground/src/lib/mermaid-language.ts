@@ -115,7 +115,7 @@ export function registerMermaidLanguage(
 
   disposables.push(
     monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
-      triggerCharacters: [" ", "\n", "-", "@", ":"],
+      triggerCharacters: [...identity.completionTriggerCharacters],
       async provideCompletionItems(model, position, _context, token) {
         const completions = await query(
           model,
@@ -625,6 +625,7 @@ function toMarkerData(
     severity: diagnosticSeverity(monaco, diagnostic.severity),
     message: diagnostic.message,
     source: diagnostic.source || "Merman",
+    tags: diagnostic.tags?.map((tag) => diagnosticMarkerTag(monaco, tag)),
     code:
       typeof diagnostic.code === "number"
         ? String(diagnostic.code)
@@ -640,6 +641,18 @@ function toMarkerData(
       }),
     ),
   };
+}
+
+function diagnosticMarkerTag(
+  monaco: typeof import("monaco-editor"),
+  tag: NonNullable<EditorDiagnostic["tags"]>[number],
+): import("monaco-editor").MarkerTag {
+  switch (tag) {
+    case "deprecated":
+      return monaco.MarkerTag.Deprecated;
+    default:
+      throw new Error(`unsupported diagnostic tag: ${tag}`);
+  }
 }
 
 function markerMatchesDiagnostic(

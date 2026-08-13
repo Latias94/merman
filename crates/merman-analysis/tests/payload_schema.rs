@@ -1,7 +1,8 @@
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisFactsPayload, AnalysisPayload, Analyzer, DiagnosticCategory,
-    SourceDescriptor, SourceMap,
+    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisFactsPayload, AnalysisPayload, Analyzer,
+    DiagnosticCategory, SourceDescriptor, SourceMap,
 };
+use merman_core::EditorRenamePolicy;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -66,7 +67,35 @@ fn analysis_payload_matches_adr_0070_schema_shape() {
 }
 
 #[test]
-fn analysis_facts_payload_matches_v1_schema_shape() {
+fn analysis_payload_v1_carries_optional_typed_diagnostic_tags() {
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![
+            AnalysisDiagnostic::error(
+                "merman.compatibility.config.explicit_tag",
+                DiagnosticCategory::Config,
+                "legacy option",
+            )
+            .with_tag(AnalysisDiagnosticTag::Deprecated)
+            .with_tag(AnalysisDiagnosticTag::Deprecated),
+        ],
+    );
+    let mut value = serde_json::to_value(&payload).expect("serialize tagged payload");
+
+    assert_eq!(value["version"], json!(1));
+    assert_eq!(value["diagnostics"][0]["tags"], json!(["deprecated"]));
+
+    value["diagnostics"][0]
+        .as_object_mut()
+        .expect("diagnostic object")
+        .remove("tags");
+    let decoded: AnalysisPayload =
+        serde_json::from_value(value).expect("schema-1 payload without tags remains accepted");
+    assert!(decoded.diagnostics[0].tags.is_empty());
+}
+
+#[test]
+fn analysis_facts_payload_matches_v2_schema_shape() {
     let value = serde_json::to_value(Analyzer::new().analyze_facts("flowchart TD\nA\n")).unwrap();
     let root = value
         .as_object()
@@ -82,7 +111,7 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
             "version",
         ])
     );
-    assert_eq!(value["version"], json!(1));
+    assert_eq!(value["version"], json!(2));
     assert_eq!(value["valid"], json!(true));
 
     let diagram = value["diagrams"][0]
@@ -117,7 +146,6 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
             "effective_layout",
             "expected_syntax",
             "fact_source",
-            "flowchart",
             "node_ids",
             "outline_items",
             "parser_backed",
@@ -132,7 +160,7 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
 }
 
 #[test]
-fn analysis_facts_v1_rejects_legacy_text_scan_provenance() {
+fn analysis_facts_v2_rejects_legacy_text_scan_provenance() {
     let mut value = parser_backed_facts_json();
     value["diagrams"][0]["syntax"]["fact_source"] = json!("text_scan");
 
@@ -141,36 +169,36 @@ fn analysis_facts_v1_rejects_legacy_text_scan_provenance() {
 }
 
 #[test]
-fn analysis_facts_v1_rejects_other_wire_versions() {
-    for version in [0, 2, 3] {
+fn analysis_facts_v2_rejects_other_wire_versions() {
+    for version in [0, 1, 3] {
         let mut value = parser_backed_facts_json();
         value["version"] = json!(version);
 
         let error = serde_json::from_value::<AnalysisFactsPayload>(value).unwrap_err();
         assert_eq!(
             error.to_string(),
-            format!("unsupported analysis facts payload version {version}; expected 1")
+            format!("unsupported analysis facts payload version {version}; expected 2")
         );
     }
 }
 
 #[test]
-fn analysis_facts_v2_is_rejected_before_deep_payload_deserialization() {
+fn analysis_facts_v1_is_rejected_before_deep_payload_deserialization() {
     let mut value = serde_json::Map::new();
     value.insert("valid".to_string(), json!("not a boolean"));
     value.insert("summary".to_string(), json!("not a summary"));
-    value.insert("version".to_string(), json!(2));
+    value.insert("version".to_string(), json!(1));
 
     let error = serde_json::from_value::<AnalysisFactsPayload>(Value::Object(value))
-        .expect_err("facts v2 must be rejected at the version boundary");
+        .expect_err("schema-1 facts must be rejected at the version boundary");
     assert_eq!(
         error.to_string(),
-        "unsupported analysis facts payload version 2; expected 1"
+        "unsupported analysis facts payload version 1; expected 2"
     );
 }
 
 #[test]
-fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
+fn analysis_facts_v2_accepts_payload_without_additive_effective_layout() {
     let mut value = parser_backed_facts_json();
     let syntax = value["diagrams"][0]["syntax"]
         .as_object_mut()
@@ -178,13 +206,13 @@ fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
     assert_eq!(syntax.remove("effective_layout"), Some(json!("dagre")));
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("a compatible facts v1 payload should remain readable");
-    assert_eq!(payload.version, 1);
+        .expect("a compatible facts v2 payload should remain readable");
+    assert_eq!(payload.version, 2);
     assert_eq!(payload.diagrams[0].syntax.effective_layout, None);
 }
 
 #[test]
-fn analysis_facts_v1_defaults_missing_additive_parse_disposition_to_unavailable() {
+fn analysis_facts_v2_defaults_missing_additive_parse_disposition_to_unavailable() {
     let mut value = parser_backed_facts_json();
     let diagram = value["diagrams"][0]
         .as_object_mut()
@@ -192,7 +220,7 @@ fn analysis_facts_v1_defaults_missing_additive_parse_disposition_to_unavailable(
     assert_eq!(diagram.remove("parse_disposition"), Some(json!("parsed")));
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("a compatible facts v1 payload should remain readable");
+        .expect("a compatible facts v2 payload should remain readable");
     assert_eq!(
         payload.diagrams[0].parse_disposition,
         merman_analysis::DiagramParseDisposition::Unavailable
@@ -200,7 +228,7 @@ fn analysis_facts_v1_defaults_missing_additive_parse_disposition_to_unavailable(
 }
 
 #[test]
-fn analysis_facts_v1_disables_rename_when_compatible_payload_omits_policy() {
+fn analysis_facts_v2_disables_rename_when_compatible_payload_omits_policy() {
     let mut value = parser_backed_facts_json();
     let semantic_item = value["diagrams"][0]["syntax"]["semantic_items"]
         .as_array_mut()
@@ -212,20 +240,72 @@ fn analysis_facts_v1_disables_rename_when_compatible_payload_omits_policy() {
         .remove("rename_policy");
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("a compatible facts v1 payload should remain readable");
+        .expect("a compatible facts v2 payload should remain readable");
     assert_eq!(
         payload.diagrams[0].syntax.semantic_items[0].rename_policy,
-        merman_analysis::FenceRenamePolicy::None
+        EditorRenamePolicy::None
     );
 }
 
 #[test]
-fn analysis_facts_v1_writers_always_emit_rename_policy() {
+fn analysis_facts_v2_writers_always_emit_rename_policy() {
     let value = parser_backed_facts_json();
     assert!(
         value["diagrams"][0]["syntax"]["semantic_items"][0]
             .get("rename_policy")
             .is_some()
+    );
+}
+
+#[test]
+fn analysis_facts_preserve_typed_class_definition_wire_role() {
+    let value = serde_json::to_value(
+        Analyzer::new().analyze_facts("flowchart TD\nclassDef hot fill:#f00;\nA:::hot\n"),
+    )
+    .expect("serialize class-definition facts");
+    let syntax = &value["diagrams"][0]["syntax"];
+    let class_definition = syntax["semantic_items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["name"] == "hot"))
+        .expect("class definition semantic item");
+
+    assert_eq!(class_definition["role"], json!("class_definition"));
+    assert!(
+        syntax["class_names"]
+            .as_array()
+            .is_some_and(|names| names.iter().any(|name| name == "hot"))
+    );
+    assert!(
+        syntax["outline_items"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["name"] == "hot"))
+    );
+    let mut invalid = value;
+    invalid["diagrams"][0]["syntax"]["semantic_items"][0]["role"] = json!("unknown_role");
+    let error = serde_json::from_value::<AnalysisFactsPayload>(invalid)
+        .expect_err("unknown semantic roles must stay out of the wire schema");
+    assert!(error.to_string().contains("unknown_role"));
+}
+
+#[test]
+fn analysis_facts_preserve_typed_reference_wire_role() {
+    let value = serde_json::to_value(Analyzer::new().analyze_facts(
+        "sequenceDiagram\nparticipant Alice\nAlice->>Bob: Hello\nBob-->>Alice: Done\n",
+    ))
+    .expect("serialize reference facts");
+    let syntax = &value["diagrams"][0]["syntax"];
+
+    assert!(syntax["semantic_items"].as_array().is_some_and(|items| {
+        items
+            .iter()
+            .any(|item| item["name"] == "Alice" && item["role"] == "reference")
+    }));
+    assert!(
+        syntax["outline_items"].as_array().is_some_and(|items| items
+            .iter()
+            .filter(|item| item["name"] == "Alice")
+            .count()
+            == 1)
     );
 }
 

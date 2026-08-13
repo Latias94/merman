@@ -13,6 +13,7 @@ use crate::canvas::Canvas;
 use crate::color::AsciiColorMode;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 
@@ -334,6 +335,31 @@ impl SequenceRowPlan {
         })
     }
 
+    pub(super) fn build_with_execution(
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        let mut planner = SequenceRowPlanner::new(diagram);
+        let mut emitter = SequenceRowEmitter::new(diagram, layout, chars, planner.visible_actors());
+
+        for event in &diagram.events {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            if let Some(step) = planner.advance(diagram, event, emitter.current_row())? {
+                emitter.emit_step(&step)?;
+            }
+        }
+
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        Ok(Self {
+            lines: emitter.finish(&planner, mirror_actors),
+            control_frames: planner.finish()?,
+        })
+    }
+
     pub(super) fn render(
         self,
         diagram: &AsciiSequenceDiagram,
@@ -352,6 +378,29 @@ impl SequenceRowPlan {
             prepend_title_line(&mut lines, title);
         }
         finish_sequence_lines(lines, options)
+    }
+
+    pub(super) fn render_with_execution(
+        self,
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
+    ) -> Result<String> {
+        let mut lines = self.lines;
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        if !self.control_frames.is_empty() {
+            lines = render_sequence_control_frames(lines, &self.control_frames, chars);
+        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        if !diagram.boxes.is_empty() {
+            lines = render_sequence_boxes(lines, diagram, layout, chars);
+        }
+        if let Some(title) = diagram.title.as_deref() {
+            prepend_title_line(&mut lines, title);
+        }
+        finish_sequence_lines_with_execution(lines, options, execution)
     }
 }
 
@@ -546,6 +595,41 @@ fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions)
     }
 
     canvas.finish_trimmed_with_options(options)
+}
+
+fn finish_sequence_lines_with_execution(
+    lines: Vec<SequenceLine>,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    execution.admit_grid(width.saturating_mul(lines.len()))?;
+
+    if options.color_mode == crate::color::AsciiColorMode::Plain {
+        let mut output = String::new();
+        for line in lines {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            output.push_str(&line.into_text());
+            output.push('\n');
+        }
+        return Ok(output);
+    }
+
+    if lines.is_empty() || width == 0 {
+        return Ok(if lines.is_empty() {
+            String::new()
+        } else {
+            "\n".repeat(lines.len())
+        });
+    }
+
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        line.write_to(&mut canvas, y);
+    }
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    canvas.finish_trimmed_with_options_with_execution(options, execution)
 }
 
 fn prepend_title_line(lines: &mut Vec<SequenceLine>, title: &str) {

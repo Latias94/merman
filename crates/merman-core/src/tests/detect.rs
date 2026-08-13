@@ -122,8 +122,8 @@ impl PostDetectionConfigOverlayProvider for RecordingOverlayProvider {
     fn overlay_for_family(
         &self,
         family: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<Option<Arc<PostDetectionConfigOverlay>>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<Arc<PostDetectionConfigOverlay>>> {
         control.checkpoint()?;
         self.calls.lock().unwrap().push(family.to_string());
         Ok(self.overlays.get(family).cloned())

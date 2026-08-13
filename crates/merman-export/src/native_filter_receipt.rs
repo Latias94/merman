@@ -699,44 +699,61 @@ mod tests {
             effective_image_pixels: 1,
             limited: false,
         };
+        let control = merman_core::OperationControl::new();
 
-        assert!(crate::pdf_native_filter_fully_localized(
-            &tree,
-            1.0,
-            1.0,
-            exact_plan,
-            Some(receipt),
-        ));
-        assert!(!crate::pdf_native_filter_fully_localized(
-            &tree,
-            1.0,
-            1.0,
-            crate::PdfFilterImagePlan {
-                limited: true,
-                ..exact_plan
-            },
-            Some(receipt),
-        ));
-        assert!(!crate::pdf_native_filter_fully_localized(
-            &tree,
-            1.0,
-            1.0,
-            crate::PdfFilterImagePlan {
-                filtered_groups: 1,
-                ..exact_plan
-            },
-            Some(receipt),
-        ));
-        assert!(!crate::pdf_native_filter_fully_localized(
-            &tree,
-            1.0,
-            100.0,
-            crate::PdfFilterImagePlan {
-                requested_scale: 100.0,
-                effective_scale: 100.0,
-                ..exact_plan
-            },
-            Some(receipt),
-        ));
+        assert!(
+            crate::pdf_native_filter_fully_localized(
+                &tree,
+                1.0,
+                1.0,
+                exact_plan,
+                Some(receipt),
+                &control,
+            )
+            .expect("exact localization proof")
+        );
+        assert!(
+            !crate::pdf_native_filter_fully_localized(
+                &tree,
+                1.0,
+                1.0,
+                crate::PdfFilterImagePlan {
+                    limited: true,
+                    ..exact_plan
+                },
+                Some(receipt),
+                &control,
+            )
+            .expect("limited plan should be evaluated")
+        );
+        assert!(
+            !crate::pdf_native_filter_fully_localized(
+                &tree,
+                1.0,
+                1.0,
+                crate::PdfFilterImagePlan {
+                    filtered_groups: 1,
+                    ..exact_plan
+                },
+                Some(receipt),
+                &control,
+            )
+            .expect("group mismatch should be evaluated")
+        );
+        assert!(
+            !crate::pdf_native_filter_fully_localized(
+                &tree,
+                1.0,
+                100.0,
+                crate::PdfFilterImagePlan {
+                    requested_scale: 100.0,
+                    effective_scale: 100.0,
+                    ..exact_plan
+                },
+                Some(receipt),
+                &control,
+            )
+            .expect("scale mismatch should be evaluated")
+        );
     }
 }

@@ -11,6 +11,7 @@
 mod client_profile;
 mod code_actions;
 mod completion;
+mod diagnostic_round_trip;
 mod diagnostics;
 mod protocol;
 mod refresh_coordinator;
@@ -23,6 +24,7 @@ mod structure;
 mod sync;
 #[cfg(feature = "stdio")]
 mod transport;
+mod workspace_edit;
 
 pub use protocol::{
     CONFIG_SCHEMA_METHOD, CONFIG_SCHEMA_RESPONSE_VERSION, ConfigSchemaResponse,

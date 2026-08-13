@@ -12,6 +12,7 @@ use crate::svg::{
 use crate::text::PreparedTextEvidenceLease;
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
+use merman_core::OperationPhase;
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{
@@ -1872,6 +1873,7 @@ impl RenderedFamilySvg {
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
+        self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata();
         let preserves_prepared_text =
             self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
@@ -1918,11 +1920,13 @@ impl RenderedFamilySvg {
         {
             self.style_report.ensure_portable()?;
         }
+        self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(self)
     }
 
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
+        self.session.checkpoint(OperationPhase::Export)?;
         let portability = self
             .session
             .theme_portability_requirement()
@@ -1969,6 +1973,7 @@ impl RenderedFamilySvg {
         } else {
             PreparedTextEvidenceLease::default()
         };
+        self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
             root_theme,
@@ -2087,6 +2092,7 @@ impl FamilyRenderArtifact {
     }
 
     pub fn layout_json(&self) -> Result<serde_json::Value> {
+        self.context.session().checkpoint(OperationPhase::Emit)?;
         let semantic = self
             .compatibility_projection
             .get_or_init(|| {
@@ -2135,6 +2141,7 @@ impl FamilyRenderArtifact {
             clone_json_value_nonrecursive(semantic),
         );
         projection.insert("layout".to_string(), layout);
+        self.context.session().checkpoint(OperationPhase::Emit)?;
         Ok(serde_json::Value::Object(projection))
     }
 
@@ -2143,11 +2150,13 @@ impl FamilyRenderArtifact {
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
+        self.context.session().checkpoint(OperationPhase::Emit)?;
         let rendered = render_family_artifact_svg(&self, options, debug)?;
         self.context
             .session()
             .resource_policy()
             .check_svg_bytes(rendered.as_str(), ResourceLimitPhase::SvgOutput)?;
+        self.context.session().checkpoint(OperationPhase::Emit)?;
         let flowchart_theme_evidence = self
             .family
             .flowchart_theme_evidence(self.context.resolved_theme());
@@ -2191,6 +2200,7 @@ impl FamilyRenderArtifact {
                 .theme_portability_requirement()
                 .unwrap_or(ThemePortabilityRequirement::BestEffort),
         )?;
+        session.checkpoint(OperationPhase::Emit)?;
 
         Ok(RenderedFamilySvg {
             svg,
@@ -2427,6 +2437,7 @@ pub fn plan_render(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> Result<RenderCapabilityPlan> {
+    session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let family_id = validate_render_input(parsed, session)?;
     let required = required_capabilities(parsed);
@@ -2435,12 +2446,14 @@ pub fn plan_render(
         .copied()
         .filter(|capability| !capability_is_available(*capability, session))
         .collect();
-    Ok(RenderCapabilityPlan {
+    let plan = RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),
         family_id,
         required,
         missing,
-    })
+    };
+    session.checkpoint(OperationPhase::Layout)?;
+    Ok(plan)
 }
 
 #[inline(never)]
@@ -2503,6 +2516,7 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
+    session.checkpoint(OperationPhase::Layout)?;
     if let Some(error) = session.text_layout_error().cloned() {
         return Err(error.into());
     }
@@ -2512,11 +2526,16 @@ pub fn prepare(
     let context = FamilyRenderContext::resolve(session, expected_family);
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    if expected_family == DiagramFamilyId::CLASS {
+    let artifact = if expected_family == DiagramFamilyId::CLASS {
         prepare_class_render(parsed, options, context)
     } else {
         prepare_non_class_render(parsed, options, context)
-    }
+    }?;
+    artifact
+        .context
+        .session()
+        .checkpoint(OperationPhase::Layout)?;
+    Ok(artifact)
 }
 
 #[inline(never)]
@@ -2969,8 +2988,8 @@ mod tests {
     fn custom_semantic_parser(
         _code: &str,
         meta: &ParseMetadata,
-        control: &merman_core::ParseControl,
-    ) -> merman_core::ParseControlResult<merman_core::Result<Value>> {
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<merman_core::Result<Value>> {
         control.checkpoint()?;
         Ok(Ok(
             json!({ "type": meta.diagram_type, "owner": "semantic" }),
@@ -2980,11 +2999,13 @@ mod tests {
     fn custom_render_parser(
         _code: &str,
         _meta: &ParseMetadata,
-    ) -> merman_core::Result<CustomJsonRenderModel> {
-        Ok(CustomJsonRenderModel::new(
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<merman_core::Result<CustomJsonRenderModel>> {
+        control.checkpoint()?;
+        Ok(Ok(CustomJsonRenderModel::new(
             "custom-flowchart",
             json!({ "owner": "render" }),
-        ))
+        )))
     }
 
     fn session() -> RenderSession {

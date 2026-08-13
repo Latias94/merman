@@ -33,6 +33,7 @@ layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 math = ["svg", "merman-bindings-core/math"]
 [dependencies]
 merman-bindings-core.workspace = true
+merman.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 

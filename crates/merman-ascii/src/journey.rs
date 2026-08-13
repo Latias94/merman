@@ -1,3 +1,5 @@
+use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
@@ -5,10 +7,11 @@ use std::collections::BTreeSet;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_journey_diagram(
+pub(super) fn render_journey_diagram(
     model: &JourneyDiagramRenderModel,
     _options: &AsciiRenderOptions,
-) -> String {
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     let mut lines = Vec::new();
 
     if let Some(title) = normalize_optional_text(model.title.as_deref()) {
@@ -22,9 +25,14 @@ pub fn render_journey_diagram(
     }
 
     let actors = if model.actors.is_empty() {
-        collect_actors(&model.tasks)
+        collect_actors(&model.tasks, execution)?
     } else {
-        model.actors.clone()
+        let mut actors = Vec::with_capacity(model.actors.len());
+        for actor in &model.actors {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            actors.push(actor.clone());
+        }
+        actors
     };
     if !actors.is_empty() {
         lines.push(format!("actors: {}", actors.join(", ")));
@@ -32,8 +40,10 @@ pub fn render_journey_diagram(
 
     if !model.sections.is_empty() {
         for section in &model.sections {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             lines.push(format!("section: {section}"));
             for task in model.tasks.iter().filter(|task| task.section == *section) {
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 push_task(&mut lines, task);
             }
         }
@@ -43,27 +53,34 @@ pub fn render_journey_diagram(
                 .iter()
                 .any(|section| section == &task.section)
         }) {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             push_task(&mut lines, task);
         }
     } else {
         for task in &model.tasks {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             push_task(&mut lines, task);
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    Ok(trim_trailing_blank_lines(lines).join("\n"))
 }
 
-fn collect_actors(tasks: &[JourneyRenderTask]) -> Vec<String> {
+fn collect_actors(
+    tasks: &[JourneyRenderTask],
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<String>> {
     let mut set = BTreeSet::new();
     for task in tasks {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         for actor in &task.people {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
             if !actor.is_empty() {
                 set.insert(actor.clone());
             }
         }
     }
-    set.into_iter().collect()
+    Ok(set.into_iter().collect())
 }
 
 fn push_task(lines: &mut Vec<String>, task: &JourneyRenderTask) {

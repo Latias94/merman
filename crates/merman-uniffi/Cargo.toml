@@ -42,6 +42,7 @@ math = ["svg", "merman-bindings-core/math"]
 binding-generation = ["uniffi/bindgen", "uniffi/cargo-metadata"]
 
 [dependencies]
+merman.workspace = true
 merman-bindings-core.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

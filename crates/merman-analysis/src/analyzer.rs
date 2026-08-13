@@ -1,19 +1,18 @@
 use crate::diagnostic_projection::{
-    DiagnosticCandidate, candidates_from_diagnostics, core_error_diagnostic,
-    flowchart_facts_projection_diagnostic, materialize_diagnostic_candidates,
-    no_diagram_diagnostic, panic_diagnostic,
+    DiagnosticCandidate, append_diagnostic_candidates_cancellable, core_error_candidate,
+    no_diagram_candidate, panic_candidate,
 };
 use crate::recovery::editor_recovery_candidates;
 use crate::rules::AnalysisRuleConfig;
 use crate::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisDiagnostic,
-    AnalysisFlowchartFacts, AnalysisGeneration, AnalysisPayload, AnalysisRejection,
-    AnalysisSyntaxFacts, AnalyzedDiagram, DiagramParseDisposition, DocumentDiagram, FenceTextIndex,
-    SourceDescriptor, SourceKind, SourceMap,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisPayload,
+    AnalysisRejection, AnalysisSyntaxFacts, DiagramParseDisposition, DocumentDiagram,
+    FenceTextIndex, SourceDescriptor, SourceMap,
 };
 use merman_core::{
-    DiagramParseOutcome, EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig,
-    ParseMetadata, ParsedEditorFacts,
+    DiagramParseOutcome, DiagramSnapshotCapture, DiagramWarningFact, EditorSemanticFacts, Engine,
+    Error as CoreError, MermaidConfig, ParseMetadata, ParsedEditorFacts,
+    preprocess::SourceConfigEvidence,
 };
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -373,6 +372,28 @@ impl Analyzer {
         }
     }
 
+    /// Generates diagnostics for an explicit request-local source descriptor.
+    pub fn analyze_source_cancellable(
+        &self,
+        source: Arc<str>,
+        descriptor: SourceDescriptor,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        self.with_capture_source(descriptor)
+            .analyze_cancellable(source, cancellation)
+    }
+
+    /// Generates facts for an explicit request-local source descriptor.
+    pub fn analyze_source_facts_cancellable(
+        &self,
+        source: Arc<str>,
+        descriptor: SourceDescriptor,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<crate::AnalysisFactsPayload, AnalysisCancelled> {
+        self.with_capture_source(descriptor)
+            .analyze_facts_cancellable(source, cancellation)
+    }
+
     pub(crate) fn try_for_operation(
         &self,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
@@ -389,78 +410,20 @@ impl Analyzer {
         error: merman_core::runtime::RuntimePolicyError,
         source_map: &SourceMap,
     ) -> Vec<DiagnosticCandidate> {
-        candidates_from_diagnostics(
-            core_error_diagnostic(
-                &CoreError::from(error),
-                source_map,
-                crate::rules::capture_rule_config(),
-            )
-            .diagnostic,
-        )
+        vec![core_error_candidate(&CoreError::from(error), source_map).candidate]
     }
 
     pub fn analyze_generation(&self, source: &str) -> AnalysisCaptureOutcome {
-        if matches!(
-            self.options.source().kind,
-            SourceKind::Markdown | SourceKind::Mdx
-        ) {
-            return crate::document::analyze_document_generation(
-                source,
-                self,
-                self.options.source().clone(),
-            );
-        }
-        if let Some(rejection) = self.source_limit_rejection(source, self.options.source().clone())
-        {
-            return AnalysisCaptureOutcome::Rejected(rejection);
-        }
-
-        self.analyze_generation_shared_preflighted(Arc::from(source))
+        crate::document::analyze_document_generation(source, self, self.options.source().clone())
     }
 
     /// Captures a generation while retaining the caller's immutable source allocation.
     pub fn analyze_generation_shared(&self, source: Arc<str>) -> AnalysisCaptureOutcome {
-        if matches!(
-            self.options.source().kind,
-            SourceKind::Markdown | SourceKind::Mdx
-        ) {
-            return crate::document::analyze_document_generation_shared(
-                source,
-                self,
-                self.options.source().clone(),
-            );
-        }
-        if let Some(rejection) =
-            self.source_limit_rejection(source.as_ref(), self.options.source().clone())
-        {
-            return AnalysisCaptureOutcome::Rejected(rejection);
-        }
-
-        self.analyze_generation_shared_preflighted(source)
-    }
-
-    fn analyze_generation_shared_preflighted(
-        &self,
-        source_text: Arc<str>,
-    ) -> AnalysisCaptureOutcome {
-        let source_map = SourceMap::new(Arc::clone(&source_text));
-        let operation_analyzer = match self.try_for_operation() {
-            Ok(analyzer) => analyzer,
-            Err(error) => {
-                let candidates = self.runtime_policy_candidates(error, &source_map);
-                return AnalysisCaptureOutcome::Ready(
-                    AnalysisGeneration::new(source_map, Vec::new(), self)
-                        .with_document_candidates(candidates),
-                );
-            }
-        };
-        let diagram = crate::document::whole_document_diagram(source_text, self.options.source());
-        let analyzed = operation_analyzer.analyze_diagram(&diagram, &source_map);
-        AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
-            source_map,
-            vec![analyzed],
-            &operation_analyzer,
-        ))
+        crate::document::analyze_document_generation_shared(
+            source,
+            self,
+            self.options.source().clone(),
+        )
     }
 
     /// Captures a generation cooperatively without promoting borrowed text inside the operation.
@@ -469,65 +432,16 @@ impl Analyzer {
         source: Arc<str>,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<AnalysisCaptureOutcome, AnalysisCancelled> {
-        cancellation.checkpoint()?;
-        if matches!(
-            self.options.source().kind,
-            SourceKind::Markdown | SourceKind::Mdx
-        ) {
-            return crate::document::analyze_document_generation_shared_cancellable(
-                source,
-                self,
-                self.options.source().clone(),
-                cancellation,
-            );
-        }
-        if let Some(rejection) = crate::source_limits::source_limit_rejection_cancellable(
-            source.as_ref(),
-            self.options.source(),
-            self.options.max_source_bytes(),
+        crate::document::analyze_document_generation_shared_cancellable(
+            source,
+            self,
+            self.options.source().clone(),
             cancellation,
-        )? {
-            return Ok(AnalysisCaptureOutcome::Rejected(rejection));
-        }
-
-        let source_map = SourceMap::new_cancellable(Arc::clone(&source), cancellation)?;
-        let operation_analyzer = match self.try_for_operation() {
-            Ok(analyzer) => analyzer,
-            Err(error) => {
-                let candidates = self.runtime_policy_candidates(error, &source_map);
-                return Ok(AnalysisCaptureOutcome::Ready(
-                    AnalysisGeneration::new(source_map, Vec::new(), self)
-                        .with_document_candidates(candidates),
-                ));
-            }
-        };
-        let diagram = crate::document::whole_document_diagram(source, self.options.source());
-        let analyzed =
-            operation_analyzer.analyze_diagram_cancellable(&diagram, &source_map, cancellation)?;
-        cancellation.checkpoint()?;
-        Ok(AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
-            source_map,
-            vec![analyzed],
-            &operation_analyzer,
-        )))
+        )
     }
 
     pub fn analyze(&self, source: &str) -> AnalysisPayload {
-        if matches!(
-            self.options.source().kind,
-            SourceKind::Markdown | SourceKind::Mdx
-        ) {
-            return crate::document::analyze_document(source, self, self.options.source().clone());
-        }
-        if let Some(rejection) = self.source_limit_rejection(source, self.options.source().clone())
-        {
-            return rejection.into_payload();
-        }
-
-        AnalysisPayload::new(
-            self.options.source().clone(),
-            self.analyze_source_diagnostics(source),
-        )
+        crate::document::analyze_document(source, self, self.options.source().clone())
     }
 
     pub fn analyze_facts(&self, source: &str) -> crate::AnalysisFactsPayload {
@@ -549,117 +463,87 @@ impl Analyzer {
         self.analyze_facts(source).to_json_bytes()
     }
 
-    pub(crate) fn analyze_diagram(
+    /// Generates and projects diagnostics cooperatively using one caller-owned cancellation token.
+    pub fn analyze_cancellable(
         &self,
-        diagram: &DocumentDiagram,
-        document_source_map: &SourceMap,
-    ) -> AnalyzedDiagram {
-        let source_map = source_map_for_diagram(diagram, document_source_map);
-        let evidence = self.capture_evidence(diagram.text.as_str());
-        let captured = self.capture_from_evidence(
-            diagram.text.as_str(),
-            &source_map,
-            &evidence,
-            CaptureMode::RichFacts,
-        );
-        let candidates = crate::document::normalize_document_diagnostic_candidates(
-            document_source_map,
-            diagram,
-            captured.candidates,
-        );
-        AnalyzedDiagram::from_document_diagram(
-            diagram,
-            captured.syntax,
-            candidates,
-            captured.parse_disposition,
-        )
+        source: Arc<str>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        match self.analyze_generation_shared_cancellable(source, cancellation)? {
+            AnalysisCaptureOutcome::Ready(generation) => {
+                generation.project_cancellable(self.options.diagnostic_policy(), cancellation)
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                cancellation.checkpoint()?;
+                Ok(rejection.into_payload())
+            }
+        }
     }
 
-    pub(crate) fn analyze_diagram_cancellable(
+    /// Generates and projects the facts contract cooperatively using one cancellation token.
+    pub fn analyze_facts_cancellable(
+        &self,
+        source: Arc<str>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<crate::AnalysisFactsPayload, AnalysisCancelled> {
+        match self.analyze_generation_shared_cancellable(source, cancellation)? {
+            AnalysisCaptureOutcome::Ready(generation) => generation
+                .to_facts_payload_cancellable(self.options.diagnostic_policy(), cancellation),
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                cancellation.checkpoint()?;
+                Ok(crate::AnalysisFactsPayload::from_rejection(&rejection))
+            }
+        }
+    }
+
+    pub(crate) fn capture_document_diagram_cancellable(
         &self,
         diagram: &DocumentDiagram,
         document_source_map: &SourceMap,
-        cancellation: &AnalysisCancellationToken,
-    ) -> Result<AnalyzedDiagram, AnalysisCancelled> {
+        mode: CaptureMode,
+        control: CaptureCancellation<'_>,
+    ) -> Result<CapturedDiagram, AnalysisCancelled> {
+        let cancellation = control.cancellation();
         cancellation.checkpoint()?;
         let source_map =
             source_map_for_diagram_cancellable(diagram, document_source_map, cancellation)?;
-        let evidence = self.capture_evidence_cancellable(diagram.text.as_str(), cancellation)?;
+        let evidence = match control {
+            CaptureCancellation::RecoverParserCancellation(_) => {
+                self.capture_evidence(diagram.text.as_str())
+            }
+            CaptureCancellation::Propagate(_) => {
+                self.capture_evidence_cancellable(diagram.text.as_str(), cancellation)?
+            }
+        };
         cancellation.checkpoint()?;
-        let captured = self.capture_from_evidence_cancellable(
+        let mut captured = self.capture_from_evidence_cancellable(
             diagram.text.as_str(),
             &source_map,
             &evidence,
-            CaptureMode::RichFacts,
+            mode,
             cancellation,
         )?;
         cancellation.checkpoint()?;
-        let candidates = crate::document::normalize_document_diagnostic_candidates_cancellable(
-            document_source_map,
-            diagram,
-            captured.candidates,
-            cancellation,
-        )?;
+        captured.candidates =
+            crate::document::normalize_document_diagnostic_candidates_cancellable(
+                document_source_map,
+                diagram,
+                captured.candidates,
+                cancellation,
+            )?;
         cancellation.checkpoint()?;
-        Ok(AnalyzedDiagram::from_document_diagram(
-            diagram,
-            captured.syntax,
-            candidates,
-            captured.parse_disposition,
-        ))
-    }
-
-    pub(crate) fn analyze_diagram_diagnostics(
-        &self,
-        diagram: &DocumentDiagram,
-        document_source_map: &SourceMap,
-    ) -> Vec<AnalysisDiagnostic> {
-        let captured =
-            self.capture_diagram_local(diagram, document_source_map, CaptureMode::DiagnosticsOnly);
-        let candidates = crate::document::normalize_document_diagnostic_candidates(
-            document_source_map,
-            diagram,
-            captured.candidates,
-        );
-        materialize_diagnostic_candidates(&candidates, self.options.diagnostic_policy())
-    }
-
-    pub(crate) fn analyze_source_diagnostics(&self, source: &str) -> Vec<AnalysisDiagnostic> {
-        let captured = self.capture_local(source, CaptureMode::DiagnosticsOnly);
-        captured.project_diagnostics(self.options.diagnostic_policy())
-    }
-
-    fn capture_local(&self, source: &str, mode: CaptureMode) -> CapturedDiagram {
-        let source_map = SourceMap::new(source);
-        self.capture_local_with_source_map(source, &source_map, mode)
-    }
-
-    fn capture_diagram_local(
-        &self,
-        diagram: &DocumentDiagram,
-        document_source_map: &SourceMap,
-        mode: CaptureMode,
-    ) -> CapturedDiagram {
-        let source_map = source_map_for_diagram(diagram, document_source_map);
-        let evidence = self.capture_evidence(diagram.text.as_str());
-        self.capture_from_evidence(diagram.text.as_str(), &source_map, &evidence, mode)
-    }
-
-    fn capture_local_with_source_map(
-        &self,
-        source: &str,
-        source_map: &SourceMap,
-        mode: CaptureMode,
-    ) -> CapturedDiagram {
-        let evidence = self.capture_evidence(source);
-        self.capture_from_evidence(source, source_map, &evidence, mode)
+        Ok(captured)
     }
 
     fn capture_evidence(&self, source: &str) -> DiagramAnalysisEvidence {
         let cancellation = AnalysisCancellationToken::new();
         self.capture_evidence_cancellable(source, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
-                error: CoreError::from(merman_core::ParseCancelled),
+                error: CoreError::from(merman_core::OperationCancelled {
+                    phase: merman_core::OperationPhase::Analysis,
+                    reason: merman_core::CancelReason::Requested,
+                }),
+                source_config: SourceConfigEvidence::default(),
             })
     }
 
@@ -670,67 +554,75 @@ impl Analyzer {
     ) -> Result<DiagramAnalysisEvidence, AnalysisCancelled> {
         cancellation.checkpoint()?;
         if source_is_blank_cancellable(source, cancellation)? {
-            return Ok(DiagramAnalysisEvidence::EmptySource);
+            return Ok(DiagramAnalysisEvidence::EmptySource {
+                source_config: SourceConfigEvidence::default(),
+            });
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine
-                .parse_diagram_snapshot_controlled_sync(source, cancellation.parse_control())
+                .capture_diagram_snapshot_controlled_sync(source, cancellation.operation_control())
         }));
         let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {
                 message: panic_message(panic_payload.as_ref()).to_string(),
                 metadata: None,
-                config_rewrite_safe: false,
+                source_config: SourceConfigEvidence::default(),
             },
             Ok(Err(_)) => return Err(AnalysisCancelled),
             Ok(Ok(parse_result)) => match parse_result {
-                Ok(Some(snapshot)) => {
-                    let config_rewrite_safe = !snapshot.recovered_incomplete_directive();
-                    let (meta, outcome, editor_facts) = snapshot.into_parts();
+                DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
+                    let (meta, outcome, editor_facts, source_config) =
+                        snapshot.into_parts_with_source_config();
                     let editor_facts = match editor_facts {
                         ParsedEditorFacts::Available(facts) => Some(facts),
                         ParsedEditorFacts::Unavailable => None,
                     };
                     match outcome {
-                        DiagramParseOutcome::Parsed(model) => DiagramAnalysisEvidence::Parsed {
-                            metadata: meta,
-                            model,
-                            editor_facts,
-                            config_rewrite_safe,
-                        },
+                        DiagramParseOutcome::Parsed { warning_facts, .. } => {
+                            DiagramAnalysisEvidence::Parsed {
+                                metadata: meta,
+                                warning_facts,
+                                editor_facts,
+                                source_config,
+                            }
+                        }
                         DiagramParseOutcome::Failed(error) => {
                             DiagramAnalysisEvidence::ParseFailed {
                                 metadata: meta,
                                 error,
                                 editor_facts,
-                                config_rewrite_safe,
+                                source_config,
                             }
                         }
                         DiagramParseOutcome::Panicked(message) => DiagramAnalysisEvidence::Panic {
                             message,
                             metadata: Some(meta),
-                            config_rewrite_safe,
+                            source_config,
                         },
                     }
                 }
-                Ok(None) => DiagramAnalysisEvidence::NoSnapshot,
-                Err(error) => DiagramAnalysisEvidence::OperationError { error },
+                DiagramSnapshotCapture::Snapshot(None) => DiagramAnalysisEvidence::NoSnapshot {
+                    source_config: SourceConfigEvidence::default(),
+                },
+                DiagramSnapshotCapture::Failed {
+                    error,
+                    source_config,
+                } => DiagramAnalysisEvidence::OperationError {
+                    error,
+                    source_config,
+                },
+                DiagramSnapshotCapture::Panicked {
+                    panic,
+                    source_config,
+                } => DiagramAnalysisEvidence::Panic {
+                    message: panic.message().to_owned(),
+                    metadata: None,
+                    source_config,
+                },
             },
         };
         cancellation.checkpoint()?;
         Ok(evidence)
-    }
-
-    fn capture_from_evidence(
-        &self,
-        source: &str,
-        source_map: &SourceMap,
-        evidence: &DiagramAnalysisEvidence,
-        mode: CaptureMode,
-    ) -> CapturedDiagram {
-        let cancellation = AnalysisCancellationToken::new();
-        self.capture_from_evidence_cancellable(source, source_map, evidence, mode, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled")
     }
 
     fn capture_from_evidence_cancellable(
@@ -746,67 +638,66 @@ impl Analyzer {
             source,
             source_map,
             evidence.config_for_rewrite(),
+            evidence.source_config(),
             cancellation,
         )?;
         cancellation.checkpoint()?;
+        let unavailable_syntax = |diagram_type| match mode {
+            CaptureMode::DiagnosticsOnly => None,
+            CaptureMode::RichFacts => Some(AnalysisSyntaxFacts::unavailable(diagram_type)),
+        };
         match evidence {
-            DiagramAnalysisEvidence::EmptySource => {
-                let candidates = candidates_from_diagnostics(no_diagram_diagnostic(
-                    source_map,
-                    crate::rules::capture_rule_config(),
-                ));
+            DiagramAnalysisEvidence::EmptySource { .. } => {
+                let candidates = vec![no_diagram_candidate(source_map)];
                 Self::finish_capture(
                     candidates,
-                    mode.unavailable_syntax(None),
+                    unavailable_syntax(None),
                     DiagramParseDisposition::Unavailable,
                     cancellation,
                 )
             }
             DiagramAnalysisEvidence::Panic { message, .. } => {
                 let mut candidates = source_lints;
-                candidates.extend(candidates_from_diagnostics(panic_diagnostic(
-                    message,
-                    source_map,
-                    crate::rules::capture_rule_config(),
-                )));
+                candidates.push(panic_candidate(message, source_map));
                 Self::finish_capture(
                     candidates,
-                    mode.unavailable_syntax(None),
+                    unavailable_syntax(None),
                     DiagramParseDisposition::Unavailable,
                     cancellation,
                 )
             }
-            DiagramAnalysisEvidence::NoSnapshot => Self::finish_capture(
+            DiagramAnalysisEvidence::NoSnapshot { .. } => Self::finish_capture(
                 source_lints,
-                mode.unavailable_syntax(None),
+                unavailable_syntax(None),
                 DiagramParseDisposition::Unavailable,
                 cancellation,
             ),
-            DiagramAnalysisEvidence::OperationError { error } => {
-                let projection =
-                    core_error_diagnostic(error, source_map, crate::rules::capture_rule_config());
+            DiagramAnalysisEvidence::OperationError { error, .. } => {
+                let projection = core_error_candidate(error, source_map);
                 let mut candidates = source_lints;
-                candidates.extend(candidates_from_diagnostics(projection.diagnostic));
+                candidates.push(projection.candidate);
                 Self::finish_capture(
                     candidates,
-                    mode.unavailable_syntax(projection.diagram_type),
+                    unavailable_syntax(projection.diagram_type),
                     DiagramParseDisposition::Unavailable,
                     cancellation,
                 )
             }
             DiagramAnalysisEvidence::Parsed {
                 metadata,
-                model,
+                warning_facts,
                 editor_facts,
-                ..
+                source_config,
             } => self.analyze_parsed_diagram_cancellable(
                 DiagramCaptureInput {
-                    source,
                     source_map,
                     metadata,
                     editor_facts: editor_facts.as_ref(),
                 },
-                model,
+                ParsedDiagramCaptureInput {
+                    warning_facts,
+                    source_config,
+                },
                 source_lints,
                 mode,
                 cancellation,
@@ -818,7 +709,6 @@ impl Analyzer {
                 ..
             } => self.analyze_parse_error_cancellable(
                 DiagramCaptureInput {
-                    source,
                     source_map,
                     metadata,
                     editor_facts: editor_facts.as_ref(),
@@ -831,88 +721,66 @@ impl Analyzer {
         }
     }
 
-    #[cfg(test)]
-    fn analyze_parsed_diagram(
-        &self,
-        input: DiagramCaptureInput<'_>,
-        model: &serde_json::Value,
-        diagnostics: Vec<AnalysisDiagnostic>,
-        mode: CaptureMode,
-    ) -> CapturedDiagram {
-        let cancellation = AnalysisCancellationToken::new();
-        self.analyze_parsed_diagram_cancellable(
-            input,
-            model,
-            candidates_from_diagnostics(diagnostics),
-            mode,
-            &cancellation,
-        )
-        .expect("a private analysis cancellation token cannot be cancelled")
-    }
-
     fn analyze_parsed_diagram_cancellable(
         &self,
         input: DiagramCaptureInput<'_>,
-        model: &serde_json::Value,
+        parsed: ParsedDiagramCaptureInput<'_>,
         mut candidates: Vec<DiagnosticCandidate>,
         mode: CaptureMode,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<CapturedDiagram, AnalysisCancelled> {
         let DiagramCaptureInput {
-            source,
             source_map,
             metadata,
             editor_facts,
         } = input;
+        let ParsedDiagramCaptureInput {
+            warning_facts,
+            source_config,
+        } = parsed;
         cancellation.checkpoint()?;
         let diagram_type = metadata.diagram_type.as_str();
-        candidates.extend(crate::rules::parsed_source_lint_candidates_cancellable(
-            source,
-            source_map,
-            diagram_type,
+        append_diagnostic_candidates_cancellable(
+            &mut candidates,
+            crate::rules::parsed_source_lint_candidates_cancellable(
+                source_map,
+                diagram_type,
+                source_config,
+                cancellation,
+            )?,
             cancellation,
-        )?);
-        candidates.extend(crate::rules::semantic_warning_candidates_cancellable(
-            diagram_type,
-            model,
-            source_map,
+        )?;
+        append_diagnostic_candidates_cancellable(
+            &mut candidates,
+            crate::rules::semantic_warning_candidates_cancellable(
+                diagram_type,
+                warning_facts,
+                source_map,
+                cancellation,
+            )?,
             cancellation,
-        )?);
+        )?;
         let editor_candidates = Self::editor_recovery_candidates_from_facts_cancellable(
             diagram_type,
             source_map,
             editor_facts,
             cancellation,
         )?;
-        let flowchart_projection = Some(self.flowchart_facts_projection_cancellable(
-            model,
-            diagram_type,
-            source_map,
-            cancellation,
-        )?);
-        candidates.extend(
-            flowchart_projection
-                .as_ref()
-                .into_iter()
-                .flat_map(|projection| projection.candidates.iter().cloned()),
-        );
-
-        candidates.extend(editor_candidates);
+        append_diagnostic_candidates_cancellable(&mut candidates, editor_candidates, cancellation)?;
         let syntax = match mode {
-            CaptureMode::DiagnosticsOnly => {
-                AnalysisSyntaxFacts::new(Some(diagram_type.to_string()), FenceTextIndex::default())
-            }
+            CaptureMode::DiagnosticsOnly => None,
             CaptureMode::RichFacts => {
                 let effective_layout = metadata
                     .effective_config
                     .get_str("layout")
                     .map(str::to_owned);
-                AnalysisSyntaxFacts::new(
-                    Some(diagram_type.to_string()),
-                    Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
+                Some(
+                    AnalysisSyntaxFacts::new(
+                        Some(diagram_type.to_string()),
+                        Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
+                    )
+                    .with_effective_layout(effective_layout),
                 )
-                .with_effective_layout(effective_layout)
-                .with_flowchart(flowchart_projection.and_then(|projection| projection.facts))
             }
         };
         Self::finish_capture(
@@ -932,38 +800,39 @@ impl Analyzer {
         cancellation: &AnalysisCancellationToken,
     ) -> Result<CapturedDiagram, AnalysisCancelled> {
         let DiagramCaptureInput {
-            source: _,
             source_map,
             metadata: meta,
             editor_facts,
         } = input;
         cancellation.checkpoint()?;
-        let core_diagnostic =
-            core_error_diagnostic(error, source_map, crate::rules::capture_rule_config());
-        if let Some(diagnostic) = core_diagnostic.diagnostic {
-            candidates.push(
-                DiagnosticCandidate::new(diagnostic)
-                    .with_parse_location(core_diagnostic.parse_location),
-            );
-        }
+        let core_diagnostic = core_error_candidate(error, source_map);
+        candidates.push(
+            core_diagnostic
+                .candidate
+                .with_parse_location(core_diagnostic.parse_location),
+        );
         let diagram_type = meta.diagram_type.as_str();
-        candidates.extend(Self::editor_recovery_candidates_from_facts_cancellable(
-            diagram_type,
-            source_map,
-            editor_facts,
+        append_diagnostic_candidates_cancellable(
+            &mut candidates,
+            Self::editor_recovery_candidates_from_facts_cancellable(
+                diagram_type,
+                source_map,
+                editor_facts,
+                cancellation,
+            )?,
             cancellation,
-        )?);
+        )?;
         let syntax = match mode {
-            CaptureMode::DiagnosticsOnly => {
-                AnalysisSyntaxFacts::new(Some(diagram_type.to_string()), FenceTextIndex::default())
-            }
+            CaptureMode::DiagnosticsOnly => None,
             CaptureMode::RichFacts => {
                 let effective_layout = meta.effective_config.get_str("layout").map(str::to_owned);
-                AnalysisSyntaxFacts::new(
-                    Some(diagram_type.to_string()),
-                    Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
+                Some(
+                    AnalysisSyntaxFacts::new(
+                        Some(diagram_type.to_string()),
+                        Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
+                    )
+                    .with_effective_layout(effective_layout),
                 )
-                .with_effective_layout(effective_layout)
             }
         };
         Self::finish_capture(
@@ -987,11 +856,11 @@ impl Analyzer {
         let mut candidates = Vec::with_capacity(facts.diagnostics.len());
         for batch in facts.diagnostics.chunks(128) {
             cancellation.checkpoint()?;
-            candidates.extend(editor_recovery_candidates(
-                batch.iter().cloned(),
-                diagram_type,
-                source_map,
-            ));
+            append_diagnostic_candidates_cancellable(
+                &mut candidates,
+                editor_recovery_candidates(batch.iter().cloned(), diagram_type, source_map),
+                cancellation,
+            )?;
         }
         cancellation.checkpoint()?;
         Ok(candidates)
@@ -1007,53 +876,9 @@ impl Analyzer {
         }
     }
 
-    fn flowchart_facts_projection_cancellable(
-        &self,
-        model: &serde_json::Value,
-        diagram_type: &str,
-        source_map: &SourceMap,
-        cancellation: &AnalysisCancellationToken,
-    ) -> Result<FlowchartFactsProjection, AnalysisCancelled> {
-        let projection =
-            match AnalysisFlowchartFacts::try_from_model_cancellable(model, cancellation)? {
-                Ok(facts) => FlowchartFactsProjection {
-                    facts,
-                    candidates: Vec::new(),
-                },
-                Err(error) => {
-                    let _ = source_map.whole_source_span_cancellable(cancellation)?;
-                    FlowchartFactsProjection {
-                        facts: None,
-                        candidates: candidates_from_diagnostics(
-                            flowchart_facts_projection_diagnostic(
-                                error,
-                                diagram_type,
-                                source_map,
-                                crate::rules::capture_rule_config(),
-                            ),
-                        ),
-                    }
-                }
-            };
-        cancellation.checkpoint()?;
-        Ok(projection)
-    }
-
-    pub(crate) fn source_limit_rejection(
-        &self,
-        source: &str,
-        descriptor: SourceDescriptor,
-    ) -> Option<AnalysisRejection> {
-        crate::source_limits::source_limit_rejection(
-            source,
-            descriptor,
-            self.options.max_source_bytes(),
-        )
-    }
-
     fn finish_capture(
         candidates: Vec<DiagnosticCandidate>,
-        syntax: AnalysisSyntaxFacts,
+        syntax: Option<AnalysisSyntaxFacts>,
         parse_disposition: DiagramParseDisposition,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<CapturedDiagram, AnalysisCancelled> {
@@ -1063,14 +888,6 @@ impl Analyzer {
             syntax,
             parse_disposition,
         })
-    }
-}
-
-fn source_map_for_diagram(diagram: &DocumentDiagram, document_source_map: &SourceMap) -> SourceMap {
-    if diagram.is_fence() {
-        SourceMap::from_shared_text(diagram.text.clone())
-    } else {
-        document_source_map.clone()
     }
 }
 
@@ -1110,50 +927,66 @@ fn source_is_blank_cancellable(
 
 #[derive(Debug)]
 enum DiagramAnalysisEvidence {
-    EmptySource,
+    EmptySource {
+        source_config: SourceConfigEvidence,
+    },
     Panic {
         message: String,
         metadata: Option<ParseMetadata>,
-        config_rewrite_safe: bool,
+        source_config: SourceConfigEvidence,
     },
-    NoSnapshot,
+    NoSnapshot {
+        source_config: SourceConfigEvidence,
+    },
     OperationError {
         error: CoreError,
+        source_config: SourceConfigEvidence,
     },
     Parsed {
         metadata: ParseMetadata,
-        model: serde_json::Value,
+        warning_facts: Vec<DiagramWarningFact>,
         editor_facts: Option<EditorSemanticFacts>,
-        config_rewrite_safe: bool,
+        source_config: SourceConfigEvidence,
     },
     ParseFailed {
         metadata: ParseMetadata,
         error: CoreError,
         editor_facts: Option<EditorSemanticFacts>,
-        config_rewrite_safe: bool,
+        source_config: SourceConfigEvidence,
     },
 }
 
 impl DiagramAnalysisEvidence {
+    fn source_config(&self) -> &SourceConfigEvidence {
+        match self {
+            Self::EmptySource { source_config }
+            | Self::Panic { source_config, .. }
+            | Self::NoSnapshot { source_config }
+            | Self::OperationError { source_config, .. }
+            | Self::Parsed { source_config, .. }
+            | Self::ParseFailed { source_config, .. } => source_config,
+        }
+    }
+
     fn config_for_rewrite(&self) -> Option<&MermaidConfig> {
         match self {
             Self::Parsed {
                 metadata,
-                config_rewrite_safe: true,
+                source_config,
                 ..
             }
             | Self::ParseFailed {
                 metadata,
-                config_rewrite_safe: true,
+                source_config,
                 ..
-            } => Some(&metadata.config),
+            } if source_config.rewrite_safe() => Some(&metadata.config),
             Self::Panic {
                 metadata: Some(metadata),
-                config_rewrite_safe: true,
+                source_config,
                 ..
-            } => Some(&metadata.config),
-            Self::EmptySource
-            | Self::NoSnapshot
+            } if source_config.rewrite_safe() => Some(&metadata.config),
+            Self::EmptySource { .. }
+            | Self::NoSnapshot { .. }
             | Self::OperationError { .. }
             | Self::Panic { .. }
             | Self::Parsed { .. }
@@ -1171,42 +1004,45 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CaptureMode {
+pub(crate) enum CaptureMode {
     DiagnosticsOnly,
     RichFacts,
 }
 
 #[derive(Clone, Copy)]
+pub(crate) enum CaptureCancellation<'a> {
+    RecoverParserCancellation(&'a AnalysisCancellationToken),
+    Propagate(&'a AnalysisCancellationToken),
+}
+
+impl<'a> CaptureCancellation<'a> {
+    pub(crate) const fn cancellation(self) -> &'a AnalysisCancellationToken {
+        match self {
+            Self::RecoverParserCancellation(cancellation) | Self::Propagate(cancellation) => {
+                cancellation
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 struct DiagramCaptureInput<'a> {
-    source: &'a str,
     source_map: &'a SourceMap,
     metadata: &'a ParseMetadata,
     editor_facts: Option<&'a EditorSemanticFacts>,
 }
 
-impl CaptureMode {
-    fn unavailable_syntax(self, diagram_type: Option<String>) -> AnalysisSyntaxFacts {
-        AnalysisSyntaxFacts::unavailable(diagram_type)
-    }
+#[derive(Clone, Copy)]
+struct ParsedDiagramCaptureInput<'a> {
+    warning_facts: &'a [DiagramWarningFact],
+    source_config: &'a SourceConfigEvidence,
 }
 
 #[derive(Debug, Clone)]
-struct CapturedDiagram {
-    candidates: Vec<DiagnosticCandidate>,
-    syntax: AnalysisSyntaxFacts,
-    parse_disposition: DiagramParseDisposition,
-}
-
-impl CapturedDiagram {
-    fn project_diagnostics(&self, policy: &AnalysisDiagnosticPolicy) -> Vec<AnalysisDiagnostic> {
-        materialize_diagnostic_candidates(&self.candidates, policy)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FlowchartFactsProjection {
-    facts: Option<AnalysisFlowchartFacts>,
-    candidates: Vec<DiagnosticCandidate>,
+pub(crate) struct CapturedDiagram {
+    pub(crate) candidates: Vec<DiagnosticCandidate>,
+    pub(crate) syntax: Option<AnalysisSyntaxFacts>,
+    pub(crate) parse_disposition: DiagramParseDisposition,
 }
 
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {

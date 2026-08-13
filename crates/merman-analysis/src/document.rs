@@ -1,7 +1,12 @@
-use crate::diagnostic_projection::materialize_diagnostic_candidates;
+use crate::analyzer::{CaptureCancellation, CaptureMode};
+use crate::diagnostic_projection::{
+    DiagnosticCandidate, append_diagnostic_candidates_cancellable,
+    materialize_diagnostic_candidates,
+};
 use crate::{
     AnalysisCaptureOutcome, AnalysisDiagnostic, AnalysisGeneration, AnalysisPayload, Analyzer,
-    DiagnosticFixEdit, DiagnosticRelated, DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
+    DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSpan, SourceDescriptor,
+    SourceKind, SourceMap,
 };
 use std::collections::BTreeMap;
 use std::ops::ControlFlow;
@@ -85,6 +90,33 @@ enum DocumentSourceBuildOutcome {
     DiagramLimitExceeded(MarkdownDocumentDiagramLimitExceeded),
 }
 
+enum CaptureText<'a> {
+    Borrowed(&'a str),
+    Shared(Arc<str>),
+}
+
+impl CaptureText<'_> {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Borrowed(text) => text,
+            Self::Shared(text) => text.as_ref(),
+        }
+    }
+
+    fn to_shared(&self) -> Arc<str> {
+        match self {
+            Self::Borrowed(text) => Arc::from(*text),
+            Self::Shared(text) => Arc::clone(text),
+        }
+    }
+}
+
+enum CapturedSource {
+    Rejected(crate::AnalysisRejection),
+    Diagnostics(Vec<DiagnosticCandidate>),
+    Generation(AnalysisGeneration),
+}
+
 impl DocumentSource {
     pub fn new(text: impl Into<Arc<str>>, source: SourceDescriptor) -> Self {
         let text = text.into();
@@ -107,45 +139,21 @@ impl DocumentSource {
     }
 
     fn new_bounded_cancellable(
-        text: Arc<str>,
+        input: &CaptureText<'_>,
         source: SourceDescriptor,
         max_document_diagrams: Option<usize>,
         cancellation: &crate::AnalysisCancellationToken,
     ) -> Result<DocumentSourceBuildOutcome, crate::AnalysisCancelled> {
         cancellation.checkpoint()?;
-        let diagrams = match source.kind {
+        // Keep borrowed input unpromoted until the bounded document scan admits it. Shared input
+        // retains the caller's Arc allocation through the same path.
+        let scanned_diagrams = match source.kind {
             SourceKind::Markdown | SourceKind::Mdx => {
                 match scan_markdown_diagrams_bounded(
-                    text.as_ref(),
+                    input.as_str(),
                     max_document_diagrams,
                     cancellation,
                 )? {
-                    Ok(diagrams) => {
-                        materialize_markdown_diagrams(&text, &source, diagrams, cancellation)?
-                    }
-                    Err(exceeded) => {
-                        return Ok(DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded));
-                    }
-                }
-            }
-            SourceKind::Diagram => vec![whole_document_diagram(Arc::clone(&text), &source)],
-        };
-        Self::finish_cancellable(text, source, diagrams, cancellation)
-    }
-
-    fn new_borrowed_bounded_cancellable(
-        text: &str,
-        source: SourceDescriptor,
-        max_document_diagrams: Option<usize>,
-        cancellation: &crate::AnalysisCancellationToken,
-    ) -> Result<DocumentSourceBuildOutcome, crate::AnalysisCancelled> {
-        cancellation.checkpoint()?;
-        // Keep the caller's allocation borrowed until the document has passed admission. The
-        // scan retains offsets only, so an early excess fence never copies a potentially large
-        // rejected tail into a new Arc.
-        let scanned_diagrams = match source.kind {
-            SourceKind::Markdown | SourceKind::Mdx => {
-                match scan_markdown_diagrams_bounded(text, max_document_diagrams, cancellation)? {
                     Ok(diagrams) => Some(diagrams),
                     Err(exceeded) => {
                         return Ok(DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded));
@@ -155,23 +163,13 @@ impl DocumentSource {
             SourceKind::Diagram => None,
         };
         cancellation.checkpoint()?;
-
-        let text: Arc<str> = Arc::from(text);
+        let text = input.to_shared();
         let diagrams = match scanned_diagrams {
             Some(diagrams) => {
                 materialize_markdown_diagrams(&text, &source, diagrams, cancellation)?
             }
             None => vec![whole_document_diagram(Arc::clone(&text), &source)],
         };
-        Self::finish_cancellable(text, source, diagrams, cancellation)
-    }
-
-    fn finish_cancellable(
-        text: Arc<str>,
-        source: SourceDescriptor,
-        diagrams: Vec<DocumentDiagram>,
-        cancellation: &crate::AnalysisCancellationToken,
-    ) -> Result<DocumentSourceBuildOutcome, crate::AnalysisCancelled> {
         let source_map = SourceMap::new_cancellable(Arc::clone(&text), cancellation)?;
         cancellation.checkpoint()?;
         Ok(DocumentSourceBuildOutcome::Ready(Self {
@@ -253,13 +251,42 @@ fn remap_diagnostic_spans_cancellable(
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<AnalysisDiagnostic, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
-    diagnostic.span = match diagnostic.span.take() {
+    remap_diagnostic_locations_cancellable(
+        source_map,
+        diagram,
+        fence_span,
+        DiagnosticLocationsMut {
+            span: &mut diagnostic.span,
+            related: &mut diagnostic.related,
+            fixes: &mut diagnostic.fixes,
+        },
+        remapped_fix_edits,
+        cancellation,
+    )?;
+    Ok(diagnostic)
+}
+
+struct DiagnosticLocationsMut<'a> {
+    span: &'a mut Option<DiagnosticSpan>,
+    related: &'a mut [DiagnosticRelated],
+    fixes: &'a mut Vec<DiagnosticFix>,
+}
+
+fn remap_diagnostic_locations_cancellable(
+    source_map: &SourceMap,
+    diagram: &DocumentDiagram,
+    fence_span: Option<DiagnosticSpan>,
+    locations: DiagnosticLocationsMut<'_>,
+    remapped_fix_edits: &mut BTreeMap<usize, Arc<[DiagnosticFixEdit]>>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<(), crate::AnalysisCancelled> {
+    *locations.span = match locations.span.take() {
         Some(span) => remap_span_to_document_cancellable(source_map, diagram, span, cancellation)?
             .or(fence_span),
         None => fence_span,
     };
 
-    for (index, related) in diagnostic.related.iter_mut().enumerate() {
+    for (index, related) in locations.related.iter_mut().enumerate() {
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
@@ -271,7 +298,7 @@ fn remap_diagnostic_spans_cancellable(
         };
     }
 
-    for (fix_index, fix) in diagnostic.fixes.iter_mut().enumerate() {
+    for (fix_index, fix) in locations.fixes.iter_mut().enumerate() {
         if fix_index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
@@ -300,10 +327,10 @@ fn remap_diagnostic_spans_cancellable(
         remapped_fix_edits.insert(source_allocation, Arc::clone(&remapped));
         fix.edits = remapped;
     }
-    diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
+    locations.fixes.retain(|fix| !fix.edits.is_empty());
 
     cancellation.checkpoint()?;
-    Ok(diagnostic)
+    Ok(())
 }
 
 fn remap_span_to_document_cancellable(
@@ -403,45 +430,23 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
-    let resource_limits = analyzer.options().resource_limits();
-    if let Some(rejection) = crate::source_limits::source_limit_rejection(
-        text,
+    let cancellation = crate::AnalysisCancellationToken::new();
+    match capture_source_cancellable(
+        CaptureText::Borrowed(text),
+        analyzer,
         source.clone(),
-        resource_limits.max_source_bytes(),
-    ) {
-        return rejection.into_payload();
-    }
-
-    match source.kind {
-        SourceKind::Diagram => {
-            AnalysisPayload::new(source, analyzer.analyze_source_diagnostics(text))
-        }
-        SourceKind::Markdown | SourceKind::Mdx => {
-            let cancellation = crate::AnalysisCancellationToken::new();
-            let document = match DocumentSource::new_borrowed_bounded_cancellable(
-                text,
-                source.clone(),
-                resource_limits.max_document_diagrams(),
-                &cancellation,
-            )
-            .expect("a private analysis cancellation token cannot be cancelled")
-            {
-                DocumentSourceBuildOutcome::Ready(document) => document,
-                DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded) => {
-                    return crate::document_limits::document_diagram_limit_rejection_from_exceeded_cancellable(
-                        text,
-                        &source,
-                        resource_limits
-                            .max_document_diagrams()
-                            .expect("a diagram limit must exist when extraction exceeds it"),
-                        exceeded,
-                        &cancellation,
-                    )
-                    .expect("a private analysis cancellation token cannot be cancelled")
-                    .into_payload();
-                }
-            };
-            AnalysisPayload::new(source, analyze_document_diagnostics(&document, analyzer))
+        CaptureMode::DiagnosticsOnly,
+        CaptureCancellation::RecoverParserCancellation(&cancellation),
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
+    {
+        CapturedSource::Rejected(rejection) => rejection.into_payload(),
+        CapturedSource::Diagnostics(candidates) => AnalysisPayload::new(
+            source,
+            materialize_diagnostic_candidates(&candidates, analyzer.options().diagnostic_policy()),
+        ),
+        CapturedSource::Generation(_) => {
+            unreachable!("diagnostics-only capture cannot produce a rich generation")
         }
     }
 }
@@ -467,11 +472,11 @@ pub fn analyze_document_generation(
     source: SourceDescriptor,
 ) -> AnalysisCaptureOutcome {
     let cancellation = crate::AnalysisCancellationToken::new();
-    analyze_document_generation_borrowed_inner(
-        text,
+    capture_generation_cancellable(
+        CaptureText::Borrowed(text),
         analyzer,
         source,
-        DocumentCaptureControl::NonCancellable(&cancellation),
+        CaptureCancellation::RecoverParserCancellation(&cancellation),
     )
     .expect("a private analysis cancellation token cannot be cancelled")
 }
@@ -482,11 +487,11 @@ pub fn analyze_document_generation_shared(
     source: SourceDescriptor,
 ) -> AnalysisCaptureOutcome {
     let cancellation = crate::AnalysisCancellationToken::new();
-    analyze_document_generation_shared_inner(
-        text,
+    capture_generation_cancellable(
+        CaptureText::Shared(text),
         analyzer,
         source,
-        DocumentCaptureControl::NonCancellable(&cancellation),
+        CaptureCancellation::RecoverParserCancellation(&cancellation),
     )
     .expect("a private analysis cancellation token cannot be cancelled")
 }
@@ -497,118 +502,60 @@ pub fn analyze_document_generation_shared_cancellable(
     source: SourceDescriptor,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
-    analyze_document_generation_shared_inner(
-        text,
+    capture_generation_cancellable(
+        CaptureText::Shared(text),
         analyzer,
         source,
-        DocumentCaptureControl::Cancellable(cancellation),
+        CaptureCancellation::Propagate(cancellation),
     )
 }
 
-#[derive(Clone, Copy)]
-enum DocumentCaptureControl<'a> {
-    NonCancellable(&'a crate::AnalysisCancellationToken),
-    Cancellable(&'a crate::AnalysisCancellationToken),
-}
-
-impl<'a> DocumentCaptureControl<'a> {
-    fn cancellation(self) -> &'a crate::AnalysisCancellationToken {
-        match self {
-            Self::NonCancellable(cancellation) | Self::Cancellable(cancellation) => cancellation,
-        }
-    }
-
-    fn analyze_diagram(
-        self,
-        analyzer: &Analyzer,
-        diagram: &DocumentDiagram,
-        source_map: &SourceMap,
-    ) -> Result<crate::AnalyzedDiagram, crate::AnalysisCancelled> {
-        match self {
-            Self::NonCancellable(_) => Ok(analyzer.analyze_diagram(diagram, source_map)),
-            Self::Cancellable(cancellation) => {
-                analyzer.analyze_diagram_cancellable(diagram, source_map, cancellation)
-            }
-        }
-    }
-}
-
-fn analyze_document_generation_shared_inner(
-    text: Arc<str>,
+fn capture_generation_cancellable(
+    input: CaptureText<'_>,
     analyzer: &Analyzer,
     source: SourceDescriptor,
-    control: DocumentCaptureControl<'_>,
+    control: CaptureCancellation<'_>,
 ) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
+    match capture_source_cancellable(input, analyzer, source, CaptureMode::RichFacts, control)? {
+        CapturedSource::Rejected(rejection) => Ok(AnalysisCaptureOutcome::Rejected(rejection)),
+        CapturedSource::Generation(generation) => Ok(AnalysisCaptureOutcome::Ready(generation)),
+        CapturedSource::Diagnostics(_) => {
+            unreachable!("rich capture cannot produce diagnostics-only storage")
+        }
+    }
+}
+
+fn capture_source_cancellable(
+    input: CaptureText<'_>,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+    mode: CaptureMode,
+    control: CaptureCancellation<'_>,
+) -> Result<CapturedSource, crate::AnalysisCancelled> {
     let cancellation = control.cancellation();
     cancellation.checkpoint()?;
     let resource_limits = analyzer.options().resource_limits();
     if let Some(rejection) = crate::source_limits::source_limit_rejection_cancellable(
-        text.as_ref(),
+        input.as_str(),
         &source,
         resource_limits.max_source_bytes(),
         cancellation,
     )? {
-        return Ok(AnalysisCaptureOutcome::Rejected(rejection));
+        return Ok(CapturedSource::Rejected(rejection));
     }
 
     let document = DocumentSource::new_bounded_cancellable(
-        Arc::clone(&text),
+        &input,
         source.clone(),
         resource_limits.max_document_diagrams(),
         cancellation,
     )?;
-    analyze_document_generation_after_document_scan(
-        text.as_ref(),
-        document,
-        analyzer,
-        source,
-        control,
-    )
-}
-
-fn analyze_document_generation_borrowed_inner(
-    text: &str,
-    analyzer: &Analyzer,
-    source: SourceDescriptor,
-    control: DocumentCaptureControl<'_>,
-) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
-    let cancellation = control.cancellation();
-    cancellation.checkpoint()?;
-    let resource_limits = analyzer.options().resource_limits();
-    if let Some(rejection) = crate::source_limits::source_limit_rejection_cancellable(
-        text,
-        &source,
-        resource_limits.max_source_bytes(),
-        cancellation,
-    )? {
-        return Ok(AnalysisCaptureOutcome::Rejected(rejection));
-    }
-
-    let document = DocumentSource::new_borrowed_bounded_cancellable(
-        text,
-        source.clone(),
-        resource_limits.max_document_diagrams(),
-        cancellation,
-    )?;
-    analyze_document_generation_after_document_scan(text, document, analyzer, source, control)
-}
-
-fn analyze_document_generation_after_document_scan(
-    text: &str,
-    document: DocumentSourceBuildOutcome,
-    analyzer: &Analyzer,
-    source: SourceDescriptor,
-    control: DocumentCaptureControl<'_>,
-) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
-    let cancellation = control.cancellation();
-
-    let resource_limits = analyzer.options().resource_limits();
     let document = match document {
         DocumentSourceBuildOutcome::Ready(document) => document,
         DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded) => {
             let rejection =
                 crate::document_limits::document_diagram_limit_rejection_from_exceeded_cancellable(
-                    text,
+                    input.as_str(),
                     &source,
                     resource_limits
                         .max_document_diagrams()
@@ -616,91 +563,82 @@ fn analyze_document_generation_after_document_scan(
                     exceeded,
                     cancellation,
                 )?;
-            return Ok(AnalysisCaptureOutcome::Rejected(rejection));
+            return Ok(CapturedSource::Rejected(rejection));
         }
     };
     let request_analyzer = analyzer.with_capture_source(source);
     cancellation.checkpoint()?;
 
     if document.diagrams().is_empty() {
-        return Ok(AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
-            document.source_map().clone(),
-            Vec::new(),
-            &request_analyzer,
-        )));
+        return Ok(match mode {
+            CaptureMode::DiagnosticsOnly => CapturedSource::Diagnostics(Vec::new()),
+            CaptureMode::RichFacts => CapturedSource::Generation(AnalysisGeneration::new(
+                document.source_map().clone(),
+                Vec::new(),
+                &request_analyzer,
+            )),
+        });
     }
     let operation_analyzer = match request_analyzer.try_for_operation() {
         Ok(analyzer) => analyzer,
         Err(error) => {
             let candidates =
                 request_analyzer.runtime_policy_candidates(error, document.source_map());
-            return Ok(AnalysisCaptureOutcome::Ready(
-                AnalysisGeneration::new(
-                    document.source_map().clone(),
-                    Vec::new(),
-                    &request_analyzer,
-                )
-                .with_document_candidates(candidates),
-            ));
+            return Ok(match mode {
+                CaptureMode::DiagnosticsOnly => CapturedSource::Diagnostics(candidates),
+                CaptureMode::RichFacts => CapturedSource::Generation(
+                    AnalysisGeneration::new(
+                        document.source_map().clone(),
+                        Vec::new(),
+                        &request_analyzer,
+                    )
+                    .with_document_candidates(candidates),
+                ),
+            });
         }
     };
     cancellation.checkpoint()?;
 
+    let mut diagnostic_candidates = Vec::new();
     let mut analyzed_diagrams = Vec::new();
     for diagram in document.diagrams() {
         cancellation.checkpoint()?;
-        let analyzed =
-            control.analyze_diagram(&operation_analyzer, diagram, document.source_map())?;
+        let captured = operation_analyzer.capture_document_diagram_cancellable(
+            diagram,
+            document.source_map(),
+            mode,
+            control,
+        )?;
+        match mode {
+            CaptureMode::DiagnosticsOnly => {
+                append_diagnostic_candidates_cancellable(
+                    &mut diagnostic_candidates,
+                    captured.candidates,
+                    cancellation,
+                )?;
+            }
+            CaptureMode::RichFacts => {
+                analyzed_diagrams.push(crate::AnalyzedDiagram::from_document_diagram(
+                    diagram,
+                    captured
+                        .syntax
+                        .expect("rich diagram capture must retain syntax facts"),
+                    captured.candidates,
+                    captured.parse_disposition,
+                ))
+            }
+        }
         cancellation.checkpoint()?;
-        analyzed_diagrams.push(analyzed);
     }
     cancellation.checkpoint()?;
-    Ok(AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
-        document.source_map().clone(),
-        analyzed_diagrams,
-        &operation_analyzer,
-    )))
-}
-
-fn analyze_document_diagnostics(
-    document: &DocumentSource,
-    analyzer: &Analyzer,
-) -> Vec<AnalysisDiagnostic> {
-    if document.diagrams().is_empty() {
-        return Vec::new();
-    }
-    let operation_analyzer = match analyzer.try_for_operation() {
-        Ok(analyzer) => analyzer,
-        Err(error) => {
-            let candidates = analyzer.runtime_policy_candidates(error, document.source_map());
-            return materialize_diagnostic_candidates(
-                &candidates,
-                analyzer.options().diagnostic_policy(),
-            );
-        }
-    };
-
-    let mut diagnostics = Vec::new();
-    for diagram in document.diagrams() {
-        diagnostics
-            .extend(operation_analyzer.analyze_diagram_diagnostics(diagram, document.source_map()));
-    }
-    diagnostics
-}
-
-pub(crate) fn normalize_document_diagnostic_candidates(
-    source_map: &SourceMap,
-    diagram: &DocumentDiagram,
-    candidates: Vec<crate::diagnostic_projection::DiagnosticCandidate>,
-) -> Vec<crate::diagnostic_projection::DiagnosticCandidate> {
-    let cancellation = crate::AnalysisCancellationToken::new();
-    normalize_document_diagnostic_candidates_cancellable(
-        source_map,
-        diagram,
-        candidates,
-        &cancellation,
-    )
-    .expect("a private analysis cancellation token cannot be cancelled")
+    Ok(match mode {
+        CaptureMode::DiagnosticsOnly => CapturedSource::Diagnostics(diagnostic_candidates),
+        CaptureMode::RichFacts => CapturedSource::Generation(AnalysisGeneration::new(
+            document.source_map().clone(),
+            analyzed_diagrams,
+            &operation_analyzer,
+        )),
+    })
 }
 
 pub(crate) fn normalize_document_diagnostic_candidates_cancellable(
@@ -722,12 +660,16 @@ pub(crate) fn normalize_document_diagnostic_candidates_cancellable(
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        let candidate = candidate.try_map_diagnostic(|diagnostic| {
-            remap_diagnostic_spans_cancellable(
+        let candidate = candidate.try_map_locations(|span, related, fixes| {
+            remap_diagnostic_locations_cancellable(
                 source_map,
                 diagram,
                 fence_span,
-                diagnostic,
+                DiagnosticLocationsMut {
+                    span,
+                    related,
+                    fixes,
+                },
                 &mut remapped_fix_edits,
                 cancellation,
             )
@@ -1229,11 +1171,10 @@ mod tests {
         let diagram = &document.diagrams()[0];
         let candidates = (0..512)
             .map(|index| {
-                crate::diagnostic_projection::DiagnosticCandidate::new(AnalysisDiagnostic::error(
-                    crate::rules::DIAGRAM_PARSE_RULE_ID,
-                    DiagnosticCategory::Parse,
+                crate::diagnostic_projection::DiagnosticCandidate::new(
+                    crate::rules::DIAGRAM_PARSE_RULE,
                     format!("diagnostic {index}"),
-                ))
+                )
             })
             .collect();
         let cancellation = crate::AnalysisCancellationToken::new();
@@ -1279,13 +1220,10 @@ mod tests {
         let cancellation = crate::AnalysisCancellationToken::new();
         cancellation.cancel_after_checkpoints(64);
 
-        let outcome = DocumentSource::new_borrowed_bounded_cancellable(
-            &source,
-            descriptor,
-            Some(1),
-            &cancellation,
-        )
-        .expect("the borrowed builder must stop at the excess opener");
+        let input = CaptureText::Borrowed(&source);
+        let outcome =
+            DocumentSource::new_bounded_cancellable(&input, descriptor, Some(1), &cancellation)
+                .expect("the borrowed builder must stop at the excess opener");
         let exceeded = match outcome {
             DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded) => exceeded,
             DocumentSourceBuildOutcome::Ready(_) => panic!("the second opener must be rejected"),

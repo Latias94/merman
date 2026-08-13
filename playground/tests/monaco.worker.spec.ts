@@ -52,6 +52,20 @@ const tokenEquivalenceEvidence = JSON.parse(
   ),
 ) as TokenEquivalenceEvidence;
 const familySemanticFixtures = tokenEquivalenceEvidence.family_cases;
+const editorCompletionTriggerCharacters = [
+  " ",
+  "\n",
+  "-",
+  ">",
+  "%",
+  "[",
+  "(",
+  "{",
+  "/",
+  "\\",
+  "@",
+  ":",
+] as const;
 
 test("Monaco and the Rust editor session start only local production workers", async ({
   page,
@@ -150,6 +164,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
         readonly message?: string;
         readonly transportApiVersion?: number;
         readonly editorSchema?: number;
+        readonly completionTriggerCharacters?: string[];
         readonly legendDigest?: string;
         readonly legend?: {
           readonly tokenTypes: string[];
@@ -462,6 +477,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       }
 
       return {
+        completionTriggerCharacters: ready.completionTriggerCharacters,
         legend: ready.legend,
         summaries,
         emptyDiagnostic,
@@ -481,6 +497,9 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
     },
   );
 
+  expect(result.completionTriggerCharacters).toEqual(
+    editorCompletionTriggerCharacters,
+  );
   expect(result.legend).toEqual({
     tokenTypes: [...SEMANTIC_TOKEN_TYPE_LSP_NAMES],
     tokenModifiers: [...SEMANTIC_TOKEN_MODIFIER_LSP_NAMES],

@@ -136,7 +136,7 @@ impl ParseDiagnostic {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    ParseCancelled(#[from] crate::ParseCancelled),
+    OperationCancelled(#[from] crate::OperationCancelled),
 
     #[error(transparent)]
     ThemeColor(#[from] crate::theme_color::ColorError),

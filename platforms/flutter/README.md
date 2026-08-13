@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Parse, analyze, lay out, and render Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin is a Dart-friendly facade over Merman's native ABI 3 table and ships size-oriented native libraries for its supported Flutter targets.
+Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
 > `Merman.open()` accepts only the exact native package version bundled with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
@@ -26,12 +26,12 @@ Run `flutter pub get` after adding the dependency.
 
 ## Requirements
 
-- Dart 3.4 or newer and Flutter 3.10 or newer
-- Android API 23 or newer with Java 17
+- Dart 3.10 or newer; Flutter apps require Flutter 3.38 or newer
+- Android API 24 or newer
 - iOS 13 or newer
 - macOS 11 or newer
 
-The public Dart API can load a host-owned current-contract native library with `Merman.openPath(...)`, but this package itself depends on the Flutter SDK and is not distributed as a standalone Dart package. `mermanPackageVersion` is the exact version expected by `Merman.open()`.
+This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the packaged native library for Flutter and Dart consumers. The public API can instead load a host-owned current-contract library with `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
 
 ## Render A Diagram
 
@@ -183,15 +183,15 @@ Set the usual reusable pipeline in `MermanEngine(optionsJson: ...)`. Override it
 
 | Platform | Packaged native artifact |
 | --- | --- |
-| Android | `arm64-v8a` and `x86_64` shared libraries |
-| iOS | Dynamic `MermanFFI.xcframework` |
-| macOS | One dynamic `MermanFFI.xcframework` for CocoaPods and SwiftPM |
-| Linux | x86_64 or aarch64 shared library, depending on the release artifact |
+| Android | `armeabi-v7a`, `arm64-v8a`, and `x86_64` shared libraries |
+| iOS | arm64 device plus arm64/x86_64 simulator dylibs |
+| macOS | arm64 and x86_64 dylibs |
+| Linux | arm64 and x86_64 shared libraries |
 | Windows | x86_64 DLL |
 
 Flutter Web is not supported because this package uses `dart:ffi`; use [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) in browsers. Verify the release archive before deployment because native target availability is release-specific.
 
-Android package slices use the `flutter-android-native` C ABI recipe from `merman-ffi`. The Kotlin AAR's JNI transport lives in the separate internal `merman-android-jni` crate.
+The build hook owns platform selection and Flutter owns final app bundling, framework assembly, install-name rewriting, and signing. There are no Flutter plugin registrars, CocoaPods podspecs, Swift packages, Gradle plugin modules, or CMake plugin wrappers. Android package slices use the `flutter-android-native` C ABI recipe from `merman-ffi`; the Kotlin AAR's JNI transport remains separate in `merman-android-jni`.
 
 ## Local Development
 
@@ -201,16 +201,17 @@ matching header/table contract. Application code uses `merman.dart` and never ne
 or record definitions.
 
 ```sh
-cargo build -p merman-ffi --profile native-distribution --no-default-features --features svg,analysis,ascii,layout-cytoscape,layout-elk
+python3 platforms/flutter/build-native.py host
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
 flutter analyze
 dart run tool/abi3_contract_test.dart
-dart run example/smoke.dart ../../target/native-distribution/libmerman_ffi.dylib
+dart run example/main.dart
+dart run example/smoke.dart
 ```
 
-Use `.so` on Linux and `.dll` on Windows. CI regenerates the binding, rejects a stale checked-in result, runs analyzer and deterministic malformed-error fuzz coverage, then exercises the facade against a real native library. Native artifact assembly and platform packaging are documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
+CI regenerates the binding, rejects a stale checked-in result, runs analyzer and the ABI contract, then exercises the default Native Assets entry point against a real host library. `build-native.py all-desktop` assembles the complete Apple, Linux, and Windows release matrix on macOS; Android uses `platforms/android/build-android.py --artifact-profile flutter-android-native`. Native packaging is documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
 
 ## Documentation And Releases
 
@@ -220,7 +221,7 @@ Use `.so` on Linux and `.dll` on Windows. CI regenerates the binding, rejects a 
 - [Issue tracker](https://github.com/Latias94/merman/issues)
 - [Source repository](https://github.com/Latias94/merman)
 
-pub.dev is the supported registry channel for this package. CocoaPods and SwiftPM files inside the plugin are Flutter integration details, not separately published Dart packages.
+pub.dev is the supported registry channel. Native Assets is the only package-owned Flutter integration path.
 
 ## License And Notices
 

@@ -1,6 +1,7 @@
-use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
-};
+mod support;
+
+use merman_editor_core::{DocumentKind, PlannedTokenKind, plan_semantic_tokens_for_snapshot};
+use support::SnapshotHarness;
 
 #[test]
 fn requirement_parser_tokens_plan_across_crlf_unicode_and_recovery() {
@@ -30,9 +31,9 @@ fn requirement_parser_tokens_plan_across_crlf_unicode_and_recovery() {
     ];
 
     for (index, source) in cases.into_iter().enumerate() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/requirement-{index}.mmd"),
                 1,
                 source.to_string(),

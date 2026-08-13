@@ -8,9 +8,11 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- Advanced the generated UniFFI binding to API 4 after replacing the alpha.5 diagram-family capability fields `logical_family_kind` and `render_model_kind` with the core-owned `family_id`. Upgrade the Python package and matching native library together.
+- Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
+- Advanced the direct UniFFI binding API to `4` after adding required lint-rule `tags`, replacing the alpha.5 diagram-family capability fields `logical_family_kind` and `render_model_kind` with the core-owned `family_id`, and replacing `binding_api_version()` with `transport_api_version()`. The old native method symbol is removed so an API 3 generated package rejects the new library before decoding changed records; regenerate and deploy the Python package and native library together.
 - Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `theme_catalog_json()` for open-ended compiled-theme discovery.
+- Analysis facts now use schema `2` and no longer include the Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact; diagnostics remain on schema `1`.
 
 ### Changed
 

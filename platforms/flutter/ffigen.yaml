@@ -28,3 +28,5 @@ macros:
   include:
     - MERMAN_NATIVE_.*
     - MERMAN_TEXT_MEASUREMENT_.*
+ffi-native:
+  asset-id: 'package:merman/src/generated/native_abi.dart'

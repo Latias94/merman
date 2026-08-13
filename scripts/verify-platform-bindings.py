@@ -22,9 +22,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from artifact_profile_recipe import (
     CargoArtifactRecipe,
-    cargo_build_args as project_cargo_build_args,
     load_artifact_profile,
-    rustc_host_target,
 )
 from native_symbol_contract import (
     ANDROID_JNI_SYMBOL_CONTRACT,
@@ -33,7 +31,6 @@ from native_symbol_contract import (
 )
 ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
 FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
-FLUTTER_DESKTOP_NATIVE_RECIPE = load_artifact_profile("flutter-desktop-native")
 FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
@@ -121,7 +118,12 @@ def flutter_format_paths(root: Path = FLUTTER_ROOT) -> list[str]:
     generated_root = root / "lib" / "src" / "generated"
     paths = [
         path.relative_to(root).as_posix()
-        for source_root in (root / "lib", root / "example", root / "tool")
+        for source_root in (
+            root / "lib",
+            root / "example",
+            root / "tool",
+            root / "hook",
+        )
         for path in sorted(source_root.rglob("*.dart"))
         if not path.is_relative_to(generated_root)
     ]
@@ -164,22 +166,6 @@ def step(name: str) -> None:
 def run(args: list[str], *, cwd: Path = REPO_ROOT) -> None:
     print("+", " ".join(args))
     subprocess.run(args, cwd=cwd, check=True)
-
-
-def run_capture(args: list[str], *, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
-    print("+", " ".join(args))
-    completed = subprocess.run(
-        args,
-        cwd=cwd,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if completed.stderr:
-        print(completed.stderr, end="", file=sys.stderr)
-    completed.check_returncode()
-    return completed
 
 
 def verify_tracked_generated_file(path: Path) -> None:
@@ -702,64 +688,8 @@ def assert_android_maven_publication(
     return version_dir
 
 
-def cargo_dynamic_library(cargo_stdout: str, recipe: CargoArtifactRecipe) -> Path:
-    libraries: set[Path] = set()
-    for raw in cargo_stdout.splitlines():
-        try:
-            message = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(message, dict) or message.get("reason") != "compiler-artifact":
-            continue
-        target = message.get("target")
-        if not isinstance(target, dict) or target.get("name") != recipe.target_name:
-            continue
-        crate_types = target.get("crate_types")
-        if not isinstance(crate_types, list) or "cdylib" not in crate_types:
-            continue
-        filenames = message.get("filenames")
-        if not isinstance(filenames, list):
-            continue
-        libraries.update(
-            Path(filename)
-            for filename in filenames
-            if isinstance(filename, str)
-            and Path(filename).suffix.lower() in {".dll", ".dylib", ".so"}
-        )
-    if len(libraries) != 1:
-        rendered = ", ".join(sorted(str(path) for path in libraries)) or "none"
-        raise RuntimeError(
-            f"Expected exactly one Cargo cdylib artifact for {recipe.target_name}, found: {rendered}"
-        )
-    library = next(iter(libraries))
-    if not library.is_file():
-        raise RuntimeError(f"Cargo reported a missing cdylib artifact: {library}")
-    return library
-
-
-def run_dart_ffi_native_smoke(
-    dart: str,
-    recipe: CargoArtifactRecipe = FLUTTER_DESKTOP_NATIVE_RECIPE,
-    *,
-    target: str | None = None,
-) -> None:
-    selected_target = rustc_host_target() if target is None else target
-    build_args = project_cargo_build_args(recipe, locked=True, target=selected_target)
-    build_args.append("--message-format=json-render-diagnostics")
-    build = run_capture(build_args)
-    library = cargo_dynamic_library(
-        build.stdout,
-        recipe,
-    )
-    run(
-        [
-            dart,
-            "run",
-            "example/smoke.dart",
-            str(library),
-        ],
-        cwd=FLUTTER_ROOT,
-    )
+def build_flutter_host_native_asset() -> None:
+    run([sys.executable, str(FLUTTER_ROOT / "build-native.py"), "host"])
 
 
 def main() -> int:
@@ -803,6 +733,7 @@ def main() -> int:
         flutter = require_command("flutter")
         dart = require_command("dart")
         run([flutter, "pub", "get"], cwd=FLUTTER_ROOT)
+        build_flutter_host_native_asset()
         run([dart, "run", "ffigen", "--config", "ffigen.yaml"], cwd=FLUTTER_ROOT)
         verify_tracked_generated_file(FLUTTER_GENERATED_ABI)
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
@@ -812,8 +743,8 @@ def main() -> int:
         )
         run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)
 
-        step("Dart FFI native smoke")
-        run_dart_ffi_native_smoke(dart)
+        step("Flutter Native Assets smoke")
+        run([dart, "run", "example/main.dart"], cwd=FLUTTER_ROOT)
 
         print()
         print("Platform binding verification completed.")
