@@ -1,11 +1,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use merman::svg::HeadlessRenderer;
-use merman_fuzz::{MAX_RENDER_INPUT_BYTES, assert_resvg_safe_svg, bounded_renderer, bounded_utf8};
+use merman_fuzz::{
+    BoundedRenderer, MAX_RENDER_INPUT_BYTES, assert_resvg_safe_svg, bounded_renderer, bounded_utf8,
+};
 
 thread_local! {
-    static RENDERER: HeadlessRenderer = bounded_renderer();
+    static RENDERER: BoundedRenderer = bounded_renderer();
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -14,8 +15,8 @@ fuzz_target!(|data: &[u8]| {
     };
 
     RENDERER.with(|renderer| {
-        if let Ok(Some(svg)) = renderer.render_resvg_compatible_svg_sync(source) {
-            assert_resvg_safe_svg(svg.as_ref());
+        if let Ok(Some(svg)) = renderer.render_resvg_safe_svg(source) {
+            assert_resvg_safe_svg(&svg);
         }
     });
 });
