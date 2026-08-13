@@ -45,8 +45,8 @@ The package boundary is deliberately narrower than the application boundary:
 - `merman-wasm` is wasm-bindgen browser transport. `merman-typst-plugin` remains the separate
   wasm-minimal-protocol transport.
 
-The Web transport API is version `4`. Editor diagnostics and analysis/facts payloads remain schema
-`1`; those contracts remain independently versioned.
+The Web transport API is version `4`. Editor diagnostics and `AnalysisPayload` remain schema `1`;
+`AnalysisFactsPayload` uses schema `2`. These contracts remain independently versioned.
 
 Transport-dispatched one-shot operation options may include a top-level `timeout_ms`. The WASM
 transport converts it to a relative monotonic `OperationControl` deadline and returns structured

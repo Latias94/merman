@@ -704,6 +704,7 @@ fn push_xychart_plot_statement_facts(
     facts: &mut EditorSemanticFacts,
     plot: &ParsedPlotStatement,
     detail: &'static str,
+    data_label_detail: &'static str,
 ) {
     if let Some(title) = plot.title.as_ref() {
         push_xychart_payload_fact(
@@ -726,11 +727,7 @@ fn push_xychart_plot_statement_facts(
             facts,
             &point.label,
             span,
-            if detail == "xychart line" {
-                "xychart line data label"
-            } else {
-                "xychart bar data label"
-            },
+            data_label_detail,
             EditorSemanticKind::String,
         );
     }
@@ -935,7 +932,12 @@ fn construct_xychart_semantic_source_controlled(
                 apply_y_axis_statement(axis, &mut state, meta);
             }
             ParsedXyChartStatement::Line(plot) => {
-                push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart line");
+                push_xychart_plot_statement_facts(
+                    &mut editor_facts,
+                    &plot,
+                    "xychart line",
+                    "xychart line data label",
+                );
                 state.add_line_data(
                     plot.title
                         .as_ref()
@@ -945,7 +947,12 @@ fn construct_xychart_semantic_source_controlled(
                 );
             }
             ParsedXyChartStatement::Bar(plot) => {
-                push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart bar");
+                push_xychart_plot_statement_facts(
+                    &mut editor_facts,
+                    &plot,
+                    "xychart bar",
+                    "xychart bar data label",
+                );
                 state.add_bar_data(
                     plot.title
                         .as_ref()

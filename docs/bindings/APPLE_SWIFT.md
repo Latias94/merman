@@ -47,14 +47,14 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersion() == 4 else {
+guard merman.transportApiVersion() == 4 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
 let options = try resourceOptionsJson(profile: .constrained, overrides: [])
 let svg = try merman.renderSvg(source: source, optionsJson: options)
 
-let request = MermanOperationRequest(
+let request = MermanOperationRequestV4(
     operationId: "ascii",
     source: source,
     uri: nil,
@@ -85,7 +85,7 @@ must stop stale work from another thread:
 
 ```swift
 let control = MermanOperationControl(timeoutMs: 250)
-let request = MermanOperationRequest(
+let request = MermanOperationRequestV4(
     operationId: "svg",
     source: source,
     uri: nil,

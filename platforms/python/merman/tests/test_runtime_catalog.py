@@ -139,7 +139,7 @@ class FakeEngine:
         self.catalog_calls += 1
         return json.dumps(self.catalog)
 
-    def binding_api_version(self):
+    def transport_api_version(self):
         return 4
 
     def package_version(self):

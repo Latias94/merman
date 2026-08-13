@@ -8,7 +8,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
-use super::{render_semantic_layout, render_semantic_svg, render_source_svg, svg_request};
+use super::{render_semantic_svg, svg_request};
 
 const XML_OUTPUT_LOCK_FILE: &str = ".compare-svg-xml.lock";
 
@@ -566,54 +566,14 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             } else {
                 sanitize_svg_id(stem)
             };
-            let rendered = if diagram == "gantt" {
-                let layout = match render_semantic_layout(
-                    semantic,
-                    svg_request(environment.clone(), layout_opts.clone(), None),
-                ) {
-                    Ok(layout) => layout,
-                    Err(err) => {
-                        missing.push(format!("{diagram}/{stem}: layout failed: {err}"));
-                        continue;
-                    }
-                };
-                let baseline_local_offset_minutes = super::gantt_baseline_local_offset_minutes();
-                let calibrated = super::gantt_calibrated_runtime_policy(
-                    &layout,
-                    &upstream_svg,
-                    baseline_local_offset_minutes,
-                )
-                .map_err(|err| {
-                    XtaskError::SvgCompareFailed(format!(
-                        "invalid calibrated Gantt baseline time for {stem}: {err}"
-                    ))
-                })?;
-                let render_renderer = if let Some(runtime_policy) = calibrated {
-                    renderer.clone().with_runtime_policy(runtime_policy)
-                } else {
-                    renderer.clone()
-                };
-                match render_source_svg(
-                    &render_renderer,
-                    &text,
-                    svg_request(environment.clone(), layout_opts.clone(), Some(diagram_id)),
-                ) {
-                    Ok(rendered) => rendered,
-                    Err(err) => {
-                        missing.push(format!("{diagram}/{stem}: render failed: {err}"));
-                        continue;
-                    }
-                }
-            } else {
-                match render_semantic_svg(
-                    semantic,
-                    svg_request(environment.clone(), layout_opts.clone(), Some(diagram_id)),
-                ) {
-                    Ok(rendered) => rendered,
-                    Err(err) => {
-                        missing.push(format!("{diagram}/{stem}: render failed: {err}"));
-                        continue;
-                    }
+            let rendered = match render_semantic_svg(
+                semantic,
+                svg_request(environment.clone(), layout_opts.clone(), Some(diagram_id)),
+            ) {
+                Ok(rendered) => rendered,
+                Err(err) => {
+                    missing.push(format!("{diagram}/{stem}: render failed: {err}"));
+                    continue;
                 }
             };
             observed_operations

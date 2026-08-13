@@ -1,5 +1,5 @@
-use crate::{OperationControl, OperationControlResult};
-use granit_parser::{Event, Parser, ScalarStyle, Tag};
+use crate::{OperationControl, OperationControlResult, preprocess::SourceConfigPath};
+use granit_parser::{Event, Parser, ScalarStyle, Span, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
@@ -33,6 +33,37 @@ pub(crate) fn parse_yaml_value_controlled(
     )
 }
 
+#[derive(Debug)]
+pub(crate) struct YamlConfigKeyEvidence {
+    pub(crate) path: SourceConfigPath,
+    pub(crate) span: Option<std::ops::Range<usize>>,
+    pub(crate) rewrite_safe: bool,
+}
+
+pub(crate) struct YamlValueCapture {
+    pub(crate) value: Result<Value, String>,
+    pub(crate) keys: Vec<YamlConfigKeyEvidence>,
+    pub(crate) rewrite_safe: bool,
+}
+
+pub(crate) fn parse_yaml_value_capture_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
+    let materialization_budget = input
+        .len()
+        .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
+        .max(YAML_MATERIALIZATION_MIN_BYTES);
+    parse_yaml_value_with_limits_capture_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        materialization_budget,
+        control,
+    )
+}
+
 pub(crate) fn parse_yaml_value_with_limits_controlled(
     input: &str,
     max_input_bytes: usize,
@@ -40,29 +71,117 @@ pub(crate) fn parse_yaml_value_with_limits_controlled(
     materialization_budget: usize,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value, String>> {
+    Ok(parse_yaml_value_with_limits_capture_mode_controlled(
+        input,
+        max_input_bytes,
+        max_nesting_depth,
+        materialization_budget,
+        false,
+        control,
+    )?
+    .value)
+}
+
+fn parse_yaml_value_with_limits_capture_controlled(
+    input: &str,
+    max_input_bytes: usize,
+    max_nesting_depth: usize,
+    materialization_budget: usize,
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
+    parse_yaml_value_with_limits_capture_mode_controlled(
+        input,
+        max_input_bytes,
+        max_nesting_depth,
+        materialization_budget,
+        true,
+        control,
+    )
+}
+
+fn parse_yaml_value_with_limits_capture_mode_controlled(
+    input: &str,
+    max_input_bytes: usize,
+    max_nesting_depth: usize,
+    materialization_budget: usize,
+    capture_keys: bool,
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
     control.checkpoint()?;
     if input.len() > max_input_bytes {
-        return Ok(Err(format!(
-            "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
-        )));
+        return Ok(YamlValueCapture {
+            value: Err(format!(
+                "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
+            )),
+            keys: Vec::new(),
+            rewrite_safe: false,
+        });
     }
-    let mut builder = YamlValueBuilder::new(max_nesting_depth, materialization_budget);
+    let mut builder =
+        YamlValueBuilder::new(max_nesting_depth, materialization_budget, capture_keys);
 
     for (index, event) in Parser::new_from_str(input).enumerate() {
         if index % 64 == 0 {
             control.checkpoint()?;
         }
-        let (event, _) = match event {
+        let (event, span) = match event {
             Ok(event) => event,
-            Err(error) => return Ok(Err(error.to_string())),
+            Err(error) => {
+                let (keys, _) = builder.take_capture();
+                return Ok(YamlValueCapture {
+                    value: Err(error.to_string()),
+                    keys,
+                    rewrite_safe: false,
+                });
+            }
         };
-        if let Err(error) = builder.on_event(event) {
-            return Ok(Err(error));
+        if let Err(error) = builder.on_event(input, event, span) {
+            let (keys, _) = builder.take_capture();
+            return Ok(YamlValueCapture {
+                value: Err(error),
+                keys,
+                rewrite_safe: false,
+            });
         }
     }
 
     control.checkpoint()?;
-    builder.finish_controlled(control)
+    let (keys, rewrite_safe) = builder.take_capture();
+    let value = builder.finish_controlled(control)?;
+    Ok(YamlValueCapture {
+        value,
+        keys,
+        rewrite_safe,
+    })
+}
+
+fn yaml_key_span(input: &str, span: Span, style: ScalarStyle) -> Option<std::ops::Range<usize>> {
+    let mut range = span.byte_range()?;
+    if matches!(style, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted) {
+        let source = input.get(range.clone())?;
+        let quote = match style {
+            ScalarStyle::SingleQuoted => '\'',
+            ScalarStyle::DoubleQuoted => '"',
+            ScalarStyle::Plain | ScalarStyle::Literal | ScalarStyle::Folded => unreachable!(),
+        };
+        if !source.starts_with(quote) || !source.ends_with(quote) || source.len() < 2 {
+            return None;
+        }
+        range.start = range.start.saturating_add(quote.len_utf8());
+        range.end = range.end.saturating_sub(quote.len_utf8());
+    }
+    input.get(range.clone()).map(|_| range)
+}
+
+fn yaml_key_span_is_rewrite_safe(
+    input: &str,
+    span: Span,
+    style: ScalarStyle,
+    decoded: &str,
+) -> bool {
+    yaml_key_span(input, span, style)
+        .and_then(|range| input.get(range))
+        .is_some_and(|source| source == decoded)
 }
 
 struct YamlValueBuilder {
@@ -72,10 +191,13 @@ struct YamlValueBuilder {
     anchors: HashMap<usize, NodeId>,
     max_nesting_depth: usize,
     materialization_budget: usize,
+    capture_keys: bool,
+    key_evidence: Vec<YamlConfigKeyEvidence>,
+    rewrite_safe: bool,
 }
 
 impl YamlValueBuilder {
-    fn new(max_nesting_depth: usize, materialization_budget: usize) -> Self {
+    fn new(max_nesting_depth: usize, materialization_budget: usize, capture_keys: bool) -> Self {
         Self {
             stack: Vec::new(),
             arena: Vec::new(),
@@ -83,41 +205,67 @@ impl YamlValueBuilder {
             anchors: HashMap::new(),
             max_nesting_depth,
             materialization_budget,
+            capture_keys,
+            key_evidence: Vec::new(),
+            rewrite_safe: true,
         }
     }
 
-    fn on_event(&mut self, event: Event<'_>) -> Result<(), String> {
+    fn on_event(&mut self, input: &str, event: Event<'_>, span: Span) -> Result<(), String> {
         match event {
             Event::StreamStart
             | Event::StreamEnd
             | Event::DocumentStart(..)
-            | Event::DocumentEnd
-            | Event::Comment(_, _) => Ok(()),
+            | Event::DocumentEnd => Ok(()),
+            Event::Comment(_, _) => {
+                self.rewrite_safe = false;
+                Ok(())
+            }
             Event::Alias(anchor_id) => {
+                self.rewrite_safe = false;
                 let role = self.reserve_role()?;
                 let node = self
                     .anchors
                     .get(&anchor_id)
                     .copied()
                     .ok_or_else(|| "unsupported forward YAML alias".to_string())?;
-                self.complete_node(node, role, 0)
+                self.complete_node(node, role, 0, false)
             }
             Event::Scalar(raw, style, anchor_id, tag) => {
+                if anchor_id != 0
+                    || tag.is_some()
+                    || matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
+                {
+                    self.rewrite_safe = false;
+                }
                 let role = self.reserve_role()?;
                 let value = scalar_to_value(raw.as_ref(), style, tag.as_deref())?;
-                let node = self.push_node(YamlNode::Scalar(value));
-                self.complete_node(node, role, anchor_id)
+                let key_source = self.capture_keys.then(|| YamlKeySource {
+                    span: yaml_key_span(input, span, style),
+                    rewrite_safe: yaml_key_span_is_rewrite_safe(input, span, style, raw.as_ref()),
+                });
+                let node = self.push_node(YamlNode::Scalar { value, key_source });
+                self.complete_node(node, role, anchor_id, true)
             }
-            Event::SequenceStart(_, anchor_id, _) => {
+            Event::SequenceStart(_, anchor_id, tag) => {
+                if anchor_id != 0 || tag.is_some() {
+                    self.rewrite_safe = false;
+                }
                 let role = self.reserve_role()?;
+                let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Sequence(Vec::new()),
                     role,
                     anchor_id,
+                    path,
                 })
             }
-            Event::MappingStart(_, anchor_id, _) => {
+            Event::MappingStart(_, anchor_id, tag) => {
+                if anchor_id != 0 || tag.is_some() {
+                    self.rewrite_safe = false;
+                }
                 let role = self.reserve_role()?;
+                let path = self.path_for_role(&role);
                 self.push_frame(Frame {
                     container: Container::Mapping {
                         entries: Vec::new(),
@@ -126,6 +274,7 @@ impl YamlValueBuilder {
                     },
                     role,
                     anchor_id,
+                    path,
                 })
             }
             end_event @ (Event::SequenceEnd | Event::MappingEnd) => {
@@ -150,9 +299,27 @@ impl YamlValueBuilder {
                     }
                     _ => unreachable!(),
                 };
-                self.complete_node(node, frame.role, frame.anchor_id)
+                self.complete_node(node, frame.role, frame.anchor_id, true)
             }
             _ => Err("unsupported YAML parser event".to_string()),
+        }
+    }
+
+    fn take_capture(&mut self) -> (Vec<YamlConfigKeyEvidence>, bool) {
+        (std::mem::take(&mut self.key_evidence), self.rewrite_safe)
+    }
+
+    fn path_for_role(&self, role: &Role) -> Option<SourceConfigPath> {
+        if !self.capture_keys {
+            return None;
+        }
+        match role {
+            Role::MappingValue(MappingKey::String { path, .. }) => path.clone(),
+            Role::Root => Some(SourceConfigPath::root()),
+            // Collection-valued mapping keys are discarded by materialization. Their descendants
+            // must not publish paths as if they belonged to the surrounding object.
+            Role::MappingKey => None,
+            Role::SequenceItem | Role::MappingValue(MappingKey::Ignored) => None,
         }
     }
 
@@ -190,7 +357,13 @@ impl YamlValueBuilder {
         }
     }
 
-    fn complete_node(&mut self, node: NodeId, role: Role, anchor_id: usize) -> Result<(), String> {
+    fn complete_node(
+        &mut self,
+        node: NodeId,
+        role: Role,
+        anchor_id: usize,
+        source_addressable: bool,
+    ) -> Result<(), String> {
         if anchor_id != 0 {
             self.anchors.insert(anchor_id, node);
         }
@@ -212,7 +385,37 @@ impl YamlValueBuilder {
                 Ok(())
             }
             Role::MappingKey => {
-                let key = node_to_mapping_key(&self.arena, node);
+                let mut key = node_to_mapping_key(&self.arena, node);
+                if self.capture_keys {
+                    let parent_path = self.stack.last().and_then(|frame| frame.path.clone());
+                    match (&mut key, source_addressable, parent_path) {
+                        (
+                            MappingKey::String {
+                                name,
+                                span,
+                                rewrite_safe,
+                                path,
+                            },
+                            true,
+                            Some(parent_path),
+                        ) => {
+                            let key_path = parent_path.child(name.clone());
+                            self.key_evidence.push(YamlConfigKeyEvidence {
+                                path: key_path.clone(),
+                                span: span.clone(),
+                                rewrite_safe: *rewrite_safe,
+                            });
+                            *path = Some(key_path);
+                            if name.as_str() == "<<" || !*rewrite_safe {
+                                self.rewrite_safe = false;
+                            }
+                        }
+                        (MappingKey::Ignored, true, _) | (_, false, _) => {
+                            self.rewrite_safe = false;
+                        }
+                        (MappingKey::String { .. }, true, None) => {}
+                    }
+                }
                 let Some(Frame {
                     container: Container::Mapping { pending_key, .. },
                     ..
@@ -232,11 +435,11 @@ impl YamlValueBuilder {
                     return Err("YAML mapping value had no parent mapping".to_string());
                 };
                 match key {
-                    MappingKey::String(key) => {
-                        if !keys.insert(key.clone()) {
+                    MappingKey::String { name, .. } => {
+                        if !keys.insert(name.clone()) {
                             return Err("duplicated mapping key".to_string());
                         }
-                        entries.push((key, node));
+                        entries.push((name, node));
                     }
                     MappingKey::Ignored => {}
                 }
@@ -270,7 +473,10 @@ impl YamlValueBuilder {
 struct NodeId(usize);
 
 enum YamlNode {
-    Scalar(Value),
+    Scalar {
+        value: Value,
+        key_source: Option<YamlKeySource>,
+    },
     Sequence(Vec<NodeId>),
     Mapping(Vec<(String, NodeId)>),
 }
@@ -279,6 +485,12 @@ struct Frame {
     container: Container,
     role: Role,
     anchor_id: usize,
+    path: Option<SourceConfigPath>,
+}
+
+struct YamlKeySource {
+    span: Option<std::ops::Range<usize>>,
+    rewrite_safe: bool,
 }
 
 enum Container {
@@ -298,18 +510,66 @@ enum Role {
 }
 
 enum MappingKey {
-    String(String),
+    String {
+        name: String,
+        span: Option<std::ops::Range<usize>>,
+        rewrite_safe: bool,
+        path: Option<SourceConfigPath>,
+    },
     Ignored,
 }
 
 fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
     match &arena[node.0] {
-        YamlNode::Scalar(Value::String(key)) => MappingKey::String(key.clone()),
-        YamlNode::Scalar(Value::Number(key)) => MappingKey::String(key.to_string()),
-        YamlNode::Scalar(Value::Bool(true)) => MappingKey::String("true".to_string()),
-        YamlNode::Scalar(Value::Bool(false)) => MappingKey::String("false".to_string()),
-        YamlNode::Scalar(Value::Null) => MappingKey::String("null".to_string()),
-        YamlNode::Scalar(Value::Array(_) | Value::Object(_))
+        YamlNode::Scalar {
+            value: Value::String(key),
+            key_source,
+        } => MappingKey::String {
+            name: key.clone(),
+            span: key_source.as_ref().and_then(|source| source.span.clone()),
+            rewrite_safe: key_source.as_ref().is_none_or(|source| source.rewrite_safe),
+            path: None,
+        },
+        YamlNode::Scalar {
+            value: Value::Number(key),
+            key_source,
+        } => MappingKey::String {
+            name: key.to_string(),
+            span: key_source.as_ref().and_then(|source| source.span.clone()),
+            rewrite_safe: false,
+            path: None,
+        },
+        YamlNode::Scalar {
+            value: Value::Bool(true),
+            key_source,
+        } => MappingKey::String {
+            name: "true".to_string(),
+            span: key_source.as_ref().and_then(|source| source.span.clone()),
+            rewrite_safe: false,
+            path: None,
+        },
+        YamlNode::Scalar {
+            value: Value::Bool(false),
+            key_source,
+        } => MappingKey::String {
+            name: "false".to_string(),
+            span: key_source.as_ref().and_then(|source| source.span.clone()),
+            rewrite_safe: false,
+            path: None,
+        },
+        YamlNode::Scalar {
+            value: Value::Null,
+            key_source,
+        } => MappingKey::String {
+            name: "null".to_string(),
+            span: key_source.as_ref().and_then(|source| source.span.clone()),
+            rewrite_safe: false,
+            path: None,
+        },
+        YamlNode::Scalar {
+            value: Value::Array(_) | Value::Object(_),
+            ..
+        }
         | YamlNode::Sequence(_)
         | YamlNode::Mapping(_) => MappingKey::Ignored,
     }
@@ -365,7 +625,7 @@ fn materialize_yaml_controlled(
                 }
 
                 match yaml_node {
-                    YamlNode::Scalar(value) => {
+                    YamlNode::Scalar { value, .. } => {
                         values.push(crate::config::clone_value_nonrecursive(value));
                     }
                     YamlNode::Sequence(items) => {
@@ -453,9 +713,15 @@ fn materialize_yaml_controlled(
 
 fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
     match node {
-        YamlNode::Scalar(Value::String(value)) => size_of::<Value>().saturating_add(value.len()),
-        YamlNode::Scalar(Value::Null | Value::Bool(_) | Value::Number(_))
-        | YamlNode::Scalar(Value::Array(_) | Value::Object(_)) => size_of::<Value>(),
+        YamlNode::Scalar {
+            value: Value::String(value),
+            ..
+        } => size_of::<Value>().saturating_add(value.len()),
+        YamlNode::Scalar {
+            value:
+                Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_),
+            ..
+        } => size_of::<Value>(),
         YamlNode::Sequence(items) => size_of::<Value>()
             .saturating_add(size_of::<Vec<Value>>())
             .saturating_add(items.len().saturating_mul(size_of::<Value>())),
@@ -679,6 +945,11 @@ mod tests {
     use crate::OperationCancelled;
     use serde_json::json;
 
+    fn capture_yaml(input: &str) -> YamlValueCapture {
+        parse_yaml_value_capture_controlled(input, 16, &OperationControl::new())
+            .expect("a private parse control cannot be cancelled")
+    }
+
     #[test]
     fn controlled_yaml_parse_stops_before_consuming_events() {
         let control = OperationControl::new();
@@ -749,6 +1020,89 @@ second: *base
 
         assert_eq!(value["first"], value["base"]);
         assert_eq!(value["second"], value["base"]);
+    }
+
+    #[test]
+    fn key_evidence_does_not_flatten_mapping_paths_through_sequences() {
+        let captured = capture_yaml(
+            r#"
+config:
+  - lazyLoadedDiagrams: true
+plain:
+  lazyLoadedDiagrams: false
+"#,
+        );
+        captured.value.expect("yaml parses");
+
+        assert!(
+            captured
+                .keys
+                .iter()
+                .any(|key| key.path.matches(&["plain", "lazyLoadedDiagrams"]))
+        );
+        assert!(!captured.keys.iter().any(|key| {
+            key.path.matches(&["config", "lazyLoadedDiagrams"])
+                || key.path.matches(&["lazyLoadedDiagrams"])
+        }));
+    }
+
+    #[test]
+    fn complex_mapping_keys_do_not_publish_descendant_config_paths() {
+        let captured = capture_yaml(
+            r#"
+config:
+  ? { flowchart: { htmlLabels: false } }
+  : ignored
+plain:
+  htmlLabels: true
+"#,
+        );
+        captured.value.expect("yaml parses");
+
+        assert!(
+            captured
+                .keys
+                .iter()
+                .any(|key| key.path.matches(&["plain", "htmlLabels"]))
+        );
+        assert!(!captured.keys.iter().any(|key| {
+            key.path.matches(&["config", "flowchart"])
+                || key.path.matches(&["config", "flowchart", "htmlLabels"])
+        }));
+        assert!(!captured.rewrite_safe);
+    }
+
+    #[test]
+    fn alias_keys_and_values_do_not_publish_anchor_provenance_at_the_use_site() {
+        let captured = capture_yaml(
+            r#"
+name: &key lazyLoadedDiagrams
+? *key
+: true
+defaults: &defaults
+  htmlLabels: false
+config: *defaults
+"#,
+        );
+        captured.value.expect("yaml aliases parse");
+
+        assert!(captured.keys.iter().any(|key| key.path.matches(&["name"])));
+        assert!(
+            captured
+                .keys
+                .iter()
+                .any(|key| key.path.matches(&["defaults", "htmlLabels"]))
+        );
+        assert!(
+            captured
+                .keys
+                .iter()
+                .any(|key| key.path.matches(&["config"]))
+        );
+        assert!(!captured.keys.iter().any(|key| {
+            key.path.matches(&["lazyLoadedDiagrams"]) || key.path.matches(&["config", "htmlLabels"])
+        }));
+        assert!(!captured.rewrite_safe);
     }
 
     #[test]

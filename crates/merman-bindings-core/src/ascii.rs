@@ -80,9 +80,10 @@ impl AsciiOperationConfig {
 
     pub(crate) fn materialize(self) -> CachedAsciiEngine {
         let resource_profile = self.resources.profile();
-        let mut request = merman::AsciiRequest::default();
-        request.options = self.render_options;
-        request.resources = self.ascii_resources;
+        let request = merman::AsciiRequest {
+            options: self.render_options,
+            resources: self.ascii_resources,
+        };
         let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
             engine = engine.with_site_config(site_config);

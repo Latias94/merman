@@ -16,25 +16,32 @@ The generated API exposes:
 - `MermanEngine` for reusable operations with immutable constructor options and services;
 - `MermanEngineServices`, `MermanIconPack`, and `MermanIconRegistry` for constructor-owned host
   services;
-- `MermanOperationRequest` and `MermanOperationResult` for generic descriptor-owned dispatch;
+- `MermanOperationRequestV4` and `MermanOperationResult` for generic descriptor-owned dispatch;
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
 - structured `MermanError::Binding { code, code_name, kind, capability_id, resource, cancellation, message }` failures, where resource and cancellation evidence remain separate optional records.
 
-`Merman::binding_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
+`Merman::transport_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
 
-Every operation is available through `execute(request)`, and `MermanOperationRequest.options_json`
+API `4` adds the required `tags` field to `MermanLintRuleCatalogEntry` and replaces the API `3`
+`binding_api_version()` probe with `transport_api_version()`. The native library no longer exports
+the API `3` method symbol, so an API `3` generated binding fails during symbol resolution or UniFFI
+initialization before it can decode the changed record layout. Regenerate the whole language
+projection and deploy it with the matching native library; changing only the library is not
+supported.
+
+Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
 `render_svg`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
 
-Set `MermanOperationRequest.control` when a host needs to cancel or deadline one synchronous
+Set `MermanOperationRequestV4.control` when a host needs to cancel or deadline one synchronous
 operation. Retain another reference and call `cancel()` from a different thread or callback. The
 request clones the shared control before execution and reports `MermanCancelledDetails` with the
 observed reason and phase; cancellation is not projected as a resource limit. Opaque host callbacks

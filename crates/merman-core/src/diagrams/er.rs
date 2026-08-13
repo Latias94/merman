@@ -1,27 +1,18 @@
+use crate::diagrams::scan::consume_line_ending;
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl,
-    OperationControlResult, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
-        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
-
-const ER_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const ER_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], ER_COMPLETION_DIRECTIONS);
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 #[cfg(test)]
 thread_local! {
@@ -431,8 +422,7 @@ impl ErSyntax {
         EditorSemanticFacts,
         std::result::Result<Vec<Action>, ErGrammarError>,
     )> {
-        let mut facts =
-            EditorSemanticFacts::new().with_completion_vocabulary(ER_COMPLETION_VOCABULARY);
+        let mut facts = EditorSemanticFacts::new();
         let mut collector = ErEditorFactCollector::default();
         for (index, event) in self.events.iter().enumerate() {
             if index % 128 == 0 {
@@ -443,12 +433,12 @@ impl ErSyntax {
                 Err(error) => {
                     facts.mark_recovered();
                     if let Some(expected) = error.expected_syntax.as_ref() {
-                        facts.push_expected_syntax(expected.clone());
+                        facts.push_expected_syntax(*expected);
                     }
                 }
             }
         }
-        collector.finish(&mut facts);
+        collector.finish(code, &mut facts);
         facts.replace_family_lexemes(self.lexemes);
         control.checkpoint()?;
         let mut emitted = 0usize;
@@ -576,7 +566,14 @@ pub(crate) fn parse_er_json_and_editor_facts(
 #[derive(Debug, Default)]
 struct ErEditorFactCollector {
     pending_entity: Option<ErTokenSymbol>,
-    expected_id_list: Option<ExpectedErIdList>,
+    deferred_styled_entity: Option<ErTokenSymbol>,
+    deferred_styled_ids: Option<SpannedIdList>,
+    relationship_started: bool,
+    known_entities: HashSet<String>,
+    expected_id_list: Option<PendingErExpectation>,
+    directive_start: Option<usize>,
+    style_payload_pending: bool,
+    style_payload_anchor_end: Option<usize>,
     in_attribute_block: bool,
     in_alias: bool,
     in_relationship_role: bool,
@@ -584,13 +581,50 @@ struct ErEditorFactCollector {
 }
 
 impl ErEditorFactCollector {
-    fn finish(&mut self, facts: &mut EditorSemanticFacts) {
-        self.push_pending_entity(facts);
+    fn finish(&mut self, code: &str, facts: &mut EditorSemanticFacts) {
+        self.finish_line(code, line_content_end(code, code.len()), facts);
+        self.push_deferred_styled_entity(facts, ErEntityOccurrence::Definition);
+        self.push_pending_entity(facts, ErEntityOccurrence::Definition);
     }
 
-    fn finish_line(&mut self, facts: &mut EditorSemanticFacts) {
+    fn finish_line(&mut self, code: &str, line_end: usize, facts: &mut EditorSemanticFacts) {
+        if let Some(start) = self.directive_start {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(start, line_end),
+            ));
+        }
+        if let Some(expected) = self.expected_id_list {
+            let kind = er_expected_id_list_kind(expected.kind);
+            let separator_ready = expected
+                .anchor_end
+                .is_none_or(|anchor_end| has_ascii_separator(code, anchor_end, line_end));
+            if !matches!(expected.kind, ExpectedErIdList::ClassDef)
+                && (!matches!(kind, EditorExpectedSyntaxKind::ClassName) || separator_ready)
+            {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    kind,
+                    SourceSpan::new(line_end, line_end),
+                ));
+            }
+        } else if self.style_payload_pending
+            && self
+                .style_payload_anchor_end
+                .is_some_and(|anchor_end| has_ascii_separator(code, anchor_end, line_end))
+        {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::StyleValue,
+                SourceSpan::new(line_end, line_end),
+            ));
+        }
         if !self.in_alias && !self.in_relationship_role {
-            self.push_pending_entity(facts);
+            let occurrence = if self.relationship_started {
+                ErEntityOccurrence::Relationship
+            } else {
+                ErEntityOccurrence::Definition
+            };
+            self.push_deferred_styled_entity(facts, occurrence);
+            self.push_pending_entity(facts, occurrence);
         }
     }
 }
@@ -599,6 +633,12 @@ impl ErEditorFactCollector {
 struct ErTokenSymbol {
     name: String,
     span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErEntityOccurrence {
+    Definition,
+    Relationship,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -610,6 +650,12 @@ enum ExpectedErIdList {
     InlineClasses,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PendingErExpectation {
+    kind: ExpectedErIdList,
+    anchor_end: Option<usize>,
+}
+
 impl ErEditorFactCollector {
     fn accept(
         &mut self,
@@ -619,29 +665,63 @@ impl ErEditorFactCollector {
         end: usize,
         facts: &mut EditorSemanticFacts,
     ) {
+        if self.deferred_styled_entity.is_some() && !matches!(token, Tok::IdList(_)) {
+            let occurrence = if matches!(
+                token,
+                Tok::ZeroOrOne
+                    | Tok::ZeroOrMore
+                    | Tok::OneOrMore
+                    | Tok::OnlyOne
+                    | Tok::MdParent
+                    | Tok::Identifying
+                    | Tok::NonIdentifying
+            ) {
+                ErEntityOccurrence::Relationship
+            } else {
+                ErEntityOccurrence::Definition
+            };
+            self.push_deferred_styled_entity(facts, occurrence);
+        }
+
         match token {
             Tok::ErDiagram => self.reset_line_state(),
             Tok::Newline => {
-                self.finish_line(facts);
+                self.finish_line(code, line_content_end(code, start), facts);
                 self.reset_line_state();
             }
             Tok::StyleKw => {
                 facts.push_directive_prefix("style");
-                self.expected_id_list = Some(ExpectedErIdList::StyleEntities);
+                self.directive_start = Some(start);
+                self.style_payload_pending = true;
+                self.expect_id_list(ExpectedErIdList::StyleEntities);
             }
             Tok::ClassDefKw => {
                 facts.push_directive_prefix("classDef");
-                self.expected_id_list = Some(ExpectedErIdList::ClassDef);
+                self.directive_start = Some(start);
+                self.style_payload_pending = true;
+                self.expect_id_list_after(ExpectedErIdList::ClassDef, end);
             }
             Tok::ClassKw => {
                 facts.push_directive_prefix("class");
-                self.expected_id_list = Some(ExpectedErIdList::ClassEntities);
+                self.directive_start = Some(start);
+                self.expect_id_list(ExpectedErIdList::ClassEntities);
             }
             Tok::StyleSeparator => {
-                self.push_pending_entity(facts);
-                self.expected_id_list = Some(ExpectedErIdList::InlineClasses);
+                if self.relationship_started {
+                    self.push_pending_entity(facts, ErEntityOccurrence::Relationship);
+                } else {
+                    self.deferred_styled_entity = self.pending_entity.take();
+                }
+                self.directive_start = Some(start);
+                self.expect_id_list(ExpectedErIdList::InlineClasses);
             }
-            Tok::IdList(ids) => self.push_id_list(ids.clone(), facts),
+            Tok::IdList(ids) => {
+                if self.deferred_styled_entity.is_some() {
+                    self.deferred_styled_ids = Some(ids.clone());
+                } else {
+                    self.push_id_list(ids.clone(), facts);
+                }
+            }
             Tok::Name(name) => {
                 if self.in_attribute_block {
                     return;
@@ -671,7 +751,12 @@ impl ErEditorFactCollector {
                     span,
                 };
                 if let Some(entity) = self.pending_entity.replace(symbol) {
-                    self.push_entity_symbol(facts, entity, "er entity reference");
+                    let occurrence = if self.relationship_started {
+                        ErEntityOccurrence::Relationship
+                    } else {
+                        ErEntityOccurrence::Definition
+                    };
+                    self.push_entity_symbol(facts, entity, "er entity reference", occurrence);
                 }
             }
             Tok::ZeroOrOne
@@ -680,13 +765,23 @@ impl ErEditorFactCollector {
             | Tok::OnlyOne
             | Tok::MdParent
             | Tok::Identifying
-            | Tok::NonIdentifying => self.push_pending_entity(facts),
+            | Tok::NonIdentifying => {
+                self.push_pending_entity(facts, ErEntityOccurrence::Relationship);
+                self.relationship_started = true;
+            }
             Tok::Colon => {
-                self.push_pending_entity(facts);
+                let occurrence = if self.relationship_started {
+                    ErEntityOccurrence::Relationship
+                } else {
+                    ErEntityOccurrence::Definition
+                };
+                self.push_deferred_styled_entity(facts, occurrence);
+                self.push_pending_entity(facts, occurrence);
                 self.in_relationship_role = true;
             }
             Tok::BlockStart => {
-                self.push_pending_entity(facts);
+                self.push_deferred_styled_entity(facts, ErEntityOccurrence::Definition);
+                self.push_pending_entity(facts, ErEntityOccurrence::Definition);
                 self.in_attribute_block = true;
                 self.attr_word_index = 0;
             }
@@ -752,7 +847,8 @@ impl ErEditorFactCollector {
             Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
             Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
             Tok::SquareStart => {
-                self.push_pending_entity(facts);
+                self.push_deferred_styled_entity(facts, ErEntityOccurrence::Definition);
+                self.push_pending_entity(facts, ErEntityOccurrence::Definition);
                 self.in_alias = true;
             }
             Tok::SquareStop => self.in_alias = false,
@@ -772,34 +868,100 @@ impl ErEditorFactCollector {
             Tok::Direction(_) => {
                 if let Some(span) = editor_keyword_value_span(code, start, end, "direction") {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::DirectionValue,
+                        EditorExpectedSyntaxKind::CardinalDirectionValue,
                         span,
                     ));
                 }
             }
-            Tok::RestOfLine(_) => {}
+            Tok::RestOfLine(raw) => {
+                if self.style_payload_pending {
+                    let line_end = line_content_end(code, end);
+                    let trailing_slot =
+                        trailing_ascii_whitespace_slot(code, start, end).or_else(|| {
+                            (raw.is_empty()
+                                && self.style_payload_anchor_end.is_some_and(|anchor_end| {
+                                    has_ascii_separator(code, anchor_end, line_end)
+                                }))
+                            .then_some(SourceSpan::new(line_end, line_end))
+                        });
+                    if let Some(span) = trailing_slot {
+                        facts.push_expected_syntax(EditorExpectedSyntax::new(
+                            EditorExpectedSyntaxKind::StyleValue,
+                            span,
+                        ));
+                    }
+                    let payload = raw.trim();
+                    if !payload.is_empty()
+                        && let Some(selection) =
+                            source_value_span(code, SourceSpan::new(start, end), payload)
+                    {
+                        facts.push_expected_syntax(EditorExpectedSyntax::new(
+                            EditorExpectedSyntaxKind::Payload,
+                            selection,
+                        ));
+                    }
+                    self.style_payload_pending = false;
+                }
+            }
         }
     }
 
     fn reset_line_state(&mut self) {
         self.pending_entity = None;
+        self.deferred_styled_entity = None;
+        self.deferred_styled_ids = None;
         self.expected_id_list = None;
+        self.directive_start = None;
+        self.style_payload_pending = false;
+        self.style_payload_anchor_end = None;
         self.in_alias = false;
         self.in_relationship_role = false;
+        self.relationship_started = false;
         if !self.in_attribute_block {
             self.attr_word_index = 0;
         }
     }
 
-    fn push_pending_entity(&mut self, facts: &mut EditorSemanticFacts) {
+    fn push_pending_entity(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        occurrence: ErEntityOccurrence,
+    ) {
         if let Some(entity) = self.pending_entity.take() {
-            self.push_entity_symbol(facts, entity, "er entity");
+            let detail = match occurrence {
+                ErEntityOccurrence::Definition => "er entity",
+                ErEntityOccurrence::Relationship => "er relationship entity",
+            };
+            self.push_entity_symbol(facts, entity, detail, occurrence);
+        }
+    }
+
+    fn push_deferred_styled_entity(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        occurrence: ErEntityOccurrence,
+    ) {
+        if let Some(entity) = self.deferred_styled_entity.take() {
+            let detail = match occurrence {
+                ErEntityOccurrence::Definition => "er entity",
+                ErEntityOccurrence::Relationship => "er relationship entity",
+            };
+            self.push_entity_symbol(facts, entity, detail, occurrence);
+        }
+        if let Some(ids) = self.deferred_styled_ids.take() {
+            self.push_id_list(ids, facts);
         }
     }
 
     fn push_id_list(&mut self, ids: SpannedIdList, facts: &mut EditorSemanticFacts) {
-        let expected = self.expected_id_list.take();
+        let expected = self.expected_id_list.take().map(|pending| pending.kind);
         let span = ids.span();
+        if matches!(
+            expected,
+            Some(ExpectedErIdList::StyleEntities | ExpectedErIdList::ClassDef)
+        ) {
+            self.style_payload_anchor_end = Some(span.end);
+        }
         let detail = match expected {
             Some(ExpectedErIdList::StyleEntities) => "er style target",
             Some(ExpectedErIdList::ClassDef) => "er class definition",
@@ -815,9 +977,9 @@ impl ErEditorFactCollector {
             _ => EditorSemanticKind::Struct,
         };
 
-        if expected.is_some() {
+        if let Some(expected) = expected {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::IdList,
+                er_expected_id_list_kind(expected),
                 span,
             ));
         }
@@ -826,36 +988,101 @@ impl ErEditorFactCollector {
             if id.name.is_empty() {
                 continue;
             }
-            facts.push_symbol(EditorSemanticSymbol::new(
-                id.name,
-                Some(detail.to_string()),
-                kind,
-                id.span,
-                id.span,
-            ));
+            let symbol = match expected {
+                Some(ExpectedErIdList::ClassDef) => EditorSemanticSymbol::class_definition(
+                    id.name,
+                    Some(detail.to_string()),
+                    kind,
+                    id.span,
+                    id.span,
+                ),
+                Some(ExpectedErIdList::StyleEntities | ExpectedErIdList::ClassEntities) => {
+                    EditorSemanticSymbol::reference(
+                        id.name,
+                        Some(detail.to_string()),
+                        kind,
+                        id.span,
+                        id.span,
+                    )
+                }
+                Some(ExpectedErIdList::ClassNames | ExpectedErIdList::InlineClasses) => {
+                    EditorSemanticSymbol::payload(
+                        id.name,
+                        Some(detail.to_string()),
+                        kind,
+                        id.span,
+                        id.span,
+                    )
+                }
+                None => EditorSemanticSymbol::payload(
+                    id.name,
+                    Some(detail.to_string()),
+                    kind,
+                    id.span,
+                    id.span,
+                ),
+            };
+            facts.push_symbol(symbol);
         }
 
         if matches!(expected, Some(ExpectedErIdList::ClassEntities)) {
-            self.expected_id_list = Some(ExpectedErIdList::ClassNames);
+            self.expect_id_list_after(ExpectedErIdList::ClassNames, span.end);
         }
     }
 
+    fn expect_id_list(&mut self, expected: ExpectedErIdList) {
+        self.expected_id_list = Some(PendingErExpectation {
+            kind: expected,
+            anchor_end: None,
+        });
+    }
+
+    fn expect_id_list_after(&mut self, expected: ExpectedErIdList, anchor_end: usize) {
+        self.expected_id_list = Some(PendingErExpectation {
+            kind: expected,
+            anchor_end: Some(anchor_end),
+        });
+    }
+
     fn push_entity_symbol(
-        &self,
+        &mut self,
         facts: &mut EditorSemanticFacts,
         symbol: ErTokenSymbol,
         detail: &'static str,
+        occurrence: ErEntityOccurrence,
     ) {
         if symbol.name.is_empty() {
             return;
         }
-        facts.push_symbol(EditorSemanticSymbol::new(
-            symbol.name,
-            Some(detail.to_string()),
-            EditorSemanticKind::Struct,
-            symbol.span,
-            symbol.span,
-        ));
+        let is_implicit_definition = matches!(occurrence, ErEntityOccurrence::Relationship)
+            && !self.known_entities.contains(&symbol.name);
+        if matches!(occurrence, ErEntityOccurrence::Definition) || is_implicit_definition {
+            self.known_entities.insert(symbol.name.clone());
+        }
+        let detail = Some(if is_implicit_definition {
+            "er implicit entity".to_string()
+        } else {
+            detail.to_string()
+        });
+        let entity =
+            if matches!(occurrence, ErEntityOccurrence::Relationship) && !is_implicit_definition {
+                EditorSemanticSymbol::reference(
+                    symbol.name,
+                    detail,
+                    EditorSemanticKind::Struct,
+                    symbol.span,
+                    symbol.span,
+                )
+            } else {
+                EditorSemanticSymbol::new(
+                    symbol.name,
+                    detail,
+                    EditorSemanticKind::Struct,
+                    symbol.span,
+                    symbol.span,
+                )
+            };
+        facts.push_symbol(entity);
     }
 
     fn push_attribute_symbol(
@@ -919,6 +1146,17 @@ impl ErEditorFactCollector {
             span,
             selection,
         );
+    }
+}
+
+fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxKind {
+    match expected {
+        ExpectedErIdList::ClassDef
+        | ExpectedErIdList::ClassNames
+        | ExpectedErIdList::InlineClasses => EditorExpectedSyntaxKind::ClassName,
+        ExpectedErIdList::StyleEntities | ExpectedErIdList::ClassEntities => {
+            EditorExpectedSyntaxKind::IdList
+        }
     }
 }
 
@@ -1284,7 +1522,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
 
     fn skip_ws_default(&mut self) {
         while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
+            if b == b' ' || b == b'\t' {
                 self.pos += 1;
                 continue;
             }
@@ -1323,7 +1561,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
     fn read_to_newline(&mut self) -> String {
         let start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if matches!(b, b'\r' | b'\n') {
                 break;
             }
             self.pos += 1;
@@ -1343,12 +1581,10 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         if self.mode == Mode::Block {
             return None;
         }
-        if self.peek()? != b'\n' {
-            return None;
-        }
         let start = self.pos;
-        while let Some(b'\n') = self.peek() {
-            self.pos += 1;
+        self.pos = consume_line_ending(self.input, self.pos)?;
+        while let Some(end) = consume_line_ending(self.input, self.pos) {
+            self.pos = end;
         }
         if self.mode == Mode::LineRest {
             self.mode = Mode::Default;
@@ -1439,7 +1675,10 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
                 self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
             }
             return Some(Err(LexError::new("invalid ER direction", selection)
-                .expecting(EditorExpectedSyntaxKind::DirectionValue, selection)));
+                .expecting(
+                    EditorExpectedSyntaxKind::CardinalDirectionValue,
+                    selection,
+                )));
         };
         Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }
@@ -1970,7 +2209,7 @@ impl Iterator for Lexer<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MermaidConfig;
+    use crate::{EditorSemanticRole, MermaidConfig};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -2010,5 +2249,31 @@ mod tests {
         assert!(model["entities"].get("1.5").is_some());
         assert!(model["entities"].get("Sales.Order").is_some());
         assert_eq!(model["relationships"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn er_entity_occurrence_role_does_not_depend_on_display_detail() {
+        let span = SourceSpan::new(0, "CUSTOMER".len());
+        let symbol = || ErTokenSymbol {
+            name: "CUSTOMER".to_string(),
+            span,
+        };
+        let mut collector = ErEditorFactCollector::default();
+        let mut facts = EditorSemanticFacts::new();
+        collector.push_entity_symbol(
+            &mut facts,
+            symbol(),
+            "reference-looking definition",
+            ErEntityOccurrence::Definition,
+        );
+        collector.push_entity_symbol(
+            &mut facts,
+            symbol(),
+            "definition-looking relationship occurrence",
+            ErEntityOccurrence::Relationship,
+        );
+
+        assert_eq!(facts.symbols[0].role, EditorSemanticRole::Entity);
+        assert_eq!(facts.symbols[1].role, EditorSemanticRole::Reference);
     }
 }

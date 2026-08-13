@@ -504,6 +504,35 @@ if (hasCapability("analysis")) {
     ),
     true
   );
+  const deprecatedRule = lintRules.find(
+    (rule) =>
+      rule.id === "merman.compatibility.config.deprecated_flowchart_html_labels"
+  );
+  assert.ok(deprecatedRule);
+  assert.deepEqual(deprecatedRule.tags, ["deprecated"]);
+  assert.deepEqual(
+    rawLintRuleCatalog.rules.find(
+      (rule) =>
+        rule.id === "merman.compatibility.config.deprecated_flowchart_html_labels"
+    )?.tags,
+    ["deprecated"]
+  );
+  deprecatedRule.tags.push("mutated-copy");
+  assert.deepEqual(
+    api
+      .lintRuleCatalog()
+      .find(
+        (rule) =>
+          rule.id === "merman.compatibility.config.deprecated_flowchart_html_labels"
+      )?.tags,
+    ["deprecated"]
+  );
+
+  const deprecatedAnalysis = api.analyze(
+    '%%{init: { "flowchart": { "htmlLabels": false } }}%%\nflowchart TD\nA-->B\n',
+    deterministicTime
+  );
+  assert.deepEqual(deprecatedAnalysis.diagnostics[0].tags, ["deprecated"]);
 
   const markdownAnalysis = api.analyzeDocument(
     "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
@@ -521,20 +550,11 @@ if (hasCapability("analysis")) {
   );
 
   const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
+  assert.equal(flowchartFacts.version, 2);
   assert.equal(flowchartFacts.valid, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "dagre");
-  assert.equal(
-    flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
-    true
-  );
-  assert.equal(
-    flowchartFacts.diagrams[0].syntax.flowchart.edges.some(
-      (edge) => edge.from === "A" && edge.to === "B"
-    ),
-    true
-  );
   assert.equal(
     flowchartFacts.diagrams[0].syntax.semantic_items.some(
       (item) => item.name === "A" && item.span.document

@@ -1464,9 +1464,8 @@ mod tests {
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(
-            error
-                .message()
-                .contains("lint.profile must be core, recommended, or strict"),
+            error.message().contains("lint.profile")
+                && error.message().contains("core, recommended, or strict"),
             "unexpected error: {error:?}"
         );
         assert!(!error.message().contains("svg.pipeline"));

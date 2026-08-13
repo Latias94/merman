@@ -371,9 +371,9 @@ Notes:
   - `state`: rough/stochastic geometry output (the DOM check ignores `<path d>` / `data-points` and
     normalizes generated ids).
   - `gitGraph`: auto-generated commit ids with random suffixes (not byte-stable).
-  - `gantt`: output depends on the rendering environment (page width via
-    `parentElement.offsetWidth`) and may include a `today` marker whose x-position depends on the
-    current date.
+  - `gantt`: output remains sensitive to browser-local timezone and layout, so structure comparison
+    bounds host rendering differences even though generation fixes both the 1200-pixel page width
+    and the wall clock used by the `today` marker.
   - `er`, `class`, `requirement`, `block`, `mindmap`, `architecture`: upstream SVG often differs
     only by numeric formatting / viewport rounding / minor browser-layout drift, which makes raw
     byte comparisons too strict for CI.
@@ -386,6 +386,11 @@ Determinism note:
   `Math.random()`. To keep baselines reproducible, `xtask gen-upstream-svgs --diagram architecture`
   renders via a small Puppeteer wrapper that seeds browser-side randomness deterministically (while
   still using the official Mermaid CLI bundle).
+- Gantt diagrams use the same Puppeteer wrapper with a fixed wall clock of
+  `2024-01-01T00:00:00Z`, a 1200-pixel page viewport, and the matching 1184-pixel Mermaid CLI
+  content container after the browser body's default inline margins. The renderer profile records
+  all three inputs, and the Rust comparator consumes the same fixed clock, so date-driven axis and
+  `today` marker structure cannot drift between baseline generation and comparison.
 
 ## Compare (ER)
 

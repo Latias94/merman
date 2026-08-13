@@ -1,13 +1,11 @@
 use std::str::FromStr;
 
 use crate::session::{DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES};
+pub use merman_analysis::FIXED_TODAY_SCHEMA_PATTERN;
 use merman_analysis::{
-    ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisRuleProfile, DiagnosticSeverity,
-    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+    AnalysisConfigClientConstraints, AnalysisConfigContract, AnalysisConfigHostDefaults,
 };
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
-#[cfg(test)]
-use merman_analysis::{analysis_options_from_json_value, analysis_options_json_from_json_value};
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
@@ -18,23 +16,9 @@ use serde_json::{Value, json};
 use tower_lsp_server::ls_types::{Location, Position, Range, Uri};
 
 pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
-pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
+pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 2;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
-pub const FIXED_TODAY_SCHEMA_PATTERN: &str = concat!(
-    r"^(?:\d{4}|\+(?:[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
-    r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
-    r"21474836[0-3]\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\d|0[1-9]\d{2}|",
-    r"[1-9]\d{3}|[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
-    r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
-    r"21474836[0-3]\d|214748364[0-8]))-\d{2}-\d{2}$",
-);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkspaceEditEncoding {
-    DocumentChanges,
-    Changes,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,16 +34,6 @@ pub(crate) struct DiagnosticVersionData {
     pub(crate) document_version: i32,
 }
 
-impl WorkspaceEditEncoding {
-    pub const fn from_document_changes_support(supported: bool) -> Self {
-        if supported {
-            Self::DocumentChanges
-        } else {
-            Self::Changes
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigSchemaResponse {
     pub version: u32,
@@ -68,26 +42,29 @@ pub struct ConfigSchemaResponse {
     pub profiles: Vec<String>,
     pub severities: Vec<String>,
     pub configurable_rule_ids: Vec<String>,
+    pub constraints: AnalysisConfigClientConstraints,
     pub schema: Value,
 }
 
 impl ConfigSchemaResponse {
     pub fn current() -> Self {
-        let profiles = lint_profiles();
-        let severities = lint_severities();
-        let configurable_rule_ids = configurable_rule_ids();
+        let host_defaults = AnalysisConfigHostDefaults::try_new(
+            Some(DEFAULT_LSP_MAX_SOURCE_BYTES),
+            Some(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS),
+        )
+        .expect("LSP resource defaults must satisfy the analysis contract");
+        let contract = AnalysisConfigContract::current();
+        let schema = contract.json_schema(host_defaults);
+        let client = contract.client_projection();
         Self {
             version: CONFIG_SCHEMA_RESPONSE_VERSION,
             rule_catalog_method: RULE_CATALOG_METHOD.to_string(),
-            accepted_roots: vec![
-                "direct".to_string(),
-                "merman".to_string(),
-                "analysis".to_string(),
-            ],
-            schema: analysis_options_schema(&profiles, &severities, &configurable_rule_ids),
-            profiles,
-            severities,
-            configurable_rule_ids,
+            accepted_roots: client.accepted_roots,
+            profiles: client.profiles,
+            severities: client.severities,
+            configurable_rule_ids: client.configurable_rule_ids,
+            constraints: client.constraints,
+            schema: schema.schema,
         }
     }
 }
@@ -164,168 +141,6 @@ pub(crate) fn generated_markdown_to_plain_text(markdown: &str) -> String {
         }
     }
     plain.trim_end().to_string()
-}
-
-fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
-    profile.as_str()
-}
-
-fn severity_name(severity: DiagnosticSeverity) -> &'static str {
-    severity.as_str()
-}
-
-fn lint_profiles() -> Vec<String> {
-    [
-        AnalysisRuleProfile::Core,
-        AnalysisRuleProfile::Recommended,
-        AnalysisRuleProfile::Strict,
-    ]
-    .into_iter()
-    .map(profile_name)
-    .map(str::to_string)
-    .collect()
-}
-
-fn lint_severities() -> Vec<String> {
-    [
-        DiagnosticSeverity::Error,
-        DiagnosticSeverity::Warning,
-        DiagnosticSeverity::Info,
-        DiagnosticSeverity::Hint,
-    ]
-    .into_iter()
-    .map(severity_name)
-    .map(str::to_string)
-    .collect()
-}
-
-fn configurable_rule_ids() -> Vec<String> {
-    merman_analysis::configurable_rule_catalog()
-        .into_iter()
-        .map(|rule| rule.id.to_string())
-        .collect()
-}
-
-fn analysis_options_schema(
-    profiles: &[String],
-    severities: &[String],
-    configurable_rule_ids: &[String],
-) -> Value {
-    let max_document_diagrams = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
-        .iter()
-        .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
-        .expect("analysis must describe max_document_diagrams");
-    json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Merman analysis options",
-        "description": "Options accepted by Merman LSP initializationOptions and workspace/didChangeConfiguration. Clients may pass these options directly, or under a merman or analysis object.",
-        "$defs": {
-            "ruleId": {
-                "type": "string",
-                "enum": configurable_rule_ids,
-                "description": "A configurable Merman analysis rule id."
-            },
-            "severity": {
-                "type": "string",
-                "enum": severities,
-                "description": "Diagnostic severity for an explicit rule override."
-            },
-            "analysisOptions": {
-                "type": "object",
-                "additionalProperties": true,
-                "properties": {
-                    "fixed_today": {
-                        "type": "string",
-                        "pattern": FIXED_TODAY_SCHEMA_PATTERN,
-                        "description": "Canonical fixed local civil date. Years 0000 through 9999 use YYYY-MM-DD; later years use +YEAR-MM-DD and negative years use -YEAR-MM-DD. The date and its local-midnight instant are validated when the configuration is applied."
-                    },
-                    "fixed_local_offset_minutes": {
-                        "type": "integer",
-                        "minimum": -1439,
-                        "maximum": 1439,
-                        "description": "Fixed local UTC offset in minutes."
-                    },
-                    "site_config": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "description": "Mermaid site configuration forwarded to the shared parser/config layer."
-                    },
-                    "resources": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "limits": {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "properties": {
-                                    "max_source_bytes": {
-                                        "type": "integer",
-                                        "minimum": 1,
-                                        "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
-                                        "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted."
-                                    },
-                                    "max_document_diagrams": {
-                                        "type": "integer",
-                                        "minimum": max_document_diagrams.minimum_value,
-                                        "default": DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
-                                        "description": max_document_diagrams.description
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "lint": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "properties": {
-                            "profile": {
-                                "type": "string",
-                                "enum": profiles,
-                                "default": "core",
-                                "description": "Base lint profile. Recommended and strict may enable additional governed authoring rules."
-                            },
-                            "enable_rules": {
-                                "type": "array",
-                                "items": { "$ref": "#/$defs/ruleId" },
-                                "uniqueItems": true,
-                                "description": "Configurable rule ids to enable explicitly."
-                            },
-                            "disable_rules": {
-                                "type": "array",
-                                "items": { "$ref": "#/$defs/ruleId" },
-                                "uniqueItems": true,
-                                "description": "Configurable rule ids to disable explicitly."
-                            },
-                            "rule_severities": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "required": ["rule_id", "severity"],
-                                    "additionalProperties": true,
-                                    "properties": {
-                                        "rule_id": { "$ref": "#/$defs/ruleId" },
-                                        "severity": { "$ref": "#/$defs/severity" }
-                                    }
-                                },
-                                "description": "Per-rule diagnostic severity overrides."
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "allOf": [
-            { "$ref": "#/$defs/analysisOptions" },
-            {
-                "type": "object",
-                "additionalProperties": true,
-                "properties": {
-                    "merman": { "$ref": "#/$defs/analysisOptions" },
-                    "analysis": { "$ref": "#/$defs/analysisOptions" }
-                }
-            }
-        ]
-    })
 }
 
 #[cfg(test)]
@@ -443,210 +258,22 @@ mod tests {
     }
 
     #[test]
-    fn config_schema_response_describes_lint_settings() {
+    fn config_schema_response_projects_the_analysis_contract_over_the_transport_seam() {
         let response = ConfigSchemaResponse::current();
 
         assert_eq!(response.version, CONFIG_SCHEMA_RESPONSE_VERSION);
         assert_eq!(response.rule_catalog_method, RULE_CATALOG_METHOD);
-        assert_eq!(response.profiles, ["core", "recommended", "strict"]);
-        assert_eq!(response.severities, ["error", "warning", "info", "hint"]);
-        assert!(
-            response
-                .configurable_rule_ids
-                .contains(&"merman.authoring.config.prefer_frontmatter_config".to_string())
-        );
-        assert!(
-            response
-                .configurable_rule_ids
-                .contains(&"merman.authoring.flowchart.explicit_direction".to_string())
-        );
-        assert!(
-            response.configurable_rule_ids.contains(
-                &"merman.compatibility.config.deprecated_flowchart_html_labels".to_string()
-            )
-        );
-        assert!(response.configurable_rule_ids.contains(
-            &"merman.compatibility.config.deprecated_external_diagram_loading".to_string()
-        ));
-        assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]
-                ["enum"],
-            json!(["core", "recommended", "strict"])
-        );
-        assert_eq!(
-            response.schema["$defs"]["ruleId"]["enum"],
-            json!(response.configurable_rule_ids)
-        );
-        assert_eq!(
-            response.schema["$defs"]["severity"]["enum"],
-            json!(["error", "warning", "info", "hint"])
-        );
-        assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
-                ["properties"]["max_source_bytes"]["default"],
-            json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
-        );
-        assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
-                ["properties"]["max_document_diagrams"]["default"],
-            json!(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS)
-        );
-        assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["fixed_today"]["pattern"],
-            json!(FIXED_TODAY_SCHEMA_PATTERN)
-        );
-        for fixed_today in [
-            "0000-01-01",
-            "9999-12-31",
-            "+10000-01-01",
-            "+2147483647-12-31",
-            "-0001-01-01",
-            "-10000-01-01",
-            "-2147483648-01-01",
-        ] {
-            let options = analysis_options_json_from_json_value(&json!({
-                "fixed_today": fixed_today
-            }))
-            .expect("fixed_today must deserialize as a string");
-            assert!(
-                options.fixed_today().is_ok(),
-                "canonical date must parse: {fixed_today}"
-            );
-        }
-        for fixed_today in [
-            "+9999-01-01",
-            "+010000-01-01",
-            "+2147483648-01-01",
-            "-0000-01-01",
-            "-010000-01-01",
-            "-2147483649-01-01",
-            "10000-01-01",
-        ] {
-            let options = analysis_options_json_from_json_value(&json!({
-                "fixed_today": fixed_today
-            }))
-            .expect("fixed_today must deserialize as a string");
-            assert!(
-                options.fixed_today().is_err(),
-                "non-canonical or out-of-domain date must be rejected: {fixed_today}"
-            );
-        }
-        let descriptor = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
-            .iter()
-            .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
-            .expect("analysis must describe max_document_diagrams");
-        assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
-                ["properties"]["max_document_diagrams"]["minimum"],
-            json!(descriptor.minimum_value)
-        );
-        let parsed = analysis_options_from_json_value(&json!({
-            "resources": {
-                "limits": {
-                    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID: descriptor.minimum_value
-                }
-            }
-        }))
-        .expect("the schema minimum must be accepted by the options parser");
-        assert_eq!(
-            parsed.max_document_diagrams(),
-            Some(descriptor.minimum_value)
-        );
-        assert!(
-            response.schema["$defs"]["analysisOptions"]["properties"]
-                .get("parse")
-                .is_none()
-        );
-        assert_eq!(
-            response.schema["allOf"][0],
-            json!({ "$ref": "#/$defs/analysisOptions" })
-        );
-        assert_eq!(
-            response.schema["allOf"][1]["properties"]["merman"],
-            json!({ "$ref": "#/$defs/analysisOptions" })
-        );
-        assert_eq!(
-            response.schema["allOf"][1]["properties"]["analysis"],
-            json!({ "$ref": "#/$defs/analysisOptions" })
-        );
-    }
+        assert_eq!(response.accepted_roots, ["direct", "merman", "analysis"]);
+        assert_eq!(response.constraints.settings.len(), 9);
+        assert!(!response.profiles.is_empty());
+        assert!(!response.severities.is_empty());
+        assert!(!response.configurable_rule_ids.is_empty());
+        assert!(response.schema.is_object());
 
-    #[test]
-    fn vscode_analysis_settings_match_lsp_config_schema_keys() {
-        let response = ConfigSchemaResponse::current();
-        let mut schema_keys = std::collections::BTreeSet::new();
-        collect_analysis_schema_leaf_keys(
-            &response.schema["$defs"]["analysisOptions"],
-            "",
-            &mut schema_keys,
-        );
-
-        let package_json_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tools/vscode-extension/package.json");
-        let package_json: Value = serde_json::from_str(
-            &std::fs::read_to_string(package_json_path)
-                .expect("expected VS Code package.json to be readable"),
-        )
-        .expect("expected VS Code package.json to parse as JSON");
-        let mut vscode_keys = std::collections::BTreeSet::new();
-        collect_vscode_analysis_setting_keys(&package_json, &mut vscode_keys);
-
-        assert_eq!(vscode_keys, schema_keys);
-        let expected_fixed_today_pattern = format!("^$|{FIXED_TODAY_SCHEMA_PATTERN}");
-        assert_eq!(
-            vscode_analysis_setting(&package_json, "merman.analysis.fixed_today")
-                .and_then(|setting| setting["pattern"].as_str()),
-            Some(expected_fixed_today_pattern.as_str())
-        );
-    }
-
-    fn collect_analysis_schema_leaf_keys(
-        schema: &Value,
-        prefix: &str,
-        keys: &mut std::collections::BTreeSet<String>,
-    ) {
-        let Some(properties) = schema["properties"].as_object() else {
-            return;
-        };
-
-        for (key, value) in properties {
-            let full_key = if prefix.is_empty() {
-                key.to_string()
-            } else {
-                format!("{prefix}.{key}")
-            };
-            if value["properties"].is_object() {
-                collect_analysis_schema_leaf_keys(value, &full_key, keys);
-            } else {
-                keys.insert(full_key);
-            }
-        }
-    }
-
-    fn collect_vscode_analysis_setting_keys(
-        package_json: &Value,
-        keys: &mut std::collections::BTreeSet<String>,
-    ) {
-        let Some(configuration) = package_json["contributes"]["configuration"].as_array() else {
-            return;
-        };
-
-        for section in configuration {
-            let Some(properties) = section["properties"].as_object() else {
-                continue;
-            };
-            for key in properties.keys() {
-                if let Some(analysis_key) = key.strip_prefix("merman.analysis.") {
-                    keys.insert(analysis_key.to_string());
-                }
-            }
-        }
-    }
-
-    fn vscode_analysis_setting<'a>(package_json: &'a Value, key: &str) -> Option<&'a Value> {
-        package_json["contributes"]["configuration"]
-            .as_array()?
-            .iter()
-            .find_map(|section| section["properties"].get(key))
+        let wire = serde_json::to_value(&response).unwrap();
+        assert_eq!(wire["version"], CONFIG_SCHEMA_RESPONSE_VERSION);
+        assert_eq!(wire["rule_catalog_method"], RULE_CATALOG_METHOD);
+        assert!(wire["constraints"].is_object());
+        assert!(wire["schema"].is_object());
     }
 }

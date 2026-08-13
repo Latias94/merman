@@ -635,8 +635,6 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersion()  -> UInt32
-
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
     func diagramFamilyCapabilities()  -> [MermanDiagramFamilyCapability]
@@ -694,6 +692,8 @@ public protocol MermanProtocol: AnyObject, Sendable {
     func supportedThemes()  -> [String]
 
     func svgPlanJson(source: String, optionsJson: String?) throws  -> String
+
+    func transportApiVersion()  -> UInt32
 
     func validate(source: String, optionsJson: String?) throws  -> MermanValidationResult
 
@@ -809,15 +809,6 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
     return try!  FfiConverterSequenceTypeMermanAsciiCapability.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_ascii_capabilities(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-
-open func bindingApiVersion() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1048,6 +1039,15 @@ open func svgPlanJson(source: String, optionsJson: String?)throws  -> String  {
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
         FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
+    )
+})
+}
+
+open func transportApiVersion() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_merman_transport_api_version(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2656,6 +2656,7 @@ public struct MermanLintRuleCatalogEntry: Equatable, Hashable {
     public var evidence: [String]
     public var defaultSeverity: String
     public var category: String
+    public var tags: [String]
     public var defaultEnabled: Bool
     public var defaultProfile: String
     public var origin: String
@@ -2664,12 +2665,13 @@ public struct MermanLintRuleCatalogEntry: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, description: String, evidence: [String], defaultSeverity: String, category: String, defaultEnabled: Bool, defaultProfile: String, origin: String, configurable: Bool, fixable: Bool) {
+    public init(id: String, description: String, evidence: [String], defaultSeverity: String, category: String, tags: [String], defaultEnabled: Bool, defaultProfile: String, origin: String, configurable: Bool, fixable: Bool) {
         self.id = id
         self.description = description
         self.evidence = evidence
         self.defaultSeverity = defaultSeverity
         self.category = category
+        self.tags = tags
         self.defaultEnabled = defaultEnabled
         self.defaultProfile = defaultProfile
         self.origin = origin
@@ -2698,6 +2700,7 @@ public struct FfiConverterTypeMermanLintRuleCatalogEntry: FfiConverterRustBuffer
                 evidence: FfiConverterSequenceString.read(from: &buf),
                 defaultSeverity: FfiConverterString.read(from: &buf),
                 category: FfiConverterString.read(from: &buf),
+                tags: FfiConverterSequenceString.read(from: &buf),
                 defaultEnabled: FfiConverterBool.read(from: &buf),
                 defaultProfile: FfiConverterString.read(from: &buf),
                 origin: FfiConverterString.read(from: &buf),
@@ -2712,6 +2715,7 @@ public struct FfiConverterTypeMermanLintRuleCatalogEntry: FfiConverterRustBuffer
         FfiConverterSequenceString.write(value.evidence, into: &buf)
         FfiConverterString.write(value.defaultSeverity, into: &buf)
         FfiConverterString.write(value.category, into: &buf)
+        FfiConverterSequenceString.write(value.tags, into: &buf)
         FfiConverterBool.write(value.defaultEnabled, into: &buf)
         FfiConverterString.write(value.defaultProfile, into: &buf)
         FfiConverterString.write(value.origin, into: &buf)
@@ -5032,9 +5036,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version() != 18722) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5096,6 +5097,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_svg_plan_json() != 24509) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_merman_transport_api_version() != 40640) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_validate() != 18871) {

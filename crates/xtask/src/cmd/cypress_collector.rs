@@ -104,17 +104,12 @@ pub(crate) struct RawRenderCall {
     pub(crate) raw_sha256: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ValidationArgument {
+    #[default]
     Absent,
     Present,
-}
-
-impl Default for ValidationArgument {
-    fn default() -> Self {
-        Self::Absent
-    }
 }
 
 impl ValidationArgument {
@@ -278,7 +273,7 @@ fn canonical_json(value: &serde_json::Value) -> String {
         ),
         serde_json::Value::Object(object) => {
             let mut entries = object.iter().collect::<Vec<_>>();
-            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            entries.sort_by_key(|(key, _)| *key);
             let fields = entries
                 .into_iter()
                 .map(|(key, value)| {
@@ -545,17 +540,15 @@ fn raw_collection_failures(collection: &RawCypressCollection) -> Vec<String> {
         .filter(|registration| !registration.skipped)
         .map(|registration| registration.id.as_str())
         .collect::<BTreeSet<_>>();
-    let mut expected_global_ordinal = 1usize;
     let mut expected_source_ordinal = BTreeMap::<&str, usize>::new();
     let mut expected_helper_ordinal = BTreeMap::<&str, usize>::new();
-    for call in &collection.calls {
+    for (expected_global_ordinal, call) in (1usize..).zip(collection.calls.iter()) {
         if call.ordinal != expected_global_ordinal {
             failures.push(format!(
                 "Cypress call global ordinal drift: expected {expected_global_ordinal}, found {}",
                 call.ordinal
             ));
         }
-        expected_global_ordinal += 1;
         let source_ordinal = expected_source_ordinal
             .entry(&call.source_spec)
             .or_insert(1);

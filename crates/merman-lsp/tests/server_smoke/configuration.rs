@@ -747,8 +747,10 @@ async fn lsp_service_rejects_resource_rule_severity_on_initialize() {
     assert_eq!(error.code, ErrorCode::InvalidParams);
     assert!(
         error.message.contains(
-            "lint.rule_severities.rule_id entry `merman.resource.source_bytes_exceeded` must reference a configurable analysis rule id"
-        ),
+            "lint.rule_severities[].rule_id entry `merman.resource.source_bytes_exceeded`"
+        ) && error
+            .message
+            .contains("must reference a configurable analysis rule id"),
         "unexpected initialize error: {}",
         error.message
     );

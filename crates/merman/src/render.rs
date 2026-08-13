@@ -142,7 +142,7 @@ impl OperationExecutionPath {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderEvidence {
     execution_path: OperationExecutionPath,
-    session: merman_render::environment::RenderSessionReport,
+    session: Box<merman_render::environment::RenderSessionReport>,
 }
 
 #[cfg(feature = "svg")]
@@ -150,7 +150,7 @@ impl RenderEvidence {
     fn from_session(session: merman_render::environment::RenderSession) -> Self {
         Self {
             execution_path: OperationExecutionPath::Renderer,
-            session: session.report(),
+            session: Box::new(session.report()),
         }
     }
 
@@ -464,20 +464,10 @@ impl Default for SvgRequest {
 }
 
 #[cfg(feature = "ascii")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AsciiRequest {
     pub options: AsciiRenderOptions,
     pub resources: AsciiResourcePolicy,
-}
-
-#[cfg(feature = "ascii")]
-impl Default for AsciiRequest {
-    fn default() -> Self {
-        Self {
-            options: AsciiRenderOptions::default(),
-            resources: AsciiResourcePolicy::default(),
-        }
-    }
 }
 
 #[cfg(feature = "png")]
@@ -711,9 +701,9 @@ impl Renderer {
 impl SemanticArtifact {
     /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
     pub fn compatibility_json(&self) -> Result<serde_json::Value, RenderError> {
-        self.parsed
+        self.parsed()
             .model()
-            .compatibility_json_controlled(self.parsed.metadata(), &self.operation.control)
+            .compatibility_json_controlled(self.parsed().metadata(), self.control())
             .map_err(RenderError::Cancelled)?
             .map_err(RenderError::Parse)
     }

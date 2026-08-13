@@ -152,6 +152,7 @@ struct SpannedValue {
 #[derive(Debug, Clone, Copy)]
 enum GitGraphEditorFactRole {
     Entity,
+    Reference,
     Payload,
 }
 
@@ -1044,6 +1045,9 @@ impl GitGraphEditorFact {
             GitGraphEditorFactRole::Entity => {
                 push_gitgraph_entity_fact(facts, self.value.clone(), self.detail, self.kind)
             }
+            GitGraphEditorFactRole::Reference => {
+                push_gitgraph_reference_fact(facts, self.value.clone(), self.detail, self.kind)
+            }
             GitGraphEditorFactRole::Payload => {
                 push_gitgraph_payload_fact(facts, self.value.clone(), self.detail, self.kind)
             }
@@ -1379,7 +1383,7 @@ fn parse_git_graph_command(
                 name.clone(),
                 "gitGraph branch",
                 EditorSemanticKind::Variable,
-                GitGraphEditorFactRole::Entity,
+                GitGraphEditorFactRole::Reference,
             ));
             command_parse_result(
                 parser.expect_eof(command.text.as_str(), control)?,
@@ -1406,7 +1410,7 @@ fn parse_git_graph_command(
                 branch.clone(),
                 "gitGraph merge branch",
                 EditorSemanticKind::Variable,
-                GitGraphEditorFactRole::Entity,
+                GitGraphEditorFactRole::Reference,
             ));
             let mut merge = MergeDb {
                 branch: branch.text,
@@ -1537,7 +1541,7 @@ fn parse_git_graph_command(
                         value,
                         "gitGraph cherry-pick id",
                         EditorSemanticKind::Object,
-                        GitGraphEditorFactRole::Entity,
+                        GitGraphEditorFactRole::Reference,
                     ));
                     continue;
                 }
@@ -1560,7 +1564,7 @@ fn parse_git_graph_command(
                         value,
                         "gitGraph cherry-pick parent",
                         EditorSemanticKind::Object,
-                        GitGraphEditorFactRole::Entity,
+                        GitGraphEditorFactRole::Reference,
                     ));
                     continue;
                 }
@@ -1626,8 +1630,19 @@ fn parse_git_graph_command(
 }
 
 pub(crate) fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_git_graph_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
+}
+
+pub(crate) fn parse_git_graph_with_warning_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<family::WarningSemanticParse> {
     let model = parse_git_graph_semantic_source(code, meta)?.model;
-    render_model_to_compat_json(&model, meta)
+    let compatibility = render_model_to_compat_json(&model, meta)?;
+    Ok(family::WarningSemanticParse::new(
+        compatibility,
+        model.warning_facts,
+    ))
 }
 
 pub(crate) fn parse_git_graph_json_and_editor_facts(
@@ -1636,12 +1651,14 @@ pub(crate) fn parse_git_graph_json_and_editor_facts(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
-    let parsed = family::CombinedSemanticParse::from_construction(
+    let parsed = family::CombinedSemanticParse::from_construction_with_warning_facts(
         construct_git_graph_semantic_source_controlled(code, meta, control)?,
         |source| {
+            let compatibility = render_model_to_compat_json(&source.model, meta);
             (
-                render_model_to_compat_json(&source.model, meta),
+                compatibility,
                 source.editor_facts,
+                source.model.warning_facts,
             )
         },
         |failure| (*failure.error, *failure.editor_facts),
@@ -1722,6 +1739,27 @@ fn push_gitgraph_payload_fact(
         value.span,
         value.span,
     ));
+}
+
+fn push_gitgraph_reference_fact(
+    facts: &mut EditorSemanticFacts,
+    value: SpannedValue,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if value.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(
+        EditorSemanticSymbol::reference(
+            value.text,
+            Some(detail.to_string()),
+            kind,
+            value.span,
+            value.span,
+        )
+        .with_rename_policy(EditorRenamePolicy::GitGraphReference),
+    );
 }
 
 fn parse_git_graph_semantic_source(
@@ -2245,6 +2283,92 @@ merge feature id:"M1"
                 .iter()
                 .any(|symbol| symbol.name == "commit message")
         );
+    }
+
+    #[test]
+    fn gitgraph_usage_occurrences_are_typed_references_without_polluting_entities() {
+        let text = concat!(
+            "gitGraph\n",
+            "commit id:\"ROOT\"\n",
+            "branch feature\n",
+            "checkout feature\n",
+            "commit id:\"F1\"\n",
+            "switch main\n",
+            "commit id:\"M0\"\n",
+            "merge feature id:\"M1\"\n",
+            "branch release\n",
+            "cherry-pick id:\"M1\" parent:\"M0\"\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text)
+            .unwrap()
+            .expect("gitGraph editor facts");
+
+        let roles_for = |name: &str| {
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .map(|symbol| symbol.role)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            roles_for("feature"),
+            vec![
+                crate::EditorSemanticRole::Entity,
+                crate::EditorSemanticRole::Reference,
+                crate::EditorSemanticRole::Reference,
+            ]
+        );
+        assert_eq!(
+            roles_for("main"),
+            vec![crate::EditorSemanticRole::Reference]
+        );
+        assert_eq!(
+            roles_for("M1"),
+            vec![
+                crate::EditorSemanticRole::Entity,
+                crate::EditorSemanticRole::Reference,
+            ]
+        );
+        assert_eq!(
+            roles_for("M0"),
+            vec![
+                crate::EditorSemanticRole::Entity,
+                crate::EditorSemanticRole::Reference,
+            ]
+        );
+        assert_eq!(
+            roles_for("release"),
+            vec![crate::EditorSemanticRole::Entity]
+        );
+
+        let feature_symbols = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "feature")
+            .collect::<Vec<_>>();
+        assert!(feature_symbols[0].role.contributes_completion());
+        assert!(feature_symbols[0].role.contributes_outline());
+        for reference in &feature_symbols[1..] {
+            assert!(!reference.role.contributes_completion());
+            assert!(!reference.role.contributes_outline());
+            assert!(reference.role.contributes_references());
+            assert_eq!(reference.kind, EditorSemanticKind::Variable);
+        }
+
+        for name in ["M1", "M0"] {
+            let symbols = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .collect::<Vec<_>>();
+            assert_eq!(symbols[0].kind, EditorSemanticKind::Object);
+            assert_eq!(symbols[1].kind, EditorSemanticKind::Object);
+            assert!(symbols[1].role.contributes_references());
+            assert!(!symbols[1].role.contributes_completion());
+            assert!(!symbols[1].role.contributes_outline());
+        }
     }
 
     #[test]

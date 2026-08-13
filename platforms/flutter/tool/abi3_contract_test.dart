@@ -367,6 +367,19 @@ void decodesTypedMetadataCatalogs() {
     'evidence': ['ADR-0070'],
     'default_severity': 'error',
     'category': 'parse',
+    'tags': ['deprecated'],
+    'default_enabled': true,
+    'default_profile': 'recommended',
+    'origin': 'merman',
+    'configurable': false,
+    'fixable': false,
+  });
+  final legacyRuleWithoutTags = MermanLintRuleCatalogEntry.fromJson({
+    'id': 'parse-error',
+    'description': 'Reports parser failures.',
+    'evidence': ['ADR-0070'],
+    'default_severity': 'error',
+    'category': 'parse',
     'default_enabled': true,
     'default_profile': 'recommended',
     'origin': 'merman',
@@ -415,6 +428,8 @@ void decodesTypedMetadataCatalogs() {
         family.configNamespace == 'flowchart' &&
         rule.id == 'parse-error' &&
         rule.evidence.single == 'ADR-0070' &&
+        rule.tags.single == 'deprecated' &&
+        legacyRuleWithoutTags.tags.isEmpty &&
         presentation.themePresets.single.id == 'one-dark' &&
         presentation.profiles.single.aspects.single.applicability.familyId ==
             'flowchart' &&

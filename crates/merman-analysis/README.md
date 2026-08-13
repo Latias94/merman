@@ -96,7 +96,7 @@ Init-directive migration fixes are advisory and resource-bounded independently f
 
 ## What This Crate Owns
 
-- Stable diagnostic IDs, severities, metadata, fixes, and source ranges.
+- Stable diagnostic IDs, severities, protocol-neutral tags, metadata, fixes, and source ranges.
 - Plain Mermaid, Markdown, and MDX document extraction.
 - UTF-8 byte, line/column, and LSP-compatible source mapping.
 - Parser-backed semantic items, outline items, references, expected syntax, and provenance.
@@ -106,7 +106,8 @@ Init-directive migration fixes are advisory and resource-bounded independently f
 The layer boundaries are deliberate:
 
 - `merman-core` emits structured parser facts and exact spans.
-- `merman-analysis` turns those facts into diagnostics and document-level results.
+- `merman-analysis` turns those facts into diagnostics and document-level results. It exposes
+  typed expected-syntax evidence, but does not select completion categories or items.
 - `merman-editor-core` queries typed analysis snapshots for editor behavior.
 - LSP, WASM, CLI, FFI, and UniFFI only project those results into their host protocols.
 
@@ -118,7 +119,18 @@ The optional `system-clock`, `system-timezone`, `system-random`, and `system-tim
 
 ## Options JSON
 
-`AnalysisOptionsJson` is the shared forward-compatible configuration root. Unknown fields at the root and inside `lint` are ignored so older configuration transports can read newer additive settings. The `resources` object remains a strict versioned schema even when it is nested under the root.
+`AnalysisConfigContract` is the authority for the shared configuration root, its Draft 2020-12
+schema, and diagnostic-only versus snapshot-affecting change classification. It accepts options
+directly or under exactly one `merman` or `analysis` object; wrappers cannot be combined with
+each other or with direct analysis fields. Profile and severity strings are canonical lowercase
+values, including the reserved `strict` profile.
+
+`AnalysisOptionsJson` is the decoded forward-compatible root. Unknown fields at the root and
+inside `lint` are ignored so older configuration transports can read newer additive settings. The
+`resources` object and its limit IDs remain strict even when nested under the root. Calendar-date
+validity and fixed-date/fixed-offset instant representability are explicitly runtime-only
+constraints; the published standard schema names them instead of implementing a second date
+parser.
 
 Direct `serde_json` decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson`, or `ResourceOptionsJson` is intentionally strict and rejects unknown fields. Decode through `AnalysisOptionsJson` or `analysis_options_json_from_json_value` when forward compatibility is required; decode a nested type directly only when validating that exact nested schema is the goal.
 
@@ -130,11 +142,25 @@ Direct `serde_json` decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson
 
 ## Payload Contracts
 
-The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are both `1`; consumers must validate the version belonging to the payload they decode.
+The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are diagnostics `1` and facts `2`; consumers must validate the version belonging to the payload they decode. Diagnostic tags are optional additive schema-1 metadata: missing `tags` means no tags, while rule-backed diagnostics inherit tags from the canonical rule descriptor. Facts schema `2` contains generic parser/editor facts only; the removed Flowchart-only rich graph is not available through this wire contract.
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 
 `DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, so fence bodies share immutable document storage. `AnalysisGeneration` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points.
+
+## Prerelease Completion Migration
+
+The analysis-owned cursor policy types were deleted. Rust editor hosts should query a
+`DocumentSnapshot` with `merman_editor_core::completion_for_snapshot`; adapters that only inspect
+analysis facts should consume `FenceTextIndex::expected_syntax()` and its parser provenance.
+
+```compile_fail
+use merman_analysis::FenceCursorCompletionKind;
+```
+
+```compile_fail
+use merman_analysis::FenceCursorContext;
+```
 
 ## Related Documentation
 

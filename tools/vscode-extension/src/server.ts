@@ -12,12 +12,18 @@ import {
 } from "vscode-languageclient/node";
 
 import {
-  getAnalysisSettings,
   getDiagnosticsSettings,
   getDidChangeConfigurationPayload,
+  getInitializationAnalysisSettings,
   getServerSettings,
   getTraceSetting,
 } from "./config.js";
+import {
+  CONFIG_SCHEMA_METHOD,
+  RULE_CATALOG_METHOD,
+  type AnalysisConfigSchemaProjection,
+  type NegotiatedAnalysisConfig,
+} from "./analysis-config-contract.js";
 import { resolveMermanBinary } from "./binaries.js";
 import {
   emptyDocumentDiagnosticReport,
@@ -26,8 +32,7 @@ import {
 } from "./diagnostic-ownership.js";
 import { workspaceRoots } from "./workspace.js";
 
-export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
-export const CONFIG_SCHEMA_METHOD = "merman/configSchema";
+export type LspRuleTag = "deprecated";
 
 export interface LspRuleCatalogEntry {
   id: string;
@@ -35,6 +40,7 @@ export interface LspRuleCatalogEntry {
   evidence: string[];
   default_severity: string;
   category: string;
+  tags?: LspRuleTag[];
   default_enabled: boolean;
   default_profile: string;
   origin: string;
@@ -47,15 +53,7 @@ export interface RuleCatalogResponse {
   rules: LspRuleCatalogEntry[];
 }
 
-export interface ConfigSchemaResponse {
-  version: number;
-  rule_catalog_method: string;
-  accepted_roots: string[];
-  profiles: string[];
-  severities: string[];
-  configurable_rule_ids: string[];
-  schema: unknown;
-}
+export type ConfigSchemaResponse = AnalysisConfigSchemaProjection;
 
 export async function createLanguageClient(
   context: vscode.ExtensionContext,
@@ -75,7 +73,7 @@ export async function createLanguageClient(
     outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
     initializationOptions: {
-      analysis: getAnalysisSettings(),
+      analysis: getInitializationAnalysisSettings(),
     },
     markdown: {
       isTrusted: false,
@@ -123,9 +121,18 @@ export async function createLanguageClient(
   return client;
 }
 
-export async function pushConfiguration(client: LanguageClient): Promise<void> {
+export async function pushConfiguration(
+  client: LanguageClient,
+  contract: NegotiatedAnalysisConfig,
+): Promise<void> {
+  const { payload, unsupportedRuleIds } = getDidChangeConfigurationPayload(contract);
+  if (unsupportedRuleIds.length > 0) {
+    client.outputChannel.warn(
+      `Connected Merman server does not advertise these rule IDs as configurable; ignoring them: ${unsupportedRuleIds.join(", ")}`,
+    );
+  }
   await client.sendNotification("workspace/didChangeConfiguration", {
-    settings: getDidChangeConfigurationPayload(),
+    settings: payload,
   });
 }
 

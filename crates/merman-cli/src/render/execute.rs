@@ -27,9 +27,10 @@ pub(crate) fn execute_render(
                     ..
                 } => {
                     let permit = admission.acquire_controlled(&single.control)?;
-                    let mut request = merman::AsciiRequest::default();
-                    request.options = options.clone();
-                    request.resources = *resources;
+                    let request = merman::AsciiRequest {
+                        options: *options,
+                        resources: *resources,
+                    };
                     let output = renderer.renderer.render(renderer.request(
                         &single.source,
                         merman::RenderTarget::Ascii(request),

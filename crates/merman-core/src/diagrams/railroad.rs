@@ -3439,7 +3439,7 @@ fn push_ast_facts(
                 *selection,
             ));
             facts.push_symbol(
-                EditorSemanticSymbol::new(
+                EditorSemanticSymbol::reference(
                     name.clone(),
                     Some(format!("{detail_prefix} nonterminal reference")),
                     EditorSemanticKind::Function,
@@ -3516,7 +3516,8 @@ fn push_payload_fact(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeProducerKind, EditorSemanticCompleteness, MermaidConfig, ParseMetadata,
+        EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticRole, MermaidConfig,
+        ParseMetadata,
     };
 
     fn meta(dialect: RailroadDialect) -> ParseMetadata {
@@ -3949,6 +3950,67 @@ mod tests {
                     )
                 });
             assert_eq!(entry.rename_policy, expected_policy);
+        }
+    }
+
+    #[test]
+    fn railroad_rule_definitions_and_forward_references_have_distinct_roles() {
+        let cases = [
+            (
+                RailroadDialect::Ir,
+                concat!(
+                    "railroad-beta\n",
+                    "entry = nonterminal(\"later\") ;\n",
+                    "later = terminal(\"value\") ;\n",
+                ),
+            ),
+            (
+                RailroadDialect::Ebnf,
+                "railroad-ebnf-beta\nentry = later ;\nlater = \"value\" ;\n",
+            ),
+            (
+                RailroadDialect::Abnf,
+                "railroad-abnf-beta\nentry = later ;\nlater = \"value\" ;\n",
+            ),
+            (
+                RailroadDialect::Peg,
+                "railroad-peg-beta\nentry <- later ;\nlater <- \"value\" ;\n",
+            ),
+        ];
+
+        for (dialect, source) in cases {
+            let facts = combined_editor_facts(source, dialect);
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "entry" && symbol.role == EditorSemanticRole::Entity
+            }));
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "value" && symbol.role == EditorSemanticRole::Payload
+            }));
+            let later: Vec<_> = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "later")
+                .collect();
+
+            assert_eq!(later.len(), 2, "{}", dialect.diagram_type());
+            assert_eq!(
+                later[0].role,
+                EditorSemanticRole::Reference,
+                "{}",
+                dialect.diagram_type()
+            );
+            assert_eq!(
+                later[1].role,
+                EditorSemanticRole::Entity,
+                "{}",
+                dialect.diagram_type()
+            );
+            assert_eq!(
+                later[0].rename_policy,
+                later[1].rename_policy,
+                "{}",
+                dialect.diagram_type()
+            );
         }
     }
 

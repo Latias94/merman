@@ -2,6 +2,7 @@
 
 import {
   createEditorSession,
+  editorCompletionTriggerCharacters,
   editorSemanticTokenDescriptor,
   initMerman,
   runtimeCatalog,
@@ -29,6 +30,7 @@ const port: EditorWorkerRuntimePort = {
 };
 const runtime = createEditorWorkerRuntime(port, {
   createEditorSession,
+  editorCompletionTriggerCharacters,
   editorSemanticTokenDescriptor,
   initMerman,
   legendDigest: SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,

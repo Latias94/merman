@@ -53,6 +53,7 @@ import type {
 } from "./public-types.js";
 
 const defaultRuntimeState = createMermanRuntimeState(defaultLoader);
+const WEB_TRANSPORT_API_VERSION = 4;
 const METADATA_SPEC_BY_ID: ReadonlyMap<string, (typeof METADATA_SPECS)[number]> = new Map(
   METADATA_SPECS.map((spec) => [spec.id, spec])
 );
@@ -134,6 +135,11 @@ async function doInit(
     await module.default();
   } else {
     await module.default({ module_or_path: wasm });
+  }
+  if (module.transportApiVersion() !== WEB_TRANSPORT_API_VERSION) {
+    throw new Error(
+      `Merman WASM transport API is incompatible with Web transport API ${WEB_TRANSPORT_API_VERSION}.`,
+    );
   }
   state.wasmModule = module;
   return module;

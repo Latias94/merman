@@ -368,7 +368,7 @@ fn canonical_characterization_matrix_executes_representative_and_malformed_contr
                 .unwrap_or_else(|| panic!("{} malformed snapshot was absent", row.variant_id));
             let outcome_matches_semantic = matches!(
                 (&malformed_semantic, snapshot.outcome()),
-                (Ok(Some(_)), crate::DiagramParseOutcome::Parsed(_))
+                (Ok(Some(_)), crate::DiagramParseOutcome::Parsed { .. })
                     | (Err(_), crate::DiagramParseOutcome::Failed(_))
             );
             if !outcome_matches_semantic {

@@ -11,7 +11,7 @@ use std::process::Command;
 const BUNDLE_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json";
 const REPOS_LOCK_RELATIVE_PATH: &str = "tools/upstreams/REPOS.lock.json";
 const SELECTION_DECISION_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_SELECTION_DECISION.json";
-const EXPECTED_BUNDLE_SCHEMA_VERSION: u32 = 5;
+const EXPECTED_BUNDLE_SCHEMA_VERSION: u32 = 6;
 const EXPECTED_PROJECTION_SCHEMA_VERSION: u32 = 3;
 const EXPECTED_SELECTION_DECISION_SCHEMA_VERSION: u32 = 1;
 const CORE_PROJECTION_RELATIVE_PATH: &str = "crates/merman-core/src/generated/mermaid_reference.rs";
@@ -44,6 +44,7 @@ struct MermaidReferenceBundle {
     external_layouts: Vec<PackageReference>,
     playground: WorkspaceLocation,
     reference_cli: ReferenceCli,
+    renderer_tools: Vec<PackageReference>,
     install_policy: InstallPolicy,
     feature_decision: FeatureDecision,
     generated_outputs: Vec<String>,
@@ -251,6 +252,7 @@ fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference>
         &bundle.reference_cli.package,
     ];
     references.extend(bundle.external_layouts.iter());
+    references.extend(bundle.renderer_tools.iter());
     for diagram in &bundle.external_diagrams {
         references.extend([&diagram.plugin, &diagram.behavior]);
     }
@@ -366,6 +368,21 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         || bundle.reference_cli.package.role != "reference-cli"
     {
         failures.push("referenceCli must describe @mermaid-js/mermaid-cli".to_string());
+    }
+    let renderer_tools = bundle
+        .renderer_tools
+        .iter()
+        .map(|reference| reference.package.as_str())
+        .collect::<BTreeSet<_>>();
+    if renderer_tools != BTreeSet::from(["@puppeteer/browsers", "puppeteer", "puppeteer-core"])
+        || bundle
+            .renderer_tools
+            .iter()
+            .any(|reference| reference.role != "renderer-tool")
+    {
+        failures.push(
+            "rendererTools must bind the selected Puppeteer browser-driver closure".to_string(),
+        );
     }
     if bundle.install_policy.registry != OFFICIAL_NPM_REGISTRY_PREFIX
         || !bundle.install_policy.default_ignore_scripts
@@ -1337,7 +1354,12 @@ fn workspace_graph_expectations<'a>(
         &bundle.sanitizer,
     ];
     playground_expected.extend(layout_refs.iter().copied());
-    let mut cli_direct = vec![&bundle.reference_cli.package, &zenuml.plugin];
+    let puppeteer = bundle
+        .renderer_tools
+        .iter()
+        .find(|reference| reference.package == "puppeteer")
+        .expect("validated rendererTools must contain puppeteer");
+    let mut cli_direct = vec![&bundle.reference_cli.package, &zenuml.plugin, puppeteer];
     cli_direct.extend(layout_refs.iter().copied());
     let mut cli_expected = vec![
         &bundle.reference_cli.package,
@@ -1348,6 +1370,7 @@ fn workspace_graph_expectations<'a>(
         &bundle.sanitizer,
     ];
     cli_expected.extend(layout_refs.iter().copied());
+    cli_expected.extend(bundle.renderer_tools.iter());
     vec![
         WorkspaceGraphExpectation {
             workspace: "playground",
@@ -1643,14 +1666,33 @@ fn selection_identity_from_bundle_value(bundle: &JsonValue) -> Result<JsonValue,
             .and_then(JsonValue::as_str)
             .cmp(&right.get("package").and_then(JsonValue::as_str))
     });
-    Ok(serde_json::json!({
+    let mut identity = serde_json::json!({
         "release": package("/release")?,
         "parser": package("/parser")?,
         "sanitizer": package("/sanitizer")?,
         "externalDiagrams": selected_diagrams,
         "externalLayouts": selected_layouts,
         "referenceCli": package("/referenceCli/package")?,
-    }))
+    });
+    if let Some(renderer_tools) = bundle.get("rendererTools").and_then(JsonValue::as_array) {
+        let mut selected_renderer_tools = renderer_tools
+            .iter()
+            .map(package_selection_identity)
+            .collect::<Result<Vec<_>, _>>()?;
+        selected_renderer_tools.sort_by(|left, right| {
+            left.get("package")
+                .and_then(JsonValue::as_str)
+                .cmp(&right.get("package").and_then(JsonValue::as_str))
+        });
+        identity
+            .as_object_mut()
+            .expect("selection identity is an object")
+            .insert(
+                "rendererTools".to_string(),
+                JsonValue::Array(selected_renderer_tools),
+            );
+    }
+    Ok(identity)
 }
 
 fn selection_identity(bundle: &MermaidReferenceBundle) -> Result<JsonValue, XtaskError> {
@@ -2418,9 +2460,12 @@ mod tests {
                 "@mermaid-js/mermaid-cli",
                 "@mermaid-js/mermaid-zenuml",
                 "@mermaid-js/parser",
+                "@puppeteer/browsers",
                 "@zenuml/core",
                 "dompurify",
                 "mermaid",
+                "puppeteer",
+                "puppeteer-core",
             ])
         );
     }

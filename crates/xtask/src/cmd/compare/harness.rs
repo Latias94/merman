@@ -483,6 +483,7 @@ pub(crate) fn svg_request(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn render_source_svg(
     renderer: &merman::Renderer,
     source: &str,
@@ -499,22 +500,6 @@ pub(crate) fn render_source_svg(
         merman::RenderOutput::Svg(Some(output)) => Ok(output),
         merman::RenderOutput::Svg(None) => Err("render produced no SVG".to_string()),
         _ => Err("typed SVG request returned an unexpected target".to_string()),
-    }
-}
-
-pub(crate) fn render_semantic_layout(
-    semantic: merman::SemanticArtifact,
-    request: merman::SvgRequest,
-) -> Result<merman::SvgLayoutOutput, String> {
-    let output = semantic
-        .render(merman::RenderTarget::LayoutJson(request))
-        .map_err(|error| error.to_string())?;
-    match output {
-        merman::RenderOutput::LayoutJson(Some(output)) => Ok(output),
-        merman::RenderOutput::LayoutJson(None) => {
-            Err("layout inspection produced no output".to_string())
-        }
-        _ => Err("typed layout request returned an unexpected target".to_string()),
     }
 }
 

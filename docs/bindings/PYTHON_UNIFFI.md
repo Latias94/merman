@@ -70,11 +70,11 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version() == 4
+assert api.transport_api_version() == 4
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.binding_api_version()
+assert catalog["transport_api_version"] == api.transport_api_version()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -137,7 +137,7 @@ Generic operations may attach a caller-owned `MermanOperationControl`:
 
 ```python
 control = merman.MermanOperationControl(timeout_ms=250)
-request = merman.MermanOperationRequest(
+request = merman.MermanOperationRequestV4(
     operation_id="svg",
     source="flowchart TD\nA --> B",
     uri=None,
@@ -159,7 +159,8 @@ The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 `ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
-references, for editor settings, diagnostic explanations, or LSP rule configuration.
+references and policy tags, for editor settings, diagnostic explanations, or LSP rule
+configuration.
 
 The direct UniFFI binding API is `4`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
@@ -195,7 +196,7 @@ non-negative height from a direct raw SVG `<text>.getBBox()` probe.
 
 The generated callback method is `measure(self, request)`, not `measure_text`. One-shot facade
 methods receive `options_json` explicitly (`api.render_svg(source, options_json)`). Generic
-operations put the same value in `MermanOperationRequest.options_json` and call
+operations put the same value in `MermanOperationRequestV4.options_json` and call
 `api.execute(request)`. A reusable engine accepts baseline options at construction and
 request-local overrides on each operation, such as `engine.render_svg(source, options_json)`;
 those overrides are deeply merged without changing the baseline or its runtime policy. Do not

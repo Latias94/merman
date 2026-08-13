@@ -76,12 +76,14 @@ impl Operation {
             .checkpoint_at(OperationPhase::Semantic)
             .map_err(RenderError::Cancelled)?;
         Ok(Some(SemanticArtifact {
-            parsed,
-            operation: OperationExecution {
-                control: self.control,
-                #[cfg(any(feature = "svg", feature = "ascii"))]
-                context: self.context,
-            },
+            state: Box::new(SemanticArtifactState {
+                parsed,
+                operation: OperationExecution {
+                    control: self.control,
+                    #[cfg(any(feature = "svg", feature = "ascii"))]
+                    context: self.context,
+                },
+            }),
         }))
     }
 }
@@ -100,19 +102,24 @@ pub(crate) struct OperationExecution {
 /// and ASCII adapters consume this canonical pair and choose their own layout and emission path.
 #[derive(Debug)]
 pub struct SemanticArtifact {
-    pub(crate) parsed: ParsedDiagramRender,
-    pub(crate) operation: OperationExecution,
+    state: Box<SemanticArtifactState>,
+}
+
+#[derive(Debug)]
+struct SemanticArtifactState {
+    parsed: ParsedDiagramRender,
+    operation: OperationExecution,
 }
 
 impl SemanticArtifact {
     /// Returns metadata captured by the controlled parse operation.
     pub fn metadata(&self) -> &ParseMetadata {
-        self.parsed.metadata()
+        self.state.parsed.metadata()
     }
 
     /// Returns the stable family/model kind selected by the semantic parser.
     pub fn semantic_kind(&self) -> &'static str {
-        self.parsed.model().kind()
+        self.state.parsed.model().kind()
     }
 
     /// Returns the typed Mermaid diagram id selected during preprocessing.
@@ -120,8 +127,17 @@ impl SemanticArtifact {
         &self.metadata().diagram_type
     }
 
+    pub(crate) fn parsed(&self) -> &ParsedDiagramRender {
+        &self.state.parsed
+    }
+
+    pub(crate) fn control(&self) -> &OperationControl {
+        &self.state.operation.control
+    }
+
     #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) fn into_parts(self) -> (ParsedDiagramRender, OperationExecution) {
-        (self.parsed, self.operation)
+        let SemanticArtifactState { parsed, operation } = *self.state;
+        (parsed, operation)
     }
 }

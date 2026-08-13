@@ -608,6 +608,7 @@ class MermanLintRuleCatalogEntry {
     required this.evidence,
     required this.defaultSeverity,
     required this.category,
+    required this.tags,
     required this.defaultEnabled,
     required this.defaultProfile,
     required this.origin,
@@ -620,51 +621,54 @@ class MermanLintRuleCatalogEntry {
   final List<String> evidence;
   final String defaultSeverity;
   final String category;
+  final List<String> tags;
   final bool defaultEnabled;
   final String defaultProfile;
   final String origin;
   final bool configurable;
   final bool fixable;
 
-  factory MermanLintRuleCatalogEntry.fromJson(Map<String, Object?> json) =>
-      MermanLintRuleCatalogEntry(
-        id: _requiredString(json, 'id', 'lint rule catalog entry'),
-        description: _requiredString(
-          json,
-          'description',
-          'lint rule catalog entry',
-        ),
-        evidence: List.unmodifiable(
-          _requiredStringList(
-            json,
-            'evidence',
-            'lint rule catalog entry.evidence',
-          ),
-        ),
-        defaultSeverity: _requiredString(
-          json,
-          'default_severity',
-          'lint rule catalog entry',
-        ),
-        category: _requiredString(json, 'category', 'lint rule catalog entry'),
-        defaultEnabled: _requiredBool(
-          json,
-          'default_enabled',
-          'lint rule catalog entry',
-        ),
-        defaultProfile: _requiredString(
-          json,
-          'default_profile',
-          'lint rule catalog entry',
-        ),
-        origin: _requiredString(json, 'origin', 'lint rule catalog entry'),
-        configurable: _requiredBool(
-          json,
-          'configurable',
-          'lint rule catalog entry',
-        ),
-        fixable: _requiredBool(json, 'fixable', 'lint rule catalog entry'),
-      );
+  factory MermanLintRuleCatalogEntry.fromJson(
+    Map<String, Object?> json,
+  ) => MermanLintRuleCatalogEntry(
+    id: _requiredString(json, 'id', 'lint rule catalog entry'),
+    description: _requiredString(
+      json,
+      'description',
+      'lint rule catalog entry',
+    ),
+    evidence: List.unmodifiable(
+      _requiredStringList(json, 'evidence', 'lint rule catalog entry.evidence'),
+    ),
+    defaultSeverity: _requiredString(
+      json,
+      'default_severity',
+      'lint rule catalog entry',
+    ),
+    category: _requiredString(json, 'category', 'lint rule catalog entry'),
+    tags: List.unmodifiable(
+      json.containsKey('tags')
+          ? _requiredStringList(json, 'tags', 'lint rule catalog entry.tags')
+          : const <String>[],
+    ),
+    defaultEnabled: _requiredBool(
+      json,
+      'default_enabled',
+      'lint rule catalog entry',
+    ),
+    defaultProfile: _requiredString(
+      json,
+      'default_profile',
+      'lint rule catalog entry',
+    ),
+    origin: _requiredString(json, 'origin', 'lint rule catalog entry'),
+    configurable: _requiredBool(
+      json,
+      'configurable',
+      'lint rule catalog entry',
+    ),
+    fixable: _requiredBool(json, 'fixable', 'lint rule catalog entry'),
+  );
 }
 
 /// Artifact-owned presentation theme and profile metadata.

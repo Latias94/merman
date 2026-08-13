@@ -33,11 +33,18 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - `merman.lsp.document_sync_lost` is the one LSP-owned protocol-integrity diagnostic. It reports
   that an invalid incremental edit or a ranged edit after source discard left the server without
   authoritative text. It is not an analysis rule or rule-catalog entry, and its negotiated data
-  contains only the document version.
+  contains only the document version. Its pull result identity still binds the captured URI,
+  document epoch/version, diagnostic generation, and explicit sync-loss state so a close/reopen
+  cycle cannot reuse an earlier pull result.
 - `merman.resource.document_diagrams_exceeded` remains an analysis-owned resource diagnostic.
   The LSP retains authoritative Markdown/MDX text while analysis is rejected, projects the
   canonical payload for both push and pull diagnostics, and continues accepting ranged edits. It
   must not translate this state into `merman.lsp.document_sync_lost`.
+- Analysis-owned unavailable outcomes (`AnalysisRejected`, `ResourceLimited`, and `Discarded`)
+  use the same cohesive diagnostic round-trip owner as ordinary analysis results. Their opaque
+  diagnostic ids and pull result ids bind the URI, document epoch/version, diagnostic generation,
+  unavailable-state kind, and diagnostic ordinal; they do not manufacture an analysis-result
+  identity for a snapshot that does not exist.
 
 ## Current Surface
 
@@ -72,10 +79,15 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 Diagnostics are computed through typed `LanguageSession` operations. Each operation captures a
 document/analyzer ticket under the short-lived session mutex, projects analysis payloads without
 holding that mutex, and commits only while the document epoch and diagnostic configuration
-generation are still current. Before sending push diagnostics, the server
-checks that the captured context remains current;
-stale contexts observed before the final publish attempt are suppressed. A notification already
-handed to the client transport is outside this cancellation boundary.
+generation are still current. Before sending push diagnostics, the server checks that the captured
+context remains current. Push, clear, and configuration-driven republish intents share one bounded
+serial lane and coalesce by document URI. A newer intent for the same URI also cancels an active
+publish or clear while it is still awaiting client-transport acceptance, then recomputes from the
+latest document state. Intent registration and each poll that may admit a diagnostic notification
+to the client transport share a short admission gate. Therefore either the newer intent wins and
+the older transport future is not polled again, or the older notification is accepted before the
+newer intent is registered. Once the client transport has accepted a notification, it cannot be
+retracted.
 
 For pull diagnostics, `textDocument/diagnostic` performs the same currentness check after analysis.
 If the captured context became stale, the server recomputes from the latest context with a bounded

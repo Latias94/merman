@@ -101,7 +101,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
     println!("  verify-theme-snapshot");
-    println!("  verify-editor-token-descriptor");
+    println!("  verify-editor-language-contract");
     println!("  verify-binding-contract");
     println!("  verify-capability-surface");
     println!("  verify-artifact-profiles");
@@ -135,7 +135,7 @@ fn print_help(topic: Option<&str>) {
     println!("  gen-font-metrics");
     println!("  measure-text");
     println!("  gen-theme-snapshot");
-    println!("  gen-editor-token-descriptor");
+    println!("  gen-editor-language-contract");
     println!("  gen-binding-contract");
     println!("  gen-capability-surface");
     println!("  gen-typst-profile-constants");
@@ -196,7 +196,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
         "gen-theme-snapshot" => cmd::gen_theme_snapshot(args.collect()),
-        "gen-editor-token-descriptor" => cmd::gen_editor_token_descriptor(args.collect()),
+        "gen-editor-language-contract" => cmd::gen_editor_language_contract(args.collect()),
         "gen-binding-contract" => cmd::gen_binding_contract(args.collect()),
         "gen-capability-surface" => cmd::gen_capability_surface(args.collect()),
         "gen-typst-profile-constants" => cmd::gen_typst_profile_constants(args.collect()),
@@ -211,7 +211,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
         "verify-theme-snapshot" => cmd::verify_theme_snapshot(args.collect()),
-        "verify-editor-token-descriptor" => cmd::verify_editor_token_descriptor(args.collect()),
+        "verify-editor-language-contract" => cmd::verify_editor_language_contract(args.collect()),
         "verify-binding-contract" => cmd::verify_binding_contract(args.collect()),
         "verify-capability-surface" => cmd::verify_capability_surface(args.collect()),
         "verify-artifact-profiles" => {

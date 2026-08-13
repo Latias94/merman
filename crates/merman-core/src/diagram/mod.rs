@@ -1,10 +1,12 @@
 use crate::{
     EditorSemanticFacts, Error, MermaidConfig, OperationControl, OperationControlResult,
-    OperationPhase, ParseMetadata, Result, editor::SourceSpan,
+    OperationPhase, ParseMetadata, Result, editor::SourceSpan, preprocess::SourceConfigEvidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
@@ -190,7 +192,12 @@ pub enum ParsedEditorFacts {
 /// Semantic result retained by one editor-facing diagram parse operation.
 #[derive(Debug)]
 pub enum DiagramParseOutcome {
-    Parsed(Value),
+    Parsed {
+        /// Mermaid-compatible semantic JSON retained for existing projections.
+        model: Value,
+        /// Parser-owned warning facts after preprocessing spans have been remapped once.
+        warning_facts: Vec<DiagramWarningFact>,
+    },
     Failed(Error),
     /// Family construction panicked after preprocessing produced valid metadata.
     Panicked(String),
@@ -200,7 +207,7 @@ impl DiagramParseOutcome {
     /// Returns the semantic model when family construction succeeded.
     pub fn parsed_model(&self) -> Option<&Value> {
         match self {
-            Self::Parsed(model) => Some(model),
+            Self::Parsed { model, .. } => Some(model),
             Self::Failed(_) | Self::Panicked(_) => None,
         }
     }
@@ -208,13 +215,15 @@ impl DiagramParseOutcome {
 
 /// One preprocessing, detection, and family-construction operation for editor consumers.
 ///
-/// Metadata, semantic output or its original error, and recovery facts are retained together so
-/// downstream analysis cannot reconstruct failure state by parsing the source again.
+/// Metadata, semantic output or its original error, typed warnings, and recovery facts are
+/// retained together so downstream analysis cannot reconstruct parser state from compatibility
+/// JSON or by parsing the source again.
 #[derive(Debug)]
 pub struct DiagramParseSnapshot {
     meta: ParseMetadata,
     outcome: DiagramParseOutcome,
     editor_facts: ParsedEditorFacts,
+    source_config: SourceConfigEvidence,
     recovered_incomplete_directive: bool,
 }
 
@@ -223,12 +232,14 @@ impl DiagramParseSnapshot {
         meta: ParseMetadata,
         outcome: DiagramParseOutcome,
         editor_facts: ParsedEditorFacts,
+        source_config: SourceConfigEvidence,
         recovered_incomplete_directive: bool,
     ) -> Self {
         Self {
             meta,
             outcome,
             editor_facts,
+            source_config,
             recovered_incomplete_directive,
         }
     }
@@ -236,6 +247,23 @@ impl DiagramParseSnapshot {
     /// Consumes the closed snapshot into its three operation-owned projections.
     pub fn into_parts(self) -> (ParseMetadata, DiagramParseOutcome, ParsedEditorFacts) {
         (self.meta, self.outcome, self.editor_facts)
+    }
+
+    /// Consumes the snapshot while retaining source-configuration evidence from preprocessing.
+    pub fn into_parts_with_source_config(
+        self,
+    ) -> (
+        ParseMetadata,
+        DiagramParseOutcome,
+        ParsedEditorFacts,
+        SourceConfigEvidence,
+    ) {
+        (
+            self.meta,
+            self.outcome,
+            self.editor_facts,
+            self.source_config,
+        )
     }
 
     /// Returns metadata produced by this preprocessing and detection operation.
@@ -253,9 +281,81 @@ impl DiagramParseSnapshot {
         &self.editor_facts
     }
 
+    /// Source-backed frontmatter and directive evidence from the outer preprocessing pass.
+    pub fn source_config(&self) -> &SourceConfigEvidence {
+        &self.source_config
+    }
+
     /// Whether editor preprocessing recovered an unterminated directive line.
     pub const fn recovered_incomplete_directive(&self) -> bool {
         self.recovered_incomplete_directive
+    }
+}
+
+/// Non-cancellation result of one editor snapshot capture operation.
+// Keep the successful snapshot inline: the pre-existing parse API already returned this payload
+// by value, while boxing it would add an allocation to every editor capture only to balance the
+// less common failure variants.
+pub struct CapturedPanic {
+    message: String,
+    payload: Box<dyn Any + Send + 'static>,
+}
+
+impl CapturedPanic {
+    pub(crate) fn from_payload(payload: Box<dyn Any + Send + 'static>) -> Self {
+        let message = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("panic while analyzing Mermaid source")
+            .to_string();
+        Self { message, payload }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub(crate) fn into_payload(self) -> Box<dyn Any + Send + 'static> {
+        self.payload
+    }
+}
+
+impl Debug for CapturedPanic {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CapturedPanic")
+            .field("message", &self.message)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum DiagramSnapshotCapture {
+    Snapshot(Option<DiagramParseSnapshot>),
+    Failed {
+        error: Error,
+        source_config: SourceConfigEvidence,
+    },
+    /// Detection or metadata finalization panicked after preprocessing evidence was captured.
+    ///
+    /// No diagram metadata is attached because automatic detection did not complete.
+    Panicked {
+        panic: CapturedPanic,
+        source_config: SourceConfigEvidence,
+    },
+}
+
+impl DiagramSnapshotCapture {
+    pub(crate) fn into_result(self) -> Result<Option<DiagramParseSnapshot>> {
+        match self {
+            Self::Snapshot(snapshot) => Ok(snapshot),
+            Self::Failed { error, .. } => Err(error),
+            // The legacy Result facade has no panic outcome. Resume the exact original payload;
+            // evidence-aware callers consume this capture before reaching this adapter.
+            Self::Panicked { panic, .. } => std::panic::resume_unwind(panic.into_payload()),
+        }
     }
 }
 
@@ -983,27 +1083,6 @@ impl ParsedDiagramRender {
         &self,
     ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
         self.context.flowchart_label_sources()
-    }
-}
-
-/// Parses with a registry entry or reports an unsupported Mermaid diagram type.
-pub(crate) fn parse_or_unsupported(
-    registry: &DiagramRegistry,
-    diagram_type: &str,
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<Value> {
-    let Some(parser) = registry.resolve(diagram_type) else {
-        return Err(Error::UnsupportedDiagram {
-            diagram_type: diagram_type.to_string(),
-        });
-    };
-    match parser {
-        ResolvedSemanticParser::BuiltIn(parser) => parser(code, meta),
-        ResolvedSemanticParser::Custom(parser) => {
-            let control = OperationControl::new();
-            parser(code, meta, &control).map_err(Error::from)?
-        }
     }
 }
 

@@ -128,7 +128,13 @@ impl SemanticBuilder {
             && self.participants.is_empty())
             || self.some_statement_misses_from;
         if needs_default_starter {
-            self.reference_named_participant("_STARTER_", None, true, None);
+            self.reference_named_participant(
+                "_STARTER_",
+                None,
+                true,
+                None,
+                "zenuml participant reference",
+            );
         }
 
         if needs_default_starter && self.participants.contains_key("_STARTER_") {
@@ -310,6 +316,7 @@ impl SemanticBuilder {
                         message.from.as_ref().map(|v| v.span),
                         false,
                         message.from_emoji.as_ref(),
+                        "zenuml participant reference",
                     );
                 }
                 if let Some(to) = &resolved_to {
@@ -318,6 +325,7 @@ impl SemanticBuilder {
                         message.to.as_ref().map(|v| v.span),
                         false,
                         message.to_emoji.as_ref(),
+                        "zenuml participant reference",
                     );
                 }
                 self.push_message_signature(&message.signature);
@@ -359,13 +367,20 @@ impl SemanticBuilder {
                 );
                 self.record_ownable_from(resolved_from.as_deref());
                 if let Some(from) = &resolved_from {
-                    self.reference_named_participant(from, None, false, None);
+                    self.reference_named_participant(
+                        from,
+                        None,
+                        false,
+                        None,
+                        "zenuml participant reference",
+                    );
                 }
                 self.reference_named_participant(
                     &resolved_to,
                     Some(creation.constructor.span),
                     false,
                     None,
+                    "zenuml participant reference",
                 );
                 self.push_payload(
                     &creation.constructor,
@@ -422,6 +437,7 @@ impl SemanticBuilder {
                         ret.from.as_ref().map(|value| value.span),
                         false,
                         ret.from_emoji.as_ref(),
+                        "zenuml participant reference",
                     );
                 }
                 if let Some(to) = &resolved_to {
@@ -430,6 +446,7 @@ impl SemanticBuilder {
                         ret.to.as_ref().map(|value| value.span),
                         false,
                         ret.to_emoji.as_ref(),
+                        "zenuml participant reference",
                     );
                 }
                 if let Some(value) = &ret.value {
@@ -532,10 +549,7 @@ impl SemanticBuilder {
     }
 
     fn reference_participant(&mut self, value: &SpannedText, starter: bool, detail: &str) {
-        self.reference_named_participant(&value.value, Some(value.span), starter, None);
-        if let Some(symbol) = self.facts.symbols.last_mut() {
-            symbol.detail = Some(detail.to_string());
-        }
+        self.reference_named_participant(&value.value, Some(value.span), starter, None, detail);
     }
 
     fn reference_named_participant(
@@ -544,40 +558,55 @@ impl SemanticBuilder {
         span: Option<SourceSpan>,
         starter: bool,
         emoji: Option<&SpannedText>,
+        detail: &str,
     ) {
-        let entry = self
-            .participants
-            .entry(name.to_string())
-            .or_insert_with(|| ParticipantAccumulator {
-                participant: ZenumlParticipant {
-                    name: name.to_string(),
-                    label: None,
-                    participant_type: None,
-                    stereotype: None,
-                    emoji: None,
-                    width_source: None,
-                    color: None,
-                    comment: None,
-                    group_id: None,
-                    explicit: false,
-                    is_starter: false,
-                    declaration_span: None,
-                    occurrences: Vec::new(),
-                },
-            });
+        let (entry, is_implicit_definition) = match self.participants.entry(name.to_string()) {
+            indexmap::map::Entry::Vacant(entry) => (
+                entry.insert(ParticipantAccumulator {
+                    participant: ZenumlParticipant {
+                        name: name.to_string(),
+                        label: None,
+                        participant_type: None,
+                        stereotype: None,
+                        emoji: None,
+                        width_source: None,
+                        color: None,
+                        comment: None,
+                        group_id: None,
+                        explicit: false,
+                        is_starter: false,
+                        declaration_span: None,
+                        occurrences: Vec::new(),
+                    },
+                }),
+                true,
+            ),
+            indexmap::map::Entry::Occupied(entry) => (entry.into_mut(), false),
+        };
         entry.participant.is_starter |= starter;
         if entry.participant.emoji.is_none() {
             entry.participant.emoji = emoji.map(|emoji| emoji.value.clone());
         }
         if let Some(span) = span {
             entry.participant.occurrences.push(span);
-            self.facts.push_symbol(EditorSemanticSymbol::new(
-                name,
-                Some("zenuml participant reference".to_string()),
-                EditorSemanticKind::Event,
-                span,
-                span,
-            ));
+            let symbol = if is_implicit_definition {
+                EditorSemanticSymbol::new(
+                    name,
+                    Some("zenuml implicit participant".to_string()),
+                    EditorSemanticKind::Event,
+                    span,
+                    span,
+                )
+            } else {
+                EditorSemanticSymbol::reference(
+                    name,
+                    Some(detail.to_string()),
+                    EditorSemanticKind::Event,
+                    span,
+                    span,
+                )
+            };
+            self.facts.push_symbol(symbol);
         }
         if let Some(emoji) = emoji {
             self.push_payload(
@@ -714,6 +743,64 @@ mod tests {
         assert!(built.model.participant("Order").is_none());
         assert!(built.model.participant("A").is_some());
         assert!(built.model.participant("B").is_some());
+    }
+
+    #[test]
+    fn explicit_and_implicit_participants_have_one_entity_then_references() {
+        let source = concat!(
+            "zenuml\n",
+            "@Actor Declared\n",
+            "Declared->Implicit.call()\n",
+            "Implicit->Declared.reply()\n",
+        );
+        let tokens = super::super::lexer::lex(source);
+        let parsed = super::super::parser::parse(source, &tokens);
+        let built = build(parsed);
+
+        let declared: Vec<_> = built
+            .editor_facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Declared")
+            .collect();
+        let implicit: Vec<_> = built
+            .editor_facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Implicit")
+            .collect();
+        assert_eq!(declared.len(), 3);
+        assert_eq!(declared[0].role, EditorSemanticRole::Entity);
+        assert!(
+            declared[1..]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert_eq!(implicit.len(), 2);
+        assert_eq!(implicit[0].role, EditorSemanticRole::Entity);
+        assert_eq!(implicit[1].role, EditorSemanticRole::Reference);
+        assert_eq!(
+            implicit[0].detail.as_deref(),
+            Some("zenuml implicit participant")
+        );
+    }
+
+    #[test]
+    fn reference_statement_participants_establish_then_reuse_implicit_entities() {
+        let source = "zenuml\nref(Order, A, A)";
+        let tokens = super::super::lexer::lex(source);
+        let parsed = super::super::parser::parse(source, &tokens);
+        let built = build(parsed);
+        let occurrences: Vec<_> = built
+            .editor_facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "A")
+            .collect();
+
+        assert_eq!(occurrences.len(), 2);
+        assert_eq!(occurrences[0].role, EditorSemanticRole::Entity);
+        assert_eq!(occurrences[1].role, EditorSemanticRole::Reference);
     }
 
     #[test]

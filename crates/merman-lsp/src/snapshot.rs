@@ -1,3 +1,4 @@
+use crate::diagnostic_round_trip::DiagnosticRoundTrip;
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnosticPolicy, AnalysisGeneration,
     AnalysisPayload,
@@ -12,14 +13,40 @@ use merman_editor_core::EditorDiagramDetection;
 use std::mem::size_of;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DocumentSnapshot {
     uri: Uri,
     editor: merman_editor_core::DocumentSnapshot,
+    analysis_result_identity: AnalysisResultIdentity,
     generation_weight: usize,
     snapshot_weight: usize,
+}
+
+static NEXT_ANALYSIS_RESULT_IDENTITY: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) struct AnalysisResultIdentity(u64);
+
+impl AnalysisResultIdentity {
+    fn issue() -> Self {
+        let identity = NEXT_ANALYSIS_RESULT_IDENTITY
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_add(1)
+            })
+            .expect("analysis result identity exhausted");
+        Self(identity)
+    }
+
+    pub(crate) const fn get(self) -> u64 {
+        self.0
+    }
+
+    pub(crate) const fn from_wire_value(value: u64) -> Self {
+        Self(value)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +73,7 @@ impl std::error::Error for InvalidDocumentUri {}
 #[derive(Debug)]
 pub(crate) struct DocumentAnalysisContext {
     pub(crate) snapshot: Arc<DocumentSnapshot>,
-    pub(crate) payload: Arc<AnalysisPayload>,
+    round_trip: Arc<DiagnosticRoundTrip>,
     diagnostic_generation: DiagnosticGeneration,
     owned_weight: AnalysisOwnedWeight,
 }
@@ -54,14 +81,14 @@ pub(crate) struct DocumentAnalysisContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AnalysisOwnedWeight {
     pub(crate) generation: usize,
-    pub(crate) payload: usize,
+    pub(crate) projection: usize,
     pub(crate) snapshots: usize,
 }
 
 impl AnalysisOwnedWeight {
     pub(crate) fn total(self) -> usize {
         self.generation
-            .saturating_add(self.payload)
+            .saturating_add(self.projection)
             .saturating_add(self.snapshots)
     }
 }
@@ -85,14 +112,14 @@ pub(crate) struct SnapshotContext {
 
 #[derive(Debug, Clone)]
 struct SnapshotAnalysis {
-    payload: Arc<AnalysisPayload>,
+    round_trip: Arc<DiagnosticRoundTrip>,
     generation: DiagnosticGeneration,
 }
 
 impl SnapshotContext {
     pub(crate) fn with_analysis(
         snapshot: Arc<DocumentSnapshot>,
-        payload: Arc<AnalysisPayload>,
+        round_trip: Arc<DiagnosticRoundTrip>,
         generation: SnapshotGeneration,
         diagnostic_generation: DiagnosticGeneration,
         document_epoch: DocumentEpoch,
@@ -100,7 +127,7 @@ impl SnapshotContext {
         Self {
             snapshot,
             analysis: SnapshotAnalysis {
-                payload,
+                round_trip,
                 generation: diagnostic_generation,
             },
             generation,
@@ -108,12 +135,12 @@ impl SnapshotContext {
         }
     }
 
-    pub(crate) fn analysis_payload(&self) -> &AnalysisPayload {
-        self.analysis.payload.as_ref()
-    }
-
     pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
         self.analysis.generation
+    }
+
+    pub(crate) fn diagnostic_round_trip(&self) -> &DiagnosticRoundTrip {
+        self.analysis.round_trip.as_ref()
     }
 }
 
@@ -140,6 +167,7 @@ impl DocumentSnapshot {
         Ok(Self {
             uri,
             editor,
+            analysis_result_identity: AnalysisResultIdentity::issue(),
             generation_weight,
             snapshot_weight,
         })
@@ -149,8 +177,8 @@ impl DocumentSnapshot {
         self.editor.analysis_generation()
     }
 
-    pub(crate) fn generation_identity(&self) -> usize {
-        self.analysis_generation() as *const AnalysisGeneration as usize
+    pub(crate) fn analysis_result_identity(&self) -> AnalysisResultIdentity {
+        self.analysis_result_identity
     }
 
     pub(crate) fn estimated_owned_weight(&self) -> usize {
@@ -174,59 +202,75 @@ impl DocumentAnalysisContext {
         let snapshot = Arc::new(DocumentSnapshot::try_from_editor(editor)?);
         Ok(Self::from_projected_parts(
             snapshot,
-            payload,
+            payload.as_ref(),
+            DocumentEpoch::default(),
             diagnostic_generation,
-        ))
+            &AnalysisCancellationToken::new(),
+        )
+        .expect("a private analysis cancellation token cannot be cancelled"))
     }
 
     pub(crate) fn project_cancellable(
         snapshot: Arc<DocumentSnapshot>,
         policy: &AnalysisDiagnosticPolicy,
+        document_epoch: DocumentEpoch,
         diagnostic_generation: DiagnosticGeneration,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<Self, AnalysisCancelled> {
-        let payload = Arc::new(
-            snapshot
-                .analysis_generation()
-                .project_cancellable(policy, cancellation)?,
-        );
+        let payload = snapshot
+            .analysis_generation()
+            .project_cancellable(policy, cancellation)?;
         cancellation.checkpoint()?;
-        Ok(Self::from_projected_parts(
+        Self::from_projected_parts(
             snapshot,
-            payload,
+            &payload,
+            document_epoch,
             diagnostic_generation,
-        ))
+            cancellation,
+        )
     }
 
     fn from_projected_parts(
         snapshot: Arc<DocumentSnapshot>,
-        payload: Arc<AnalysisPayload>,
+        payload: &AnalysisPayload,
+        document_epoch: DocumentEpoch,
         diagnostic_generation: DiagnosticGeneration,
-    ) -> Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let round_trip = Arc::new(DiagnosticRoundTrip::build(
+            &snapshot,
+            document_epoch,
+            diagnostic_generation,
+            payload,
+            cancellation,
+        )?);
+        cancellation.checkpoint()?;
         let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
         let owned_weight = AnalysisOwnedWeight {
             generation: snapshot.generation_weight,
-            payload: arc_overhead
-                .saturating_add(size_of::<AnalysisPayload>())
-                .saturating_add(payload.estimated_owned_heap_bytes()),
+            projection: arc_overhead.saturating_add(round_trip.estimated_owned_heap_bytes()),
             snapshots: arc_overhead
                 .saturating_add(size_of::<DocumentAnalysisContext>())
                 .saturating_add(snapshot.snapshot_weight),
         };
-        Self {
+        Ok(Self {
             snapshot,
-            payload,
+            round_trip,
             diagnostic_generation,
             owned_weight,
-        }
+        })
     }
 
     pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
         self.diagnostic_generation
     }
 
-    pub(crate) fn generation_identity(&self) -> usize {
-        self.snapshot.generation_identity()
+    pub(crate) fn analysis_result_identity(&self) -> AnalysisResultIdentity {
+        self.snapshot.analysis_result_identity()
+    }
+
+    pub(crate) fn diagnostic_round_trip(&self) -> &Arc<DiagnosticRoundTrip> {
+        &self.round_trip
     }
 
     pub(crate) fn estimated_owned_weight(&self) -> AnalysisOwnedWeight {
@@ -274,11 +318,6 @@ impl DocumentSnapshot {
     }
 
     #[cfg(test)]
-    pub(crate) fn kind(&self) -> merman_editor_core::DocumentKind {
-        self.editor.kind()
-    }
-
-    #[cfg(test)]
     pub(crate) fn fences(&self) -> &[merman_editor_core::FenceSnapshot] {
         self.editor.fences()
     }
@@ -316,7 +355,8 @@ mod tests {
         analyze_document_generation_shared, source_descriptor_for_kind,
     };
     use merman_editor_core::{
-        DocumentKind, DocumentSnapshot as EditorDocumentSnapshot, DocumentWorkspace,
+        DocumentKind, DocumentSnapshot as EditorDocumentSnapshot,
+        analyze_document_context_with_shared_text,
     };
     use std::str::FromStr;
     use std::sync::Arc;
@@ -325,18 +365,16 @@ mod tests {
     };
 
     #[test]
-    fn lsp_context_reuses_the_editor_generation_payload_and_text_index() {
+    fn lsp_context_reuses_the_editor_generation_and_text_index() {
         let uri = Uri::from_str("file:///tmp/canonical%20source.mmd").unwrap();
-        let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
+        let editor = analyze_document_context_with_shared_text(
             &Analyzer::new(),
             uri.as_str(),
             5,
             Arc::from("flowchart TD\nA-->B\n"),
             DocumentKind::Diagram,
         )
-        .into_ready()
         .expect("source is within the analysis limit");
-        let payload = editor.shared_payload();
         let generation = editor.shared_analysis_generation();
         let text_index = editor.snapshot().fences()[0].text_index() as *const _;
 
@@ -344,7 +382,6 @@ mod tests {
             super::DocumentAnalysisContext::from_editor(editor, super::DiagnosticGeneration(1))
                 .expect("editor source must contain a valid LSP URI");
 
-        assert!(Arc::ptr_eq(&lsp.payload, &payload));
         assert!(Arc::ptr_eq(&lsp.shared_analysis_generation(), &generation));
         assert_eq!(lsp.snapshot.uri().as_str(), uri.as_str());
         assert_eq!(
@@ -395,14 +432,13 @@ mod tests {
             "```\n",
         );
         let uri = Uri::from_str("file:///tmp/example.md").unwrap();
-        let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
+        let editor = analyze_document_context_with_shared_text(
             &Analyzer::new(),
             uri.as_str(),
             7,
             Arc::from(source),
             DocumentKind::Markdown,
         )
-        .into_ready()
         .expect("source is within the analysis limit");
         let lsp =
             super::DocumentAnalysisContext::from_editor(editor, super::DiagnosticGeneration(1))
@@ -419,7 +455,9 @@ mod tests {
             .iter()
             .map(merman_editor_core::FenceSnapshot::document_range)
             .collect::<Vec<_>>();
-        let initial = crate::diagnostics::analysis_payload_to_diagnostics(&lsp.payload, &uri);
+        let initial = lsp
+            .diagnostic_round_trip()
+            .diagnostics_with_profile(&crate::client_profile::ClientProtocolProfile::permissive());
         let initial_parse = initial
             .iter()
             .filter(|diagnostic| {
@@ -454,12 +492,14 @@ mod tests {
         let projected = super::DocumentAnalysisContext::project_cancellable(
             Arc::clone(&lsp.snapshot),
             analyzer.options().diagnostic_policy(),
+            super::DocumentEpoch::default(),
             super::DiagnosticGeneration(2),
             &AnalysisCancellationToken::new(),
         )
         .expect("diagnostic reprojection should complete");
-        let projected_protocol =
-            crate::diagnostics::analysis_payload_to_diagnostics(&projected.payload, &uri);
+        let projected_protocol = projected
+            .diagnostic_round_trip()
+            .diagnostics_with_profile(&crate::client_profile::ClientProtocolProfile::permissive());
         let projected_parse = projected_protocol
             .iter()
             .filter(|diagnostic| {

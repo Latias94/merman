@@ -1,3 +1,5 @@
+mod support;
+
 use merman_analysis::{
     AnalysisCaptureOutcome, AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticSeverity,
     DiagramParseDisposition, FenceMarker, FenceTextIndexSource, SourceKind,
@@ -5,15 +7,17 @@ use merman_analysis::{
 };
 use merman_editor_core::{
     DiagramDetectionValidity, DocumentKind, DocumentSnapshot, DocumentSnapshotError, DocumentUri,
-    DocumentWorkspace, Position,
+    Position, analyze_document_context_with_shared_text,
+    analyze_document_snapshot_with_shared_text,
 };
 use std::sync::Arc;
+use support::SnapshotHarness;
 
 #[test]
 fn plain_mermaid_documents_create_single_snapshot_fence() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nclassDef highlight fill:#f00\nA-->B\n".to_string(),
@@ -39,9 +43,9 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
 #[test]
 fn ready_snapshot_keeps_text_source_map_and_fence_ranges_coherent() {
     let source = "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n";
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.md",
             3,
             source.to_string(),
@@ -62,14 +66,13 @@ fn ready_snapshot_keeps_text_source_map_and_fence_ranges_coherent() {
 
 #[test]
 fn recovered_flowchart_keeps_available_detection_in_the_shared_analysis_bundle() {
-    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
+    let analyzed = analyze_document_context_with_shared_text(
         &Analyzer::new(),
         "file:///tmp/incomplete.mmd",
         4,
         Arc::from("flowchart TD\nA[unterminated\n"),
         DocumentKind::Diagram,
     )
-    .into_ready()
     .expect("source is within the analysis limit");
     let detection = analyzed
         .detection()
@@ -145,22 +148,21 @@ fn analysis_context_with_rule_severity(
                 .unwrap(),
         ),
     );
-    DocumentWorkspace::build_analysis_context_with_shared_text(
+    analyze_document_context_with_shared_text(
         &analyzer,
         "file:///tmp/disposition.mmd",
         1,
         Arc::from(source),
         DocumentKind::Diagram,
     )
-    .into_ready()
     .expect("source should remain within the analysis limit")
 }
 
 #[test]
 fn cloned_snapshots_share_immutable_text_buffers() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\n".to_string(),
@@ -178,9 +180,9 @@ fn cloned_snapshots_share_immutable_text_buffers() {
 
 #[test]
 fn markdown_documents_create_multiple_fence_local_snapshots() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.markdown",
             1,
             concat!(
@@ -245,14 +247,13 @@ fn markdown_fences_are_generation_views_in_stable_generation_order() {
         "Alice->>Bob: Hi\n",
         "```\n",
     ));
-    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
+    let analyzed = analyze_document_context_with_shared_text(
         &Analyzer::new(),
         "file:///tmp/shared.md",
         3,
         Arc::clone(&source),
         DocumentKind::Markdown,
     )
-    .into_ready()
     .expect("source is within the analysis limit");
     let snapshot = analyzed.snapshot();
     let generation = analyzed.analysis_generation();
@@ -277,14 +278,13 @@ fn markdown_fences_are_generation_views_in_stable_generation_order() {
 
 #[test]
 fn snapshot_debug_output_does_not_expand_the_shared_generation() {
-    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
+    let analyzed = analyze_document_context_with_shared_text(
         &Analyzer::new(),
         "file:///tmp/debug.md",
         9,
         Arc::from("```mermaid\nflowchart TD\nA-->B\n```\n"),
         DocumentKind::Markdown,
     )
-    .into_ready()
     .expect("source is within the analysis limit");
     let snapshot = analyzed.snapshot();
 
@@ -299,9 +299,9 @@ fn snapshot_debug_output_does_not_expand_the_shared_generation() {
 
 #[test]
 fn markdown_documents_use_shared_fence_policy_for_tilde_fences() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mdx",
             1,
             "before\n~~~mermaid\nsequenceDiagram\nAlice->>Bob: Hi\n~~~~\nafter\n".to_string(),
@@ -322,9 +322,9 @@ fn markdown_documents_use_shared_fence_policy_for_tilde_fences() {
 
 #[test]
 fn cursor_lookup_distinguishes_prose_from_mermaid_fences() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.md",
             1,
             "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
@@ -341,7 +341,7 @@ fn cursor_lookup_distinguishes_prose_from_mermaid_fences() {
 
 #[test]
 fn cursor_lookup_includes_unclosed_markdown_fence_at_eof() {
-    let mut workspace = DocumentWorkspace::new();
+    let harness = SnapshotHarness::new();
     for (source, position) in [
         (
             "before\n```mermaid\nflowchart TD\nA-->",
@@ -352,8 +352,8 @@ fn cursor_lookup_includes_unclosed_markdown_fence_at_eof() {
             Position::new(4, 0),
         ),
     ] {
-        let snapshot = workspace
-            .upsert(
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.md",
                 1,
                 source.to_string(),
@@ -369,23 +369,20 @@ fn cursor_lookup_includes_unclosed_markdown_fence_at_eof() {
 }
 
 #[test]
-fn build_analysis_context_does_not_cache_document() {
-    let workspace = DocumentWorkspace::new();
+fn one_shot_context_uses_the_requested_document_identity() {
     let uri = DocumentUri::new("file:///tmp/example.mmd");
-    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
+    let analyzed = analyze_document_context_with_shared_text(
         &Analyzer::new(),
         uri.clone(),
         1,
         Arc::from("flowchart TD\nA-->B\n"),
         DocumentKind::Diagram,
     )
-    .into_ready()
     .expect("source is within the analysis limit");
     let snapshot = analyzed.snapshot();
 
     assert_eq!(snapshot.uri(), &uri);
     assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
-    assert!(workspace.get(&uri).is_none());
 }
 
 #[test]
@@ -476,20 +473,20 @@ fn snapshot_construction_rejects_a_generation_without_a_document_path() {
 }
 
 #[test]
-fn replacing_document_version_drops_stale_fence_state() {
-    let mut workspace = DocumentWorkspace::new();
+fn one_shot_snapshots_are_independent_across_document_versions() {
+    let harness = SnapshotHarness::new();
     let uri = DocumentUri::new("file:///tmp/example.mmd");
 
-    let first = workspace
-        .upsert(
+    let first = harness
+        .analyze(
             uri.clone(),
             1,
             "flowchart TD\nA-->B\n".to_string(),
             DocumentKind::Diagram,
         )
         .expect("source is within the analysis limit");
-    let second = workspace
-        .upsert(
+    let second = harness
+        .analyze(
             uri.clone(),
             2,
             "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
@@ -499,26 +496,28 @@ fn replacing_document_version_drops_stale_fence_state() {
 
     assert_eq!(first.version(), 1);
     assert_eq!(second.version(), 2);
-
-    let stored = workspace.get(&uri).unwrap();
-    assert_eq!(stored.version(), 2);
-    assert_eq!(stored.fences().len(), 1);
-    assert_eq!(stored.fences()[0].diagram_type(), Some("sequence"));
-    assert!(!stored.text().contains("flowchart TD"));
+    assert_eq!(first.fences()[0].diagram_type(), Some("flowchart-v2"));
+    assert_eq!(second.fences()[0].diagram_type(), Some("sequence"));
+    assert!(first.text().contains("flowchart TD"));
+    assert!(!second.text().contains("flowchart TD"));
 }
 
 #[test]
-fn resource_rejection_cannot_construct_or_cache_a_snapshot() {
+fn resource_rejection_does_not_construct_a_snapshot() {
     let limited_analyzer = Analyzer::with_options(
         AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),
     );
-    let mut workspace = DocumentWorkspace::with_analyzer(limited_analyzer);
     let uri = DocumentUri::new("file:///tmp/example.mmd");
 
     let source = "flowchart TD\nA-->B\n";
-    let rejection = workspace
-        .upsert(uri.clone(), 1, source.to_string(), DocumentKind::Diagram)
-        .expect_err("over-limit text must not become an editable snapshot");
+    let rejection = analyze_document_snapshot_with_shared_text(
+        &limited_analyzer,
+        uri.clone(),
+        1,
+        Arc::from(source),
+        DocumentKind::Diagram,
+    )
+    .expect_err("over-limit text must not become an editable snapshot");
 
     assert_eq!(rejection.resource_limit().observed(), source.len());
     assert_eq!(rejection.resource_limit().maximum(), source.len() - 1);
@@ -526,13 +525,14 @@ fn resource_rejection_cannot_construct_or_cache_a_snapshot() {
         rejection.payload().diagnostics[0].id,
         "merman.resource.source_bytes_exceeded"
     );
-    assert!(workspace.get(&uri).is_none());
 
-    workspace.replace_analyzer(Analyzer::new());
-
-    assert!(workspace.get(&uri).is_none());
-    let rebuilt = workspace
-        .upsert(uri, 1, source.to_string(), DocumentKind::Diagram)
-        .expect("unlimited analyzer can construct a snapshot");
+    let rebuilt = analyze_document_snapshot_with_shared_text(
+        &Analyzer::new(),
+        uri,
+        1,
+        Arc::from(source),
+        DocumentKind::Diagram,
+    )
+    .expect("unlimited analyzer can construct a snapshot");
     assert_eq!(rebuilt.fences()[0].diagram_type(), Some("flowchart-v2"));
 }

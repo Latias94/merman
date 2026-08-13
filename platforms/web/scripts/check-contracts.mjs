@@ -15,6 +15,11 @@ const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
 const publicEntry = path.join(root, "src", "index.ts");
 const publicCatalog = path.join(root, "src", "public-catalog.ts");
 const publicTypes = path.join(root, "src", "public-types.ts");
+const bindingOptionsTypeTests = path.join(
+  root,
+  "type-tests",
+  "binding-options.ts",
+);
 const generatedTokenDescriptor = path.join(
   root,
   "src",
@@ -26,7 +31,7 @@ const packageEntries = webPackages.map((descriptor) => descriptor.id);
 
 const contract = loadTypeScriptContract({
   tsconfigPath: path.join(root, "tsconfig.json"),
-  extraRootNames: [fullWasmTypes],
+  extraRootNames: [fullWasmTypes, bindingOptionsTypeTests],
 });
 const diagnostics = contract.diagnostics();
 if (diagnostics.length > 0) {
@@ -119,6 +124,7 @@ const requiredTypeProperties = new Map([
   ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
   ["ResourceOptions", ["profile", "limits"]],
+  ["EditorResourceOptions", ["profile", "limits"]],
   [
     "RuntimeCatalog",
     [
@@ -209,7 +215,7 @@ const exactTypeStringLiterals = new Map([
 ]);
 const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
-  ["AnalysisFactsResult", "version", "1"],
+  ["AnalysisFactsResult", "version", "2"],
 ];
 
 let failed = false;
@@ -343,6 +349,15 @@ failed ||= reportPolicyFailure(
   contract
     .exportedTypePropertyNames(publicEntry, "AnalysisBindingOptions")
     .has("parse"),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: editor options must expose only analysis-owned configuration fields",
+  !contract
+    .exportedTypePropertyNames(publicEntry, "EditorBindingOptions")
+    .has("analysis") ||
+    contract
+      .exportedTypePropertyNames(publicEntry, "EditorBindingOptions")
+      .has("parse"),
 );
 failed ||= reportPolicyFailure(
   "check-contracts: SVG options must use presentation instead of the removed host_theme group",

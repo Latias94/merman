@@ -4,7 +4,7 @@ use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DiagramVerificationFact, ObservedRenderOperations,
-    render_semantic_layout, render_source_svg, run_svg_compare, sanitize_svg_id, svg_request,
+    render_semantic_svg, run_svg_compare, sanitize_svg_id, svg_request,
     write_compare_result_section, write_notes_section, write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
@@ -31,7 +31,9 @@ struct GanttBaselineContainerProfile {
 impl GanttBaselineContainerProfile {
     const MERMAID_CLI: Self = Self {
         renderer: GanttBaselineRenderer::MermaidCli,
-        page_viewport_width: PageViewportWidthPx(1_200.0),
+        page_viewport_width: PageViewportWidthPx(
+            crate::cmd::GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX as f64,
+        ),
         body_margin_inline_start_px: 8.0,
         body_margin_inline_end_px: 8.0,
     };
@@ -150,33 +152,8 @@ pub(super) fn compare_gantt_request(
                 ));
             }
 
-            let layout = match render_semantic_layout(
+            let rendered = render_semantic_svg(
                 semantic,
-                svg_request(environment.clone(), layout_opts.clone(), None),
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!(
-                        "layout failed for {}: {err}",
-                        input.fixture_path.display()
-                    ));
-                }
-            };
-
-            let calibrated_runtime_policy = gantt_calibrated_runtime_policy(
-                &layout,
-                input.upstream_svg,
-                baseline_local_offset_minutes,
-            )
-            .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?;
-            let render_renderer = if let Some(runtime_policy) = calibrated_runtime_policy {
-                fixture_renderer.clone().with_runtime_policy(runtime_policy)
-            } else {
-                fixture_renderer
-            };
-            let rendered = render_source_svg(
-                &render_renderer,
-                input.text,
                 svg_request(
                     environment.clone(),
                     layout_opts.clone(),
@@ -214,47 +191,10 @@ pub(crate) fn gantt_baseline_local_offset_minutes() -> i32 {
 pub(crate) fn gantt_baseline_runtime_policy(
     baseline_local_offset_minutes: i32,
 ) -> Result<merman::runtime::RuntimePolicy, merman::runtime::RuntimePolicyError> {
-    const BASELINE_LOCAL_MIDNIGHT_UTC_MS: i64 = 1_771_113_600_000;
-    let unix_ms =
-        BASELINE_LOCAL_MIDNIGHT_UTC_MS - i64::from(baseline_local_offset_minutes) * 60_000;
+    let unix_ms = crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS;
     merman::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(baseline_local_offset_minutes)
         .map(|policy| policy.with_fixed_unix_millis(unix_ms))
-}
-
-pub(crate) fn gantt_calibrated_runtime_policy(
-    layout: &merman::SvgLayoutOutput,
-    upstream_svg: &str,
-    baseline_local_offset_minutes: i32,
-) -> Result<Option<merman::runtime::RuntimePolicy>, merman::runtime::RuntimePolicyError> {
-    let now_ms = gantt_upstream_today_x(upstream_svg).and_then(|today_x| {
-        layout
-            .gantt_time_axis_diagnostics()
-            .and_then(|diagnostics| diagnostics.unix_millis_at_rendered_x(today_x))
-    });
-    now_ms
-        .map(|unix_ms| {
-            merman::runtime::RuntimePolicy::deterministic()
-                .try_with_fixed_local_offset_minutes(baseline_local_offset_minutes)
-                .map(|policy| policy.with_fixed_unix_millis(unix_ms))
-        })
-        .transpose()
-}
-
-fn gantt_upstream_today_x(upstream_svg: &str) -> Option<f64> {
-    let doc = roxmltree::Document::parse(upstream_svg).ok()?;
-    let x1 = doc
-        .descendants()
-        .filter(|n| n.has_tag_name("line"))
-        .find(|n| {
-            n.attribute("class")
-                .unwrap_or_default()
-                .split_whitespace()
-                .any(|t| t == "today")
-        })
-        .and_then(|n| n.attribute("x1"))
-        .and_then(|v| v.parse::<f64>().ok())?;
-    x1.is_finite().then_some(x1)
 }
 
 #[cfg(test)]
@@ -283,24 +223,11 @@ mod tests {
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
         assert_eq!(
             context.today_local(),
-            merman_core::time::CivilDate::new(2026, 2, 15).unwrap()
-        );
-    }
-
-    #[test]
-    fn upstream_today_x_requires_an_exact_class_token_and_finite_coordinate() {
-        assert_eq!(
-            gantt_upstream_today_x(r#"<svg><line class="grid today active" x1="77" /></svg>"#),
-            Some(77.0)
+            merman_core::time::CivilDate::new(2024, 1, 1).unwrap()
         );
         assert_eq!(
-            gantt_upstream_today_x(r#"<svg><line class="not-today" x1="77" /></svg>"#),
-            None
+            context.unix_millis(),
+            crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS
         );
-        assert_eq!(
-            gantt_upstream_today_x(r#"<svg><line class="today" x1="NaN" /></svg>"#),
-            None
-        );
-        assert_eq!(gantt_upstream_today_x("<svg>"), None);
     }
 }

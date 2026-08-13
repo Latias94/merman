@@ -5,7 +5,7 @@ import Merman
 struct MermanAppleSmoke {
     static func main() throws {
         let client = Merman()
-        guard client.bindingApiVersion() == 4 else {
+        guard client.transportApiVersion() == 4 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
         }
         let iconPack = MermanIconPack(

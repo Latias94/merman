@@ -2,7 +2,8 @@
 
 - Status: accepted for transport separation; package and capability mapping superseded by ADR-0076
 - Date: 2026-06-10
-- Last amended: 2026-08-13
+- Last amended: 2026-08-13 (Web transport API 4 requires the editor-owned completion trigger
+  export and adds operation-scoped deadlines and cooperative cancellation)
 
 ADR-0076 now owns Web artifact profiles, package mappings, Typst artifact mappings, and capability
 semantic IDs through `capabilities/feature-surface-v1.json`. The one-package/subpath and legacy

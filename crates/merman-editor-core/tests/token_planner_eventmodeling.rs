@@ -1,7 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentWorkspace, PlannedToken, PlannedTokenKind,
-    PlannedTokenModifier, SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
+    DocumentKind, DocumentSnapshot, PlannedToken, PlannedTokenKind, PlannedTokenModifier,
+    SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn eventmodeling_plan_projects_parser_lexemes_semantics_and_multiline_utf16() {
@@ -68,7 +71,7 @@ fn eventmodeling_plan_projects_parser_lexemes_semantics_and_multiline_utf16() {
     let source_frame = exact_token(source, &snapshot, &plan, "001", 1);
     assert_eq!(source_frame.kind, PlannedTokenKind::Namespace);
     assert!(source_frame.has_modifier(PlannedTokenModifier::Reference));
-    assert!(source_frame.has_modifier(PlannedTokenModifier::Entity));
+    assert!(!source_frame.has_modifier(PlannedTokenModifier::Entity));
 
     let data_reference = exact_token(source, &snapshot, &plan, "Payload", 0);
     assert_eq!(data_reference.kind, PlannedTokenKind::Namespace);
@@ -159,9 +162,9 @@ fn eventmodeling_recovery_plan_keeps_number_literal_and_tokens_after_error() {
 }
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             format!("file:///tmp/eventmodeling-{suffix}.mmd"),
             1,
             source.to_string(),

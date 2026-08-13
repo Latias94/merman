@@ -7,6 +7,7 @@ use crate::{
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
+use std::collections::{HashMap, hash_map::Entry};
 
 use super::SequenceDiagramRenderModel;
 use super::Tok;
@@ -292,6 +293,7 @@ struct SequenceEditorFactCollector {
     expected_text: Option<ExpectedSequenceText>,
     expected_rest_of_line: Option<ExpectedSequenceRestOfLine>,
     pending_message_source: Option<PendingSequenceActor>,
+    participant_kinds: HashMap<String, EditorSemanticKind>,
 }
 
 #[derive(Debug)]
@@ -306,7 +308,8 @@ enum ExpectedSequenceActor {
     Actor,
     MessageTarget,
     NoteActor,
-    InteractionTarget,
+    EnsuredInteractionTarget,
+    ReferenceOnly,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -337,25 +340,26 @@ impl SequenceEditorFactCollector {
             Tok::SequenceDiagram | Tok::Newline => self.reset_line_state(),
             Tok::Participant => self.expect_actor(ExpectedSequenceActor::Participant),
             Tok::ActorKw => self.expect_actor(ExpectedSequenceActor::Actor),
-            Tok::Create | Tok::Destroy => self.expect_actor(ExpectedSequenceActor::Participant),
+            Tok::Create => self.expect_actor(ExpectedSequenceActor::Participant),
+            Tok::Destroy => self.expect_actor(ExpectedSequenceActor::ReferenceOnly),
             Tok::Activate | Tok::Deactivate => {
-                self.expect_actor(ExpectedSequenceActor::InteractionTarget)
+                self.expect_actor(ExpectedSequenceActor::ReferenceOnly)
             }
             Tok::Links => {
                 facts.push_directive_prefix("links");
-                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+                self.expect_actor(ExpectedSequenceActor::EnsuredInteractionTarget);
             }
             Tok::Link => {
                 facts.push_directive_prefix("link");
-                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+                self.expect_actor(ExpectedSequenceActor::EnsuredInteractionTarget);
             }
             Tok::Properties => {
                 facts.push_directive_prefix("properties");
-                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+                self.expect_actor(ExpectedSequenceActor::EnsuredInteractionTarget);
             }
             Tok::Details => {
                 facts.push_directive_prefix("details");
-                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+                self.expect_actor(ExpectedSequenceActor::EnsuredInteractionTarget);
             }
             Tok::Note => {
                 self.pending_message_source = None;
@@ -477,46 +481,108 @@ impl SequenceEditorFactCollector {
         end: usize,
         facts: &mut EditorSemanticFacts,
     ) {
-        let kind = match expected {
+        let declared_kind = match expected {
             ExpectedSequenceActor::Actor => EditorSemanticKind::Variable,
             ExpectedSequenceActor::Participant
             | ExpectedSequenceActor::MessageTarget
             | ExpectedSequenceActor::NoteActor
-            | ExpectedSequenceActor::InteractionTarget => EditorSemanticKind::Event,
+            | ExpectedSequenceActor::EnsuredInteractionTarget
+            | ExpectedSequenceActor::ReferenceOnly => EditorSemanticKind::Event,
         };
-        let detail = match expected {
+        let occurrence_detail = match expected {
             ExpectedSequenceActor::Actor => "sequence actor",
             ExpectedSequenceActor::Participant => "sequence participant",
             ExpectedSequenceActor::MessageTarget => "sequence participant reference",
             ExpectedSequenceActor::NoteActor => "sequence note participant",
-            ExpectedSequenceActor::InteractionTarget => "sequence participant reference",
+            ExpectedSequenceActor::EnsuredInteractionTarget
+            | ExpectedSequenceActor::ReferenceOnly => "sequence participant reference",
         };
         let span = SourceSpan::new(start, end);
-        facts.push_symbol(EditorSemanticSymbol::new(
-            name.clone(),
-            Some(detail.to_string()),
-            kind,
-            span,
-            span,
-        ));
+        let is_explicit_declaration = matches!(
+            expected,
+            ExpectedSequenceActor::Participant | ExpectedSequenceActor::Actor
+        );
+        let ensures_participant = !matches!(expected, ExpectedSequenceActor::ReferenceOnly);
+        let (is_definition, kind) = if is_explicit_declaration {
+            let kind = *self
+                .participant_kinds
+                .entry(name.clone())
+                .or_insert(declared_kind);
+            (true, kind)
+        } else if ensures_participant {
+            match self.participant_kinds.entry(name.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(declared_kind);
+                    (true, declared_kind)
+                }
+                Entry::Occupied(entry) => (false, *entry.get()),
+            }
+        } else {
+            (
+                false,
+                self.participant_kinds
+                    .get(&name)
+                    .copied()
+                    .unwrap_or(declared_kind),
+            )
+        };
+        let detail = if is_definition && !is_explicit_declaration {
+            "sequence implicit participant"
+        } else {
+            occurrence_detail
+        };
+        let symbol = if is_definition {
+            EditorSemanticSymbol::new(name.clone(), Some(detail.to_string()), kind, span, span)
+        } else {
+            EditorSemanticSymbol::reference(
+                name.clone(),
+                Some(detail.to_string()),
+                kind,
+                span,
+                span,
+            )
+        };
+        facts.push_symbol(symbol);
         self.expected_text = match expected {
             ExpectedSequenceActor::MessageTarget => Some(ExpectedSequenceText::Message),
             ExpectedSequenceActor::NoteActor => Some(ExpectedSequenceText::Note),
-            ExpectedSequenceActor::InteractionTarget => Some(ExpectedSequenceText::Interaction),
-            ExpectedSequenceActor::Participant | ExpectedSequenceActor::Actor => None,
+            ExpectedSequenceActor::EnsuredInteractionTarget => {
+                Some(ExpectedSequenceText::Interaction)
+            }
+            ExpectedSequenceActor::Participant
+            | ExpectedSequenceActor::Actor
+            | ExpectedSequenceActor::ReferenceOnly => None,
         };
         self.expected_actor = None;
     }
 
     fn push_pending_message_source(&mut self, facts: &mut EditorSemanticFacts) {
         if let Some(actor) = self.pending_message_source.take() {
-            facts.push_symbol(EditorSemanticSymbol::new(
-                actor.name,
-                Some("sequence participant reference".to_string()),
-                EditorSemanticKind::Event,
-                actor.span,
-                actor.span,
-            ));
+            let (is_definition, kind) = match self.participant_kinds.entry(actor.name.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(EditorSemanticKind::Event);
+                    (true, EditorSemanticKind::Event)
+                }
+                Entry::Occupied(entry) => (false, *entry.get()),
+            };
+            let symbol = if is_definition {
+                EditorSemanticSymbol::new(
+                    actor.name,
+                    Some("sequence implicit participant".to_string()),
+                    kind,
+                    actor.span,
+                    actor.span,
+                )
+            } else {
+                EditorSemanticSymbol::reference(
+                    actor.name,
+                    Some("sequence participant reference".to_string()),
+                    kind,
+                    actor.span,
+                    actor.span,
+                )
+            };
+            facts.push_symbol(symbol);
         }
     }
 }
@@ -635,4 +701,130 @@ fn sequence_box_name_and_selection(
         title.to_string(),
         SourceSpan::new(start + local_start, local_end),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EditorSemanticRole, MermaidConfig};
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "sequence".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    fn editor_facts(source: &str) -> EditorSemanticFacts {
+        crate::family::test_support::editor_facts(
+            parse_sequence_json_and_editor_facts,
+            source,
+            &meta(),
+        )
+    }
+
+    #[test]
+    fn participant_definitions_references_and_payloads_have_distinct_roles() {
+        let source = concat!(
+            "sequenceDiagram\n",
+            "actor Alice as User\n",
+            "participant Bob\n",
+            "Alice->>Bob: Request\n",
+            "Note over Alice,Bob: Review\n",
+            "activate Bob\n",
+            "deactivate Bob\n",
+            "destroy Bob\n",
+        );
+        let facts = editor_facts(source);
+
+        let alice: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Alice")
+            .collect();
+        let bob: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Bob")
+            .collect();
+        assert_eq!(alice[0].role, EditorSemanticRole::Entity);
+        assert_eq!(alice[0].kind, EditorSemanticKind::Variable);
+        assert!(
+            alice[1..]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert!(
+            alice[1..]
+                .iter()
+                .all(|symbol| symbol.kind == EditorSemanticKind::Variable)
+        );
+        assert_eq!(bob[0].role, EditorSemanticRole::Entity);
+        assert!(
+            bob[1..]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Request" && symbol.role == EditorSemanticRole::Payload
+        }));
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Review" && symbol.role == EditorSemanticRole::Payload
+        }));
+    }
+
+    #[test]
+    fn unicode_implicit_participant_is_defined_once_then_referenced() {
+        let source = concat!(
+            "sequenceDiagram\n",
+            "顾客->>服务: 创建\n",
+            "服务-->>顾客: 完成\n",
+        );
+        let facts = editor_facts(source);
+
+        for name in ["顾客", "服务"] {
+            let occurrences: Vec<_> = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .collect();
+            assert_eq!(occurrences.len(), 2);
+            assert_eq!(occurrences[0].role, EditorSemanticRole::Entity);
+            assert_eq!(occurrences[1].role, EditorSemanticRole::Reference);
+            assert_eq!(occurrences[0].kind, occurrences[1].kind);
+            assert_eq!(
+                &source[occurrences[0].selection.start..occurrences[0].selection.end],
+                name
+            );
+            assert_eq!(
+                &source[occurrences[1].selection.start..occurrences[1].selection.end],
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn reference_only_statements_do_not_create_participant_entities() {
+        let source = concat!(
+            "sequenceDiagram\n",
+            "activate Missing\n",
+            "deactivate Missing\n",
+            "destroy Missing\n",
+        );
+        let facts = editor_facts(source);
+        let missing: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Missing")
+            .collect();
+
+        assert_eq!(missing.len(), 3);
+        assert!(
+            missing
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+    }
 }

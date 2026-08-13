@@ -5,28 +5,28 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.1",
     "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "77c7d37873d20c9ef1a2ef267911835e666537decc341722aa8d2f0170d06b42",
-    "package_lock_sha256": "aea75ff98014fe1ad3a410aeec334f1676ec41d2f81e96787b50768f81d3e97d",
+    "package_json_sha256": "414c8bd85a6ebbfbeae9b6bc350ea38475466c2355d33da6c5dee9d62d5f8377",
+    "package_lock_sha256": "a9f67c4957d149375e0380ba38f0f3e7ca7c2fbd330b1a76e835ad1a28a3332c",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v3"
+    "renderer_revision": "xtask-upstream-svg-v4"
   },
   "attestation": {
     "mode": "generated",
     "render_environment": {
       "browser": {
         "product": "HeadlessChrome",
-        "version": "131.0.6778.204",
-        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "version": "151.0.7922.77",
+        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
         "locale": "en-US",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
-        "version": "23.11.1"
+        "version": "25.6.0"
       },
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
         "esm_version": "11.16.1",
@@ -89,7 +89,7 @@
     },
     "stress_class_association_aggregation_composition_019": {
       "input_sha256": "6dc0fe75244155cb80cc401531a3896d5aa5b2aa70b401b66305b0275a50d3cb",
-      "svg_sha256": "c6971b646a50a98258fde41f8dc636c199366b6162786f14842b74684d4d332a",
+      "svg_sha256": "33d70308180d20d288b7047402c9b3341d3c3b01cfe72395abf871ceb35e3269",
       "renderer_profile": "mmdc-default"
     },
     "stress_class_click_and_links_011": {
@@ -309,7 +309,7 @@
     },
     "upstream_cypress_classdiagram_elk_v3_spec_elk_2_1_should_render_a_simple_class_diagrams_with_cardinality_w_005": {
       "input_sha256": "a254b69141639fa8b045ad723fe5c986f7f6f65c585799f1c0b41990e3d50877",
-      "svg_sha256": "b219735626b84c8a48155d68f68b951fce4191765b2e94fd68578da4e045e0ef",
+      "svg_sha256": "d1acc6a23c7138ab68b45e3e3c82678a5f1b7e9d70e366a468bf16ce7e7b7113",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_elk_v3_spec_elk_2_2_should_render_a_simple_class_diagram_with_different_visi_006": {
@@ -589,7 +589,7 @@
     },
     "upstream_cypress_classdiagram_v2_spec_2_should_render_a_simple_class_diagrams_with_cardinality_003": {
       "input_sha256": "5974d9abfc8f91652b9b8ceca7ed7092416f2223aedcf2d6d4a5b3c451a2d2cf",
-      "svg_sha256": "7b804d03bf3dd01c48b17c92821cc9eee01300d57a70383badd415f8a1f08496",
+      "svg_sha256": "87c9ffd1c677176924c5972ac70bfa6f415df0bc4fa29915e4f944826bbb688c",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_v2_spec_4_should_render_a_simple_class_diagram_with_comments_006": {
@@ -719,7 +719,7 @@
     },
     "upstream_cypress_classdiagram_v3_spec_2_should_render_a_simple_class_diagrams_with_cardinality_004": {
       "input_sha256": "2e5dd5e142a8ec7f1424a747d839d4a3e49f7439b234142a7fb346568faef3f6",
-      "svg_sha256": "48c751599b3d91b7c2f5641ae8905395844c2cdbb5e31a382cc64e482995bb19",
+      "svg_sha256": "d003c4fe906812f2110641e2aed4da1ed80b1061ca4aa1847423b44787866689",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_v3_spec_4_should_render_a_simple_class_diagram_with_comments_009": {
@@ -754,7 +754,7 @@
     },
     "upstream_cypress_classdiagram_v3_spec_should_render_a_full_class_diagram_with_the_handdrawn_look_054": {
       "input_sha256": "b6cffc13df2e67e21679c43e9a8aee7b01de9e55bc6aec8299af849aa281c2bd",
-      "svg_sha256": "92820522c5fdeca335f28135793e1bde353a78bb94aabb368cec37c7eb94f95f",
+      "svg_sha256": "28e384983323ffa2a7d7b7677a01e6514e2f2fa596747e40ff259cd98b2738ef",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056": {
@@ -1009,7 +1009,7 @@
     },
     "upstream_html_demos_classchart_class_diagram_demos_002": {
       "input_sha256": "bc55bfb5d54de5318b699aeb7816e1f5dd4a40444012a33a3ac2f108b8b7fe5a",
-      "svg_sha256": "b0eb0e1fc44ac22c3495f791bec37d61eae1d470fd956fdbf999ed23c1af69db",
+      "svg_sha256": "34b933c420b3b092d84185e5d426f9a760d7bba31bba1cdc1e136bd0aadb95a4",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_classchart_class_diagram_demos_003": {
@@ -1019,7 +1019,7 @@
     },
     "upstream_html_demos_classchart_class_diagram_demos_004": {
       "input_sha256": "81691e2a29765346e8997dc6dc519bbed60829f2de5a42915ff58093dbca4e7d",
-      "svg_sha256": "6ad2cc4c7105a273a90025f4b199ffacdbad781bbb996dddbe6d12f92c89719d",
+      "svg_sha256": "f5ae8b4f855d93242be8b844428bbc39af6753002f7a4d88c998791249714587",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_classchart_class_diagram_demos_005": {

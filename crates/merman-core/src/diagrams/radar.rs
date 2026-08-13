@@ -260,11 +260,18 @@ struct SpannedText {
     span: SourceSpan,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RadarEntityOccurrence {
+    Definition,
+    Reference,
+}
+
 fn push_radar_entity(
     facts: &mut EditorSemanticFacts,
     text: SpannedText,
     detail: &str,
     kind: EditorSemanticKind,
+    occurrence: RadarEntityOccurrence,
 ) {
     if text.text.is_empty() {
         return;
@@ -273,13 +280,16 @@ fn push_radar_entity(
         EditorExpectedSyntaxKind::NodeIdentifier,
         text.span,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
-        text.text,
-        Some(detail.to_string()),
-        kind,
-        text.span,
-        text.span,
-    ));
+    let detail = Some(detail.to_string());
+    let symbol = match occurrence {
+        RadarEntityOccurrence::Definition => {
+            EditorSemanticSymbol::new(text.text, detail, kind, text.span, text.span)
+        }
+        RadarEntityOccurrence::Reference => {
+            EditorSemanticSymbol::reference(text.text, detail, kind, text.span, text.span)
+        }
+    };
+    facts.push_symbol(symbol);
 }
 
 fn push_radar_payload(
@@ -399,6 +409,7 @@ fn push_radar_statement_facts(
                     axis.name.clone(),
                     "radar axis",
                     EditorSemanticKind::Variable,
+                    RadarEntityOccurrence::Definition,
                 );
                 if let Some(label) = &axis.label {
                     push_radar_payload(
@@ -418,6 +429,7 @@ fn push_radar_statement_facts(
                     curve.name.clone(),
                     "radar curve",
                     EditorSemanticKind::Variable,
+                    RadarEntityOccurrence::Definition,
                 );
                 if let Some(label) = &curve.label {
                     push_radar_payload(
@@ -436,6 +448,7 @@ fn push_radar_statement_facts(
                             axis.clone(),
                             "radar curve axis reference",
                             EditorSemanticKind::Variable,
+                            RadarEntityOccurrence::Reference,
                         );
                     }
                     push_radar_payload(
@@ -1574,7 +1587,7 @@ impl<'input, 'lexemes> TokenParser<'input, 'lexemes> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{EditorSemanticRole, Engine, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1827,6 +1840,21 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
             spans_for("radar curve axis reference"),
             axis_occurrences[2..]
         );
+        let axis_roles = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "A")
+            .map(|symbol| symbol.role)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            axis_roles,
+            vec![
+                EditorSemanticRole::Entity,
+                EditorSemanticRole::Entity,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+            ]
+        );
 
         let label_occurrences = occurrences("dup");
         assert_eq!(spans_for("radar axis label"), label_occurrences[..2]);
@@ -1834,6 +1862,54 @@ ticks 5, max 10, min 1, graticule polygon, showLegend false
         assert_eq!(spans_for("radar curve"), occurrences("C"));
         assert_eq!(spans_for("radar curve entry"), occurrences("1"));
         assert_eq!(spans_for("radar option"), occurrences("5"));
+    }
+
+    #[test]
+    fn radar_forward_axis_occurrence_is_a_reference_before_its_definition() {
+        let text = concat!("radar-beta\n", "curve Forward{Later: 1}\n", "axis Later\n",);
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("radar", text)
+            .unwrap()
+            .unwrap();
+        let later = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Later")
+            .collect::<Vec<_>>();
+
+        assert_eq!(later.len(), 2);
+        assert_eq!(later[0].role, EditorSemanticRole::Reference);
+        assert_eq!(later[1].role, EditorSemanticRole::Entity);
+        assert_eq!(later[0].kind, later[1].kind);
+    }
+
+    #[test]
+    fn radar_entity_occurrence_role_does_not_depend_on_display_detail() {
+        let span = SourceSpan::new(0, "axis".len());
+        let mut facts = EditorSemanticFacts::new();
+        push_radar_entity(
+            &mut facts,
+            SpannedText {
+                text: "axis".to_string(),
+                span,
+            },
+            "reference-looking definition",
+            EditorSemanticKind::Variable,
+            RadarEntityOccurrence::Definition,
+        );
+        push_radar_entity(
+            &mut facts,
+            SpannedText {
+                text: "axis".to_string(),
+                span,
+            },
+            "definition-looking reference",
+            EditorSemanticKind::Variable,
+            RadarEntityOccurrence::Reference,
+        );
+
+        assert_eq!(facts.symbols[0].role, EditorSemanticRole::Entity);
+        assert_eq!(facts.symbols[1].role, EditorSemanticRole::Reference);
     }
 
     #[test]

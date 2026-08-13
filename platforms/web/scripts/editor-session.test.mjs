@@ -1265,11 +1265,32 @@ test("Web transport API version rejects invalid module reports", async () => {
     }),
     coreTestImplementation,
   );
-  await runtime.initMerman();
-  assert.throws(
-    () => runtime.transportApiVersion(),
-    /invalid Web transport API version/
+  await assert.rejects(
+    () => runtime.initMerman(),
+    /incompatible with Web transport API 4/
   );
+  assert.equal(runtime.isMermanInitialized(), false);
+});
+
+test("Web transport API 3 loaders are rejected before publishing a module", async () => {
+  let initialized = false;
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {
+        initialized = true;
+      },
+      transportApiVersion: () => 3,
+    }),
+    coreTestImplementation,
+  );
+
+  await assert.rejects(
+    () => runtime.initMerman(),
+    /incompatible with Web transport API 4/
+  );
+  assert.equal(initialized, true);
+  assert.equal(runtime.isMermanInitialized(), false);
+  assert.throws(() => runtime.getMerman(), /not initialized/);
 });
 
 function runtimeDescriptor(descriptor) {

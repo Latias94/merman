@@ -52,7 +52,7 @@ pub(super) enum PreparedSingleOutput {
     #[cfg(feature = "ascii")]
     Text {
         destination: ResolvedDestination,
-        renderer: crate::config::ConfiguredRenderer,
+        renderer: Box<crate::config::ConfiguredRenderer>,
         options: merman::ascii::AsciiRenderOptions,
         resources: merman::ascii::AsciiResourcePolicy,
         admission: BackendAdmission,
@@ -76,7 +76,7 @@ pub(crate) struct PreparedGraphicalRender {
 
 #[cfg(feature = "svg")]
 pub(super) enum PreparedGraphicalSource {
-    Mermaid(crate::config::ConfiguredRenderer),
+    Mermaid(Box<crate::config::ConfiguredRenderer>),
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     RawSvg(Box<RenderEnvironment>),
 }
@@ -330,7 +330,7 @@ fn prepare_single(
                 control,
                 output: PreparedSingleOutput::Text {
                     destination,
-                    renderer,
+                    renderer: Box::new(renderer),
                     options: ascii,
                     resources,
                     admission,
@@ -505,7 +505,7 @@ pub(crate) fn prepare_graphical_output(
         } else {
             renderer
         };
-        PreparedGraphicalSource::Mermaid(renderer)
+        PreparedGraphicalSource::Mermaid(Box::new(renderer))
     };
 
     Ok((

@@ -1353,6 +1353,127 @@ fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
 }
 
 #[test]
+fn combined_custom_warning_adapter_remaps_valid_json_into_typed_facts() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("customDiagram", custom_json_parser);
+    let source = "%%{init: { 'securityLevel': 'strict' }}%%\ncustomDiagram\npayload";
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("customDiagram", source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Parsed {
+        model,
+        warning_facts,
+    } = snapshot.outcome()
+    else {
+        panic!("custom warning fixture must parse");
+    };
+    let payload_start = source.find("payload").unwrap();
+
+    assert_eq!(warning_facts.len(), 1);
+    assert_eq!(
+        warning_facts[0].span,
+        Some(SourceSpan::new(
+            payload_start,
+            payload_start + "payload".len()
+        ))
+    );
+    assert_eq!(model["warningFacts"], json!(warning_facts));
+}
+
+#[test]
+fn combined_custom_warning_adapter_keeps_malformed_arrays_all_or_nothing() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("customDiagram", malformed_custom_warning_json_parser);
+    let source = "%%{init: { 'securityLevel': 'strict' }}%%\ncustomDiagram\npayload";
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("customDiagram", source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Parsed {
+        model,
+        warning_facts,
+    } = snapshot.outcome()
+    else {
+        panic!("malformed custom warning fixture must retain its semantic model");
+    };
+
+    assert!(warning_facts.is_empty());
+    assert_eq!(
+        model["warningFacts"],
+        json!([
+            {
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                "message": "custom warning",
+                "span": { "start": 0, "end": 1 }
+            },
+            null
+        ])
+    );
+}
+
+#[test]
+fn combined_builtin_warning_facts_stay_typed_and_sync_compatibility_json() {
+    let cases = [
+        (
+            "---\ntitle: Demo\n---\nflowchart\nA-->B",
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+        ),
+        (
+            "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+            BLOCK_WIDTH_WARNING_RULE_ID,
+        ),
+        (
+            "gitGraph\ncommit id:\"duplicate\"\ncommit id:\"duplicate\"\n",
+            GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+        ),
+    ];
+
+    for (source, expected_rule_id) in cases {
+        let snapshot = Engine::new()
+            .parse_diagram_snapshot_sync(source)
+            .unwrap()
+            .unwrap();
+        let DiagramParseOutcome::Parsed {
+            model,
+            warning_facts,
+        } = snapshot.outcome()
+        else {
+            panic!("built-in warning fixture must parse: {source}");
+        };
+
+        assert!(
+            warning_facts
+                .iter()
+                .any(|fact| fact.rule_id == expected_rule_id),
+            "missing typed warning {expected_rule_id} for {source}"
+        );
+        assert_eq!(model["warningFacts"], json!(warning_facts));
+    }
+
+    let flowchart_source = cases[0].0;
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_sync(flowchart_source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Parsed { warning_facts, .. } = snapshot.outcome() else {
+        unreachable!("flowchart warning fixture parsed above");
+    };
+    let flowchart_start = flowchart_source.find("flowchart").unwrap();
+    assert_eq!(
+        warning_facts[0].span,
+        Some(SourceSpan::new(
+            flowchart_start,
+            flowchart_start + "flowchart".len()
+        ))
+    );
+}
+
+#[test]
 fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
     for (diagram_type, source) in [
         ("flowchart-v2", "flowchart TD\nA-->B"),
@@ -1624,6 +1745,24 @@ fn custom_json_parser(
                 "end": payload_start + "payload".len(),
             },
         }],
+    })))
+}
+
+fn malformed_custom_warning_json_parser(
+    _code: &str,
+    _meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
+    control.checkpoint()?;
+    Ok(Ok(json!({
+        "warningFacts": [
+            {
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                "message": "custom warning",
+                "span": { "start": 0, "end": 1 }
+            },
+            null
+        ]
     })))
 }
 
@@ -2272,6 +2411,44 @@ Point A:::class1: [0.9, 0.0]
         expected.kind == EditorExpectedSyntaxKind::Payload
             && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
     }));
+    let class_use_start = text.find("Point A:::class1").unwrap() + "Point A:::".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(class_use_start, class_use_start + "class1".len())
+    }));
+}
+
+#[test]
+fn parse_quadrant_chart_class_selectors_expose_partial_and_empty_slots() {
+    let engine = Engine::new();
+    let text = concat!(
+        "quadrantChart\n",
+        "classDef priority color: #109060\n",
+        "Complete:::priority: [0.2, 0.8]\n",
+        "Partial:::pri: [0.3, 0.7]\n",
+        "Empty:::: [0.4, 0.6]\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
+        .unwrap()
+        .unwrap();
+
+    for (line, selector) in [("Complete", "priority"), ("Partial", "pri")] {
+        let start = text.find(&format!("{line}:::{selector}")).unwrap() + line.len() + 3;
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::ClassName
+                    && expected.span == SourceSpan::new(start, start + selector.len())
+            }),
+            "missing ClassName evidence for {selector} at {start}: {:?}",
+            facts.expected_syntax
+        );
+    }
+    let empty = text.find("Empty:::").unwrap() + "Empty:::".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(empty, empty)
+    }));
 }
 
 #[test]
@@ -2374,7 +2551,7 @@ style req,elem fill:#ffa,stroke:#000
             first_class_def_start,
         )
         .role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
     assert_eq!(
         symbol_at(
@@ -2383,7 +2560,7 @@ style req,elem fill:#ffa,stroke:#000
             second_class_def_start,
         )
         .role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
 
     let class_stmt_start = text.find("class req,elem").unwrap();
@@ -2391,11 +2568,11 @@ style req,elem fill:#ffa,stroke:#000
     let elem_class_target_start = req_class_target_start + "req,".len();
     assert_eq!(
         symbol_at("req", "requirement class target", req_class_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
     assert_eq!(
         symbol_at("elem", "requirement class target", elem_class_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
 
     let first_class_ref_start = class_stmt_start + "class req,elem ".len();
@@ -2414,11 +2591,11 @@ style req,elem fill:#ffa,stroke:#000
     let elem_style_target_start = req_style_target_start + "req,".len();
     assert_eq!(
         symbol_at("req", "requirement style target", req_style_target_start).role,
-        EditorSemanticRole::Payload
+        EditorSemanticRole::Reference
     );
     assert_eq!(
         symbol_at("elem", "requirement style target", elem_style_target_start).role,
-        EditorSemanticRole::Payload
+        EditorSemanticRole::Reference
     );
 }
 
