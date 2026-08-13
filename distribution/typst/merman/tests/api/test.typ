@@ -67,7 +67,7 @@
   profile: svg-profile,
   id: "api-direct",
   options: (
-    version: 2,
+    version: 3,
     theme: (
       spec: (
         typography: (
@@ -84,7 +84,7 @@
 
 #let raw-scoped-css-result = mermaid-result(
   source,
-  options: (version: 2, svg: (scoped_css: ".node rect { fill: red; }")),
+  options: (version: 3, svg: (scoped_css: ".node rect { fill: red; }")),
 )
 #assert(
   not raw-scoped-css-result.ok,
@@ -98,7 +98,7 @@
 
 #let raw-css-override-policy-result = mermaid-result(
   source,
-  options: (version: 2, svg: (css_override_policy: "preserve")),
+  options: (version: 3, svg: (css_override_policy: "preserve")),
 )
 #assert(
   not raw-css-override-policy-result.ok,

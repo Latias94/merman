@@ -3080,12 +3080,15 @@ mod tests {
         )
         .unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(value["version"], 2);
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+        );
         assert_eq!(value["resources"]["profile"], "constrained");
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
 
         let inherited = resource_options_json(None, Vec::new()).unwrap();
-        assert_eq!(inherited, r#"{"version":2}"#);
+        assert_eq!(inherited, r#"{"version":3}"#);
     }
 
     #[test]
@@ -3170,7 +3173,7 @@ mod tests {
     #[test]
     fn reusable_engine_returns_document_analysis_json() {
         let reusable = reusable_engine(Some(
-            r#"{ "version": 2, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
+            r#"{ "version": 3, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
         ));
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let json: Value = serde_json::from_str(

@@ -22,6 +22,7 @@ import {
   parseRuntimeCatalogJsonText,
 } from "../src/errors.mjs";
 import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   BINDING_OPTION_GROUP_SPECS,
   BINDING_OPERATION_EXPECTATIONS,
   METADATA_SPECS,
@@ -203,7 +204,7 @@ function runtimeCatalog(overrides = {}) {
     schema_version: 1,
     transport_api_version: 1,
     package_version: PACKAGE_VERSION,
-    options_schema_versions: [2],
+    options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
     payload_schemas: [
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
@@ -523,7 +524,7 @@ test("default construction is explicit deterministic interactive policy", async 
 
   assert.deepEqual(factory.createdWith, [
     {
-      version: 2,
+      version: BINDING_OPTIONS_SCHEMA_VERSION,
       runtime_policy: "deterministic",
       resources: { profile: "interactive" },
     },
@@ -1510,7 +1511,7 @@ test("binding options preserve the shared profile vocabulary and reject host mea
       fixed_today: "2026-07-23",
     }),
     {
-      version: 2,
+      version: BINDING_OPTIONS_SCHEMA_VERSION,
       runtime_policy: "deterministic",
       resources: { profile: "trusted-native" },
       fixed_today: "2026-07-23",
@@ -1519,7 +1520,10 @@ test("binding options preserve the shared profile vocabulary and reject host mea
 
   assert.throws(
     () => normalizeBindingOptions({ version: 1 }),
-    /unsupported binding options schema version `1`; expected 2/i,
+    new RegExp(
+      `unsupported binding options schema version \`1\`; expected ${BINDING_OPTIONS_SCHEMA_VERSION}`,
+      "i",
+    ),
   );
   assert.throws(
     () => normalizeBindingOptions({ runtime_policy: "native" }),

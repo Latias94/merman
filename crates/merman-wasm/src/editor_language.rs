@@ -1313,7 +1313,7 @@ mod tests {
     fn editor_language_extracts_analysis_options_from_the_shared_binding_envelope() {
         let options = parse_analysis_options(Some(
             r#"{
-                "version": 2,
+                "version": 3,
                 "parse": { "suppress_errors": true },
                 "resources": { "profile": "constrained" }
             }"#,

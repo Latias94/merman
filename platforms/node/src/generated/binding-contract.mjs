@@ -2,7 +2,7 @@
 // Sources: typed registries in merman-bindings-core. Do not edit directly.
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1;
-export const BINDING_OPTIONS_SCHEMA_VERSION = 2;
+export const BINDING_OPTIONS_SCHEMA_VERSION = 3;
 export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$";

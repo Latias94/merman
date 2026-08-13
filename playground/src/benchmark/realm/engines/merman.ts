@@ -1,6 +1,7 @@
-import type {
-  MermanWasmModule,
-  SvgBindingOptions,
+import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
+  type MermanWasmModule,
+  type SvgBindingOptions,
 } from "@mermanjs/web";
 import { createBrowserTextMeasurementSession } from "../../../../../platforms/web/packages/full/dist/runtime-render.js";
 
@@ -142,7 +143,7 @@ function bindingOptions(
   const fontFamily = diagramFontStack(diagramFont);
   const screenAvailableWidth = window.screen.availWidth;
   const options: SvgBindingOptions = {
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     site_config: {
       fontFamily,
       themeVariables: { fontFamily },

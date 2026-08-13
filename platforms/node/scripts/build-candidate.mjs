@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { validateTransportIdentityJson } from "../src/errors.mjs";
+import { BINDING_OPTIONS_SCHEMA_VERSION } from "../src/generated/binding-contract.mjs";
 import { nodeLoaderPackageVersion, resolveNodeTarget } from "../src/native-loader.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
@@ -277,7 +278,7 @@ export function probeCandidateRuntime(stage, recipe) {
     throw new Error(`${recipe.candidate} candidate does not export its complete engine contract.`);
   }
   const engine = new Engine(JSON.stringify({
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     runtime_policy: "deterministic",
     resources: { profile: "interactive" },
   }));
@@ -324,7 +325,7 @@ export function probeCandidateRuntime(stage, recipe) {
       operation_id: "semantic-json",
       source,
       uri: null,
-      options_json: JSON.stringify({ version: 2 }),
+      options_json: JSON.stringify({ version: BINDING_OPTIONS_SCHEMA_VERSION }),
     });
     const semantic = parseWireResponse(engine.executeSync(semanticRequest));
     if (
@@ -341,7 +342,7 @@ export function probeCandidateRuntime(stage, recipe) {
       operation_id: "svg-plan-json",
       source,
       uri: null,
-      options_json: JSON.stringify({ version: 2 }),
+      options_json: JSON.stringify({ version: BINDING_OPTIONS_SCHEMA_VERSION }),
     })));
     if (
       svgPlan.ok !== true ||

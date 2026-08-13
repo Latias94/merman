@@ -8,7 +8,7 @@ import '../operation_metadata.dart';
 const int mermanRuntimeCatalogSchemaVersion = 1;
 const String mermanRuntimeCatalogIdentifierPattern = r'^[a-z0-9][a-z0-9-]*$';
 const String mermanRuntimeCatalogFieldIdentifierPattern = r'^[a-z][a-z0-9_-]*$';
-const int mermanBindingOptionsContractSchemaVersion = 2;
+const int mermanBindingOptionsContractSchemaVersion = 3;
 const int mermanOperationMetadataSchemaVersion = 1;
 const int mermanTextMeasurementContractProtocolVersion = 1;
 const String mermanHostTextMeasurementConstructorServiceId =

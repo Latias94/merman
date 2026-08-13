@@ -141,7 +141,7 @@ fn semantic_contract_accepts_every_schema_owned_option_field() {
     STATIC_SEMANTIC_CONTRACT
         .create_engine(
             br#"{
-                "version": 2,
+                "version": 3,
                 "runtime_policy": "deterministic",
                 "parse": {"suppress_errors": false},
                 "fixed_today": "2026-08-04",

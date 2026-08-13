@@ -21,6 +21,7 @@ import type {
 } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
 import type {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   ResourceOverrideId,
   ResourceLimitId,
   ResourceOptions,
@@ -449,7 +450,7 @@ export type EditorAnalysisBindingOptions = Omit<
 };
 
 interface BindingVersionOptions {
-  version?: 2;
+  version?: typeof BINDING_OPTIONS_SCHEMA_VERSION;
 }
 
 type NoDirectAnalysisBindingOptions<Options extends AnalysisBindingOptions> = {

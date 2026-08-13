@@ -64,10 +64,16 @@ struct MermanAppleSmoke {
             )
         }
 
+        let constrainedSourceOptions = try resourceOptionsJson(
+            profile: .constrained,
+            overrides: [
+                MermanResourceLimitOverride(id: .maxSourceBytes, value: 8),
+            ]
+        )
         do {
             _ = try engine.renderSvg(
                 source: source,
-                optionsJson: #"{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}"#
+                optionsJson: constrainedSourceOptions
             )
             throw SmokeError.failed("resource failure did not return a binding error")
         } catch let error as MermanError {

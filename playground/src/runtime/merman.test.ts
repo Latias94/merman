@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { BINDING_OPTIONS_SCHEMA_VERSION } from "@mermanjs/web";
 import {
   createMermanRuntime,
   installMermanDocumentLifecycle,
@@ -99,7 +100,7 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.equal(input.source, "flowchart TD\n  A --> B\n");
   assert.match(input.configuredSource, /flowchart TD/);
   assert.deepEqual(input.bindingOptions, {
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     theme: { preset: "editor-light" },
     layout: {
       container_width: 800,
@@ -139,7 +140,9 @@ test("keeps the default font in Mermaid config without enabling a compiled theme
   );
 
   assert.match(input.configuredSource, /trebuchet ms/);
-  assert.deepEqual(input.bindingOptions, { version: 2 });
+  assert.deepEqual(input.bindingOptions, {
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
+  });
 });
 
 test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent", () => {
@@ -166,13 +169,15 @@ test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent",
     },
   );
 
-  assert.deepEqual(plain.bindingOptions, { version: 2 });
+  assert.deepEqual(plain.bindingOptions, {
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
+  });
   assert.deepEqual(themeOnly.bindingOptions, {
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     theme: { preset: "future-theme" },
   });
   assert.deepEqual(pipelineOnly.bindingOptions, {
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     svg: { pipeline: "readable" },
   });
   assert.match(themeOnly.configuredSource, /"theme":"dark"/);

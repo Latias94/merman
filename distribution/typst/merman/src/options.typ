@@ -471,7 +471,7 @@
     profile-options
   } else {
     let binding-options = (
-      version: 2,
+      version: 3,
       fixed_today: fixed-today,
       fixed_local_offset_minutes: fixed-local-offset-minutes,
       site_config: site-config,

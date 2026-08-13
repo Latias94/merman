@@ -3,6 +3,7 @@ import unittest
 
 import merman
 from merman._binding_contract import CONSTRUCTOR_SERVICE_SPECS
+from merman._resource_options import BINDING_OPTIONS_SCHEMA_VERSION
 
 
 CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
@@ -15,7 +16,7 @@ def valid_catalog():
         "schema_version": 1,
         "transport_api_version": 4,
         "package_version": "test",
-        "options_schema_versions": [2],
+        "options_schema_versions": [BINDING_OPTIONS_SCHEMA_VERSION],
         "payload_schemas": [
             {"id": "binding-result", "version": 1},
             {"id": "operation-metadata", "version": 1},
@@ -158,7 +159,9 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertFalse(hasattr(merman, "get_runtime_contract"))
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
         self.assertFalse(hasattr(merman, "MermanRuntimeContractError"))
-        self.assertEqual(catalog["options_schema_versions"], [2])
+        self.assertEqual(
+            catalog["options_schema_versions"], [BINDING_OPTIONS_SCHEMA_VERSION]
+        )
         self.assertEqual(
             parsed["resources"]["limits"][0]["operation_ids"],
             ["analysis-json", "ascii", "semantic-json", "svg"],
@@ -655,7 +658,7 @@ class RuntimeCatalogTest(unittest.TestCase):
                     "limits": {"max_source_bytes": 4096},
                     "profile": "constrained",
                 },
-                "version": 2,
+                "version": BINDING_OPTIONS_SCHEMA_VERSION,
             },
         )
 

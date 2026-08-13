@@ -9,7 +9,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import ClassVar, Mapping, Optional, Tuple
 
-BINDING_OPTIONS_SCHEMA_VERSION = 2
+BINDING_OPTIONS_SCHEMA_VERSION = 3
 
 class ResourceProfile(str, Enum):
     INTERACTIVE = "interactive"
@@ -226,7 +226,7 @@ class ResourceOptions:
             resources["profile"] = self.profile.value
         if limits:
             resources["limits"] = limits
-        payload = {"version": 2}
+        payload = {"version": 3}
         if resources:
             payload["resources"] = resources
         return json.dumps(payload, separators=(",", ":"), sort_keys=True)

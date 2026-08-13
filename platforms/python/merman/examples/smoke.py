@@ -120,11 +120,15 @@ def main() -> None:
                 f"default native artifact unexpectedly supports {capability_id}"
             )
 
+    constrained_source_options = (
+        merman.ResourceOptionsBuilder()
+        .profile(merman.ResourceProfile.CONSTRAINED)
+        .limit(merman.ResourceOverrideId.MAX_SOURCE_BYTES, 8)
+        .build()
+        .to_options_json()
+    )
     try:
-        engine.render_svg(
-            SOURCE,
-            '{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}',
-        )
+        engine.render_svg(SOURCE, constrained_source_options)
     except merman.MermanError.Binding as error:
         require(
             error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"

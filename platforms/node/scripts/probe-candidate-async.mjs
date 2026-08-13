@@ -7,7 +7,10 @@ import {
   decodeWireResponse,
   validateTransportIdentityJson,
 } from "../src/errors.mjs";
-import { BINDING_OPERATION_EXPECTATIONS } from "../src/generated/binding-contract.mjs";
+import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
+  BINDING_OPERATION_EXPECTATIONS,
+} from "../src/generated/binding-contract.mjs";
 import { nodeLoaderPackageVersion } from "../src/native-loader.mjs";
 
 const requireFromProbe = createRequire(import.meta.url);
@@ -35,7 +38,7 @@ try {
   if (!expectation) throw new Error("generated operation contract lacks semantic-json.");
 
   const engine = new Engine(JSON.stringify({
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     runtime_policy: "deterministic",
     resources: { profile: "interactive" },
   }));

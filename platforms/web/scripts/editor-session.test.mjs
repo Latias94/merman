@@ -336,7 +336,7 @@ function runtimeCatalogFixture({
     schema_version: 1,
     transport_api_version: WEB_TRANSPORT_API_VERSION,
     package_version: "0.8.0-alpha.4",
-    options_schema_versions: [2],
+    options_schema_versions: [webApi.BINDING_OPTIONS_SCHEMA_VERSION],
     payload_schemas: [
       { id: "binding-result", version: 1 },
     ],
@@ -403,7 +403,9 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         catalog.options_schema_versions = [1];
         return catalog;
       },
-      /does not advertise options schema v2/,
+      new RegExp(
+        `does not advertise options schema v${webApi.BINDING_OPTIONS_SCHEMA_VERSION}`,
+      ),
     ],
     [
       () => {
@@ -895,7 +897,9 @@ test("runtime catalog accepts unknown future IDs", async () => {
   await runtime.initMerman();
 
   const catalog = runtime.runtimeCatalog();
-  assert.deepEqual(catalog.options_schema_versions, [2]);
+  assert.deepEqual(catalog.options_schema_versions, [
+    webApi.BINDING_OPTIONS_SCHEMA_VERSION,
+  ]);
   assert.deepEqual(catalog.payload_schemas, [
     { id: "binding-result", version: 1 },
     { id: "future-payload", version: 9 },

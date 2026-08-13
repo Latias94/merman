@@ -634,7 +634,8 @@ void acceptsAFlatAbi3Catalog() {
     'flat registry/resource facts should be preserved',
   );
   _expect(
-    catalog.optionsSchemaVersions.single == 2 &&
+    catalog.optionsSchemaVersions.single ==
+            binding.mermanBindingOptionsContractSchemaVersion &&
         catalog.payloadSchemas.any(
           (schema) => schema.id == 'binding-result' && schema.version == 1,
         ) &&
@@ -1782,7 +1783,7 @@ Map<String, Object?> _catalog({
     'schema_version': 1,
     'transport_api_version': 3,
     'package_version': 'test',
-    'options_schema_versions': const [2],
+    'options_schema_versions': const [binding.mermanBindingOptionsContractSchemaVersion],
     'payload_schemas': const [
       {'id': 'binding-result', 'version': 1},
       {'id': 'operation-metadata', 'version': 1},

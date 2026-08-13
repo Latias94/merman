@@ -19,6 +19,9 @@ import {
   assembleNativePackages,
   projectLegalMaterial,
 } from "../assemble-packages.mjs";
+import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
+} from "../../src/generated/binding-contract.mjs";
 import { digestJson } from "../stable-json.mjs";
 import { svgTransportEvidence } from "./svg-signature.mjs";
 import {
@@ -267,19 +270,19 @@ function probeInstalledRuntime(installRoot, candidate) {
   if (packageName === null) throw new Error(`Unknown footprint candidate: ${candidate}.`);
   const script = [
     `import { createNodeEngine } from ${JSON.stringify(packageName)};`,
-    'const engine = await createNodeEngine({ bindingOptions: { version: 2, runtime_policy: "deterministic", resources: { profile: "trusted-native" } } });',
+    `const engine = await createNodeEngine({ bindingOptions: { version: ${BINDING_OPTIONS_SCHEMA_VERSION}, runtime_policy: "deterministic", resources: { profile: "trusted-native" } } });`,
     'const catalog = engine.runtimeCatalog;',
     'const runtimeCatalogPassed = catalog?.capabilities?.operation_ids?.includes("semantic-json") && catalog?.capabilities?.operation_ids?.includes("svg-plan-json") && catalog?.capabilities?.text_measurement?.provider_ids?.join(",") === "vendored";',
-    'const semantic = await engine.executeOperation({ operationId: "semantic-json", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: 2 }) });',
+    `const semantic = await engine.executeOperation({ operationId: "semantic-json", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: ${BINDING_OPTIONS_SCHEMA_VERSION} }) });`,
     'const genericOperationPassed = semantic.operation_id === "semantic-json" && semantic.media_type === "application/json" && JSON.parse(semantic.data);',
-    'const svgPlan = await engine.executeOperation({ operationId: "svg-plan-json", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: 2 }) });',
+    `const svgPlan = await engine.executeOperation({ operationId: "svg-plan-json", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: ${BINDING_OPTIONS_SCHEMA_VERSION} }) });`,
     'const parsedSvgPlan = JSON.parse(svgPlan.data);',
     'const svgPlanOperationPassed = svgPlan.operation_id === "svg-plan-json" && svgPlan.media_type === "application/json" && parsedSvgPlan?.schema_version === 1 && parsedSvgPlan?.planned_operation_id === "svg" && Array.isArray(parsedSvgPlan?.required_capability_ids) && Array.isArray(parsedSvgPlan?.missing_capability_ids) && typeof parsedSvgPlan?.ready === "boolean";',
-    'const svg = await engine.executeOperation({ operationId: "svg", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: 2 }) });',
+    `const svg = await engine.executeOperation({ operationId: "svg", source: "flowchart TD\\nA-->B", optionsJson: JSON.stringify({ version: ${BINDING_OPTIONS_SCHEMA_VERSION} }) });`,
     'let requestOptionsPassed = false;',
     'let requestOptionsError = null;',
     'try {',
-    '  await engine.renderSvg("flowchart TD\\nA-->B", { optionsJson: JSON.stringify({ version: 2, resources: { limits: { max_source_bytes: 4 } } }) });',
+    `  await engine.renderSvg("flowchart TD\\nA-->B", { optionsJson: JSON.stringify({ version: ${BINDING_OPTIONS_SCHEMA_VERSION}, resources: { limits: { max_source_bytes: 4 } } }) });`,
     '} catch (error) {',
     '  requestOptionsPassed = error?.codeName === "MERMAN_RESOURCE_LIMIT_EXCEEDED";',
     '  requestOptionsError = { code_name: error?.codeName ?? error?.code ?? null, kind: error?.kind ?? null, capability_id: error?.capabilityId ?? null };',

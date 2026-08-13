@@ -3,7 +3,7 @@
 
 import 'dart:convert';
 
-const int mermanBindingOptionsSchemaVersion = 2;
+const int mermanBindingOptionsSchemaVersion = 3;
 
 enum MermanResourceProfile {
   interactive('interactive'),
@@ -312,7 +312,7 @@ class MermanResourceOptions {
         },
     };
     return jsonEncode(<String, Object?>{
-      'version': 2,
+      'version': 3,
       if (resources.isNotEmpty) 'resources': resources,
     });
   }

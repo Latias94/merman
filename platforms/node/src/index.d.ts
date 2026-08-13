@@ -5,7 +5,7 @@ export type MermanResourceProfile =
   | "unbounded-for-trusted-input";
 
 export interface MermanBindingOptions {
-  version?: 2;
+  version?: 3;
   runtime_policy?: "deterministic";
   resources?: {
     profile?: MermanResourceProfile;

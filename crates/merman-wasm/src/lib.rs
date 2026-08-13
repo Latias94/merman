@@ -665,13 +665,20 @@ mod tests {
     #[test]
     fn wasm_timeout_option_becomes_a_relative_deadline_and_is_removed_from_shared_options() {
         let (options, timeout) = wasm_options(
-            br#"{"version":2,"timeout_ms":125,"resources":{"profile":"constrained"}}"#,
+            format!(
+                r#"{{"version":{},"timeout_ms":125,"resources":{{"profile":"constrained"}}}}"#,
+                merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+            )
+            .as_bytes(),
         )
         .unwrap();
 
         assert_eq!(timeout, Some(Duration::from_millis(125)));
         let value: serde_json::Value = serde_json::from_slice(&options).unwrap();
-        assert_eq!(value["version"], 2);
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+        );
         assert_eq!(value["resources"]["profile"], "constrained");
         assert!(value.get("timeout_ms").is_none());
     }

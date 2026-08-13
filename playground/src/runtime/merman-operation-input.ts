@@ -1,4 +1,7 @@
-import type { SvgBindingOptions } from "@mermanjs/web";
+import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
+  type SvgBindingOptions,
+} from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import { sourceWithConfig } from "../lib/mermaid-config.ts";
@@ -229,7 +232,7 @@ function bindingOptionsForRender(
       })
     : undefined;
   return Object.freeze({
-    version: 2,
+    version: BINDING_OPTIONS_SCHEMA_VERSION,
     ...(theme ? { theme } : {}),
     ...(svg ? { svg } : {}),
     ...(layout ? { layout } : {}),

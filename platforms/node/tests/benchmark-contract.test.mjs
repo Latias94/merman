@@ -39,6 +39,7 @@ import {
 } from "../../../scripts/npm-command.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
 import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   BINDING_OPTION_GROUP_SPECS,
   METADATA_SPECS,
 } from "../src/generated/binding-contract.mjs";
@@ -111,11 +112,11 @@ const CORPUS_CASES = [
   { path: "b.mmd", source: "invalid" },
 ];
 const BINDING_OPTIONS = {
-  version: 2,
+  version: BINDING_OPTIONS_SCHEMA_VERSION,
   runtime_policy: "deterministic",
   resources: { profile: "trusted-native" },
 };
-const OPERATION_OPTIONS = { version: 2 };
+const OPERATION_OPTIONS = { version: BINDING_OPTIONS_SCHEMA_VERSION };
 const CORPUS_DIGEST = computeCorpusDigest(CORPUS_CASES);
 const COMPARISON_INPUT_DIGEST = computeInputDigest({
   corpusDigest: CORPUS_DIGEST,
@@ -183,7 +184,7 @@ const RUNTIME_CATALOG = {
   schema_version: 1,
   transport_api_version: 1,
   package_version: PACKAGE_VERSION,
-  options_schema_versions: [2],
+  options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
   payload_schemas: [
     { id: "binding-result", version: 1 },
     { id: "operation-metadata", version: 1 },
@@ -449,12 +450,8 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
       mode: "shutdown",
       candidate: "node-wasm",
       productModule: pathToFileURL(productModule).href,
-      bindingOptions: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operationOptions: { version: 2 },
+      bindingOptions: BINDING_OPTIONS,
+      operationOptions: OPERATION_OPTIONS,
     }),
   );
   const result = spawnSync(
@@ -503,12 +500,8 @@ test("cold latency uses the declared successful workload, not the leading corpus
       mode: "cold",
       candidate: "node-wasm",
       productModule: pathToFileURL(productModule).href,
-      bindingOptions: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operationOptions: { version: 2 },
+      bindingOptions: BINDING_OPTIONS,
+      operationOptions: OPERATION_OPTIONS,
       workload: WORKLOADS.cold_svg,
     }),
   );
@@ -1327,12 +1320,8 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
       corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
-      binding_options: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operation_options: { version: 2 },
+      binding_options: BINDING_OPTIONS,
+      operation_options: OPERATION_OPTIONS,
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
@@ -1833,12 +1822,8 @@ test("the report cannot announce a winner without complete target evidence", () 
       corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
-      binding_options: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operation_options: { version: 2 },
+      binding_options: BINDING_OPTIONS,
+      operation_options: OPERATION_OPTIONS,
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
@@ -1971,12 +1956,8 @@ test("a rejected report records no selected transport", () => {
       corpus_digest: CORPUS_DIGEST,
       corpus: "fixtures/**/*.mmd",
       cases: 2,
-      binding_options: {
-        version: 2,
-        runtime_policy: "deterministic",
-        resources: { profile: "trusted-native" },
-      },
-      operation_options: { version: 2 },
+      binding_options: BINDING_OPTIONS,
+      operation_options: OPERATION_OPTIONS,
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
