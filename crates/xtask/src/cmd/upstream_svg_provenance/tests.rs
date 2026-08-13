@@ -190,7 +190,7 @@ fn renderer_profiles_capture_seed_and_width_variants() {
     );
     assert_eq!(
         renderer_profile("gantt", None),
-        "seeded-puppeteer-seed-1-fixed-date-1704067200000-width-1200"
+        "seeded-puppeteer-seed-1-fixed-date-1704067200000-viewport-1200-container-1184"
     );
     assert_eq!(
         renderer_profile("error", None),

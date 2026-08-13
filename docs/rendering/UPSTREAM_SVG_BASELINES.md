@@ -387,8 +387,10 @@ Determinism note:
   renders via a small Puppeteer wrapper that seeds browser-side randomness deterministically (while
   still using the official Mermaid CLI bundle).
 - Gantt diagrams use the same Puppeteer wrapper with a fixed wall clock of
-  `2024-01-01T00:00:00Z` and a 1200-pixel container. The renderer profile records both inputs, so
-  the `today` marker cannot drift with the machine date between baseline refreshes.
+  `2024-01-01T00:00:00Z`, a 1200-pixel page viewport, and the matching 1184-pixel Mermaid CLI
+  content container after the browser body's default inline margins. The renderer profile records
+  all three inputs, and the Rust comparator consumes the same fixed clock, so date-driven axis and
+  `today` marker structure cannot drift between baseline generation and comparison.
 
 ## Compare (ER)
 

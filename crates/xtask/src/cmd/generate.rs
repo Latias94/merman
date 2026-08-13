@@ -87,8 +87,20 @@ fn uses_scripted_upstream_svg_renderer(diagram: &str) -> bool {
         || captures_parse_error_svg(diagram)
 }
 
-fn scripted_renderer_width(diagram: &str) -> u32 {
-    if diagram == "gantt" { 1200 } else { 800 }
+fn scripted_renderer_page_viewport_width(diagram: &str) -> u32 {
+    if diagram == "gantt" {
+        crate::cmd::GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX
+    } else {
+        800
+    }
+}
+
+fn scripted_renderer_container_width(diagram: &str) -> u32 {
+    if diagram == "gantt" {
+        crate::cmd::GANTT_UPSTREAM_CONTAINER_WIDTH_PX
+    } else {
+        scripted_renderer_page_viewport_width(diagram)
+    }
 }
 
 fn upstream_svg_supported_diagrams_message() -> String {
@@ -1485,8 +1497,10 @@ fn gen_upstream_svgs_impl(
                     "theme": "default",
                     "svg_id": svg_id,
                     "seed": seed,
-                    "width": scripted_renderer_width(diagram),
+                    "page_viewport_width": scripted_renderer_page_viewport_width(diagram),
+                    "container_width": scripted_renderer_container_width(diagram),
                     "height": 600,
+                    "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
                     "background_color": scripted_renderer_background_color(diagram),
                     "browser_executable": render_probe.browser_executable.display().to_string(),
                     "capture_parse_error_svg": captures_parse_error_svg(diagram),
@@ -2404,8 +2418,9 @@ const configPath = String(input.config_path || '');
 const theme = String(input.theme || 'default');
 const svgId = String(input.svg_id || 'diagram');
 const seedStr = String((input.seed ?? 1));
-const fixedWallClockMs = 1704067200000;
-const width = Number(input.width || 800);
+const fixedWallClockMs = Number(input.fixed_wall_clock_ms);
+const pageViewportWidth = Number(input.page_viewport_width || 800);
+const containerWidth = Number(input.container_width || pageViewportWidth);
 const height = Number(input.height || 600);
 const backgroundColor = input.background_color === undefined
   ? 'white'
@@ -2506,14 +2521,18 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     }
   }, { seedStr, fixedWallClockMs });
 
-  await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
+  await page.setViewport({
+    width: Math.max(1, pageViewportWidth),
+    height: Math.max(1, height),
+    deviceScaleFactor: 1,
+  });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
   await Promise.all([
     page.addScriptTag({ path: mermaidIifePath }),
     page.addScriptTag({ path: zenumlIifePath }),
   ]);
 
-  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, captureParseErrorSvg, debug }) => {
+  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, containerWidth, captureParseErrorSvg, debug }) => {
     const mermaid = globalThis.mermaid;
     if (!mermaid) throw new Error('global mermaid instance not found (mermaid.js)');
 
@@ -2535,7 +2554,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
 
     const container = document.getElementById('container') || document.body;
     container.innerHTML = '';
-    container.style.width = `${Math.max(1, Number(width) || 1)}px`;
+    container.style.width = `${Math.max(1, Number(containerWidth) || 1)}px`;
 
     // Surface parse errors early; some Mermaid failures otherwise only manifest as a missing `svg`.
     if (!captureParseErrorSvg && typeof mermaid.parse === 'function') {
@@ -2741,7 +2760,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       return { ok: true, stage: 'ok', svgTextLen: svgText.length, serializedLen: xml.length };
     }
     return xml;
-  }, { code, cfg, theme, svgId, width, captureParseErrorSvg, debug });
+  }, { code, cfg, theme, svgId, containerWidth, captureParseErrorSvg, debug });
 
   if (debug) {
     if (typeof svg !== 'string') {
@@ -3232,7 +3251,8 @@ mod tests {
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
         parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
         promote_upstream_svg_batch, render_dompurify_defaults_rs, render_family_fixture_svg,
-        scripted_renderer_background_color, scripted_renderer_width, select_upstream_svg_diagrams,
+        scripted_renderer_background_color, scripted_renderer_container_width,
+        scripted_renderer_page_viewport_width, select_upstream_svg_diagrams,
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
         upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_mermaid_config_value, upstream_svg_package_tree_sha256,
@@ -3842,7 +3862,7 @@ mod tests {
         assert!(injection < fixed_clock);
         assert!(fixed_clock < navigation);
         assert!(fixed_clock < mermaid_load);
-        assert!(script.contains("const fixedWallClockMs = 1704067200000;"));
+        assert!(script.contains("const fixedWallClockMs = Number(input.fixed_wall_clock_ms);"));
         assert!(script.contains("args.length === 0 ? [fixedWallClockMs] : args"));
         assert!(script.contains("if (property === 'now') return () => fixedWallClockMs"));
         assert!(
@@ -3860,12 +3880,14 @@ mod tests {
     }
 
     #[test]
-    fn gantt_uses_the_fixed_clock_renderer_at_the_parity_width() {
+    fn gantt_uses_the_fixed_clock_renderer_at_the_mmdc_page_and_container_widths() {
         assert!(uses_fixed_clock_upstream_svg_renderer("gantt"));
         assert!(uses_scripted_upstream_svg_renderer("gantt"));
-        assert_eq!(scripted_renderer_width("gantt"), 1200);
+        assert_eq!(scripted_renderer_page_viewport_width("gantt"), 1_200);
+        assert_eq!(scripted_renderer_container_width("gantt"), 1_184);
         assert!(!uses_fixed_clock_upstream_svg_renderer("timeline"));
-        assert_eq!(scripted_renderer_width("timeline"), 800);
+        assert_eq!(scripted_renderer_page_viewport_width("timeline"), 800);
+        assert_eq!(scripted_renderer_container_width("timeline"), 800);
     }
 
     #[test]
