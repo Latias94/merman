@@ -11,8 +11,10 @@
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
 observable capabilities, splits the browser SDK into standalone packages, and finalizes separate
-native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, and
-Apple/Python use UniFFI API 3.
+native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, the
+browser transport uses API 4, and Apple/Python use UniFFI API 4 in the current source candidate.
+Published artifacts may advance on their own channel; always compare the loaded runtime catalog
+before mixing a generated wrapper with a native library.
 
 The practical upgrade rule is:
 
@@ -31,7 +33,7 @@ The practical upgrade rule is:
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C or Flutter bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
 | Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.5 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 1, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. |
-| Python or Apple bindings | Upgrade the generated UniFFI API 3 wrapper and matching native artifact together; resource errors now include a required `cause` field. Do not mix alpha.3 and alpha.5 components. |
+| Python or Apple bindings | Upgrade the generated UniFFI API 4 wrapper and matching native artifact together; resource and cancellation errors now carry structured details. Do not mix a published API 3 artifact with the current source-candidate wrapper. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
@@ -45,8 +47,8 @@ The practical upgrade rule is:
 | --- | --- | --- |
 | Parse Mermaid into Rust models | `merman-core` | Smallest foundational API; no rendering or diagnostics product surface. |
 | Lint, diagnose, or scan Markdown/MDX in Rust | `merman-analysis` | Analysis without renderer, layout, export, icon, or network dependencies. |
-| Render one complete SVG in Rust | `merman::render_svg` | Use the default or `complete-svg`; includes SVG, Cytoscape, ELK, and math. |
-| Reuse or configure a Rust renderer | `merman::svg::HeadlessRenderer` | Use when several operations share configuration or need layout data, export, presentation, resource policy, or an SVG pipeline. |
+| Render one complete SVG in Rust | `Renderer::render(RenderRequest::svg(...))` | Use the default or `complete-svg`; retain the `OperationControl` handle if the host needs cancellation or a deadline. |
+| Reuse or configure a Rust renderer | `merman::Renderer` plus typed requests | Keep engine defaults on `Renderer`; put target options, resource policy, and the caller-owned `OperationControl` on each `RenderRequest`. |
 | Render basic deterministic SVG in Rust | `merman` | Disable defaults and select `svg`; optional layout engines and math remain absent. |
 | Convert, export, lint, or batch from a shell | `merman-cli` | The release binary is the complete product; source builds can select narrower feature leaves. |
 | Run a language server | `merman-lsp` | Use the release binary, or build the explicit `stdio` transport. |
@@ -175,13 +177,12 @@ owner document before replacement. Manual hosts must replace `assertSafeSvgForDo
 
 ## Native ABI migration
 
-Alpha.5 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1; Python and Apple
-use UniFFI API 3 from the matching native artifact. Resource failures include the required `cause`
-discriminator (`ceiling` or `arithmetic_overflow`) across these transports. Upgrade each language
-package and native artifact together; do not mix an alpha.3 generated wrapper with an alpha.5
-library. C/Flutter hosts validate ABI 3 and the generated runtime catalog, while Android validates
-its transport catalog handshake before requesting optional outputs, resources, or host text
-measurement.
+Alpha.5 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1. The current source
+candidate's browser and UniFFI transports use API 4; older published alpha.5 artifacts may still
+report API 3. Resource failures include the stable `cause` discriminator (`ceiling` or
+`arithmetic_overflow`), and cancellation failures include `reason` and `phase`. Upgrade each
+language package and native artifact together; never mix a generated wrapper with a library whose
+runtime catalog reports a different transport version.
 
 Follow the [ABI 3 migration guide](../bindings/ABI3_MIGRATION.md) and the surface-specific Python,
 Flutter, Android, or Apple documentation. A channel listed in the repository is not proof that the
@@ -238,7 +239,7 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 - `DocumentSnapshot` and `FenceSnapshot` are also accessor-based. Replace direct field access with `uri()`, `version()`, `kind()`, `text()`, `shared_text()`, `source_map()`, `fences()`, and fence accessors as applicable. Construct a snapshot with `DocumentSnapshot::try_from_analysis_generation(version, Arc<AnalysisGeneration>)`; its URI and kind come from the generation's `SourceDescriptor`.
 - Match `DocumentAnalysisOutcome` from editor document builders. `DocumentWorkspace::upsert` now returns `Result<DocumentSnapshot, AnalysisRejection>`; cancellable entry points still wrap their outcome in `Result<_, AnalysisCancelled>`.
 - Replace public `AnalysisOptions` fields and struct literals with builders and accessors. Remove `parse` / `with_parse_options` because analysis owns strict parser semantics; use `with_source`, `with_site_config`, `with_fixed_today`, `try_with_fixed_local_offset_minutes`, `with_runtime_policy`, `with_max_source_bytes`, `with_max_document_diagrams`, and `with_rule_config` as applicable. Inspect invalidation state through `AnalysisOptions::{snapshot_policy, diagnostic_policy, resource_limits}`, and replace `snapshot_affecting_eq` with `left.snapshot_policy() == right.snapshot_policy()`.
-- Update custom `DiagramSemanticParser` overlays to accept `&ParseControl` and return `ParseControlResult<Result<Value>>`. Checkpoint cancellable work, return cancellation through the outer result, return Mermaid failures through the inner result, and handle `merman_core::Error::ParseCancelled` in exhaustive matches.
+- Update custom `DiagramSemanticParser` overlays to accept `&OperationControl` and return `OperationControlResult<Result<Value>>`. Checkpoint cancellable work, return cancellation through the outer result, return Mermaid failures through the inner result, and handle `merman_core::Error::OperationCancelled` in exhaustive matches.
 - Analyzer entry points honor `SourceDescriptor` kind directly: Markdown and MDX inputs use canonical fence extraction and `max_document_diagrams` admission instead of producing one whole-document Mermaid generation.
 - Existing `DiagnosticFix::new` calls continue to work, but direct struct literals must account for `edits: Arc<[DiagnosticFixEdit]>`. `AnalysisRuleConfig::with_rule_enabled`, `with_rule_disabled`, and `with_rule_severity` return `Result<Self, AnalysisRuleConfigError>` and reject unknown or non-configurable rule ids.
 
@@ -290,10 +291,20 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 
 ### Rendering and option contracts
 
-- For an ordinary one-shot SVG, replace alpha.3 setup through `merman::render::HeadlessRenderer` or the multi-argument `merman::render::render_svg_sync` helper with `merman::render_svg(source)`. The new facade returns `Result<String, RenderSvgError>` and reports empty or non-diagram input as `RenderSvgError::NoDiagram`; use `merman::render_svg_with_id(source, id)` when multiple SVGs share one DOM. If the operation needs configuration or reuse, import `HeadlessRenderer` from `merman::svg` and keep the explicit renderer path.
-- Replace public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through functions with `merman::svg::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`. Direct low-level integrations can use `merman_render::family::prepare` with one `RenderSession`.
+- For an ordinary one-shot SVG, replace alpha.3 setup through the old renderer helpers with `Renderer::render(RenderRequest::svg(source, control, SvgRequest::default()))`. The output is `RenderOutput::Svg(Option<SvgOutput>)`; use `SvgOutput::svg()` for the serialized string and retain `SvgOutput::evidence()` when measurement/runtime provenance matters. Keep the caller's `OperationControl` clone so a host can cancel or deadline the synchronous worker.
+- Replace public low-level semantic/layout method matrices with `Renderer`, `RenderRequest`, and `RenderTarget`. Use `Renderer::prepare_semantic` only when admission or metadata is needed before selecting one target; consume the resulting `SemanticArtifact` exactly once. Direct low-level integrations can use `merman_render::family::prepare` with the operation's private SVG session.
 - Treat `dugong::layout` as the canonical full Dagre pipeline and handle its new `Result<(), dugong::LayoutError>` return value. The alpha.3 minimal approximation and the alternate `layout_dagreish` entry point are removed. Low-level `dugong::rank::rank` and `dugong::rank::network_simplex::network_simplex` now return the same result type instead of panicking when a rank-tree invariant cannot be satisfied; handle `LayoutError::InvalidNetworkSimplexTree` as invalid layout input or state. `LayoutError` and `WorkError` are non-exhaustive, so downstream matches need a wildcard arm. Explicit `minlen = 0` remains meaningful: default, `network-simplex`, and unknown rankers follow Mermaid's Dagre companion, while a ranker that produces coincident edge geometry returns `LayoutError::DegenerateEdgeGeometry` transactionally. The historical non-Dagre `ranker = "none"` escape hatch is removed; unknown values now use `network-simplex`, as upstream does.
-- Replace `render_svg_resvg_safe_sync(...)` with `render_resvg_compatible_svg_sync(...)`, and replace `HeadlessRenderer::render_svg_resvg_safe_sync(...)` with `HeadlessRenderer::render_resvg_compatible_svg_sync(...)`. Both return `Option<ResvgCompatibleSvg>` rather than `Option<String>`; pass `svg.as_str()` to a read-only raster consumer or consume it with `into_string()` only when crossing the final byte/string boundary. Replace raw `svg_resvg_safe(svg)` with `finalize_resvg_svg(svg, session)`. Generic pipeline methods that return `String` do not carry the terminal capability.
+- Select `SvgPipeline::resvg_safe()` in `SvgRequest.pipeline` when a sealed SVG is required, or select `RenderTarget::Png`, `RenderTarget::Jpeg`, or `RenderTarget::Pdf` for terminal export. The typed output carries the export bytes and plan; no string-only compatibility alias is retained. Low-level callers that already own a render session may continue to use `finalize_resvg_svg`, but the public facade keeps the terminal capability attached to the typed operation.
+
+### Cooperative cancellation and deadlines
+
+Every typed request owns one cloneable `OperationControl`. `cancel()` is atomic and sticky; an
+optional monotonic deadline reports `Cancelled` with `reason = "deadline_exceeded"`. Checkpoints
+cover controlled parsing, SVG/ASCII layout and emission, postprocessing, and export preparation.
+Cancellation is cooperative: an opaque host callback or one monolithic raster/PDF call may finish
+before the next boundary. Hosts that require hard interruption must isolate the worker or process.
+`ResourceLimitExceeded` remains a separate structured outcome and is never inferred from a
+cancellation message.
 - Keep `StateDiagramRenderModel::links: HashMap<String, StateDiagramRenderLinks>` and handle both `StateDiagramRenderLinks::{One, Many}` variants. The Mermaid 11.16 Jison parser creates a fresh `idStatement` object for every `click`; the runtime therefore preserves repeated declarations in source order and wraps the matching state node once per declaration. `link.tooltip` remains the upstream-compatible string value.
 - Import ELK configuration and guarded pipeline entry points from the `merman-elk-layered` crate root; phase modules are private and require operation-seed resolution.
 - Update direct ELK-layered callers for the expanded public contracts. `ElkInputEdge` carries an

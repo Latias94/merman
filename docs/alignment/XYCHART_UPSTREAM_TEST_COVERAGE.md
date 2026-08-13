@@ -54,7 +54,7 @@ Coverage in `merman`:
 - typed-model compatibility test: `crates/merman-core/src/tests/misc.rs`
   (`parse_xychart_render_model_uses_typed_variant_without_changing_json_parse`)
 - render smoke test: `crates/merman/tests/xychart_typed_render.rs`
-  (`xychart_render_svg_sync_renders_line_labels_and_axis_rotation`)
+  (`xychart_renderer_renders_line_labels_and_axis_rotation`)
 
 ## Cypress rendering fixtures
 

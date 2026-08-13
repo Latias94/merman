@@ -66,10 +66,10 @@ supersede older status notes for the migration it governs:
 | ARCH-009 | Closed | `RenderEnvironment` owns production services and deterministic policy; `SvgRenderOptions` contains request values and `SvgDebugOptions` contains diagnostics. The operation freezes one `RenderSession`. |
 | ARCH-010 | Closed | Every built-in root is planned and emitted through the Root Viewport module. Family renderers provide content bounds and root mode but do not own sizing, fixture lookup, or root attribute emission. |
 | ARCH-017 | Closed | Runtime root pins, complete-label text/SVG tables, budget reports, stale-key audits, and their generators were deleted. Generalized measurement facts and explicit verification residuals are the only remaining browser boundary. |
-| ARCH-020 | Closed | Per-family compare commands delegate canonical rendering to the shared compare harness and typed `HeadlessRenderer` operation. Family hooks are limited to proven diagnostics such as Flowchart, ER, and Gantt. |
+| ARCH-020 | Closed | Per-family compare commands delegate canonical rendering to the shared compare harness and typed `Renderer` operation. Family hooks are limited to proven diagnostics such as Flowchart, ER, and Gantt. |
 | ARCH-023 | Closed | Facade, CLI, bindings, parity tooling, and raster paths delegate to the operation-owned typed render pipeline instead of rebuilding parse-layout-render stages. |
 | ARCH-034 | Still open as documentation hygiene | ADR-0073 and the root README provide current ownership, but chronological alignment notes remain historical evidence. Current gate claims must continue to come from the latest dated status section and verification output. |
-| ARCH-035 | Closed | The canonical facade is `HeadlessRenderer` plus consuming prepared-render stages. Old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG helpers, and pass-through family wrappers are removed rather than retained as transition APIs. |
+| ARCH-035 | Closed | The canonical facade is `Renderer` plus consuming `SemanticArtifact` and typed target requests. Old public layout/model pairing, Headless facades, and pass-through family wrappers are removed rather than retained as transition APIs. |
 
 The remaining issues are not implicitly closed by ADR-0073. In particular, large algorithm modules,
 binding contract generation, ASCII ownership, benchmark inventory, and historical documentation
