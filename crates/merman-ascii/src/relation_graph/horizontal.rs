@@ -640,7 +640,7 @@ where
         let relation = relations
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        rows.push(adapter.build_summary_row(relation, reason)?);
+        rows.push(adapter.build_summary_row(relation, reason, resources)?);
     }
     let gap = adapter.layered_horizontal_gap();
     RelationSummaryPaintPlan::horizontal(

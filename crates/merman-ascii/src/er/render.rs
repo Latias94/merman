@@ -1009,6 +1009,7 @@ impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLay
         &self,
         layout: &ErRelationLayout<'_>,
         reason: relation_graph::LayeredRelationSummaryReason,
+        _resources: &ResourceContext,
     ) -> Result<RelationGraphSummaryRow> {
         er_relationship_summary_row_for_reason(layout, self.entity_labels, self.charset, reason)
     }

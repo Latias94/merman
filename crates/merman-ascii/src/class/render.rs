@@ -15,7 +15,7 @@ use crate::relation_graph::{
 use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
-use crate::safe_text::{ComposedTextPlan, charge_text_layout};
+use crate::safe_text::{ComposedTextPlan, charge_text_layout, visit_quoted_terminal_text};
 use crate::text::display_width_with_profile;
 use merman_core::common::GenericTypesPlan;
 use merman_core::entities::decode_html_entities_to_unicode;
@@ -1439,7 +1439,7 @@ fn plan_parallel_vertical_relations<'plan>(
         rows.try_reserve_exact(layouts.len())
             .map_err(|_| layout_allocation_failed())?;
         for layout in layouts {
-            rows.push(class_relation_summary_row(layout)?);
+            rows.push(class_relation_summary_row(layout, resources)?);
         }
         return Ok(RelationRegionPlan::Summary(
             RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
@@ -1646,10 +1646,13 @@ fn parallel_class_lane_rows(
     Ok(rows)
 }
 
-fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGraphSummaryRow> {
+fn class_relation_summary_row(
+    layout: &RelationLayout<'_>,
+    resources: &ResourceContext,
+) -> Result<RelationGraphSummaryRow> {
     Ok(RelationGraphSummaryRow::new(
         layout.top_id,
-        class_relation_summary_connector(layout),
+        class_relation_summary_connector(layout, resources)?,
         layout.bottom_id,
     )
     .with_label(layout.label.as_ref()))
@@ -1658,61 +1661,142 @@ fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGra
 fn class_relation_summary_row_for_reason(
     layout: &RelationLayout<'_>,
     reason: relation_graph::LayeredRelationSummaryReason,
+    resources: &ResourceContext,
 ) -> Result<RelationGraphSummaryRow> {
     match reason {
         relation_graph::LayeredRelationSummaryReason::Crossing
         | relation_graph::LayeredRelationSummaryReason::RouteCollision
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
-            class_relation_summary_row(layout)
+            class_relation_summary_row(layout, resources)
         }
     }
 }
 
-fn class_relation_summary_connector(layout: &RelationLayout<'_>) -> String {
-    let symbol = class_relation_summary_symbol(layout);
-    let top_label = layout
-        .top_endpoint_label
-        .as_ref()
-        .map(endpoint_label_summary_text);
-    let bottom_label = layout
-        .bottom_endpoint_label
-        .as_ref()
-        .map(endpoint_label_summary_text);
+fn class_relation_summary_connector(
+    layout: &RelationLayout<'_>,
+    resources: &ResourceContext,
+) -> Result<String> {
+    class_relation_summary_connector_with_probe(layout, resources, || {})
+}
 
-    match (top_label, bottom_label) {
-        (Some(top_label), Some(bottom_label)) => {
-            format!("\"{top_label}\" {symbol} \"{bottom_label}\"")
+fn class_relation_summary_connector_with_probe(
+    layout: &RelationLayout<'_>,
+    resources: &ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> Result<String> {
+    resources.transaction(|resources| {
+        let work_before_measure = resources.layout_work_used();
+        let mut output_bytes = 0usize;
+        visit_class_relation_summary_connector(layout, resources, |fragment| {
+            output_bytes = output_bytes
+                .checked_add(fragment.len())
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+            Ok(())
+        })?;
+        let replay_work = resources
+            .layout_work_used()
+            .checked_sub(work_before_measure)
+            .ok_or_else(|| work_overflow(resources))?;
+        let scan_work = output_bytes.max(1);
+        let materialization_work = output_bytes.max(1);
+        let pending_work = resources.checked_work_add(
+            resources.checked_work_add(scan_work, replay_work)?,
+            materialization_work,
+        )?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+        resources.check_usage(pending_work, 0)?;
+        resources
+            .charge_layout_work(resources.checked_work_add(scan_work, materialization_work)?)?;
+
+        before_materialize();
+        let mut connector = String::new();
+        connector
+            .try_reserve_exact(output_bytes)
+            .map_err(|_| layout_allocation_failed())?;
+        visit_class_relation_summary_connector(layout, resources, |fragment| {
+            connector.push_str(fragment);
+            Ok(())
+        })?;
+        if connector.len() != output_bytes {
+            return Err(layout_allocation_failed());
         }
-        (Some(top_label), None) => format!("\"{top_label}\" {symbol}"),
-        (None, Some(bottom_label)) => format!("{symbol} \"{bottom_label}\""),
-        (None, None) => symbol.to_string(),
+        Ok(connector)
+    })
+}
+
+fn visit_class_relation_summary_connector(
+    layout: &RelationLayout<'_>,
+    resources: &ResourceContext,
+    mut visit: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    if let Some(label) = layout.top_endpoint_label.as_ref() {
+        visit("endpoint1=[")?;
+        visit_endpoint_label_summary(label, resources, &mut visit)?;
+        visit("] ")?;
     }
-}
 
-fn endpoint_label_summary_text(label: &RelationGraphLabel) -> String {
-    label.lines().join("/")
-}
-
-fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> String {
-    let line = match layout.line {
+    if let Some(marker) = layout.top_marker {
+        visit(match marker {
+            RelationMarker::Extension => "<|",
+            RelationMarker::Dependency => "<",
+            RelationMarker::Aggregation => "o",
+            RelationMarker::Composition => "*",
+            RelationMarker::Lollipop => "()",
+        })?;
+    }
+    visit(match layout.line {
         RelationLine::Solid => "--",
         RelationLine::Dotted => "..",
-    };
-    let top = layout.top_marker.map_or("", |marker| match marker {
-        RelationMarker::Extension => "<|",
-        RelationMarker::Dependency => "<",
-        RelationMarker::Aggregation => "o",
-        RelationMarker::Composition => "*",
-        RelationMarker::Lollipop => "()",
-    });
-    let bottom = layout.bottom_marker.map_or("", |marker| match marker {
-        RelationMarker::Extension => "|>",
-        RelationMarker::Dependency => ">",
-        RelationMarker::Aggregation => "o",
-        RelationMarker::Composition => "*",
-        RelationMarker::Lollipop => "()",
-    });
-    format!("{top}{line}{bottom}")
+    })?;
+    if let Some(marker) = layout.bottom_marker {
+        visit(match marker {
+            RelationMarker::Extension => "|>",
+            RelationMarker::Dependency => ">",
+            RelationMarker::Aggregation => "o",
+            RelationMarker::Composition => "*",
+            RelationMarker::Lollipop => "()",
+        })?;
+    }
+
+    if let Some(label) = layout.bottom_endpoint_label.as_ref() {
+        visit(" endpoint2=[")?;
+        visit_endpoint_label_summary(label, resources, &mut visit)?;
+        visit("]")?;
+    }
+    Ok(())
+}
+
+fn visit_endpoint_label_summary(
+    label: &RelationGraphLabel,
+    resources: &ResourceContext,
+    mut visit: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    for (index, line) in label.lines().iter().enumerate() {
+        if index > 0 {
+            visit(", ")?;
+        }
+        visit("bytes=")?;
+        visit_decimal(line.len(), &mut visit)?;
+        visit(" ")?;
+        visit_quoted_terminal_text(line, resources, &mut visit)?;
+    }
+    Ok(())
+}
+
+fn visit_decimal(value: usize, mut visit: impl FnMut(&str) -> Result<()>) -> Result<()> {
+    let mut buffer = [0u8; usize::MAX.ilog10() as usize + 1];
+    let mut value = value;
+    let mut start = buffer.len();
+    loop {
+        start -= 1;
+        buffer[start] = b'0' + (value % 10) as u8;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    let digits = std::str::from_utf8(&buffer[start..]).map_err(|_| layout_allocation_failed())?;
+    visit(digits)
 }
 
 fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
@@ -1942,8 +2026,9 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
         &self,
         layout: &RelationLayout<'relation>,
         reason: relation_graph::LayeredRelationSummaryReason,
+        resources: &ResourceContext,
     ) -> Result<RelationGraphSummaryRow> {
-        class_relation_summary_row_for_reason(layout, reason)
+        class_relation_summary_row_for_reason(layout, reason, resources)
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
@@ -2564,6 +2649,84 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 3);
         assert_eq!(resources.document_cells_used(), 5);
+    }
+
+    #[test]
+    fn relation_summary_connector_admits_fixed_resources_before_materializing() {
+        const EXPECTED: &str =
+            "endpoint1=[bytes=1 \"a\", bytes=1 \"b\"] -- endpoint2=[bytes=3 \"a/b\"]";
+        const SOURCE_GRAPHEME_WORK_PER_PASS: usize = 5;
+        const EXPECTED_WORK: usize = EXPECTED.len() * 2 + SOURCE_GRAPHEME_WORK_PER_PASS * 2;
+
+        let layout = RelationLayout {
+            top_id: "A",
+            bottom_id: "B",
+            top_marker: None,
+            bottom_marker: None,
+            line: RelationLine::Solid,
+            label: None,
+            top_endpoint_label: RelationGraphLabel::new("a<br>b", TerminalWidthProfile::Unicode),
+            bottom_endpoint_label: RelationGraphLabel::new("a/b", TerminalWidthProfile::Unicode),
+            top_endpoint_role: EndpointLabelRole::First,
+            bottom_endpoint_role: EndpointLabelRole::Second,
+        };
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        for (limit, exact) in [
+            (AsciiResourceLimitId::MaxOutputBytes, EXPECTED.len()),
+            (AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK),
+        ] {
+            let exact_policy = unbounded
+                .with_limit(limit, exact)
+                .expect("exact relation-summary limit should be valid");
+            let exact_resources = ResourceContext::new(exact_policy);
+            let exact_materialized = Cell::new(false);
+            let connector =
+                class_relation_summary_connector_with_probe(&layout, &exact_resources, || {
+                    exact_materialized.set(true)
+                })
+                .expect("the fixed relation-summary boundary should be admitted");
+            assert!(exact_materialized.get());
+            assert_eq!(connector, EXPECTED);
+            if limit == AsciiResourceLimitId::MaxLayoutWorkUnits {
+                assert_eq!(exact_resources.layout_work_used(), EXPECTED_WORK);
+            }
+
+            let prior_work = 3usize;
+            let below_max = if limit == AsciiResourceLimitId::MaxLayoutWorkUnits {
+                prior_work + exact - 1
+            } else {
+                exact - 1
+            };
+            let below_actual = if limit == AsciiResourceLimitId::MaxLayoutWorkUnits {
+                prior_work + exact
+            } else {
+                exact
+            };
+            let below_policy = unbounded
+                .with_limit(limit, below_max)
+                .expect("max-minus-one relation-summary limit should be valid");
+            let below_resources = ResourceContext::new(below_policy);
+            below_resources
+                .charge_usage(prior_work, 5)
+                .expect("test checkpoint should fit");
+            let below_materialized = Cell::new(false);
+            let error =
+                class_relation_summary_connector_with_probe(&layout, &below_resources, || {
+                    below_materialized.set(true)
+                })
+                .expect_err("max-minus-one must reject before connector allocation");
+            assert!(!below_materialized.get());
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit
+                        && details.actual == below_actual
+                        && details.max == below_max
+            ));
+            assert_eq!(below_resources.layout_work_used(), prior_work);
+            assert_eq!(below_resources.document_cells_used(), 5);
+        }
     }
 
     #[test]

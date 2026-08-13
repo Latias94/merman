@@ -191,6 +191,7 @@ where
         &self,
         _relation: &R,
         reason: LayeredRelationSummaryReason,
+        _resources: &ResourceContext,
     ) -> Result<RelationGraphSummaryRow> {
         self.summary_reason.set(Some(reason));
         Ok(RelationGraphSummaryRow::new("A", "-->", "B"))

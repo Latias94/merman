@@ -91,6 +91,7 @@ pub(crate) trait RelationComponentAdapter<R> {
         &self,
         relation: &R,
         reason: LayeredRelationSummaryReason,
+        resources: &ResourceContext,
     ) -> Result<RelationGraphSummaryRow>;
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError;
@@ -500,7 +501,7 @@ where
     rows.try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
-        rows.push(adapter.build_summary_row(relation, reason)?);
+        rows.push(adapter.build_summary_row(relation, reason, resources)?);
     }
     Ok(RelationRegionPlan::Summary(
         RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
@@ -557,7 +558,7 @@ where
             options,
             reason,
             resources,
-            |relation| adapter.build_summary_row(relation, reason),
+            |relation, resources| adapter.build_summary_row(relation, reason, resources),
         ),
     }
 }
@@ -602,13 +603,13 @@ pub(crate) fn render_relation_summary_component_lines<R>(
     options: &AsciiRenderOptions,
     reason: LayeredRelationSummaryReason,
     resources: &mut ResourceContext,
-    mut build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
+    mut build_row: impl FnMut(&R, &ResourceContext) -> Result<RelationGraphSummaryRow>,
 ) -> Result<Vec<RelationGraphLine>> {
     let mut rows = Vec::new();
     rows.try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
-        rows.push(build_row(relation)?);
+        rows.push(build_row(relation, resources)?);
     }
     let base_extent = stacked_box_extent(boxes, resources)?;
     render_relation_document_with_summary(

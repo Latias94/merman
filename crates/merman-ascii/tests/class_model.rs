@@ -990,10 +990,14 @@ fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
     assert!(rendered.contains("PythonBinding"));
     assert!(rendered.contains("Renderer"));
     assert!(rendered.contains("relations:"), "{rendered}");
-    for (member, bytes) in [("DartBinding", 11), ("PythonBinding", 13), ("Renderer", 8)] {
+    for endpoint in [
+        "endpoint1=[bytes=30 \"member(bytes=11)=\\\"DartBinding\\\"\"]",
+        "endpoint1=[bytes=32 \"member(bytes=13)=\\\"PythonBinding\\\"\"]",
+        "endpoint2=[bytes=26 \"member(bytes=8)=\\\"Renderer\\\"\"]",
+    ] {
         assert!(
-            rendered.contains(&format!("member(bytes={bytes})=\"{member}\"")),
-            "namespace facade fallback should preserve framed member {member:?}:\n{rendered}"
+            rendered.contains(endpoint),
+            "namespace relation summaries should preserve injective endpoint framing {endpoint:?}:\n{rendered}"
         );
     }
     assert_eq!(rendered.matches("calls").count(), 2, "{rendered}");
@@ -2105,6 +2109,43 @@ fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
             "C --> B : cb\n",
         )
     );
+}
+
+#[test]
+fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
+    let source = |endpoint_label: &str| {
+        format!(
+            concat!(
+                "classDiagram\n",
+                "class A\n",
+                "class B\n",
+                "class C\n",
+                "A \"{}\" --> B : ab\n",
+                "B --> A : ba\n",
+                "A --> C : ac\n",
+                "C --> A : ca\n",
+                "B --> C : bc\n",
+                "C --> B : cb",
+            ),
+            endpoint_label
+        )
+    };
+    let literal_slash = render_class(&source("a/b"), &AsciiRenderOptions::ascii())
+        .expect("literal slash endpoint label should render through summary fallback");
+    let authored_break = render_class(&source("a<br>b"), &AsciiRenderOptions::ascii())
+        .expect("multiline endpoint label should render through summary fallback");
+
+    assert!(literal_slash.contains("relations:"), "{literal_slash}");
+    assert!(authored_break.contains("relations:"), "{authored_break}");
+    assert!(
+        literal_slash.contains("endpoint1=[bytes=3 \"a/b\"] -->"),
+        "literal slash identity should remain framed:\n{literal_slash}"
+    );
+    assert!(
+        authored_break.contains("endpoint1=[bytes=1 \"a\", bytes=1 \"b\"] -->"),
+        "authored line boundaries should remain framed:\n{authored_break}"
+    );
+    assert_ne!(literal_slash, authored_break);
 }
 
 #[test]
