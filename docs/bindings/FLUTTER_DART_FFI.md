@@ -55,6 +55,11 @@ The pub.dev package's prebuilt libraries select the default native SKU: SVG, sem
 
 Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures. Resource failures expose optional typed `resourceDetails` with the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile.
 
+Cooperative cancellation is a separate failure path. Native status
+`MERMAN_NATIVE_STATUS_CANCELLED` (`17`) becomes `MermanCancelledException`, whose
+`cancellationDetails` preserves the stable `reason` (`requested` or `deadline_exceeded`) and the
+phase that observed it. It is never decoded as a resource-limit exception.
+
 ## ABI Discovery
 
 `ffigen` generates `lib/src/generated/native_abi.dart` from `merman.h` and `merman_text_measurement_abi.h`. The generated `@Native` declaration resolves exactly one entry point through the Native Assets ID: `merman_get_native_api`. It never reconstructs per-operation symbol names.
@@ -68,7 +73,10 @@ Discovery sends:
 The ABI 3 table is size-tagged. The caller passes its real table capacity and the producer returns
 only complete fields safely initialized within that capacity, so a host never reads a partial
 function pointer. Release builds use the matching generated header and current complete table;
-historical five- or six-slot producers are not a supported compatibility target.
+historical five- or six-slot producers are not a supported compatibility target. The minimum ABI 3
+prefix still ends at `engine_new_with_services` (slot `6`), while the current Dart package requires
+the complete appended table through `execute_collect_controlled` (slot `10`). The generated prefix
+constants for slots `7`-`10` make those complete boundaries explicit.
 
 The returned digests have separate roles:
 
@@ -148,6 +156,53 @@ A close or execution attempted from the engine's active callback is rejected loc
 REENTRANT classification. This mirrors the native admission contract without blocking the Dart
 isolate. There is no `dispose()` compatibility alias.
 
+## Cooperative Operation Control
+
+`Merman.createOperationControl(...)` and `MermanEngine.createOperationControl(...)` create an
+opaque `MermanOperationControl`. An omitted timeout creates a control with no deadline; a
+non-negative `Duration` creates a relative monotonic deadline, and `Duration.zero` is immediate.
+Attach the control through the typed `execute(..., control: control)` path:
+
+```dart
+final engine = MermanEngine();
+final control = engine.createOperationControl(
+  timeout: const Duration(milliseconds: 250),
+);
+try {
+  final result = engine.execute(
+    MermanOperation.svg,
+    source,
+    control: control,
+  );
+  print(result.utf8Text);
+} on MermanCancelledException catch (error) {
+  print('${error.cancellationDetails?.reason} '
+      '${error.cancellationDetails?.phase}');
+} finally {
+  control.release();
+  engine.close();
+}
+```
+
+At the C boundary, an omitted Dart control calls `execute_collect`; a supplied control calls the
+append-only `execute_collect_controlled` entry point without changing the ABI 3 request record. The
+nonzero token is borrowed, may be reused across operations, and must be released explicitly.
+`release()` is idempotent in Dart and retires the token only; an operation that already cloned the
+control remains safe until it returns.
+
+Cancellation is cooperative. The synchronous operation stops at its next parser, layout, adapter,
+post-processing, or export checkpoint and publishes no partial output. Opaque synchronous native
+backends and the isolate-local text-measurement callback cannot be forcefully interrupted; a
+request made while either is running is observed after it returns to a checkpoint.
+
+The public Dart calls are synchronous and `MermanOperationControl` is isolate-local. Therefore a
+timer or message on the same blocked isolate cannot invoke `cancel()` during `execute`; the Dart
+facade directly supports deadlines, cancellation before execution, and cancellation requested from
+inside a synchronous host callback. The raw C ABI permits another native thread to cancel a shared
+token, but the Dart facade intentionally keeps that token private. An application that needs
+message-driven mid-render cancellation must own a worker/native bridge that can call the control
+slot concurrently; use a process boundary when it also requires forceful termination.
+
 ## Options And Output
 
 Pass SVG, resource, layout, environment, and theme options to engine construction:
@@ -186,7 +241,7 @@ browser DOM insertion; use `SafeInlineSvg`, CSP, or a sandbox at that boundary.
 
 The callback runs synchronously through `NativeCallable.isolateLocal`. Create, use, and close a measured engine on the same isolate. Do not wait for WebView JavaScript, a platform channel, another isolate, or font loading inside the callback. Precompute or cache a measurement service and return `null` when it has no faithful answer so Merman can use its deterministic fallback.
 
-The callback bridge catches every Dart exception and returns `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; no Dart exception may unwind across the C boundary. Request and result operation codes come from the generated text-measurement header rather than handwritten Dart numbers.
+The callback bridge catches every Dart exception and returns `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; no Dart exception may unwind across the C boundary. An operation control does not preempt the callback body, so the callback must still return normally before cancellation can be observed. Request and result operation codes come from the generated text-measurement header rather than handwritten Dart numbers.
 
 See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cache keys and display-surface guidance.
 
@@ -199,6 +254,8 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 - Delete constructor-level `textMeasurer:` parameters and use `MermanEngineServices`.
 - Call `MermanEngine.close()` deterministically. Busy and re-entrant failures preserve the complete
   engine and callback for retry.
+- Use `createOperationControl`, pass `control:` to `execute`, and release the control when it is no
+  longer needed. Treat `MermanCancelledException` as distinct from `MermanResourceErrorDetails`.
 - Use typed `MermanOperationMetadata`; its raw JSON preserves additive fields and unknown future
   output-plan kinds.
 - Treat runtime operation and resource-limit IDs as open value objects. A newly appended numeric C
@@ -247,8 +304,8 @@ dart run example/smoke.dart
 ```
 
 The local contract test validates the current complete ABI
-3 table boundary, runtime-catalog and typed metadata relations, package-version projection,
-BUSY/REENTRANT decoding, and malformed native error payloads. The real-library smoke intentionally
+3 table boundary through controlled-execution slot `10`, runtime-catalog and typed metadata relations,
+package-version projection, BUSY/REENTRANT/CANCELLED decoding, and malformed native error payloads. The real-library smoke intentionally
 exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive
 operation and lifecycle cases.

@@ -1,4 +1,4 @@
-use merman::svg::HeadlessRenderer;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -13,10 +13,17 @@ flowchart TD
 "#;
 
 fn render_deterministic_svg() -> String {
-    HeadlessRenderer::new()
-        .render_svg_sync(SOURCE)
-        .expect("deterministic render succeeds")
-        .expect("flowchart is detected")
+    let output = Renderer::new()
+        .render(RenderRequest::svg(
+            SOURCE,
+            OperationControl::new(),
+            SvgRequest::default(),
+        ))
+        .expect("deterministic render succeeds");
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("flowchart is detected");
+    };
+    svg.into_parts().0
 }
 
 fn child_output_path(label: &str) -> PathBuf {

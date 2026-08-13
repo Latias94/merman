@@ -63,12 +63,9 @@ pub(crate) enum CliError {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Mermaid(#[from] merman::Error),
-    #[cfg(feature = "svg")]
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     #[error("{0}")]
-    Headless(#[from] merman::svg::HeadlessError),
-    #[cfg(feature = "ascii")]
-    #[error("{0}")]
-    Ascii(#[from] merman::ascii::HeadlessAsciiError),
+    Render(#[from] merman::RenderError),
     #[cfg(feature = "network-icons")]
     #[error("{0}")]
     Network(#[from] crate::network::NetworkError),
@@ -80,9 +77,6 @@ pub(crate) enum CliError {
     Transaction(#[from] crate::transaction::TransactionError),
     #[error("stdout closed before output finished")]
     BrokenStdoutPipe,
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    #[error("{0}")]
-    Export(#[from] merman::svg::export::ExportError),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("failed to serialize JSON output: {0}")]
@@ -236,12 +230,8 @@ impl CliError {
             Self::Mermaid(_) | Self::NoDiagram => ErrorCategory::Content,
             #[cfg(any(test, feature = "svg", feature = "ascii"))]
             Self::Resource(_) => ErrorCategory::Content,
-            #[cfg(feature = "svg")]
-            Self::Headless(_) => ErrorCategory::Content,
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            Self::Export(_) => ErrorCategory::Content,
-            #[cfg(feature = "ascii")]
-            Self::Ascii(_) => ErrorCategory::Content,
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            Self::Render(_) => ErrorCategory::Content,
         }
     }
 

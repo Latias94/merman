@@ -1,13 +1,6 @@
 #[cfg(feature = "svg")]
 #[test]
-fn xychart_render_svg_sync_uses_typed_render_path() {
-    let engine = merman_core::Engine::new();
-    let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
-    let svg_opts = merman::svg::SvgRenderOptions {
-        diagram_id: Some("typed_xychart".to_string()),
-        ..Default::default()
-    };
+fn xychart_renderer_uses_typed_render_path() {
     let input = r#"
 xychart
 title "Typed XYChart"
@@ -16,24 +9,31 @@ y-axis 1 --> 3
 bar [1, 2]
 "#;
 
-    let svg = merman::svg::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
-        .expect("render svg")
-        .expect("diagram detected");
+    let output = merman::Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(merman::RenderRequest::svg(
+            input,
+            merman::OperationControl::new(),
+            merman::SvgRequest {
+                options: merman::svg::SvgRenderOptions {
+                    diagram_id: Some("typed_xychart".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ))
+        .expect("render svg");
+    let merman::RenderOutput::Svg(Some(svg)) = output else {
+        panic!("diagram not detected");
+    };
 
-    assert!(svg.contains("typed_xychart"));
-    assert!(svg.contains("xychart"));
+    assert!(svg.svg().contains("typed_xychart"));
+    assert!(svg.svg().contains("xychart"));
 }
 
 #[cfg(feature = "svg")]
 #[test]
-fn xychart_render_svg_sync_renders_line_labels_and_axis_rotation() {
-    let engine = merman_core::Engine::new();
-    let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
-    let svg_opts = merman::svg::SvgRenderOptions {
-        diagram_id: Some("typed_xychart_labels".to_string()),
-        ..Default::default()
-    };
+fn xychart_renderer_renders_line_labels_and_axis_rotation() {
     let input = r#"%%{init: {"xyChart": {"xAxis": {"labelRotation": 45}}}}%%
 xychart
 x-axis [Alpha, Beta]
@@ -41,11 +41,25 @@ y-axis 0 --> 10
 line [2 "low", 8 "high"]
 "#;
 
-    let svg = merman::svg::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
-        .expect("render svg")
-        .expect("diagram detected");
+    let output = merman::Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(merman::RenderRequest::svg(
+            input,
+            merman::OperationControl::new(),
+            merman::SvgRequest {
+                options: merman::svg::SvgRenderOptions {
+                    diagram_id: Some("typed_xychart_labels".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ))
+        .expect("render svg");
+    let merman::RenderOutput::Svg(Some(svg)) = output else {
+        panic!("diagram not detected");
+    };
 
-    assert!(svg.contains(">low<"));
-    assert!(svg.contains(">high<"));
-    assert!(svg.contains("rotate(45)"));
+    assert!(svg.svg().contains(">low<"));
+    assert!(svg.svg().contains(">high<"));
+    assert!(svg.svg().contains("rotate(45)"));
 }

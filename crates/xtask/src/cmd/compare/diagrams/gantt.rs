@@ -4,8 +4,8 @@ use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DiagramVerificationFact, ObservedRenderOperations,
-    run_svg_compare, sanitize_svg_id, write_compare_result_section, write_notes_section,
-    write_verification_policy_metadata,
+    render_semantic_svg, run_svg_compare, sanitize_svg_id, svg_request,
+    write_compare_result_section, write_notes_section, write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
 
@@ -85,15 +85,12 @@ pub(super) fn compare_gantt_request(
     let engine = crate::cmd::svg_compare_engine().with_runtime_policy(runtime_policy.clone());
     let baseline_container = GanttBaselineContainerProfile::MERMAID_CLI;
     let layout_opts = baseline_container.layout_options();
-    let environment =
-        merman::svg::RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
+    let environment = merman::SvgEnvironment::deterministic();
     let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let probe_renderer = merman::svg::HeadlessRenderer::new()
+    let probe_renderer = merman::Renderer::new()
         .with_engine(engine.clone())
-        .with_parse_options(fact.parse_policy.options())
-        .with_layout_options(layout_opts.clone())
-        .with_environment(environment);
+        .with_parse_options(fact.parse_policy.options());
     run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
@@ -124,10 +121,14 @@ pub(super) fn compare_gantt_request(
         },
         |state, input| {
             let fixture_renderer = match input.site_config.clone() {
-                Some(site_config) => probe_renderer.clone().with_site_config(site_config),
+                Some(site_config) => probe_renderer
+                    .clone()
+                    .with_engine(engine.clone().with_site_config(site_config)),
                 None => probe_renderer.clone(),
             };
-            let semantic = match fixture_renderer.prepare_semantic_sync(input.text) {
+            let semantic = match fixture_renderer
+                .prepare_semantic(input.text, merman::OperationControl::new())
+            {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(
@@ -143,32 +144,25 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            let prepared = match semantic.continue_layout() {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!(
-                        "layout failed for {}: {err}",
-                        input.fixture_path.display()
-                    ));
-                }
-            };
-
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Gantt {
+            if semantic.semantic_kind() != "gantt" {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.family_kind()
+                    semantic.semantic_kind()
                 ));
             }
-            let svg_options = merman::svg::SvgRenderOptions {
-                diagram_id: Some(sanitize_svg_id(input.stem)),
-                ..Default::default()
-            };
-            let rendered = prepared.render_svg_report(&svg_options).map_err(|err| {
-                format!("render failed for {}: {err}", input.fixture_path.display())
-            })?;
-            let render_evidence = state.observe(input.stem, rendered.report())?;
-            let local_svg = rendered.into_svg();
+
+            let rendered = render_semantic_svg(
+                semantic,
+                svg_request(
+                    environment.clone(),
+                    layout_opts.clone(),
+                    Some(sanitize_svg_id(input.stem)),
+                ),
+            )
+            .map_err(|err| format!("render failed for {}: {err}", input.fixture_path.display()))?;
+            let render_evidence = state.observe(input.stem, rendered.evidence())?;
+            let local_svg = rendered.svg().to_owned();
 
             Ok(CompareFixtureResult::Rendered {
                 render_evidence,
@@ -194,17 +188,7 @@ pub(crate) fn gantt_baseline_local_offset_minutes() -> i32 {
         .unwrap_or(480)
 }
 
-pub(crate) fn gantt_compare_environment(
-    baseline_local_offset_minutes: i32,
-) -> Result<merman::svg::RenderEnvironment, merman::runtime::RuntimePolicyError> {
-    Ok(
-        merman::svg::RenderEnvironment::deterministic().with_runtime_policy(
-            gantt_baseline_runtime_policy(baseline_local_offset_minutes)?,
-        ),
-    )
-}
-
-fn gantt_baseline_runtime_policy(
+pub(crate) fn gantt_baseline_runtime_policy(
     baseline_local_offset_minutes: i32,
 ) -> Result<merman::runtime::RuntimePolicy, merman::runtime::RuntimePolicyError> {
     let unix_ms = crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS;
@@ -230,19 +214,19 @@ mod tests {
     }
 
     #[test]
-    fn compare_environment_preserves_gantt_baseline_offset() {
-        let session = gantt_compare_environment(480)
-            .expect("valid Gantt baseline environment")
-            .begin_session()
-            .expect("begin Gantt baseline session");
+    fn baseline_runtime_policy_preserves_gantt_offset() {
+        let context = gantt_baseline_runtime_policy(480)
+            .expect("valid Gantt baseline runtime policy")
+            .begin_operation()
+            .expect("begin Gantt baseline operation");
 
-        assert_eq!(session.local_time_zone().fixed_offset_minutes(), Some(480));
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
         assert_eq!(
-            session.local_date(),
+            context.today_local(),
             merman_core::time::CivilDate::new(2024, 1, 1).unwrap()
         );
         assert_eq!(
-            session.unix_millis(),
+            context.unix_millis(),
             crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS
         );
     }

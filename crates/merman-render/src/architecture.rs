@@ -11,7 +11,7 @@ use crate::model::{
     ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
     LayoutNode, LayoutPoint,
 };
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use indexmap::IndexMap;
@@ -23,7 +23,7 @@ use serde_json::Value;
 
 struct ArchitectureManateeWorkControl<'a> {
     meter: &'a OperationWorkMeter,
-    denied: Option<ResourceLimitExceeded>,
+    denied: Option<OperationWorkError>,
 }
 
 impl<'a> ArchitectureManateeWorkControl<'a> {
@@ -34,7 +34,7 @@ impl<'a> ArchitectureManateeWorkControl<'a> {
         }
     }
 
-    fn take_denied(&mut self) -> Option<ResourceLimitExceeded> {
+    fn take_denied(&mut self) -> Option<OperationWorkError> {
         self.denied.take()
     }
 }

@@ -1,9 +1,10 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemePreset, Presentation,
-    PresentationProfile, SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
+    CssOverridePolicy, HostTheme, HostThemePreset, Presentation, PresentationProfile,
+    SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, TextMeasurementPolicy, ThemeRole,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     commit
@@ -58,7 +59,60 @@ const USER_ER_GRUVBOX_LABEL_REGRESSION: &str = r#"erDiagram
     }
 "#;
 
-fn themed_renderer(preset: HostThemePreset, name: &str) -> HeadlessRenderer {
+#[derive(Debug, Clone)]
+struct TypedSvgRenderer {
+    renderer: Renderer,
+    request: SvgRequest,
+}
+
+impl TypedSvgRenderer {
+    fn new() -> Self {
+        Self {
+            renderer: Renderer::new(),
+            request: SvgRequest::default(),
+        }
+    }
+
+    fn with_presentation(mut self, presentation: Presentation) -> Self {
+        let resolved = presentation.resolve();
+        let engine = resolved.materialize_engine(self.renderer.engine().clone());
+        self.renderer = self.renderer.with_engine(engine);
+        self.request.presentation = resolved.render_policy();
+        self
+    }
+
+    fn with_svg_pipeline(mut self, pipeline: SvgPipeline) -> Self {
+        self.request.pipeline = Some(pipeline);
+        self
+    }
+
+    fn with_vendored_text_measurer(mut self) -> Self {
+        self.request.environment = self
+            .request
+            .environment
+            .with_text_measurement_policy(TextMeasurementPolicy::parity());
+        self
+    }
+
+    fn with_diagram_id(mut self, name: &str) -> Self {
+        self.request.options.diagram_id = Some(name.to_string());
+        self
+    }
+
+    fn render_svg(&self, source: &str) -> Result<Option<String>, merman::RenderError> {
+        let output = self.renderer.render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            self.request.clone(),
+        ))?;
+        let RenderOutput::Svg(svg) = output else {
+            unreachable!("SVG request must return SVG output")
+        };
+        Ok(svg.map(|svg| svg.into_parts().0))
+    }
+}
+
+fn themed_renderer(preset: HostThemePreset, name: &str) -> TypedSvgRenderer {
     let theme = HostTheme::from_preset(preset);
     let background = theme
         .role(ThemeRole::Canvas)
@@ -73,7 +127,7 @@ fn themed_renderer(preset: HostThemePreset, name: &str) -> HeadlessRenderer {
     }
     .pipeline();
 
-    HeadlessRenderer::new()
+    TypedSvgRenderer::new()
         .with_presentation(Presentation::new().with_theme(theme))
         .with_svg_pipeline(pipeline)
         .with_vendored_text_measurer()
@@ -82,7 +136,7 @@ fn themed_renderer(preset: HostThemePreset, name: &str) -> HeadlessRenderer {
 
 fn render_with_editor_dark_theme(name: &str, source: &str) -> String {
     themed_renderer(HostThemePreset::EditorDark, name)
-        .render_svg_sync(source)
+        .render_svg(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
@@ -90,15 +144,15 @@ fn render_with_editor_dark_theme(name: &str, source: &str) -> String {
 #[test]
 fn empty_presentation_preserves_default_svg_bytes() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
-    let default_svg = HeadlessRenderer::new()
+    let default_svg = TypedSvgRenderer::new()
         .with_diagram_id("empty-profile-parity")
-        .render_svg_sync(source)
+        .render_svg(source)
         .expect("default render should succeed")
         .expect("sequence diagram should be detected");
-    let empty_presentation_svg = HeadlessRenderer::new()
+    let empty_presentation_svg = TypedSvgRenderer::new()
         .with_presentation(Presentation::new())
         .with_diagram_id("empty-profile-parity")
-        .render_svg_sync(source)
+        .render_svg(source)
         .expect("empty presentation render should succeed")
         .expect("sequence diagram should be detected");
 
@@ -108,10 +162,10 @@ fn empty_presentation_preserves_default_svg_bytes() {
 #[test]
 fn merman_modern_profile_renders_non_flowchart_without_elk() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
-    let svg = HeadlessRenderer::new()
+    let svg = TypedSvgRenderer::new()
         .with_presentation(Presentation::new().with_profile(PresentationProfile::MermanModern))
         .with_diagram_id("modern-non-flowchart")
-        .render_svg_sync(source)
+        .render_svg(source)
         .expect("modern profile should not require ELK for sequence diagrams")
         .expect("sequence diagram should be detected");
 
@@ -381,7 +435,7 @@ fn presentation_theme_series_palette_reaches_ordinal_diagrams() {
 #[test]
 fn gruvbox_presentation_theme_keeps_er_relationship_label_fallbacks_readable() {
     let svg = themed_renderer(HostThemePreset::GruvboxDark, "gruvbox-er-labels")
-        .render_svg_sync(USER_ER_GRUVBOX_LABEL_REGRESSION)
+        .render_svg(USER_ER_GRUVBOX_LABEL_REGRESSION)
         .unwrap_or_else(|err| panic!("gruvbox ER render failed: {err}"))
         .unwrap_or_else(|| panic!("gruvbox ER render produced no diagram"));
 
@@ -405,16 +459,16 @@ fn gruvbox_presentation_theme_keeps_er_relationship_label_fallbacks_readable() {
 
 #[test]
 fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
-    let plain = HeadlessRenderer::new()
+    let plain = TypedSvgRenderer::new()
         .with_vendored_text_measurer()
         .with_diagram_id("gitgraph-plain-baseline")
-        .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
+        .render_svg(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("plain gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("plain gitGraph render produced no diagram"));
     assert_gitgraph_branch_labels_keep_mermaid_parity_baseline("plain-gitgraph", &plain);
 
     let themed = themed_renderer(HostThemePreset::OneDark, "gitgraph-one-dark-baseline")
-        .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
+        .render_svg(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark gitGraph render produced no diagram"));
     assert_gitgraph_branch_label_baselines_centered(
@@ -424,7 +478,7 @@ fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
     );
 
     let cherry_pick = themed_renderer(HostThemePreset::OneDark, "gitgraph-one-dark-cherry-pick")
-        .render_svg_sync(USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION)
+        .render_svg(USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark cherry-pick gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark cherry-pick gitGraph render produced no diagram"));
     assert_gitgraph_branch_label_baselines_centered(

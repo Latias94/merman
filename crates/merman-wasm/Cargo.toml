@@ -33,15 +33,14 @@ editor = [
     "analysis",
     "dep:merman-analysis",
     "dep:merman-editor-core",
-    "dep:merman-core",
 ]
 math = ["svg", "merman-bindings-core/math"]
 
 [dependencies]
 console_error_panic_hook.workspace = true
 merman-analysis = { workspace = true, optional = true }
-merman-core = { workspace = true, optional = true }
 merman-bindings-core.workspace = true
+merman-core = { workspace = true, features = ["operation-deadlines"] }
 merman-editor-core = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true

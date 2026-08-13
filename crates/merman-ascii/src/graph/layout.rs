@@ -1,5 +1,6 @@
 use super::label::GraphLabel;
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use std::collections::BTreeMap;
 
@@ -129,4 +130,15 @@ pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         offset_x,
         offset_y,
     }
+}
+
+pub(super) fn layout_graph_with_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> crate::Result<GraphLayout> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    let layout = layout_graph(graph, options);
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    Ok(layout)
 }

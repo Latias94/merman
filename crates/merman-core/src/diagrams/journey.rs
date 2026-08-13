@@ -4,8 +4,8 @@ use crate::diagrams::scan::{
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl,
-    ParseControlResult, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl,
+    OperationControlResult, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
     family::CombinedSemanticFailure,
 };
 use serde_json::{Value, json};
@@ -200,8 +200,8 @@ fn parse_acc_descr_block_spanned(
     lines: &mut LineCursor<'_>,
     first_line: &str,
     first_line_start: usize,
-    control: &ParseControl,
-) -> ParseControlResult<Option<JourneyBlockText>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<JourneyBlockText>> {
     control.checkpoint()?;
     let t = first_line.trim_start();
     if !starts_with_case_insensitive(t, "accDescr") {
@@ -382,8 +382,8 @@ pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_journey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_journey_semantic_source_controlled(code, meta, control)?;
     Ok(crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -436,15 +436,15 @@ fn construct_journey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<JourneySemanticSource, CombinedSemanticFailure> {
-    construct_journey_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_journey_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_journey_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -468,8 +468,8 @@ fn parse_journey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = JourneyDb::default();
     db.clear();
@@ -1099,7 +1099,7 @@ A task: 5: Alice, Bob\n";
 
         reset_journey_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_journey_json_and_editor_facts(text, &parsed.meta, &ParseControl::new()),
+            parse_journey_json_and_editor_facts(text, &parsed.meta, &OperationControl::new()),
         )
         .expect("Journey combined projection succeeds");
         assert_eq!(journey_syntax_construction_count(), 1);

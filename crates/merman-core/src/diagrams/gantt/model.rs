@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ParseControl, ParseControlResult};
+use crate::{OperationControl, OperationControlResult};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct GanttDiagramRenderModel {
@@ -401,8 +401,8 @@ impl GanttDb {
 
     fn compile_tasks_controlled(
         &mut self,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<bool>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<bool>> {
         let mut all_processed = true;
         for i in 0..self.raw_tasks.len() {
             if i % 128 == 0 {
@@ -487,8 +487,8 @@ impl GanttDb {
 
     pub(super) fn finalize_tasks_controlled(
         &mut self,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<()>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<()>> {
         control.checkpoint()?;
         let mut all = match self.compile_tasks_controlled(control)? {
             Ok(all) => all,

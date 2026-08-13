@@ -23,46 +23,61 @@ pub(crate) struct RenderOperationConfig {
 }
 
 impl CachedRenderEngine {
-    pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn render_svg(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_svg(source)
+        self.plan.render_svg(source, control)
     }
 
-    pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn layout_json(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.layout_json(source)
+        self.plan.layout_json(source, control)
     }
 
-    pub(crate) fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn svg_plan_json(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.svg_plan_json(source)
+        self.plan.svg_plan_json(source, control)
     }
 
     #[cfg(feature = "png")]
     pub(crate) fn render_png_output(
         &self,
         source: &[u8],
+        control: merman::OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_png_output(source)
+        self.plan.render_png_output(source, control)
     }
 
     #[cfg(feature = "jpeg")]
     pub(crate) fn render_jpeg_output(
         &self,
         source: &[u8],
+        control: merman::OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_jpeg_output(source)
+        self.plan.render_jpeg_output(source, control)
     }
 
     #[cfg(feature = "pdf")]
     pub(crate) fn render_pdf_output(
         &self,
         source: &[u8],
+        control: merman::OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_pdf_output(source)
+        self.plan.render_pdf_output(source, control)
     }
 }
 
@@ -117,8 +132,8 @@ mod tests {
     use crate::BindingStatus;
     use serde_json::Value;
 
-    fn render_session() -> merman::svg::RenderSession {
-        merman::svg::RenderEnvironment::deterministic()
+    fn render_session() -> merman_render::environment::RenderSession {
+        merman_render::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("render session")
     }
@@ -462,32 +477,52 @@ B -->|No| D[Debug]";
         let binding_svg = String::from_utf8(render_svg(source.as_bytes(), options).unwrap())
             .expect("binding SVG should be UTF-8");
 
-        let renderer = merman::svg::HeadlessRenderer::new()
-            .with_presentation(
-                merman::svg::Presentation::new()
-                    .with_profile(merman::svg::PresentationProfile::MermanModern)
-                    .with_theme(merman::svg::HostTheme::from_preset(
-                        merman::svg::HostThemePreset::OneDark,
-                    )),
-            )
+        let presentation = merman::svg::Presentation::new()
+            .with_profile(merman::svg::PresentationProfile::MermanModern)
+            .with_theme(merman::svg::HostTheme::from_preset(
+                merman::svg::HostThemePreset::OneDark,
+            ))
+            .resolve();
+        let engine = presentation
+            .materialize_engine(merman::Engine::new())
             .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
                 "flowchart": { "defaultRenderer": "dagre-wrapper" },
-            })))
-            .with_diagram_id("presentation equivalence");
+            })));
+        let svg_request = merman::SvgRequest {
+            options: merman::svg::SvgRenderOptions {
+                diagram_id: Some("presentation equivalence".to_string()),
+                ..Default::default()
+            },
+            presentation: presentation.render_policy(),
+            ..Default::default()
+        };
+        let renderer = merman::Renderer::new().with_engine(engine);
         let rust_svg = renderer
-            .render_svg_sync(source)
-            .expect("Rust rendering should succeed")
-            .expect("Flowchart should be detected");
-        assert_eq!(binding_svg, rust_svg);
+            .render(merman::RenderRequest::svg(
+                source,
+                merman::OperationControl::new(),
+                svg_request.clone(),
+            ))
+            .expect("Rust rendering should succeed");
+        let merman::RenderOutput::Svg(Some(rust_svg)) = rust_svg else {
+            panic!("typed SVG request should produce SVG output");
+        };
+        assert_eq!(binding_svg, rust_svg.svg());
 
         let binding_plan: Value = serde_json::from_slice(
             &crate::svg_plan_json(source.as_bytes(), options).expect("binding plan should succeed"),
         )
         .expect("binding plan should be JSON");
         let rust_plan = renderer
-            .plan_svg_sync(source)
-            .expect("Rust planning should succeed")
-            .expect("Flowchart should be detected");
+            .render(merman::RenderRequest::svg_plan(
+                source,
+                merman::OperationControl::new(),
+                svg_request,
+            ))
+            .expect("Rust planning should succeed");
+        let merman::RenderOutput::SvgPlan(Some(rust_plan)) = rust_plan else {
+            panic!("typed SVG-plan request should produce a capability plan");
+        };
         let rust_aspects = rust_plan
             .presentation_aspects()
             .iter()

@@ -2,7 +2,7 @@
 
 `merman` has distinct SVG output contracts:
 
-- `render_svg_sync` returns Mermaid-parity SVG and remains the default.
+- A default typed `RenderTarget::Svg` request returns Mermaid-parity SVG.
 - `SvgPipeline` turns that parity SVG into consumer-oriented output for previews, raster export,
   or host-specific cleanup.
 - `ResvgCompatibleSvg` is a sealed artifact produced only after the terminal resvg finalizer. It is
@@ -29,13 +29,16 @@ evidence, but they are not browser-visible evidence. Browser-visible claims requ
 
 Typical choices:
 
-- Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
-- Use `render_svg_readable_sync` or `SvgPipeline::readable()` for browser previews that can keep `<foreignObject>` but should also expose SVG text fallbacks.
-- Use `render_resvg_compatible_svg_sync`, `render_resvg_compatible_svg_with_pipeline_sync`, or
-  `SvgPipeline::process_resvg_compatible()` before calling low-level PNG/JPG/PDF encoders.
+- Use a default `SvgRequest` when the caller wants the closest Mermaid-compatible SVG string.
+- Set `SvgRequest.pipeline = Some(SvgPipeline::readable())` for browser previews that can keep
+  `<foreignObject>` but should also expose SVG text fallbacks.
+- Set `SvgRequest.pipeline = Some(SvgPipeline::resvg_safe())`, select a typed PNG/JPEG/PDF target,
+  or use `SvgPipeline::process_resvg_compatible()` before calling low-level encoders.
 - Use `merman-cli render --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG
   bytes instead of the default Mermaid-parity SVG contract.
-- Use `HeadlessRenderer::render_png_sync`, `render_jpeg_sync`, or `render_pdf_sync` when the input is Mermaid source and the caller wants the standard render-and-raster path; those helpers select the raster-safe pipeline through the Headless Render Operation.
+- Use `RenderRequest::png`, `RenderRequest::jpeg`, or `RenderRequest::pdf` when the input is Mermaid
+  source and the caller wants the standard render-and-export path. These typed targets select the
+  sealed raster-safe path within the same operation.
 - Add `SvgPostprocessor` passes when a host application needs product-specific draft styling or
   metadata. The selected built-in preset always runs after these passes.
 
@@ -56,17 +59,22 @@ that invalid HSL and RGB are equivalent.
 ## Rendering With A Pipeline
 
 ```rust
-use merman::svg::{HeadlessRenderer, SvgPipeline};
+use merman::svg::SvgPipeline;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-let renderer = HeadlessRenderer::new();
-let svg = renderer
-    .render_resvg_compatible_svg_with_pipeline_sync(
-        "flowchart TD; A[Layer 7\\nHTTP]-->B;",
-        &SvgPipeline::resvg_safe(),
-    )?
-    .unwrap();
-# let raster_input: &str = svg.as_str();
-# let _ = raster_input;
+let output = Renderer::new().render(RenderRequest::svg(
+    "flowchart TD; A[Layer 7\\nHTTP]-->B;",
+    OperationControl::new(),
+    SvgRequest {
+        pipeline: Some(SvgPipeline::resvg_safe()),
+        ..Default::default()
+    },
+))?;
+let RenderOutput::Svg(Some(svg)) = output else {
+    return Err("no Mermaid diagram detected".into());
+};
+# let raster_safe_svg: &str = svg.svg();
+# let _ = raster_safe_svg;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -77,15 +85,9 @@ cargo run -p merman --features svg --example custom_svg_pipeline > out.svg
 merman-cli render fixtures/flowchart/basic.mmd --output out.svg --svg-pipeline resvg-safe
 ```
 
-The public convenience boundaries are:
-
-- `render_svg_readable_sync(...)` uses `SvgPipeline::readable()`.
-- `render_resvg_compatible_svg_sync(...)` uses `SvgPipeline::resvg_safe()` and returns the sealed
-  `ResvgCompatibleSvg` capability.
-- `svg_readable(svg)` applies the readable preset to an existing SVG string.
-- `finalize_resvg_svg(svg, session)` is the explicit typed boundary for an existing SVG string.
-  A generic `apply_svg_pipeline(...)` result remains an ordinary draft `String` even when the
-  selected preset is `resvg_safe`.
+The high-level source-to-output boundary is `Renderer` with a typed target request. Low-level
+callers that already own SVG can use `SvgPipeline` and `finalize_resvg_svg(svg, session)`; the
+latter is the explicit sealed boundary for existing SVG text.
 
 The source-string helpers extract root SVG attributes only as descriptive metadata. They never
 promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
@@ -178,11 +180,11 @@ Host styling should use product-neutral postprocessors rather than modifying `re
 
 ```rust
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor,
-    SvgPipeline,
+    CssOverridePolicy, RootBackgroundPostprocessor, ScopedCssPostprocessor, SvgPipeline,
+    SvgRenderOptions,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-let renderer = HeadlessRenderer::new().with_diagram_id("host-diagram");
 let pipeline = SvgPipeline::resvg_safe()
     .with_postprocessor(RootBackgroundPostprocessor::new("#0f172a"))
     .with_postprocessor(
@@ -200,9 +202,21 @@ let pipeline = SvgPipeline::resvg_safe()
         .with_override_policy(CssOverridePolicy::StripExistingImportant),
     );
 
-let svg = renderer
-    .render_svg_with_pipeline_sync("flowchart TD; A-->B;", &pipeline)?
-    .unwrap();
+let output = Renderer::new().render(RenderRequest::svg(
+    "flowchart TD; A-->B;",
+    OperationControl::new(),
+    SvgRequest {
+        pipeline: Some(pipeline),
+        options: SvgRenderOptions {
+            diagram_id: Some("host-diagram".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    },
+))?;
+let RenderOutput::Svg(Some(svg)) = output else {
+    return Err("no Mermaid diagram detected".into());
+};
 # let _ = svg;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

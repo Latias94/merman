@@ -158,8 +158,8 @@ impl RadarDb {
     fn set_axes_controlled(
         &mut self,
         axes: Vec<AxisAst>,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<()> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<()> {
         let mut rendered = Vec::with_capacity(axes.len());
         for axis in axes {
             control.checkpoint()?;
@@ -178,8 +178,8 @@ impl RadarDb {
     fn set_curves_controlled(
         &mut self,
         curves: Vec<CurveAst>,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<()>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<()>> {
         let mut rendered = Vec::with_capacity(curves.len());
         for curve in curves {
             control.checkpoint()?;
@@ -209,8 +209,8 @@ impl RadarDb {
     fn set_options_controlled(
         &mut self,
         options: Vec<OptionAst>,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<()> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<()> {
         let mut last: std::collections::HashMap<String, OptionValueAst> =
             std::collections::HashMap::new();
         for opt in options {
@@ -335,8 +335,8 @@ struct RadarParsedStatement {
 fn parse_radar_statement(
     stmt: &str,
     stmt_start: usize,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<RadarParsedStatement, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<RadarParsedStatement, String>> {
     control.checkpoint()?;
     let mut lexemes = LangiumLexemeTrace::default();
     let (trimmed, trimmed_start) = trim_start_with_source_offset(stmt, stmt_start);
@@ -398,8 +398,8 @@ fn parse_radar_statement(
 fn push_radar_statement_facts(
     facts: &mut EditorSemanticFacts,
     event: &RadarStatementEvent,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<()> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<()> {
     match event {
         RadarStatementEvent::Axes(axes) => {
             for axis in axes {
@@ -491,8 +491,8 @@ fn apply_radar_statement_controlled(
     axes: &mut Vec<AxisAst>,
     curves: &mut Vec<CurveAst>,
     options: &mut Vec<OptionAst>,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<()> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<()> {
     match event {
         RadarStatementEvent::Axes(parsed) => {
             for axis in parsed {
@@ -519,8 +519,8 @@ fn apply_radar_statement_controlled(
 fn compute_curve_entries_controlled(
     axes: &[RadarRenderAxis],
     entries: &[EntryAst],
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<Vec<Value>>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Vec<Value>>> {
     control.checkpoint()?;
     if entries.is_empty() {
         return Ok(Ok(Vec::new()));
@@ -575,8 +575,8 @@ pub(crate) fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_radar_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construct_radar_semantic_source_controlled(code, meta, control)?,
@@ -641,15 +641,15 @@ fn construct_radar_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<RadarSemanticSource, family::CombinedSemanticFailure> {
-    construct_radar_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_radar_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_radar_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<RadarSemanticSource, family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
@@ -799,8 +799,8 @@ struct RadarBodyStart {
 
 fn radar_body_start(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<Option<RadarBodyStart>>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Option<RadarBodyStart>>> {
     let mut offset = 0usize;
     while offset < code.len() {
         control.checkpoint()?;
@@ -854,8 +854,8 @@ fn radar_body_start(
 fn radar_statement_at(
     code: &str,
     offset: usize,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<(String, usize, usize)> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<(String, usize, usize)> {
     control.checkpoint()?;
     let (line, mut next_offset) = physical_line(code, offset);
     let visible = strip_inline_comment(line);
@@ -891,8 +891,8 @@ fn radar_statement_at(
 
 fn mask_radar_inline_comments(
     source: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<String> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<String> {
     let mut masked = source.as_bytes().to_vec();
     let mut line_start = 0usize;
     while line_start < source.len() {
@@ -945,8 +945,8 @@ impl RadarBraceBalance {
     fn scan(
         &mut self,
         source: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<()> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<()> {
         for (offset, ch) in source.char_indices() {
             if offset % 4096 < ch.len_utf8() {
                 control.checkpoint()?;
@@ -988,8 +988,8 @@ fn parse_axes_list(
     input: &str,
     input_start: usize,
     lexemes: &mut LangiumLexemeTrace,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<Vec<AxisAst>, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<Vec<AxisAst>, String>> {
     let mut p = TokenParser::new(input, input_start, lexemes);
     let mut out = Vec::new();
     loop {
@@ -1038,8 +1038,8 @@ fn parse_curves_stmt(
     input: &str,
     input_start: usize,
     lexemes: &mut LangiumLexemeTrace,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<Vec<CurveAst>, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<Vec<CurveAst>, String>> {
     control.checkpoint()?;
     let (input, input_start) = trim_start_with_source_offset(input, input_start);
     let Some(rest) = input.strip_prefix("curve") else {
@@ -1072,8 +1072,8 @@ fn parse_curve(
     input: &str,
     input_start: usize,
     lexemes: &mut LangiumLexemeTrace,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<CurveAst, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<CurveAst, String>> {
     control.checkpoint()?;
     let (name, label, entries_str, entries_start) = {
         let mut p = TokenParser::new(input, input_start, lexemes);
@@ -1138,8 +1138,8 @@ fn parse_entries(
     input: &str,
     input_start: usize,
     lexemes: &mut LangiumLexemeTrace,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<Vec<EntryAst>, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<Vec<EntryAst>, String>> {
     let items = split_top_level(input, ',', input_start, lexemes, control)?;
     let mut out = Vec::new();
     for (item_offset, item) in items {
@@ -1264,8 +1264,8 @@ fn parse_option_list_stmt(
     input: &str,
     input_start: usize,
     lexemes: &mut LangiumLexemeTrace,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<Option<Vec<OptionAst>>, String>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<Option<Vec<OptionAst>>, String>> {
     let checkpoint = lexemes.checkpoint();
     let chunks = split_top_level(input, ',', input_start, lexemes, control)?;
     if chunks.len() == 1 {
@@ -1301,8 +1301,8 @@ fn split_top_level<'a>(
     delim: char,
     input_start: usize,
     lexemes: &mut LangiumLexemeTrace,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Vec<(usize, &'a str)>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Vec<(usize, &'a str)>> {
     let mut out = Vec::new();
     let mut chunk_start = 0usize;
     let mut in_quote: Option<char> = None;
@@ -1532,8 +1532,8 @@ impl<'input, 'lexemes> TokenParser<'input, 'lexemes> {
 
     fn take_until_matching_brace(
         &mut self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<std::result::Result<(&'input str, usize), String>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<std::result::Result<(&'input str, usize), String>> {
         let mut depth = 1i64;
         let mut in_quote: Option<char> = None;
         let mut escaped = false;
@@ -1614,7 +1614,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join(",");
         let text = format!("radar-beta\naxis {axes}\n");
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
         let meta = ParseMetadata {
             diagram_type: "radar".to_string(),
@@ -1625,7 +1625,7 @@ mod tests {
 
         assert!(matches!(
             construct_radar_semantic_source_controlled(&text, &meta, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -1653,9 +1653,9 @@ mod tests {
             })
             .collect();
         let mut db = RadarDb::new();
-        db.set_axes_controlled(axes, &crate::ParseControl::new())
+        db.set_axes_controlled(axes, &crate::OperationControl::new())
             .unwrap();
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(10);
 
         assert!(matches!(
@@ -1671,7 +1671,7 @@ mod tests {
                 }],
                 &control,
             ),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -1693,7 +1693,7 @@ mod tests {
         });
 
         assert_eq!(
-            compute_curve_entries_controlled(&axes, &entries, &crate::ParseControl::new())
+            compute_curve_entries_controlled(&axes, &entries, &crate::OperationControl::new())
                 .unwrap()
                 .unwrap(),
             vec![json!(1)]

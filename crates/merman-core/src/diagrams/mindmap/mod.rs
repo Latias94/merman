@@ -12,9 +12,11 @@ pub(crate) use parse::{
     mindmap_syntax_construction_count, reset_mindmap_syntax_construction_count,
 };
 pub(crate) use parse::{parse_mindmap, parse_mindmap_model_for_render};
-pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
+};
+pub(crate) use render_model::{
+    render_model_to_compat_json, render_model_to_compat_json_controlled,
 };
 
 const NODE_TYPE_DEFAULT: i32 = 0;

@@ -10,9 +10,8 @@
 use std::process::Command;
 
 use merman::{
-    Engine, ParseOptions, RenderSemanticModel,
-    svg::{HeadlessRenderer, RenderEnvironment, RuntimePolicy},
-    time::CivilDate,
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderSemanticModel,
+    Renderer, SvgEnvironment, SvgRequest, runtime::RuntimePolicy, time::CivilDate,
 };
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
@@ -58,9 +57,10 @@ fn assert_new_york_winter_semantics() {
     assert_eq!(winter_midnight.timestamp_millis(), 1_768_453_200_000);
     assert_eq!(winter_midnight.offset().minutes(), -5 * 60);
 
-    let environment =
-        RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
-    let renderer = HeadlessRenderer::new().with_environment(environment);
+    let environment = SvgEnvironment::deterministic();
+    let renderer = Renderer::new()
+        .with_runtime_policy(runtime_policy.clone())
+        .with_parse_options(ParseOptions::strict());
 
     let parsed = Engine::new()
         .with_runtime_policy(runtime_policy.clone())
@@ -85,25 +85,44 @@ fn assert_new_york_winter_semantics() {
         "02:30 in the New York spring gap must normalize to 03:30 EDT"
     );
 
-    let layout = renderer
-        .layout_json_sync(SOURCE)
-        .expect("layout Gantt")
-        .expect("detect Gantt layout");
+    let layout = render_layout(&renderer, environment.clone(), SOURCE);
     assert_eq!(
-        layout.pointer("/layout/GanttDiagram/tasks/0/start_ms"),
+        layout
+            .layout()
+            .pointer("/layout/GanttDiagram/tasks/0/start_ms"),
         Some(&serde_json::json!(1_768_453_200_000_i64))
     );
 
-    let gap_layout = renderer
-        .layout_json_sync(GAP_SOURCE)
-        .expect("layout DST gap Gantt")
-        .expect("detect DST gap Gantt layout");
+    let gap_layout = render_layout(&renderer, environment, GAP_SOURCE);
     assert_eq!(
-        gap_layout.pointer("/layout/GanttDiagram/tasks/0/start_ms"),
+        gap_layout
+            .layout()
+            .pointer("/layout/GanttDiagram/tasks/0/start_ms"),
         Some(&serde_json::json!(1_772_955_000_000_i64))
     );
 
     assert_timezone_rules_are_captured_and_reported();
+}
+
+fn render_layout(
+    renderer: &Renderer,
+    environment: SvgEnvironment,
+    source: &str,
+) -> merman::SvgLayoutOutput {
+    let output = renderer
+        .render(RenderRequest::layout_json(
+            source,
+            OperationControl::new(),
+            SvgRequest {
+                environment,
+                ..Default::default()
+            },
+        ))
+        .expect("layout Gantt");
+    let RenderOutput::LayoutJson(Some(layout)) = output else {
+        panic!("detect Gantt layout");
+    };
+    layout
 }
 
 fn assert_timezone_rules_are_captured_and_reported() {
@@ -152,32 +171,47 @@ fn emit_timezone_provenance(expected_identifier: &str) {
     let runtime_policy = RuntimePolicy::try_native()
         .expect("native runtime policy")
         .with_fixed_unix_millis(1_768_478_400_000);
-    let environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
-    let session = environment.begin_session().expect("capture timezone rules");
-    let report = session.report();
-    assert_eq!(report.local_time_zone().identifier(), expected_identifier);
+    let environment = SvgEnvironment::deterministic();
+    let renderer = Renderer::new().with_runtime_policy(runtime_policy);
+    let output = renderer
+        .render(RenderRequest::svg(
+            SOURCE,
+            OperationControl::new(),
+            SvgRequest {
+                environment,
+                ..Default::default()
+            },
+        ))
+        .expect("capture timezone evidence");
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("detect Gantt SVG");
+    };
+    let evidence = svg.evidence();
+    assert_eq!(evidence.local_time_zone().identifier(), expected_identifier);
     let summer = CivilDate::new(2026, 7, 15)
         .expect("valid summer date")
         .at_midnight();
-    let summer_offset = session
+    let summer_offset = evidence
+        .operation_context()
         .local_time_zone()
         .resolve_local(summer)
         .expect("summer midnight")
         .offset()
         .seconds();
-    let captured_offset = session
+    let captured_offset = evidence
+        .operation_context()
         .local_time_zone()
-        .at_instant(session.unix_millis())
+        .at_instant(evidence.unix_millis())
         .expect("captured local instant")
         .offset()
         .minutes();
     println!(
         "MERMAN_TIME_ZONE_EVIDENCE|{}|{}:{}:{}|{}|{}",
-        report.local_time_zone().identifier(),
-        report.unix_millis(),
-        report.local_date(),
+        evidence.local_time_zone().identifier(),
+        evidence.unix_millis(),
+        evidence.local_date(),
         captured_offset,
-        report
+        evidence
             .local_time_zone()
             .rules_sha256()
             .expect("system rules digest"),

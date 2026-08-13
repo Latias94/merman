@@ -477,8 +477,8 @@ pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let VennParseOutcome {
         source,
         first_error,
@@ -531,15 +531,15 @@ fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSe
 }
 
 fn construct_venn_parse_outcome(code: &str, meta: &ParseMetadata) -> VennParseOutcome {
-    construct_venn_parse_outcome_controlled(code, meta, &crate::ParseControl::new())
+    construct_venn_parse_outcome_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_venn_parse_outcome_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<VennParseOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<VennParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("venn");
@@ -1820,7 +1820,7 @@ style "Frontend Team",Backend fill:rgba(255, 0, 128, 0.5), color:#101010
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("venn");
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_venn_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
+            parse_venn_json_and_editor_facts(text, &meta, &crate::OperationControl::new()),
         )
         .unwrap();
         assert_eq!(

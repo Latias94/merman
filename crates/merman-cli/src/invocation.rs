@@ -201,6 +201,7 @@ pub(crate) enum ResolvedOutput {
     Text {
         destination: ResolvedDestination,
         options: merman::ascii::AsciiRenderOptions,
+        resources: merman::ascii::AsciiResourcePolicy,
     },
     #[cfg(feature = "png")]
     Png {
@@ -1085,10 +1086,16 @@ fn resolved_native_output(
     match format {
         #[cfg(feature = "ascii")]
         RenderFormat::Ascii | RenderFormat::Unicode => {
+            let resources = options
+                .text
+                .ascii_max_grid_cells
+                .map(merman::ascii::AsciiResourcePolicy::with_max_grid_cells)
+                .unwrap_or_default();
             let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
             Ok(ResolvedOutput::Text {
                 destination,
                 options,
+                resources,
             })
         }
         #[cfg(feature = "svg")]
@@ -1184,9 +1191,6 @@ fn resolve_text_output_options(
     }
     if let Some(width) = args.xychart_horizontal_plot_width {
         options.xychart_horizontal_plot_width = width;
-    }
-    if let Some(max_grid_cells) = args.ascii_max_grid_cells {
-        options.max_grid_cells = max_grid_cells;
     }
     options
         .validate()

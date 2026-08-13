@@ -68,19 +68,49 @@ and whether navigation remains enabled during stale UI states are host responsib
 
 ## Runtime lifecycle and resource limits
 
-Repeated `initMerman()` calls share the cached initialization and module. There is no separate WASM
-unload API, so a main-thread runtime lives for the page realm. The package does not create or own a
-Worker: a host that loads Merman in a dedicated Worker must terminate that Worker after
-initialization failure, replacement, or application teardown. Synchronous WASM calls cannot be
-interrupted from the same realm, so Worker termination is the hard cancellation boundary. Dispose
-every `BrowserTextMeasurementSession` created by `createBrowserTextMeasurementSession()` when it is
-no longer needed.
+Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the
+cached initialization and module. There is no separate WASM unload API, so a main-thread runtime
+lives for the page realm. The package does not create or own a Worker: a host that loads Merman in
+a dedicated Worker must terminate that Worker after initialization failure, replacement, or
+application teardown. Dispose every `BrowserTextMeasurementSession` created by
+`createBrowserTextMeasurementSession()` as soon as it is no longer needed.
 
 Call `runtimeCatalog()` after initialization when an integration needs to inspect compiled
-capabilities, operations, and resource profiles. Browser previews normally use the `interactive`
-profile. Public submission services also need host-level timeout, memory, concurrency, and process
-isolation around the `constrained` profile. See the [binding options guide](../../docs/bindings/OPTIONS_JSON.md)
-for the full resource contract.
+capabilities, operations, and resource profiles. Validate the flat catalog's local relations and
+tolerate newly introduced stable IDs; do not infer availability from package names or Cargo feature
+names. Browser previews normally use the `interactive` profile. Public submission services also
+need host-level timeout, memory, concurrency, and process isolation around the `constrained`
+profile. See the [binding options guide](../../docs/bindings/OPTIONS_JSON.md) for the full resource
+contract.
+
+## Deadlines and cancellation
+
+The current browser transport API is `4`, reported by `transportApiVersion()` and the runtime
+catalog. Transport-dispatched one-shot operations accept a transport-owned top-level `timeout_ms`
+field in their options JSON. Because this field is not part of the shared binding-options schema,
+pass it through the public functions' JSON-string form:
+
+```ts
+const svg = renderSvg(
+  source,
+  JSON.stringify({
+    timeout_ms: 250,
+    resources: { profile: "interactive" },
+  })
+);
+```
+
+`timeout_ms` must be an integer from `0` through `4294967295` milliseconds. The transport removes
+it before shared option validation and installs the corresponding relative monotonic deadline on
+the operation control. Expiry is reported as `MERMAN_CANCELLED` with
+`details.cancellation.reason = "deadline_exceeded"` and a checkpoint phase.
+
+This deadline is cooperative: Rust observes it only at operation checkpoints, and it cannot
+preempt a host text-measurement callback that is already running. The synchronous WASM exports do
+not expose a mid-call `AbortSignal`; JavaScript in the same realm cannot run an abort listener
+until Rust returns. A host can check a signal before entering a call or discard its result after
+return. If hard termination is required, run Merman in a dedicated Worker and terminate that
+Worker from its parent realm.
 
 ## Custom WASM loading
 

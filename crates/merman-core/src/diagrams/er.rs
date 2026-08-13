@@ -2,7 +2,7 @@ use crate::diagrams::scan::consume_line_ending;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
         format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
@@ -394,7 +394,7 @@ struct ErSyntax {
 }
 
 impl ErSyntax {
-    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
+    fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
         let mut journal = EditorLexemeJournal::family_lexer(code);
         let events = {
             let lexer = Lexer::new(code, &mut journal);
@@ -417,8 +417,8 @@ impl ErSyntax {
     fn into_editor_facts_and_actions(
         self,
         code: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<(
+        control: &OperationControl,
+    ) -> OperationControlResult<(
         EditorSemanticFacts,
         std::result::Result<Vec<Action>, ErGrammarError>,
     )> {
@@ -506,8 +506,8 @@ impl ErSemanticFailure {
 
 fn construct_er_semantic_source(
     code: &str,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
     let syntax = ErSyntax::lex(code, control)?;
     let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
     let actions = match actions {
@@ -532,7 +532,7 @@ fn construct_er_semantic_source(
 }
 
 fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
-    construct_er_semantic_source(code, &ParseControl::new())
+    construct_er_semantic_source(code, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
@@ -551,8 +551,8 @@ pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_er_semantic_source(code, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,

@@ -46,32 +46,55 @@ These files were produced headlessly by `merman-cli`. The [Playground] contains 
 
 ### Rust
 
-Add the exact current prerelease:
+The current source tree uses the operation-scoped `Renderer` facade introduced after the
+published `0.8.0-alpha.5` tag. Run the maintained example from a source checkout:
 
 ```sh
-cargo add merman@=0.8.0-alpha.5
+cargo run --locked -p merman --example render_svg > diagram.svg
 ```
 
-Render Mermaid source to standard output:
+Embed the same API in Rust:
 
 ```rust
-use merman::render_svg;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-fn main() -> Result<(), merman::RenderSvgError> {
-    let svg = render_svg("flowchart TD\n  A[Start] --> B[Done]")?;
-    print!("{svg}");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let output = Renderer::new().render(RenderRequest::svg(
+        "flowchart TD\n  A[Start] --> B[Done]",
+        OperationControl::new(),
+        SvgRequest::default(),
+    ))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    print!("{}", svg.svg());
     Ok(())
 }
 ```
 
-Redirect the program's output to `diagram.svg`, or use the reusable renderer examples when an
-application needs shared configuration, IDs, layout inspection, or another output format.
+For an external source dependency, pin a reviewed full commit. Published `0.8.0-alpha.5` users
+should follow that release's [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md)
+instead of copying source-tree APIs across the version boundary.
 
-The [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) cover renderer reuse, same-document IDs, semantic and layout inspection, PNG and terminal output, deterministic dates, configuration, themes, and custom SVG pipelines.
+| Task | Start with |
+| --- | --- |
+| Render one standalone SVG | `Renderer::render(RenderRequest::svg(...))` |
+| Embed several SVGs in one document | Set a unique `SvgRequest.options.diagram_id` for each request |
+| Parse or inspect semantics without rendering | `Renderer::prepare_semantic` or `RenderTarget::Semantic` |
+| Inspect layout or export another format | `Renderer` with a typed `RenderRequest`/`RenderTarget` |
+
+`Renderer` uses deterministic defaults. An undetected diagram is represented by the selected
+`RenderOutput` variant containing `None`; cancellation, resource exhaustion, parse failure, and
+unsupported targets remain distinct structured errors. When several SVGs share one DOM, supply
+diagram IDs that remain unique after `merman::svg::sanitize_svg_id` normalization.
+
+The [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) cover
+same-document IDs, renderer reuse, semantic and layout inspection, PNG and terminal output,
+deterministic dates, configuration, themes, and custom SVG pipelines.
 
 ### Command line
 
-Install the complete CLI and render from standard input:
+Install the published complete CLI and render from standard input:
 
 ```sh
 cargo install merman-cli --version 0.8.0-alpha.5 --locked
@@ -167,7 +190,7 @@ Cargo features select observable capabilities and output backends, not diagram f
 | Terminal output | `default-features = false, features = ["ascii"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
 
-For example, a basic SVG-only dependency is:
+For the published `0.8.0-alpha.5` feature closure, a basic SVG-only dependency is:
 
 ```toml
 [dependencies]
@@ -181,8 +204,11 @@ The [capability guide] documents exact feature forwarding, browser packages, art
 Merman prioritizes source-backed convergence in parsing, semantic models, layout, theming, sanitization, and SVG DOM structure. It does not claim byte-for-byte Chromium pixels.
 
 - Browser font fallback, `getBBox()` floats, `foreignObject`, HTML labels, and RoughJS path geometry can remain documented residuals where no robust headless derivation exists.
-- Mermaid-parity SVG can contain HTML labels. Browser DOM insertion requires an explicit host admission policy; export pipelines should use the export-safe SVG path when their renderer cannot consume `foreignObject`.
-- PNG, JPEG, and PDF are bounded integration outputs, not browser screenshot parity contracts.
+- Mermaid-parity SVG can contain HTML labels. Select `SvgPipeline::resvg_safe()` on a typed SVG
+  request, or use a PNG, JPEG, or PDF target, when a raster consumer cannot render
+  `foreignObject`; browser DOM insertion still requires an explicit host admission policy.
+- PNG, JPEG, and PDF are bounded integration outputs with explicit allocation and resource limits,
+  not browser screenshot parity contracts.
 - ASCII and Unicode support is capability-checked by diagram family.
 
 Read the [alignment dashboard], [SVG output pipeline], [rendering security guide], and [benchmark methodology] for the exact evidence and safety boundaries.

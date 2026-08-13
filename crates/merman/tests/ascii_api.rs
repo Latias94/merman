@@ -1,9 +1,11 @@
 #![cfg(feature = "ascii")]
 
-use merman::RenderSemanticModel;
 use merman::ascii::{
-    AsciiRenderOptions, HeadlessAsciiRenderer, render_ascii_sync, render_class, render_er,
-    render_model, render_xychart,
+    AsciiRenderOptions, AsciiResourcePolicy, render_model_with_local_time_zone,
+    render_model_with_operation,
+};
+use merman::{
+    AsciiRequest, OperationControl, RenderOutput, RenderRequest, RenderSemanticModel, Renderer,
 };
 
 fn render_model_for(source: &str) -> RenderSemanticModel {
@@ -28,16 +30,21 @@ fn deeply_nested_flowchart(depth: usize) -> String {
 }
 
 #[test]
-fn render_ascii_sync_renders_flowchart_from_mermaid_text() {
-    let engine = merman::Engine::new();
-    let rendered = render_ascii_sync(
-        &engine,
-        "flowchart LR\nA --> B",
-        merman::ParseOptions::strict(),
-        &AsciiRenderOptions::ascii(),
-    )
-    .unwrap()
-    .unwrap();
+fn renderer_renders_ascii_flowchart_from_mermaid_text() {
+    let output = Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(RenderRequest::ascii(
+            "flowchart LR\nA --> B",
+            OperationControl::new(),
+            AsciiRequest {
+                options: AsciiRenderOptions::ascii(),
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    let RenderOutput::Ascii(Some(rendered)) = output else {
+        panic!("diagram not detected");
+    };
 
     assert_eq!(
         rendered,
@@ -46,8 +53,7 @@ fn render_ascii_sync_renders_flowchart_from_mermaid_text() {
 }
 
 #[test]
-fn render_ascii_sync_renders_shipped_reference_diagram_families() {
-    let engine = merman::Engine::new();
+fn renderer_renders_shipped_ascii_reference_diagram_families() {
     let cases = [
         ("classDiagram\nclass Animal", "Animal"),
         ("erDiagram\nCUSTOMER", "CUSTOMER"),
@@ -63,14 +69,20 @@ bar [2, 8]
     ];
 
     for (source, expected) in cases {
-        let rendered = render_ascii_sync(
-            &engine,
-            source,
-            merman::ParseOptions::strict(),
-            &AsciiRenderOptions::ascii(),
-        )
-        .unwrap()
-        .unwrap();
+        let output = Renderer::new()
+            .with_parse_options(merman::ParseOptions::strict())
+            .render(RenderRequest::ascii(
+                source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::ascii(),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(rendered)) = output else {
+            panic!("diagram not detected");
+        };
 
         assert!(
             rendered.contains(expected),
@@ -83,46 +95,48 @@ bar [2, 8]
 fn direct_ascii_exports_render_shipped_typed_models() {
     let options = AsciiRenderOptions::ascii();
 
-    let RenderSemanticModel::Class(class_model) = render_model_for("classDiagram\nclass Animal")
-    else {
-        panic!("expected class render model");
-    };
-    let rendered = render_class(&class_model, &options).unwrap();
-    assert!(rendered.contains("Animal"));
-
-    let RenderSemanticModel::Er(er_model) = render_model_for("erDiagram\nCUSTOMER") else {
-        panic!("expected ER render model");
-    };
-    let rendered = render_er(&er_model, &options).unwrap();
-    assert!(rendered.contains("CUSTOMER"));
-
-    let RenderSemanticModel::XyChart(xychart_model) = render_model_for(
-        r#"xychart
+    for (source, expected) in [
+        ("classDiagram\nclass Animal", "Animal"),
+        ("erDiagram\nCUSTOMER", "CUSTOMER"),
+        (
+            r#"xychart
 x-axis [A, B]
 y-axis 0 --> 10
 bar [4, 8]
 "#,
-    ) else {
-        panic!("expected XYChart render model");
-    };
-    let rendered = render_xychart(&xychart_model, &options).unwrap();
-    assert!(rendered.contains("###"));
+            "###",
+        ),
+    ] {
+        let model = render_model_for(source);
+        let rendered = render_model_with_local_time_zone(
+            &model,
+            &options,
+            &merman::time::LocalTimeZone::utc(),
+        )
+        .unwrap();
+        assert!(rendered.contains(expected));
+    }
 }
 
 #[test]
-fn render_ascii_sync_uses_ascii_options_for_padding() {
-    let engine = merman::Engine::new();
+fn renderer_uses_ascii_options_for_padding() {
     let mut options = AsciiRenderOptions::ascii();
     options.graph_padding_x = 2;
     options.graph_padding_y = 1;
-    let rendered = render_ascii_sync(
-        &engine,
-        "graph LR\nA --> B",
-        merman::ParseOptions::strict(),
-        &options,
-    )
-    .unwrap()
-    .unwrap();
+    let output = Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(RenderRequest::ascii(
+            "graph LR\nA --> B",
+            OperationControl::new(),
+            AsciiRequest {
+                options,
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    let RenderOutput::Ascii(Some(rendered)) = output else {
+        panic!("diagram not detected");
+    };
 
     assert_eq!(
         rendered,
@@ -132,11 +146,17 @@ fn render_ascii_sync_uses_ascii_options_for_padding() {
 
 #[test]
 fn headless_ascii_renderer_renders_sequence_with_unicode_defaults() {
-    let renderer = HeadlessAsciiRenderer::new().with_strict_parsing();
-    let rendered = renderer
-        .render_ascii_sync("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello")
-        .unwrap()
+    let output = Renderer::new()
+        .with_parse_options(merman::ParseOptions::strict())
+        .render(RenderRequest::ascii(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello",
+            OperationControl::new(),
+            AsciiRequest::default(),
+        ))
         .unwrap();
+    let RenderOutput::Ascii(Some(rendered)) = output else {
+        panic!("diagram not detected");
+    };
 
     assert!(rendered.contains("┌"));
     assert!(rendered.contains("Hello"));
@@ -144,17 +164,17 @@ fn headless_ascii_renderer_renders_sequence_with_unicode_defaults() {
 }
 
 #[test]
-fn render_ascii_sync_returns_none_when_no_diagram_is_detected() {
-    let engine = merman::Engine::new();
-    let rendered = render_ascii_sync(
-        &engine,
-        "this is just prose",
-        merman::ParseOptions::lenient(),
-        &AsciiRenderOptions::default(),
-    )
-    .unwrap();
+fn renderer_returns_no_ascii_when_no_diagram_is_detected() {
+    let rendered = Renderer::new()
+        .with_parse_options(merman::ParseOptions::lenient())
+        .render(RenderRequest::ascii(
+            "this is just prose",
+            OperationControl::new(),
+            AsciiRequest::default(),
+        ))
+        .unwrap();
 
-    assert!(rendered.is_none());
+    assert!(matches!(rendered, RenderOutput::Ascii(None)));
 }
 
 #[test]
@@ -166,10 +186,18 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
         .name("ascii-deep-flowchart-subgraph".to_string())
         .stack_size(64 * 1024)
         .spawn(move || {
-            let mut options = AsciiRenderOptions::ascii();
-            options.max_grid_cells = 10_000_000;
-            let rendered = render_model(&model, &options)
-                .expect("deep Flowchart ASCII render should not return an error");
+            let options = AsciiRenderOptions::ascii();
+            let context = merman::runtime::RuntimePolicy::deterministic()
+                .begin_operation()
+                .expect("deterministic operation context");
+            let rendered = render_model_with_operation(
+                &model,
+                &options,
+                &merman::OperationControl::new(),
+                &context,
+                AsciiResourcePolicy::with_max_grid_cells(10_000_000),
+            )
+            .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));
         })
         .expect("spawn deep Flowchart ASCII render test");

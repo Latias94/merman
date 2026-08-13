@@ -372,6 +372,28 @@ impl Analyzer {
         }
     }
 
+    /// Generates diagnostics for an explicit request-local source descriptor.
+    pub fn analyze_source_cancellable(
+        &self,
+        source: Arc<str>,
+        descriptor: SourceDescriptor,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        self.with_capture_source(descriptor)
+            .analyze_cancellable(source, cancellation)
+    }
+
+    /// Generates facts for an explicit request-local source descriptor.
+    pub fn analyze_source_facts_cancellable(
+        &self,
+        source: Arc<str>,
+        descriptor: SourceDescriptor,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<crate::AnalysisFactsPayload, AnalysisCancelled> {
+        self.with_capture_source(descriptor)
+            .analyze_facts_cancellable(source, cancellation)
+    }
+
     pub(crate) fn try_for_operation(
         &self,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
@@ -441,6 +463,39 @@ impl Analyzer {
         self.analyze_facts(source).to_json_bytes()
     }
 
+    /// Generates and projects diagnostics cooperatively using one caller-owned cancellation token.
+    pub fn analyze_cancellable(
+        &self,
+        source: Arc<str>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        match self.analyze_generation_shared_cancellable(source, cancellation)? {
+            AnalysisCaptureOutcome::Ready(generation) => {
+                generation.project_cancellable(self.options.diagnostic_policy(), cancellation)
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                cancellation.checkpoint()?;
+                Ok(rejection.into_payload())
+            }
+        }
+    }
+
+    /// Generates and projects the facts contract cooperatively using one cancellation token.
+    pub fn analyze_facts_cancellable(
+        &self,
+        source: Arc<str>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<crate::AnalysisFactsPayload, AnalysisCancelled> {
+        match self.analyze_generation_shared_cancellable(source, cancellation)? {
+            AnalysisCaptureOutcome::Ready(generation) => generation
+                .to_facts_payload_cancellable(self.options.diagnostic_policy(), cancellation),
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                cancellation.checkpoint()?;
+                Ok(crate::AnalysisFactsPayload::from_rejection(&rejection))
+            }
+        }
+    }
+
     pub(crate) fn capture_document_diagram_cancellable(
         &self,
         diagram: &DocumentDiagram,
@@ -484,7 +539,10 @@ impl Analyzer {
         let cancellation = AnalysisCancellationToken::new();
         self.capture_evidence_cancellable(source, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
-                error: CoreError::from(merman_core::ParseCancelled),
+                error: CoreError::from(merman_core::OperationCancelled {
+                    phase: merman_core::OperationPhase::Analysis,
+                    reason: merman_core::CancelReason::Requested,
+                }),
                 source_config: SourceConfigEvidence::default(),
             })
     }
@@ -502,7 +560,7 @@ impl Analyzer {
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine
-                .capture_diagram_snapshot_controlled_sync(source, cancellation.parse_control())
+                .capture_diagram_snapshot_controlled_sync(source, cancellation.operation_control())
         }));
         let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {

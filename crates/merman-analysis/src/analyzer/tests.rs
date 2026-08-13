@@ -57,8 +57,8 @@ fn panicking_detector(_source: &str, _config: &mut merman_core::MermaidConfig) -
 fn captured_config_panicking_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    _control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    _control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     CAPTURED_CONFIG_PANIC_CALLS.fetch_add(1, Ordering::SeqCst);
     panic!("captured config fixture panic")
 }
@@ -66,16 +66,16 @@ fn captured_config_panicking_parser(
 fn non_string_panicking_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    _control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    _control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     std::panic::panic_any(42_u8)
 }
 
 fn unknown_warning_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Ok(json!({
         "warningFacts": [{
@@ -89,8 +89,8 @@ fn unknown_warning_flowchart_parser(
 fn counting_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     REPROJECTION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -99,8 +99,8 @@ fn counting_flowchart_parser(
 fn derived_analyzer_counting_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     DERIVED_ANALYZER_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -109,8 +109,8 @@ fn derived_analyzer_counting_flowchart_parser(
 fn markdown_counting_custom_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     MARKDOWN_CUSTOM_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -119,21 +119,24 @@ fn markdown_counting_custom_parser(
 fn markdown_first_success_then_cancel_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     if MARKDOWN_PARTIAL_CAPTURE_CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
         Ok(Ok(json!({ "warningFacts": [] })))
     } else {
-        Err(merman_core::ParseCancelled)
+        Err(merman_core::OperationCancelled {
+            phase: merman_core::OperationPhase::Analysis,
+            reason: merman_core::CancelReason::Requested,
+        })
     }
 }
 
 fn rejected_source_counting_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     REJECTED_SOURCE_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
@@ -142,16 +145,16 @@ fn rejected_source_counting_parser(
 fn panicking_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    _control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    _control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     panic!("fixture parser panic")
 }
 
 fn malformed_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Ok(malformed_flowchart_parsed_diagram().model))
 }
@@ -159,8 +162,8 @@ fn malformed_flowchart_parser(
 fn cancelling_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.cancel();
     control.checkpoint()?;
     unreachable!("cancelled parser must stop at its checkpoint")

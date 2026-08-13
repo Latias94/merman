@@ -96,11 +96,18 @@ merman = { path = "crates/merman", default-features = false, features = ["comple
 ```
 
 ```rust
-use merman::render_svg;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let svg = render_svg("flowchart TD\n  A[Start] --> B[Done]")?;
-    std::fs::write("diagram.svg", svg)?;
+    let output = Renderer::new().render(RenderRequest::svg(
+        "flowchart TD\n  A[Start] --> B[Done]",
+        OperationControl::new(),
+        SvgRequest::default(),
+    ))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    std::fs::write("diagram.svg", svg.svg())?;
     Ok(())
 }
 ```
@@ -110,7 +117,11 @@ aggregate.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
 
-Use `render_svg_with_id` when several SVGs share one HTML document. Use `merman::svg::HeadlessRenderer` for reusable configuration, layout inspection, binary export, presentation, resource policy, or an explicit SVG pipeline. The complete set of copyable task examples lives in [`crates/merman/examples`](../crates/merman/examples/README.md).
+When several SVGs share one HTML document, assign a unique
+`SvgRequest.options.diagram_id` to every operation. Use `Renderer` plus typed targets for reusable
+configuration, semantic/layout inspection, binary export, presentation, resource policy, or an
+explicit SVG pipeline. The complete set of copyable task examples lives in
+[`crates/merman/examples`](../crates/merman/examples/README.md).
 
 ### Basic SVG without optional engines
 

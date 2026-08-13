@@ -5,6 +5,10 @@ pub type Result<T> = std::result::Result<T, AsciiError>;
 #[non_exhaustive]
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AsciiError {
+    #[error(transparent)]
+    Cancelled(#[from] merman_core::OperationCancelled),
+    #[error(transparent)]
+    ResourceLimitExceeded(#[from] merman_core::OperationResourceLimitExceeded),
     #[error("invalid ASCII render option `{field}`: {message}")]
     InvalidOption {
         field: &'static str,
@@ -17,6 +21,4 @@ pub enum AsciiError {
         diagram_type: &'static str,
         feature: &'static str,
     },
-    #[error("ASCII render grid has {actual} cells, exceeding configured limit {limit}")]
-    RenderLimitExceeded { actual: usize, limit: usize },
 }

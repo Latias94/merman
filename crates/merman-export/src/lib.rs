@@ -9,6 +9,8 @@
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use cssparser::{Delimiter, Parser, ParserInput, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use merman_core::{OperationCancelled, OperationControl, OperationPhase};
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::svg::ResvgCompatibleSvg;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use std::sync::{Arc, OnceLock};
@@ -16,6 +18,8 @@ use std::sync::{Arc, OnceLock};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
+    #[error(transparent)]
+    Cancelled(#[from] OperationCancelled),
     #[error("failed to parse SVG")]
     SvgParse,
     #[error("failed to set SVG Document size from tree")]
@@ -134,6 +138,13 @@ impl ExportError {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub type Result<T> = std::result::Result<T, ExportError>;
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn export_checkpoint(control: &OperationControl) -> Result<()> {
+    control
+        .checkpoint_at(OperationPhase::Export)
+        .map_err(ExportError::Cancelled)
+}
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub const DEFAULT_MAX_RASTER_SIDE_LENGTH: u32 = 4096;
@@ -459,30 +470,48 @@ const RECURSIVE_SVG_BACKEND_STACK_BYTES: usize = 0;
     any(feature = "png", feature = "jpeg", feature = "pdf"),
     not(target_arch = "wasm32")
 ))]
-fn run_recursive_svg_backend<T, F>(job: F) -> Result<T>
+fn run_recursive_svg_backend<T, F>(control: &OperationControl, job: F) -> Result<T>
 where
     T: Send + 'static,
-    F: FnOnce() -> Result<T> + Send + 'static,
+    F: FnOnce(&OperationControl) -> Result<T> + Send + 'static,
 {
-    std::thread::Builder::new()
+    export_checkpoint(control)?;
+    let worker_control = control.clone();
+    let result = std::thread::Builder::new()
         .name("merman-svg-backend".to_string())
         .stack_size(RECURSIVE_SVG_BACKEND_STACK_BYTES)
-        .spawn(job)
+        .spawn(move || {
+            export_checkpoint(&worker_control)?;
+            let result = job(&worker_control);
+            if result.is_ok() {
+                export_checkpoint(&worker_control)?;
+            }
+            result
+        })
         .map_err(|_| ExportError::BackendWorkerSpawn)?
         .join()
-        .map_err(|_| ExportError::BackendWorkerPanic)?
+        .map_err(|_| ExportError::BackendWorkerPanic)?;
+    if result.is_ok() {
+        export_checkpoint(control)?;
+    }
+    result
 }
 
 #[cfg(all(
     any(feature = "png", feature = "jpeg", feature = "pdf"),
     target_arch = "wasm32"
 ))]
-fn run_recursive_svg_backend<T, F>(job: F) -> Result<T>
+fn run_recursive_svg_backend<T, F>(control: &OperationControl, job: F) -> Result<T>
 where
     T: Send + 'static,
-    F: FnOnce() -> Result<T> + Send + 'static,
+    F: FnOnce(&OperationControl) -> Result<T> + Send + 'static,
 {
-    job()
+    export_checkpoint(control)?;
+    let result = job(control);
+    if result.is_ok() {
+        export_checkpoint(control)?;
+    }
+    result
 }
 
 /// Optional display box for target-aware rasterization.
@@ -983,6 +1012,7 @@ pub struct PreparedRaster {
     embedded_image_plan: EmbeddedImagePlan,
     conversion_plan: SvgConversionPlan,
     options: RasterOptions,
+    control: OperationControl,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1018,17 +1048,23 @@ impl PreparedRaster {
     /// Allocates and encodes the prepared image as PNG.
     #[cfg(feature = "png")]
     pub fn encode_png(self) -> Result<Vec<u8>> {
-        run_recursive_svg_backend(move || {
-            self.into_pixmap()?
-                .encode_png()
-                .map_err(|_| ExportError::PngEncode)
+        let control = self.control.clone();
+        run_recursive_svg_backend(&control, move |control| {
+            export_checkpoint(control)?;
+            let pixmap = self.into_pixmap(control)?;
+            export_checkpoint(control)?;
+            let bytes = pixmap.encode_png().map_err(|_| ExportError::PngEncode)?;
+            export_checkpoint(control)?;
+            Ok(bytes)
         })
     }
 
     /// Allocates and encodes the prepared image as JPEG.
     #[cfg(feature = "jpeg")]
     pub fn encode_jpeg(mut self) -> Result<Vec<u8>> {
-        run_recursive_svg_backend(move || {
+        let control = self.control.clone();
+        run_recursive_svg_backend(&control, move |control| {
+            export_checkpoint(control)?;
             if self.plan.width_px > u32::from(u16::MAX) || self.plan.height_px > u32::from(u16::MAX)
             {
                 return Err(ExportError::JpegDimensionLimit);
@@ -1043,11 +1079,13 @@ impl PreparedRaster {
 
             self.options.background = Some(bg.to_string());
             let quality = self.options.jpeg_quality;
-            let pixmap = self.into_pixmap()?;
+            let pixmap = self.into_pixmap(control)?;
+            export_checkpoint(control)?;
             let (w, h) = (pixmap.width(), pixmap.height());
             let rgba = pixmap.data();
             let mut rgb = vec![0u8; (w as usize) * (h as usize) * 3];
             for (src, dst) in rgba.chunks_exact(4).zip(rgb.chunks_exact_mut(3)) {
+                export_checkpoint(control)?;
                 dst[0] = src[0];
                 dst[1] = src[1];
                 dst[2] = src[2];
@@ -1055,13 +1093,16 @@ impl PreparedRaster {
 
             let mut out = Vec::new();
             let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality);
+            export_checkpoint(control)?;
             enc.encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
                 .map_err(|_| ExportError::JpegEncode)?;
+            export_checkpoint(control)?;
             Ok(out)
         })
     }
 
-    fn into_pixmap(self) -> Result<tiny_skia::Pixmap> {
+    fn into_pixmap(self, control: &OperationControl) -> Result<tiny_skia::Pixmap> {
+        export_checkpoint(control)?;
         let mut pixmap = tiny_skia::Pixmap::new(self.plan.width_px, self.plan.height_px)
             .ok_or(ExportError::PixmapAlloc)?;
 
@@ -1085,7 +1126,11 @@ impl PreparedRaster {
             tiny_skia::Transform::from_scale(scale, scale)
         };
 
+        // resvg is one opaque synchronous backend call. Cooperative cancellation is observed at
+        // its boundaries; hosts that need hard preemption must isolate the worker or process.
+        export_checkpoint(control)?;
         resvg::render(&self.tree, transform, &mut pixmap.as_mut());
+        export_checkpoint(control)?;
         Ok(pixmap)
     }
 }
@@ -1098,6 +1143,7 @@ pub struct PreparedPdf {
     filter_plan: PdfFilterImagePlan,
     embedded_image_plan: EmbeddedImagePlan,
     conversion_plan: SvgConversionPlan,
+    control: OperationControl,
 }
 
 #[cfg(feature = "pdf")]
@@ -1131,18 +1177,42 @@ impl PreparedPdf {
 
     /// Encodes the prepared tree as vector PDF, rasterizing only SVG filter regions.
     pub fn encode(self) -> Result<Vec<u8>> {
-        run_recursive_svg_backend(move || svg_tree_to_pdf(&self.tree, &self.options))
+        let control = self.control.clone();
+        run_recursive_svg_backend(&control, move |control| {
+            svg_tree_to_pdf(&self.tree, &self.options, control)
+        })
     }
 }
 
 /// Parses a sealed SVG once and prepares its bounded raster allocation plan.
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub fn prepare_raster(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<PreparedRaster> {
+    prepare_raster_controlled(svg, options, OperationControl::new())
+}
+
+/// Parses a sealed SVG using caller-owned cooperative cancellation/deadline state.
+#[cfg(any(feature = "png", feature = "jpeg"))]
+pub fn prepare_raster_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<PreparedRaster> {
+    export_checkpoint(&control)?;
     let source = svg.as_str().to_owned();
     let reference_plan = svg.reference_plan().clone();
     let options = options.clone();
-    run_recursive_svg_backend(move || {
-        prepare_raster_on_backend_stack(&source, reference_plan.raw_element_occurrences(), &options)
+    let backend_control = control.clone();
+    run_recursive_svg_backend(&control, move |control| {
+        prepare_raster_on_backend_stack(
+            &source,
+            reference_plan.raw_element_occurrences(),
+            &options,
+            control,
+        )
+        .map(|mut prepared| {
+            prepared.control = backend_control;
+            prepared
+        })
     })
 }
 
@@ -1151,20 +1221,27 @@ fn prepare_raster_on_backend_stack(
     source: &str,
     raw_element_occurrences: &[usize],
     options: &RasterOptions,
+    control: &OperationControl,
 ) -> Result<PreparedRaster> {
-    let root_metadata = parse_root_svg_metadata(source)?;
+    export_checkpoint(control)?;
+    let root_metadata = parse_root_svg_metadata(source, control)?;
     let mut usvg_options = usvg::Options::default();
     configure_usvg_options_for_raster(&mut usvg_options, root_metadata);
     let data_plan = plan_embedded_data_resources_with_occurrences(
         source,
         raw_element_occurrences,
         options.embedded_image_limit,
+        control,
     )?;
+    export_checkpoint(control)?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse)?;
-    let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
-    let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
+    export_checkpoint(control)?;
+    let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
+    let embedded_image_plan =
+        plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
-    let plan = raster_plan_for_geometry(geometry, options)?;
+    let plan = raster_plan_for_geometry(geometry, options, control)?;
+    export_checkpoint(control)?;
 
     Ok(PreparedRaster {
         tree,
@@ -1174,17 +1251,39 @@ fn prepare_raster_on_backend_stack(
         embedded_image_plan,
         conversion_plan,
         options: options.clone(),
+        control: control.clone(),
     })
 }
 
 /// Parses a sealed SVG once and prepares vector PDF page and filter allocation policy.
 #[cfg(feature = "pdf")]
 pub fn prepare_pdf(svg: &ResvgCompatibleSvg, options: &PdfOptions) -> Result<PreparedPdf> {
+    prepare_pdf_controlled(svg, options, OperationControl::new())
+}
+
+/// Parses a sealed SVG for PDF using caller-owned cooperative cancellation/deadline state.
+#[cfg(feature = "pdf")]
+pub fn prepare_pdf_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: OperationControl,
+) -> Result<PreparedPdf> {
+    export_checkpoint(&control)?;
     let source = svg.as_str().to_owned();
     let reference_plan = svg.reference_plan().clone();
     let options = options.clone();
-    run_recursive_svg_backend(move || {
-        prepare_pdf_on_backend_stack(&source, reference_plan.raw_element_occurrences(), &options)
+    let backend_control = control.clone();
+    run_recursive_svg_backend(&control, move |control| {
+        prepare_pdf_on_backend_stack(
+            &source,
+            reference_plan.raw_element_occurrences(),
+            &options,
+            control,
+        )
+        .map(|mut prepared| {
+            prepared.control = backend_control;
+            prepared
+        })
     })
 }
 
@@ -1193,16 +1292,20 @@ fn prepare_pdf_on_backend_stack(
     source: &str,
     raw_element_occurrences: &[usize],
     options: &PdfOptions,
+    control: &OperationControl,
 ) -> Result<PreparedPdf> {
+    export_checkpoint(control)?;
     validate_pdf_options(options)?;
     let data_plan = plan_embedded_data_resources_with_occurrences(
         source,
         raw_element_occurrences,
         options.embedded_image_limit,
+        control,
     )?;
-    let tree = parse_pdf_tree(source)?;
-    let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
-    let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
+    let tree = parse_pdf_tree(source, control)?;
+    let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
+    let embedded_image_plan =
+        plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let svg_size = pdf_svg_size(&tree)?;
     let layout = pdf_page_layout(svg_size, options.page_policy)?;
     let filter_plan = plan_pdf_filter_images(
@@ -1210,6 +1313,7 @@ fn prepare_pdf_on_backend_stack(
         layout.drawing_size.width() / svg_size.width(),
         options.filter_scale,
         options.filter_image_limit,
+        control,
     )?;
     let mut effective_options = options.clone();
     effective_options.filter_scale = filter_plan.effective_scale;
@@ -1220,6 +1324,7 @@ fn prepare_pdf_on_backend_stack(
         filter_plan,
         embedded_image_plan,
         conversion_plan,
+        control: control.clone(),
     })
 }
 
@@ -1256,40 +1361,154 @@ fn encoding_scheduling_weight_bytes(
 
 #[cfg(feature = "png")]
 pub fn svg_to_png(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<Vec<u8>> {
-    prepare_raster(svg, options)?.encode_png()
+    svg_to_png_controlled(svg, options, OperationControl::new())
+}
+
+/// Encodes a sealed SVG as PNG using caller-owned cooperative cancellation/deadline state.
+#[cfg(feature = "png")]
+pub fn svg_to_png_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<Vec<u8>> {
+    prepare_raster_controlled(svg, options, control)?.encode_png()
+}
+
+/// Encodes a sealed SVG as PNG and returns the allocation plan used for the output pixmap.
+#[cfg(feature = "png")]
+pub fn svg_to_png_with_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    let prepared = prepare_raster_controlled(svg, options, control)?;
+    let plan = prepared.plan();
+    let bytes = prepared.encode_png()?;
+    Ok((bytes, plan))
+}
+
+/// Encodes a sealed SVG as PNG and returns its allocation plan using a fresh control.
+#[cfg(feature = "png")]
+pub fn svg_to_png_with_plan(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    svg_to_png_with_plan_controlled(svg, options, OperationControl::new())
 }
 
 #[cfg(feature = "jpeg")]
 pub fn svg_to_jpeg(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<Vec<u8>> {
-    prepare_raster(svg, options)?.encode_jpeg()
+    svg_to_jpeg_controlled(svg, options, OperationControl::new())
+}
+
+/// Encodes a sealed SVG as JPEG using caller-owned cooperative cancellation/deadline state.
+#[cfg(feature = "jpeg")]
+pub fn svg_to_jpeg_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<Vec<u8>> {
+    prepare_raster_controlled(svg, options, control)?.encode_jpeg()
+}
+
+/// Encodes a sealed SVG as JPEG and returns the allocation plan used for the output pixmap.
+#[cfg(feature = "jpeg")]
+pub fn svg_to_jpeg_with_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    let prepared = prepare_raster_controlled(svg, options, control)?;
+    let plan = prepared.plan();
+    let bytes = prepared.encode_jpeg()?;
+    Ok((bytes, plan))
+}
+
+/// Encodes a sealed SVG as JPEG and returns its allocation plan using a fresh control.
+#[cfg(feature = "jpeg")]
+pub fn svg_to_jpeg_with_plan(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    svg_to_jpeg_with_plan_controlled(svg, options, OperationControl::new())
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub fn svg_raster_plan(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<RasterPlan> {
-    Ok(prepare_raster(svg, options)?.plan())
+    svg_raster_plan_controlled(svg, options, OperationControl::new())
+}
+
+/// Computes a sealed SVG raster plan using caller-owned cooperative cancellation/deadline state.
+#[cfg(any(feature = "png", feature = "jpeg"))]
+pub fn svg_raster_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<RasterPlan> {
+    Ok(prepare_raster_controlled(svg, options, control)?.plan())
 }
 
 #[cfg(feature = "pdf")]
 pub fn svg_to_pdf(svg: &ResvgCompatibleSvg) -> Result<Vec<u8>> {
-    svg_to_pdf_with_options(svg, &PdfOptions::default())
+    svg_to_pdf_controlled(svg, &PdfOptions::default(), OperationControl::new())
 }
 
 #[cfg(feature = "pdf")]
 pub fn svg_to_pdf_with_options(svg: &ResvgCompatibleSvg, options: &PdfOptions) -> Result<Vec<u8>> {
-    prepare_pdf(svg, options)?.encode()
+    svg_to_pdf_controlled(svg, options, OperationControl::new())
+}
+
+/// Encodes a sealed SVG as PDF using caller-owned cooperative cancellation/deadline state.
+#[cfg(feature = "pdf")]
+pub fn svg_to_pdf_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: OperationControl,
+) -> Result<Vec<u8>> {
+    prepare_pdf_controlled(svg, options, control)?.encode()
+}
+
+/// Encodes a sealed SVG as PDF and returns the filter-image plan used by the encoder.
+#[cfg(feature = "pdf")]
+pub fn svg_to_pdf_with_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: OperationControl,
+) -> Result<(Vec<u8>, PdfFilterImagePlan)> {
+    let prepared = prepare_pdf_controlled(svg, options, control)?;
+    let plan = prepared.filter_plan();
+    let bytes = prepared.encode()?;
+    Ok((bytes, plan))
+}
+
+/// Encodes a sealed SVG as PDF and returns its filter-image plan using a fresh control.
+#[cfg(feature = "pdf")]
+pub fn svg_to_pdf_with_plan(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+) -> Result<(Vec<u8>, PdfFilterImagePlan)> {
+    svg_to_pdf_with_plan_controlled(svg, options, OperationControl::new())
 }
 
 #[cfg(feature = "pdf")]
-fn parse_pdf_tree(svg: &str) -> Result<usvg::Tree> {
+fn parse_pdf_tree(svg: &str, control: &OperationControl) -> Result<usvg::Tree> {
+    export_checkpoint(control)?;
     let mut opts = usvg::Options::default();
     configure_usvg_options_for_pdf(&mut opts);
-    usvg::Tree::from_str(svg, &opts).map_err(|_| ExportError::SvgParse)
+    let tree = usvg::Tree::from_str(svg, &opts).map_err(|_| ExportError::SvgParse)?;
+    export_checkpoint(control)?;
+    Ok(tree)
 }
 
 #[cfg(feature = "pdf")]
-fn svg_tree_to_pdf(svg_tree: &usvg::Tree, options: &PdfOptions) -> Result<Vec<u8>> {
+fn svg_tree_to_pdf(
+    svg_tree: &usvg::Tree,
+    options: &PdfOptions,
+    control: &OperationControl,
+) -> Result<Vec<u8>> {
     use krilla_svg::SurfaceExt;
 
+    export_checkpoint(control)?;
     let svg_size = pdf_svg_size(svg_tree)?;
     let layout = pdf_page_layout(svg_size, options.page_policy)?;
 
@@ -1307,6 +1526,9 @@ fn svg_tree_to_pdf(svg_tree: &usvg::Tree, options: &PdfOptions) -> Result<Vec<u8
             layout.offset.1,
         ));
     }
+    // krilla-svg performs one opaque synchronous draw. Cooperative cancellation is observed at
+    // the call boundaries; hard interruption requires host-level worker/process isolation.
+    export_checkpoint(control)?;
     surface.draw_svg(
         svg_tree,
         layout.drawing_size,
@@ -1321,7 +1543,9 @@ fn svg_tree_to_pdf(svg_tree: &usvg::Tree, options: &PdfOptions) -> Result<Vec<u8
     surface.finish();
     page.finish();
 
+    export_checkpoint(control)?;
     let pdf = document.finish().map_err(|_| ExportError::PdfConvert)?;
+    export_checkpoint(control)?;
 
     Ok(pdf)
 }
@@ -1401,9 +1625,10 @@ fn pdf_page_layout(
 fn plan_svg_conversion(
     tree: &usvg::Tree,
     limits: SvgConversionLimits,
+    control: &OperationControl,
 ) -> Result<SvgConversionPlan> {
     let mut plan = SvgConversionPlan::default();
-    plan_svg_conversion_group(tree.root(), 0, 0, limits, &mut plan)?;
+    plan_svg_conversion_group(tree.root(), 0, 0, limits, &mut plan, control)?;
     Ok(plan)
 }
 
@@ -1414,9 +1639,11 @@ fn plan_svg_conversion_group(
     tree_depth: usize,
     limits: SvgConversionLimits,
     plan: &mut SvgConversionPlan,
+    control: &OperationControl,
 ) -> Result<()> {
     let mut stack = vec![(root, parent_isolation_depth, tree_depth)];
     while let Some((group, parent_depth, tree_depth)) = stack.pop() {
+        export_checkpoint(control)?;
         charge_svg_conversion_tree_node(plan)?;
         plan.max_tree_depth = plan.max_tree_depth.max(tree_depth);
         check_svg_conversion_limit(
@@ -1437,6 +1664,7 @@ fn plan_svg_conversion_group(
             plan.filtered_groups = plan.filtered_groups.saturating_add(1);
         }
         for filter in group.filters() {
+            export_checkpoint(control)?;
             let primitives = filter.primitives().len();
             check_svg_conversion_limit(
                 "max_filter_primitives_per_filter",
@@ -1452,6 +1680,7 @@ fn plan_svg_conversion_group(
         }
 
         for node in group.children() {
+            export_checkpoint(control)?;
             if let usvg::Node::Group(child) = node {
                 stack.push((child, isolation_depth, tree_depth.saturating_add(1)));
             } else {
@@ -1483,6 +1712,7 @@ fn plan_svg_conversion_group(
                         tree_depth.saturating_add(1),
                         limits,
                         plan,
+                        control,
                     );
                 }
             });
@@ -1527,9 +1757,11 @@ fn plan_pdf_filter_images(
     page_scale: f32,
     requested_scale: f32,
     limit: PdfFilterImageLimit,
+    control: &OperationControl,
 ) -> Result<PdfFilterImagePlan> {
-    let filtered_groups = pdf_filtered_group_bounds(tree);
-    let requested_pixels = pdf_filter_pixels(&filtered_groups, page_scale, requested_scale);
+    let filtered_groups = pdf_filtered_group_bounds(tree, control)?;
+    let requested_pixels =
+        pdf_filter_pixels(&filtered_groups, page_scale, requested_scale, control)?;
     let Some(max_pixels) = limit.max_total_pixels else {
         return Ok(PdfFilterImagePlan {
             filtered_groups: filtered_groups.len(),
@@ -1555,7 +1787,8 @@ fn plan_pdf_filter_images(
     let mut rejected = requested_scale;
     for _ in 0..48 {
         let candidate = accepted + (rejected - accepted) / 2.0;
-        if pdf_filter_pixels(&filtered_groups, page_scale, candidate) <= max_pixels {
+        export_checkpoint(control)?;
+        if pdf_filter_pixels(&filtered_groups, page_scale, candidate, control)? <= max_pixels {
             accepted = candidate;
         } else {
             rejected = candidate;
@@ -1567,7 +1800,7 @@ fn plan_pdf_filter_images(
             max: max_pixels,
         });
     }
-    let effective_pixels = pdf_filter_pixels(&filtered_groups, page_scale, accepted);
+    let effective_pixels = pdf_filter_pixels(&filtered_groups, page_scale, accepted, control)?;
     Ok(PdfFilterImagePlan {
         filtered_groups: filtered_groups.len(),
         requested_scale,
@@ -1579,10 +1812,14 @@ fn plan_pdf_filter_images(
 }
 
 #[cfg(feature = "pdf")]
-fn pdf_filtered_group_bounds(tree: &usvg::Tree) -> Vec<(f64, f64)> {
+fn pdf_filtered_group_bounds(
+    tree: &usvg::Tree,
+    control: &OperationControl,
+) -> Result<Vec<(f64, f64)>> {
     let mut bounds = Vec::new();
     let mut stack = vec![(tree.root(), 1.0_f64)];
     while let Some((group, coordinate_scale)) = stack.pop() {
+        export_checkpoint(control)?;
         if !group.filters().is_empty() {
             let bbox = group.abs_layer_bounding_box();
             bounds.push((
@@ -1595,6 +1832,7 @@ fn pdf_filtered_group_bounds(tree: &usvg::Tree) -> Vec<(f64, f64)> {
             continue;
         }
         for node in group.children() {
+            export_checkpoint(control)?;
             match node {
                 usvg::Node::Group(child) => stack.push((child, coordinate_scale)),
                 usvg::Node::Image(image) => {
@@ -1608,13 +1846,20 @@ fn pdf_filtered_group_bounds(tree: &usvg::Tree) -> Vec<(f64, f64)> {
             }
         }
     }
-    bounds
+    Ok(bounds)
 }
 
 #[cfg(feature = "pdf")]
-fn pdf_filter_pixels(bounds: &[(f64, f64)], page_scale: f32, filter_scale: f32) -> u64 {
+fn pdf_filter_pixels(
+    bounds: &[(f64, f64)],
+    page_scale: f32,
+    filter_scale: f32,
+    control: &OperationControl,
+) -> Result<u64> {
     let scale = f64::from(page_scale) * f64::from(filter_scale);
-    bounds.iter().fold(0_u64, |total, &(width, height)| {
+    let mut total = 0_u64;
+    for &(width, height) in bounds {
+        export_checkpoint(control)?;
         let requested_width = width * scale;
         let requested_height = height * scale;
         let cap = (KRILLA_MAX_FILTER_SIDE_PX / requested_width)
@@ -1622,8 +1867,9 @@ fn pdf_filter_pixels(bounds: &[(f64, f64)], page_scale: f32, filter_scale: f32) 
             .min(1.0);
         let width_px = (requested_width * cap).round().clamp(0.0, 5000.0) as u64;
         let height_px = (requested_height * cap).round().clamp(0.0, 5000.0) as u64;
-        total.saturating_add(width_px.saturating_mul(height_px))
-    })
+        total = total.saturating_add(width_px.saturating_mul(height_px));
+    }
+    Ok(total)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -1636,7 +1882,7 @@ struct EmbeddedDataPlan {
 
 #[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<EmbeddedDataPlan> {
-    plan_embedded_data_resources_with_occurrences(svg, &[], limit)
+    plan_embedded_data_resources_with_occurrences(svg, &[], limit, &OperationControl::new())
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -1644,6 +1890,7 @@ fn plan_embedded_data_resources_with_occurrences(
     svg: &str,
     raw_element_occurrences: &[usize],
     limit: EmbeddedImageLimit,
+    control: &OperationControl,
 ) -> Result<EmbeddedDataPlan> {
     use quick_xml::XmlVersion;
     use quick_xml::events::Event;
@@ -1653,6 +1900,7 @@ fn plan_embedded_data_resources_with_occurrences(
     let mut plan = EmbeddedDataPlan::default();
     let mut element_index = 0usize;
     loop {
+        export_checkpoint(control)?;
         let event = reader.read_event().map_err(|_| ExportError::SvgParse)?;
         let (element, occurrences) = match event {
             Event::Start(element) | Event::Empty(element) => {
@@ -1676,6 +1924,7 @@ fn plan_embedded_data_resources_with_occurrences(
         };
 
         for attribute in element.attributes() {
+            export_checkpoint(control)?;
             let attribute = attribute.map_err(|_| ExportError::SvgParse)?;
             if !attribute
                 .key
@@ -1696,6 +1945,10 @@ fn plan_embedded_data_resources_with_occurrences(
             let mut limit_error = None;
             let occurrences = occurrences as u64;
             let _ = data_url.decode(|chunk| {
+                if let Err(cancelled) = control.checkpoint_at(OperationPhase::Export) {
+                    limit_error = Some(ExportError::Cancelled(cancelled));
+                    return Err(());
+                }
                 resource_bytes = resource_bytes.saturating_add(chunk.len() as u64);
                 let aggregate = plan
                     .total_bytes
@@ -1751,6 +2004,7 @@ fn plan_embedded_images(
     tree: &usvg::Tree,
     limit: EmbeddedImageLimit,
     data: EmbeddedDataPlan,
+    control: &OperationControl,
 ) -> Result<EmbeddedImagePlan> {
     validate_embedded_image_limit(limit)?;
     let mut plan = EmbeddedImagePlan {
@@ -1761,7 +2015,7 @@ fn plan_embedded_images(
         largest_raster_pixels: 0,
         total_pixels: 0,
     };
-    plan_embedded_images_in_group(tree.root(), limit, &mut plan)?;
+    plan_embedded_images_in_group(tree.root(), limit, &mut plan, control)?;
     Ok(plan)
 }
 
@@ -1770,10 +2024,13 @@ fn plan_embedded_images_in_group(
     root: &usvg::Group,
     limit: EmbeddedImageLimit,
     plan: &mut EmbeddedImagePlan,
+    control: &OperationControl,
 ) -> Result<()> {
     let mut stack = vec![root];
     while let Some(group) = stack.pop() {
+        export_checkpoint(control)?;
         for node in group.children() {
+            export_checkpoint(control)?;
             match node {
                 usvg::Node::Group(child) => stack.push(child),
                 usvg::Node::Image(image) => match image.kind() {
@@ -1815,7 +2072,7 @@ fn plan_embedded_images_in_group(
             let mut subroot_result = Ok(());
             node.subroots(|subroot| {
                 if subroot_result.is_ok() {
-                    subroot_result = plan_embedded_images_in_group(subroot, limit, plan);
+                    subroot_result = plan_embedded_images_in_group(subroot, limit, plan, control);
                 }
             });
             subroot_result?;
@@ -1897,12 +2154,13 @@ struct RootSvgMetadata {
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn parse_root_svg_metadata(svg: &str) -> Result<RootSvgMetadata> {
+fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<RootSvgMetadata> {
     use quick_xml::{XmlVersion, events::Event, name::ResolveResult, reader::NsReader};
 
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     loop {
+        export_checkpoint(control)?;
         let event = reader.read_event().map_err(|_| ExportError::SvgParse)?;
         let element = match event {
             Event::Start(element) | Event::Empty(element) => element,
@@ -1925,6 +2183,7 @@ fn parse_root_svg_metadata(svg: &str) -> Result<RootSvgMetadata> {
         let mut view_box_seen = false;
         let mut style_seen = false;
         for attribute in element.attributes() {
+            export_checkpoint(control)?;
             let attribute = attribute.map_err(|_| ExportError::SvgParse)?;
             if attribute.key.as_namespace_binding().is_some() {
                 continue;
@@ -1957,7 +2216,7 @@ fn parse_root_svg_metadata(svg: &str) -> Result<RootSvgMetadata> {
                 // `style` declaration list only from the unbound XML attribute.
                 b"style" if is_unbound_attribute && !style_seen => {
                     style_seen = true;
-                    metadata.max_width_px = parse_inline_max_width_px(value.as_ref());
+                    metadata.max_width_px = parse_inline_max_width_px(value.as_ref(), control)?;
                 }
                 _ => {}
             }
@@ -1981,12 +2240,13 @@ fn has_valid_svg_view_box(value: &str) -> bool {
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn parse_inline_max_width_px(style: &str) -> Option<f32> {
+fn parse_inline_max_width_px(style: &str, control: &OperationControl) -> Result<Option<f32>> {
     let mut input = ParserInput::new(style);
     let mut parser = Parser::new(&mut input);
     let mut max_width = None;
 
     while !parser.is_exhausted() {
+        export_checkpoint(control)?;
         let declaration = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
             let property = declaration.expect_ident_cloned()?;
             declaration.expect_colon()?;
@@ -2012,7 +2272,7 @@ fn parse_inline_max_width_px(style: &str) -> Option<f32> {
             max_width = Some(value);
         }
     }
-    max_width
+    Ok(max_width)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -2073,7 +2333,12 @@ fn raster_geometry_for_svg(metadata: RootSvgMetadata, tree: &usvg::Tree) -> (Ras
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn raster_plan_for_geometry(geo: RasterGeometry, options: &RasterOptions) -> Result<RasterPlan> {
+fn raster_plan_for_geometry(
+    geo: RasterGeometry,
+    options: &RasterOptions,
+    control: &OperationControl,
+) -> Result<RasterPlan> {
+    export_checkpoint(control)?;
     if !(options.scale.is_finite() && options.scale > 0.0) {
         return Err(ExportError::InvalidScale);
     }
@@ -2108,6 +2373,7 @@ fn raster_plan_for_geometry(geo: RasterGeometry, options: &RasterOptions) -> Res
 
     if let Some(max_pixels) = options.size_limit.max_pixels {
         for _ in 0..8 {
+            export_checkpoint(control)?;
             if u64::from(width_px) * u64::from(height_px) <= max_pixels {
                 break;
             }
@@ -2590,6 +2856,70 @@ mod png_feature_tests {
 
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
+
+    #[test]
+    fn controlled_png_preserves_successful_bytes() {
+        let svg = compatible_svg();
+        let legacy = svg_to_png(&svg, &RasterOptions::default()).expect("legacy PNG export");
+        let controlled =
+            svg_to_png_controlled(&svg, &RasterOptions::default(), OperationControl::new())
+                .expect("controlled PNG export");
+
+        assert_eq!(controlled, legacy);
+    }
+
+    #[test]
+    fn pre_cancelled_png_returns_no_prepared_artifact_or_bytes() {
+        let svg = compatible_svg();
+        let control = OperationControl::new();
+        control.cancel();
+
+        let prepared_error =
+            prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone())
+                .err()
+                .expect("pre-cancelled preparation must fail");
+        assert!(matches!(
+            prepared_error,
+            ExportError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Export,
+                ..
+            })
+        ));
+        assert!(prepared_error.resource_limit_details().is_none());
+
+        let bytes_error = svg_to_png_controlled(&svg, &RasterOptions::default(), control)
+            .err()
+            .expect("pre-cancelled encoding must fail");
+        assert!(matches!(
+            bytes_error,
+            ExportError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Export,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn cancellation_after_preparation_returns_no_png_bytes() {
+        let svg = compatible_svg();
+        let control = OperationControl::new();
+        let prepared = prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone())
+            .expect("preparation should succeed before cancellation");
+        control.cancel();
+
+        let error = prepared
+            .encode_png()
+            .err()
+            .expect("cancelled encoding must not return bytes");
+        assert!(matches!(
+            error,
+            ExportError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Export,
+                ..
+            })
+        ));
+        assert!(error.resource_limit_details().is_none());
+    }
 }
 
 #[cfg(all(test, feature = "jpeg"))]
@@ -2614,6 +2944,25 @@ mod jpeg_feature_tests {
 
         assert!(bytes.starts_with(b"\xff\xd8\xff"));
     }
+
+    #[test]
+    fn pre_cancelled_jpeg_returns_no_bytes() {
+        let svg = compatible_svg();
+        let control = OperationControl::new();
+        control.cancel();
+
+        let error = svg_to_jpeg_controlled(&svg, &RasterOptions::default(), control)
+            .err()
+            .expect("pre-cancelled JPEG encoding must fail");
+        assert!(matches!(
+            error,
+            ExportError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Export,
+                ..
+            })
+        ));
+        assert!(error.resource_limit_details().is_none());
+    }
 }
 
 #[cfg(all(test, any(feature = "png", feature = "jpeg")))]
@@ -2624,6 +2973,7 @@ mod root_svg_metadata_tests {
     fn metadata_reads_only_the_root_svg_attributes() {
         let metadata = parse_root_svg_metadata(
             r#"<svg xmlns="http://www.w3.org/2000/svg" style="content: 'max-width: 9000px'; max-width: 400px"><g viewBox="0 0 9000 9000"/><text>viewBox=&quot;0 0 8000 8000&quot;</text></svg>"#,
+            &OperationControl::new(),
         )
         .expect("root SVG metadata");
 
@@ -2635,6 +2985,7 @@ mod root_svg_metadata_tests {
     fn metadata_uses_svg_number_and_css_token_grammar() {
         let metadata = parse_root_svg_metadata(
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1.5-2,41.5,120 trailing" style="max-width: 400px nonsense"/>"#,
+            &OperationControl::new(),
         )
         .expect("root SVG metadata");
 
@@ -2646,6 +2997,7 @@ mod root_svg_metadata_tests {
     fn metadata_ignores_unknown_namespaces_and_uses_first_usvg_projection() {
         let metadata = parse_root_svg_metadata(
             r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="urn:ignored" xmlns:s="http://www.w3.org/2000/svg" i:viewBox="0 0 9000 9000" s:viewBox="invalid" viewBox="0 0 20 10" i:style="max-width: 9000px" s:style="max-width: 200px" style="max-width: 400px"/>"#,
+            &OperationControl::new(),
         )
         .expect("root SVG metadata");
 
@@ -2682,6 +3034,36 @@ mod pdf_feature_tests {
             .expect("PDF export should be callable when its leaf is enabled");
 
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn pre_cancelled_pdf_returns_no_prepared_artifact_or_bytes() {
+        let svg = compatible_svg();
+        let control = OperationControl::new();
+        control.cancel();
+
+        let prepared_error = prepare_pdf_controlled(&svg, &PdfOptions::default(), control.clone())
+            .err()
+            .expect("pre-cancelled PDF preparation must fail");
+        assert!(matches!(
+            prepared_error,
+            ExportError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Export,
+                ..
+            })
+        ));
+        assert!(prepared_error.resource_limit_details().is_none());
+
+        let bytes_error = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)
+            .err()
+            .expect("pre-cancelled PDF encoding must fail");
+        assert!(matches!(
+            bytes_error,
+            ExportError::Cancelled(OperationCancelled {
+                phase: OperationPhase::Export,
+                ..
+            })
+        ));
     }
 }
 

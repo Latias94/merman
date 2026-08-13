@@ -837,7 +837,7 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
         crate::diagrams::state::parse_state_json_and_editor_facts(
             input,
             &standalone.meta,
-            &crate::ParseControl::new(),
+            &crate::OperationControl::new(),
         ),
     )
     .expect("combined State parse succeeds");

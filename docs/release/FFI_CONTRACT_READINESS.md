@@ -15,7 +15,8 @@ sets and release evidence differ.
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 1. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
-partial-table consumers are no longer a supported SDK target. UniFFI is API 4. Source SDK
+partial-table consumers are no longer a supported SDK target. UniFFI is API 4 and includes
+operation-scoped cancellation/deadline controls with structured terminal details. Source SDK
 breaks do not retain compatibility aliases.
 
 ## Dependency boundary

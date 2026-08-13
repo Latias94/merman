@@ -1,12 +1,20 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{HeadlessRenderer, RenderResourcePolicy};
+use merman::resources::InputResourcePolicy;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn render(source: &str) -> String {
-    HeadlessRenderer::new()
-        .render_svg_sync(source)
-        .expect("ZenUML render must succeed")
-        .expect("ZenUML must produce SVG")
+    let output = Renderer::new()
+        .render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            SvgRequest::default(),
+        ))
+        .expect("ZenUML render must succeed");
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("ZenUML must produce SVG");
+    };
+    svg.into_parts().0
 }
 
 const ADVANCED: &str = r#"zenuml
@@ -34,16 +42,20 @@ OrderController.post(payload) {
 "#;
 
 #[test]
-fn advanced_zenuml_is_a_first_class_typed_headless_render() {
-    let renderer = HeadlessRenderer::new();
-    let prepared = renderer
-        .prepare_render_sync(ADVANCED)
+fn advanced_zenuml_is_a_first_class_typed_render() {
+    let renderer = Renderer::new();
+    let semantic = renderer
+        .prepare_semantic(ADVANCED, OperationControl::new())
         .expect("ZenUML preparation must succeed")
         .expect("ZenUML must be detected");
-    assert_eq!(prepared.family_kind().as_str(), "zenuml");
-    let svg = prepared
-        .render_svg(&Default::default())
+    assert_eq!(semantic.semantic_kind(), "zenuml");
+    let output = semantic
+        .render(merman::RenderTarget::Svg(SvgRequest::default()))
         .expect("ZenUML SVG must render");
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("ZenUML must produce SVG");
+    };
+    let svg = svg.svg();
     assert!(svg.contains("participant-group"), "{svg}");
     assert!(svg.contains("fragment-par"), "{svg}");
     assert!(svg.contains("fragment-separator"), "{svg}");
@@ -54,39 +66,57 @@ fn advanced_zenuml_is_a_first_class_typed_headless_render() {
 
 #[test]
 fn invalid_zenuml_does_not_poison_the_next_render() {
-    let renderer = HeadlessRenderer::new();
-    let invalid = renderer.render_svg_sync("zenuml\n@Starter(A)\nif( {\n");
+    let renderer = Renderer::new();
+    let invalid = renderer.render(RenderRequest::svg(
+        "zenuml\n@Starter(A)\nif( {\n",
+        OperationControl::new(),
+        SvgRequest::default(),
+    ));
     assert!(
         invalid.is_err(),
         "invalid ZenUML must return a structured error"
     );
     let valid = renderer
-        .render_svg_sync("zenuml\nA->B: hello\n")
-        .expect("next render must not inherit parser state")
-        .expect("valid ZenUML must render");
-    assert!(valid.contains("hello"), "{valid}");
+        .render(RenderRequest::svg(
+            "zenuml\nA->B: hello\n",
+            OperationControl::new(),
+            SvgRequest::default(),
+        ))
+        .expect("next render must not inherit parser state");
+    let RenderOutput::Svg(Some(valid)) = valid else {
+        panic!("valid ZenUML must render");
+    };
+    assert!(valid.svg().contains("hello"), "{}", valid.svg());
 }
 
 #[test]
 fn zenuml_labels_are_xml_escaped_at_the_family_boundary() {
     let source = "zenuml\nA->B: <script>alert(1)</script>\n";
-    let svg = HeadlessRenderer::new()
-        .render_svg_sync(source)
-        .expect("source should render")
-        .expect("ZenUML SVG should exist");
+    let svg = render(source);
     assert!(!svg.contains("<script>"), "{svg}");
     assert!(svg.contains("&lt;script>"), "{svg}");
 }
 
 #[test]
 fn zenuml_honors_the_shared_label_resource_budget_before_layout() {
-    let renderer = HeadlessRenderer::new().with_resource_policy(
-        RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::svg::ResourceLimitId::MaxModelTextBytes, 4)
-            .unwrap(),
-    );
+    let renderer = Renderer::new();
+    let resources = InputResourcePolicy::for_profile(
+        merman::resources::ResourceProfile::UnboundedForTrustedInput,
+    )
+    .with_limit(
+        merman::resources::InputResourceLimitId::MaxModelTextBytes,
+        4,
+    )
+    .unwrap();
     let error = renderer
-        .render_svg_sync("zenuml\nA->B: a label beyond the budget\n")
+        .render(
+            RenderRequest::svg(
+                "zenuml\nA->B: a label beyond the budget\n",
+                OperationControl::new(),
+                SvgRequest::default(),
+            )
+            .with_resource_policy(resources),
+        )
         .expect_err("ZenUML must honor the shared label budget");
     assert!(
         error.to_string().contains("max_model_text_bytes"),
@@ -96,13 +126,21 @@ fn zenuml_honors_the_shared_label_resource_budget_before_layout() {
 
 #[test]
 fn zenuml_honors_its_structural_resource_budget_before_layout() {
-    let renderer = HeadlessRenderer::new().with_resource_policy(
-        RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(merman::svg::ResourceLimitId::MaxModelItems, 1)
-            .unwrap(),
-    );
+    let renderer = Renderer::new();
+    let resources = InputResourcePolicy::for_profile(
+        merman::resources::ResourceProfile::UnboundedForTrustedInput,
+    )
+    .with_limit(merman::resources::InputResourceLimitId::MaxModelItems, 1)
+    .unwrap();
     let error = renderer
-        .render_svg_sync("zenuml\nA.call()\nB.call()\n")
+        .render(
+            RenderRequest::svg(
+                "zenuml\nA.call()\nB.call()\n",
+                OperationControl::new(),
+                SvgRequest::default(),
+            )
+            .with_resource_policy(resources),
+        )
         .expect_err("ZenUML must honor its family-owned statement budget");
     assert!(error.to_string().contains("max_model_items"), "{error}");
 }
