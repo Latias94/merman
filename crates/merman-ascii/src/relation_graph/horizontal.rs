@@ -13,7 +13,7 @@ use crate::resource::{LogicalExtent, ResourceContext};
 
 mod collision;
 
-use collision::{HorizontalEdgeGeometry, VerticalOwnershipSpan};
+use collision::{CompatibleSharedEndpoints, HorizontalEdgeGeometry, VerticalOwnershipSpan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RelationGraphHorizontalDirection {
@@ -781,15 +781,40 @@ fn horizontal_edge_geometry(
     })
 }
 
-fn horizontal_edge_ownership_differs(
+fn horizontal_edge_endpoint(
+    edge: &HorizontalEdgePlan,
+    node_index: usize,
+) -> Option<&HorizontalRelationEndpoint> {
+    if edge.source_index == node_index {
+        Some(&edge.style.source)
+    } else if edge.target_index == node_index {
+        Some(&edge.style.target)
+    } else {
+        None
+    }
+}
+
+fn compatible_shared_endpoints(
     left: &HorizontalEdgePlan,
     right: &HorizontalEdgePlan,
-) -> bool {
-    left.style.horizontal != right.style.horizontal
-        || left.style.vertical != right.style.vertical
-        || left.style.line_chars != right.style.line_chars
-        || left.style.source.marker != right.style.source.marker
-        || left.style.target.marker != right.style.target.marker
+) -> CompatibleSharedEndpoints {
+    let mut compatible = CompatibleSharedEndpoints::default();
+    for node_index in [left.source_index, left.target_index] {
+        let Some(left_endpoint) = horizontal_edge_endpoint(left, node_index) else {
+            continue;
+        };
+        let Some(right_endpoint) = horizontal_edge_endpoint(right, node_index) else {
+            continue;
+        };
+        let same_endpoint_paint = left_endpoint.marker == right_endpoint.marker
+            && left.style.horizontal == right.style.horizontal
+            && left.style.vertical == right.style.vertical
+            && left.style.line_chars == right.style.line_chars;
+        if same_endpoint_paint {
+            compatible = compatible.add(node_index);
+        }
+    }
+    compatible
 }
 
 fn horizontal_edge_owners_overlap(
@@ -815,12 +840,11 @@ fn horizontal_edge_owners_overlap(
     resources.charge_layout_work(pair_count)?;
     for left_index in 0..edges.len() {
         for right_index in (left_index + 1)..edges.len() {
-            let compatible_shared_endpoint_ownership =
-                !horizontal_edge_ownership_differs(&edges[left_index], &edges[right_index]);
-            if geometries[left_index].has_owner_collision_with(
-                geometries[right_index],
-                compatible_shared_endpoint_ownership,
-            ) {
+            let compatible_shared_endpoints =
+                compatible_shared_endpoints(&edges[left_index], &edges[right_index]);
+            if geometries[left_index]
+                .has_owner_collision_with(geometries[right_index], compatible_shared_endpoints)
+            {
                 return Ok(true);
             }
         }
@@ -1126,5 +1150,66 @@ mod tests {
                     && details.actual == exact_work
                     && details.max == exact_work - 1
         ));
+    }
+
+    #[test]
+    fn shared_endpoint_compatibility_ignores_remote_marker_differences() {
+        let left = test_edge_plan(0, 1, "shared", "left-remote", 2);
+        let mut right = test_edge_plan(0, 2, "shared", "right-remote", 4);
+
+        assert_eq!(
+            compatible_shared_endpoints(&left, &right),
+            CompatibleSharedEndpoints::single(0)
+        );
+
+        right.style.source.marker = test_marker("different-shared-marker");
+        assert_eq!(
+            compatible_shared_endpoints(&left, &right),
+            CompatibleSharedEndpoints::default(),
+            "a marker difference at the shared endpoint must remain a conservative collision"
+        );
+    }
+
+    #[test]
+    fn shared_endpoint_compatibility_uses_the_physical_node_across_relation_direction() {
+        let incoming = test_edge_plan(0, 1, "incoming-remote", "shared", 2);
+        let outgoing = test_edge_plan(1, 2, "shared", "outgoing-remote", 4);
+
+        assert_eq!(
+            compatible_shared_endpoints(&incoming, &outgoing),
+            CompatibleSharedEndpoints::single(1),
+            "the shared physical node must match even when it is target on one edge and source on the other"
+        );
+    }
+
+    fn test_edge_plan(
+        source_index: usize,
+        target_index: usize,
+        source_marker: &str,
+        target_marker: &str,
+        lane_y: usize,
+    ) -> HorizontalEdgePlan {
+        HorizontalEdgePlan {
+            source_index,
+            target_index,
+            style: HorizontalRelationStyle::new(
+                HorizontalRelationEndpoint::new(test_marker(source_marker), None),
+                HorizontalRelationEndpoint::new(test_marker(target_marker), None),
+                None,
+                '-',
+                '|',
+                RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            ),
+            label_top: 0,
+            lane_y,
+        }
+    }
+
+    fn test_marker(text: &str) -> Option<HorizontalRelationMarker> {
+        Some(HorizontalRelationMarker::new(
+            text,
+            AsciiColorRole::EdgeArrow,
+            TerminalWidthProfile::Unicode,
+        ))
     }
 }

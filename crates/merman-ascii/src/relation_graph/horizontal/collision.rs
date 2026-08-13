@@ -17,6 +17,43 @@ pub(super) struct HorizontalEdgeGeometry {
     pub(super) right_stem: VerticalOwnershipSpan,
 }
 
+/// Records the physical endpoints that two edges can safely share.
+///
+/// Compatibility belongs to an endpoint rather than the whole relation: a marker on the remote
+/// lane must not contaminate ownership of the shared stem. Two edges can share at most two
+/// physical endpoints, so a fixed-size representation avoids allocation in the O(E²) scan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct CompatibleSharedEndpoints {
+    first: Option<usize>,
+    second: Option<usize>,
+}
+
+impl CompatibleSharedEndpoints {
+    #[cfg(test)]
+    pub(super) fn single(node_index: usize) -> Self {
+        Self {
+            first: Some(node_index),
+            second: None,
+        }
+    }
+
+    pub(super) fn add(mut self, node_index: usize) -> Self {
+        if self.contains(node_index) {
+            return self;
+        }
+        if self.first.is_none() {
+            self.first = Some(node_index);
+        } else if self.second.is_none() {
+            self.second = Some(node_index);
+        }
+        self
+    }
+
+    fn contains(self, node_index: usize) -> bool {
+        self.first == Some(node_index) || self.second == Some(node_index)
+    }
+}
+
 impl HorizontalEdgeGeometry {
     fn vertical_stems(self) -> [VerticalOwnershipSpan; 2] {
         [self.left_stem, self.right_stem]
@@ -25,25 +62,26 @@ impl HorizontalEdgeGeometry {
     pub(super) fn has_owner_collision_with(
         self,
         other: Self,
-        compatible_shared_endpoint_ownership: bool,
+        compatible_shared_endpoints: CompatibleSharedEndpoints,
     ) -> bool {
         self.vertical_stems().into_iter().any(|stem| {
-            other.horizontal_conflicts_with_vertical(stem, compatible_shared_endpoint_ownership)
+            other.horizontal_conflicts_with_vertical(stem, compatible_shared_endpoints)
                 || other.vertical_stems().into_iter().any(|other_stem| {
-                    vertical_stems_conflict(stem, other_stem, compatible_shared_endpoint_ownership)
+                    vertical_stems_conflict(stem, other_stem, compatible_shared_endpoints)
                 })
-        }) || other.vertical_stems().into_iter().any(|stem| {
-            self.horizontal_conflicts_with_vertical(stem, compatible_shared_endpoint_ownership)
-        })
+        }) || other
+            .vertical_stems()
+            .into_iter()
+            .any(|stem| self.horizontal_conflicts_with_vertical(stem, compatible_shared_endpoints))
     }
 
     fn horizontal_conflicts_with_vertical(
         self,
         stem: VerticalOwnershipSpan,
-        compatible_shared_endpoint_ownership: bool,
+        compatible_shared_endpoints: CompatibleSharedEndpoints,
     ) -> bool {
         self.horizontal_owns_vertical(stem)
-            && !(compatible_shared_endpoint_ownership
+            && !(compatible_shared_endpoints.contains(stem.node_index)
                 && self.owns_endpoint(stem.node_index, stem.x))
     }
 
@@ -63,10 +101,11 @@ impl HorizontalEdgeGeometry {
 fn vertical_stems_conflict(
     left: VerticalOwnershipSpan,
     right: VerticalOwnershipSpan,
-    compatible_shared_endpoint_ownership: bool,
+    compatible_shared_endpoints: CompatibleSharedEndpoints,
 ) -> bool {
     stems_overlap(left, right)
-        && !(compatible_shared_endpoint_ownership && left.node_index == right.node_index)
+        && !(compatible_shared_endpoints.contains(left.node_index)
+            && left.node_index == right.node_index)
 }
 
 fn stems_overlap(left: VerticalOwnershipSpan, right: VerticalOwnershipSpan) -> bool {
@@ -82,8 +121,8 @@ mod tests {
         let short = geometry(0, 1, 2, 10, 8, 2);
         let long = geometry(0, 2, 4, 20, 8, 4);
 
-        assert!(!short.has_owner_collision_with(long, true));
-        assert!(short.has_owner_collision_with(long, false));
+        assert!(!short.has_owner_collision_with(long, CompatibleSharedEndpoints::single(0)));
+        assert!(short.has_owner_collision_with(long, CompatibleSharedEndpoints::default()));
     }
 
     #[test]
@@ -100,7 +139,21 @@ mod tests {
             ..short
         };
 
-        assert!(short_with_remote_stem_inside_long_lane.has_owner_collision_with(long, true));
+        assert!(
+            short_with_remote_stem_inside_long_lane
+                .has_owner_collision_with(long, CompatibleSharedEndpoints::single(0),)
+        );
+    }
+
+    #[test]
+    fn both_shared_endpoints_can_be_exempted_independently() {
+        let first = geometry(0, 1, 2, 10, 8, 8);
+        let second = geometry(0, 1, 4, 10, 8, 8);
+
+        assert!(
+            !first.has_owner_collision_with(second, CompatibleSharedEndpoints::single(0).add(1),)
+        );
+        assert!(first.has_owner_collision_with(second, CompatibleSharedEndpoints::single(0),));
     }
 
     fn geometry(
