@@ -179,6 +179,11 @@ pub(crate) struct FlowchartNodeThemeEmission {
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FlowchartEdgeThemeEmission {
+    pub(crate) stroke: FlowchartThemeFacetEmission,
+}
+
 impl FlowchartNodeThemeEmission {
     #[cfg(test)]
     const fn none() -> Self {
@@ -201,6 +206,94 @@ struct FlowchartNodeLabelThemeStyle {
     matched_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct FlowchartEdgeThemeStyle {
+    stroke: Option<FlowchartPaintOutcome>,
+    matched_rules: BTreeSet<usize>,
+    residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
+    incomplete_rules: BTreeSet<usize>,
+}
+
+impl FlowchartEdgeThemeStyle {
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, ResourceLimitExceeded> {
+        let Some(theme) = theme else {
+            return Ok(Self::default());
+        };
+        let style = theme.style_with_work_meter(
+            ThemeTarget::Edge,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
+        let mut resolved = Self::default();
+        resolved.matched_rules.extend(style.matched_rule_indices());
+
+        for (property, origin) in style.winner_rule_properties() {
+            let rule_index = origin.rule_index();
+            match property {
+                ResolvedStyleProperty::Stroke => {
+                    resolved.stroke = resolve_paint(
+                        theme,
+                        rule_index,
+                        style.stroke_resolution(),
+                        FamilyThemeRuleFacet::stroke,
+                    );
+                }
+                ResolvedStyleProperty::Fill => {
+                    if let Some(facet) =
+                        FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
+                    {
+                        record_incomplete_edge_facet(theme, &mut resolved, rule_index, facet);
+                    } else {
+                        resolved.incomplete_rules.insert(rule_index);
+                    }
+                }
+                ResolvedStyleProperty::Typography(property) => record_incomplete_edge_facet(
+                    theme,
+                    &mut resolved,
+                    rule_index,
+                    FamilyThemeRuleFacet::Typography(property),
+                ),
+                ResolvedStyleProperty::Effect => record_incomplete_edge_facet(
+                    theme,
+                    &mut resolved,
+                    rule_index,
+                    FamilyThemeRuleFacet::Effect,
+                ),
+                ResolvedStyleProperty::StrokeWidth
+                | ResolvedStyleProperty::StrokeDasharray
+                | ResolvedStyleProperty::StrokeLinecap
+                | ResolvedStyleProperty::StrokeLinejoin
+                | ResolvedStyleProperty::Opacity
+                | ResolvedStyleProperty::FillOpacity
+                | ResolvedStyleProperty::StrokeOpacity
+                | ResolvedStyleProperty::Radius
+                | ResolvedStyleProperty::Padding => record_incomplete_edge_facet(
+                    theme,
+                    &mut resolved,
+                    rule_index,
+                    non_paint_facet(property),
+                ),
+            }
+        }
+
+        Ok(resolved)
+    }
+
+    pub(crate) fn stroke_value(
+        &self,
+        precedence: FlowchartFacetPrecedence,
+        path_emitted: bool,
+    ) -> Option<&str> {
+        (!precedence.overrides_theme() && path_emitted)
+            .then(|| self.stroke.as_ref().and_then(FlowchartPaintOutcome::value))
+            .flatten()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -715,6 +808,26 @@ fn record_incomplete_label_facet(
     }
 }
 
+fn record_incomplete_edge_facet(
+    theme: &ResolvedDiagramTheme,
+    resolved: &mut FlowchartEdgeThemeStyle,
+    rule_index: usize,
+    facet: FamilyThemeRuleFacet,
+) {
+    match theme.rule_facet_disposition(rule_index, facet) {
+        None | Some(FamilyThemeDisposition::LegacyCompatibility) => {}
+        Some(FamilyThemeDisposition::TypedAdapter) => {
+            resolved.incomplete_rules.insert(rule_index);
+        }
+        Some(FamilyThemeDisposition::Unsupported) => {
+            resolved
+                .residual_rules
+                .entry(rule_index)
+                .or_insert(unsupported_reason_for_facet(facet));
+        }
+    }
+}
+
 fn unsupported_reason_for_facet(facet: FamilyThemeRuleFacet) -> FamilyThemeResidualReason {
     match facet {
         FamilyThemeRuleFacet::Typography(_) => FamilyThemeResidualReason::UnsupportedTypography,
@@ -747,6 +860,7 @@ struct FlowchartRuleEvidenceState {
     matched_rules: BTreeSet<usize>,
     applied_rules: BTreeSet<usize>,
     applied_rule_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
+    unverified_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
 }
@@ -755,6 +869,7 @@ struct FlowchartRuleEvidenceState {
 struct FlowchartThemeEvidenceState {
     node: FlowchartRuleEvidenceState,
     node_label: FlowchartRuleEvidenceState,
+    edge: FlowchartRuleEvidenceState,
     node_ordinal_palette: FlowchartMechanismObservation,
     source_residuals: BTreeMap<FlowchartSourceResidualKey, SourceStyleResidual>,
 }
@@ -929,6 +1044,41 @@ impl FlowchartThemeEvidenceRecorder {
         insert_source_residuals(&mut state, source_residuals);
     }
 
+    pub(crate) fn record_edge_emission(
+        &self,
+        style: &FlowchartEdgeThemeStyle,
+        emission: FlowchartEdgeThemeEmission,
+        source_residuals: &[SourceStyleResidual],
+    ) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.edge.emitted = true;
+        state
+            .edge
+            .matched_rules
+            .extend(style.matched_rules.iter().copied());
+        for (rule_index, reason) in &style.residual_rules {
+            state
+                .edge
+                .residual_rules
+                .entry(*rule_index)
+                .or_insert(*reason);
+        }
+        record_edge_paint_outcome(
+            &mut state.edge,
+            style.stroke.as_ref(),
+            emission.stroke.precedence,
+            emission.stroke.verified,
+        );
+        state
+            .edge
+            .incomplete_rules
+            .extend(style.incomplete_rules.iter().copied());
+        insert_source_residuals(&mut state, source_residuals);
+    }
+
     pub(crate) fn finish(
         &self,
         theme: Option<&ResolvedDiagramTheme>,
@@ -1014,6 +1164,7 @@ impl FlowchartThemeEvidenceRecorder {
             let target_state = match target {
                 ThemeTarget::Node => &state.node,
                 ThemeTarget::NodeLabel => &state.node_label,
+                ThemeTarget::Edge => &state.edge,
                 _ => continue,
             };
             let key = FamilyThemeMechanismKey::Rule {
@@ -1027,6 +1178,10 @@ impl FlowchartThemeEvidenceRecorder {
             } else if target_state.incomplete_rules.contains(&rule_index) {
                 // A matching winner reached the family consumer, but this slice does not yet share
                 // enough source-shadow information to classify the facet without guessing.
+            } else if target_state.unverified_rules.contains(&rule_index) {
+                // Every applicable target must reach a terminal writer. An applied path cannot
+                // mask a second path whose consumption was not observed.
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
             } else if target_state.applied_rules.contains(&rule_index) {
                 evidence.mark_applied_with_capabilities(
                     key,
@@ -1094,6 +1249,38 @@ fn record_paint_outcome(
                 } else {
                     ThemeCapability::SolidPaint
                 });
+        }
+        Some(FlowchartPaintOutcome::Residual { rule_index, reason }) => {
+            state.residual_rules.entry(*rule_index).or_insert(*reason);
+        }
+        None => {}
+    }
+}
+
+fn record_edge_paint_outcome(
+    state: &mut FlowchartRuleEvidenceState,
+    outcome: Option<&FlowchartPaintOutcome>,
+    precedence: FlowchartFacetPrecedence,
+    channel_emitted: bool,
+) {
+    if precedence.overrides_theme() {
+        return;
+    }
+    match outcome {
+        Some(FlowchartPaintOutcome::Candidate { rule_index, value }) if channel_emitted => {
+            state.applied_rules.insert(*rule_index);
+            state
+                .applied_rule_capabilities
+                .entry(*rule_index)
+                .or_default()
+                .insert(if value == "none" {
+                    ThemeCapability::TransparentPaint
+                } else {
+                    ThemeCapability::SolidPaint
+                });
+        }
+        Some(FlowchartPaintOutcome::Candidate { rule_index, .. }) => {
+            state.unverified_rules.insert(*rule_index);
         }
         Some(FlowchartPaintOutcome::Residual { rule_index, reason }) => {
             state.residual_rules.entry(*rule_index).or_insert(*reason);
@@ -1267,6 +1454,33 @@ mod tests {
             )
             .expect("compile Flowchart theme")
             .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
+    fn resolved_edge_stroke_theme() -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::FLOWCHART),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart Edge stroke theme")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
+    fn edge_emission(
+        precedence: FlowchartFacetPrecedence,
+        verified: bool,
+    ) -> FlowchartEdgeThemeEmission {
+        FlowchartEdgeThemeEmission {
+            stroke: FlowchartThemeFacetEmission::new(precedence, verified),
+        }
     }
 
     #[test]
@@ -1976,8 +2190,8 @@ mod tests {
     }
 
     #[test]
-    fn unobserved_non_node_rule_remains_unaccounted() {
-        let theme = resolved_theme(ThemeTarget::Edge);
+    fn unobserved_edge_rule_is_not_applicable() {
+        let theme = resolved_edge_stroke_theme();
         let recorder = FlowchartThemeEvidenceRecorder::default();
         recorder.record_node_emission(
             &FlowchartNodeThemeStyle::default(),
@@ -1990,7 +2204,122 @@ mod tests {
         assert!(source_residuals.is_empty());
         assert!(evidence.applied().is_empty());
         assert!(evidence.residuals().is_empty());
-        assert!(evidence.not_applicable_mechanisms().is_empty());
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+    }
+
+    #[test]
+    fn verified_edge_stroke_is_applied_with_solid_paint_capability() {
+        let theme = resolved_edge_stroke_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge stroke");
+        let precedence = no_override();
+
+        assert_eq!(style.stroke_value(precedence, true), Some("#ef4444"));
+
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_edge_emission(&style, edge_emission(precedence, true), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert_eq!(
+            evidence.applied(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::SolidPaint])
+        );
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn source_or_mermaid_config_edge_stroke_makes_typed_rule_not_applicable() {
+        let theme = resolved_edge_stroke_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge stroke");
+
+        for precedence in [
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false),
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Unverified, false),
+            FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Absent, true),
+        ] {
+            assert_eq!(style.stroke_value(precedence, true), None);
+
+            let recorder = FlowchartThemeEvidenceRecorder::default();
+            recorder.record_edge_emission(&style, edge_emission(precedence, false), &[]);
+            let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+            assert!(source_residuals.is_empty());
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.residuals().is_empty());
+            assert_eq!(
+                evidence.not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Edge,
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn one_unverified_edge_path_keeps_rule_residual_after_an_applied_path() {
+        let theme = resolved_edge_stroke_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge stroke");
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+
+        recorder.record_edge_emission(&style, edge_emission(no_override(), false), &[]);
+        recorder.record_edge_emission(&style, edge_emission(no_override(), true), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
+    }
+
+    #[test]
+    fn edge_without_a_terminal_path_fails_closed() {
+        let theme = resolved_edge_stroke_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge stroke");
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+
+        recorder.record_edge_emission(&style, edge_emission(no_override(), false), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
     }
 
     #[test]

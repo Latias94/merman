@@ -1398,7 +1398,7 @@ mod tests {
             DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(
-                        ThemeTarget::Edge,
+                        ThemeTarget::Marker,
                         ThemeStylePatch::default().with_stroke(solid("#f8fafc")),
                     )
                     .for_family(DiagramFamilyId::FLOWCHART),
@@ -1753,13 +1753,41 @@ mod tests {
         );
         let cleared_marker = parse(&cleared_marker_spec, "flowchart LR\nA --> B\n");
 
-        assert_eq!(fallback_contribution_count(&cleared_marker), 1);
+        assert_eq!(fallback_contribution_count(&cleared_marker), 0);
         assert_ne!(
             cleared_marker
                 .effective_config
                 .get_str("themeVariables.arrowheadColor"),
             Some("#22c55e")
         );
+    }
+
+    #[test]
+    fn typed_flowchart_and_swimlane_edge_stroke_never_enters_legacy_marker_bridge() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            let spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+                    )
+                    .for_family(family),
+                ),
+            );
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+
+            assert!(artifact.overlay.is_empty());
+            assert!(artifact.contribution_ids.is_empty());
+            assert!(!bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.edge.stroke",
+                family.as_str()
+            )));
+            assert!(!bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.marker.paint",
+                family.as_str()
+            )));
+        }
     }
 
     #[test]

@@ -518,6 +518,25 @@ fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Edge
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::Node
         && matches!(
             selector,
@@ -949,6 +968,66 @@ mod tests {
         ] {
             assert_eq!(
                 compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule)[0].disposition(),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_and_swimlane_own_static_default_scalar_edge_stroke_only() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for paint in [
+                    CanvasPaint::Transparent,
+                    CanvasPaint::solid("#abcdef").expect("valid fixture color"),
+                ] {
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke(paint),
+                    );
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let routes = compile_rule_routes(family, 0, &rule);
+                    assert_eq!(routes.len(), 1);
+                    assert_eq!(
+                        routes[0].disposition(),
+                        FamilyThemeDisposition::TypedAdapter
+                    );
+                }
+            }
+
+            let legacy_fill = ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
+            );
+            assert_eq!(
+                compile_rule_routes(family, 0, &legacy_fill)[0].disposition(),
+                FamilyThemeDisposition::LegacyCompatibility
+            );
+
+            for rule in [
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default()
+                        .with_stroke(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
+                )
+                .with_variant(ThemeVariant::Active),
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default()
+                        .with_stroke(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
+                )
+                .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+            ] {
+                assert_eq!(
+                    compile_rule_routes(family, 0, &rule)[0].disposition(),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+            assert_eq!(
+                compile_ordinal_palette_route(family, ThemeTarget::Edge).disposition(),
                 FamilyThemeDisposition::Unsupported
             );
         }

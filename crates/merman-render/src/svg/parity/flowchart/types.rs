@@ -39,6 +39,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_border_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
+    pub(in crate::svg::parity::flowchart) edge_stroke_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
@@ -46,6 +47,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
+    pub(in crate::svg::parity::flowchart) edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,

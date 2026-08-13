@@ -13,6 +13,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     edge_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
 ) {
     let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
+    let data_look = flowchart_config_look(ctx.config);
+    let hand_drawn = data_look == "handDrawn";
+    let emitted_styles = flowchart_compile_styles(
+        ctx.class_defs,
+        &edge.classes,
+        &ctx.default_edge_style,
+        &edge.style,
+    );
+    let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+        emitted_styles.emitted_edge_source_stroke_status(hand_drawn),
+        ctx.edge_stroke_config_override,
+    );
+    let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
 
     let cached_geom = edge_cache
         .get(edge.id.as_str())
@@ -39,14 +52,24 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         g
     } else {
         let Some(g) = owned_geom.as_ref() else {
+            if ctx.resolved_theme.is_some() {
+                ctx.theme_evidence.record_edge_emission(
+                    &ctx.edge_theme,
+                    crate::flowchart::FlowchartEdgeThemeEmission {
+                        stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
+                            stroke_precedence,
+                            false,
+                        ),
+                    },
+                    &emitted_styles.emitted_shape_source_residuals(edge.id.as_str(), false),
+                );
+            }
             return;
         };
         g
     };
     let d = geom.d.as_str();
     let data_points_b64 = geom.data_points_b64.as_str();
-    let data_look = flowchart_config_look(ctx.config);
-    let hand_drawn = data_look == "handDrawn";
     let rough_d = if hand_drawn && !geom.line_hop_applied {
         super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
             d,
@@ -106,18 +129,43 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             &edge.style,
         );
         out.push_str(&scratch.style_escaped);
-    } else if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
-        out.push(';');
     } else {
-        scratch.style_escaped.clear();
-        write_style_joined(
-            &mut scratch.style_escaped,
-            &ctx.default_edge_style,
-            &edge.style,
-        );
-        out.push_str(&scratch.style_escaped);
-        out.push_str(";;;");
-        out.push_str(&scratch.style_escaped);
+        for (index, (property, value)) in emitted_styles
+            .emitted_edge_class_declarations()
+            .iter()
+            .enumerate()
+        {
+            if index != 0 {
+                out.push(';');
+            }
+            let _ = write!(
+                out,
+                "{}:{}",
+                escape_xml_display(property),
+                escape_xml_display(value)
+            );
+        }
+        if !emitted_styles.emitted_edge_class_declarations().is_empty() {
+            out.push(';');
+        }
+        if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
+            out.push(';');
+        } else {
+            scratch.style_escaped.clear();
+            write_style_joined(
+                &mut scratch.style_escaped,
+                &ctx.default_edge_style,
+                &edge.style,
+            );
+            out.push_str(&scratch.style_escaped);
+            out.push_str(";;;");
+            out.push_str(&scratch.style_escaped);
+        }
+    }
+    if let Some(stroke) = typed_stroke {
+        out.push_str(";stroke:");
+        let _ = write!(out, "{}", escape_xml_display(stroke));
+        out.push_str(" !important");
     }
     if hand_drawn {
         out.push_str(r##"" stroke="#000" stroke-width="1" fill="none"##);
@@ -153,15 +201,20 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     }
     out.push_str(" />");
 
-    let emitted_styles = flowchart_compile_styles(
-        ctx.class_defs,
-        &edge.classes,
-        &ctx.default_edge_style,
-        &edge.style,
-    );
-    ctx.theme_evidence.record_source_residuals(
-        &emitted_styles.emitted_shape_source_residuals(edge.id.as_str(), true),
-    );
+    let source_residuals =
+        emitted_styles.emitted_edge_source_residuals(edge.id.as_str(), hand_drawn);
+    if ctx.resolved_theme.is_some() || !source_residuals.is_empty() {
+        ctx.theme_evidence.record_edge_emission(
+            &ctx.edge_theme,
+            crate::flowchart::FlowchartEdgeThemeEmission {
+                stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
+                    stroke_precedence,
+                    typed_stroke.is_some(),
+                ),
+            },
+            &source_residuals,
+        );
+    }
     let inline_declaration_ordinal_base = edge
         .classes
         .iter()

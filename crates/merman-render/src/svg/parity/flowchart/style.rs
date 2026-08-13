@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub(in crate::svg::parity) struct FlowchartCompiledStyles {
+    edge_class_declarations: Vec<(String, String)>,
     pub(super) node_style: String,
     pub(super) label_style: String,
     pub(super) label_div_decls: Vec<(String, String)>,
@@ -184,6 +185,10 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeSourceEvidence {
 }
 
 impl FlowchartCompiledStyles {
+    pub(super) fn emitted_edge_class_declarations(&self) -> &[(String, String)] {
+        &self.edge_class_declarations
+    }
+
     pub(super) fn source_fill_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
         self.fill_source
             .as_ref()
@@ -194,6 +199,17 @@ impl FlowchartCompiledStyles {
     pub(super) fn source_stroke_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
         self.stroke_source
             .as_ref()
+            .map(SourceFacetDeclaration::status)
+            .unwrap_or(crate::flowchart::FlowchartSourceFacetStatus::Absent)
+    }
+
+    pub(super) fn emitted_edge_source_stroke_status(
+        &self,
+        hand_drawn: bool,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        self.stroke_source
+            .as_ref()
+            .filter(|source| !hand_drawn || source.provenance.is_inline())
             .map(SourceFacetDeclaration::status)
             .unwrap_or(crate::flowchart::FlowchartSourceFacetStatus::Absent)
     }
@@ -399,6 +415,33 @@ impl FlowchartCompiledStyles {
                     crate::diagram_theme::SourceStyleChannel::Shape,
                     false,
                 );
+                emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
+                    |reason| {
+                        crate::diagram_theme::SourceStyleResidual::from_declaration(
+                            &declaration,
+                            reason,
+                        )
+                    },
+                )
+            })
+            .collect()
+    }
+
+    pub(super) fn emitted_edge_source_residuals(
+        &self,
+        owner_id: &str,
+        hand_drawn: bool,
+    ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
+        self.shape_sources
+            .iter()
+            .filter(|source| !source.prepared.property().starts_with("--"))
+            .filter_map(|source| {
+                let declaration = source.bind(
+                    owner_id,
+                    crate::diagram_theme::SourceStyleChannel::Shape,
+                    false,
+                );
+                let source_style_verified = !hand_drawn || source.provenance.is_inline();
                 emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
                     |reason| {
                         crate::diagram_theme::SourceStyleResidual::from_declaration(
@@ -1184,6 +1227,7 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
 
     let mut semantic = SemanticMap::default();
     let mut emission = EmissionMap::default();
+    let mut edge_class_declarations = Vec::new();
 
     let mut declaration_ordinal = 0;
     for (assignment_ordinal, c) in classes.iter().enumerate() {
@@ -1200,6 +1244,14 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
                     continue;
                 };
                 let prepared = Arc::new(declaration);
+                if !crate::flowchart::flowchart_is_source_spelled_label_style_key(
+                    prepared.property_css(),
+                ) {
+                    edge_class_declarations.push((
+                        prepared.property_css().to_string(),
+                        prepared.source_value().to_string(),
+                    ));
+                }
                 emission.set(Arc::clone(&prepared));
                 semantic.set(
                     prepared,
@@ -1391,6 +1443,7 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
     }
 
     FlowchartCompiledStyles {
+        edge_class_declarations,
         node_style,
         label_style,
         label_div_decls,
@@ -1483,6 +1536,7 @@ mod tests {
 
     fn color_style(value: &str) -> FlowchartCompiledStyles {
         FlowchartCompiledStyles {
+            edge_class_declarations: Vec::new(),
             node_style: String::new(),
             label_style: String::new(),
             label_div_decls: vec![("color".to_string(), value.to_string())],
@@ -1533,6 +1587,36 @@ mod tests {
             styles.node_style,
             r"FILL:#ef4444 !important;stroke:#111827 !important;f\69ll:#22c55e !important"
         );
+    }
+
+    #[test]
+    fn edge_class_emission_reuses_compiled_source_declarations() {
+        let class_defs = IndexMap::from([(
+            "edge-source".to_string(),
+            vec![
+                "stroke:#2563eb,animation:dash 2s linear".to_string(),
+                "color:#f8fafc".to_string(),
+            ],
+        )]);
+        let styles = flowchart_compile_styles(
+            &class_defs,
+            &["edge-source".to_string()],
+            &["stroke-width:3px".to_string()],
+            &[],
+        );
+
+        assert_eq!(
+            styles.emitted_edge_class_declarations(),
+            &[
+                ("stroke".to_string(), "#2563eb".to_string()),
+                ("animation".to_string(), "dash 2s linear".to_string()),
+            ]
+        );
+        assert_eq!(
+            styles.source_stroke_status(),
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
+        assert_eq!(styles.stroke.as_deref(), Some("#2563eb"));
     }
 
     #[test]
