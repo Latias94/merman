@@ -133,6 +133,17 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<Self> {
+        resources.transaction(|resources| {
+            Self::try_new_transactional(edges, canonical_source_indices, width_profile, resources)
+        })
+    }
+
+    fn try_new_transactional(
+        edges: &'a [AsciiGraphEdge],
+        canonical_source_indices: &[usize],
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
         resources.charge_layout_work(canonical_source_indices.len())?;
         let mut labels = Vec::new();
         labels
@@ -187,6 +198,16 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> Result<RoutedLabelCatalog> {
+        resources.transaction(|resources| {
+            self.materialize_with_callback_transactional(resources, before_materialize)
+        })
+    }
+
+    fn materialize_with_callback_transactional(
+        self,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<RoutedLabelCatalog> {
         let mut work_units = self.labels.len();
         let mut document_cells = 0usize;
         let mut materialized_bytes = 0usize;
@@ -200,9 +221,9 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
                 plan.normalized.metrics().materialized_bytes,
             )?;
         }
-        resources.charge_layout_work(work_units)?;
-        resources.charge_document_cells(document_cells)?;
+        resources.check_usage(work_units, document_cells)?;
         resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
+        resources.charge_usage(work_units, document_cells)?;
         before_materialize();
         self.materialize_after_admission()
     }
@@ -632,6 +653,12 @@ mod tests {
             &measured_resources,
         )
         .expect("catalog planning should succeed");
+        let exact_output_bytes = measured_plan
+            .labels
+            .iter()
+            .flatten()
+            .map(|plan| plan.normalized.metrics().materialized_bytes)
+            .sum::<usize>();
         let measured_probe = Cell::new(false);
         measured_plan
             .materialize_with_probe(&measured_resources, &measured_probe)
@@ -641,12 +668,15 @@ mod tests {
         let exact_document_cells = measured_resources.document_cells_used();
         assert!(exact_work > 1);
         assert!(exact_document_cells > 1);
+        assert!(exact_output_bytes > 1);
 
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact work limit should be valid")
             .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_document_cells)
-            .expect("exact document limit should be valid");
+            .expect("exact document limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes)
+            .expect("exact output limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
         let exact_plan = RoutedLabelCatalogPlan::try_new(
             &edges,
@@ -672,6 +702,8 @@ mod tests {
             &below_work_resources,
         )
         .expect("planning should fit before the final work debit");
+        let work_before = below_work_resources.layout_work_used();
+        let document_cells_before = below_work_resources.document_cells_used();
         let below_work_probe = Cell::new(false);
         let error = below_work_plan
             .materialize_with_probe(&below_work_resources, &below_work_probe)
@@ -682,6 +714,11 @@ mod tests {
             crate::AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
         ));
+        assert_eq!(below_work_resources.layout_work_used(), work_before);
+        assert_eq!(
+            below_work_resources.document_cells_used(),
+            document_cells_before
+        );
 
         let below_document_policy = unbounded
             .with_limit(
@@ -697,6 +734,8 @@ mod tests {
             &below_document_resources,
         )
         .expect("document planning should be non-materializing");
+        let work_before = below_document_resources.layout_work_used();
+        let document_cells_before = below_document_resources.document_cells_used();
         let below_document_probe = Cell::new(false);
         let error = below_document_plan
             .materialize_with_probe(&below_document_resources, &below_document_probe)
@@ -707,5 +746,39 @@ mod tests {
             crate::AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxDocumentCells
         ));
+        assert_eq!(below_document_resources.layout_work_used(), work_before);
+        assert_eq!(
+            below_document_resources.document_cells_used(),
+            document_cells_before
+        );
+
+        let below_output_policy = exact_policy
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes - 1)
+            .expect("max-minus-one output limit should be valid");
+        let below_output_resources = ResourceContext::new(below_output_policy);
+        let below_output_plan = RoutedLabelCatalogPlan::try_new(
+            &edges,
+            &indices,
+            TerminalWidthProfile::Unicode,
+            &below_output_resources,
+        )
+        .expect("output planning should be non-materializing");
+        let work_before = below_output_resources.layout_work_used();
+        let document_cells_before = below_output_resources.document_cells_used();
+        let below_output_probe = Cell::new(false);
+        let error = below_output_plan
+            .materialize_with_probe(&below_output_resources, &below_output_probe)
+            .expect_err("max-minus-one output limit should reject before materialization");
+        assert!(!below_output_probe.get());
+        assert!(matches!(
+            error,
+            crate::AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+        ));
+        assert_eq!(below_output_resources.layout_work_used(), work_before);
+        assert_eq!(
+            below_output_resources.document_cells_used(),
+            document_cells_before
+        );
     }
 }

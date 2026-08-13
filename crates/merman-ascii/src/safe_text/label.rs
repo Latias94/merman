@@ -43,6 +43,26 @@ fn try_build_normalized_label_lines_impl(
     resources: &ResourceContext,
     before_materialize: impl FnOnce(),
 ) -> Result<Option<NormalizedLabelLines>> {
+    resources.transaction(|resources| {
+        try_build_normalized_label_lines_transactional(
+            raw,
+            width_profile,
+            trim,
+            wrap_width,
+            resources,
+            before_materialize,
+        )
+    })
+}
+
+fn try_build_normalized_label_lines_transactional(
+    raw: &str,
+    width_profile: TerminalWidthProfile,
+    trim: bool,
+    wrap_width: Option<usize>,
+    resources: &ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> Result<Option<NormalizedLabelLines>> {
     let Some(plan) =
         try_plan_normalized_label_lines(raw, width_profile, trim, wrap_width, resources)?
     else {
@@ -50,11 +70,12 @@ fn try_build_normalized_label_lines_impl(
     };
     let metrics = plan.metrics();
     resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
-    resources.charge_document_cells(metrics.document_cells)?;
+    resources.check_usage(0, metrics.document_cells)?;
     resources.check(
         AsciiResourceLimitId::MaxOutputBytes,
         metrics.materialized_bytes,
     )?;
+    resources.charge_usage(0, metrics.document_cells)?;
     plan.materialize_with(raw, resources, before_materialize)
         .map(Some)
 }
@@ -230,6 +251,17 @@ impl NormalizedLabelPlan {
         resources: &ResourceContext,
         visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
     ) -> Result<()> {
+        resources.transaction(|resources| {
+            self.try_visit_row_metrics_transactional(raw, resources, visit)
+        })
+    }
+
+    fn try_visit_row_metrics_transactional(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+        visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
+    ) -> Result<()> {
         resources.charge_layout_work(self.replay_work_units)?;
         visit_label_row_metrics(
             raw,
@@ -255,6 +287,17 @@ impl NormalizedLabelPlan {
     }
 
     fn materialize_with(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<NormalizedLabelLines> {
+        resources.transaction(|resources| {
+            self.materialize_with_transactional(raw, resources, before_materialize)
+        })
+    }
+
+    fn materialize_with_transactional(
         self,
         raw: &str,
         resources: &ResourceContext,
@@ -340,6 +383,26 @@ pub(crate) fn try_plan_normalized_label_lines_with_policy(
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
 ) -> Result<Option<NormalizedLabelPlan>> {
+    resources.transaction(|resources| {
+        try_plan_normalized_label_lines_with_policy_transactional(
+            raw,
+            width_profile,
+            trim,
+            wrap_width,
+            break_policy,
+            resources,
+        )
+    })
+}
+
+fn try_plan_normalized_label_lines_with_policy_transactional(
+    raw: &str,
+    width_profile: TerminalWidthProfile,
+    trim: bool,
+    wrap_width: Option<usize>,
+    break_policy: LabelBreakPolicy,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedLabelPlan>> {
     let selection = match normalized_label_selection(raw, trim, break_policy, resources)? {
         Some(selection) => selection,
         None => return Ok(None),
@@ -381,6 +444,17 @@ pub(crate) fn try_plan_normalized_label_lines_with_policy(
 /// Callers that own a grid extent can use this descriptor to size the grid first, then call
 /// `try_build_normalized_label_lines` only after that extent has been admitted.
 pub(crate) fn try_measure_normalized_label_lines(
+    raw: &str,
+    width_profile: TerminalWidthProfile,
+    trim: bool,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedLabelMetrics>> {
+    resources.transaction(|resources| {
+        try_measure_normalized_label_lines_transactional(raw, width_profile, trim, resources)
+    })
+}
+
+fn try_measure_normalized_label_lines_transactional(
     raw: &str,
     width_profile: TerminalWidthProfile,
     trim: bool,

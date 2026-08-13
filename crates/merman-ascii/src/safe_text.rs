@@ -1105,6 +1105,8 @@ mod tests {
         .expect_err("control expansion must be rejected before retaining a String or Vec");
 
         assert!(!materialized.get());
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
         assert_limit_error(
             error,
             AsciiResourceLimitId::MaxDocumentCells,
@@ -1131,6 +1133,8 @@ mod tests {
         .expect_err("normalized output bytes must be rejected before label materialization");
 
         assert!(!materialized.get());
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
         assert_limit_error(
             error,
             AsciiResourceLimitId::MaxOutputBytes,
@@ -1235,6 +1239,8 @@ mod tests {
         .expect_err("one grid cell below the minimum row extent must fail first");
 
         assert!(!materialized.get());
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 4, 3);
     }
 

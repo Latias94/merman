@@ -481,6 +481,26 @@ impl ResourceContext {
         Ok(())
     }
 
+    /// Runs one planning or materialization phase atomically against the shared ledgers.
+    ///
+    /// Resource accounting is intentionally incremental inside many scanners so the reported
+    /// failure points remain precise. A later dimension (for example output bytes) can still
+    /// reject the phase after work or document cells have been charged. This boundary restores
+    /// both ledgers to their entry values on any error while preserving successful charges.
+    /// Nested transactions are safe because each call restores only its own checkpoint.
+    pub(crate) fn transaction<T>(&self, operation: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
+        let layout_work_checkpoint = self.layout_work_used.get();
+        let document_cells_checkpoint = self.document_cells_used.get();
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.layout_work_used.set(layout_work_checkpoint);
+                self.document_cells_used.set(document_cells_checkpoint);
+                Err(error)
+            }
+        }
+    }
+
     pub(crate) fn check_grapheme_bytes(&self, bytes: usize) -> Result<()> {
         self.policy
             .check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
@@ -725,6 +745,67 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn transaction_restores_shared_ledgers_when_a_later_limit_fails() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 10)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 10)
+            .expect("valid document limit")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
+            .expect("valid output limit");
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(2, 3)
+            .expect("the checkpoint should start with prior usage");
+
+        let error = resources
+            .transaction(|resources| {
+                resources.charge_usage(4, 5)?;
+                resources.check(AsciiResourceLimitId::MaxOutputBytes, 2)
+            })
+            .expect_err("the output check should fail");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: 2,
+                max: 1,
+                ..
+            })
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn transaction_commits_success_and_nested_failure_isolated() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 20)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 20)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+
+        resources
+            .transaction(|resources| {
+                resources.charge_usage(2, 3)?;
+                let nested = resources.transaction(|resources| {
+                    resources.charge_usage(4, 5)?;
+                    Err::<(), _>(resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
+                });
+                assert!(nested.is_err());
+                assert_eq!(resources.layout_work_used(), 2);
+                assert_eq!(resources.document_cells_used(), 3);
+                resources.charge_usage(1, 1)
+            })
+            .expect("outer transaction should commit");
+
+        assert_eq!(resources.layout_work_used(), 3);
+        assert_eq!(resources.document_cells_used(), 4);
     }
 
     #[test]

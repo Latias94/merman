@@ -212,6 +212,24 @@ impl GraphLabel {
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> crate::Result<Self> {
+        resources.transaction(|resources| {
+            Self::try_single_with_profile_transactional(
+                raw,
+                wrap_width,
+                width_profile,
+                resources,
+                before_materialize,
+            )
+        })
+    }
+
+    fn try_single_with_profile_transactional(
+        raw: &str,
+        wrap_width: Option<usize>,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> crate::Result<Self> {
         let plan = required_label_plan(
             raw,
             wrap_width,
@@ -248,6 +266,24 @@ impl GraphLabel {
 
 impl GraphNodeLabelPlan {
     pub(super) fn try_for_node(
+        node: &AsciiGraphNode,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        resources.transaction(|resources| {
+            Self::try_for_node_transactional(
+                node,
+                wrap_width,
+                diagram_type,
+                width_profile,
+                resources,
+            )
+        })
+    }
+
+    fn try_for_node_transactional(
         node: &AsciiGraphNode,
         wrap_width: Option<usize>,
         diagram_type: &'static str,
@@ -374,6 +410,17 @@ impl GraphNodeLabelPlan {
         resources: &ResourceContext,
         before_body_reserve: impl FnOnce(),
     ) -> crate::Result<GraphLabel> {
+        resources.transaction(|resources| {
+            self.materialize_with_callback_transactional(node, resources, before_body_reserve)
+        })
+    }
+
+    fn materialize_with_callback_transactional(
+        &self,
+        node: &AsciiGraphNode,
+        resources: &ResourceContext,
+        before_body_reserve: impl FnOnce(),
+    ) -> crate::Result<GraphLabel> {
         match (self.kind, node.semantics.compartments.as_ref()) {
             (GraphNodeLabelPlanKind::Single, None) => {
                 let (lines, width) = self
@@ -425,12 +472,15 @@ impl GraphNodeLabelPlan {
             self.primary.materialization_work_units(),
             body.materialization_work_units(),
         )?;
-        resources.charge_layout_work(work_units)?;
+        // The final canvas owns document accounting. This phase only checks the planned label
+        // bound and commits replay work after every dimension has passed.
+        resources.check_usage(work_units, 0)?;
         resources.check(AsciiResourceLimitId::MaxDocumentCells, self.document_cells)?;
         resources.check(
             AsciiResourceLimitId::MaxOutputBytes,
             self.materialized_bytes,
-        )
+        )?;
+        resources.charge_layout_work(work_units)
     }
 }
 
@@ -652,12 +702,24 @@ mod tests {
                 &below_resources,
             )
             .expect("compartment planning should remain non-materializing");
+            let work_before = below_resources.layout_work_used();
+            let document_cells_before = below_resources.document_cells_used();
             let body_reserve_started = Cell::new(false);
             let error = below_plan
                 .materialize_with_body_reserve_probe(&node, &below_resources, &body_reserve_started)
                 .expect_err("max-minus-one limit should reject before body allocation");
 
             assert!(!body_reserve_started.get(), "limit={limit:?}");
+            assert_eq!(
+                below_resources.layout_work_used(),
+                work_before,
+                "limit={limit:?}"
+            );
+            assert_eq!(
+                below_resources.document_cells_used(),
+                document_cells_before,
+                "limit={limit:?}"
+            );
             assert!(matches!(
                 error,
                 AsciiError::ResourceLimitExceeded(details)

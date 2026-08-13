@@ -103,8 +103,20 @@ fn plan_node_labels_impl(
     resources: &ResourceContext,
     before_plan_reserve: impl FnOnce(),
 ) -> Result<Vec<GraphNodeLabelPlan>> {
-    // 先在不持有外层容器的情况下测量整批标签，让聚合 document/output 准入先于 O(N) 计划
-    // Vec 扩容。第二遍使用 scratch 账本重建确定性 plan，但其工作量已预先记入共享账本。
+    resources.transaction(|resources| {
+        plan_node_labels_transactional(graph, width_profile, resources, before_plan_reserve)
+    })
+}
+
+fn plan_node_labels_transactional(
+    graph: &AsciiGraph,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    before_plan_reserve: impl FnOnce(),
+) -> Result<Vec<GraphNodeLabelPlan>> {
+    // Measure the full batch without retaining the outer container so aggregate document/output
+    // admission precedes O(N) plan storage. The scratch replay rebuilds the deterministic plans,
+    // while its work is charged to the shared render ledger before allocation.
     let base_work = resources.layout_work_used();
     let mut document_cells = 0usize;
     let mut materialized_bytes = 0usize;
@@ -127,6 +139,10 @@ fn plan_node_labels_impl(
         .layout_work_used()
         .checked_sub(base_work)
         .ok_or_else(|| resources.work_overflow())?;
+    // The first pass already charged its planning work. Check the replay work and aggregate
+    // document/output bounds without mutating the shared ledger, then commit only the replay.
+    // Node-label document cells are a plan bound; the final canvas owns the document ledger.
+    resources.check_usage(planning_work, 0)?;
     resources.check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
     // The second pass is deterministic and allocation-free, but its work still belongs to the
@@ -1821,6 +1837,8 @@ mod tests {
             assert_eq!(details.actual, actual);
             assert_eq!(details.max, actual - 1);
             assert!(!below_reserve_started.get());
+            assert_eq!(below_resources.layout_work_used(), 0, "limit={limit:?}");
+            assert_eq!(below_resources.document_cells_used(), 0, "limit={limit:?}");
         }
     }
 
