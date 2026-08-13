@@ -1,6 +1,5 @@
 use merman::svg::{
-    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
-    sanitize_svg_id,
+    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, sanitize_svg_id,
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use merman_core::{Engine, ParseOptions};
@@ -159,7 +158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = fs::read_to_string(&args.input)?;
     let engine = Engine::new();
     let parse_options = ParseOptions::strict();
-    let layout_options: LayoutOptions = headless_layout_options();
+    let layout_options = LayoutOptions::headless_svg_defaults();
     let environment = RenderEnvironment::deterministic();
     let svg_options = SvgRenderOptions {
         diagram_id: Some(diagram_id_for(&args.input, args.diagram_id.as_deref())),

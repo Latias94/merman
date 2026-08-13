@@ -4,7 +4,7 @@ use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRender
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_git_graph_diagram(
+pub(super) fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

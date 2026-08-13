@@ -4,7 +4,7 @@ use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRender
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_timeline_diagram(
+pub(super) fn render_timeline_diagram(
     model: &TimelineDiagramRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

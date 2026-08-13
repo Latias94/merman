@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_kanban_diagram(
+pub(super) fn render_kanban_diagram(
     model: &KanbanDiagramRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

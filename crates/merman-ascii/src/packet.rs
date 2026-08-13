@@ -6,7 +6,7 @@ use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock}
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_packet_diagram(
+pub(super) fn render_packet_diagram(
     model: &PacketDiagramRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

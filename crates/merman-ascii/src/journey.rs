@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_journey_diagram(
+pub(super) fn render_journey_diagram(
     model: &JourneyDiagramRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

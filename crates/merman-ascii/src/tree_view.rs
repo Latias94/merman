@@ -9,7 +9,7 @@ const TREE_BRANCH: &str = "|-- ";
 const TREE_CHILD_CONTINUE: &str = "|   ";
 const TREE_CHILD_EMPTY: &str = "    ";
 
-pub fn render_tree_view_diagram(
+pub(super) fn render_tree_view_diagram(
     model: &TreeViewDiagramRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

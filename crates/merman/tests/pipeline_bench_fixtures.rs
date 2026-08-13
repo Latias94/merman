@@ -76,17 +76,45 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             diagram_id: Some(merman::svg::sanitize_svg_id(&name)),
             ..Default::default()
         };
-        let layout_json = merman::svg::layout_json_sync(&engine, &input, parse_options, &layout)
+        let renderer = merman::Renderer::new().with_engine(engine.clone());
+        let layout_json = match renderer
+            .render(merman::RenderRequest::layout_json(
+                &input,
+                merman::OperationControl::new(),
+                merman::SvgRequest {
+                    layout: layout.clone(),
+                    options: svg_options.clone(),
+                    ..Default::default()
+                },
+            ))
             .unwrap_or_else(|err| panic!("{name}: layout JSON failed: {err}"))
-            .unwrap_or_else(|| panic!("{name}: layout JSON returned no diagram"));
+        {
+            merman::RenderOutput::LayoutJson(Some(output)) => output.layout().clone(),
+            merman::RenderOutput::LayoutJson(None) => {
+                panic!("{name}: layout JSON returned no diagram")
+            }
+            other => panic!("{name}: unexpected layout target output: {other:?}"),
+        };
         assert!(
             layout_json.is_object(),
             "{name}: layout JSON must be an object"
         );
-        let svg =
-            merman::svg::render_svg_sync(&engine, &input, parse_options, &layout, &svg_options)
-                .unwrap_or_else(|err| panic!("{name}: end-to-end SVG render failed: {err}"))
-                .unwrap_or_else(|| panic!("{name}: render returned no SVG"));
+        let svg = match renderer
+            .render(merman::RenderRequest::svg(
+                &input,
+                merman::OperationControl::new(),
+                merman::SvgRequest {
+                    layout: layout.clone(),
+                    options: svg_options,
+                    ..Default::default()
+                },
+            ))
+            .unwrap_or_else(|err| panic!("{name}: end-to-end SVG render failed: {err}"))
+        {
+            merman::RenderOutput::Svg(Some(output)) => output.svg().to_owned(),
+            merman::RenderOutput::Svg(None) => panic!("{name}: render returned no SVG"),
+            other => panic!("{name}: unexpected SVG target output: {other:?}"),
+        };
 
         assert!(
             !svg.is_empty(),

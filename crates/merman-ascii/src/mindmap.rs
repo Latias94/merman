@@ -11,7 +11,7 @@ const BRANCH: &str = "|-- ";
 const CONTINUE: &str = "|   ";
 const EMPTY: &str = "    ";
 
-pub fn render_mindmap_diagram(
+pub(super) fn render_mindmap_diagram(
     model: &MindmapDiagramRenderModel,
     _options: &AsciiRenderOptions,
 ) -> String {

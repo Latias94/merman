@@ -4,7 +4,7 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_gantt_diagram(
+pub(super) fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
     _options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,

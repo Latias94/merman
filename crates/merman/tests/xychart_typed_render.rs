@@ -1,6 +1,6 @@
 #[cfg(feature = "svg")]
 #[test]
-fn xychart_render_svg_sync_uses_typed_render_path() {
+fn xychart_renderer_uses_typed_render_path() {
     let input = r#"
 xychart
 title "Typed XYChart"
@@ -33,7 +33,7 @@ bar [1, 2]
 
 #[cfg(feature = "svg")]
 #[test]
-fn xychart_render_svg_sync_renders_line_labels_and_axis_rotation() {
+fn xychart_renderer_renders_line_labels_and_axis_rotation() {
     let input = r#"%%{init: {"xyChart": {"xAxis": {"labelRotation": 45}}}}%%
 xychart
 x-axis [Alpha, Beta]

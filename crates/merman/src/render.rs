@@ -249,6 +249,7 @@ impl ResourceLimitExceeded {
         }
     }
 
+    #[cfg(feature = "ascii")]
     fn from_operation(error: merman_core::OperationResourceLimitExceeded) -> Self {
         Self {
             id: error.id,
@@ -740,7 +741,7 @@ fn render_svg_plan_target(
         .map_err(map_svg_error)
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn prepare_resvg_target(
     semantic: SemanticArtifact,
     request: &SvgRequest,

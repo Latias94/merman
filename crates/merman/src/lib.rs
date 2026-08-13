@@ -56,7 +56,8 @@ pub use render::{OperationExecutionPath, RenderEvidence, SvgLayoutOutput, SvgOut
 #[cfg(feature = "pdf")]
 pub use render::{PdfOutput, PdfRequest};
 pub use render::{
-    RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, SemanticArtifact,
+    RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, ResourceLimitCause,
+    ResourceLimitExceeded, SemanticArtifact,
 };
 
 /// Diagnostics and source-mapping APIs for lint and analysis workflows.

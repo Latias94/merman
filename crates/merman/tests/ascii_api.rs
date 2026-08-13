@@ -1,6 +1,9 @@
 #![cfg(feature = "ascii")]
 
-use merman::ascii::{AsciiRenderOptions, render_model, render_model_with_local_time_zone};
+use merman::ascii::{
+    AsciiRenderOptions, AsciiResourcePolicy, render_model_with_local_time_zone,
+    render_model_with_operation,
+};
 use merman::{
     AsciiRequest, OperationControl, RenderOutput, RenderRequest, RenderSemanticModel, Renderer,
 };
@@ -27,7 +30,7 @@ fn deeply_nested_flowchart(depth: usize) -> String {
 }
 
 #[test]
-fn render_ascii_sync_renders_flowchart_from_mermaid_text() {
+fn renderer_renders_ascii_flowchart_from_mermaid_text() {
     let output = Renderer::new()
         .with_parse_options(merman::ParseOptions::strict())
         .render(RenderRequest::ascii(
@@ -50,7 +53,7 @@ fn render_ascii_sync_renders_flowchart_from_mermaid_text() {
 }
 
 #[test]
-fn render_ascii_sync_renders_shipped_reference_diagram_families() {
+fn renderer_renders_shipped_ascii_reference_diagram_families() {
     let cases = [
         ("classDiagram\nclass Animal", "Animal"),
         ("erDiagram\nCUSTOMER", "CUSTOMER"),
@@ -116,7 +119,7 @@ bar [4, 8]
 }
 
 #[test]
-fn render_ascii_sync_uses_ascii_options_for_padding() {
+fn renderer_uses_ascii_options_for_padding() {
     let mut options = AsciiRenderOptions::ascii();
     options.graph_padding_x = 2;
     options.graph_padding_y = 1;
@@ -161,7 +164,7 @@ fn headless_ascii_renderer_renders_sequence_with_unicode_defaults() {
 }
 
 #[test]
-fn render_ascii_sync_returns_none_when_no_diagram_is_detected() {
+fn renderer_returns_no_ascii_when_no_diagram_is_detected() {
     let rendered = Renderer::new()
         .with_parse_options(merman::ParseOptions::lenient())
         .render(RenderRequest::ascii(
@@ -183,10 +186,18 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
         .name("ascii-deep-flowchart-subgraph".to_string())
         .stack_size(64 * 1024)
         .spawn(move || {
-            let mut options = AsciiRenderOptions::ascii();
-            options.max_grid_cells = 10_000_000;
-            let rendered = render_model(&model, &options)
-                .expect("deep Flowchart ASCII render should not return an error");
+            let options = AsciiRenderOptions::ascii();
+            let context = merman::runtime::RuntimePolicy::deterministic()
+                .begin_operation()
+                .expect("deterministic operation context");
+            let rendered = render_model_with_operation(
+                &model,
+                &options,
+                &merman::OperationControl::new(),
+                &context,
+                AsciiResourcePolicy::with_max_grid_cells(10_000_000),
+            )
+            .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));
         })
         .expect("spawn deep Flowchart ASCII render test");

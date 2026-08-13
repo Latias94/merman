@@ -1,7 +1,5 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::svg::{
-    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
-};
+use merman::svg::{LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions};
 use merman_core::{DetectorRegistry, Engine, ParseOptions};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -536,7 +534,7 @@ fn bench_frontmatter_preprocess(c: &mut Criterion) {
 fn bench_layout(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout: LayoutOptions = headless_layout_options();
+    let layout = LayoutOptions::headless_svg_defaults();
     let environment = RenderEnvironment::deterministic();
 
     let mut group = c.benchmark_group("layout");
@@ -587,7 +585,7 @@ fn bench_layout(c: &mut Criterion) {
 fn bench_render(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout: LayoutOptions = headless_layout_options();
+    let layout = LayoutOptions::headless_svg_defaults();
     let environment = RenderEnvironment::deterministic();
 
     let mut group = c.benchmark_group("render");
@@ -646,7 +644,7 @@ fn bench_render(c: &mut Criterion) {
 fn bench_end_to_end(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout = headless_layout_options();
+    let layout = LayoutOptions::headless_svg_defaults();
     let renderer = merman::Renderer::new()
         .with_engine(engine.clone())
         .with_parse_options(parse_opts);

@@ -1,6 +1,6 @@
 #[cfg(feature = "svg")]
 #[test]
-fn c4_render_svg_sync_uses_typed_render_path() {
+fn c4_renderer_uses_typed_render_path() {
     let input = r#"
 C4Context
 title Typed C4
