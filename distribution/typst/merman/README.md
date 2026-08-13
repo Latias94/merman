@@ -4,14 +4,17 @@ Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
 `merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project.
 
-Requires Typst 0.15.0 or newer.
+> [!NOTE]
+> Typst Universe currently publishes `@preview/merman:0.1.0`, which requires Typst 0.14.0 or
+> newer. This source-tree README documents the unreleased `0.2.0` wrapper, which requires Typst
+> 0.15.0 and must be built locally until it is published.
 
-## Quick Start
+## Published quick start
 
 Import `mermaid` and pass a Mermaid source string:
 
 ```typst
-#import "@preview/merman:0.2.0": mermaid
+#import "@preview/merman:0.1.0": mermaid
 
 #mermaid("
 flowchart TD
@@ -24,10 +27,14 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.2.0` | `0.8.0-alpha.5` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
-| `0.1.0` | `0.8.0-alpha.1` | `1` | Initial published Typst wrapper. |
+| `0.2.0` (source tree, unreleased) | `0.8.0-alpha.5` | `2` | Requires a local package build and Typst `--package-path`. |
+| `0.1.0` (Typst Universe) | `0.8.0-alpha.1` | `1` | Current published wrapper. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
+
+The remaining API and example sections describe the unreleased `0.2.0` source tree. Build the
+package as described in [Development](#development) and compile with the generated local package
+path before running those examples.
 
 ## Examples
 

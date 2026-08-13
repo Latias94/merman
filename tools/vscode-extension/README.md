@@ -113,7 +113,7 @@ The extension consumes semantic tokens directly from `merman-lsp`. After LSP ini
 
 Custom token declarations, theme supertypes, Mermaid TextMate fallback scopes, the Mermaid semantic-highlighting default, and analysis-setting constraints in `package.json` are generated or projected by `cargo run -p xtask -- gen-editor-language-contract`. Token metadata comes from `contracts/editor-language/token-descriptor-v1.json`; analysis constraints come from `merman_analysis::AnalysisConfigContract`. Do not maintain either semantic table independently in the extension manifest. Runtime negotiation may accept additive values from a newer server, while the bundled manifest remains the generated baseline used by VS Code Settings validation and completion.
 
-JavaScript lint tools that want Merman parser-backed evidence can use `@mermanjs/web` `analyzeDocument(source, options, uri)` without adopting the LSP. See `docs/integrations/` for adapter guidance and coexistence examples.
+JavaScript lint tools that want Merman parser-backed evidence can use `@mermanjs/web-analysis` `analyzeDocument(source, uri, options)` without adopting the LSP. See `docs/integrations/` for adapter guidance and coexistence examples.
 
 ## Preview behavior
 

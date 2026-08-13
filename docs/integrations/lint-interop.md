@@ -29,12 +29,14 @@ import { analyzeDocument, initMerman } from "@mermanjs/web-analysis";
 
 await initMerman();
 
+const markdownSource =
+  "# Diagram\n\n```mermaid\nflowchart TD\n  A -->\n```\n";
 const analysis = analyzeDocument(
   markdownSource,
+  "file:///workspace/README.md",
   {
     lint: { profile: "recommended" },
   },
-  "file:///workspace/README.md",
 );
 ```
 
@@ -43,7 +45,7 @@ const analysis = analyzeDocument(
 Node.js and CI integrations should invoke the browserless CLI instead:
 
 ```sh
-merman-cli lint --format json README.md
+merman-cli lint --markdown --format json README.md
 ```
 
 ## Recommended Adapter Shape

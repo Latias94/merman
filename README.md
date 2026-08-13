@@ -1,64 +1,59 @@
 # Merman
 
-<p align="center">
-  <img
-    src="https://raw.githubusercontent.com/Latias94/merman/main/assets/readme/hero.svg"
-    width="100%"
-    alt="Merman turns Mermaid source into SVG, image, text, and editor outputs through a headless Rust pipeline"
-  />
-</p>
+**Parse, analyze, and render [Mermaid] diagrams in Rust without a browser.**
 
-<p align="center">
-  <a href="https://github.com/Latias94/merman/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://crates.io/crates/merman"><img alt="merman on crates.io" src="https://img.shields.io/crates/v/merman.svg"></a>
-  <a href="https://docs.rs/merman"><img alt="Rust API documentation" src="https://docs.rs/merman/badge.svg"></a>
-  <a href="https://www.npmjs.com/package/@mermanjs/web"><img alt="@mermanjs/web on npm" src="https://img.shields.io/npm/v/%40mermanjs%2Fweb?label=npm"></a>
-  <a href="#license-and-attribution"><img alt="MIT or Apache 2.0 license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg"></a>
-</p>
+[![CI status](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml) [![merman on crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman) [![Rust API documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman) [![@mermanjs/web alpha on npm](https://img.shields.io/npm/v/%40mermanjs%2Fweb/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@mermanjs/web) [![MIT or Apache 2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](#license-and-attribution)
 
-<p align="center">
-  <a href="https://frankorz.com/merman/">Playground</a> |
-  <a href="#quick-start">Quick start</a> |
-  <a href="https://github.com/Latias94/merman/blob/main/docs/FEATURES.md">Choose capabilities</a> |
-  <a href="https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md">Compatibility</a> |
-  <a href="https://github.com/Latias94/merman/blob/main/CHANGELOG.md">Changelog</a>
-</p>
+[Playground] · [Choose a surface](#choose-a-surface) · [Quick start](#quick-start) · [Compatibility](#compatibility-boundary) · [Documentation](#documentation)
 
-Merman is an independent, parity-focused Rust implementation of [Mermaid.js](https://mermaid.js.org/). It targets `mermaid@11.16.1` and parses, analyzes, lays out, and renders Mermaid source without starting Node.js, Puppeteer, Chromium, or another JavaScript runtime in the native render path.
+Merman is an independent, parity-focused Rust implementation of Mermaid. Its native render path does not start Node.js, Puppeteer, Chromium, or another JavaScript runtime. It currently targets `mermaid@11.16.1`.
 
-Use it as a Rust library, an `mmdc`-style CLI, a browser WASM package, an editor language engine, or a native SDK. The same parser-owned semantics drive every surface.
+The same parser-owned semantic model powers the Rust library, CLI, browser WASM packages, experimental Node.js package, analysis and editor APIs, language server, and native SDKs.
 
-> **Adopted by Zed.** Zed replaced its previous Rust Mermaid backend with Merman after comparing real diagrams, citing Merman's rendering accuracy as the reason for the move. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
+> [!NOTE]
+> The current `main` branch targets the 0.8 prerelease line. Package channels publish independently, so check [Releases] and the [package surface guide] before pinning Merman in CI or production.
 
-## See The Output
+> **Used by Zed.** Zed adopted Merman as its Rust Mermaid backend after evaluating rendering accuracy. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
+
+## Choose a surface
+
+Start with the product surface that owns your workflow. Foundational workspace crates are implementation modules, not additional entry points.
+
+| You want to | Start with | Boundary |
+| --- | --- | --- |
+| Render or inspect Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Complete Rust facade for parsing, layout, SVG, and optional outputs |
+| Render from a shell, CI job, or docs build | [`merman-cli`](https://crates.io/crates/merman-cli) or [Homebrew](https://formulae.brew.sh/formula/merman-cli) | Native rendering, linting, Markdown batches, export, and `mmdc` compatibility |
+| Run in a browser | [`@mermanjs/web-render`](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md) for SVG; [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) for the complete SDK | Browser-only WASM packages |
+| Render in Node.js or a static-site build | [`@mermanjs/node`](https://github.com/Latias94/merman/tree/main/platforms/node#readme) | Experimental native Node.js 22+ SVG package |
+
+Specialized entry points:
+
+- **Analysis and editors:** [`merman-analysis`](https://crates.io/crates/merman-analysis), [`merman-lsp`](https://crates.io/crates/merman-lsp), and the [VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme).
+- **Native bindings:** [Python](https://pypi.org/project/merman/), [C/C++](https://github.com/Latias94/merman/tree/main/crates/merman-ffi#readme), [Flutter/Dart](https://pub.dev/packages/merman), [Android](https://github.com/Latias94/merman/tree/main/platforms/android#readme), and [Apple](https://github.com/Latias94/merman/tree/main/platforms/apple#readme).
+- **Documentation systems:** [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) and the [Typst package](https://github.com/Latias94/merman/tree/main/distribution/typst/merman#readme).
+
+See the [package surface guide] for the complete delivery matrix, artifact profiles, and release boundaries.
+
+## Rendered output
 
 | Architecture | Mindmap | Sankey |
 | :-: | :-: | :-: |
 | <img width="280" alt="Architecture diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png"> | <img width="280" alt="Mindmap rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png"> | <img width="280" alt="Sankey diagram rendered by Merman" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png"> |
 
-These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/merman/) has a searchable example for every admitted family.
+These files were produced headlessly by `merman-cli`. The [Playground] contains searchable examples for every admitted diagram family.
 
-## Why Merman
-
-- **Parity is tested at multiple layers.** Source-backed semantic JSON, typed layout snapshots, and pinned upstream SVG DOM baselines catch different classes of drift. The current primary matrix covers 35 Mermaid families.
-- **Rendering is browserless by design.** Native applications, CI jobs, documentation builds, and editors do not need a bundled browser just to turn diagram text into SVG.
-- **One language model serves every workflow.** Rendering, diagnostics, LSP features, the Playground, and bindings share parser-owned facts instead of maintaining parallel regex or syntax implementations.
-- **Outputs are explicit contracts.** Mermaid-style SVG, export-safe SVG, PNG, JPEG, vector PDF, ASCII/Unicode, semantic JSON, and layout JSON remain separately selectable.
-
-## Quick Start
-
-> [!IMPORTANT]
-> This README describes the current development source. Rust crates and GitHub CLI/LSP artifacts are published at `0.8.0-alpha.5`; the Web and Node npm alpha.5 packages were bootstrapped from verified workflow artifacts built at reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, which is newer than the workspace `v0.8.0-alpha.5` tag. Those first npm registry artifacts do not expose npm provenance attestations. Language-binding channels publish independently and may trail it. Verify the selected channel, exact version, and release record before installing it. Commands labeled as source installs require a reviewed full commit before use in CI or production.
+## Quick start
 
 ### Rust
 
-Add the exact workspace prerelease:
+The current source tree uses the operation-scoped `Renderer` facade introduced after the
+published `0.8.0-alpha.5` tag. Run the maintained example from a source checkout:
 
 ```sh
-cargo add merman@0.8.0-alpha.5
+cargo run --locked -p merman --example render_svg > diagram.svg
 ```
 
-Render one Mermaid source string through the operation-scoped facade:
+Embed the same API in Rust:
 
 ```rust
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
@@ -72,14 +67,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let RenderOutput::Svg(Some(svg)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
-    std::fs::write("diagram.svg", svg.svg())?;
+    print!("{}", svg.svg());
     Ok(())
 }
 ```
 
-`diagram.svg` is now a standalone SVG file that can be opened directly or embedded in a page.
-
-Choose the narrowest Rust entry point that owns the task:
+For an external source dependency, pin a reviewed full commit. Published `0.8.0-alpha.5` users
+should follow that release's [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md)
+instead of copying source-tree APIs across the version boundary.
 
 | Task | Start with |
 | --- | --- |
@@ -93,11 +88,13 @@ Choose the narrowest Rust entry point that owns the task:
 unsupported targets remain distinct structured errors. When several SVGs share one DOM, supply
 diagram IDs that remain unique after `merman::svg::sanitize_svg_id` normalization.
 
-The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) are self-contained files that can be copied into another crate. They cover one-shot SVG, same-DOM embedding, renderer reuse, PNG and terminal output, semantic and layout inspection, deterministic dates, site configuration, presentation themes, and consumer-specific SVG pipelines.
+The [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) cover
+same-document IDs, renderer reuse, semantic and layout inspection, PNG and terminal output,
+deterministic dates, configuration, themes, and custom SVG pipelines.
 
-### Command Line
+### Command line
 
-Install the published complete CLI and render a diagram:
+Install the published complete CLI and render from standard input:
 
 ```sh
 cargo install merman-cli --version 0.8.0-alpha.5 --locked
@@ -105,51 +102,44 @@ printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```
 
-`diagram.svg` now contains the rendered diagram; the native path starts no browser or JavaScript runtime.
-
-Native commands use explicit single-diagram and Markdown workflows:
+Common native workflows are explicit:
 
 ```sh
 merman-cli render diagram.mmd
 merman-cli render diagram.mmd --format png --theme dark --background transparent
 merman-cli batch README.md
-```
-
-Scripts migrating from the official CLI use the pinned compatibility command:
-
-```sh
 merman-cli mmdc -i diagram.mmd -o diagram.svg
 ```
 
-Root help and completions do not advertise `-i` / `-o`. Root invocations that begin with an `mmdc` option remain permanently supported as silent compatibility aliases and use the exact `merman-cli mmdc` parser and execution path; bare root inputs and native-only root options fail with guidance to an explicit workflow. New scripts should still choose `render`, `batch`, or explicit `mmdc` so their intended contract is visible.
-
-Native `render` and `batch` use `-f/--format`; their hidden `-e` aliases share the `v0.9.0` removal date, but `mmdc -e/--outputFormat` remains part of the compatibility interface. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for the migration table, PDF, ASCII/Unicode, Iconify, runtime policy, and recoverable batch output.
+See the [`merman-cli` guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#readme) for installation channels, Markdown batches, analysis, export formats, resource policy, and `mmdc` migration details.
 
 ### Browser
 
-Install the complete browser package from the published alpha channel and initialize it once per browser realm:
+Install one browser-only WASM package and initialize it once per browser realm:
 
 ```sh
 npm install @mermanjs/web@alpha
 ```
 
 ```ts
-import { initMerman, renderSvg } from "@mermanjs/web";
+import { initMerman, renderSvgToElement } from "@mermanjs/web";
 
 await initMerman();
-const svg = renderSvg(`flowchart TD
+const target = document.querySelector("#diagram");
+if (!target) throw new Error("missing #diagram mount point");
+
+renderSvgToElement(target, `flowchart TD
   A[Start] --> B[Done]`);
 ```
 
-The call returns the rendered SVG string in `svg`; it does not mutate the page.
+`renderSvgToElement()` validates and mounts the generated SVG at the actual document boundary. Use
+`renderSvg()` when the host needs the serialized SVG string instead.
 
-The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
+Use [`@mermanjs/web-render`](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md) when the browser needs SVG but not analysis, ASCII, or editor APIs. Browser packages do not provide a Node.js or SSR fallback; see the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md).
 
-The npm alpha.5 packages were built from the reviewed source commit recorded by their verified package-group artifacts. The manually bootstrapped registry artifacts do not expose npm provenance attestations, so check the exact installed version and the release record before depending on prerelease-only behavior.
+### Node.js
 
-### Node.js And Static-Site Builds
-
-Install the experimental native loader on Node.js 22 or newer:
+The experimental native loader supports Node.js 22 or newer and deterministic static SVG rendering:
 
 ```sh
 npm install @mermanjs/node@alpha
@@ -160,96 +150,82 @@ import { createNodeEngine } from "@mermanjs/node";
 
 const engine = await createNodeEngine();
 try {
-  const svg = await engine.renderSvg("flowchart TD\nA --> B");
-  console.log(svg);
+  console.log(await engine.renderSvg("flowchart TD\nA --> B"));
 } finally {
   await engine.dispose();
 }
 ```
 
-The loader selects one exact-version native package for supported macOS arm64/x64, Linux x64 glibc/musl, or Windows x64 MSVC hosts. It provides deterministic SVG with Cytoscape and ELK layouts; it does not download binaries during installation or fall back to browser WASM.
+The loader selects an exact-version native package for supported hosts. It does not download binaries during installation or fall back to browser WASM. See the [Node.js package guide](https://github.com/Latias94/merman/tree/main/platforms/node#readme) for the supported platform and capability boundary.
 
-### Pin Unreleased Source
+## Engineering model
 
-Replace `FULL_COMMIT_SHA` with a reviewed commit when an unreleased integration must be reproducible:
+Merman keeps Mermaid syntax facts in one typed semantic core and projects them into product-specific operations:
 
-```sh
-cargo install --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA --locked merman-cli
-cargo add merman --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA
+```text
+Mermaid source
+    |
+    v
+parser-owned semantic model
+    |-- diagnostics, fixes, editor facts, and LSP features
+    |-- typed layout ----------------------------> Mermaid-style SVG
+    |-- validated SVG ---------------------------> PNG, JPEG, and PDF
+    `-- typed diagram models --------------------> ASCII and Unicode
 ```
 
-## Choose Your Surface
+- **Parity is evidence-backed.** Semantic JSON, typed layout snapshots, and pinned upstream SVG DOM baselines catch different classes of drift. The current primary matrix covers 35 built-in Mermaid families.
+- **The native path is browserless.** Applications and build systems do not need to bundle Chromium or a JavaScript runtime just to render a diagram.
+- **Capabilities are explicit.** Missing layout engines, math support, exporters, runtime adapters, or other optional capabilities return typed errors instead of silently selecting different behavior.
+- **Outputs have separate contracts.** Mermaid-style SVG, export-safe SVG, raster/vector export, text output, semantic JSON, and layout JSON are deliberately distinct surfaces.
 
-| You want to | Start with |
-| --- | --- |
-| Render from Rust | [`merman`](https://crates.io/crates/merman) |
-| Render from a shell, CI job, or docs build | [`merman-cli`](https://crates.io/crates/merman-cli) or the [stable Homebrew formula](https://formulae.brew.sh/formula/merman-cli) |
-| Render in Node.js or a static-site build | Experimental [`@mermanjs/node`](https://github.com/Latias94/merman/blob/main/platforms/node#readme) |
-| Render in a browser with SVG only | [`@mermanjs/web-render`](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md) |
-| Combine browser rendering, analysis, ASCII, and editor APIs | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) |
-| Analyze Mermaid without SVG | [`merman-analysis`](https://crates.io/crates/merman-analysis) |
-| Add editor intelligence | [`merman-lsp`](https://crates.io/crates/merman-lsp) or the [VS Code preview](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) |
-| Call Merman from another language | [Python](https://pypi.org/project/merman/), [C/C++](https://github.com/Latias94/merman/tree/main/crates/merman-ffi#readme), [Flutter/Dart](https://pub.dev/packages/merman), [Android](https://github.com/Latias94/merman/tree/main/platforms/android#readme), or [Apple](https://github.com/Latias94/merman/tree/main/platforms/apple#readme) |
-| Render in Rustdoc or Typst | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) or the [Typst package](https://github.com/Latias94/merman/tree/main/distribution/typst/merman#readme) |
+## Choose capabilities
 
-For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
+Cargo features select observable capabilities and output backends, not diagram families. Every parser-capable build retains the same Mermaid language catalog.
 
-The source installation above pins an immutable commit. Starting with `0.8.0-alpha.5`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
-
-Publication routes differ by platform. The [package surface guide](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
-
-## Bring Only What You Need
-
-Cargo features select observable capabilities and output backends, not diagram families. Every parser-capable build keeps the same Mermaid language catalog.
-
-| Goal | Selection |
+| Goal | Cargo selection |
 | --- | --- |
 | Complete deterministic SVG | `merman` defaults, or `complete-svg` |
 | Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
 | Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["ascii"]` |
-| Binary export | Add only the required `png`, `jpeg`, or `pdf` features |
+| Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |
 
-For the published alpha.5 Rust contract, a basic SVG dependency is:
+For the published `0.8.0-alpha.5` feature closure, a basic SVG-only dependency is:
 
 ```toml
 [dependencies]
 merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"] }
 ```
 
-A lint-only CLI can omit rendering and export dependencies:
+The [capability guide] documents exact feature forwarding, browser packages, artifact profiles, and runtime/resource policy.
 
-```sh
-cargo install merman-cli --version 0.8.0-alpha.5 --locked \
-  --no-default-features --features analysis
-```
+## Compatibility boundary
 
-If an input needs a layout engine or math renderer that was not compiled, Merman returns a typed `missing-capability` error instead of silently changing the diagram. The [capability guide](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md) documents exact feature forwarding, browser packages, artifact profiles, and runtime/resource policy.
+Merman prioritizes source-backed convergence in parsing, semantic models, layout, theming, sanitization, and SVG DOM structure. It does not claim byte-for-byte Chromium pixels.
 
-## Compatibility, Honestly
-
-Merman prioritizes parser, model, layout, theme, sanitizer, and SVG DOM convergence with pinned Mermaid source. It does not claim byte-for-byte Chromium pixels.
-
-- Browser font fallback, `getBBox()` floats, `foreignObject`, and RoughJS path geometry can remain documented residuals where no robust headless derivation exists.
+- Browser font fallback, `getBBox()` floats, `foreignObject`, HTML labels, and RoughJS path geometry can remain documented residuals where no robust headless derivation exists.
 - Mermaid-parity SVG can contain HTML labels. Select `SvgPipeline::resvg_safe()` on a typed SVG
-  request, or use a PNG/JPEG/PDF target, when a raster consumer cannot render `foreignObject`;
-  browser DOM insertion still requires a Web-host admission policy.
-- PNG, JPEG, and PDF are integration outputs with explicit allocation and resource limits; they are not browser screenshot parity contracts.
-- ASCII/Unicode support varies by diagram family and should be capability-checked.
+  request, or use a PNG, JPEG, or PDF target, when a raster consumer cannot render
+  `foreignObject`; browser DOM insertion still requires an explicit host admission policy.
+- PNG, JPEG, and PDF are bounded integration outputs with explicit allocation and resource limits,
+  not browser screenshot parity contracts.
+- ASCII and Unicode support is capability-checked by diagram family.
 
-See the current [alignment dashboard](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md), [SVG pipeline guide](https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md), and [benchmark methodology](https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md) for the exact evidence boundary.
+Read the [alignment dashboard], [SVG output pipeline], [rendering security guide], and [benchmark methodology] for the exact evidence and safety boundaries.
 
 ## Documentation
 
-- [Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.5](https://github.com/Latias94/merman/blob/main/docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md)
-- [Choose capabilities and build profiles](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md)
-- [Diagram coverage and parity](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
-- [CLI reference](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md)
-- [Browser packages](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
-- [Integrations and editor workflows](https://github.com/Latias94/merman/blob/main/docs/integrations/README.md)
-- [Host text measurement](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md)
-- [Rendering security](https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md)
-- [Changelog](https://github.com/Latias94/merman/blob/main/CHANGELOG.md)
+| Topic | Entry point |
+| --- | --- |
+| Capabilities, features, and artifact profiles | [Choosing Merman capabilities][capability guide] |
+| Diagram coverage and parity evidence | [Alignment dashboard][alignment dashboard] |
+| Packages, registries, and release delivery | [Package surface guide][package surface guide] |
+| CLI workflows and compatibility | [`merman-cli` guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#readme) |
+| Browser and Node.js packages | [Browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) · [Node.js package guide](https://github.com/Latias94/merman/tree/main/platforms/node#readme) |
+| Analysis, editors, and host integrations | [Integration guide](https://github.com/Latias94/merman/blob/main/docs/integrations/README.md) |
+| Rendering and security contracts | [SVG output pipeline][SVG output pipeline] · [Rendering security][rendering security guide] |
+| Maintainer and operator documentation | [Documentation index](https://github.com/Latias94/merman/blob/main/docs/README.md) |
+| Release history | [Changelog](CHANGELOG.md) · [Releases] |
 
 ## Development
 
@@ -259,12 +235,22 @@ cargo fmt --all -- --check
 cargo run -p xtask -- verify --strict
 ```
 
-The strict gate verifies generated contracts, all-family SVG evidence, package surfaces, browser tests, and release legal material against the pinned reference bundle.
+The strict gate verifies generated contracts, all-family SVG evidence, package surfaces, browser tests, and release legal material against the pinned reference bundle. See the [documentation index](https://github.com/Latias94/merman/blob/main/docs/README.md) for architecture records, contributor procedures, and release operations.
 
-## License And Attribution
+## License and attribution
 
 Merman is available under the [Apache License 2.0](LICENSE-APACHE) or [MIT License](LICENSE-MIT).
 
 Source translations, fixtures, embedded resources, behavioral references, and their exact revisions are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the [machine-readable component inventory](docs/release/THIRD_PARTY_COMPONENTS.json).
 
 Merman is independent of, and not affiliated with, endorsed by, or sponsored by the Mermaid project or its maintainers.
+
+[Mermaid]: https://mermaid.js.org/
+[Playground]: https://frankorz.com/merman/
+[Releases]: https://github.com/Latias94/merman/releases
+[package surface guide]: https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md
+[capability guide]: https://github.com/Latias94/merman/blob/main/docs/FEATURES.md
+[alignment dashboard]: https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md
+[SVG output pipeline]: https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md
+[rendering security guide]: https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md
+[benchmark methodology]: https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md

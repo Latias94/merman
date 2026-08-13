@@ -9,38 +9,35 @@ Use `merman-analysis` directly when a Rust application needs to validate Mermaid
 ## Quick Start
 
 ```sh
-cargo add merman-analysis@0.8.0-alpha.5
+cargo add merman-analysis@=0.8.0-alpha.5
 ```
 
 Analyze one Mermaid diagram:
 
 ```rust
-use merman_analysis::{AnalysisOptions, Analyzer, SourceDescriptor};
+use merman_analysis::Analyzer;
 
 fn main() {
-    let options = AnalysisOptions::default().with_source(
-        SourceDescriptor::diagram().with_path("diagram.mmd"),
-    )
-    .with_max_source_bytes(Some(4 * 1024 * 1024))
-    .with_max_document_diagrams(Some(256));
-    let analyzer = Analyzer::with_options(options);
-    let outcome = analyzer.analyze_generation("flowchart TD\n  A[Start] -->");
-    let generation = outcome
-        .into_ready()
-        .expect("source is within the configured analysis limit");
-    let payload = generation.project(analyzer.options().diagnostic_policy());
+    let result = Analyzer::new().analyze("flowchart TD\n  A[Start] -->");
 
-    for diagnostic in &payload.diagnostics {
+    for diagnostic in &result.diagnostics {
         println!("{}: {}", diagnostic.id, diagnostic.message);
     }
 
-    assert!(!payload.valid);
-    assert_eq!(analyzer.options().max_source_bytes(), Some(4 * 1024 * 1024));
-    assert_eq!(analyzer.options().max_document_diagrams(), Some(256));
+    assert!(!result.valid);
 }
 ```
 
-`Analyzer::analyze_generation` returns `AnalysisCaptureOutcome` so callers can distinguish a completed `AnalysisGeneration` from an `AnalysisRejection`. A rejection exposes a typed `AnalysisResourceLimit` and its canonical diagnostics payload. A generation is bound to the parser environment and snapshot policy used for capture, but retains only the opaque environment identity and source metadata needed after parsing. It does not retain the site/runtime policy or an initial diagnostics payload. Call `AnalysisGeneration::project` with a diagnostic policy, use `Analyzer::analyze` for the smaller diagnostics-only path, or use `Analyzer::analyze_facts` when a binding needs the serializable facts contract.
+Choose the narrowest API that owns the result you need:
+
+| Need | API |
+| --- | --- |
+| Diagnostics and validity | `Analyzer::analyze()` |
+| Serializable editor and binding facts | `Analyzer::analyze_facts()` |
+| A reusable typed capture with multiple projections | `Analyzer::analyze_generation()` |
+| Shared source storage and cooperative cancellation | `Analyzer::analyze_generation_shared_cancellable()` |
+
+`Analyzer::analyze_generation` returns `AnalysisCaptureOutcome` so callers can distinguish a completed `AnalysisGeneration` from an `AnalysisRejection`. A rejection exposes a typed `AnalysisResourceLimit` and its canonical diagnostics payload. A generation is bound to the parser environment and snapshot policy used for capture, but retains only the opaque environment identity and source metadata needed after parsing. It does not retain the site/runtime policy or an initial diagnostics payload. Call `AnalysisGeneration::project` with a diagnostic policy when the same capture needs another diagnostics projection.
 
 The configured `SourceDescriptor` selects the canonical capture path. `SourceKind::Diagram` analyzes the whole input as one Mermaid diagram, while `SourceKind::Markdown` and `SourceKind::Mdx` extract fences and enforce `max_document_diagrams`; Analyzer entry points cannot create a Markdown identity around whole-document Mermaid facts. The free `analyze_document*` functions remain useful when the source descriptor varies per call.
 

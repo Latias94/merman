@@ -299,10 +299,10 @@ artifact profile. The [Flutter](../platforms/flutter/README.md),
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; there is no interchangeable generic native binary SDK.
 
-Typst users install one package:
+Typst Universe currently publishes `0.1.0`:
 
 ```typst
-#import "@preview/merman:0.2.0": mermaid
+#import "@preview/merman:0.1.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
@@ -310,10 +310,12 @@ flowchart TD
 ```)
 ```
 
-The published Typst profile has SVG, analysis, Cytoscape, and ELK. Math is not advertised until
-its pure-WASM font, license, import, and parity admission is complete. Typst always enforces its
-constrained resource policy; caller options may tighten it but cannot replace it with an
-unbounded profile.
+The current source tree stages an unreleased `0.2.0` wrapper with SVG, analysis, Cytoscape, and ELK.
+Build it locally and use Typst's `--package-path` until that version is published. Math is not
+advertised until its pure-WASM font, license, import, and parity admission is complete. The source
+package always enforces its constrained resource policy; caller options may tighten it but cannot
+replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md)
+for the published/source version boundary.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported
