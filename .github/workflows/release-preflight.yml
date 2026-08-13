@@ -846,7 +846,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
-          targets: aarch64-linux-android,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
@@ -871,30 +871,29 @@ jobs:
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
-        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
+        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
-      - name: Verify Android libraries in Flutter package
+      - name: Build Apple and desktop native libraries
+        run: python3 platforms/flutter/build-native.py all-desktop
+
+      - name: Verify Flutter native artifact matrix
         run: |
-          test -f platforms/flutter/android/src/main/jniLibs/arm64-v8a/libmerman_ffi.so
-          test -f platforms/flutter/android/src/main/jniLibs/x86_64/libmerman_ffi.so
-
-      - name: Build and inject iOS XCFramework
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash platforms/flutter/build-ios.sh
-
-      - name: Build desktop native libraries
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash platforms/flutter/build-desktop.sh --all
-
-      - name: Setup Dart with pub.dev OIDC credentials
-        uses: dart-lang/setup-dart@v1.8.0
+          test -f platforms/flutter/native/android/armeabi-v7a/libmerman_ffi.so
+          test -f platforms/flutter/native/android/arm64-v8a/libmerman_ffi.so
+          test -f platforms/flutter/native/android/x86_64/libmerman_ffi.so
+          test -f platforms/flutter/native/ios/arm64/libmerman_ffi.dylib
+          test -f platforms/flutter/native/ios/arm64-simulator/libmerman_ffi.dylib
+          test -f platforms/flutter/native/ios/x86_64-simulator/libmerman_ffi.dylib
+          test -f platforms/flutter/native/macos/arm64/libmerman_ffi.dylib
+          test -f platforms/flutter/native/macos/x86_64/libmerman_ffi.dylib
+          test -f platforms/flutter/native/linux/aarch64/libmerman_ffi.so
+          test -f platforms/flutter/native/linux/x86_64/libmerman_ffi.so
+          test -f platforms/flutter/native/windows/x86_64/merman_ffi.dll
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.38.3"
+          flutter-version: "3.44.9"
           channel: stable
           cache: true
 
@@ -903,7 +902,11 @@ jobs:
         run: |
           flutter pub get
           flutter analyze
-          dart format --set-exit-if-changed lib example tool
+          dart format --set-exit-if-changed \
+            lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
+            example tool hook
+          dart run tool/abi3_contract_test.dart
+          dart run example/main.dart
           python3 ../../scripts/verify_flutter_pub_package.py \
             --package-root . \
             --max-compressed-mb 99

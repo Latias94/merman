@@ -271,8 +271,8 @@ void projectsCurrentAbi3TableBoundaries() {
   final api = calloc<native.MermanNativeApi>();
   final result = calloc<native.MermanNativeResult>();
   try {
-    request.ref.expected_minimum_prefix_layout_digest.struct_size =
-        ffi.sizeOf<native.MermanNativeSlice>();
+    request.ref.expected_minimum_prefix_layout_digest.struct_size = ffi
+        .sizeOf<native.MermanNativeSlice>();
     _expect(
       api.ref.engine_try_close.address == 0,
       'zeroed ABI table should expose the engine_try_close slot',
@@ -289,8 +289,8 @@ void projectsCurrentAbi3TableBoundaries() {
     final servicesConfig = calloc<native.MermanNativeEngineServicesConfig>();
     try {
       iconPack.ref.struct_size = ffi.sizeOf<native.MermanNativeIconPack>();
-      servicesConfig.ref.struct_size =
-          ffi.sizeOf<native.MermanNativeEngineServicesConfig>();
+      servicesConfig.ref.struct_size = ffi
+          .sizeOf<native.MermanNativeEngineServicesConfig>();
       _expect(
         iconPack.ref.struct_size > 0 && servicesConfig.ref.struct_size > 0,
         'generated Dart ABI must project both service-constructor records',
@@ -492,8 +492,10 @@ void acceptsAdditiveTypedMetadataFields() {
 
 void matchesThePubPackageVersionProjection() {
   final pubspec = File('pubspec.yaml').readAsStringSync();
-  final match =
-      RegExp(r'^version:\s*([^\s#]+)\s*$', multiLine: true).firstMatch(pubspec);
+  final match = RegExp(
+    r'^version:\s*([^\s#]+)\s*$',
+    multiLine: true,
+  ).firstMatch(pubspec);
   _expect(match != null, 'pubspec.yaml must declare one package version');
   _expect(
     match!.group(1) == mermanPackageVersion,
@@ -519,19 +521,14 @@ void projectsSvgPlanOperationFromGeneratedAbi() {
   _expect(
     MermanOperation.knownValues.every(
       (known) =>
-          identical(
-            MermanOperation.fromNativeCode(known.nativeCode),
-            known,
-          ) &&
-          identical(
-            MermanOperation.fromOperationId(known.operationId),
-            known,
-          ),
+          identical(MermanOperation.fromNativeCode(known.nativeCode), known) &&
+          identical(MermanOperation.fromOperationId(known.operationId), known),
     ),
     'every generated operation must round-trip by numeric code and public ID',
   );
-  final maxKnownCode =
-      MermanOperation.knownValues.map((known) => known.nativeCode).reduce(max);
+  final maxKnownCode = MermanOperation.knownValues
+      .map((known) => known.nativeCode)
+      .reduce(max);
   _expectThrows<ArgumentError>(
     () => MermanOperation.fromNativeCode(native.MERMAN_NATIVE_OPERATION_NONE),
   );
@@ -541,11 +538,9 @@ void projectsSvgPlanOperationFromGeneratedAbi() {
 }
 
 void requiresSdkUpgradeForUnknownCatalogOperation() {
-  final catalog = _catalog(operationIds: const [
-    'future-operation',
-    'semantic-json',
-    'svg',
-  ]);
+  final catalog = _catalog(
+    operationIds: const ['future-operation', 'semantic-json', 'svg'],
+  );
   final validated = MermanRuntimeCatalog.fromJson(catalog);
   _expect(
     validated.supportsOperation('future-operation'),
@@ -566,9 +561,13 @@ void requiresSdkUpgradeForUnknownCatalogOperation() {
 void acceptsAFlatAbi3Catalog() {
   final catalog = MermanRuntimeCatalog.fromJson(_catalog());
   _expect(
-      catalog.packageVersion == 'test', 'package version should be preserved');
+    catalog.packageVersion == 'test',
+    'package version should be preserved',
+  );
   _expect(
-      catalog.supportsCapability('svg'), 'SVG capability should be present');
+    catalog.supportsCapability('svg'),
+    'SVG capability should be present',
+  );
   _expect(catalog.supportsOutput('svg'), 'SVG output should be present');
   _expect(
     catalog.supportsOperation('semantic-json'),
@@ -608,15 +607,17 @@ void acceptsAdditiveConstructorResourceLimits() {
   });
 
   final validated = MermanRuntimeCatalog.fromJson(catalog);
-  final contract = validated.constructorServiceContracts
-      .firstWhere((candidate) => candidate.id == 'icon-registry');
-  final future = contract.resourceLimits
-      .firstWhere((candidate) => candidate.id == 'future_constructor_limit');
+  final contract = validated.constructorServiceContracts.firstWhere(
+    (candidate) => candidate.id == 'icon-registry',
+  );
+  final future = contract.resourceLimits.firstWhere(
+    (candidate) => candidate.id == 'future_constructor_limit',
+  );
   final rawContracts =
       validated.jsonObject['constructor_service_contracts'] as List<Object?>;
-  final rawIconRegistry = rawContracts
-      .cast<Map<String, Object?>>()
-      .firstWhere((candidate) => candidate['id'] == 'icon-registry');
+  final rawIconRegistry = rawContracts.cast<Map<String, Object?>>().firstWhere(
+    (candidate) => candidate['id'] == 'icon-registry',
+  );
   final rawFuture = (rawIconRegistry['resource_limits'] as List<Object?>)
       .cast<Map<String, Object?>>()
       .firstWhere((candidate) => candidate['id'] == 'future_constructor_limit');
@@ -639,25 +640,40 @@ void rejectsMalformedAdditiveTransportSections() {
     (catalog) => catalog.remove('constructor_service_contracts'),
     (catalog) => (catalog['constructor_service_contracts'] as List<Object?>)
         .removeLast(),
-    (catalog) => (((catalog['constructor_service_contracts'] as List<Object?>)
-                .first as Map<String, Object?>)[
-            'provided_text_measurement_provider_ids'] as List<Object?>)
-        .add('unavailable-provider'),
-    (catalog) => ((((catalog['constructor_service_contracts'] as List<Object?>)
-            .last as Map<String, Object?>)['resource_limits'] as List<Object?>)
-        .first as Map<String, Object?>)['value'] = -1,
+    (catalog) =>
+        (((catalog['constructor_service_contracts'] as List<Object?>).first
+                    as Map<
+                      String,
+                      Object?
+                    >)['provided_text_measurement_provider_ids']
+                as List<Object?>)
+            .add('unavailable-provider'),
+    (catalog) =>
+        ((((catalog['constructor_service_contracts'] as List<Object?>).last
+                            as Map<String, Object?>)['resource_limits']
+                        as List<Object?>)
+                    .first
+                as Map<String, Object?>)['value'] =
+            -1,
     (catalog) {
-      final iconRegistry =
-          _constructorServiceContract(catalog, 'icon-registry');
-      final first = (iconRegistry['resource_limits'] as List<Object?>).first
-          as Map<String, Object?>;
+      final iconRegistry = _constructorServiceContract(
+        catalog,
+        'icon-registry',
+      );
+      final first =
+          (iconRegistry['resource_limits'] as List<Object?>).first
+              as Map<String, Object?>;
       first['value'] = (first['value'] as int) + 1;
     },
     (catalog) {
-      final hostText =
-          _constructorServiceContract(catalog, 'host-text-measurement');
-      final iconRegistry =
-          _constructorServiceContract(catalog, 'icon-registry');
+      final hostText = _constructorServiceContract(
+        catalog,
+        'host-text-measurement',
+      );
+      final iconRegistry = _constructorServiceContract(
+        catalog,
+        'icon-registry',
+      );
       final knownIconLimit = Map<String, Object?>.from(
         (iconRegistry['resource_limits'] as List<Object?>).first
             as Map<String, Object?>,
@@ -814,8 +830,9 @@ void rejectsCatalogsMissingCurrentBindingSchemas() {
   final legacyOptions = _catalog();
   legacyOptions['options_schema_versions'] = [1];
   _expectContractFailure(
-    () => MermanRuntimeCatalog.fromJson(legacyOptions)
-        .requireCurrentBindingSchemas(),
+    () => MermanRuntimeCatalog.fromJson(
+      legacyOptions,
+    ).requireCurrentBindingSchemas(),
   );
 
   final missingResult = _catalog();
@@ -823,8 +840,9 @@ void rejectsCatalogsMissingCurrentBindingSchemas() {
     {'id': 'operation-metadata', 'version': 1},
   ];
   _expectContractFailure(
-    () => MermanRuntimeCatalog.fromJson(missingResult)
-        .requireCurrentBindingSchemas(),
+    () => MermanRuntimeCatalog.fromJson(
+      missingResult,
+    ).requireCurrentBindingSchemas(),
   );
 
   final missingMetadata = _catalog();
@@ -832,30 +850,33 @@ void rejectsCatalogsMissingCurrentBindingSchemas() {
     {'id': 'binding-result', 'version': 1},
   ];
   _expectContractFailure(
-    () => MermanRuntimeCatalog.fromJson(missingMetadata)
-        .requireCurrentBindingSchemas(),
+    () => MermanRuntimeCatalog.fromJson(
+      missingMetadata,
+    ).requireCurrentBindingSchemas(),
   );
 }
 
 void decodesTypedOperationMetadata() {
-  final raster = binding.decodeMermanOperationMetadata(jsonEncode({
-    'version': 1,
-    'operation_id': 'png',
-    'media_type': 'image/png',
-    'runtime_policy': 'deterministic',
-    'byte_length': 128,
-    'output_plan': {
-      'kind': 'raster',
-      'requested_width_px': 100.5,
-      'requested_height_px': 50.25,
-      'width_px': 100,
-      'height_px': 50,
-      'requested_scale': 1.0,
-      'effective_scale': 0.5,
-      'limited': true,
-    },
-    'future_metadata': {'preserved': true},
-  }));
+  final raster = binding.decodeMermanOperationMetadata(
+    jsonEncode({
+      'version': 1,
+      'operation_id': 'png',
+      'media_type': 'image/png',
+      'runtime_policy': 'deterministic',
+      'byte_length': 128,
+      'output_plan': {
+        'kind': 'raster',
+        'requested_width_px': 100.5,
+        'requested_height_px': 50.25,
+        'width_px': 100,
+        'height_px': 50,
+        'requested_scale': 1.0,
+        'effective_scale': 0.5,
+        'limited': true,
+      },
+      'future_metadata': {'preserved': true},
+    }),
+  );
   final rasterPlan = raster.outputPlan;
   _expect(
     rasterPlan is MermanRasterOutputPlan &&
@@ -866,22 +887,24 @@ void decodesTypedOperationMetadata() {
     'generated metadata decoder must project raster plans and preserve raw JSON',
   );
 
-  final pdf = binding.decodeMermanOperationMetadata(jsonEncode({
-    'version': 1,
-    'operation_id': 'pdf',
-    'media_type': 'application/pdf',
-    'runtime_policy': 'deterministic',
-    'byte_length': 256,
-    'output_plan': {
-      'kind': 'pdf-filter-images',
-      'filtered_groups': 2,
-      'requested_scale': 1.0,
-      'effective_scale': 0.75,
-      'requested_image_pixels': 1000,
-      'effective_image_pixels': 750,
-      'limited': true,
-    },
-  }));
+  final pdf = binding.decodeMermanOperationMetadata(
+    jsonEncode({
+      'version': 1,
+      'operation_id': 'pdf',
+      'media_type': 'application/pdf',
+      'runtime_policy': 'deterministic',
+      'byte_length': 256,
+      'output_plan': {
+        'kind': 'pdf-filter-images',
+        'filtered_groups': 2,
+        'requested_scale': 1.0,
+        'effective_scale': 0.75,
+        'requested_image_pixels': 1000,
+        'effective_image_pixels': 750,
+        'limited': true,
+      },
+    }),
+  );
   _expect(
     pdf.outputPlan is MermanPdfFilterImagesOutputPlan &&
         (pdf.outputPlan! as MermanPdfFilterImagesOutputPlan).filteredGroups ==
@@ -889,17 +912,19 @@ void decodesTypedOperationMetadata() {
     'generated metadata decoder must project PDF filter-image plans',
   );
 
-  final unknown = binding.decodeMermanOperationMetadata(jsonEncode({
-    'version': 1,
-    'operation_id': 'future',
-    'media_type': 'application/x-future',
-    'runtime_policy': 'future-policy',
-    'byte_length': 7,
-    'output_plan': {
-      'kind': 'future-plan',
-      'nested': {'answer': 42},
-    },
-  }));
+  final unknown = binding.decodeMermanOperationMetadata(
+    jsonEncode({
+      'version': 1,
+      'operation_id': 'future',
+      'media_type': 'application/x-future',
+      'runtime_policy': 'future-policy',
+      'byte_length': 7,
+      'output_plan': {
+        'kind': 'future-plan',
+        'nested': {'answer': 42},
+      },
+    }),
+  );
   _expect(
     unknown.outputPlan is MermanUnknownOutputPlan &&
         (unknown.outputPlan! as MermanUnknownOutputPlan).jsonObject['nested']
@@ -907,8 +932,10 @@ void decodesTypedOperationMetadata() {
     'unknown future output plans must preserve their complete JSON object',
   );
   _expectThrows<UnsupportedError>(
-    () => ((unknown.outputPlan! as MermanUnknownOutputPlan)
-        .jsonObject['nested']! as Map<String, Object?>)['answer'] = 0,
+    () =>
+        ((unknown.outputPlan! as MermanUnknownOutputPlan).jsonObject['nested']!
+                as Map<String, Object?>)['answer'] =
+            0,
   );
 
   _expectThrows<FormatException>(
@@ -917,23 +944,25 @@ void decodesTypedOperationMetadata() {
     ),
   );
   _expectThrows<FormatException>(
-    () => binding.decodeMermanOperationMetadata(jsonEncode({
-      'version': 1,
-      'operation_id': 'png',
-      'media_type': 'image/png',
-      'runtime_policy': 'deterministic',
-      'byte_length': 1,
-      'output_plan': {
-        'kind': 'raster',
-        'requested_width_px': 1.0,
-        'requested_height_px': 1.0,
-        'width_px': 0x100000000,
-        'height_px': 1,
-        'requested_scale': 1.0,
-        'effective_scale': 1.0,
-        'limited': false,
-      },
-    })),
+    () => binding.decodeMermanOperationMetadata(
+      jsonEncode({
+        'version': 1,
+        'operation_id': 'png',
+        'media_type': 'image/png',
+        'runtime_policy': 'deterministic',
+        'byte_length': 1,
+        'output_plan': {
+          'kind': 'raster',
+          'requested_width_px': 1.0,
+          'requested_height_px': 1.0,
+          'width_px': 0x100000000,
+          'height_px': 1,
+          'requested_scale': 1.0,
+          'effective_scale': 1.0,
+          'limited': false,
+        },
+      }),
+    ),
   );
 }
 
@@ -967,9 +996,11 @@ void preservesCompleteRuntimeResourceContract() {
   );
   _expect(
     unbounded != null &&
-        catalog.resourceLimits.every((limit) => limit.hardCap
-            ? unbounded.limits[limit.id] != null
-            : unbounded.limits[limit.id] == null),
+        catalog.resourceLimits.every(
+          (limit) => limit.hardCap
+              ? unbounded.limits[limit.id] != null
+              : unbounded.limits[limit.id] == null,
+        ),
     'runtime nullable policy limits and finite hard caps must survive',
   );
   _expect(
@@ -1038,9 +1069,10 @@ void acceptsAdditiveRuntimeCatalogFields() {
                 as Map<String, Object?>)
             .isEmpty &&
         ((preserved['output_contracts'] as List<Object?>)
-                    .cast<Map<String, Object?>>()
-                    .firstWhere((output) => output['id'] == 'png'))[
-                'future_output_metadata'] ==
+                .cast<Map<String, Object?>>()
+                .firstWhere(
+                  (output) => output['id'] == 'png',
+                ))['future_output_metadata'] ==
             true,
     'schema 1 consumers must preserve additive catalog fields',
   );
@@ -1082,13 +1114,15 @@ void acceptsAdditiveRuntimeResourceIds() {
   final futureLimitId = MermanResourceLimitId.fromId('future_limit');
   final futureLimit = validated.resourceLimitsById[futureLimitId];
   _expect(futureLimit != null, 'future resource limit must be discoverable');
-  final futureLimitMetadata = futureLimit!
-      .additionalFields['future_limit_metadata'] as Map<String, Object?>;
+  final futureLimitMetadata =
+      futureLimit!.additionalFields['future_limit_metadata']
+          as Map<String, Object?>;
   final futureLimitTags = futureLimitMetadata['tags'] as List<Object?>;
   final futureLimitStability = futureLimitTags[1] as Map<String, Object?>;
   final futureProfile = validated.resourceProfiles.first;
-  final futureProfileMetadata = futureProfile
-      .additionalFields['future_profile_metadata'] as Map<String, Object?>;
+  final futureProfileMetadata =
+      futureProfile.additionalFields['future_profile_metadata']
+          as Map<String, Object?>;
   final futureProfileFlags = futureProfileMetadata['flags'] as List<Object?>;
 
   final rawFutureLimit = limits.last as Map<String, Object?>;
@@ -1096,7 +1130,8 @@ void acceptsAdditiveRuntimeResourceIds() {
       rawFutureLimit['future_limit_metadata'] as Map<String, Object?>;
   rawFutureLimitMetadata['version'] = 3;
   ((rawFutureLimitMetadata['tags'] as List<Object?>)[1]
-      as Map<String, Object?>)['stable'] = false;
+          as Map<String, Object?>)['stable'] =
+      false;
   final rawFirstProfile =
       (resources['profiles'] as List<Object?>).first as Map<String, Object?>;
   final rawFutureProfileMetadata =
@@ -1115,9 +1150,7 @@ void acceptsAdditiveRuntimeResourceIds() {
         futureProfileFlags.last == null &&
         validated.resourceProfiles.every(
           (profile) =>
-              profile.limits.containsKey(
-                futureLimitId,
-              ) &&
+              profile.limits.containsKey(futureLimitId) &&
               profile.limits[futureLimitId] == 4096,
         ),
     'ABI 3 consumers must retain additive resource IDs and metadata',
@@ -1125,12 +1158,8 @@ void acceptsAdditiveRuntimeResourceIds() {
   _expectThrows<UnsupportedError>(
     () => futureLimit.additionalFields['mutated'] = true,
   );
-  _expectThrows<UnsupportedError>(
-    () => futureLimitTags.add('mutated'),
-  );
-  _expectThrows<UnsupportedError>(
-    () => futureLimitStability['stable'] = false,
-  );
+  _expectThrows<UnsupportedError>(() => futureLimitTags.add('mutated'));
+  _expectThrows<UnsupportedError>(() => futureLimitStability['stable'] = false);
   _expectThrows<UnsupportedError>(
     () => futureProfileMetadata['source'] = 'mutated',
   );
@@ -1180,23 +1209,37 @@ void rejectsMalformedOutputContracts() {
     (catalog) => _outputContractAt(catalog, 'png')['media_type'] = 1,
     (catalog) =>
         _outputContractAt(catalog, 'png')['system_fonts'] = <String, Object?>{},
-    (catalog) => (_outputContractAt(catalog, 'png')['system_fonts']
-        as Map<String, Object?>)['source_id'] = 1,
-    (catalog) => (_outputContractAt(catalog, 'png')['system_fonts']
-        as Map<String, Object?>)['host_dependent'] = 'true',
-    (catalog) => (_outputContractAt(catalog, 'png')['embedded_images']
-        as Map<String, Object?>)['source_ids'] = 'data-url',
-    (catalog) => (_outputContractAt(catalog, 'png')['embedded_images']
-        as Map<String, Object?>)['filesystem_access'] = 1,
-    (catalog) => ((_outputContractAt(catalog, 'png')['embedded_images']
-            as Map<String, Object?>)['limits']
-        as Map<String, Object?>)['max_bytes_per_image'] = 0,
-    (catalog) => ((_outputContractAt(catalog, 'png')['embedded_images']
-            as Map<String, Object?>)['limits']
-        as Map<String, Object?>)['max_total_bytes'] = 1.5,
-    (catalog) => ((_outputContractAt(catalog, 'png')['embedded_images']
-            as Map<String, Object?>)['limits']
-        as Map<String, Object?>)['max_total_pixels'] = '4096',
+    (catalog) =>
+        (_outputContractAt(catalog, 'png')['system_fonts']
+                as Map<String, Object?>)['source_id'] =
+            1,
+    (catalog) =>
+        (_outputContractAt(catalog, 'png')['system_fonts']
+                as Map<String, Object?>)['host_dependent'] =
+            'true',
+    (catalog) =>
+        (_outputContractAt(catalog, 'png')['embedded_images']
+                as Map<String, Object?>)['source_ids'] =
+            'data-url',
+    (catalog) =>
+        (_outputContractAt(catalog, 'png')['embedded_images']
+                as Map<String, Object?>)['filesystem_access'] =
+            1,
+    (catalog) =>
+        ((_outputContractAt(catalog, 'png')['embedded_images']
+                    as Map<String, Object?>)['limits']
+                as Map<String, Object?>)['max_bytes_per_image'] =
+            0,
+    (catalog) =>
+        ((_outputContractAt(catalog, 'png')['embedded_images']
+                    as Map<String, Object?>)['limits']
+                as Map<String, Object?>)['max_total_bytes'] =
+            1.5,
+    (catalog) =>
+        ((_outputContractAt(catalog, 'png')['embedded_images']
+                    as Map<String, Object?>)['limits']
+                as Map<String, Object?>)['max_total_pixels'] =
+            '4096',
   ]) {
     final catalog = _catalogWithExportOutput();
     mutation(catalog);
@@ -1259,12 +1302,15 @@ void enforcesRuntimeIdentifierGrammarWithoutClosingFutureVocabularies() {
   (valid['option_group_ids'] as List<String>)
     ..add('future_group')
     ..sort();
-  valid['payload_schemas'] = <Object?>[
-    ...valid['payload_schemas'] as List<Object?>,
-    <String, Object>{'id': 'future-schema', 'version': 7},
-  ]..sort((left, right) => (left as Map<String, Object?>)['id']
-      .toString()
-      .compareTo((right as Map<String, Object?>)['id'].toString()));
+  valid['payload_schemas'] =
+      <Object?>[
+        ...valid['payload_schemas'] as List<Object?>,
+        <String, Object>{'id': 'future-schema', 'version': 7},
+      ]..sort(
+        (left, right) => (left as Map<String, Object?>)['id']
+            .toString()
+            .compareTo((right as Map<String, Object?>)['id'].toString()),
+      );
   final validated = MermanRuntimeCatalog.fromJson(valid);
   _expect(
     validated.supportsCapability('future-capability') &&
@@ -1281,8 +1327,8 @@ void enforcesRuntimeIdentifierGrammarWithoutClosingFutureVocabularies() {
     (catalog) => catalog['metadata_ids'] = const ['future metadata'],
     (catalog) => catalog['option_group_ids'] = const ['future.option'],
     (catalog) => catalog['payload_schemas'] = const [
-          {'id': 'future_schema', 'version': 1},
-        ],
+      {'id': 'future_schema', 'version': 1},
+    ],
     (catalog) => _limitAt(catalog, 0)['id'] = 'Future_limit',
     (catalog) => _profileAt(catalog, 0)['id'] = 'future_profile',
   ]) {
@@ -1315,10 +1361,14 @@ void rejectsCoercedRuntimeCatalogVersionFields() {
     (catalog) => catalog['transport_api_version'] = '3',
     (catalog) => catalog['transport_api_version'] = 3.0,
     (catalog) => catalog['package_version'] = 1,
-    (catalog) => (_runtimeCapabilities(catalog)['text_measurement']
-        as Map<String, Object?>)['protocol_version'] = '1',
-    (catalog) => (_runtimeCapabilities(catalog)['text_measurement']
-        as Map<String, Object?>)['protocol_version'] = 1.0,
+    (catalog) =>
+        (_runtimeCapabilities(catalog)['text_measurement']
+                as Map<String, Object?>)['protocol_version'] =
+            '1',
+    (catalog) =>
+        (_runtimeCapabilities(catalog)['text_measurement']
+                as Map<String, Object?>)['protocol_version'] =
+            1.0,
   ]) {
     final catalog = _catalog();
     mutation(catalog);
@@ -1338,8 +1388,9 @@ void rejectsTextMeasurementWithoutVendoredProvider() {
     <String>['host-callback'],
   ]) {
     final catalog = _catalog();
-    final textMeasurement = _runtimeCapabilities(catalog)['text_measurement']
-        as Map<String, Object?>;
+    final textMeasurement =
+        _runtimeCapabilities(catalog)['text_measurement']
+            as Map<String, Object?>;
     textMeasurement['provider_ids'] = providers;
     _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
   }
@@ -1357,22 +1408,32 @@ void rejectsMalformedResourceDescriptors() {
     (catalog) => _limitAt(catalog, 0)
       ..['hard_cap'] = true
       ..['overridable'] = false,
-    (catalog) => (_resources(catalog)['limits'] as List<Object?>)
-        .add(Map<String, Object?>.from(_limitAt(catalog, 0))),
+    (catalog) => (_resources(catalog)['limits'] as List<Object?>).add(
+      Map<String, Object?>.from(_limitAt(catalog, 0)),
+    ),
     (catalog) => _profileAt(catalog, 0).remove('purpose'),
     (catalog) => _profileAt(catalog, 0)['recommended_binding_default'] = 'true',
-    (catalog) => (_profileAt(catalog, 0)['limits']
-        as Map<String, Object?>)['max_source_bytes'] = '1',
-    (catalog) => (_profileAt(catalog, 0)['limits']
-        as Map<String, Object?>)['max_source_bytes'] = 1.5,
-    (catalog) => (_profileAt(catalog, 0)['limits']
-        as Map<String, Object?>)['max_source_bytes'] = 0,
+    (catalog) =>
+        (_profileAt(catalog, 0)['limits']
+                as Map<String, Object?>)['max_source_bytes'] =
+            '1',
+    (catalog) =>
+        (_profileAt(catalog, 0)['limits']
+                as Map<String, Object?>)['max_source_bytes'] =
+            1.5,
+    (catalog) =>
+        (_profileAt(catalog, 0)['limits']
+                as Map<String, Object?>)['max_source_bytes'] =
+            0,
     (catalog) => (_profileAt(catalog, 0)['limits'] as Map<String, Object?>)
         .remove('max_source_bytes'),
-    (catalog) => (_profileAt(catalog, 0)['limits']
-        as Map<String, Object?>)['undeclared_limit'] = null,
-    (catalog) => (_resources(catalog)['profiles'] as List<Object?>)
-        .add(Map<String, Object?>.from(_profileAt(catalog, 0))),
+    (catalog) =>
+        (_profileAt(catalog, 0)['limits']
+                as Map<String, Object?>)['undeclared_limit'] =
+            null,
+    (catalog) => (_resources(catalog)['profiles'] as List<Object?>).add(
+      Map<String, Object?>.from(_profileAt(catalog, 0)),
+    ),
     (catalog) =>
         _resources(catalog)['general_binding_default_profile'] = 'missing',
     (catalog) => _resources(catalog)['cli_default_profile'] = 'missing',
@@ -1645,31 +1706,33 @@ Map<String, Object?> _catalog({
   List<String>? metadataIds,
 }) {
   final usesSvgPipeline = capabilityIds.contains('svg');
-  final optionGroupIds = binding.mermanBindingOptionGroupSpecs.values
-      .where(
-        (spec) =>
-            spec.alwaysAvailable ||
-            (spec.requiresSvgPipeline && usesSvgPipeline) ||
-            spec.anyCapabilityIds.any(capabilityIds.contains),
-      )
-      .map((spec) => spec.id)
-      .toList()
-    ..sort();
+  final optionGroupIds =
+      binding.mermanBindingOptionGroupSpecs.values
+          .where(
+            (spec) =>
+                spec.alwaysAvailable ||
+                (spec.requiresSvgPipeline && usesSvgPipeline) ||
+                spec.anyCapabilityIds.any(capabilityIds.contains),
+          )
+          .map((spec) => spec.id)
+          .toList()
+        ..sort();
   final transport = binding.mermanBindingTransportExposureSpecs['native-c']!;
-  final serviceSpecs = binding.mermanBindingConstructorServiceSpecs.values
-      .where(
-        (spec) =>
-            transport.constructorServiceCandidateIds.contains(spec.id) &&
-            (!spec.requiresSvgPipeline || usesSvgPipeline),
-      )
-      .toList()
-    ..sort((left, right) => left.id.compareTo(right.id));
+  final serviceSpecs =
+      binding.mermanBindingConstructorServiceSpecs.values
+          .where(
+            (spec) =>
+                transport.constructorServiceCandidateIds.contains(spec.id) &&
+                (!spec.requiresSvgPipeline || usesSvgPipeline),
+          )
+          .toList()
+        ..sort((left, right) => left.id.compareTo(right.id));
   final providers = <String>{
     if (usesSvgPipeline) 'vendored',
     for (final spec in serviceSpecs) ...spec.providedTextMeasurementProviderIds,
-  }.toList()
-    ..sort();
-  final effectiveMetadataIds = metadataIds ??
+  }.toList()..sort();
+  final effectiveMetadataIds =
+      metadataIds ??
       (binding.mermanBindingMetadataSpecs.values
           .where(
             (spec) =>
@@ -1695,10 +1758,7 @@ Map<String, Object?> _catalog({
       'operation_ids': operationIds,
       'system_adapter_ids': systemAdapterIds,
       'text_measurement': usesSvgPipeline
-          ? {
-              'protocol_version': 1,
-              'provider_ids': providers,
-            }
+          ? {'protocol_version': 1, 'provider_ids': providers}
           : null,
     },
     'option_group_ids': optionGroupIds,
@@ -1730,10 +1790,10 @@ Map<String, Object?> _catalog({
 }
 
 Map<String, Object?> _catalogWithExportOutput() => _catalog(
-      capabilityIds: const ['png', 'svg'],
-      outputIds: const ['png', 'svg'],
-      operationIds: const ['png', 'semantic-json', 'svg'],
-    );
+  capabilityIds: const ['png', 'svg'],
+  outputIds: const ['png', 'svg'],
+  operationIds: const ['png', 'semantic-json', 'svg'],
+);
 
 Map<String, Object?> _outputContract(String outputId) {
   if (outputId == 'png') {
@@ -1798,9 +1858,9 @@ Map<String, Object?> _resourceContract(List<String> operationIds) =>
               for (final limit in MermanResourceLimitId.knownValues)
                 limit.id:
                     profile == MermanResourceProfile.unboundedForTrustedInput &&
-                            limit.overridable!
-                        ? null
-                        : 1,
+                        limit.overridable!
+                    ? null
+                    : 1,
             },
           },
       ],
@@ -1826,10 +1886,9 @@ Map<String, Object?> _runtimeCapabilities(Map<String, Object?> catalog) =>
 Map<String, Object?> _constructorServiceContract(
   Map<String, Object?> catalog,
   String serviceId,
-) =>
-    (catalog['constructor_service_contracts'] as List<Object?>)
-        .cast<Map<String, Object?>>()
-        .firstWhere((contract) => contract['id'] == serviceId);
+) => (catalog['constructor_service_contracts'] as List<Object?>)
+    .cast<Map<String, Object?>>()
+    .firstWhere((contract) => contract['id'] == serviceId);
 
 List<Object?> _outputContracts(Map<String, Object?> catalog) =>
     catalog['output_contracts']! as List<Object?>;
@@ -1837,10 +1896,9 @@ List<Object?> _outputContracts(Map<String, Object?> catalog) =>
 Map<String, Object?> _outputContractAt(
   Map<String, Object?> catalog,
   String outputId,
-) =>
-    _outputContracts(catalog)
-        .cast<Map<String, Object?>>()
-        .firstWhere((contract) => contract['id'] == outputId);
+) => _outputContracts(catalog).cast<Map<String, Object?>>().firstWhere(
+  (contract) => contract['id'] == outputId,
+);
 
 void _expectContractFailure(void Function() action) {
   _expectThrows<MermanException>(action);

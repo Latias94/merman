@@ -87,6 +87,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "debug-assertions": False,
                 "overflow-checks": False,
                 "rpath": False,
+                "build-override": {"strip": "none"},
             },
         )
 
@@ -181,6 +182,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         expected_targets = {
             "flutter-android-native": (
                 "aarch64-linux-android",
+                "armv7-linux-androideabi",
                 "x86_64-linux-android",
             ),
             "flutter-ios-native": (
@@ -258,11 +260,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             self.skipTest("Bash is unavailable for the POSIX owner recipe smoke")
         environment = os.environ.copy()
         environment["MERMAN_CHECK_RECIPE_ONLY"] = "true"
-        for relative_path in (
-            "scripts/build-apple-xcframework.sh",
-            "platforms/flutter/build-ios.sh",
-            "platforms/flutter/build-desktop.sh",
-        ):
+        for relative_path in ("scripts/build-apple-xcframework.sh",):
             with self.subTest(path=relative_path):
                 subprocess.run(
                     [bash, str(repo_root / relative_path)],

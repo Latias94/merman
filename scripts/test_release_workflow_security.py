@@ -116,6 +116,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("uses: actions/checkout@"),
                 )
 
+    def test_workspace_release_ignores_flutter_package_tags(self) -> None:
+        text = read(WORKFLOW_ROOT / "release.yml")
+        self.assertIn("      - '!flutter-v*'\n", text)
+
     def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
         text = read(WORKFLOW_ROOT / "release-crates.yml")
         self.assertIn("ref: ${{ github.workflow_sha }}", text)

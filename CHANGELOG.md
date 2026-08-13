@@ -19,6 +19,7 @@ The next workspace release remains in development. This section records only com
 - Tightened prerelease analysis configuration JSON around one analysis-owned contract. Profile and severity values now require their documented lowercase spelling (`core`, `recommended`, `strict`; `error`, `warning`, `info`, `hint`), so case-folded/whitespace-padded values and the former `warn` alias must be replaced. `merman` and `analysis` wrappers must contain objects and are mutually exclusive with each other and with direct analysis fields. JSON resource limits accept mathematical integers from their owner minimum through `4294967295`; larger values must be reduced or omitted to use the host default.
 - Advanced the prerelease LSP `merman/configSchema` response to version `2` because the typed `constraints` projection is now mandatory. Clients must negotiate version `2` instead of partially decoding the former response shape.
 - Removed the stateful Rust `DocumentWorkspace` map and `DocumentAnalysisOutcome` wrapper. Editor hosts now call `analyze_document_snapshot_with_shared_text` or `analyze_document_context_with_shared_text` and own URI/version storage themselves. The cancellable context function preserves cooperative cancellation as the outer result and resource rejection as the inner result; no deprecated alias or compatibility cache remains. See the [unreleased upgrade guide](docs/release/UNRELEASED_UPGRADE_GUIDE.md).
+- The Flutter/Dart package now uses `package_ffi` and Native Assets with Dart 3.10 / Flutter 3.38 minimums. Legacy Flutter plugin registrars and platform-specific CocoaPods, SwiftPM, Gradle, CMake, and desktop wrapper glue are removed; `Merman.open()` remains the default API and `openMermanLibrary()` is removed.
 
 ### Added
 
@@ -26,12 +27,14 @@ The next workspace release remains in development. This section records only com
 
 ### Changed
 
-- Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, removes a duplicate macOS library from the Flutter archive, and adds an explicit compressed-package budget before pub.dev publication.
+- Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, replaces Flutter's duplicated platform packaging with one Native Assets matrix, and adds an explicit compressed-package budget before pub.dev publication.
+- Flutter pub.dev releases use package-specific `flutter-v<version>` tags so an unpublished package version can be built from a reviewed commit without moving an existing workspace tag.
 - Web and Node npm publishing now preflight existing registry integrity and tags, publish missing exact versions directly under the requested final tag, and place the default Web package or Node loader last; retries skip members that already match the verified manifest.
 
 ### Fixed
 
 - Playground Mermaid.js comparison realms now preserve SVG label colors without letting page CSS override Mermaid output, and ZenUML's injected `MS Sans Serif` font remains isolated to the affected comparison instead of changing other examples.
+- Native Assets eliminates Flutter's legacy Linux Windows-wrapper linkage and SwiftPM symlink packaging paths, while Apple dylibs use normalized install names and refreshed signatures before Flutter's final assembly. #55 #56 #57
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

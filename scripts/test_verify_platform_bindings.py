@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import importlib.util
 import hashlib
 import io
@@ -21,18 +20,6 @@ verify_platform_bindings = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(verify_platform_bindings)
 
-FLUTTER_ANDROID_SMOKE_PATH = (
-    MODULE_PATH.parents[1] / "platforms" / "flutter" / "tool" / "android-smoke.py"
-)
-FLUTTER_ANDROID_SMOKE_SPEC = importlib.util.spec_from_file_location(
-    "flutter_android_smoke",
-    FLUTTER_ANDROID_SMOKE_PATH,
-)
-assert FLUTTER_ANDROID_SMOKE_SPEC is not None
-flutter_android_smoke = importlib.util.module_from_spec(FLUTTER_ANDROID_SMOKE_SPEC)
-assert FLUTTER_ANDROID_SMOKE_SPEC.loader is not None
-FLUTTER_ANDROID_SMOKE_SPEC.loader.exec_module(flutter_android_smoke)
-
 EXPECTED_ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_android_jni.so",
     "jni/x86_64/libmerman_android_jni.so",
@@ -43,6 +30,55 @@ ANDROID_CONSUMER_RULES = (
 
 
 class NativeSdkRecipeTests(unittest.TestCase):
+    def test_flutter_package_uses_native_assets_without_legacy_plugins(self) -> None:
+        root = verify_platform_bindings.FLUTTER_ROOT
+        pubspec = (root / "pubspec.yaml").read_text(encoding="utf-8")
+        hook = (root / "hook" / "build.dart").read_text(encoding="utf-8")
+
+        self.assertIn("code_assets: ^1.0.0", pubspec)
+        self.assertIn("hooks: ^1.0.0", pubspec)
+        self.assertNotIn("plugin:", pubspec)
+        self.assertIn("DynamicLoadingBundled", hook)
+        self.assertIn("native/android", hook)
+        self.assertIn("native/ios", hook)
+        for legacy_path in (
+            "android/build.gradle",
+            "ios/merman.podspec",
+            "linux/CMakeLists.txt",
+            "macos/merman.podspec",
+            "windows/CMakeLists.txt",
+        ):
+            self.assertFalse((root / legacy_path).exists(), legacy_path)
+
+    def test_flutter_sdk_policy_is_explicit(self) -> None:
+        pubspec = (verify_platform_bindings.FLUTTER_ROOT / "pubspec.yaml").read_text(
+            encoding="utf-8"
+        )
+        readme = (verify_platform_bindings.FLUTTER_ROOT / "README.md").read_text(
+            encoding="utf-8"
+        )
+        workflows = (
+            MODULE_PATH.parents[1] / ".github" / "workflows" / "ci.yml",
+            MODULE_PATH.parents[1]
+            / ".github"
+            / "workflows"
+            / "release-flutter.yml",
+            MODULE_PATH.parents[1]
+            / ".github"
+            / "workflows"
+            / "release-preflight.yml",
+        )
+
+        self.assertIn('sdk: ">=3.10.0 <4.0.0"', pubspec)
+        self.assertNotIn("flutter:", pubspec)
+        self.assertIn("Flutter 3.38 or newer", readme)
+        for workflow in workflows:
+            with self.subTest(workflow=workflow.name):
+                self.assertIn(
+                    'flutter-version: "3.44.9"',
+                    workflow.read_text(encoding="utf-8"),
+                )
+
     def test_flutter_format_contract_excludes_generator_owned_sources(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -50,6 +86,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 root / "lib" / "merman.dart",
                 root / "example" / "smoke.dart",
                 root / "tool" / "abi3_contract_test.dart",
+                root / "hook" / "build.dart",
             )
             generated = (
                 root / "lib" / "src" / "generated" / "binding_contract.dart",
@@ -67,6 +104,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 "lib/merman.dart",
                 "example/smoke.dart",
                 "tool/abi3_contract_test.dart",
+                "hook/build.dart",
             ],
         )
         self.assertTrue(all("/generated/" not in path for path in paths))
@@ -101,113 +139,6 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 verify_platform_bindings.ANDROID_NATIVE_RECIPE,
                 "armv7-linux-androideabi",
             )
-
-    def test_dart_ffi_smoke_consumes_the_exact_flutter_desktop_recipe(self) -> None:
-        recipe = verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE
-        target = "x86_64-unknown-linux-gnu"
-        with tempfile.TemporaryDirectory() as temp_dir:
-            library = Path(temp_dir) / "libmerman_ffi.so"
-            library.write_bytes(b"native")
-            cargo_stdout = json.dumps(
-                {
-                    "reason": "compiler-artifact",
-                    "target": {
-                        "name": recipe.target_name,
-                        "crate_types": ["cdylib", "rlib"],
-                    },
-                    "filenames": [str(library)],
-                }
-            )
-            with (
-                mock.patch.object(
-                    verify_platform_bindings,
-                    "run_capture",
-                    return_value=mock.Mock(stdout=cargo_stdout),
-                ) as run_capture,
-                mock.patch.object(verify_platform_bindings, "run") as run,
-            ):
-                verify_platform_bindings.run_dart_ffi_native_smoke(
-                    "dart",
-                    target=target,
-                )
-
-        build = run_capture.call_args
-        self.assertEqual(
-            build.args[0][:4],
-            ["cargo", "build", "--profile", "native-distribution"],
-        )
-        self.assertIn("--locked", build.args[0])
-        self.assertEqual(
-            build.args[0][build.args[0].index("--features") + 1],
-            recipe.feature_argument,
-        )
-        self.assertEqual(
-            build.args[0][build.args[0].index("--target") + 1],
-            target,
-        )
-        self.assertIn("--message-format=json-render-diagnostics", build.args[0])
-        self.assertEqual(
-            run.call_args_list[0].args[0],
-            [
-                "dart",
-                "run",
-                "example/smoke.dart",
-                str(library),
-            ],
-        )
-        self.assertEqual(len(run.call_args_list), 1)
-
-    def test_native_library_path_comes_from_the_matching_cargo_artifact(self) -> None:
-        recipe = verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE
-        with tempfile.TemporaryDirectory() as temp_dir:
-            library = Path(temp_dir) / "renamed-output.dylib"
-            library.write_bytes(b"native")
-            stdout = "\n".join(
-                [
-                    json.dumps(
-                        {
-                            "reason": "compiler-artifact",
-                            "target": {
-                                "name": "other",
-                                "crate_types": ["cdylib"],
-                            },
-                            "filenames": [str(Path(temp_dir) / "other.dylib")],
-                        }
-                    ),
-                    json.dumps(
-                        {
-                            "reason": "compiler-artifact",
-                            "target": {
-                                "name": recipe.target_name,
-                                "crate_types": ["cdylib", "rlib"],
-                            },
-                            "filenames": [str(library), str(Path(temp_dir) / "lib.rlib")],
-                        }
-                    ),
-                ]
-            )
-
-            self.assertEqual(
-                verify_platform_bindings.cargo_dynamic_library(stdout, recipe),
-                library,
-            )
-
-    def test_dart_ffi_smoke_rejects_target_outside_the_recipe(self) -> None:
-        recipe = replace(
-            verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE,
-            build_targets=("aarch64-apple-darwin",),
-        )
-        with (
-            mock.patch.object(verify_platform_bindings, "run_capture") as run_capture,
-            self.assertRaisesRegex(RuntimeError, "does not declare target"),
-        ):
-            verify_platform_bindings.run_dart_ffi_native_smoke(
-                "dart",
-                recipe,
-                target="x86_64-unknown-linux-gnu",
-            )
-
-        run_capture.assert_not_called()
 
     def test_explicit_ndk_path_is_forwarded_to_android_slice_builds(self) -> None:
         with (
@@ -254,74 +185,6 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 "--stacktrace",
             ]
         )
-
-
-class FlutterAndroidSmokeTests(unittest.TestCase):
-    def test_generated_consumer_uses_the_plugin_min_sdk(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project = Path(temp_dir)
-            build_file = project / "android" / "app" / "build.gradle.kts"
-            build_file.parent.mkdir(parents=True)
-            build_file.write_text(
-                """android {
-    defaultConfig {
-        minSdk = flutter.minSdkVersion
-    }
-}
-""",
-                encoding="utf-8",
-            )
-
-            flutter_android_smoke.configure_android_consumer(project)
-
-            self.assertEqual(
-                build_file.read_text(encoding="utf-8"),
-                f"""android {{
-    defaultConfig {{
-        minSdk = {flutter_android_smoke.android_plugin_min_sdk()}
-    }}
-}}
-""",
-            )
-
-    def test_requested_abis_only_require_requested_target_outputs(self) -> None:
-        self.assertEqual(
-            flutter_android_smoke.requested_abis(["aarch64-linux-android"]),
-            ("arm64-v8a",),
-        )
-
-    def test_requested_abis_reject_unknown_targets(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "unsupported Flutter Android Rust targets"):
-            flutter_android_smoke.requested_abis(["armv7-linux-androideabi"])
-
-    def test_clean_output_with_only_the_requested_abi_is_accepted(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            jni_libs = Path(temp_dir)
-            library = jni_libs / "arm64-v8a" / "libmerman_ffi.so"
-            library.parent.mkdir(parents=True)
-            library.touch()
-
-            flutter_android_smoke.verify_requested_native_libraries(
-                ["aarch64-linux-android"],
-                jni_libs,
-            )
-
-    def test_stale_other_abi_cannot_mask_a_missing_requested_output(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            jni_libs = Path(temp_dir)
-            stale = jni_libs / "x86_64" / "libmerman_ffi.so"
-            stale.parent.mkdir(parents=True)
-            stale.touch()
-
-            with self.assertRaises(RuntimeError) as context:
-                flutter_android_smoke.verify_requested_native_libraries(
-                    ["aarch64-linux-android"],
-                    jni_libs,
-                )
-            self.assertIn(
-                str(Path("arm64-v8a") / "libmerman_ffi.so"),
-                str(context.exception),
-            )
 
 
 class GeneratedBindingFreshnessTests(unittest.TestCase):

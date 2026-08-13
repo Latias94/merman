@@ -36,6 +36,7 @@
             "kind": "target-set",
             "triples": [
               "aarch64-linux-android",
+              "armv7-linux-androideabi",
               "x86_64-linux-android"
             ]
           }
@@ -129,6 +130,10 @@
       },
       {
         "artifact_profile_id": "flutter-android-native",
+        "target": "armv7-linux-androideabi"
+      },
+      {
+        "artifact_profile_id": "flutter-android-native",
         "target": "x86_64-linux-android"
       },
       {
@@ -172,7 +177,7 @@
     "offline": true,
     "cargo_lock_sha256": "7506f889e916a12133d073685fb623df56b670d83aed417d4c78f0bd986bcaa7",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "09e152959316a9c9a4497f0050f97e177d2cd911da07308c668a09699af95fcb"
+    "artifact_bundle_sha256": "a8e26358b372a159cb52f7c7ba600510abd45f3dc678f84f66e3ee293a596f47"
   },
   "target_dependency_closures": [
     {
@@ -180,6 +185,12 @@
       "target": "aarch64-linux-android",
       "package_count": 116,
       "packages_sha256": "89203739b70bea5bd762b92a3103deb1f492059b5cfa27a19ffbc572675191dc"
+    },
+    {
+      "artifact_profile_id": "flutter-android-native",
+      "target": "armv7-linux-androideabi",
+      "package_count": 114,
+      "packages_sha256": "3f73f8f054ea072d3ed3d89528f20cedce75052cec545d2191cda7cc22d8af3a"
     },
     {
       "artifact_profile_id": "flutter-android-native",

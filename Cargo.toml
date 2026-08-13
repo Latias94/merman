@@ -181,6 +181,9 @@ debug-assertions = false
 overflow-checks = false
 rpath = false
 
+[profile.native-distribution.build-override]
+strip = "none"
+
 [profile.wasm-size]
 inherits = "release"
 opt-level = "z"
