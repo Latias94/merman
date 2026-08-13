@@ -46,6 +46,65 @@ for exploration, but its internal samples are not independent base/head observat
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
 
+### ASCII semantic-depth benchmark
+
+The `ascii_pipeline` bench measures the public synchronous ASCII renderer with strict parsing,
+Plain 7-bit output, a reused engine, and one logical render operation per estimate:
+
+```bash
+cargo bench --locked -p merman --no-default-features --features ascii --bench ascii_pipeline
+```
+
+Its schema-v2 metadata is `tools/bench/ascii_corpus.json`. The `closeout` and `large-closeout`
+suites cover the five common families selected by U25, while `comparable` contains only fixtures
+whose base and head output identities may support a latency comparison. Every registered benchmark
+must emit a `plain_ascii` preflight receipt with exact output bytes and SHA-256 before Criterion
+timing begins, and an exact invocation must repeat the same identity after timing. Verify the
+compiled list and those receipts with:
+
+```bash
+python3 tools/bench/verify_pipeline_bench_list.py \
+  --bench ascii_pipeline \
+  --corpus tools/bench/ascii_corpus.json \
+  --features ascii
+```
+
+For a decision-grade adjacent-revision comparison, keep the ASCII feature closure and corpus
+explicit on both sides:
+
+```bash
+python3 tools/bench/compare_self.py \
+  --base-dir ../merman-base \
+  --head-dir . \
+  --base-label BASE \
+  --head-label HEAD \
+  --base-package merman \
+  --head-package merman \
+  --base-bench ascii_pipeline \
+  --head-bench ascii_pipeline \
+  --base-features ascii \
+  --head-features ascii \
+  --no-base-default-features \
+  --no-head-default-features \
+  --base-corpus tools/bench/ascii_corpus.json \
+  --head-corpus tools/bench/ascii_corpus.json \
+  --suite comparable \
+  --group ascii_end_to_end \
+  --preset long \
+  --evidence-mode confirmation \
+  --calibration-pairs 8 \
+  --max-pairs 64 \
+  --relative-threshold-percent 10 \
+  --absolute-threshold-ns 50000 \
+  --out target/performance/ascii_comparison.md \
+  --json-out target/performance/ascii_comparison.json
+```
+
+The generated Markdown and JSON are machine-local evidence until their exact revision, tree,
+environment, corpus and harness digests, output identities, numeric results, and maintainer
+disposition are copied into the tracked ASCII closeout scorecard. A direct Criterion run or a
+receipt without those provenance fields is not a U25 closeout claim.
+
 ## Decision-grade self-comparison
 
 ### Two independent runner recipes

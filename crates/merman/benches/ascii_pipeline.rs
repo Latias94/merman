@@ -38,20 +38,9 @@ fn fixtures() -> [(&'static str, &'static str); 10] {
                 "../../../fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd"
             ),
         ),
-        (
-            "class_dense_namespaces_stress",
-            include_str!("fixtures/stress_class_dense_namespaces_generics_001.mmd"),
-        ),
-        (
-            "er_multiline_demo_large",
-            include_str!("../../../fixtures/er/upstream_html_demos_er_multiline_example_001.mmd"),
-        ),
-        (
-            "xychart_all_configs_large",
-            include_str!(
-                "../../../fixtures/xychart/upstream_html_demos_xychart_xy_charts_demos_with_all_configs_010.mmd"
-            ),
-        ),
+        ("class_large", include_str!("fixtures/class_large.mmd")),
+        ("er_large", include_str!("fixtures/er_large.mmd")),
+        ("xychart_large", include_str!("fixtures/xychart_large.mmd")),
     ]
 }
 
@@ -126,6 +115,7 @@ fn verify_postflight(
 fn bench_ascii_end_to_end(c: &mut Criterion) {
     let renderer = HeadlessAsciiRenderer::new()
         .with_strict_parsing()
+        .with_resource_profile(merman_core::resources::ResourceProfile::TrustedNative)
         .with_ascii_options(AsciiRenderOptions::ascii());
     let mut group = c.benchmark_group(GROUP);
 

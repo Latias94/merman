@@ -4,7 +4,7 @@
   "suites": {
     "closeout": "One stable medium fixture for each common ASCII family measured by U25.",
     "comparable": "Fixtures whose baseline and head plain-ASCII output identities match.",
-    "large-closeout": "One tracked large or stress fixture for each common ASCII family measured by U25."
+    "large-closeout": "One tracked representative-large fixture for each of U25's five benchmark families."
   },
   "lanes": [
     {
@@ -23,7 +23,7 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "common-family-closeout-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
       "semantic_output_dimensions": ["plain_ascii_sha256", "plain_ascii_bytes"]
     }
@@ -100,34 +100,34 @@
       "quality": ["deterministic", "common-family", "upstream-docs"]
     },
     {
-      "name": "class_dense_namespaces_stress",
+      "name": "class_large",
       "family": "class",
-      "size": "stress",
+      "size": "large",
       "category": "ascii-large-closeout",
-      "source": "crates/merman/benches/fixtures/stress_class_dense_namespaces_generics_001.mmd",
+      "source": "crates/merman/benches/fixtures/class_large.mmd",
       "suites": ["large-closeout"],
-      "features": ["ascii", "namespaces", "generics", "dense-relations"],
-      "quality": ["deterministic", "common-family", "stress"]
+      "features": ["ascii", "namespaces", "members", "cross-namespace", "parallel", "self-loop"],
+      "quality": ["deterministic", "common-family", "large"]
     },
     {
-      "name": "er_multiline_demo_large",
+      "name": "er_large",
       "family": "er",
       "size": "large",
       "category": "ascii-large-closeout",
-      "source": "fixtures/er/upstream_html_demos_er_multiline_example_001.mmd",
+      "source": "crates/merman/benches/fixtures/er_large.mmd",
       "suites": ["large-closeout"],
-      "features": ["ascii", "multiline-attributes", "keys", "relationships"],
-      "quality": ["deterministic", "common-family", "upstream-demo"]
+      "features": ["ascii", "entities-25", "relationships-35", "attributes-106", "keys", "self-loop"],
+      "quality": ["deterministic", "common-family", "large"]
     },
     {
-      "name": "xychart_all_configs_large",
+      "name": "xychart_large",
       "family": "xychart",
       "size": "large",
       "category": "ascii-large-closeout",
-      "source": "fixtures/xychart/upstream_html_demos_xychart_xy_charts_demos_with_all_configs_010.mmd",
+      "source": "crates/merman/benches/fixtures/xychart_large.mmd",
       "suites": ["large-closeout"],
-      "features": ["ascii", "frontmatter-config", "horizontal", "bar-line"],
-      "quality": ["deterministic", "common-family", "upstream-demo"]
+      "features": ["ascii", "horizontal", "categories-24", "series-6", "samples-144", "grouped-bars", "multiple-lines"],
+      "quality": ["deterministic", "common-family", "large"]
     }
   ]
 }

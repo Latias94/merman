@@ -155,10 +155,16 @@ jobs:
           python3 tools/bench/test_native_memory_driver_contracts.py
           python3 tools/bench/test_perf_contracts.py
 
-      - name: Verify compiled pipeline benchmark list
+      - name: Verify compiled Criterion benchmark lists
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
-        run: python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
+        run: |
+          python3 tools/bench/verify_pipeline_bench_list.py \
+            --features svg,layout-cytoscape,layout-elk,math
+          python3 tools/bench/verify_pipeline_bench_list.py \
+            --bench ascii_pipeline \
+            --corpus tools/bench/ascii_corpus.json \
+            --features ascii
 
       - name: Build native memory probe contract
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')

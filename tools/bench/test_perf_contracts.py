@@ -37,6 +37,7 @@ from corpus_utils import (
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_PATH = ROOT / "tools" / "bench" / "corpus.json"
+ASCII_CORPUS_PATH = ROOT / "tools" / "bench" / "ascii_corpus.json"
 BINDING_REQUEST_CORPUS_PATH = ROOT / "tools" / "bench" / "binding_request_corpus.json"
 PIPELINE_EXECUTABLE = (
     "pipeline-deadbeef.exe" if os.name == "nt" else "pipeline-deadbeef"
@@ -213,6 +214,86 @@ class CorpusContractsTest(unittest.TestCase):
                 verify_pipeline_bench_list.validate_pipeline_bench_list(
                     mixed, output
                 )
+
+    def test_compiled_ascii_pipeline_list_requires_plain_ascii_receipts(self) -> None:
+        corpus = load_corpus(ASCII_CORPUS_PATH)
+        current = dict(
+            verify_pipeline_bench_list._pipeline_lane_groups(
+                corpus,
+                enabled_features=frozenset({"ascii"}),
+            )[0]
+        )
+        expected_benches = sorted(
+            verify_pipeline_bench_list._expected_pipeline_benches(
+                corpus,
+                current_groups=current,
+            )
+        )
+        output = "\n".join(
+            [*(f"{bench}: benchmark" for bench in expected_benches)]
+            + [
+                "[bench][preflight] "
+                + json.dumps(
+                    {
+                        "schema_version": 1,
+                        "benchmark": bench,
+                        "output_kind": "plain_ascii",
+                        "output_bytes": 123,
+                        "output_sha256": "a" * 64,
+                        "svg_elements": None,
+                    },
+                    separators=(",", ":"),
+                )
+                for bench in expected_benches
+            ]
+        )
+
+        result = verify_pipeline_bench_list.validate_pipeline_bench_list(
+            corpus,
+            output,
+            enabled_features=("ascii",),
+        )
+
+        self.assertEqual(result["groups"], ("ascii_end_to_end",))
+        self.assertEqual(result["bench_count"], len(corpus.fixtures))
+        self.assertEqual(result["receipt_count"], len(corpus.fixtures))
+
+        recipe = compare_self.RunnerRecipe(
+            label="ascii-pipeline",
+            checkout=ROOT,
+            package="merman",
+            bench="ascii_pipeline",
+            features=("ascii",),
+            default_features=False,
+            toolchain=None,
+            target_dir=ROOT / "target",
+            locked=True,
+            corpus=ASCII_CORPUS_PATH,
+        )
+        description = compare_self._describe_corpus(
+            ASCII_CORPUS_PATH,
+            recipe=recipe,
+        )
+        self.assertTrue(description["preflight_receipts_required"])
+        self.assertEqual(
+            description["preflight_contract"]["id"],
+            "native-criterion-preflight-v1",
+        )
+
+        without_receipt = "\n".join(
+            line
+            for line in output.splitlines()
+            if not line.startswith("[bench][preflight]")
+        )
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            "preflight receipts differ",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(
+                corpus,
+                without_receipt,
+                enabled_features=("ascii",),
+            )
 
     def test_binding_request_corpus_owns_one_complete_benchmark_list(self) -> None:
         corpus = load_corpus(BINDING_REQUEST_CORPUS_PATH)

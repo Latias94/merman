@@ -18,7 +18,8 @@
     "frontmatter_preprocess": "preprocessed_diagram",
     "layout": "prepared_layout",
     "render": "svg",
-    "end_to_end": "svg"
+    "end_to_end": "svg",
+    "ascii_end_to_end": "plain_ascii"
   },
   "comparison": {
     "ignore_fields": ["benchmark"],

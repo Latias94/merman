@@ -472,6 +472,10 @@ _PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     **_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
     "ascii_end_to_end": "plain_ascii",
 }
+_PREFLIGHT_GROUPS_BY_RECIPE = {
+    ("merman", "pipeline"): frozenset(_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP),
+    ("merman", "ascii_pipeline"): frozenset({"ascii_end_to_end"}),
+}
 
 
 class ContractViolation(RuntimeError):
@@ -576,20 +580,23 @@ def parse_postflight_receipts(text: str) -> set[str]:
     return receipts
 
 
-def _pipeline_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
-    if recipe.package != "merman" or recipe.bench != "pipeline":
+def _criterion_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
+    expected_groups = _PREFLIGHT_GROUPS_BY_RECIPE.get(
+        (recipe.package, recipe.bench)
+    )
+    if expected_groups is None:
         return None
     native_lanes = {
         lane_selector_group(lane.selector): lane
         for lane in corpus.lanes
         if lane.transport == "native-criterion"
     }
-    expected_groups = frozenset(_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP)
     if not native_lanes:
         return None
     if frozenset(native_lanes) != expected_groups:
         raise ContractViolation(
-            "pipeline native Criterion lane groups differ from the preflight contract: "
+            f"{recipe.package}/{recipe.bench} native Criterion lane groups differ "
+            "from the preflight contract: "
             f"expected={sorted(expected_groups)}, actual={sorted(native_lanes)}"
         )
     declared = {lane.evidence_contract for lane in native_lanes.values()}
@@ -597,7 +604,7 @@ def _pipeline_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | 
         return None
     if declared != {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
         raise ContractViolation(
-            "pipeline native Criterion lanes must uniformly declare "
+            f"{recipe.package}/{recipe.bench} native Criterion lanes must uniformly declare "
             f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}"
         )
     return _NATIVE_CRITERION_PREFLIGHT_CONTRACT
@@ -619,7 +626,7 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
         "line_prefix": f"{_PREFLIGHT_PREFIX} ",
         "postflight_line_prefix": f"{_POSTFLIGHT_PREFIX} ",
         "required_fields": list(_PREFLIGHT_FIELD_ORDER),
-        "output_kinds": _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+        "output_kinds": _PREFLIGHT_OUTPUT_KIND_BY_GROUP,
         "comparison": {
             "ignore_fields": ["benchmark"],
             "required_equal_fields": [
@@ -642,7 +649,7 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
 
 def _describe_corpus(path: Path, *, recipe: RunnerRecipe) -> dict[str, Any]:
     corpus = load_corpus(path)
-    preflight_contract = _pipeline_preflight_contract(corpus, recipe=recipe)
+    preflight_contract = _criterion_preflight_contract(corpus, recipe=recipe)
     contract_description = None
     if preflight_contract is not None:
         contract_description = _describe_preflight_contract(
