@@ -508,6 +508,8 @@ fn classify_rule_facet(
             facet,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
     {
@@ -1093,16 +1095,20 @@ mod tests {
         let solid = ThemeRule::new(
             ThemeTarget::Actor,
             ThemeStylePatch::default()
-                .with_fill(CanvasPaint::solid("#abcdef").expect("valid solid")),
+                .with_fill(CanvasPaint::solid("#abcdef").expect("valid fill"))
+                .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
         );
         let gradient_rule = ThemeRule::new(
             ThemeTarget::Actor,
             ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
         );
 
-        assert_eq!(
-            compile_rule_routes(RenderFamilyKind::Sequence, 0, &solid)[0].disposition(),
-            FamilyThemeDisposition::TypedAdapter
+        let solid_routes = compile_rule_routes(RenderFamilyKind::Sequence, 0, &solid);
+        assert_eq!(solid_routes.len(), 2);
+        assert!(
+            solid_routes
+                .iter()
+                .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
         );
         assert_eq!(
             compile_rule_routes(RenderFamilyKind::Sequence, 0, &gradient_rule)[0].disposition(),

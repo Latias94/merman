@@ -6,14 +6,15 @@ pub(super) fn sequence_css(
     font_size_px: f64,
     effective_config: &serde_json::Value,
 ) -> String {
-    sequence_css_with_actor_fill(diagram_id, font_size_px, effective_config, None)
+    sequence_css_with_actor_theme(diagram_id, font_size_px, effective_config, None, None)
 }
 
-pub(super) fn sequence_css_with_actor_fill(
+pub(super) fn sequence_css_with_actor_theme(
     diagram_id: &str,
     font_size_px: f64,
     effective_config: &serde_json::Value,
     typed_actor_fill: Option<&str>,
+    typed_actor_stroke: Option<&str>,
 ) -> String {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
@@ -203,6 +204,13 @@ pub(super) fn sequence_css_with_actor_fill(
         r#"#{} .actor-man circle,#{} line{{stroke:{};fill:{};stroke-width:2px;}}"#,
         id, id, actor_border, actor_fill
     );
+    if let Some(typed_actor_stroke) = typed_actor_stroke {
+        let _ = write!(
+            &mut out,
+            r#"#{} .actor{{stroke:{};}}#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{stroke:{};}}"#,
+            id, typed_actor_stroke, id, id, id, id, typed_actor_stroke
+        );
+    }
     let _ = write!(
         &mut out,
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
@@ -295,5 +303,25 @@ mod tests {
         assert!(css.contains(
             r#"#seq g rect.rect{filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));stroke:#070809;}"#
         ));
+    }
+
+    #[test]
+    fn sequence_actor_stroke_css_is_scoped_to_actor_owned_dom() {
+        let css = sequence_css_with_actor_theme(
+            "seq",
+            16.0,
+            &json!({"themeVariables": {"actorBorder": "#220000"}}),
+            None,
+            Some("#2563eb"),
+        );
+
+        assert!(css.contains(r#"#seq .actor-man circle,#seq line{stroke:#220000;"#));
+        assert!(css.contains(
+            r#"#seq .actor{stroke:#2563eb;}#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{stroke:#2563eb;}"#
+        ));
+        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#2563eb;"#));
+        assert!(!css.contains(r#"#seq line{stroke:#2563eb;"#));
+        assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
+        assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{stroke:#2563eb;"#));
     }
 }

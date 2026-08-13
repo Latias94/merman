@@ -14,6 +14,9 @@ struct SequenceThemeEvidenceState {
     actor_fill_emitted: bool,
     actor_fill_unhandled: bool,
     actor_fill_overridden: bool,
+    actor_stroke_emitted: bool,
+    actor_stroke_unhandled: bool,
+    actor_stroke_overridden: bool,
 }
 
 #[derive(Debug, Default)]
@@ -37,6 +40,9 @@ impl SequenceThemeEvidenceRecorder {
         actor_fill_emitted: bool,
         actor_fill_unhandled: bool,
         actor_fill_overridden: bool,
+        actor_stroke_emitted: bool,
+        actor_stroke_unhandled: bool,
+        actor_stroke_overridden: bool,
     ) {
         let mut state = self
             .state
@@ -46,6 +52,9 @@ impl SequenceThemeEvidenceRecorder {
         state.actor_fill_emitted |= actor_count != 0 && actor_fill_emitted;
         state.actor_fill_unhandled |= actor_count != 0 && actor_fill_unhandled;
         state.actor_fill_overridden |= actor_count != 0 && actor_fill_overridden;
+        state.actor_stroke_emitted |= actor_count != 0 && actor_stroke_emitted;
+        state.actor_stroke_unhandled |= actor_count != 0 && actor_stroke_unhandled;
+        state.actor_stroke_overridden |= actor_count != 0 && actor_stroke_overridden;
     }
 
     pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
@@ -118,6 +127,11 @@ impl SequenceThemeEvidenceRecorder {
                     {
                         continue;
                     }
+                    if state.actor_stroke_overridden
+                        && matches!(facet, FamilyThemeRuleFacet::Stroke(_))
+                    {
+                        continue;
+                    }
                     match route.disposition() {
                         FamilyThemeDisposition::TypedAdapter
                             if matches!(
@@ -137,6 +151,39 @@ impl SequenceThemeEvidenceRecorder {
                                 continue;
                             }
                             match default_actor_style.fill() {
+                                Some(CanvasPaint::Transparent) => {
+                                    observation
+                                        .capabilities
+                                        .insert(ThemeCapability::TransparentPaint);
+                                }
+                                Some(CanvasPaint::Solid(_)) => {
+                                    observation.capabilities.insert(ThemeCapability::SolidPaint);
+                                }
+                                _ => {
+                                    observation
+                                        .residual
+                                        .get_or_insert(FamilyThemeResidualReason::UnsupportedPaint);
+                                }
+                            }
+                        }
+                        FamilyThemeDisposition::TypedAdapter
+                            if matches!(
+                                facet,
+                                FamilyThemeRuleFacet::Stroke(
+                                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                                )
+                            ) =>
+                        {
+                            if state.actor_stroke_unhandled {
+                                observation
+                                    .residual
+                                    .get_or_insert(FamilyThemeResidualReason::UnsupportedPaint);
+                                continue;
+                            }
+                            if !state.actor_stroke_emitted {
+                                continue;
+                            }
+                            match default_actor_style.stroke() {
                                 Some(CanvasPaint::Transparent) => {
                                     observation
                                         .capabilities

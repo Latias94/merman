@@ -44,24 +44,46 @@ pub(super) enum ActorFillCoverage {
     Unhandled,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ActorStrokeCoverage {
+    TypedCss,
+    Unhandled,
+}
+
 /// Classifies which actor shapes are actually covered by the `.actor` CSS consumer.
 ///
 /// The static Actor theme route may only claim evidence for shapes that receive the generated
-/// CSS. Actor-man glyphs, including control's inline-styled wrapper, have child `circle`/`line`
-/// nodes targeted directly by the generated selectors; a participant custom class owns its
-/// rectangle fill, so that path remains conservative until its precedence is observed explicitly.
+/// CSS. Actor-man glyphs have child `circle`/`line` nodes targeted directly by the generated
+/// selectors. Control remains conservative because its marker path still inherits the wrapper's
+/// inline fill; a participant custom class likewise owns its rectangle fill.
 pub(super) fn actor_fill_coverage(actor: &SequenceActor) -> ActorFillCoverage {
     match actor.actor_type.as_str() {
-        // Actor-man glyphs use the `.actor-man` wrapper, and sequence.css applies the typed fill
-        // directly to their circles/lines. Control's inline wrapper fill is inherited only;
-        // these child selectors still consume the typed value.
-        "actor" | "boundary" | "control" => ActorFillCoverage::TypedCss,
+        // These actor-man glyphs use only circles/lines covered by the generated selectors.
+        "actor" | "boundary" => ActorFillCoverage::TypedCss,
         "entity" | "collections" | "queue" | "database" => ActorFillCoverage::TypedCss,
+        // The control arrow marker path still inherits the wrapper's inline fill. Do not sign the
+        // whole Actor fill route until the marker writer participates in the typed receipt.
+        "control" => ActorFillCoverage::Unhandled,
         // A participant with a custom class deliberately omits `.actor`; its source-owned fill
         // must not be counted as typed theme consumption. Treat it as uncovered so a strict
         // portable request cannot claim the typed route for a mixed or custom-only diagram.
         _ if actor_custom_class(actor).is_some() => ActorFillCoverage::Unhandled,
         _ => ActorFillCoverage::TypedCss,
+    }
+}
+
+/// Classifies which actor shapes receive the generated actor stroke without an inline override.
+pub(super) fn actor_stroke_coverage(actor: &SequenceActor) -> ActorStrokeCoverage {
+    match actor.actor_type.as_str() {
+        // Actor-man children, regular rectangles, collections, and queue paths all receive the
+        // generated `.actor`/`.actor-man` stroke selectors directly or through an unstyled parent.
+        "actor" | "boundary" | "entity" | "collections" | "queue" => ActorStrokeCoverage::TypedCss,
+        // Mermaid's control and database glyphs put inline stroke on their wrappers. The control
+        // marker path still inherits that stroke even though its circle/line children are covered.
+        // Do not claim a typed stroke until those writers have dedicated terminal receipts.
+        "control" | "database" => ActorStrokeCoverage::Unhandled,
+        _ if actor_custom_class(actor).is_some() => ActorStrokeCoverage::Unhandled,
+        _ => ActorStrokeCoverage::TypedCss,
     }
 }
 

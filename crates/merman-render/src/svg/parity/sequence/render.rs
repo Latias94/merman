@@ -1,7 +1,9 @@
 use super::super::*;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::render_sequence_actor_popup_menus;
-use super::actor_shapes::{ActorFillCoverage, actor_fill_coverage};
+use super::actor_shapes::{
+    ActorFillCoverage, ActorStrokeCoverage, actor_fill_coverage, actor_stroke_coverage,
+};
 use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
@@ -13,7 +15,7 @@ use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
 
-use super::css::sequence_css_with_actor_fill;
+use super::css::sequence_css_with_actor_theme;
 use super::model::*;
 
 const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!("sequence_base_defs_11_16_0.svgfrag");
@@ -82,7 +84,12 @@ fn render_sequence_diagram_svg_inner(
         sanitize_config,
         "themeVariables.actorBkg",
     );
+    let actor_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorBorder",
+    );
     let typed_actor_fill = sequence_typed_actor_fill(options, sanitize_config)?;
+    let typed_actor_stroke = sequence_typed_actor_stroke(options, sanitize_config)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
@@ -133,15 +140,18 @@ fn render_sequence_diagram_svg_inner(
     let _ = write!(
         &mut out,
         r#"<style>{}</style><g/>"#,
-        sequence_css_with_actor_fill(
+        sequence_css_with_actor_theme(
             diagram_id,
             settings.actor_label_font_size,
             effective_config,
             typed_actor_fill.as_deref(),
+            typed_actor_stroke.as_deref(),
         )
     );
     let mut actor_fill_emitted = false;
     let mut actor_fill_unhandled = false;
+    let mut actor_stroke_emitted = false;
+    let mut actor_stroke_unhandled = false;
     for actor_id in &model.actor_order {
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
@@ -151,14 +161,23 @@ fn render_sequence_diagram_svg_inner(
             ActorFillCoverage::TypedCss => actor_fill_emitted = true,
             ActorFillCoverage::Unhandled => actor_fill_unhandled = true,
         }
+        match actor_stroke_coverage(actor) {
+            ActorStrokeCoverage::TypedCss => actor_stroke_emitted = true,
+            ActorStrokeCoverage::Unhandled => actor_stroke_unhandled = true,
+        }
     }
     actor_fill_emitted &= typed_actor_fill.is_some();
     actor_fill_unhandled &= typed_actor_fill.is_some();
+    actor_stroke_emitted &= typed_actor_stroke.is_some();
+    actor_stroke_unhandled &= typed_actor_stroke.is_some();
     prepared.theme_evidence().record_actor_emission(
         model.actor_order.len(),
         actor_fill_emitted,
         actor_fill_unhandled,
         actor_fill_overridden,
+        actor_stroke_emitted,
+        actor_stroke_unhandled,
+        actor_stroke_overridden,
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
@@ -294,6 +313,57 @@ fn sequence_typed_actor_fill(
         options.work_meter(),
     )?;
     Ok(style.fill().and_then(|paint| match paint {
+        CanvasPaint::Transparent => Some("transparent".to_string()),
+        CanvasPaint::Solid(color) => Some(color.as_css()),
+        CanvasPaint::LinearGradient(_)
+        | CanvasPaint::RadialGradient(_)
+        | CanvasPaint::Pattern(_) => None,
+    }))
+}
+
+fn sequence_typed_actor_stroke(
+    options: &SvgExecution<'_>,
+    sanitize_config: &merman_core::MermaidConfig,
+) -> Result<Option<String>> {
+    use crate::diagram_theme::{
+        CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind,
+        FamilyThemeRuleFacet, ThemeTarget, ThemeVariant,
+    };
+
+    if merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorBorder",
+    ) {
+        return Ok(None);
+    }
+
+    let Some(theme) = options.resolved_theme() else {
+        return Ok(None);
+    };
+    let has_typed_actor_stroke = theme.family_mechanism_routes().iter().any(|route| {
+        route.disposition() == FamilyThemeDisposition::TypedAdapter
+            && matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Actor,
+                    facet: FamilyThemeRuleFacet::Stroke(
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                    ),
+                    ..
+                }
+            )
+    });
+    if !has_typed_actor_stroke {
+        return Ok(None);
+    }
+
+    let style = theme.style_with_work_meter(
+        ThemeTarget::Actor,
+        ThemeVariant::Default,
+        None,
+        options.work_meter(),
+    )?;
+    Ok(style.stroke().and_then(|paint| match paint {
         CanvasPaint::Transparent => Some("transparent".to_string()),
         CanvasPaint::Solid(color) => Some(color.as_css()),
         CanvasPaint::LinearGradient(_)

@@ -7738,6 +7738,357 @@ style Empty font-weight:banana
     }
 
     #[test]
+    fn require_portable_accepts_sequence_actor_stroke_after_svg_emission() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor stroke theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session"),
+        )
+        .expect("Sequence actor stroke theme should prepare")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("Sequence actor stroke should be proven by the SVG writer");
+
+        assert!(
+            rendered.svg().contains("stroke:#2563eb"),
+            "Sequence SVG should contain the typed actor stroke"
+        );
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn sequence_actor_stroke_explicit_mermaid_border_owns_precedence() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor stroke theme");
+        let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+            MermaidConfig::from_value(json!({
+                "themeVariables": {"actorBorder": "#22c55e"}
+            })),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session"),
+        )
+        .expect("explicit Mermaid actor stroke should remain evaluable")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit Mermaid actor stroke should satisfy strict portability");
+
+        assert!(rendered.svg().contains("#22c55e"), "{}", rendered.svg());
+        assert!(!rendered.svg().contains("#2563eb"), "{}", rendered.svg());
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn sequence_actor_stroke_with_unhandled_shapes_fails_closed() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor stroke theme");
+
+        for source in [
+            "sequenceDiagram\nparticipant Alice@{\"type\":\"control\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
+            "sequenceDiagram\nparticipant Alice@{\"type\":\"database\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nproperties Alice: {\"class\":\"custom\"}\nAlice->>Bob: Hello\n",
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let strict = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session");
+            let artifact = prepare(parsed, &LayoutOptions::default(), strict)
+                .expect("strict verification must wait for terminal SVG evidence");
+            let error = match artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            {
+                Ok(_) => panic!("unhandled actor stroke shape must not be signed as portable"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((RenderFamilyKind::Sequence, 1))
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_actor_stroke_tracks_every_css_covered_shape() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor stroke theme");
+
+        for actor_type in ["actor", "boundary", "entity", "collections", "queue"] {
+            let source = format!(
+                "sequenceDiagram\nparticipant Alice@{{\"type\":\"{actor_type}\"}}\nparticipant Bob\nAlice->>Bob: Hello\n"
+            );
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict portable Sequence session"),
+            )
+            .expect("strict verification must wait for terminal SVG evidence")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| {
+                panic!("{actor_type} should consume the typed actor stroke: {error}")
+            });
+
+            assert!(
+                rendered.svg().contains("stroke:#2563eb"),
+                "{actor_type} SVG should contain the typed actor stroke: {}",
+                rendered.svg()
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Actor,
+                }],
+                "{actor_type} should produce writer-owned Actor evidence"
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_actor_stroke_transparent_paint_is_signed_only_for_covered_shapes() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile transparent Sequence actor stroke theme");
+        let parse = |source: &str| {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model")
+        };
+        let strict = || {
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session")
+        };
+
+        let rendered = prepare(
+            parse(
+                "sequenceDiagram\nparticipant Alice@{\"type\":\"queue\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ),
+            &LayoutOptions::default(),
+            strict(),
+        )
+        .expect("transparent actor stroke should wait for terminal SVG evidence")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("queue should consume the transparent typed actor stroke");
+        assert!(rendered.svg().contains("stroke:transparent"));
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+
+        let artifact = prepare(
+            parse(
+                "sequenceDiagram\nparticipant Alice@{\"type\":\"control\"}\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ),
+            &LayoutOptions::default(),
+            strict(),
+        )
+        .expect("control stroke verification must wait for terminal SVG evidence");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("control marker must not be signed as transparent typed stroke"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((RenderFamilyKind::Sequence, 1))
+        );
+    }
+
+    #[test]
+    fn sequence_actor_stroke_does_not_recolor_autonumber_carrier_or_message_lines() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor stroke theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("autonumbered Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session"),
+        )
+        .expect("actor stroke should wait for terminal SVG evidence")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("autonumbered Sequence should retain isolated Actor stroke evidence");
+        let svg = rendered.svg();
+
+        assert!(svg.contains("stroke:#2563eb"), "{svg}");
+        assert!(
+            svg.contains(r#"class="messageLine0""#),
+            "fixture must contain a non-Actor message line: {svg}"
+        );
+        assert!(
+            svg.contains(r#"stroke-width="0" marker-start="url(#merman-sequencenumber)""#),
+            "fixture must contain the unclassified autonumber carrier: {svg}"
+        );
+        let typed_rules_start = svg
+            .find("#merman .actor{stroke:#2563eb;}")
+            .expect("typed Actor stroke rule should be emitted");
+        let typed_rules_end = svg[typed_rules_start..]
+            .find("#merman g rect.rect")
+            .map(|offset| typed_rules_start + offset)
+            .expect("typed Actor stroke rules should precede the next legacy rule");
+        let typed_rules = &svg[typed_rules_start..typed_rules_end];
+        assert!(!typed_rules.contains("#merman line"), "{typed_rules}");
+        assert!(!typed_rules.contains("messageLine"), "{typed_rules}");
+        assert!(!typed_rules.contains("sequencenumber"), "{typed_rules}");
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+    }
+
+    #[test]
     fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
         let theme = DiagramThemeCompiler::new()
             .compile(
@@ -8010,7 +8361,7 @@ Alice->>Bob: Hello
             ("collections", true),
             ("queue", true),
             ("database", true),
-            ("control", true),
+            ("control", false),
         ] {
             let source = format!(
                 "sequenceDiagram\nparticipant Alice@{{\"type\":\"{actor_type}\"}}\nparticipant Bob\nAlice->>Bob: Hello\n"
@@ -8042,7 +8393,7 @@ Alice->>Bob: Hello
                 assert!(rendered.style_report().theme_residuals().is_empty());
             } else {
                 let error = match result {
-                    Ok(_) => panic!("inline control actor fill must not be signed as typed"),
+                    Ok(_) => panic!("control marker fill must not be signed as typed"),
                     Err(error) => error,
                 };
                 assert_eq!(
