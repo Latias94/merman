@@ -20,8 +20,10 @@ import type {
 } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
 import type {
+  ResourceOverrideId,
   ResourceLimitId,
   ResourceOptions,
+  ResourceProfile,
 } from "./generated/resource-contract.js";
 
 export type {
@@ -232,41 +234,72 @@ export interface AnalysisBindingOptions {
   lint?: LintBindingOptions;
 }
 
+export type EditorResourceProfile = Extract<
+  ResourceProfile,
+  "interactive" | "constrained"
+>;
+export type EditorResourceLimitId = Extract<
+  ResourceOverrideId,
+  "max_source_bytes" | "max_document_diagrams"
+>;
+export type EditorResourceLimitOverrides = Partial<
+  Record<EditorResourceLimitId, number>
+>;
+
+export interface EditorResourceOptions {
+  profile?: EditorResourceProfile;
+  limits?: EditorResourceLimitOverrides;
+}
+
+export type EditorAnalysisBindingOptions = Omit<
+  AnalysisBindingOptions,
+  "resources"
+> & {
+  resources?: EditorResourceOptions;
+};
+
 interface BindingVersionOptions {
   version?: 2;
 }
 
-type NoDirectAnalysisBindingOptions = {
-  [Property in keyof AnalysisBindingOptions]?: never;
+type NoDirectAnalysisBindingOptions<Options extends AnalysisBindingOptions> = {
+  [Property in keyof Options]?: never;
 };
 
-type DirectAnalysisBindingRoot = AnalysisBindingOptions & {
+type DirectAnalysisBindingRoot<Options extends AnalysisBindingOptions> = Options & {
   analysis?: never;
   merman?: never;
 };
 
-type AnalysisWrappedBindingRoot = NoDirectAnalysisBindingOptions & {
-  analysis: AnalysisBindingOptions;
+type AnalysisWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+  NoDirectAnalysisBindingOptions<Options> & {
+  analysis: Options;
   merman?: never;
 };
 
-type MermanWrappedBindingRoot = NoDirectAnalysisBindingOptions & {
+type MermanWrappedBindingRoot<Options extends AnalysisBindingOptions> =
+  NoDirectAnalysisBindingOptions<Options> & {
   analysis?: never;
-  merman: AnalysisBindingOptions;
+  merman: Options;
 };
+
+type AnalysisBindingRoot<Options extends AnalysisBindingOptions> =
+  (
+    | DirectAnalysisBindingRoot<Options>
+    | AnalysisWrappedBindingRoot<Options>
+    | MermanWrappedBindingRoot<Options>
+  );
 
 export type EditorBindingOptions = BindingVersionOptions &
-  (
-    | DirectAnalysisBindingRoot
-    | AnalysisWrappedBindingRoot
-    | MermanWrappedBindingRoot
-  );
+  AnalysisBindingRoot<EditorAnalysisBindingOptions>;
 
 interface CommonBindingFields {
   parse?: ParseOptions;
 }
 
-export type CommonBindingOptions = EditorBindingOptions & CommonBindingFields;
+export type CommonBindingOptions = BindingVersionOptions &
+  AnalysisBindingRoot<AnalysisBindingOptions> &
+  CommonBindingFields;
 
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiDirectionOption =

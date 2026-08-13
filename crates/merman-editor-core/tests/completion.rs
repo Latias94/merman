@@ -152,6 +152,40 @@ fn completion_offers_class_names_for_class_references() {
 }
 
 #[test]
+fn completion_offers_quadrant_class_names_for_partial_and_empty_selectors() {
+    for (name, point, cursor_character, expected_start) in [
+        ("partial", "Project A:::pri: [0.2, 0.8]", 15, 12),
+        ("empty", "Project A:::: [0.2, 0.8]", 12, 12),
+    ] {
+        let harness = SnapshotHarness::new();
+        let source = format!("quadrantChart\nclassDef priority color:#109060\n{point}\n");
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/quadrant-{name}-class.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} selector should be accepted: {error:?}"));
+        let list = completion_for_snapshot(&snapshot, Position::new(2, cursor_character));
+        let item = list
+            .items
+            .iter()
+            .find(|item| item.label == "priority")
+            .unwrap_or_else(|| panic!("missing quadrant class completion for {name}"));
+        let edit = item.text_edit.as_ref().expect("quadrant class text edit");
+
+        assert_eq!(item.kind, CompletionItemKind::Class);
+        assert_eq!(
+            item.data.as_ref().unwrap().kind,
+            CompletionDataKind::ClassName
+        );
+        assert_eq!(edit.range.start, Position::new(2, expected_start));
+        assert_eq!(edit.range.end, Position::new(2, cursor_character));
+    }
+}
+
+#[test]
 fn completion_does_not_offer_class_names_inside_node_payload() {
     let harness = SnapshotHarness::new();
     let line = "A[\"docs :::h\"]";

@@ -2351,6 +2351,44 @@ Point A:::class1: [0.9, 0.0]
         expected.kind == EditorExpectedSyntaxKind::Payload
             && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
     }));
+    let class_use_start = text.find("Point A:::class1").unwrap() + "Point A:::".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(class_use_start, class_use_start + "class1".len())
+    }));
+}
+
+#[test]
+fn parse_quadrant_chart_class_selectors_expose_partial_and_empty_slots() {
+    let engine = Engine::new();
+    let text = concat!(
+        "quadrantChart\n",
+        "classDef priority color: #109060\n",
+        "Complete:::priority: [0.2, 0.8]\n",
+        "Partial:::pri: [0.3, 0.7]\n",
+        "Empty:::: [0.4, 0.6]\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
+        .unwrap()
+        .unwrap();
+
+    for (line, selector) in [("Complete", "priority"), ("Partial", "pri")] {
+        let start = text.find(&format!("{line}:::{selector}")).unwrap() + line.len() + 3;
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::ClassName
+                    && expected.span == SourceSpan::new(start, start + selector.len())
+            }),
+            "missing ClassName evidence for {selector} at {start}: {:?}",
+            facts.expected_syntax
+        );
+    }
+    let empty = text.find("Empty:::").unwrap() + "Empty:::".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(empty, empty)
+    }));
 }
 
 #[test]

@@ -557,14 +557,13 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
     let (class_name, class_marker, label_input) = if let Some(marker) = find_class_marker(head.text)
     {
         let class = head.subslice(marker + 3, head.text.len()).trim();
-        if !class.text.is_empty()
-            && class
-                .text
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        if class
+            .text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
         {
             (
-                Some(class),
+                (!class.text.is_empty()).then_some(class),
                 Some(SourceSpan::new(
                     head.start + marker,
                     head.start + marker + 3,
@@ -873,6 +872,18 @@ fn push_quadrant_point_facts(
             span,
         ));
     }
+
+    let Some(class_marker) = point.class_marker else {
+        return;
+    };
+    let class_span = point
+        .class_name
+        .map(SourceSlice::span)
+        .unwrap_or_else(|| SourceSpan::new(class_marker.end, class_marker.end));
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::ClassName,
+        class_span,
+    ));
 
     let Some(class_name) = point.class_name else {
         return;

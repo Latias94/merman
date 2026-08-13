@@ -544,6 +544,12 @@ struct ValidTokenCandidate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ModifierOnlyCandidate {
+    span: ByteSpan,
+    modifier_bits: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PlannedByteToken {
     span: ByteSpan,
     kind: PlannedTokenKind,
@@ -562,7 +568,14 @@ fn collect_fence_candidates(
     let mut previous_lexeme: Option<ByteSpan> = None;
     for lexeme in fence.text_index().lexemes() {
         let kind = planned_kind_for_lexeme(lexeme.kind());
-        if !support.supports_kind(kind) {
+        let kind_is_supported = support.supports_kind(kind);
+        let modifier_bits =
+            pack_modifier_bits(lexeme.modifiers().iter().map(planned_modifier_for_lexeme));
+        if !kind_is_supported
+            && modifier_bits
+                .as_ref()
+                .map_or(true, |bits| support.mask_modifier_bits(*bits) == 0)
+        {
             continue;
         }
         let relative = lexeme.span();
@@ -577,34 +590,35 @@ fn collect_fence_candidates(
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
         }
-        if let Some(previous) = previous_lexeme {
-            if (previous.start, previous.end) > (span.start, span.end) {
-                return Err(TokenPlanError::UnsortedLexemes {
-                    previous,
-                    current: span,
-                });
+        if kind_is_supported {
+            if let Some(previous) = previous_lexeme {
+                if (previous.start, previous.end) > (span.start, span.end) {
+                    return Err(TokenPlanError::UnsortedLexemes {
+                        previous,
+                        current: span,
+                    });
+                }
+                if previous.end > span.start {
+                    return Err(TokenPlanError::OverlappingLexemes {
+                        left: previous,
+                        right: span,
+                    });
+                }
             }
-            if previous.end > span.start {
-                return Err(TokenPlanError::OverlappingLexemes {
-                    left: previous,
-                    right: span,
-                });
-            }
+            previous_lexeme = Some(span);
         }
-        previous_lexeme = Some(span);
         candidates.push(TokenCandidate {
             span,
             kind,
-            modifier_bits: pack_modifier_bits(
-                lexeme.modifiers().iter().map(planned_modifier_for_lexeme),
-            ),
+            modifier_bits,
             origin: TokenOverlayKind::Lexeme,
         });
     }
 
     for item in fence.text_index().semantic_items() {
         let kind = planned_kind_for_symbol(item.kind);
-        if !support.supports_kind(kind) {
+        let modifier = planned_modifier_for_role(item.role);
+        if !support.supports_kind(kind) && !support.supports_modifier(modifier) {
             continue;
         }
         let span = absolute_fence_span(
@@ -621,7 +635,7 @@ fn collect_fence_candidates(
         candidates.push(TokenCandidate {
             span,
             kind,
-            modifier_bits: Ok(planned_modifier_for_role(item.role).bit()),
+            modifier_bits: Ok(modifier.bit()),
             origin: token_overlay_for_role(item.role),
         });
     }
@@ -778,12 +792,30 @@ fn plan_candidates_with_request(
         });
     }
     let requested = request.requested();
-    let candidates = candidates
+    let mut supported_candidates = Vec::new();
+    let mut modifier_only_candidates = Vec::new();
+    for candidate in candidates
         .into_iter()
-        .filter(|candidate| support.supports_kind(candidate.kind))
         .filter(|candidate| requested.is_none_or(|requested| requested.overlaps(candidate.span)))
-        .collect();
-    let mut candidates = validate_candidates(source_map.source(), candidates)?;
+    {
+        if support.supports_kind(candidate.kind) {
+            supported_candidates.push(candidate);
+            continue;
+        }
+        let Ok(modifier_bits) = candidate.modifier_bits else {
+            continue;
+        };
+        let modifier_bits = support.mask_modifier_bits(modifier_bits);
+        if modifier_bits == 0 {
+            continue;
+        }
+        validate_span(source_map.source(), candidate.span)?;
+        modifier_only_candidates.push(ModifierOnlyCandidate {
+            span: candidate.span,
+            modifier_bits,
+        });
+    }
+    let mut candidates = validate_candidates(source_map.source(), supported_candidates)?;
     validate_lexical_non_overlap(&candidates)?;
     for candidate in &mut candidates {
         candidate.modifier_bits = support.mask_modifier_bits(candidate.modifier_bits);
@@ -797,7 +829,14 @@ fn plan_candidates_with_request(
             candidate.modifier_bits,
         )
     });
-    let byte_tokens = resolve_candidates(candidates)?;
+    modifier_only_candidates.sort_by_key(|candidate| {
+        (
+            candidate.span.start,
+            candidate.span.end,
+            candidate.modifier_bits,
+        )
+    });
+    let byte_tokens = resolve_candidates(candidates, modifier_only_candidates)?;
     let mut tokens = split_and_encode_tokens(source_map, &byte_tokens)?;
     tokens.sort_by_key(|token| {
         (
@@ -887,16 +926,24 @@ fn validate_lexical_non_overlap(candidates: &[ValidTokenCandidate]) -> Result<()
 
 fn resolve_candidates(
     candidates: Vec<ValidTokenCandidate>,
+    modifier_only_candidates: Vec<ModifierOnlyCandidate>,
 ) -> Result<Vec<PlannedByteToken>, TokenPlanError> {
     let mut boundaries = candidates
         .iter()
         .flat_map(|candidate| [candidate.span.start, candidate.span.end])
+        .chain(
+            modifier_only_candidates
+                .iter()
+                .flat_map(|candidate| [candidate.span.start, candidate.span.end]),
+        )
         .collect::<Vec<_>>();
     boundaries.sort_unstable();
     boundaries.dedup();
 
     let mut next_candidate = 0usize;
     let mut active: Vec<usize> = Vec::new();
+    let mut next_modifier_only_candidate = 0usize;
+    let mut active_modifier_only: Vec<usize> = Vec::new();
     let mut resolved: Vec<PlannedByteToken> = Vec::new();
     for boundary_pair in boundaries.windows(2) {
         let start = boundary_pair[0];
@@ -908,15 +955,34 @@ fn resolve_candidates(
             }
             next_candidate += 1;
         }
+        active_modifier_only.retain(|index| modifier_only_candidates[*index].span.end > start);
+        while next_modifier_only_candidate < modifier_only_candidates.len()
+            && modifier_only_candidates[next_modifier_only_candidate]
+                .span
+                .start
+                <= start
+        {
+            if modifier_only_candidates[next_modifier_only_candidate]
+                .span
+                .end
+                > start
+            {
+                active_modifier_only.push(next_modifier_only_candidate);
+            }
+            next_modifier_only_candidate += 1;
+        }
         if active.is_empty() || start == end {
             continue;
         }
 
         let winner = choose_candidate(&candidates, &active)?;
+        let modifier_bits = active_modifier_only.iter().fold(winner.1, |bits, index| {
+            bits | modifier_only_candidates[*index].modifier_bits
+        });
         let token = PlannedByteToken {
             span: ByteSpan { start, end },
             kind: winner.0,
-            modifier_bits: winner.1,
+            modifier_bits,
         };
         if let Some(previous) = resolved.last_mut()
             && previous.span.end == token.span.start

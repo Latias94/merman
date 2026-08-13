@@ -3,8 +3,9 @@
 use crate::XtaskError;
 use merman_analysis::{AnalysisOptions, Analyzer};
 use merman_editor_core::{
-    DiagramDetectionValidity, DocumentKind, DocumentUri, analyze_document_context_with_shared_text,
-    plan_semantic_tokens_for_snapshot,
+    DiagramDetectionValidity, DocumentKind, DocumentUri, SemanticTokenSupport,
+    analyze_document_context_with_shared_text, plan_semantic_tokens_for_snapshot,
+    plan_semantic_tokens_for_snapshot_with_support,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -147,6 +148,8 @@ struct TokenEquivalenceCase {
     effective_layout_id: String,
     packed_words: Vec<u32>,
     packed_sha256: String,
+    vscode_packed_words: Vec<u32>,
+    vscode_packed_sha256: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1142,6 +1145,19 @@ fn token_equivalence_case(
     }
     let packed_words = plan.packed().to_vec();
     let packed_json = serde_json::to_vec(&packed_words)?;
+    let vscode_support = SemanticTokenSupport::from_support(
+        |kind| VSCODE_STANDARD_TOKEN_TYPES.contains(&kind.lsp_name()),
+        |modifier| VSCODE_STANDARD_TOKEN_MODIFIERS.contains(&modifier.lsp_name()),
+    );
+    let vscode_plan =
+        plan_semantic_tokens_for_snapshot_with_support(analyzed.snapshot(), vscode_support)
+            .map_err(|error| {
+                descriptor_error(format!(
+                    "token equivalence case `{id}` failed VS Code semantic-token planning: {error}"
+                ))
+            })?;
+    let vscode_packed_words = vscode_plan.packed().to_vec();
+    let vscode_packed_json = serde_json::to_vec(&vscode_packed_words)?;
 
     Ok(TokenEquivalenceCase {
         id,
@@ -1158,6 +1174,8 @@ fn token_equivalence_case(
         effective_layout_id: detection.effective_layout_id.clone(),
         packed_words,
         packed_sha256: sha256_label(&packed_json),
+        vscode_packed_words,
+        vscode_packed_sha256: sha256_label(&vscode_packed_json),
     })
 }
 

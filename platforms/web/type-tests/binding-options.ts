@@ -3,14 +3,20 @@ import type {
   AsciiBindingOptions,
   CommonBindingOptions,
   EditorBindingOptions,
+  EditorResourceOptions,
   ResourceOptions,
   SvgBindingOptions,
 } from "../src/public-types.js";
 
 const resources: ResourceOptions = { profile: "interactive" };
+const editorResources: EditorResourceOptions = {
+  profile: "constrained",
+  limits: { max_source_bytes: 1024, max_document_diagrams: 8 },
+};
 
 const directEditorOptions: EditorBindingOptions = {
   fixed_today: "2026-08-12",
+  resources: editorResources,
 };
 const analysisWrappedEditorOptions: EditorBindingOptions = {
   analysis: { fixed_today: "2026-08-12" },
@@ -43,6 +49,12 @@ const tightenedSvgOptions = withResourceOptions(
 );
 tightenedSvgOptions.svg.diagram_id;
 
+// @ts-expect-error browser editor sessions cannot select a looser native profile.
+const looserEditorProfile = { resources: { profile: "trusted-native" } } satisfies EditorBindingOptions;
+
+// @ts-expect-error browser editor sessions expose only analysis-owned resource limits.
+const rendererOnlyEditorLimit = { resources: { limits: { max_svg_bytes: 1024 } } } satisfies EditorBindingOptions;
+
 // @ts-expect-error direct analysis options cannot be mixed with the analysis wrapper.
 const mixedAnalysisRoot: EditorBindingOptions = {
   fixed_today: "2026-08-12",
@@ -51,7 +63,7 @@ const mixedAnalysisRoot: EditorBindingOptions = {
 
 // @ts-expect-error direct analysis options cannot be mixed with the merman wrapper.
 const mixedMermanRoot: EditorBindingOptions = {
-  resources,
+  resources: editorResources,
   merman: {},
 };
 
@@ -76,6 +88,7 @@ const mixedSvgRoot: SvgBindingOptions = {
 };
 
 void directEditorOptions;
+void editorResources;
 void analysisWrappedEditorOptions;
 void mermanWrappedEditorOptions;
 void commonOptions;
@@ -86,3 +99,5 @@ void mixedMermanRoot;
 void duplicateWrapperRoot;
 void mixedCommonRoot;
 void mixedSvgRoot;
+void looserEditorProfile;
+void rendererOnlyEditorLimit;

@@ -124,6 +124,7 @@ const requiredTypeProperties = new Map([
   ],
   ["BrowserTextMeasurementSession", ["measure", "dispose"]],
   ["ResourceOptions", ["profile", "limits"]],
+  ["EditorResourceOptions", ["profile", "limits"]],
   [
     "RuntimeCatalog",
     [
