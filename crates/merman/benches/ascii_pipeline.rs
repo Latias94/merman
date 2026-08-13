@@ -115,7 +115,7 @@ fn verify_postflight(
 fn bench_ascii_end_to_end(c: &mut Criterion) {
     let renderer = HeadlessAsciiRenderer::new()
         .with_strict_parsing()
-        .with_resource_profile(merman_core::resources::ResourceProfile::TrustedNative)
+        .with_resource_profile(merman_core::resources::ResourceProfile::UnboundedForTrustedInput)
         .with_ascii_options(AsciiRenderOptions::ascii());
     let mut group = c.benchmark_group(GROUP);
 

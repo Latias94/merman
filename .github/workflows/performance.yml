@@ -17,6 +17,7 @@ on:
       - "tools/bench/**"
       - "tools/mermaid-cli/**"
       - "crates/merman/**"
+      - "crates/merman-ascii/**"
       - "crates/merman-bindings-core/**"
       - "crates/merman-core/**"
       - "crates/merman-render/**"
@@ -155,12 +156,14 @@ jobs:
           python3 tools/bench/test_native_memory_driver_contracts.py
           python3 tools/bench/test_perf_contracts.py
 
-      - name: Verify compiled Criterion benchmark lists
+      - name: Verify compiled pipeline benchmark list
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
+        run: python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
+
+      - name: Verify compiled ASCII benchmark list
+        working-directory: head
         run: |
-          python3 tools/bench/verify_pipeline_bench_list.py \
-            --features svg,layout-cytoscape,layout-elk,math
           python3 tools/bench/verify_pipeline_bench_list.py \
             --bench ascii_pipeline \
             --corpus tools/bench/ascii_corpus.json \

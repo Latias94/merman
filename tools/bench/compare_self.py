@@ -25,6 +25,7 @@ import stat
 import statistics
 import subprocess
 import sys
+import tomllib
 import uuid
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -450,6 +451,9 @@ _POSTFLIGHT_PREFIX = "[bench][postflight]"
 _NATIVE_CRITERION_PREFLIGHT_CONTRACT = (
     "docs/performance/contracts/native-criterion-preflight-v1.json"
 )
+_NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT = (
+    "docs/performance/contracts/native-ascii-criterion-preflight-v1.json"
+)
 _PREFLIGHT_FIELD_ORDER = (
     "schema_version",
     "benchmark",
@@ -472,9 +476,15 @@ _PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     **_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
     "ascii_end_to_end": "plain_ascii",
 }
-_PREFLIGHT_GROUPS_BY_RECIPE = {
-    ("merman", "pipeline"): frozenset(_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP),
-    ("merman", "ascii_pipeline"): frozenset({"ascii_end_to_end"}),
+_PREFLIGHT_CONTRACT_BY_RECIPE = {
+    ("merman", "pipeline"): _NATIVE_CRITERION_PREFLIGHT_CONTRACT,
+    ("merman", "ascii_pipeline"): _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT,
+}
+_PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT = {
+    _NATIVE_CRITERION_PREFLIGHT_CONTRACT: _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+    _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT: {
+        "ascii_end_to_end": "plain_ascii"
+    },
 }
 
 
@@ -581,11 +591,14 @@ def parse_postflight_receipts(text: str) -> set[str]:
 
 
 def _criterion_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
-    expected_groups = _PREFLIGHT_GROUPS_BY_RECIPE.get(
+    expected_contract = _PREFLIGHT_CONTRACT_BY_RECIPE.get(
         (recipe.package, recipe.bench)
     )
-    if expected_groups is None:
+    if expected_contract is None:
         return None
+    expected_groups = frozenset(
+        _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT[expected_contract]
+    )
     native_lanes = {
         lane_selector_group(lane.selector): lane
         for lane in corpus.lanes
@@ -602,12 +615,25 @@ def _criterion_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str |
     declared = {lane.evidence_contract for lane in native_lanes.values()}
     if declared == {None}:
         return None
-    if declared != {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
+    if declared != {expected_contract}:
         raise ContractViolation(
             f"{recipe.package}/{recipe.bench} native Criterion lanes must uniformly declare "
-            f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}"
+            f"{expected_contract!r}"
         )
-    return _NATIVE_CRITERION_PREFLIGHT_CONTRACT
+    return expected_contract
+
+
+def _registered_preflight_contract(path: Path) -> tuple[str, dict[str, str]]:
+    matches = [
+        (contract, output_kinds)
+        for contract, output_kinds in _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT.items()
+        if path.as_posix().endswith(contract)
+    ]
+    if len(matches) != 1:
+        raise ContractViolation(
+            f"native Criterion preflight contract path is not registered: {path}"
+        )
+    return matches[0]
 
 
 def _describe_preflight_contract(path: Path) -> dict[str, Any]:
@@ -620,13 +646,15 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
         )
     except (json.JSONDecodeError, ContractViolation) as error:
         raise ContractViolation(f"invalid native Criterion preflight contract: {error}") from error
+    contract, output_kinds = _registered_preflight_contract(path)
+    contract_id = Path(contract).stem
     expected = {
         "schema_version": 1,
-        "id": "native-criterion-preflight-v1",
+        "id": contract_id,
         "line_prefix": f"{_PREFLIGHT_PREFIX} ",
         "postflight_line_prefix": f"{_POSTFLIGHT_PREFIX} ",
         "required_fields": list(_PREFLIGHT_FIELD_ORDER),
-        "output_kinds": _PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+        "output_kinds": output_kinds,
         "comparison": {
             "ignore_fields": ["benchmark"],
             "required_equal_fields": [
@@ -732,6 +760,35 @@ def _binary_independence_error(
     return None
 
 
+def _confirmation_harness_identity_errors(
+    base: PreparedRunner,
+    head: PreparedRunner,
+) -> list[str]:
+    fields = (
+        ("Cargo [[bench]] entry", "bench_target"),
+        ("benchmark source", "bench_source"),
+        ("corpus manifest", "corpus"),
+    )
+    errors: list[str] = []
+    for label, key in fields:
+        base_digest = base.provenance.get(key, {}).get("sha256")
+        head_digest = head.provenance.get(key, {}).get("sha256")
+        if not isinstance(base_digest, str) or not isinstance(head_digest, str):
+            errors.append(f"confirmation {label} identity is missing")
+        elif base_digest != head_digest:
+            errors.append(f"confirmation requires byte-identical {label}")
+
+    base_contract = base.provenance.get("corpus", {}).get("preflight_contract")
+    head_contract = head.provenance.get("corpus", {}).get("preflight_contract")
+    base_digest = base_contract.get("sha256") if isinstance(base_contract, dict) else None
+    head_digest = head_contract.get("sha256") if isinstance(head_contract, dict) else None
+    if not isinstance(base_digest, str) or not isinstance(head_digest, str):
+        errors.append("confirmation preflight contract identity is missing")
+    elif base_digest != head_digest:
+        errors.append("confirmation requires a byte-identical preflight contract")
+    return errors
+
+
 def criterion_list_command(
     executable: Path,
     *,
@@ -819,6 +876,49 @@ def _describe_required_file(
         "bytes": path.stat().st_size,
         "sha256": sha256 if sha256 is not None else _path_sha256(path),
     }
+
+
+def _describe_bench_target(manifest: Path, bench: str) -> tuple[dict[str, Any], Path]:
+    try:
+        value = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ContractViolation(f"invalid Cargo manifest for benchmark {bench!r}: {error}") from error
+    entries = value.get("bench", [])
+    if not isinstance(entries, list):
+        raise ContractViolation("Cargo manifest [[bench]] entries must be an array")
+    matches = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("name") == bench
+    ]
+    if len(matches) != 1:
+        raise ContractViolation(
+            f"Cargo manifest must contain exactly one [[bench]] entry named {bench!r}"
+        )
+    entry = matches[0]
+    encoded = json.dumps(
+        entry,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    source_value = entry.get("path")
+    if source_value is None:
+        source = manifest.parent / "benches" / f"{bench}.rs"
+    elif isinstance(source_value, str) and source_value:
+        source = manifest.parent / source_value
+    else:
+        raise ContractViolation(f"Cargo benchmark {bench!r} has an invalid path")
+    return (
+        {
+            "name": bench,
+            "entry": entry,
+            "bytes": len(encoded),
+            "sha256": hashlib.sha256(encoded).hexdigest(),
+        },
+        source,
+    )
 
 
 _FREEZE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -1123,11 +1223,12 @@ def _prepare_runner(
         workspace_manifest = recipe.checkout / "Cargo.toml"
         lockfile = recipe.checkout / "Cargo.lock"
         corpus_path = recipe.corpus if recipe.corpus.is_absolute() else recipe.checkout / recipe.corpus
+        bench_target, bench_source = _describe_bench_target(manifest, recipe.bench)
         provenance["manifest"] = _describe_required_file(manifest)
         provenance["workspace_manifest"] = _describe_required_file(workspace_manifest)
         provenance["lockfile"] = _describe_required_file(lockfile)
         provenance["corpus"] = _describe_corpus(corpus_path, recipe=recipe)
-        bench_source = manifest.parent / "benches" / f"{recipe.bench}.rs"
+        provenance["bench_target"] = bench_target
         provenance["bench_source"] = _describe_required_file(bench_source)
         provenance["toolchain"] = {
             "requested": recipe.toolchain,
@@ -1475,6 +1576,7 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
             "workspace_manifest",
             "lockfile",
             "corpus",
+            "bench_target",
             "bench_source",
             "toolchain",
             "build_environment",
@@ -1637,12 +1739,13 @@ def _prepare_reused_runner(
             if recipe.corpus.is_absolute()
             else recipe.checkout / recipe.corpus
         )
-        bench_source = manifest.parent / "benches" / f"{recipe.bench}.rs"
+        bench_target, bench_source = _describe_bench_target(manifest, recipe.bench)
         current_files = {
             "manifest": _describe_required_file(manifest),
             "workspace_manifest": _describe_required_file(workspace_manifest),
             "lockfile": _describe_required_file(lockfile),
             "corpus": _describe_corpus(corpus_path, recipe=recipe),
+            "bench_target": bench_target,
             "bench_source": _describe_required_file(bench_source),
         }
         for key, current in current_files.items():
@@ -2725,6 +2828,16 @@ def _verification_errors(
                 )
         except Exception as error:
             errors.append(str(error))
+    try:
+        manifest = Path(runner.provenance["manifest"]["path"])
+        current_target, _source = _describe_bench_target(manifest, runner.recipe.bench)
+        verification["files"]["bench_target"] = current_target["sha256"]
+        if current_target["sha256"] != runner.provenance["bench_target"]["sha256"]:
+            errors.append(
+                f"{runner.recipe.label} Cargo [[bench]] entry changed during sampling"
+            )
+    except Exception as error:
+        errors.append(str(error))
     preflight_contract = runner.provenance.get("corpus", {}).get(
         "preflight_contract"
     )
@@ -3589,6 +3702,8 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         _append_contract_error(report, "recipe", identity_error)
         return
     if args.evidence_mode == "confirmation":
+        for error in _confirmation_harness_identity_errors(base, head):
+            _append_contract_error(report, "harness_identity", error)
         for side, runner in prepared.items():
             if runner.provenance["git"]["dirty"]:
                 _append_contract_error(

@@ -197,7 +197,11 @@ class CorpusContractsTest(unittest.TestCase):
                 corpus, without_receipt
             )
 
-        for contract in (None, "docs/performance/contracts/unknown.json"):
+        for contract in (
+            None,
+            compare_self._NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT,
+            "docs/performance/contracts/unknown.json",
+        ):
             mixed = replace(
                 corpus,
                 lanes=tuple(
@@ -277,7 +281,7 @@ class CorpusContractsTest(unittest.TestCase):
         self.assertTrue(description["preflight_receipts_required"])
         self.assertEqual(
             description["preflight_contract"]["id"],
-            "native-criterion-preflight-v1",
+            "native-ascii-criterion-preflight-v1",
         )
 
         without_receipt = "\n".join(
@@ -292,6 +296,26 @@ class CorpusContractsTest(unittest.TestCase):
             verify_pipeline_bench_list.validate_pipeline_bench_list(
                 corpus,
                 without_receipt,
+                enabled_features=("ascii",),
+            )
+
+        legacy_contract = replace(
+            corpus,
+            lanes=tuple(
+                replace(
+                    lane,
+                    evidence_contract=compare_self._NATIVE_CRITERION_PREFLIGHT_CONTRACT,
+                )
+                for lane in corpus.lanes
+            ),
+        )
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            "correct preflight contract",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(
+                legacy_contract,
+                output,
                 enabled_features=("ascii",),
             )
 
@@ -968,19 +992,44 @@ class CompareSelfContractsTest(unittest.TestCase):
             )
 
     def test_native_preflight_contract_content_must_match_the_harness(self) -> None:
-        contract = (
-            ROOT / "docs/performance/contracts/native-criterion-preflight-v1.json"
-        )
-        description = compare_self._describe_preflight_contract(contract)
-        self.assertEqual(description["id"], "native-criterion-preflight-v1")
+        contracts = {
+            "native-criterion-preflight-v1.json": {
+                "id": "native-criterion-preflight-v1",
+                "group": "render",
+                "wrong_kind": "prepared_layout",
+            },
+            "native-ascii-criterion-preflight-v1.json": {
+                "id": "native-ascii-criterion-preflight-v1",
+                "group": "ascii_end_to_end",
+                "wrong_kind": "svg",
+            },
+        }
+        for filename, expected in contracts.items():
+            with self.subTest(contract=filename):
+                contract = ROOT / "docs/performance/contracts" / filename
+                description = compare_self._describe_preflight_contract(contract)
+                self.assertEqual(description["id"], expected["id"])
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            changed = Path(temp_dir) / contract.name
-            value = json.loads(contract.read_text(encoding="utf-8"))
-            value["output_kinds"]["render"] = "prepared_layout"
-            changed.write_text(json.dumps(value), encoding="utf-8")
-            with self.assertRaisesRegex(compare_self.ContractViolation, "differs"):
-                compare_self._describe_preflight_contract(changed)
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    changed = Path(temp_dir) / "docs/performance/contracts" / filename
+                    changed.parent.mkdir(parents=True)
+                    value = json.loads(contract.read_text(encoding="utf-8"))
+                    value["output_kinds"][expected["group"]] = expected["wrong_kind"]
+                    changed.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(compare_self.ContractViolation, "differs"):
+                        compare_self._describe_preflight_contract(changed)
+
+    def test_ascii_contract_does_not_expand_the_legacy_pipeline_contract(self) -> None:
+        pipeline_contract = ROOT / compare_self._NATIVE_CRITERION_PREFLIGHT_CONTRACT
+        ascii_contract = ROOT / compare_self._NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT
+        pipeline = json.loads(pipeline_contract.read_text(encoding="utf-8"))
+        ascii_only = json.loads(ascii_contract.read_text(encoding="utf-8"))
+
+        self.assertNotIn("ascii_end_to_end", pipeline["output_kinds"])
+        self.assertEqual(
+            ascii_only["output_kinds"],
+            {"ascii_end_to_end": "plain_ascii"},
+        )
 
     def test_post_sampling_failure_revokes_every_timing_claim(self) -> None:
         report = {
@@ -1626,7 +1675,13 @@ class CompareSelfContractsTest(unittest.TestCase):
                         "tree": recipe.label,
                         "dirty": False,
                     },
-                    "corpus": {"preflight_receipts_required": True},
+                    "bench_target": {"sha256": "3" * 64},
+                    "bench_source": {"sha256": "4" * 64},
+                    "corpus": {
+                        "sha256": "5" * 64,
+                        "preflight_receipts_required": True,
+                        "preflight_contract": {"sha256": "6" * 64},
+                    },
                     "discovery": {
                         "preflight_receipts": {
                             "end_to_end/flowchart_medium": receipt
@@ -2096,6 +2151,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "sha256": "b" * 64,
                 },
             },
+            "bench_target": {},
             "bench_source": {},
             "toolchain": {},
             "build_environment": {},
@@ -2341,7 +2397,8 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             checkout.mkdir()
             manifest = checkout / "Cargo.toml"
             manifest.write_text(
-                '[package]\nname = "merman"\nversion = "0.0.0"\n',
+                '[package]\nname = "merman"\nversion = "0.0.0"\n'
+                '\n[[bench]]\nname = "pipeline"\nharness = false\n',
                 encoding="utf-8",
             )
             lockfile = checkout / "Cargo.lock"
@@ -2401,11 +2458,16 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "dirty_entries": [],
                 "dirty_entries_truncated": False,
             }
+            bench_target, described_bench_source = compare_self._describe_bench_target(
+                manifest, "pipeline"
+            )
+            self.assertEqual(described_bench_source, bench_source)
             files = {
                 "manifest": compare_self._describe_required_file(manifest),
                 "workspace_manifest": compare_self._describe_required_file(manifest),
                 "lockfile": compare_self._describe_required_file(lockfile),
                 "corpus": compare_self._describe_corpus(corpus, recipe=recipe),
+                "bench_target": bench_target,
                 "bench_source": compare_self._describe_required_file(bench_source),
             }
             executable_description = compare_self._describe_required_file(executable)
@@ -3111,7 +3173,8 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             checkout = root / "checkout"
             checkout.mkdir()
             (checkout / "Cargo.toml").write_text(
-                '[package]\nname = "merman"\nversion = "0.0.0"\n',
+                '[package]\nname = "merman"\nversion = "0.0.0"\n'
+                '\n[[bench]]\nname = "pipeline"\nharness = false\n',
                 encoding="utf-8",
             )
             (checkout / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
@@ -3532,6 +3595,106 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             self.assertIn("byte-identical", error)
             head.provenance["git"]["tree"] = "a" * 40
             self.assertIsNone(compare_self._binary_independence_error(base, head))
+
+    def test_confirmation_requires_byte_identical_harness_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            executable = root / "pipeline"
+            executable.write_bytes(b"bench")
+            executable.chmod(0o555)
+            recipe = self._recipe(
+                label="base",
+                checkout=root,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=root / "target",
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            provenance = {
+                "bench_target": {"sha256": "1" * 64},
+                "bench_source": {"sha256": "2" * 64},
+                "corpus": {
+                    "sha256": "3" * 64,
+                    "preflight_contract": {"sha256": "4" * 64},
+                },
+            }
+            base = compare_self.PreparedRunner(
+                recipe=recipe,
+                executable=executable,
+                executable_sha256="5" * 64,
+                benches=set(),
+                skipped={},
+                provenance=copy.deepcopy(provenance),
+                env={},
+            )
+            head = compare_self.PreparedRunner(
+                recipe=compare_self.RunnerRecipe(
+                    **{**recipe.__dict__, "label": "head"}
+                ),
+                executable=executable,
+                executable_sha256="6" * 64,
+                benches=set(),
+                skipped={},
+                provenance=copy.deepcopy(provenance),
+                env={},
+            )
+
+            self.assertEqual(
+                compare_self._confirmation_harness_identity_errors(base, head), []
+            )
+            cases = (
+                ("bench_target", None, "Cargo [[bench]] entry"),
+                ("bench_source", None, "benchmark source"),
+                ("corpus", None, "corpus manifest"),
+                ("corpus", "preflight_contract", "preflight contract"),
+            )
+            for key, nested, expected in cases:
+                with self.subTest(field=expected):
+                    changed = copy.deepcopy(head.provenance)
+                    if nested is None:
+                        changed[key]["sha256"] = "f" * 64
+                    else:
+                        changed[key][nested]["sha256"] = "f" * 64
+                    head.provenance = changed
+                    self.assertTrue(
+                        any(
+                            expected in error
+                            for error in compare_self._confirmation_harness_identity_errors(
+                                base, head
+                            )
+                        )
+                    )
+                    head.provenance = copy.deepcopy(provenance)
+
+    def test_bench_target_identity_uses_only_the_selected_cargo_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manifest = root / "Cargo.toml"
+            manifest.write_text(
+                '[package]\nname = "merman"\nversion = "0.0.0"\n'
+                '\n[[bench]]\nname = "pipeline"\nharness = false\n'
+                '\n[[bench]]\nname = "ascii_pipeline"\nharness = false\n'
+                'path = "benches/custom_ascii.rs"\n',
+                encoding="utf-8",
+            )
+
+            target, source = compare_self._describe_bench_target(
+                manifest, "ascii_pipeline"
+            )
+
+        self.assertEqual(target["name"], "ascii_pipeline")
+        self.assertEqual(
+            target["entry"],
+            {
+                "name": "ascii_pipeline",
+                "harness": False,
+                "path": "benches/custom_ascii.rs",
+            },
+        )
+        self.assertEqual(source, root / "benches/custom_ascii.rs")
 
     def test_prepare_checks_git_before_creating_an_in_checkout_target_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

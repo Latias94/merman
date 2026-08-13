@@ -22,8 +22,8 @@
       "selector": "ascii_end_to_end/{fixture}",
       "history_aliases": [],
       "size_vector": [],
-      "workload": "common-family-closeout-fixture",
-      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
+      "workload": "strict-plain-ascii-unbounded-trusted-input-profile",
+      "evidence_contract": "docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
       "semantic_output_dimensions": ["plain_ascii_sha256", "plain_ascii_bytes"]
     }
@@ -116,7 +116,7 @@
       "category": "ascii-large-closeout",
       "source": "crates/merman/benches/fixtures/er_large.mmd",
       "suites": ["large-closeout"],
-      "features": ["ascii", "entities-25", "relationships-35", "attributes-106", "keys", "self-loop"],
+      "features": ["ascii", "entities-25", "relationships-34", "attributes-105", "keys", "self-loop"],
       "quality": ["deterministic", "common-family", "large"]
     },
     {

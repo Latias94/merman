@@ -49,7 +49,10 @@ that claim.
 ### ASCII semantic-depth benchmark
 
 The `ascii_pipeline` bench measures the public synchronous ASCII renderer with strict parsing,
-Plain 7-bit output, a reused engine, and one logical render operation per estimate:
+the explicit `UnboundedForTrustedInput` resource profile, Plain 7-bit output, a reused engine, and
+one logical render operation per estimate. This is a controlled local batch/stress lane whose
+inputs come only from the tracked corpus; the public `Interactive` and `TrustedNative` rejection
+boundaries remain covered by exact resource tests rather than benchmark admission:
 
 ```bash
 cargo bench --locked -p merman --no-default-features --features ascii --bench ascii_pipeline
@@ -69,8 +72,12 @@ python3 tools/bench/verify_pipeline_bench_list.py \
   --features ascii
 ```
 
-For a decision-grade adjacent-revision comparison, keep the ASCII feature closure and corpus
-explicit on both sides:
+For a decision-grade adjacent-revision comparison, first ensure both checkouts contain the same
+benchmark-only harness: `ascii_pipeline.rs`, its `Cargo.toml` bench entry, the selected corpus,
+the referenced preflight contract, and every selected fixture must be byte-identical. If the
+historical product revision predates that harness, create a clean benchmark-only backport commit
+whose parent is the product revision; do not copy only the corpus into an otherwise different
+checkout. Then keep the ASCII feature closure and each checkout's corpus path explicit:
 
 ```bash
 python3 tools/bench/compare_self.py \
@@ -100,10 +107,18 @@ python3 tools/bench/compare_self.py \
   --json-out target/performance/ascii_comparison.json
 ```
 
+Both corpus paths are resolved relative to their respective checkout. The benchmark workload,
+`UnboundedForTrustedInput` resource profile, bench source, lane contract, and selected fixture
+bytes must be identical on both sides. Confirmation mode rejects a different Cargo `[[bench]]`
+entry, benchmark source, corpus manifest, or preflight contract before sampling; selected fixture
+bytes are checked independently. Do not compare an older checkout's historical harness under the
+same operation name. Record the benchmark-only backport revision separately from its product parent
+so the final receipt cannot mistake harness provenance for a product change.
+
 The generated Markdown and JSON are machine-local evidence until their exact revision, tree,
 environment, corpus and harness digests, output identities, numeric results, and maintainer
-disposition are copied into the tracked ASCII closeout scorecard. A direct Criterion run or a
-receipt without those provenance fields is not a U25 closeout claim.
+disposition are committed in an ASCII closeout scorecard. Until that tracked scorecard exists, a
+direct Criterion run or a receipt without those provenance fields is not a U25 closeout claim.
 
 ## Decision-grade self-comparison
 
