@@ -33,6 +33,17 @@ fn from_flowchart_model_impl(
     before_edge_label_allocation: impl FnOnce(),
 ) -> Result<AsciiGraph> {
     debug_assert_eq!(resources.policy(), options.resources);
+    resources.transaction(|resources| {
+        from_flowchart_model_transactional(model, options, resources, before_edge_label_allocation)
+    })
+}
+
+fn from_flowchart_model_transactional(
+    model: &FlowchartModel,
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+    before_edge_label_allocation: impl FnOnce(),
+) -> Result<AsciiGraph> {
     let memberships = preflight_flowchart_projection(model, resources)?;
     validate_supported_flowchart_model(model, &memberships, resources)?;
 
@@ -61,7 +72,11 @@ fn from_flowchart_model_impl(
 
     let mut graph = AsciiGraph::new(direction);
     graph.wrap_node_labels_at(wrap_width);
-    graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.subgraphs.len())?;
+    graph.try_reserve_projection(
+        model.nodes.len(),
+        model.edges.len(),
+        memberships.canonical_group_indices().len(),
+    )?;
 
     for node in &model.nodes {
         if memberships.is_group_id(&node.id) {
@@ -106,12 +121,13 @@ fn from_flowchart_model_impl(
         );
     }
 
-    for subgraph in &model.subgraphs {
+    for (canonical_index, canonical_members) in memberships.canonical_groups() {
+        let subgraph = &model.subgraphs[canonical_index];
         let mut members = Vec::new();
         members
-            .try_reserve_exact(subgraph.nodes.len())
+            .try_reserve_exact(canonical_members.len())
             .map_err(|_| projection_allocation_failed())?;
-        for member in &subgraph.nodes {
+        for member in canonical_members {
             members.push(try_clone_projection_string(member)?);
         }
         graph.add_group_with_style(
@@ -156,7 +172,7 @@ fn parse_flow_edge_stroke(
 
 fn preflight_flowchart_projection<'a>(
     model: &'a FlowchartModel,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
 ) -> Result<FlowchartMembershipIndex<'a>> {
     resources.charge_layout_work(1)?;
     if let Some(direction) = model.direction.as_deref() {
@@ -229,10 +245,12 @@ fn preflight_flowchart_projection<'a>(
 struct FlowchartMembershipIndex<'a> {
     parent_group_by_member: HashMap<&'a str, usize>,
     group_ids: HashSet<&'a str>,
+    canonical_group_indices: Vec<usize>,
+    canonical_group_members: Vec<Vec<&'a str>>,
 }
 
 impl<'a> FlowchartMembershipIndex<'a> {
-    fn try_new(model: &'a FlowchartModel, resources: &mut ResourceContext) -> Result<Self> {
+    fn try_new(model: &'a FlowchartModel, resources: &ResourceContext) -> Result<Self> {
         let member_count = model.subgraphs.iter().try_fold(0usize, |total, group| {
             resources.checked_work_add(total, group.nodes.len())
         })?;
@@ -247,24 +265,70 @@ impl<'a> FlowchartMembershipIndex<'a> {
         group_ids
             .try_reserve(model.subgraphs.len())
             .map_err(|_| projection_allocation_failed())?;
+        let mut canonical_slot_by_group_id = HashMap::new();
+        canonical_slot_by_group_id
+            .try_reserve(model.subgraphs.len())
+            .map_err(|_| projection_allocation_failed())?;
+        let mut canonical_group_indices = Vec::new();
+        canonical_group_indices
+            .try_reserve(model.subgraphs.len())
+            .map_err(|_| projection_allocation_failed())?;
+        let mut canonical_group_members = Vec::new();
+        canonical_group_members
+            .try_reserve(model.subgraphs.len())
+            .map_err(|_| projection_allocation_failed())?;
+        let mut canonical_group_member_ids = Vec::new();
+        canonical_group_member_ids
+            .try_reserve(model.subgraphs.len())
+            .map_err(|_| projection_allocation_failed())?;
         for (parent_index, subgraph) in model.subgraphs.iter().enumerate() {
-            if !group_ids.insert(subgraph.id.as_str()) {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "flowchart",
-                    feature: "duplicate subgraph ids",
-                });
+            let group_id = subgraph.id.as_str();
+            let (canonical_slot, needs_member_reserve) =
+                match canonical_slot_by_group_id.entry(group_id) {
+                    std::collections::hash_map::Entry::Occupied(entry) => (*entry.get(), true),
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        let canonical_slot = canonical_group_indices.len();
+                        entry.insert(canonical_slot);
+                        group_ids.insert(group_id);
+                        canonical_group_indices.push(parent_index);
+                        let mut members = Vec::new();
+                        members
+                            .try_reserve_exact(subgraph.nodes.len())
+                            .map_err(|_| projection_allocation_failed())?;
+                        canonical_group_members.push(members);
+                        let mut member_ids = HashSet::new();
+                        member_ids
+                            .try_reserve(subgraph.nodes.len())
+                            .map_err(|_| projection_allocation_failed())?;
+                        canonical_group_member_ids.push(member_ids);
+                        (canonical_slot, false)
+                    }
+                };
+            if needs_member_reserve {
+                canonical_group_members[canonical_slot]
+                    .try_reserve(subgraph.nodes.len())
+                    .map_err(|_| projection_allocation_failed())?;
+                canonical_group_member_ids[canonical_slot]
+                    .try_reserve(subgraph.nodes.len())
+                    .map_err(|_| projection_allocation_failed())?;
             }
+            let canonical_index = canonical_group_indices[canonical_slot];
             for member in &subgraph.nodes {
                 // Preserve the former first-match parent semantics without rescanning candidates.
                 parent_group_by_member
                     .entry(member.as_str())
-                    .or_insert(parent_index);
+                    .or_insert(canonical_index);
+                if canonical_group_member_ids[canonical_slot].insert(member.as_str()) {
+                    canonical_group_members[canonical_slot].push(member.as_str());
+                }
             }
         }
 
         Ok(Self {
             parent_group_by_member,
             group_ids,
+            canonical_group_indices,
+            canonical_group_members,
         })
     }
 
@@ -279,6 +343,17 @@ impl<'a> FlowchartMembershipIndex<'a> {
     fn is_group_id(&self, endpoint_id: &str) -> bool {
         self.group_ids.contains(endpoint_id)
     }
+
+    fn canonical_group_indices(&self) -> &[usize] {
+        &self.canonical_group_indices
+    }
+
+    fn canonical_groups(&self) -> impl Iterator<Item = (usize, &[&'a str])> + '_ {
+        self.canonical_group_indices
+            .iter()
+            .copied()
+            .zip(self.canonical_group_members.iter().map(Vec::as_slice))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,7 +366,7 @@ enum NestingVisitState {
 fn preflight_subgraph_nesting(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
 ) -> Result<()> {
     // Every group is inspected once by the outer pass and resolved at most once.
     let traversal_work = resources.checked_work_mul(model.subgraphs.len(), 2)?;
@@ -313,7 +388,7 @@ fn preflight_subgraph_nesting(
     path.try_reserve(model.subgraphs.len())
         .map_err(|_| projection_allocation_failed())?;
 
-    for start_index in 0..model.subgraphs.len() {
+    for &start_index in memberships.canonical_group_indices() {
         if states[start_index] == NestingVisitState::Complete {
             continue;
         }
@@ -501,7 +576,7 @@ fn parse_direction(direction: &str) -> Result<GraphDirection> {
 fn validate_supported_flowchart_model(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
 ) -> Result<()> {
     for member_id in memberships.member_ids() {
         resources.charge_layout_work(1)?;
@@ -769,20 +844,20 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact layout-work limit should be valid");
-        let mut exact_resources = ResourceContext::new(exact_policy);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &mut exact_resources)
+        let exact_resources = ResourceContext::new(exact_policy);
+        let memberships = FlowchartMembershipIndex::try_new(&model, &exact_resources)
             .expect("exact membership construction work should pass");
-        preflight_subgraph_nesting(&model, &memberships, &mut exact_resources)
+        preflight_subgraph_nesting(&model, &memberships, &exact_resources)
             .expect("exact nesting traversal work should pass");
         assert_eq!(exact_resources.layout_work_used(), exact_work);
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one layout-work limit should be valid");
-        let mut below_resources = ResourceContext::new(below_policy);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &mut below_resources)
+        let below_resources = ResourceContext::new(below_policy);
+        let memberships = FlowchartMembershipIndex::try_new(&model, &below_resources)
             .expect("membership construction should fit below the combined work boundary");
-        let error = preflight_subgraph_nesting(&model, &memberships, &mut below_resources)
+        let error = preflight_subgraph_nesting(&model, &memberships, &below_resources)
             .expect_err("max-minus-one work should fail before nesting-state allocation");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
@@ -803,6 +878,10 @@ mod tests {
         let options = AsciiRenderOptions::ascii();
         let mut resources = ResourceContext::new(options.resources);
 
+        resources
+            .charge_usage(7, 3)
+            .expect("the resource ledger should accept prior usage");
+
         let error = from_flowchart_model(&model, &options, &mut resources)
             .expect_err("duplicate node ids must not select different layout and route entries");
         assert!(matches!(
@@ -812,6 +891,8 @@ mod tests {
                 feature: "duplicate node ids"
             }
         ));
+        assert_eq!(resources.layout_work_used(), 7);
+        assert_eq!(resources.document_cells_used(), 3);
     }
 
     #[test]

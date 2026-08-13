@@ -478,7 +478,7 @@ impl BudgetedTextLine<'_> {
 }
 
 /// Charges the normalized authored-text scan without materializing its expansion.
-pub(crate) fn charge_text_layout(resources: &mut ResourceContext, value: &str) -> Result<()> {
+pub(crate) fn charge_text_layout(resources: &ResourceContext, value: &str) -> Result<()> {
     resources.charge_layout_work(1)?;
     visit_normalized_segments(value, |segment| {
         segment.check_grapheme_budget(resources)?;

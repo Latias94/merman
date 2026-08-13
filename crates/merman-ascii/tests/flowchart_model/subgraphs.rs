@@ -27,6 +27,87 @@ fn flowchart_parser_simple_subgraph_renders_group_box() {
 }
 
 #[test]
+fn flowchart_parser_duplicate_subgraph_ids_keep_first_presentation_and_all_members() {
+    let rendered = render_flowchart(
+        "flowchart TB\nsubgraph X[First]\nA\nend\nsubgraph X[Second]\nB\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("duplicate subgraph declarations should merge into one rendered group");
+
+    assert_eq!(
+        rendered.matches("First").count(),
+        1,
+        "the first declaration should own the rendered title:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Second"),
+        "later presentation metadata must not replace the first declaration:\n{rendered}"
+    );
+    for member in [" A ", " B "] {
+        assert_eq!(
+            rendered.matches(member).count(),
+            1,
+            "all declarations must contribute their members exactly once:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
+    let mut model = single_node_flowchart_model("squareRect", "A");
+    let mut second_node = model.nodes[0].clone();
+    second_node.id = "B".to_string();
+    second_node.label = Some("B".to_string());
+    model.nodes.push(second_node);
+    model.subgraphs = vec![
+        merman_core::diagrams::flowchart::FlowSubgraph {
+            id: "X".to_string(),
+            title: "First".to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["A".to_string()],
+        },
+        merman_core::diagrams::flowchart::FlowSubgraph {
+            id: "X".to_string(),
+            title: "Second".to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["B".to_string()],
+        },
+    ];
+
+    let rendered = render_model(
+        &RenderSemanticModel::Flowchart(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("the direct render model should use the same merge semantics");
+
+    assert!(rendered.contains("First"), "{rendered}");
+    assert!(!rendered.contains("Second"), "{rendered}");
+    for member in [" A ", " B "] {
+        assert_eq!(rendered.matches(member).count(), 1, "{rendered}");
+    }
+}
+
+#[test]
+fn flowchart_duplicate_subgraph_declarations_deduplicate_repeated_members() {
+    let rendered = render_flowchart(
+        "flowchart TB\nsubgraph X[First]\nA\nend\nsubgraph X[Second]\nA\nB\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("duplicate subgraph declarations should preserve set-like membership");
+
+    assert_eq!(rendered.matches(" A ").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches(" B ").count(), 1, "{rendered}");
+}
+
+#[test]
 fn flowchart_parser_cross_subgraph_routes_follow_compound_parent_topology() {
     for (name, input, expected_nodes) in [
         (
