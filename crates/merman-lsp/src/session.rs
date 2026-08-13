@@ -149,18 +149,6 @@ impl LanguageSession {
         Self::from_state(state, cancellation, refresh_client)
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_analyzer_for_tests(analyzer: merman_analysis::Analyzer) -> Self {
-        let cancellation = merman_analysis::AnalysisCancellationToken::new();
-        let state = SessionState::with_analyzer_and_cache_budget(
-            analyzer,
-            cancellation.clone(),
-            documents::DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
-        );
-        let (refresh_client, _, _) = RefreshClient::channel();
-        Self::from_state(state, cancellation, refresh_client)
-    }
-
     pub(crate) fn endpoint_guard(&self) -> SessionEndpointGuard {
         SessionEndpointGuard {
             session: Arc::downgrade(&self.inner),

@@ -1387,6 +1387,35 @@ impl ArchitectureTrace {
             .expect("a private parse control cannot be cancelled")
     }
 
+    fn declaration_kinds_controlled<'a>(
+        &'a self,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<std::collections::HashMap<&'a str, EditorSemanticKind>> {
+        let mut kinds = std::collections::HashMap::new();
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let declaration = match entry.statement.as_ref() {
+                Some(ArchitectureStatement::Group { id, .. }) => {
+                    Some((id.text.as_str(), EditorSemanticKind::Namespace))
+                }
+                Some(ArchitectureStatement::Service { id, .. }) => {
+                    Some((id.text.as_str(), EditorSemanticKind::Variable))
+                }
+                Some(ArchitectureStatement::Junction { id, .. }) => {
+                    Some((id.text.as_str(), EditorSemanticKind::Object))
+                }
+                _ => None,
+            };
+            if let Some((id, kind)) = declaration {
+                kinds.entry(id).or_insert(kind);
+            }
+        }
+        control.checkpoint()?;
+        Ok(kinds)
+    }
+
     fn editor_facts_controlled(
         &self,
         source: &str,
@@ -1395,6 +1424,11 @@ impl ArchitectureTrace {
         control: &crate::ParseControl,
     ) -> crate::ParseControlResult<EditorSemanticFacts> {
         let mut facts = EditorSemanticFacts::new();
+        let recovered_declaration_kinds = if db.is_none() {
+            Some(self.declaration_kinds_controlled(control)?)
+        } else {
+            None
+        };
         for (entry_index, entry) in self.entries.iter().enumerate() {
             if entry_index % 128 == 0 {
                 control.checkpoint()?;
@@ -1412,8 +1446,16 @@ impl ArchitectureTrace {
                     fact.value.selection,
                 ));
                 let kind = match fact.role {
-                    ArchitectureTraceFactRole::Entity | ArchitectureTraceFactRole::Reference => db
+                    ArchitectureTraceFactRole::Entity => db
                         .and_then(|db| db.editor_kind_for_id(&fact.value.value))
+                        .unwrap_or(fact.kind),
+                    ArchitectureTraceFactRole::Reference => db
+                        .and_then(|db| db.editor_kind_for_id(&fact.value.value))
+                        .or_else(|| {
+                            recovered_declaration_kinds
+                                .as_ref()
+                                .and_then(|kinds| kinds.get(fact.value.value.as_str()).copied())
+                        })
                         .unwrap_or(fact.kind),
                     ArchitectureTraceFactRole::Payload => fact.kind,
                 };

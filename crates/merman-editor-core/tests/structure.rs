@@ -172,6 +172,29 @@ fn payload_semantic_items_are_not_navigation_targets() {
 }
 
 #[test]
+fn quadrant_class_use_is_not_a_generic_navigation_target() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/quadrant.mmd",
+            1,
+            concat!(
+                "quadrantChart\n",
+                "classDef priority color: #109060\n",
+                "Project A:::priority: [0.2, 0.8]\n",
+            )
+            .to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("quadrant chart should be accepted");
+
+    let position = Position::new(2, "Project A:::".len());
+    assert!(goto_definition(&snapshot, position).is_none());
+    assert!(references(&snapshot, position, true).is_none());
+    assert!(prepare_rename(&snapshot, position).is_none());
+}
+
+#[test]
 fn navigation_ignores_payload_spans_and_tracks_entities() {
     let harness = SnapshotHarness::new();
     let snapshot = harness
@@ -392,6 +415,38 @@ fn architecture_rename_rejects_reserved_identifier() {
         Err(RenameError::InvalidName),
         "architecture reserved words must not be accepted as replacement ids"
     );
+}
+
+#[test]
+fn architecture_recovery_preserves_junction_navigation_kind() {
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/architecture-recovery.mmd",
+            1,
+            concat!(
+                "architecture-beta\n",
+                "junction hub\n",
+                "service api\n",
+                "api:R -- L:hub\n",
+                "missing:R -- L:api\n",
+            )
+            .to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("recovered architecture source should be accepted");
+
+    let position = Position::new(3, "api:R -- L:".len());
+    let definition = goto_definition(&snapshot, position).expect("hub definition");
+    assert_eq!(definition.range.start, Position::new(1, "junction ".len()));
+
+    let refs = references(&snapshot, position, true).expect("hub references");
+    assert_eq!(refs.len(), 2);
+
+    let edit = rename(&snapshot, position, "gateway")
+        .expect("valid architecture identifier")
+        .expect("hub rename edit");
+    assert_eq!(edit.changes.get(snapshot.uri()).unwrap().len(), 2);
 }
 
 #[test]

@@ -1676,6 +1676,41 @@ service caption(server)[\"title %% kept\"]\n",
     }
 
     #[test]
+    fn architecture_recovered_facts_preserve_declared_junction_kind() {
+        let text = "architecture-beta\n\
+junction hub\n\
+service api\n\
+api:R -- L:hub\n\
+missing:R -- L:api\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(!facts.diagnostics.is_empty());
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "hub")
+                .map(|symbol| (symbol.role, symbol.kind))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    crate::EditorSemanticRole::Entity,
+                    crate::EditorSemanticKind::Object,
+                ),
+                (
+                    crate::EditorSemanticRole::Reference,
+                    crate::EditorSemanticKind::Object,
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn architecture_rejects_group_ids_as_edge_endpoints() {
         let cases = [
             (

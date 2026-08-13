@@ -1676,7 +1676,10 @@ async fn session_admission_preserves_open_change_and_close_order() {
         .await
         .expect("change must follow open");
     assert_eq!(document.version, 2);
-    assert_eq!(document.text().unwrap().as_ref(), "flowchart TD\nA-->C\n");
+    assert_eq!(
+        document.retained_text().unwrap().as_ref(),
+        "flowchart TD\nA-->C\n"
+    );
 
     let reopen = service.call(
         Request::build("textDocument/didOpen")
@@ -1761,7 +1764,7 @@ async fn session_admission_orders_configuration_before_document_open() {
         .await
         .expect("open must run after the queued configuration");
     assert_eq!(document.version, 1);
-    assert_eq!(document.text().unwrap().as_ref(), source);
+    assert_eq!(document.retained_text().unwrap().as_ref(), source);
     assert!(!document.is_analysis_unavailable());
 }
 

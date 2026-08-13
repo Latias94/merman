@@ -877,7 +877,7 @@ fn push_quadrant_point_facts(
     let Some(class_name) = point.class_name else {
         return;
     };
-    facts.push_symbol(EditorSemanticSymbol::reference(
+    facts.push_symbol(EditorSemanticSymbol::payload(
         class_name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
@@ -1714,17 +1714,15 @@ mod tests {
         assert!(class_definition.role.contributes_outline());
         assert!(!class_definition.role.contributes_references());
 
-        let class_reference = facts
+        let class_use = facts
             .symbols
             .iter()
-            .find(|symbol| {
-                symbol.name == "priority" && symbol.role == EditorSemanticRole::Reference
-            })
-            .expect("quadrant class reference");
-        assert_eq!(class_reference.kind, EditorSemanticKind::Class);
-        assert!(!class_reference.role.contributes_completion());
-        assert!(!class_reference.role.contributes_outline());
-        assert!(class_reference.role.contributes_references());
+            .find(|symbol| symbol.name == "priority" && symbol.role == EditorSemanticRole::Payload)
+            .expect("quadrant class use");
+        assert_eq!(class_use.kind, EditorSemanticKind::Class);
+        assert!(!class_use.role.contributes_completion());
+        assert!(!class_use.role.contributes_outline());
+        assert!(!class_use.role.contributes_references());
 
         let class_names = facts
             .symbols

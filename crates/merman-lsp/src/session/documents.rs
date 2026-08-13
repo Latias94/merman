@@ -531,11 +531,6 @@ impl StoredDocument {
         self.source.retained_text()
     }
 
-    #[cfg(test)]
-    pub(crate) fn text(&self) -> Option<&Arc<str>> {
-        self.retained_text()
-    }
-
     fn analysis_text(&self) -> Option<&Arc<str>> {
         self.source.analysis_text()
     }
