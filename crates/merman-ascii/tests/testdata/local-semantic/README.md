@@ -57,8 +57,8 @@ shared hard errors and never select a summary.
 
 See [ASCII Class / ER Capability Matrix](../../../../../docs/rendering/ASCII_CLASS_ER_CAPABILITY_MATRIX.md) for the current comparison against `beautiful-mermaid` and `mermaid-ascii`.
 
-Current covered Class capabilities include association (`--` / `..`), inheritance, realization, aggregation, composition, notes, lollipop/interface nodes, endpoint cardinality labels, CJK/emoji member and relationship labels, multiline labels, parallel lanes, crossing reroutes, disconnected components, dense summary fallback, and tight-budget summary fallback.
-Current covered Class local semantic fixtures also include namespace-qualified relationships and wide member / summary-label coverage.
+Current covered Class capabilities include association (`--` / `..`), inheritance, realization, aggregation, composition, notes, lollipop/interface nodes, endpoint cardinality labels, CJK/emoji member and relationship labels, multiline labels, parallel lanes, crossing reroutes, disconnected components, simple sibling-namespace / namespace-to-root / nested-sibling facade routing, dense summary fallback, and tight-budget summary fallback.
+Current covered Class local semantic fixtures also include namespace-qualified relationships, byte-length-framed facade member identity, and wide member / summary-label coverage. Dense or colliding cross-namespace relations remain lossless summaries.
 Current covered ER capabilities include entity attributes, CJK/emoji attribute and relationship labels, key/comment tokens, identifying and non-identifying relationships, normalized cardinality spellings (`}|` / `}o`), multiline labels, parallel lanes, crossing reroutes, disconnected components, dense summary fallback, and tight-budget summary fallback.
 Current covered ER local semantic fixtures also include wide attribute / summary-label coverage.
 Current explicit unsupported boundaries are covered by typed-model tests for Class multiple markers, plus ER unknown cardinality markers and unknown relationship identification types.

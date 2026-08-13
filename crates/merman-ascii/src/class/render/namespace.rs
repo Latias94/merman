@@ -1,20 +1,21 @@
 use super::{
     CLASS_LEVEL_HORIZONTAL_GAP, ClassCharset, ClassDirection, ClassNoteIndex, RenderedClassBox,
-    RenderedClassBoxIndex, class_relation_summary_row, external_namespace_note_summary_rows,
-    grid_overflow, layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes,
-    relation_explicit_namespace_id, relation_layout, render_class_box,
-    render_class_component_lines, render_class_document_lines,
-    render_horizontal_class_component_lines, render_interface_box, render_note_box, work_overflow,
+    RenderedClassBoxIndex, external_namespace_note_summary_rows, grid_overflow,
+    layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes,
+    relation_endpoint_id, relation_layout, render_class_box, render_class_component_lines,
+    render_class_document_lines, render_horizontal_class_component_lines, render_interface_box,
+    render_note_box, work_overflow,
 };
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph::{self, RelationGraphBox, RelationGraphBoxStyle, RelationGraphLine};
-use crate::resource::ResourceContext;
-use crate::safe_text::normalize_terminal_text;
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::safe_text::{normalize_terminal_text, visit_quoted_terminal_text};
 use crate::{AsciiError, Result};
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{ClassDiagram, ClassNode, Namespace};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 
 struct NamespaceRenderContext<'a> {
     model: &'a ClassDiagram,
@@ -22,7 +23,287 @@ struct NamespaceRenderContext<'a> {
     charset: ClassCharset,
     direction: ClassDirection,
     namespace_facade_aliases: &'a HashMap<String, String>,
+    scope_index: &'a NamespaceScopeIndex<'a>,
     note_by_id: ClassNoteIndex<'a>,
+}
+
+#[derive(Debug)]
+struct NamespaceScopeIndex<'a> {
+    namespace_parent: HashMap<&'a str, Option<&'a str>>,
+    endpoint_owner: HashMap<&'a str, Option<&'a str>>,
+    relation_scope: Vec<Option<&'a str>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ScopedEndpoint<'a> {
+    route_id: &'a str,
+    facade_member: Option<&'a str>,
+}
+
+impl<'a> NamespaceScopeIndex<'a> {
+    fn new(
+        model: &'a ClassDiagram,
+        namespace_facade_aliases: &'a HashMap<String, String>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        resources.transaction(|resources| {
+            Self::new_in_transaction(model, namespace_facade_aliases, resources)
+        })
+    }
+
+    fn new_in_transaction(
+        model: &'a ClassDiagram,
+        namespace_facade_aliases: &'a HashMap<String, String>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let namespace_capacity = model.namespaces.len();
+        let endpoint_capacity = model
+            .classes
+            .len()
+            .checked_add(model.interfaces.len())
+            .ok_or_else(|| work_overflow(resources))?;
+        let scope_walk_bound = namespace_capacity
+            .checked_add(1)
+            .ok_or_else(|| work_overflow(resources))?;
+        // Each relation can walk both ancestry chains once to measure their depths, once to align
+        // them, and once more to converge. Charge the bounded five-walk envelope before any index
+        // container is allocated; the walk itself rejects a cyclic parent chain at the same bound.
+        let scope_work_per_relation = scope_walk_bound
+            .checked_mul(5)
+            .ok_or_else(|| work_overflow(resources))?;
+        let index_work = namespace_capacity
+            .checked_add(endpoint_capacity)
+            .and_then(|value| value.checked_add(model.relations.len()))
+            .and_then(|value| {
+                value.checked_add(model.relations.len().checked_mul(scope_work_per_relation)?)
+            })
+            .ok_or_else(|| work_overflow(resources))?;
+        resources.charge_layout_work(index_work)?;
+
+        let mut namespace_parent = HashMap::new();
+        namespace_parent
+            .try_reserve(namespace_capacity)
+            .map_err(|_| layout_allocation_failed())?;
+        for namespace in model.namespaces.values() {
+            namespace_parent.insert(namespace.id.as_str(), namespace.parent.as_deref());
+        }
+
+        let mut endpoint_owner = HashMap::new();
+        endpoint_owner
+            .try_reserve(endpoint_capacity)
+            .map_err(|_| layout_allocation_failed())?;
+        for class in model.classes.values() {
+            endpoint_owner.insert(class.id.as_str(), class.parent.as_deref());
+        }
+        for interface in &model.interfaces {
+            endpoint_owner.insert(interface.id.as_str(), None);
+        }
+
+        let mut relation_scope = Vec::new();
+        relation_scope
+            .try_reserve_exact(model.relations.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for relation in &model.relations {
+            let left = relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str());
+            let right = relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str());
+            relation_scope.push(Self::least_common_scope(
+                endpoint_owner.get(left).copied().flatten(),
+                endpoint_owner.get(right).copied().flatten(),
+                &namespace_parent,
+                scope_walk_bound,
+            )?);
+        }
+
+        Ok(Self {
+            namespace_parent,
+            endpoint_owner,
+            relation_scope,
+        })
+    }
+
+    fn least_common_scope(
+        left: Option<&'a str>,
+        right: Option<&'a str>,
+        parent: &HashMap<&'a str, Option<&'a str>>,
+        max_hops: usize,
+    ) -> Result<Option<&'a str>> {
+        let mut left = left;
+        let mut right = right;
+        let mut left_depth = Self::scope_depth(left, parent, max_hops)?;
+        let mut right_depth = Self::scope_depth(right, parent, max_hops)?;
+
+        while left_depth > right_depth {
+            left = Self::parent_scope(left, parent)?;
+            left_depth -= 1;
+        }
+        while right_depth > left_depth {
+            right = Self::parent_scope(right, parent)?;
+            right_depth -= 1;
+        }
+
+        for _ in 0..max_hops {
+            if left == right {
+                return Ok(left);
+            }
+            left = Self::parent_scope(left, parent)?;
+            right = Self::parent_scope(right, parent)?;
+        }
+        Err(inconsistent_class_namespace_ownership())
+    }
+
+    fn scope_depth(
+        mut scope: Option<&'a str>,
+        parent: &HashMap<&'a str, Option<&'a str>>,
+        max_hops: usize,
+    ) -> Result<usize> {
+        for depth in 0..max_hops {
+            let Some(namespace) = scope else {
+                return Ok(depth);
+            };
+            scope = parent
+                .get(namespace)
+                .copied()
+                .ok_or_else(inconsistent_class_namespace_ownership)?;
+        }
+        Err(inconsistent_class_namespace_ownership())
+    }
+
+    fn parent_scope(
+        scope: Option<&'a str>,
+        parent: &HashMap<&'a str, Option<&'a str>>,
+    ) -> Result<Option<&'a str>> {
+        let Some(namespace) = scope else {
+            return Ok(None);
+        };
+        parent
+            .get(namespace)
+            .copied()
+            .ok_or_else(inconsistent_class_namespace_ownership)
+    }
+
+    fn scope_for_relation(&self, relation_index: usize) -> Option<&'a str> {
+        self.relation_scope.get(relation_index).copied().flatten()
+    }
+
+    fn endpoint_for_scope(
+        &self,
+        endpoint_id: &'a str,
+        scope: Option<&'a str>,
+        resources: &ResourceContext,
+    ) -> Result<ScopedEndpoint<'a>> {
+        resources.charge_layout_work(1)?;
+        let owner = self.endpoint_owner.get(endpoint_id).copied().flatten();
+        let Some(owner) = owner else {
+            return Ok(ScopedEndpoint {
+                route_id: endpoint_id,
+                facade_member: None,
+            });
+        };
+        if Some(owner) == scope {
+            return Ok(ScopedEndpoint {
+                route_id: endpoint_id,
+                facade_member: None,
+            });
+        }
+
+        let mut child = owner;
+        while self.namespace_parent.get(child).copied().flatten() != scope {
+            resources.charge_layout_work(1)?;
+            child = self
+                .namespace_parent
+                .get(child)
+                .copied()
+                .flatten()
+                .ok_or_else(|| inconsistent_class_namespace_ownership())?;
+        }
+        Ok(ScopedEndpoint {
+            route_id: child,
+            facade_member: Some(endpoint_id),
+        })
+    }
+}
+
+fn route_layout_for_scope<'a>(
+    layout: super::RelationLayout<'a>,
+    scope: Option<&'a str>,
+    scope_index: &NamespaceScopeIndex<'a>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<super::RelationLayout<'a>> {
+    resources.transaction(|resources| {
+        let top = scope_index.endpoint_for_scope(layout.top_id, scope, resources)?;
+        let bottom = scope_index.endpoint_for_scope(layout.bottom_id, scope, resources)?;
+        let top_facade_member = top
+            .facade_member
+            .map(|member| frame_facade_member(member, resources))
+            .transpose()?;
+        let bottom_facade_member = bottom
+            .facade_member
+            .map(|member| frame_facade_member(member, resources))
+            .transpose()?;
+        layout.with_route_endpoints(
+            top.route_id,
+            bottom.route_id,
+            top_facade_member.as_deref(),
+            bottom_facade_member.as_deref(),
+            width_profile,
+            resources,
+        )
+    })
+}
+
+fn frame_facade_member(member: &str, resources: &ResourceContext) -> Result<String> {
+    resources.transaction(|resources| {
+        let work_before_measure = resources.layout_work_used();
+        let mut quoted_bytes = 0usize;
+        visit_quoted_terminal_text(member, resources, |fragment| {
+            quoted_bytes = quoted_bytes
+                .checked_add(fragment.len())
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+            Ok(())
+        })?;
+        let replay_work = resources
+            .layout_work_used()
+            .checked_sub(work_before_measure)
+            .ok_or_else(|| work_overflow(resources))?;
+        let output_bytes = "member(bytes="
+            .len()
+            .checked_add(decimal_digits(member.len()))
+            .and_then(|value| value.checked_add(")=".len()))
+            .and_then(|value| value.checked_add(quoted_bytes))
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        let materialization_work = output_bytes.max(1);
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+        resources.check_usage(
+            replay_work
+                .checked_add(materialization_work)
+                .ok_or_else(|| work_overflow(resources))?,
+            0,
+        )?;
+        resources.charge_layout_work(materialization_work)?;
+
+        let mut framed = String::new();
+        framed
+            .try_reserve_exact(output_bytes)
+            .map_err(|_| layout_allocation_failed())?;
+        write!(&mut framed, "member(bytes={})=", member.len())
+            .map_err(|_| layout_allocation_failed())?;
+        visit_quoted_terminal_text(member, resources, |fragment| {
+            framed.push_str(fragment);
+            Ok(())
+        })?;
+        debug_assert_eq!(framed.len(), output_bytes);
+        Ok(framed)
+    })
+}
+
+fn decimal_digits(mut value: usize) -> usize {
+    let mut digits = 1usize;
+    while value >= 10 {
+        value /= 10;
+        digits += 1;
+    }
+    digits
 }
 
 pub(super) fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
@@ -140,25 +421,35 @@ pub(super) fn render_namespaced_class_diagram(
     namespace_facade_aliases: &HashMap<String, String>,
     resources: &mut ResourceContext,
 ) -> Result<String> {
+    let scope_index = NamespaceScopeIndex::new(model, namespace_facade_aliases, resources)?;
     let boxes = render_namespaced_class_boxes(
         model,
         options,
         charset,
         direction,
         namespace_facade_aliases,
+        &scope_index,
         resources,
     )?;
     let mut external_layouts = Vec::new();
     external_layouts
         .try_reserve_exact(model.relations.len())
         .map_err(|_| layout_allocation_failed())?;
-    for relation in model.relations.iter().filter(|relation| {
-        relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none()
-    }) {
-        external_layouts.push(relation_layout(
+    for (relation_index, relation) in model.relations.iter().enumerate() {
+        if scope_index.scope_for_relation(relation_index).is_some() {
+            continue;
+        }
+        let layout = relation_layout(
             model,
             relation,
             namespace_facade_aliases,
+            options.terminal_width_profile,
+            resources,
+        )?;
+        external_layouts.push(route_layout_for_scope(
+            layout,
+            None,
+            &scope_index,
             options.terminal_width_profile,
             resources,
         )?);
@@ -166,23 +457,9 @@ pub(super) fn render_namespaced_class_diagram(
     for layout in &mut external_layouts {
         layout.apply_direction(direction);
     }
-    let summary_capacity = external_layouts
-        .len()
-        .checked_add(model.notes.len())
-        .ok_or_else(|| work_overflow(resources))?;
-    let mut summary_rows = Vec::new();
-    summary_rows
-        .try_reserve_exact(summary_capacity)
-        .map_err(|_| layout_allocation_failed())?;
-    for layout in &external_layouts {
-        summary_rows.push(class_relation_summary_row(layout)?);
-    }
-    summary_rows.extend(external_namespace_note_summary_rows(
-        model,
-        namespace_facade_aliases,
-    )?);
+    let summary_rows = external_namespace_note_summary_rows(model, namespace_facade_aliases)?;
 
-    if summary_rows.is_empty() {
+    if summary_rows.is_empty() && external_layouts.is_empty() {
         if direction.is_horizontal() {
             let lines = relation_graph::render_horizontal_box_strip_lines(
                 &boxes,
@@ -205,9 +482,45 @@ pub(super) fn render_namespaced_class_diagram(
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, resources);
     }
 
+    let box_by_id = RenderedClassBoxIndex::new(&boxes, resources)?;
+    let routed_lines = if direction.is_horizontal() {
+        render_horizontal_class_component_lines(
+            &boxes,
+            &box_by_id,
+            &external_layouts,
+            direction,
+            options,
+            charset,
+            resources,
+        )?
+    } else {
+        render_class_component_lines(
+            &boxes,
+            &box_by_id,
+            &external_layouts,
+            options,
+            charset,
+            resources,
+        )?
+    };
+
+    if summary_rows.is_empty() {
+        return render_class_document_lines(routed_lines, options, resources);
+    }
+
+    let routed_box = RelationGraphBox::from_rendered_lines(
+        "namespace::root-relations".to_string(),
+        routed_lines,
+        options.terminal_width_profile,
+        resources,
+    )?;
     if direction.is_horizontal() {
         let gap = CLASS_LEVEL_HORIZONTAL_GAP;
-        let base_extent = relation_graph::horizontal_box_strip_extent(&boxes, gap, resources)?;
+        let base_extent = relation_graph::horizontal_box_strip_extent(
+            std::slice::from_ref(&routed_box),
+            gap,
+            resources,
+        )?;
         let lines = relation_graph::render_relation_document_with_summary(
             base_extent,
             &summary_rows,
@@ -216,7 +529,7 @@ pub(super) fn render_namespaced_class_diagram(
             resources,
             |resources| {
                 relation_graph::render_horizontal_box_strip_lines(
-                    &boxes,
+                    std::slice::from_ref(&routed_box),
                     direction.horizontal_direction(),
                     gap,
                     options.terminal_width_profile,
@@ -227,7 +540,8 @@ pub(super) fn render_namespaced_class_diagram(
         return render_class_document_lines(lines, options, resources);
     }
     if direction.is_reversed() {
-        let base_extent = relation_graph::stacked_box_extent(&boxes, resources)?;
+        let base_extent =
+            relation_graph::stacked_box_extent(std::slice::from_ref(&routed_box), resources)?;
         let lines = relation_graph::render_relation_document_with_summary(
             base_extent,
             &summary_rows,
@@ -236,7 +550,7 @@ pub(super) fn render_namespaced_class_diagram(
             resources,
             |resources| {
                 relation_graph::stacked_box_lines_ordered(
-                    &boxes,
+                    std::slice::from_ref(&routed_box),
                     options.terminal_width_profile,
                     true,
                     resources,
@@ -247,7 +561,7 @@ pub(super) fn render_namespaced_class_diagram(
     }
 
     relation_graph::render_stacked_boxes_with_relation_summary(
-        &boxes,
+        std::slice::from_ref(&routed_box),
         &summary_rows,
         None,
         options,
@@ -260,6 +574,7 @@ fn render_namespaced_class_boxes(
     charset: ClassCharset,
     direction: ClassDirection,
     namespace_facade_aliases: &HashMap<String, String>,
+    scope_index: &NamespaceScopeIndex<'_>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RenderedClassBox>> {
     let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
@@ -269,6 +584,7 @@ fn render_namespaced_class_boxes(
         charset,
         direction,
         namespace_facade_aliases,
+        scope_index,
         note_by_id,
     };
     let mut rendered_namespace_ids = HashSet::new();
@@ -425,8 +741,6 @@ fn render_namespace_box(
             )?);
         }
     }
-    let box_by_id = RenderedClassBoxIndex::new(&direct_boxes, resources)?;
-
     let direct_layout_capacity = context
         .model
         .relations
@@ -437,19 +751,38 @@ fn render_namespace_box(
     direct_layouts
         .try_reserve_exact(direct_layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for relation in context.model.relations.iter().filter(|relation| {
-        relation_explicit_namespace_id(context.model, relation, context.namespace_facade_aliases)
-            == Some(namespace.id.as_str())
-    }) {
-        direct_layouts.push(relation_layout(
+    for (relation_index, relation) in context.model.relations.iter().enumerate() {
+        if context.scope_index.scope_for_relation(relation_index) != Some(namespace.id.as_str()) {
+            continue;
+        }
+        let layout = relation_layout(
             context.model,
             relation,
             context.namespace_facade_aliases,
             context.options.terminal_width_profile,
             resources,
+        )?;
+        direct_layouts.push(route_layout_for_scope(
+            layout,
+            Some(namespace.id.as_str()),
+            context.scope_index,
+            context.options.terminal_width_profile,
+            resources,
         )?);
     }
 
+    let mut scope_boxes = Vec::new();
+    scope_boxes
+        .try_reserve_exact(
+            children
+                .len()
+                .checked_add(direct_boxes.len())
+                .ok_or_else(|| work_overflow(resources))?,
+        )
+        .map_err(|_| layout_allocation_failed())?;
+    scope_boxes.extend(children.iter().cloned());
+    scope_boxes.extend(direct_boxes.iter().cloned());
+    let box_by_id = RenderedClassBoxIndex::new(&scope_boxes, resources)?;
     direct_layouts.extend(note_relation_layouts_for_notes(
         context.model.notes.iter().filter(|note| {
             note.parent.as_deref() == Some(namespace.id.as_str()) && note.class_id.is_some()
@@ -467,7 +800,7 @@ fn render_namespace_box(
     } else {
         let component_lines = if context.direction.is_horizontal() {
             render_horizontal_class_component_lines(
-                &direct_boxes,
+                &scope_boxes,
                 &box_by_id,
                 &direct_layouts,
                 context.direction,
@@ -477,7 +810,7 @@ fn render_namespace_box(
             )?
         } else {
             render_class_component_lines(
-                &direct_boxes,
+                &scope_boxes,
                 &box_by_id,
                 &direct_layouts,
                 context.options,
@@ -778,4 +1111,99 @@ fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) 
         })
         .max_by_key(|(namespace_len, _)| *namespace_len)
         .and_then(|(_, local_id)| model.classes.contains_key(local_id).then_some(local_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::diagram::RenderSemanticModel;
+    use merman_core::{Engine, ParseOptions};
+
+    fn parsed_class_model(input: &str) -> ClassDiagram {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .expect("class diagram should parse")
+            .expect("class diagram should be detected");
+        match parsed.into_parts().1 {
+            RenderSemanticModel::Class(model) => model,
+            other => panic!("expected class render model, got {}", other.kind()),
+        }
+    }
+
+    #[test]
+    fn namespace_scope_index_admits_exact_work_and_rolls_back_n_minus_one() {
+        let model = parsed_class_model(
+            "classDiagram\nnamespace Platform {\n  namespace FFI {\n    class Dart\n  }\n  namespace Core {\n    class Renderer\n  }\n}\nDart --> Renderer",
+        );
+        let aliases = namespace_facade_aliases(&model).expect("aliases should build");
+        let unbounded = AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        let mut measured = ResourceContext::new(unbounded);
+        NamespaceScopeIndex::new(&model, &aliases, &mut measured)
+            .expect("unbounded namespace index should build");
+        let exact_work = measured.layout_work_used();
+        assert!(exact_work > 1);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact namespace-index work limit should be valid");
+        let mut exact = ResourceContext::new(exact_policy);
+        NamespaceScopeIndex::new(&model, &aliases, &mut exact)
+            .expect("exact namespace-index work should build");
+        assert_eq!(exact.layout_work_used(), exact_work);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("max-minus-one namespace-index work limit should be valid");
+        let mut below = ResourceContext::new(below_policy);
+        below
+            .charge_layout_work(1)
+            .expect("test checkpoint should be admitted");
+        let checkpoint = below.layout_work_used();
+        let error = NamespaceScopeIndex::new(&model, &aliases, &mut below)
+            .expect_err("max-minus-one namespace-index work must reject");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual > details.max
+        ));
+        assert_eq!(below.layout_work_used(), checkpoint);
+        assert_eq!(below.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn namespace_scope_index_rejects_cyclic_parent_chains_before_render_descent() {
+        let mut model = parsed_class_model(
+            "classDiagram\nnamespace Left {\n  class A\n}\nnamespace Right {\n  class B\n}\nA --> B",
+        );
+        model
+            .namespaces
+            .get_mut("Left")
+            .expect("Left namespace should exist")
+            .parent = Some("Right".to_string());
+        model
+            .namespaces
+            .get_mut("Right")
+            .expect("Right namespace should exist")
+            .parent = Some("Left".to_string());
+        let aliases = namespace_facade_aliases(&model).expect("aliases should build");
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        ));
+
+        let error = NamespaceScopeIndex::new(&model, &aliases, &mut resources)
+            .expect_err("cyclic namespace parents must reject while building the scope index");
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "inconsistent class namespace ownership",
+            }
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
 }

@@ -149,7 +149,19 @@ test("fallback projection fields derive the compatibility support level", () => 
 
   const classDiagram = byType.get("class")!;
   assert.ok(
-    classDiagram.limits.some((limit) => limit.includes("cross-namespace"))
+    classDiagram.supported_semantics.includes(
+      "readable sibling namespace, namespace-to-root, and nested namespace facade routing"
+    )
+  );
+  assert.ok(
+    classDiagram.supported_semantics.includes(
+      "length-framed namespace facade member identity"
+    )
+  );
+  assert.ok(
+    classDiagram.limits.includes(
+      "dense or colliding cross-namespace relationships render as lossless relation summaries"
+    )
   );
   assert.ok(
     classDiagram.limits.some((limit) => limit.includes("ports do not fit"))

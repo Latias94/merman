@@ -268,7 +268,7 @@ struct RelationLayout<'a> {
     bottom_endpoint_role: EndpointLabelRole,
 }
 
-impl RelationLayout<'_> {
+impl<'a> RelationLayout<'a> {
     fn apply_direction(&mut self, direction: ClassDirection) {
         if direction != ClassDirection::BottomUp {
             return;
@@ -281,6 +281,82 @@ impl RelationLayout<'_> {
         );
         std::mem::swap(&mut self.top_endpoint_role, &mut self.bottom_endpoint_role);
     }
+
+    pub(super) fn with_route_endpoints(
+        mut self,
+        top_id: &'a str,
+        bottom_id: &'a str,
+        top_facade_member: Option<&str>,
+        bottom_facade_member: Option<&str>,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        resources.transaction(|resources| {
+            self.top_id = top_id;
+            self.bottom_id = bottom_id;
+            self.top_endpoint_label = join_endpoint_label_with_facade(
+                top_facade_member,
+                self.top_endpoint_label.take(),
+                width_profile,
+                resources,
+            )?;
+            self.bottom_endpoint_label = join_endpoint_label_with_facade(
+                bottom_facade_member,
+                self.bottom_endpoint_label.take(),
+                width_profile,
+                resources,
+            )?;
+            Ok(self)
+        })
+    }
+}
+
+fn join_endpoint_label_with_facade(
+    facade_member: Option<&str>,
+    label: Option<RelationGraphLabel>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Option<RelationGraphLabel>> {
+    let Some(facade_member) = facade_member else {
+        return Ok(label);
+    };
+
+    let label_bytes = label.as_ref().map_or(Ok(0usize), |label| {
+        let line_bytes = label.lines().iter().try_fold(0usize, |total, line| {
+            total
+                .checked_add(line.len())
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
+        })?;
+        line_bytes
+            .checked_add(label.line_count().saturating_sub(1))
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))
+    })?;
+    let separator_bytes = usize::from(label.is_some())
+        .checked_mul(2)
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+    let output_bytes = facade_member
+        .len()
+        .checked_add(separator_bytes)
+        .and_then(|value| value.checked_add(label_bytes))
+        .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+
+    resources.charge_layout_work(label.as_ref().map_or(1, RelationGraphLabel::line_count))?;
+    resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
+
+    let mut text = String::new();
+    text.try_reserve_exact(output_bytes)
+        .map_err(|_| layout_allocation_failed())?;
+    text.push_str(facade_member);
+    if let Some(label) = label {
+        text.push_str(": ");
+        for (index, line) in label.lines().iter().enumerate() {
+            if index > 0 {
+                text.push('\n');
+            }
+            text.push_str(line);
+        }
+    }
+    RelationGraphLabel::try_new(&text, width_profile, resources)
 }
 
 pub(crate) fn render_class_diagram(
@@ -989,18 +1065,6 @@ fn relation_endpoint_id<'a>(
         .get(id)
         .map(String::as_str)
         .unwrap_or(id)
-}
-
-fn relation_explicit_namespace_id<'a>(
-    model: &'a ClassDiagram,
-    relation: &'a ClassRelation,
-    namespace_facade_aliases: &'a HashMap<String, String>,
-) -> Option<&'a str> {
-    let left_parent =
-        class_explicit_namespace_id(model, relation.id1.as_str(), namespace_facade_aliases)?;
-    let right_parent =
-        class_explicit_namespace_id(model, relation.id2.as_str(), namespace_facade_aliases)?;
-    (left_parent == right_parent).then_some(left_parent)
 }
 
 fn class_explicit_namespace_id<'a>(

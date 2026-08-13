@@ -23,7 +23,7 @@ impl Clone for RelationGraphLine {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphBox {
     pub(super) id: Rc<String>,
     pub(super) lines: Rc<Vec<RelationGraphLine>>,

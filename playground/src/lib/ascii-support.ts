@@ -74,10 +74,12 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
       "class boxes, members, methods, annotations, and notes",
       "independent relationship markers and endpoint labels",
       "four directions and namespace containers",
+      "readable sibling namespace, namespace-to-root, and nested namespace facade routing",
+      "length-framed namespace facade member identity",
       "self-relations, routed relation components, and lossless summaries",
     ],
     limits: [
-      "cross-namespace or cross-container relationships render as relation summaries",
+      "dense or colliding cross-namespace relationships render as lossless relation summaries",
       "parallel relation lanes whose ports do not fit use a lossless relation summary",
       "dense or collision-prone relation scenes can summarize",
     ],

@@ -193,6 +193,8 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "namespace containers",
             "namespace-qualified endpoint aliases",
             "namespace-internal class and note relationship routing",
+            "readable sibling namespace, namespace-to-root, and nested namespace facade routing",
+            "length-framed namespace facade member identity",
             "self-relation loops",
             "bounded iterative relation-layer sweeps",
             "routed relation lanes",
@@ -200,7 +202,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "lossless crossing, port-fit, route, and overlay collision summaries",
         ],
         limits: &[
-            "cross-namespace or cross-container relationships render as relation summaries",
+            "dense or colliding cross-namespace relationships render as lossless relation summaries",
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "dense or collision-prone relation scenes can summarize",
         ],
@@ -883,6 +885,25 @@ mod tests {
                 capability.diagram_type
             );
         }
+    }
+
+    #[test]
+    fn class_capability_discloses_scoped_namespace_facade_routing() {
+        let class = find("class");
+
+        assert!(class.supported_semantics.contains(
+            &"readable sibling namespace, namespace-to-root, and nested namespace facade routing"
+        ));
+        assert!(
+            class
+                .supported_semantics
+                .contains(&"length-framed namespace facade member identity")
+        );
+        assert!(
+            class
+                .limits
+                .contains(&"dense or colliding cross-namespace relationships render as lossless relation summaries")
+        );
     }
 
     #[test]

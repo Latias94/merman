@@ -964,19 +964,14 @@ fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
     assert!(rendered.contains("DartBinding"));
     assert!(rendered.contains("PythonBinding"));
     assert!(rendered.contains("Renderer"));
-    assert!(rendered.contains("relations:"));
-    assert!(rendered.lines().any(|line| {
-        line.contains("DartBinding")
-            && line.contains("-->")
-            && line.contains("Renderer")
-            && line.contains("calls")
-    }));
-    assert!(rendered.lines().any(|line| {
-        line.contains("PythonBinding")
-            && line.contains("-->")
-            && line.contains("Renderer")
-            && line.contains("calls")
-    }));
+    assert!(rendered.contains("relations:"), "{rendered}");
+    for (member, bytes) in [("DartBinding", 11), ("PythonBinding", 13), ("Renderer", 8)] {
+        assert!(
+            rendered.contains(&format!("member(bytes={bytes})=\"{member}\"")),
+            "namespace facade fallback should preserve framed member {member:?}:\n{rendered}"
+        );
+    }
+    assert_eq!(rendered.matches("calls").count(), 2, "{rendered}");
     assert!(
         rendered.lines().count() >= 20,
         "namespace-qualified class fixture should produce a non-trivial multi-line layout:\n{rendered}"
@@ -1123,10 +1118,128 @@ fn class_parser_bottom_up_namespace_external_relation_orders_the_target_first() 
             < first_line_index_containing(&rendered, "| A |"),
         "BT should place the external target before the namespace source:\n{rendered}"
     );
+    assert!(!rendered.contains("relations:"), "{rendered}");
     assert!(
-        rendered.contains("relations:") && rendered.contains("leaves"),
-        "external namespace relation must remain visible in the summary:\n{rendered}"
+        rendered.contains("A") && rendered.contains("leaves"),
+        "{rendered}"
     );
+}
+
+#[test]
+fn class_parser_sibling_namespace_relation_routes_through_facades() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "namespace Left {\n  class Source\n}\n",
+            "namespace Right {\n  class Target\n}\n",
+            "Source \"source\" --> \"target\" Target : calls<br>async",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sibling namespace relation should route through namespace facades");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for framed_member in ["member(bytes=6)=\"Source\"", "member(bytes=6)=\"Target\""] {
+        assert!(
+            rendered.contains(framed_member),
+            "missing framed namespace member {framed_member:?}:\n{rendered}"
+        );
+    }
+    for expected in [
+        "Left", "Right", "Source", "Target", "source", "target", "calls", "async",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_nested_sibling_relation_routes_at_nearest_common_scope() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "namespace Platform {\n",
+            "  namespace FFI {\n    class DartBinding\n  }\n",
+            "  namespace Core {\n    class Renderer\n  }\n",
+            "}\n",
+            "DartBinding --> Renderer : invokes",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("nested sibling namespace relation should route at Platform scope");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for expected in [
+        "Platform",
+        "FFI",
+        "Core",
+        "DartBinding",
+        "Renderer",
+        "invokes",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_right_left_namespace_to_root_relation_preserves_semantics() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction RL\n",
+            "namespace Domain {\n  class Service\n}\n",
+            "class Gateway\n",
+            "Service \"inside\" --> \"outside\" Gateway : exposes",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("right-left namespace-to-root relation should route");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for expected in [
+        "Domain", "Service", "Gateway", "inside", "outside", "exposes",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+    let (_, domain_column) = line_and_column_containing(&rendered, "Domain");
+    let (_, gateway_column) = line_and_column_containing(&rendered, "Gateway");
+    assert!(
+        gateway_column < domain_column,
+        "RL should place target left of source:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_cross_namespace_collision_keeps_lossless_summary() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "namespace Left {\n  class A\n  class B\n}\n",
+            "namespace Right {\n  class C\n  class D\n}\n",
+            "A --> C : ac\n",
+            "A --> D : ad\n",
+            "B --> C : bc\n",
+            "B --> D : bd",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("cross-namespace collision should retain a lossless fallback");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    for expected in ["A", "B", "C", "D", "ac", "ad", "bc", "bd"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
 }
 
 #[test]
