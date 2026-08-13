@@ -424,6 +424,10 @@ as semantic parity evidence.
 
 ## Scenario guide
 
+> **Registry correction (August 13, 2026):** Typst Universe publishes `@preview/merman:0.1.0`.
+> The `0.2.0` entry below describes the source candidate that existed at this checkpoint, not a
+> published registry package.
+
 | User workflow | Recommended surface | Selection | Why |
 | --- | --- | --- | --- |
 | Static Rust documentation or a blog generator | `merman` | Default `complete-svg`, or `default-features = false` with `svg,layout-cytoscape,layout-elk,math` | Complete deterministic SVG without CLI/tooling dependencies. |
@@ -438,7 +442,7 @@ as semantic parity evidence.
 | Markdown or MDX conversion | `merman-cli` | `--no-default-features --features markdown`; select `parallel-markdown` instead only after throughput measurement | `markdown` already implies SVG; avoid Rayon unless batch conversion needs it. |
 | Terminal preview | `merman` or `merman-cli` | Disable defaults and select `ascii`; query `ascii_capabilities` | No SVG backend is required, but only 14 families are admitted and support is graded Full, Partial, or Summary. SVG admission does not imply ASCII support. |
 | Node SSR or a Node static-site generator | CLI subprocess | Do not depend on private `@mermanjs/node` yet | There is no admitted in-process Node package; the candidate still lacks reproducible all-target admission. |
-| Typst | `@preview/merman:0.2.0` | Published Typst package on its independent version track | The published package embeds Merman alpha.3 and its `typst-wasm` profile has no math; it is not an alpha.4 artifact. |
+| Typst | `@preview/merman:0.2.0` | Source candidate on an independent version track | The candidate embeds Merman alpha.3 and its `typst-wasm` profile has no math; it is not an alpha.4 artifact. |
 | Python or Flutter embedding after alpha.4 publishes | `merman` on PyPI or pub.dev | Planned full ABI 3 package; verify the installed version before use | The target contract has no slim prebuilt SKU; a declared channel is not proof that this candidate is already live. |
 | Android or Apple embedding after alpha.4 publishes | GitHub Release AAR or XCFramework | Planned full ABI 3 artifact-only output | Maven Central and a remote SwiftPM binary are not published channels; verify the release asset version. |
 | C ABI embedding after alpha.4 publishes | `merman-ffi` from crates.io | Build the source crate and verify its version | Its artifact profile proves reproducible reference libraries; it is not a downloadable prebuilt SDK. |

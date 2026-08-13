@@ -39,7 +39,7 @@ The practical upgrade rule is:
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
 | Typed State render links | Keep handling `StateDiagramRenderLinks::{One, Many}`. Mermaid 11.16 preserves repeated `click` declarations in source order because each parsed `idStatement` is a distinct runtime key; repeated links render as nested anchors. |
 | Node.js or SSR | Install the experimental `@mermanjs/node@alpha` channel-only package on Node.js 22 or newer, or keep using the tagged `merman-cli` subprocess when exact workspace-tag source identity is required. |
-| Typst | Treat it as an independent release track. The published `@preview/merman:0.2.0` package is not an alpha.5 artifact. |
+| Typst | Treat it as an independent release track. Typst Universe currently publishes `@preview/merman:0.1.0`; the source-tree `0.2.0` wrapper is not yet published. |
 
 ## Choose the alpha.5 surface
 

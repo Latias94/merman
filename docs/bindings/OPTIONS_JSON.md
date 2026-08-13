@@ -235,7 +235,7 @@ configuration. For example, `mermaid-lint` rules such as `require-direction`, `d
 format, but they should not translate external rule ids into `lint.*` options unless Merman exposes
 a distinct source-backed `merman.*` rule.
 
-`analyzeDocument(source, options, uri)` uses this same options contract. The URI determines whether
+`analyzeDocument(source, uri, options)` uses this same options contract. The URI determines whether
 the payload source is a standalone Mermaid diagram, Markdown, or MDX document; Markdown and MDX
 diagnostics, related locations, and fixes are remapped to host-document coordinates. Use
 `analyze()` for a single Mermaid diagram body and `analyzeDocument()` for lint integrations that
