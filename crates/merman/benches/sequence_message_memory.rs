@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, PreparedRender, RenderFamilyKind, RuntimePolicy};
+use merman::svg::{DiagramFamilyId, HeadlessRenderer, PreparedRender, RuntimePolicy};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -349,7 +349,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
         match prepared.as_ref() {
             Some(prepared) => (
                 prepared.metadata().diagram_type == DIAGRAM_TYPE,
-                prepared.family_kind() == RenderFamilyKind::Sequence,
+                prepared.family_id() == DiagramFamilyId::SEQUENCE,
                 projected_message_count(prepared)? == message_count,
             ),
             None => (false, false, false),

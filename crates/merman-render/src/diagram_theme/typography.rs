@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::ThemeCompileValidationError;
-use crate::render_family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 
 const MAX_FONT_STACK_ENTRIES: usize = 32;
 const MAX_FONT_FAMILY_BYTES: usize = 256;
@@ -475,7 +475,7 @@ impl TypographySpec {
         self
     }
 
-    pub fn with_family_style(mut self, family: RenderFamilyKind, style: TextStyle) -> Self {
+    pub fn with_family_style(mut self, family: DiagramFamilyId, style: TextStyle) -> Self {
         self.family_overrides
             .insert(family.as_str().to_string(), style);
         self
@@ -485,7 +485,7 @@ impl TypographySpec {
         &self.default
     }
 
-    pub fn family_style(&self, family: RenderFamilyKind) -> &TextStyle {
+    pub fn family_style(&self, family: DiagramFamilyId) -> &TextStyle {
         self.family_overrides
             .get(family.as_str())
             .unwrap_or(&self.default)

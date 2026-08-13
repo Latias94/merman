@@ -2,7 +2,7 @@
 
 use merman::ParseOptions;
 use merman::svg::{
-    HeadlessRenderer, LayoutOptions, RenderFamilyKind, RenderResourcePolicy, SvgRenderOptions,
+    DiagramFamilyId, HeadlessRenderer, LayoutOptions, RenderResourcePolicy, SvgRenderOptions,
     prepare_render_sync,
 };
 use serde_json::Value;
@@ -224,7 +224,7 @@ fn default_swimlane_uses_the_typed_swimlane_artifact() {
     .expect("swimlane diagram");
 
     assert_eq!(prepared.metadata().diagram_type, "swimlane");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Swimlane);
+    assert_eq!(prepared.family_id(), DiagramFamilyId::SWIMLANE);
     assert_eq!(
         prepared.metadata().effective_config.get_str("layout"),
         Some("swimlane")
@@ -405,7 +405,7 @@ fn explicit_dagre_override_uses_the_flowchart_artifact() {
     .expect("swimlane diagram with dagre override");
 
     assert_eq!(prepared.metadata().diagram_type, "swimlane");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Flowchart);
+    assert_eq!(prepared.family_id(), DiagramFamilyId::FLOWCHART);
     assert_eq!(
         prepared.metadata().effective_config.get_str("layout"),
         Some("dagre")
@@ -476,7 +476,7 @@ flowchart LR
     .expect("flowchart swimlane-layout diagram");
 
     assert_eq!(prepared.metadata().diagram_type, "flowchart-v2");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Swimlane);
+    assert_eq!(prepared.family_id(), DiagramFamilyId::SWIMLANE);
     let svg = prepared
         .render_svg(&SvgRenderOptions {
             diagram_id: Some("flowchart-swimlane-layout".to_string()),
@@ -591,7 +591,7 @@ fn explicit_elk_override_uses_the_flowchart_artifact() {
     .expect("swimlane diagram with ELK override");
 
     assert_eq!(prepared.metadata().diagram_type, "swimlane");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Flowchart);
+    assert_eq!(prepared.family_id(), DiagramFamilyId::FLOWCHART);
     assert_eq!(
         prepared.metadata().effective_config.get_str("layout"),
         Some("elk")

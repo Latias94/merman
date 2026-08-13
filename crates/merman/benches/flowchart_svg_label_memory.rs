@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, PreparedRender, RenderFamilyKind, RuntimePolicy};
+use merman::svg::{DiagramFamilyId, HeadlessRenderer, PreparedRender, RuntimePolicy};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -285,8 +285,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
                     .ok_or_else(|| ProbeError::new("render preparation returned no diagram"))?;
                 let metadata_diagram_type_matches =
                     prepared.metadata().diagram_type == DIAGRAM_TYPE;
-                let prepared_family_flowchart =
-                    prepared.family_kind() == RenderFamilyKind::Flowchart;
+                let prepared_family_flowchart = prepared.family_id() == DiagramFamilyId::FLOWCHART;
                 let html_labels_disabled =
                     prepared.metadata().effective_config.get_bool("htmlLabels") == Some(false);
                 (

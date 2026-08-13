@@ -261,9 +261,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::C4, diagram_id)
-            .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::C4, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = model
         .acc_title

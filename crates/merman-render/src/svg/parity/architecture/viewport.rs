@@ -139,10 +139,8 @@ mod tests {
     #[test]
     fn architecture_root_viewport_preserves_f64_bbox_and_padding() {
         let diagram_id = "architecture-f64-root";
-        let root_viewport = root_svg::RootViewportContext::new(
-            crate::family::RenderFamilyKind::Architecture,
-            diagram_id,
-        );
+        let root_viewport =
+            root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
         let mut out = String::new();
         let root_document = root_viewport
             .begin_document(
@@ -173,7 +171,7 @@ mod tests {
             trust_content_bounds: true,
         })
         .unwrap()
-        .into_string_for(crate::family::RenderFamilyKind::Architecture)
+        .into_string_for(crate::DiagramFamilyId::ARCHITECTURE)
         .unwrap();
         let view_box = svg
             .split_once("viewBox=\"")

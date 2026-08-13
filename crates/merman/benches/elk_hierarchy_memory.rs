@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, RenderFamilyKind, RuntimePolicy};
+use merman::svg::{DiagramFamilyId, HeadlessRenderer, RuntimePolicy};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -483,7 +483,7 @@ fn render_hierarchy(
     let prepared = semantic
         .continue_layout()
         .map_err(|error| ProbeError::new(format!("flowchart layout failed: {error}")))?;
-    let prepared_family_flowchart = prepared.family_kind() == RenderFamilyKind::Flowchart;
+    let prepared_family_flowchart = prepared.family_id() == DiagramFamilyId::FLOWCHART;
     let svg = prepared
         .render_svg(renderer.svg_options())
         .map_err(|error| ProbeError::new(format!("flowchart SVG render failed: {error}")))?;

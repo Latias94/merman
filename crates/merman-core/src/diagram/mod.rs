@@ -895,6 +895,8 @@ impl RenderDiagramRegistry {
 pub struct ParsedDiagramRender {
     /// Diagram type and effective configuration extracted during preprocessing.
     meta: ParseMetadata,
+    /// Catalog-owned family selected after detection defaults and config effects are applied.
+    family_id: Option<crate::DiagramFamilyId>,
     /// Typed model consumed by layout and SVG renderers.
     model: RenderSemanticModel,
     /// Parser-owned render-only data paired with the typed model.
@@ -903,8 +905,10 @@ pub struct ParsedDiagramRender {
 
 impl ParsedDiagramRender {
     pub(crate) fn new(meta: ParseMetadata, model: RenderSemanticModel) -> Self {
+        let family_id = parsed_operation_family_id(&meta, &model);
         Self {
             meta,
+            family_id,
             model,
             context: RenderSemanticContext::default(),
         }
@@ -915,8 +919,10 @@ impl ParsedDiagramRender {
         output: RenderSemanticParseOutput,
     ) -> Self {
         let (model, context) = output.into_parts();
+        let family_id = parsed_operation_family_id(&meta, &model);
         Self {
             meta,
+            family_id,
             model,
             context,
         }
@@ -936,9 +942,8 @@ impl ParsedDiagramRender {
     ///
     /// The core parse pipeline has already applied detection defaults and effective configuration
     /// before this value is observed, so renderers do not need to reconstruct family selection.
-    pub fn family_id(&self) -> crate::DiagramFamilyId {
-        crate::family::operation_family_id(&self.meta.diagram_type, &self.meta.effective_config)
-            .expect("built-in parsed render models belong to a catalog family")
+    pub const fn family_id(&self) -> Option<crate::DiagramFamilyId> {
+        self.family_id
     }
 
     /// Consumes the parsed diagram and returns its canonical metadata/model projection.
@@ -975,6 +980,16 @@ impl ParsedDiagramRender {
     ) -> Option<&crate::models::class_diagram::ClassStylePrecedenceFacts> {
         self.context.class_style_precedence_facts()
     }
+}
+
+fn parsed_operation_family_id(
+    meta: &ParseMetadata,
+    model: &RenderSemanticModel,
+) -> Option<crate::DiagramFamilyId> {
+    if matches!(model, RenderSemanticModel::CustomJson(_)) {
+        return None;
+    }
+    crate::family::operation_family_id(&meta.diagram_type, &meta.effective_config)
 }
 
 /// Parses with a registry entry or reports an unsupported Mermaid diagram type.

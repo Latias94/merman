@@ -1,9 +1,9 @@
 use super::*;
+use crate::DiagramFamilyId;
 use crate::diagram_theme::{
     BlendMode, CanvasPaint, RootThemeApplication, RootThemeMechanismKey, RootThemePlan,
     RootThemeReport, ThemeCapability,
 };
-use crate::family::RenderFamilyKind;
 use crate::resources::RenderResourcePolicy;
 use std::ops::Range;
 
@@ -323,7 +323,7 @@ enum RootDocumentState {
 
 #[derive(Debug)]
 pub(super) struct RootDocument {
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     diagram_id: String,
     state: RootDocumentState,
 }
@@ -335,7 +335,7 @@ pub(super) struct RootDocument {
 #[derive(Debug)]
 pub(super) struct RootedSvg {
     svg: String,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     diagram_id: String,
     root_open_end: usize,
     viewport: RootViewportPlan,
@@ -343,13 +343,13 @@ pub(super) struct RootedSvg {
 
 #[derive(Debug, Clone)]
 pub(super) struct RootViewportContext<'a> {
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     diagram_id: &'a str,
     resources: RenderResourcePolicy,
 }
 
 impl<'a> RootViewportContext<'a> {
-    pub(super) fn new(family: RenderFamilyKind, diagram_id: &'a str) -> Self {
+    pub(super) fn new(family: DiagramFamilyId, diagram_id: &'a str) -> Self {
         Self {
             family,
             diagram_id,
@@ -822,7 +822,7 @@ impl RootedSvg {
         Ok((self, application.finish()))
     }
 
-    pub(super) fn into_string_for(self, expected_family: RenderFamilyKind) -> Result<String> {
+    pub(super) fn into_string_for(self, expected_family: DiagramFamilyId) -> Result<String> {
         if self.family != expected_family {
             return Err(Error::InvalidModel {
                 message: format!(
@@ -975,7 +975,7 @@ impl RootDocument {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct RootViewportPlan {
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     diagram_id: String,
     view_box: Option<ViewBox>,
     width: Option<String>,
@@ -1394,13 +1394,13 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrack
 mod tests {
     use super::*;
 
-    fn computed_context(family: RenderFamilyKind, diagram_id: &str) -> RootViewportContext<'_> {
+    fn computed_context(family: DiagramFamilyId, diagram_id: &str) -> RootViewportContext<'_> {
         RootViewportContext::new(family, diagram_id)
     }
 
     #[test]
     fn root_plan_rejects_non_finite_viewbox_geometry() {
-        let err = computed_context(RenderFamilyKind::Venn, "root-id")
+        let err = computed_context(DiagramFamilyId::VENN, "root-id")
             .plan(RootViewportSpec::mermaid(
                 DiagramBounds::from_view_box(-2.0, f64::NAN, -42.5, f64::INFINITY),
                 false,
@@ -1416,7 +1416,7 @@ mod tests {
     #[test]
     fn root_plan_rejects_finite_geometry_beyond_the_svg_backend_coordinate_cap() {
         let maximum = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE as f64;
-        let error = computed_context(RenderFamilyKind::State, "root-id")
+        let error = computed_context(DiagramFamilyId::STATE, "root-id")
             .plan(RootViewportSpec::responsive(DiagramBounds::from_view_box(
                 maximum, 0.0, 2.0, 10.0,
             )))
@@ -1439,7 +1439,7 @@ mod tests {
     #[test]
     fn root_plan_rejects_finite_max_width_beyond_the_svg_backend_coordinate_cap() {
         let maximum = crate::resources::MAX_SVG_BACKEND_COORDINATE_MAGNITUDE as f64;
-        let error = computed_context(RenderFamilyKind::Info, "root-id")
+        let error = computed_context(DiagramFamilyId::INFO, "root-id")
             .plan(RootViewportSpec::responsive_without_view_box(maximum + 1.0))
             .unwrap_err();
 
@@ -1455,7 +1455,7 @@ mod tests {
 
     #[test]
     fn responsive_root_emits_declared_dom_order() {
-        let context = computed_context(RenderFamilyKind::Journey, "root-id");
+        let context = computed_context(DiagramFamilyId::JOURNEY, "root-id");
         let extra_attrs = [("preserveAspectRatio", "xMinYMin meet")];
         let mut chrome = RootChrome::new("root-id", "journey");
         chrome.extra_attrs = &extra_attrs;
@@ -1484,7 +1484,7 @@ mod tests {
 
     #[test]
     fn responsive_root_can_omit_viewbox() {
-        let context = computed_context(RenderFamilyKind::Info, "info");
+        let context = computed_context(DiagramFamilyId::INFO, "info");
         let mut chrome = RootChrome::new("info", "info");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1504,7 +1504,7 @@ mod tests {
     #[test]
     fn root_chrome_escapes_every_dynamic_attribute_once() {
         let diagram_id = r#"root" onload="alert(1)&"#;
-        let context = computed_context(RenderFamilyKind::Info, diagram_id);
+        let context = computed_context(DiagramFamilyId::INFO, diagram_id);
         let extra_attrs = [("data-note", r#""<&"#)];
         let mut chrome = RootChrome::new(diagram_id, r#"info" aria-hidden="true"#);
         chrome.class = Some(r#"diagram" injected="yes"#);
@@ -1531,7 +1531,7 @@ mod tests {
 
     #[test]
     fn completed_root_document_carries_family_provenance() {
-        let context = computed_context(RenderFamilyKind::Info, "root-id");
+        let context = computed_context(DiagramFamilyId::INFO, "root-id");
         let mut chrome = RootChrome::new("root-id", "info");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1547,7 +1547,7 @@ mod tests {
         let svg = document
             .complete(out)
             .unwrap()
-            .into_string_for(RenderFamilyKind::Info)
+            .into_string_for(DiagramFamilyId::INFO)
             .unwrap();
 
         assert!(svg.starts_with(r#"<svg id="root-id""#));
@@ -1556,7 +1556,7 @@ mod tests {
 
     #[test]
     fn completed_root_document_rejects_root_attribute_mutation() {
-        let context = computed_context(RenderFamilyKind::Info, "root-id");
+        let context = computed_context(DiagramFamilyId::INFO, "root-id");
         let mut chrome = RootChrome::new("root-id", "info");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1580,7 +1580,7 @@ mod tests {
 
     #[test]
     fn completed_root_document_rejects_incomplete_and_wrong_family_outputs() {
-        let context = computed_context(RenderFamilyKind::Info, "root-id");
+        let context = computed_context(DiagramFamilyId::INFO, "root-id");
         let mut chrome = RootChrome::new("root-id", "info");
         chrome.dom.trailing_newline = false;
         let mut incomplete = String::new();
@@ -1606,7 +1606,7 @@ mod tests {
         let error = complete_document
             .complete(complete)
             .unwrap()
-            .into_string_for(RenderFamilyKind::Venn)
+            .into_string_for(DiagramFamilyId::VENN)
             .unwrap_err();
         assert!(error.to_string().contains("was returned for venn"));
     }
@@ -1614,7 +1614,7 @@ mod tests {
     #[test]
     fn deferred_document_finalizes_computed_root_without_leaking_markers() {
         let diagram_id = "stress_state_accdescr_block_and_markdown_labels_049";
-        let context = RootViewportContext::new(RenderFamilyKind::State, diagram_id);
+        let context = RootViewportContext::new(DiagramFamilyId::STATE, diagram_id);
         let mut chrome = RootChrome::new(diagram_id, "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1632,7 +1632,7 @@ mod tests {
             .unwrap();
 
         let rooted = document.complete(out.clone()).unwrap();
-        assert_eq!(rooted.family, RenderFamilyKind::State);
+        assert_eq!(rooted.family, DiagramFamilyId::STATE);
         assert!(out.contains(r#"viewBox="0 0 10 10""#));
         assert!(out.contains("max-width: 10px"));
         assert!(!out.contains("__MERMAN_ROOT_"));
@@ -1641,7 +1641,7 @@ mod tests {
     #[test]
     fn deferred_document_tracks_root_attributes_when_a_valid_id_matches_markers() {
         let diagram_id = format!("valid_{VIEW_BOX_PLACEHOLDER}_{MAX_WIDTH_PLACEHOLDER}_diagram");
-        let context = RootViewportContext::new(RenderFamilyKind::State, &diagram_id);
+        let context = RootViewportContext::new(DiagramFamilyId::STATE, &diagram_id);
         let mut chrome = RootChrome::new(&diagram_id, "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1671,7 +1671,7 @@ mod tests {
 
     #[test]
     fn deferred_document_rejects_prefix_mutation_instead_of_patching_wrong_range() {
-        let context = computed_context(RenderFamilyKind::State, "state");
+        let context = computed_context(DiagramFamilyId::STATE, "state");
         let mut chrome = RootChrome::new("state", "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1696,7 +1696,7 @@ mod tests {
 
     #[test]
     fn deferred_document_rejects_untracked_root_attribute_insertion() {
-        let context = computed_context(RenderFamilyKind::State, "state");
+        let context = computed_context(DiagramFamilyId::STATE, "state");
         let mut chrome = RootChrome::new("state", "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1722,7 +1722,7 @@ mod tests {
 
     #[test]
     fn deferred_document_rejects_same_length_root_tail_mutation() {
-        let context = computed_context(RenderFamilyKind::State, "state");
+        let context = computed_context(DiagramFamilyId::STATE, "state");
         let mut chrome = RootChrome::new("state", "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1770,7 +1770,7 @@ mod tests {
         let (max_x, max_y) = (111.987_654_321, 222.987_654_321);
         let padding = 40.0;
         let bounds = DiagramBounds::from_extents(min_x, min_y, max_x, max_y, padding);
-        let plan = computed_context(RenderFamilyKind::Architecture, "architecture")
+        let plan = computed_context(DiagramFamilyId::ARCHITECTURE, "architecture")
             .plan(RootViewportSpec::responsive(bounds))
             .unwrap();
 

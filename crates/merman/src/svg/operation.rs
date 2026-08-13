@@ -45,8 +45,8 @@ impl RenderOperationReport {
     }
 
     /// Returns the authoritative family selected before layout for this completed operation.
-    pub const fn family_kind(&self) -> super::RenderFamilyKind {
-        self.family.family_kind()
+    pub const fn family_id(&self) -> super::DiagramFamilyId {
+        self.family.family_id()
     }
 
     /// Returns root canvas/effect evaluation retained through terminal SVG completion.
@@ -1458,8 +1458,8 @@ impl RenderedDocument {
         Ok(())
     }
 
-    pub const fn family_kind(&self) -> super::RenderFamilyKind {
-        self.report.family_kind()
+    pub const fn family_id(&self) -> super::DiagramFamilyId {
+        self.report.family_id()
     }
 
     pub const fn root_theme_report(&self) -> &super::RootThemeReport {
@@ -1528,8 +1528,8 @@ impl RenderedSvg {
         Ok(())
     }
 
-    pub const fn family_kind(&self) -> super::RenderFamilyKind {
-        self.report.family_kind()
+    pub const fn family_id(&self) -> super::DiagramFamilyId {
+        self.report.family_id()
     }
 
     /// Discards the completed operation report and returns only the SVG string.
@@ -1558,8 +1558,8 @@ impl PreparedRender {
     }
 
     /// Returns the paired built-in render family without exposing its semantic or layout types.
-    pub fn family_kind(&self) -> super::RenderFamilyKind {
-        self.artifact.family_kind()
+    pub fn family_id(&self) -> super::DiagramFamilyId {
+        self.artifact.family_id()
     }
 
     /// Returns an owned inverse projection of the Gantt time axis for parity diagnostics.
@@ -1917,7 +1917,7 @@ mod tests {
                                     .expect("valid test color"),
                             ),
                         )
-                        .for_family(crate::svg::RenderFamilyKind::Flowchart),
+                        .for_family(crate::svg::DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -1941,7 +1941,7 @@ mod tests {
                                         .expect("valid test stroke"),
                                 ),
                         )
-                        .for_family(crate::svg::RenderFamilyKind::Flowchart),
+                        .for_family(crate::svg::DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -2048,7 +2048,7 @@ mod tests {
                             crate::svg::ThemeStylePatch::default()
                                 .with_stroke(crate::svg::CanvasPaint::LinearGradient(gradient)),
                         )
-                        .for_family(crate::svg::RenderFamilyKind::Flowchart),
+                        .for_family(crate::svg::DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )

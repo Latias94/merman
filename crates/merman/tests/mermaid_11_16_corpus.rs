@@ -288,7 +288,7 @@ fn evaluate_fixture(
             return report;
         }
     };
-    report.layout_family = Some(format!("{:?}", prepared.family_kind()));
+    report.layout_family = Some(prepared.family_id().as_str().to_string());
     if let Err(error) = prepared.layout_json() {
         report.fail(
             CapabilityStage::TypedLayout,

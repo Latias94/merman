@@ -3139,7 +3139,7 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .expect("fixture theme should compile")
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "source-type".to_string(),
@@ -3268,7 +3268,7 @@ mod tests {
                     TypographySpec::default().with_default(ThemeTextStyle::default()),
                 ))
                 .expect("fixture theme should compile")
-                .resolve(crate::render_family::RenderFamilyKind::State);
+                .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut node = semantic_node("Overflow", "rect");
         node.css_styles = vec!["font-size:1e100px".to_string()];
@@ -3392,7 +3392,7 @@ mod tests {
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
             .compile(crate::diagram_theme::DiagramThemeSpec::new().with_styles(styles))
             .expect("compile State structural theme");
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let plan = resolve_theme_plan(&model, &json!({}), &resolved);
 
         assert!(
@@ -3456,7 +3456,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let (_, evidence) = resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
         let key = FamilyThemeMechanismKey::Rule {
             index: 0,
@@ -3484,7 +3484,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let key = FamilyThemeMechanismKey::Rule {
             index: 0,
             target: ThemeTarget::SpecialStateInner,
@@ -3532,7 +3532,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
         let (plan, evidence) =
@@ -3573,7 +3573,7 @@ mod tests {
                 )),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
         let (plan, evidence) =
@@ -3634,7 +3634,7 @@ mod tests {
         let resolved = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
         let work_meter = test_work_meter();
@@ -3723,7 +3723,7 @@ mod tests {
         let resolved = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.edges.push(StateDiagramRenderEdge {
             id: "transition-1".to_string(),
@@ -3781,7 +3781,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
         let (plan, evidence) =
@@ -3813,7 +3813,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("N", "note"));
         let (plan, evidence) =
@@ -3847,7 +3847,7 @@ mod tests {
                 )),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
         let (plan, evidence) =
@@ -3875,7 +3875,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut node = semantic_node("Ready", "rect");
         node.css_styles = vec!["fill:#111827".to_string()];
@@ -3915,7 +3915,7 @@ mod tests {
                 )),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut node = semantic_node("Ready", "rect");
         node.css_styles = vec!["fill:#111827".to_string()];
@@ -3948,7 +3948,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut overridden = semantic_node("Overridden", "rect");
         overridden.css_styles = vec!["fill:#111827".to_string(), "fill:#0f172a".to_string()];
@@ -3994,7 +3994,7 @@ mod tests {
                 )),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut overridden = semantic_node("Overridden", "rect");
         overridden.css_styles = vec!["fill:#111827".to_string()];
@@ -4028,7 +4028,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut end = semantic_node("end", "stateEnd");
         end.css_styles = vec!["fill:#111827".to_string()];
@@ -4076,7 +4076,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut start = semantic_node("start", "stateStart");
         start.css_styles = vec!["fill:#111827".to_string()];
@@ -4121,7 +4121,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.style_classes.insert(
             "surface".to_string(),
@@ -4172,7 +4172,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         let mut node = semantic_node("Ready", "rect");
         node.css_styles = vec!["fill:not-a-color".to_string()];
@@ -4206,7 +4206,7 @@ mod tests {
                 ),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.edges.push(StateDiagramRenderEdge {
             id: "transition-1".to_string(),
@@ -4244,7 +4244,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.edges.extend([
             StateDiagramRenderEdge {
@@ -4286,7 +4286,7 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut first = semantic_node("First", "rect");
         first.label_style = "font-size:18px".to_string();
         let mut second = semantic_node("Second", "rect");
@@ -4319,7 +4319,7 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut overridden = semantic_node("Overridden", "rect");
         overridden.label_style = "font-size:18px".to_string();
         let surviving = semantic_node("Surviving", "rect");
@@ -4351,7 +4351,7 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
 
@@ -4378,7 +4378,7 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
 
@@ -4423,7 +4423,7 @@ mod tests {
                 )),
             )
             .unwrap()
-            .resolve(crate::render_family::RenderFamilyKind::State);
+            .resolve(crate::DiagramFamilyId::STATE);
         let mut model = StateDiagramRenderModel::default();
         model.nodes.push(semantic_node("Ready", "rect"));
 
@@ -4462,7 +4462,7 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .unwrap();
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
         let (plan, evidence) = resolve_theme_plan_with_evidence(
             &StateDiagramRenderModel::default(),
             &json!({}),
@@ -4513,7 +4513,7 @@ mod tests {
                     ),
             )
             .unwrap();
-        let resolved = rule_theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = rule_theme.resolve(crate::DiagramFamilyId::STATE);
         let (plan, evidence) =
             resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
 
@@ -4544,7 +4544,7 @@ mod tests {
                 )),
             ))
             .unwrap();
-        let resolved = clear_theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let resolved = clear_theme.resolve(crate::DiagramFamilyId::STATE);
         let (plan, evidence) =
             resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
 
@@ -4578,7 +4578,7 @@ mod tests {
                     ),
                 )
                 .unwrap();
-            let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+            let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
             let mut model = StateDiagramRenderModel::default();
             model.nodes.push(semantic_node("Ready", "rect"));
             let (plan, evidence) =

@@ -1,4 +1,4 @@
-use crate::render_family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 
 use super::ThemeCompileValidationError;
 use super::canvas::{CanvasPaint, InsetsPx, ThemeColorValue};
@@ -155,7 +155,7 @@ impl ThemeTarget {
         }
     }
 
-    pub(crate) const fn valid_for(self, family: RenderFamilyKind) -> bool {
+    pub(crate) fn valid_for(self, family: DiagramFamilyId) -> bool {
         match self {
             Self::State
             | Self::StateLabel
@@ -168,7 +168,7 @@ impl ThemeTarget {
             | Self::CompositeLabel
             | Self::SpecialState
             | Self::SpecialStateInner => {
-                matches!(family, RenderFamilyKind::State)
+                matches!(family, DiagramFamilyId::STATE)
             }
             Self::Actor
             | Self::ActorLabel
@@ -178,27 +178,27 @@ impl ThemeTarget {
             | Self::Loop
             | Self::LoopLabel
             | Self::Activation => {
-                matches!(family, RenderFamilyKind::Sequence)
+                matches!(family, DiagramFamilyId::SEQUENCE)
             }
             Self::Requirement | Self::Relation => {
-                matches!(family, RenderFamilyKind::Requirement | RenderFamilyKind::Er)
+                matches!(family, DiagramFamilyId::REQUIREMENT | DiagramFamilyId::ER)
             }
-            Self::PieSlice => matches!(family, RenderFamilyKind::Pie),
+            Self::PieSlice => matches!(family, DiagramFamilyId::PIE),
             Self::ChartSeries | Self::Axis | Self::Legend => matches!(
                 family,
-                RenderFamilyKind::XyChart
-                    | RenderFamilyKind::QuadrantChart
-                    | RenderFamilyKind::Radar
+                DiagramFamilyId::XY_CHART
+                    | DiagramFamilyId::QUADRANT_CHART
+                    | DiagramFamilyId::RADAR
             ),
-            Self::TimelineEvent => matches!(family, RenderFamilyKind::Timeline),
-            Self::JourneyTask => matches!(family, RenderFamilyKind::Journey),
-            Self::Task => matches!(family, RenderFamilyKind::Gantt | RenderFamilyKind::Kanban),
+            Self::TimelineEvent => matches!(family, DiagramFamilyId::TIMELINE),
+            Self::JourneyTask => matches!(family, DiagramFamilyId::JOURNEY),
+            Self::Task => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
             Self::Table => matches!(
                 family,
-                RenderFamilyKind::Class
-                    | RenderFamilyKind::Er
-                    | RenderFamilyKind::Requirement
-                    | RenderFamilyKind::Kanban
+                DiagramFamilyId::CLASS
+                    | DiagramFamilyId::ER
+                    | DiagramFamilyId::REQUIREMENT
+                    | DiagramFamilyId::KANBAN
             ),
             Self::Node
             | Self::NodeLabel
@@ -210,18 +210,18 @@ impl ThemeTarget {
             | Self::Marker => {
                 matches!(
                     family,
-                    RenderFamilyKind::Flowchart
-                        | RenderFamilyKind::Swimlane
-                        | RenderFamilyKind::Class
-                        | RenderFamilyKind::Mindmap
-                        | RenderFamilyKind::TreeView
-                        | RenderFamilyKind::Block
-                        | RenderFamilyKind::GitGraph
+                    DiagramFamilyId::FLOWCHART
+                        | DiagramFamilyId::SWIMLANE
+                        | DiagramFamilyId::CLASS
+                        | DiagramFamilyId::MINDMAP
+                        | DiagramFamilyId::TREE_VIEW
+                        | DiagramFamilyId::BLOCK
+                        | DiagramFamilyId::GIT_GRAPH
                 )
             }
             Self::Canvas | Self::Title | Self::Text => true,
             Self::Note | Self::NoteLabel => {
-                matches!(family, RenderFamilyKind::Sequence | RenderFamilyKind::State)
+                matches!(family, DiagramFamilyId::SEQUENCE | DiagramFamilyId::STATE)
             }
         }
     }
@@ -543,7 +543,7 @@ impl StrokeLineJoin {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThemeRule {
     target: ThemeTarget,
-    family: Option<RenderFamilyKind>,
+    family: Option<DiagramFamilyId>,
     variant: Option<ThemeVariant>,
     ordinal: Option<OrdinalSelector>,
     style: ThemeStylePatch,
@@ -563,7 +563,7 @@ impl ThemeRule {
         }
     }
 
-    pub fn for_family(mut self, family: RenderFamilyKind) -> Self {
+    pub fn for_family(mut self, family: DiagramFamilyId) -> Self {
         self.family = Some(family);
         self
     }
@@ -583,7 +583,7 @@ impl ThemeRule {
         self.target
     }
 
-    pub const fn family(&self) -> Option<RenderFamilyKind> {
+    pub const fn family(&self) -> Option<DiagramFamilyId> {
         self.family
     }
 
@@ -626,7 +626,7 @@ impl ThemeRule {
     #[cfg(test)]
     pub(crate) fn applies_to(
         &self,
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> bool {

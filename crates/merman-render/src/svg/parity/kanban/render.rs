@@ -222,13 +222,12 @@ pub(crate) fn render_kanban_diagram_svg(
         ..root_svg::RootDomProfile::default()
     };
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Kanban, diagram_id)
-            .write_open(
-                &mut out,
-                root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
-                    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
-                root_chrome,
-            )?;
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::KANBAN, diagram_id).write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+            root_chrome,
+        )?;
 
     let css = kanban_css(diagram_id, effective_config)?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
@@ -454,12 +453,12 @@ pub(crate) fn render_kanban_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
     use crate::environment::{
         HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
         MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
         TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementSource,
     };
-    use crate::family::RenderFamilyKind;
     use crate::kanban::{
         KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX, prepare_kanban_artifact_from_layout_for_test,
     };
@@ -493,10 +492,10 @@ mod tests {
         let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
         let prepared =
             prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer);
-        with_test_svg_execution(RenderFamilyKind::Kanban, options, |options| {
+        with_test_svg_execution(DiagramFamilyId::KANBAN, options, |options| {
             render_kanban_diagram_svg(&prepared, &effective_config, options)
         })
-        .and_then(|svg| svg.into_string_for(RenderFamilyKind::Kanban))
+        .and_then(|svg| svg.into_string_for(DiagramFamilyId::KANBAN))
     }
 
     fn attr_f64(tag: &str, name: &str) -> f64 {
@@ -1055,7 +1054,7 @@ mod tests {
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
         let options =
-            SvgExecution::unthemed_for_test(&request, &debug, &session, RenderFamilyKind::Kanban)
+            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::KANBAN)
                 .expect("SVG execution");
 
         let config = merman_core::MermaidConfig::default();

@@ -151,9 +151,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Gantt, diagram_id)
-            .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = root_svg::RootViewportContext::new(
+        crate::DiagramFamilyId::GANTT,
+        diagram_id,
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(

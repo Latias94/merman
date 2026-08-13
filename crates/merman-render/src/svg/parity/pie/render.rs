@@ -96,24 +96,23 @@ pub(crate) fn render_pie_diagram_svg_model(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Pie, diagram_id)
-            .write_open(
-                &mut out,
-                root_spec,
-                root_svg::RootChrome {
-                    aria_labelledby: aria_labelledby.as_deref(),
-                    aria_describedby: aria_describedby.as_deref(),
-                    dom: root_svg::RootDomProfile {
-                        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                        fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                        trailing_newline: false,
-                        ..Default::default()
-                    },
-                    ..root_svg::RootChrome::new(diagram_id, "pie")
+    let root_document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::PIE, diagram_id)
+        .write_open(
+            &mut out,
+            root_spec,
+            root_svg::RootChrome {
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                dom: root_svg::RootDomProfile {
+                    style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                    trailing_newline: false,
+                    ..Default::default()
                 },
-            )?;
+                ..root_svg::RootChrome::new(diagram_id, "pie")
+            },
+        )?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -311,7 +310,7 @@ pub(crate) fn render_pie_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use merman_core::diagrams::pie::PieDiagramRenderModel;
 
     #[test]
@@ -389,7 +388,7 @@ mod tests {
             .expect("render session");
         let debug = SvgDebugOptions::default();
         let execution =
-            SvgExecution::unthemed_for_test(&options, &debug, &session, RenderFamilyKind::Pie)
+            SvgExecution::unthemed_for_test(&options, &debug, &session, DiagramFamilyId::PIE)
                 .expect("SVG execution");
 
         let svg = render_pie_diagram_svg_model(

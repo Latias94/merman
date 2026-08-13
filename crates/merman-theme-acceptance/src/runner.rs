@@ -5,12 +5,12 @@ use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, DocumentRenderReport, EffectBinding, EffectGraph, EffectInput,
     EffectPrimitive, FilterRegion, FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement,
-    FontSource, FontStack, OrdinalPalette, RenderEnvironment, RenderFamilyKind, RenderTargetKind,
-    RenderedDocument, Specified, TargetAdmissionReport, TargetAdmissionStatus, ThemeAssets,
-    ThemeCapability, ThemeColorValue, ThemePortabilityRequirement, ThemeRecipeFingerprint,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
+    FontSource, FontStack, OrdinalPalette, RenderEnvironment, RenderTargetKind, RenderedDocument,
+    Specified, TargetAdmissionReport, TargetAdmissionStatus, ThemeAssets, ThemeCapability,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRecipeFingerprint, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
-use merman::{Engine, MermaidConfig};
+use merman::{DiagramFamilyId, Engine, MermaidConfig};
 use merman_theme_fixtures::{
     C6AcceptanceCatalog, C6EnforcedCell, C6ProofFamily, C6ProofTheme, ExpectedOutputTarget,
     ReferenceCanvasLayer, ReferenceDiagramFamily, ReferenceFontBinding, ReferenceSemanticRule,
@@ -197,7 +197,7 @@ fn execute_brutalist_state_group(
     let group_receipt = C6RenderGroupReceipt::seal(
         group.key.clone(),
         theme_catalog,
-        document.family_kind(),
+        document.family_id(),
         document.theme_recipe_fingerprint(),
         sealed_svg,
         admitted.document_report(),
@@ -294,7 +294,7 @@ impl C6TargetObservation {
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn assert_brutalist_state_document(document: &RenderedDocument, theme: &DiagramTheme) {
-    assert_eq!(document.family_kind(), RenderFamilyKind::State);
+    assert_eq!(document.family_id(), DiagramFamilyId::STATE);
     assert_eq!(
         document.theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
@@ -717,7 +717,7 @@ fn compile_brutalist_state_theme(
     .expect("the fixture palette is bounded and non-empty");
     let styles = ThemeRuleSet::default()
         .with_rule(
-            ThemeRule::new(ThemeTarget::State, state_patch).for_family(RenderFamilyKind::State),
+            ThemeRule::new(ThemeTarget::State, state_patch).for_family(DiagramFamilyId::STATE),
         )
         .with_rule(
             ThemeRule::new(
@@ -725,7 +725,7 @@ fn compile_brutalist_state_theme(
                 ThemeStylePatch::default()
                     .with_fill(CanvasPaint::solid(tokens.text()).expect("valid text color")),
             )
-            .for_family(RenderFamilyKind::State),
+            .for_family(DiagramFamilyId::STATE),
         )
         .with_rule(
             ThemeRule::new(
@@ -733,7 +733,7 @@ fn compile_brutalist_state_theme(
                 ThemeStylePatch::default()
                     .with_fill(CanvasPaint::solid(tokens.surface()).expect("valid surface color")),
             )
-            .for_family(RenderFamilyKind::State),
+            .for_family(DiagramFamilyId::STATE),
         )
         .with_ordinal_palette(ThemeTarget::State, palette);
 

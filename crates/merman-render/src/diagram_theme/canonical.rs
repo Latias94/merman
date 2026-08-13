@@ -664,7 +664,7 @@ impl CanonicalEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         BlendMode, CanvasLayer, DiagramEffectSet, DiagramThemeCompiler, EffectBinding, EffectGraph,
         FilterRegion, FontAssetSpec, FontCatalogSpec, GradientStop, LinearGradient,
@@ -1103,11 +1103,11 @@ mod tests {
         }
 
         let flowchart = TypographySpec::default().with_family_style(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             TextStyle::default().with_font_size_px(17.0).unwrap(),
         );
         let sequence = TypographySpec::default().with_family_style(
-            RenderFamilyKind::Sequence,
+            DiagramFamilyId::SEQUENCE,
             TextStyle::default().with_font_size_px(17.0).unwrap(),
         );
         assert_recipe_field_changes(
@@ -1312,11 +1312,11 @@ mod tests {
             "rule.family",
             with_rule(
                 ThemeRule::new(ThemeTarget::Node, style.clone())
-                    .for_family(RenderFamilyKind::Flowchart),
+                    .for_family(DiagramFamilyId::FLOWCHART),
             ),
             with_rule(
                 ThemeRule::new(ThemeTarget::Node, style.clone())
-                    .for_family(RenderFamilyKind::Swimlane),
+                    .for_family(DiagramFamilyId::SWIMLANE),
             ),
         );
         assert_recipe_field_changes(

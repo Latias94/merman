@@ -389,11 +389,11 @@ fn run_flowchart_compare_with_math_renderer(
                 }
             };
 
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Flowchart {
+            if prepared.family_id() != merman_core::DiagramFamilyId::FLOWCHART {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.family_kind()
+                    prepared.family_id()
                 ));
             }
 

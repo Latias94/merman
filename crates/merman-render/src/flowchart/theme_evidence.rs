@@ -1222,12 +1222,12 @@ fn record_ordinal_palette_outcome(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette, OrdinalSelector,
         TextStylePatch, ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
         ThemeStylePatch,
     };
-    use crate::render_family::RenderFamilyKind;
 
     fn no_override() -> FlowchartFacetPrecedence {
         FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Absent, false)
@@ -1261,12 +1261,12 @@ mod tests {
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile Flowchart theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
     }
 
     #[test]
@@ -1326,12 +1326,12 @@ mod tests {
                                 .with_stroke_width(2.5)
                                 .expect("valid stroke width"),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile Flowchart stroke-width theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
     }
 
     fn resolved_stroke_dasharray_theme() -> ResolvedDiagramTheme {
@@ -1345,12 +1345,12 @@ mod tests {
                                 .with_stroke_dasharray([4.0, 2.0])
                                 .expect("valid stroke dasharray"),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile Flowchart stroke-dasharray theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
     }
 
     fn resolved_radius_theme() -> ResolvedDiagramTheme {
@@ -1367,12 +1367,12 @@ mod tests {
                                 ..ThemeStylePatch::default()
                             },
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile Flowchart radius theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
     }
 
     fn resolved_node_label_font_stack_theme() -> ResolvedDiagramTheme {
@@ -1393,12 +1393,12 @@ mod tests {
                                 ..ThemeStylePatch::default()
                             },
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile Flowchart NodeLabel font-stack theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
     }
 
     fn resolved_node_label_font_size_theme() -> ResolvedDiagramTheme {
@@ -1416,12 +1416,12 @@ mod tests {
                                 ..ThemeStylePatch::default()
                             },
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile Flowchart NodeLabel font-size theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
     }
 
     fn font_stack_emission(
@@ -2005,12 +2005,12 @@ mod tests {
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
                         .with_variant(ThemeVariant::Active)
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile variant theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let recorder = FlowchartThemeEvidenceRecorder::default();
         recorder.record_node_emission(
             &FlowchartNodeThemeStyle::default(),
@@ -2048,7 +2048,7 @@ mod tests {
                 ),
             )
             .expect("compile ordinal Flowchart theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
 
         let (empty_evidence, source_residuals) =
             FlowchartThemeEvidenceRecorder::default().finish(Some(&theme));
@@ -2114,7 +2114,7 @@ mod tests {
                 ),
             ))
             .expect("compile ordinal Flowchart theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -2157,7 +2157,7 @@ mod tests {
                 ),
             )
             .expect("compile ordinal Flowchart theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -2192,7 +2192,7 @@ mod tests {
                                 ThemeStylePatch::default()
                                     .with_fill(CanvasPaint::solid("#22c55e").unwrap()),
                             )
-                            .for_family(RenderFamilyKind::Flowchart),
+                            .for_family(DiagramFamilyId::FLOWCHART),
                         )
                         .with_ordinal_palette(
                             ThemeTarget::Node,
@@ -2202,7 +2202,7 @@ mod tests {
                 ),
             )
             .expect("compile rule and palette theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
@@ -2245,12 +2245,12 @@ mod tests {
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
                         .with_ordinal(OrdinalSelector::exact(2).unwrap())
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
             .expect("compile ordinal Flowchart rule")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let meter = OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );

@@ -220,7 +220,7 @@ mod tests {
             .begin_session()
             .unwrap();
         let metadata = SvgPostprocessMetadata::from_svg(svg)
-            .with_family_kind(crate::family::RenderFamilyKind::QuadrantChart);
+            .with_family_id(crate::DiagramFamilyId::QUADRANT_CHART);
 
         let out = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,

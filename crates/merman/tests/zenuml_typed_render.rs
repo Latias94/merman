@@ -40,7 +40,7 @@ fn advanced_zenuml_is_a_first_class_typed_headless_render() {
         .prepare_render_sync(ADVANCED)
         .expect("ZenUML preparation must succeed")
         .expect("ZenUML must be detected");
-    assert_eq!(prepared.family_kind().as_str(), "zenuml");
+    assert_eq!(prepared.family_id().as_str(), "zenuml");
     let svg = prepared
         .render_svg(&Default::default())
         .expect("ZenUML SVG must render");

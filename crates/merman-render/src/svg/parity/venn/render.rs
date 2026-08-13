@@ -193,15 +193,14 @@ fn root_open(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Venn, diagram_id)
-        .write_open(
-            out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
-                layout.use_max_width,
-            ),
-            root_chrome,
-        )
+    root_svg::RootViewportContext::new(crate::DiagramFamilyId::VENN, diagram_id).write_open(
+        out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
+            layout.use_max_width,
+        ),
+        root_chrome,
+    )
 }
 
 fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {

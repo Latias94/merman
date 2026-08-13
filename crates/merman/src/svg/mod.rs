@@ -45,6 +45,7 @@
 
 use std::sync::OnceLock;
 
+pub use merman_core::DiagramFamilyId;
 pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
@@ -86,7 +87,7 @@ pub use merman_render::environment::{
     TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
     validate_host_text_measurement,
 };
-pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
+pub use merman_render::family::RenderCapabilityPlan;
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
@@ -1442,8 +1443,8 @@ mod svg_pipeline_tests {
             report.export_report().resource_fingerprint()
         );
         assert_eq!(
-            report.operation_report().family_kind(),
-            RenderFamilyKind::Flowchart
+            report.operation_report().family_id(),
+            DiagramFamilyId::FLOWCHART
         );
     }
 
@@ -1510,8 +1511,8 @@ mod svg_pipeline_tests {
             report.export_report().resource_fingerprint()
         );
         assert_eq!(
-            report.operation_report().family_kind(),
-            RenderFamilyKind::Flowchart
+            report.operation_report().family_id(),
+            DiagramFamilyId::FLOWCHART
         );
     }
 
@@ -1543,8 +1544,8 @@ mod svg_pipeline_tests {
             report.export_report().resource_fingerprint()
         );
         assert_eq!(
-            report.operation_report().family_kind(),
-            RenderFamilyKind::Flowchart
+            report.operation_report().family_id(),
+            DiagramFamilyId::FLOWCHART
         );
     }
 
@@ -1880,7 +1881,7 @@ flowchart TD
                                 CanvasPaint::solid("#ef4444").expect("valid test color"),
                             ),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -1920,7 +1921,7 @@ flowchart TD
                                 CanvasPaint::solid("#ef4444").expect("valid test color"),
                             ),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -1940,7 +1941,7 @@ flowchart TD
         assert!(matches!(
             error,
             HeadlessError::Render(RenderError::LegacyFamilyThemeCompatibility {
-                family_kind: RenderFamilyKind::Flowchart,
+                family_id: DiagramFamilyId::FLOWCHART,
                 ..
             })
         ));
@@ -1958,7 +1959,7 @@ flowchart TD
                                 CanvasPaint::solid("#ef4444").expect("valid test color"),
                             ),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -1999,7 +2000,7 @@ flowchart TD
                                 CanvasPaint::solid("#2563eb").expect("valid test color"),
                             ),
                         )
-                        .for_family(RenderFamilyKind::State),
+                        .for_family(DiagramFamilyId::STATE),
                     ),
                 ),
             )

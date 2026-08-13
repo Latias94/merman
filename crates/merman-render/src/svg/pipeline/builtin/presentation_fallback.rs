@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use super::util::{SvgTagScanner, next_svg_quoted_attr, start_tag_name};
-use crate::family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 use crate::svg::pipeline::SvgPostprocessMetadata;
 
 const QUADRANT_BROWSER_POINT_FILL: &str = "#000000";
@@ -11,7 +11,7 @@ pub(crate) fn resolve_resvg_presentation_fallbacks<'a>(
     svg: Cow<'a, str>,
     metadata: &SvgPostprocessMetadata,
 ) -> Cow<'a, str> {
-    if metadata.family_kind() != Some(RenderFamilyKind::QuadrantChart) {
+    if metadata.family_id() != Some(DiagramFamilyId::QUADRANT_CHART) {
         return svg;
     }
 
@@ -133,7 +133,7 @@ mod tests {
             r#"<svg><g class="data-points"><g class="data-point"><circle cx="5" cy="6" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)" stroke-width="0px"/></g></g></svg>"#,
         );
         let metadata =
-            SvgPostprocessMetadata::new().with_family_kind(RenderFamilyKind::QuadrantChart);
+            SvgPostprocessMetadata::new().with_family_id(DiagramFamilyId::QUADRANT_CHART);
 
         let out = resolve_resvg_presentation_fallbacks(svg, &metadata);
 
@@ -159,7 +159,7 @@ mod tests {
     fn explicit_quadrant_point_colors_are_not_rewritten() {
         let svg = Cow::Borrowed(r##"<svg><circle fill="#facc15" stroke="#facc15"/></svg>"##);
         let metadata =
-            SvgPostprocessMetadata::new().with_family_kind(RenderFamilyKind::QuadrantChart);
+            SvgPostprocessMetadata::new().with_family_id(DiagramFamilyId::QUADRANT_CHART);
 
         let out = resolve_resvg_presentation_fallbacks(svg, &metadata);
 
@@ -173,7 +173,7 @@ mod tests {
             r##"<svg><circle fill="url(#undefined)" stroke="url(#nan)"/><circle fill="url(#undefined-gradient)" stroke="url(#nan-stroke)"/></svg>"##,
         );
         let metadata =
-            SvgPostprocessMetadata::new().with_family_kind(RenderFamilyKind::QuadrantChart);
+            SvgPostprocessMetadata::new().with_family_id(DiagramFamilyId::QUADRANT_CHART);
 
         let out = resolve_resvg_presentation_fallbacks(svg, &metadata);
 
@@ -189,7 +189,7 @@ mod tests {
         let svg =
             Cow::Borrowed(r##"<svg><circle fill="#facc15" stroke="hsl(240, 100%, NaN%)"/></svg>"##);
         let metadata =
-            SvgPostprocessMetadata::new().with_family_kind(RenderFamilyKind::QuadrantChart);
+            SvgPostprocessMetadata::new().with_family_id(DiagramFamilyId::QUADRANT_CHART);
 
         let out = resolve_resvg_presentation_fallbacks(svg, &metadata);
 

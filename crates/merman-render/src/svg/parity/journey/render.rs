@@ -316,7 +316,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         ..root_svg::RootDomProfile::default()
     };
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Journey, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::JOURNEY, diagram_id)
             .write_open(
                 &mut out,
                 root_svg::RootViewportSpec::mermaid(
@@ -559,7 +559,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use crate::model::{
         Bounds, JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskLayout,
     };
@@ -675,7 +675,7 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = with_test_svg_execution(RenderFamilyKind::Journey, &options, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
@@ -727,7 +727,7 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = with_test_svg_execution(RenderFamilyKind::Journey, &options, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),

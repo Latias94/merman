@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
 
 use base64::Engine as _;
-use merman::MermaidThemeId;
 use merman::svg::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
     EffectPrimitive, FilterRegion, FontAssetSpec, FontCatalogSpec, FontContainer,
     FontEmbeddingRequirement, FontSource, FontStack, FontStyle, GenericFontFamily, GradientStop,
     InsetsPx, LineHeight, LinearGradient, MermaidThemeCompatibility, MermaidThemeValue,
-    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, RenderFamilyKind,
-    Specified, StrokeLineCap, StrokeLineJoin, TextAlign, TextDecoration, TextLayoutCapability,
-    TextStylePatch, TextTransform, ThemeAssets, ThemeCapability, ThemeColorValue, ThemeLength,
-    ThemeRequirements, ThemeResourcePolicy, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, ThemeWrapMode, TypographySpec, WhiteSpace,
+    OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient, Specified,
+    StrokeLineCap, StrokeLineJoin, TextAlign, TextDecoration, TextLayoutCapability, TextStylePatch,
+    TextTransform, ThemeAssets, ThemeCapability, ThemeColorValue, ThemeLength, ThemeRequirements,
+    ThemeResourcePolicy, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
+    ThemeVariant, ThemeWrapMode, TypographySpec, WhiteSpace,
 };
+use merman::{DiagramFamilyId, MermaidThemeId};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Value, value::RawValue};
 
@@ -293,7 +293,7 @@ impl BindingTypographySpecJson {
         }
         for (family, style) in &self.families {
             typography = typography.with_family_style(
-                parse_render_family(family, "theme.spec.typography.families")?,
+                parse_diagram_family_id(family, "theme.spec.typography.families")?,
                 style.to_text_style()?,
             );
         }
@@ -445,8 +445,8 @@ fn binding_styles(entries: &[BindingStyleEntryJson]) -> Result<ThemeRuleSet, Bin
                     style.to_style_patch()?,
                 );
                 if let Some(family) = family {
-                    rule =
-                        rule.for_family(parse_render_family(family, "theme.spec.styles.family")?);
+                    rule = rule
+                        .for_family(parse_diagram_family_id(family, "theme.spec.styles.family")?);
                 }
                 if let Some(variant) = variant {
                     rule = rule
@@ -1321,8 +1321,11 @@ fn parse_color(value: &str, field: &'static str) -> Result<ThemeColorValue, Bind
     ThemeColorValue::parse(value).map_err(|error| theme_value_error(field, error))
 }
 
-fn parse_render_family(value: &str, field: &'static str) -> Result<RenderFamilyKind, BindingError> {
-    RenderFamilyKind::from_id(value).ok_or_else(|| unsupported(field, value))
+fn parse_diagram_family_id(
+    value: &str,
+    field: &'static str,
+) -> Result<DiagramFamilyId, BindingError> {
+    DiagramFamilyId::from_id(value).ok_or_else(|| unsupported(field, value))
 }
 
 fn parse_theme_target(value: &str, field: &'static str) -> Result<ThemeTarget, BindingError> {
@@ -1625,13 +1628,13 @@ mod tests {
     }
 
     #[test]
-    fn every_render_family_id_round_trips_through_the_binding_parser() {
-        for &family in RenderFamilyKind::all() {
+    fn every_diagram_family_id_round_trips_through_the_binding_parser() {
+        for &family in DiagramFamilyId::all() {
             let id = family.as_str();
             assert_eq!(
-                parse_render_family(id, "theme.spec.styles.family").unwrap(),
+                parse_diagram_family_id(id, "theme.spec.styles.family").unwrap(),
                 family,
-                "binding theme parser must accept typed render family `{id}`"
+                "binding theme parser must accept typed diagram family `{id}`"
             );
         }
     }

@@ -414,8 +414,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width).with_max_width(
         root_svg::RootMaxWidth::CssSixSignificant(root_width_for_title),
     );
-    let root_viewport =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Er, diagram_id);
+    let root_viewport = root_svg::RootViewportContext::new(crate::DiagramFamilyId::ER, diagram_id);
     let root_plan = root_viewport.plan(root_spec)?;
 
     let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
@@ -1499,7 +1498,7 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &
 
 #[cfg(test)]
 mod tests {
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
@@ -1643,10 +1642,10 @@ mod tests {
             diagram_id: Some("er-colors".to_string()),
             ..SvgRenderOptions::default()
         };
-        let svg = with_test_svg_execution(RenderFamilyKind::Er, &options, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::ER, &options, |options| {
             super::render_er_diagram_svg_model(&layout, &model, &config, None, &measurer, options)
         })
-        .and_then(|svg| svg.into_string_for(RenderFamilyKind::Er))
+        .and_then(|svg| svg.into_string_for(DiagramFamilyId::ER))
         .unwrap();
 
         let zeta_dom = r#"<g id="er-colors-entity-ZETA-0" class="node default" data-look="classic" data-color-id="color-0""#;

@@ -1,4 +1,4 @@
-use crate::render_family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 
 use super::canvas::CanvasPaint;
 use super::resolved::ThemeTypographyProperty;
@@ -158,13 +158,13 @@ impl FamilyThemeRoute {
 }
 
 pub(super) fn compile_base_typography_routes(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     style: &TextStyle,
 ) -> Vec<FamilyThemeRoute> {
     let baseline = TextStyle::default();
     let mut routes = Vec::new();
     if style.font_stack() != baseline.font_stack() {
-        let disposition = if family != RenderFamilyKind::State
+        let disposition = if family != DiagramFamilyId::STATE
             && style.font_stack().as_css().len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES
         {
             FamilyThemeDisposition::Unsupported
@@ -214,7 +214,7 @@ pub(super) fn compile_base_typography_routes(
 
 fn push_base_typography(
     routes: &mut Vec<FamilyThemeRoute>,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     property: ThemeTypographyProperty,
 ) {
     routes.push(FamilyThemeRoute::new(
@@ -224,7 +224,7 @@ fn push_base_typography(
 }
 
 pub(super) fn compile_rule_routes(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     rule_index: usize,
     rule: &ThemeRule,
 ) -> Vec<FamilyThemeRoute> {
@@ -374,7 +374,7 @@ pub(super) fn compile_rule_routes(
 #[allow(clippy::too_many_arguments)]
 fn push_specified_rule_facet<T>(
     routes: &mut Vec<FamilyThemeRoute>,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     rule_index: usize,
     target: ThemeTarget,
     selector: FamilyThemeSelectorShape,
@@ -388,7 +388,7 @@ fn push_specified_rule_facet<T>(
 
 fn push_rule_facet(
     routes: &mut Vec<FamilyThemeRoute>,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     rule_index: usize,
     target: ThemeTarget,
     selector: FamilyThemeSelectorShape,
@@ -406,15 +406,15 @@ fn push_rule_facet(
 }
 
 pub(super) fn compile_ordinal_palette_route(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     target: ThemeTarget,
 ) -> FamilyThemeRoute {
     FamilyThemeRoute::new(
         FamilyThemeMechanism::OrdinalPalette { target },
-        if family == RenderFamilyKind::State
+        if family == DiagramFamilyId::STATE
             || (matches!(
                 family,
-                RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
             ) && target == ThemeTarget::Node)
         {
             FamilyThemeDisposition::TypedAdapter
@@ -427,7 +427,7 @@ pub(super) fn compile_ordinal_palette_route(
 }
 
 pub(super) fn compile_effect_binding_route(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     binding_index: usize,
     target: ThemeTarget,
 ) -> FamilyThemeRoute {
@@ -436,7 +436,7 @@ pub(super) fn compile_effect_binding_route(
             binding_index,
             target,
         },
-        if family == RenderFamilyKind::State {
+        if family == DiagramFamilyId::STATE {
             FamilyThemeDisposition::TypedAdapter
         } else {
             FamilyThemeDisposition::Unsupported
@@ -445,10 +445,10 @@ pub(super) fn compile_effect_binding_route(
 }
 
 fn classify_base_typography(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     property: ThemeTypographyProperty,
 ) -> FamilyThemeDisposition {
-    if family == RenderFamilyKind::State {
+    if family == DiagramFamilyId::STATE {
         return FamilyThemeDisposition::TypedAdapter;
     }
     match property {
@@ -469,17 +469,17 @@ fn classify_base_typography(
 }
 
 fn classify_rule_facet(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     target: ThemeTarget,
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
-    if family == RenderFamilyKind::State {
+    if family == DiagramFamilyId::STATE {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if matches!(
         family,
-        RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::NodeLabel
         && matches!(
             selector,
@@ -496,7 +496,7 @@ fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == RenderFamilyKind::Sequence
+    if family == DiagramFamilyId::SEQUENCE
         && target == ThemeTarget::Actor
         && matches!(
             selector,
@@ -517,7 +517,7 @@ fn classify_rule_facet(
     }
     if matches!(
         family,
-        RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::Node
         && matches!(
             selector,
@@ -578,7 +578,7 @@ enum PaintChannel {
 }
 
 fn legacy_paint_supported(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     target: ThemeTarget,
     variant: Option<ThemeVariant>,
     channel: PaintChannel,
@@ -588,12 +588,12 @@ fn legacy_paint_supported(
 }
 
 fn legacy_paint_variants(
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     target: ThemeTarget,
     channel: PaintChannel,
 ) -> &'static [ThemeVariant] {
+    use DiagramFamilyId as Family;
     use PaintChannel::{Fill, Stroke};
-    use RenderFamilyKind as Family;
     use ThemeTarget as Target;
     use ThemeVariant as Variant;
 
@@ -615,13 +615,13 @@ fn legacy_paint_variants(
 
     let node_family = matches!(
         family,
-        Family::Flowchart
-            | Family::Swimlane
-            | Family::Class
-            | Family::Mindmap
-            | Family::TreeView
-            | Family::Block
-            | Family::GitGraph
+        Family::FLOWCHART
+            | Family::SWIMLANE
+            | Family::CLASS
+            | Family::MINDMAP
+            | Family::TREE_VIEW
+            | Family::BLOCK
+            | Family::GIT_GRAPH
     );
     if node_family {
         let common = match channel {
@@ -637,7 +637,7 @@ fn legacy_paint_variants(
                         | Target::EdgeLabelBackground
                         | Target::Cluster
                         | Target::ClusterLabel
-                ) || (family == Family::GitGraph && target == Target::EdgeLabel)
+                ) || (family == Family::GIT_GRAPH && target == Target::EdgeLabel)
             }
             Stroke => matches!(
                 target,
@@ -647,14 +647,14 @@ fn legacy_paint_variants(
         if common {
             return DEFAULT;
         }
-        if family == Family::Class && target == Target::Table && channel == Fill {
+        if family == Family::CLASS && target == Target::Table && channel == Fill {
             return ODD_EVEN;
         }
         return &[];
     }
 
     match family {
-        Family::Sequence => match channel {
+        Family::SEQUENCE => match channel {
             Fill if matches!(
                 target,
                 Target::Actor
@@ -688,109 +688,111 @@ fn legacy_paint_variants(
             }
             _ => &[],
         },
-        Family::Gantt => match (target, channel) {
+        Family::GANTT => match (target, channel) {
             (Target::Text | Target::Title, Fill) => DEFAULT,
             (Target::Task, Fill) => GANTT_FILL,
             (Target::Task, Stroke) => GANTT_STROKE,
             _ => &[],
         },
-        Family::Kanban => match (target, channel) {
+        Family::KANBAN => match (target, channel) {
             (Target::Text | Target::Title, Fill) => DEFAULT,
             (Target::Task, Stroke) => DEFAULT,
             _ => &[],
         },
-        Family::Requirement => match (target, channel) {
+        Family::REQUIREMENT => match (target, channel) {
             (Target::Requirement | Target::Relation, Fill | Stroke) => DEFAULT,
             (Target::Text, Fill) => DEFAULT,
             (Target::Table, Fill) => ODD_EVEN,
             _ => &[],
         },
-        Family::Er => match (target, channel) {
+        Family::ER => match (target, channel) {
             (Target::Requirement | Target::Relation, Fill | Stroke) => DEFAULT,
             (Target::Text | Target::Title, Fill) => DEFAULT,
             (Target::Table, Fill) => ODD_EVEN,
             _ => &[],
         },
-        Family::Pie => match (target, channel) {
+        Family::PIE => match (target, channel) {
             (Target::Text | Target::Title | Target::PieSlice, Fill) => DEFAULT,
             (Target::PieSlice, Stroke) => DEFAULT,
             _ => &[],
         },
-        Family::XyChart | Family::QuadrantChart | Family::Radar => match (target, channel) {
+        Family::XY_CHART | Family::QUADRANT_CHART | Family::RADAR => match (target, channel) {
             (Target::Text | Target::Title | Target::Axis, Fill) => DEFAULT,
             (Target::Axis, Stroke) => DEFAULT,
             _ => &[],
         },
-        Family::Timeline => match (target, channel) {
+        Family::TIMELINE => match (target, channel) {
             (Target::TimelineEvent, Fill | Stroke) => DEFAULT,
             (Target::Text | Target::Title, Fill) => DEFAULT,
             _ => &[],
         },
-        Family::Journey => match (target, channel) {
+        Family::JOURNEY => match (target, channel) {
             (Target::JourneyTask, Fill | Stroke) => DEFAULT,
             (Target::Text | Target::Title, Fill) => DEFAULT,
             _ => &[],
         },
-        Family::Error
-        | Family::Zenuml
-        | Family::Architecture
+        Family::ERROR
+        | Family::ZENUML
+        | Family::ARCHITECTURE
         | Family::C4
-        | Family::Cynefin
-        | Family::Wardley
-        | Family::Railroad
-        | Family::Sankey
-        | Family::Info
-        | Family::Treemap
-        | Family::Ishikawa
-        | Family::EventModeling
-        | Family::Venn => match (target, channel) {
+        | Family::CYNEFIN
+        | Family::WARDLEY
+        | Family::RAILROAD
+        | Family::SANKEY
+        | Family::INFO
+        | Family::TREEMAP
+        | Family::ISHIKAWA
+        | Family::EVENT_MODELING
+        | Family::VENN => match (target, channel) {
             (Target::Text | Target::Title, Fill) => DEFAULT,
             _ => &[],
         },
-        Family::Packet | Family::State => &[],
-        Family::Mindmap
-        | Family::Flowchart
-        | Family::Swimlane
-        | Family::Class
-        | Family::Block
-        | Family::GitGraph
-        | Family::TreeView => unreachable!("node families were handled above"),
+        Family::PACKET | Family::STATE => &[],
+        Family::MINDMAP
+        | Family::FLOWCHART
+        | Family::SWIMLANE
+        | Family::CLASS
+        | Family::BLOCK
+        | Family::GIT_GRAPH
+        | Family::TREE_VIEW => unreachable!("node families were handled above"),
+        _ => &[],
     }
 }
 
-fn legacy_palette_supported(family: RenderFamilyKind, target: ThemeTarget) -> bool {
+fn legacy_palette_supported(family: DiagramFamilyId, target: ThemeTarget) -> bool {
     match family {
-        RenderFamilyKind::Mindmap | RenderFamilyKind::GitGraph => target == ThemeTarget::Node,
-        RenderFamilyKind::Kanban => target == ThemeTarget::Task,
-        RenderFamilyKind::Pie => target == ThemeTarget::PieSlice,
-        RenderFamilyKind::XyChart | RenderFamilyKind::Radar => target == ThemeTarget::ChartSeries,
-        RenderFamilyKind::Timeline => target == ThemeTarget::TimelineEvent,
-        RenderFamilyKind::Journey => target == ThemeTarget::JourneyTask,
-        RenderFamilyKind::Error
-        | RenderFamilyKind::State
-        | RenderFamilyKind::Sequence
-        | RenderFamilyKind::Zenuml
-        | RenderFamilyKind::Flowchart
-        | RenderFamilyKind::Swimlane
-        | RenderFamilyKind::Architecture
-        | RenderFamilyKind::Class
-        | RenderFamilyKind::C4
-        | RenderFamilyKind::Cynefin
-        | RenderFamilyKind::Wardley
-        | RenderFamilyKind::Railroad
-        | RenderFamilyKind::Gantt
-        | RenderFamilyKind::Packet
-        | RenderFamilyKind::Requirement
-        | RenderFamilyKind::Sankey
-        | RenderFamilyKind::Info
-        | RenderFamilyKind::Treemap
-        | RenderFamilyKind::Block
-        | RenderFamilyKind::Er
-        | RenderFamilyKind::QuadrantChart
-        | RenderFamilyKind::TreeView
-        | RenderFamilyKind::Ishikawa
-        | RenderFamilyKind::EventModeling
-        | RenderFamilyKind::Venn => false,
+        DiagramFamilyId::MINDMAP | DiagramFamilyId::GIT_GRAPH => target == ThemeTarget::Node,
+        DiagramFamilyId::KANBAN => target == ThemeTarget::Task,
+        DiagramFamilyId::PIE => target == ThemeTarget::PieSlice,
+        DiagramFamilyId::XY_CHART | DiagramFamilyId::RADAR => target == ThemeTarget::ChartSeries,
+        DiagramFamilyId::TIMELINE => target == ThemeTarget::TimelineEvent,
+        DiagramFamilyId::JOURNEY => target == ThemeTarget::JourneyTask,
+        DiagramFamilyId::ERROR
+        | DiagramFamilyId::STATE
+        | DiagramFamilyId::SEQUENCE
+        | DiagramFamilyId::ZENUML
+        | DiagramFamilyId::FLOWCHART
+        | DiagramFamilyId::SWIMLANE
+        | DiagramFamilyId::ARCHITECTURE
+        | DiagramFamilyId::CLASS
+        | DiagramFamilyId::C4
+        | DiagramFamilyId::CYNEFIN
+        | DiagramFamilyId::WARDLEY
+        | DiagramFamilyId::RAILROAD
+        | DiagramFamilyId::GANTT
+        | DiagramFamilyId::PACKET
+        | DiagramFamilyId::REQUIREMENT
+        | DiagramFamilyId::SANKEY
+        | DiagramFamilyId::INFO
+        | DiagramFamilyId::TREEMAP
+        | DiagramFamilyId::BLOCK
+        | DiagramFamilyId::ER
+        | DiagramFamilyId::QUADRANT_CHART
+        | DiagramFamilyId::TREE_VIEW
+        | DiagramFamilyId::ISHIKAWA
+        | DiagramFamilyId::EVENT_MODELING
+        | DiagramFamilyId::VENN => false,
+        _ => false,
     }
 }
 
@@ -818,7 +820,7 @@ mod tests {
                 ..ThemeStylePatch::default()
             },
         );
-        let routes = compile_rule_routes(RenderFamilyKind::Flowchart, 7, &rule);
+        let routes = compile_rule_routes(DiagramFamilyId::FLOWCHART, 7, &rule);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {
@@ -858,7 +860,7 @@ mod tests {
         .expect("valid fixture stroke dasharray");
         let default_rule =
             ThemeRule::new(ThemeTarget::Node, default_style).with_variant(ThemeVariant::Default);
-        for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert!(
                 compile_rule_routes(family, 0, &default_rule)
                     .iter()
@@ -881,7 +883,7 @@ mod tests {
         )
         .with_variant(ThemeVariant::Active);
         assert_eq!(
-            compile_rule_routes(RenderFamilyKind::Flowchart, 0, &active_rule)[0].disposition(),
+            compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &active_rule)[0].disposition(),
             FamilyThemeDisposition::Unsupported
         );
 
@@ -894,7 +896,7 @@ mod tests {
                 .expect("valid edge dasharray"),
         );
         assert!(
-            compile_rule_routes(RenderFamilyKind::Flowchart, 0, &edge_geometry_rule)
+            compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &edge_geometry_rule)
                 .iter()
                 .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
         );
@@ -909,7 +911,7 @@ mod tests {
         )
         .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap());
         assert!(
-            compile_rule_routes(RenderFamilyKind::Flowchart, 0, &ordinal_geometry_rule)
+            compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &ordinal_geometry_rule)
                 .iter()
                 .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
         );
@@ -946,7 +948,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                compile_rule_routes(RenderFamilyKind::Flowchart, 0, &rule)[0].disposition(),
+                compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule)[0].disposition(),
                 FamilyThemeDisposition::Unsupported
             );
         }
@@ -963,7 +965,7 @@ mod tests {
             },
             ..ThemeStylePatch::default()
         };
-        for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             let unqualified_rule = ThemeRule::new(ThemeTarget::NodeLabel, style.clone());
             assert!(
                 compile_rule_routes(family, 0, &unqualified_rule)
@@ -1027,7 +1029,7 @@ mod tests {
             },
         );
 
-        let routes = compile_rule_routes(RenderFamilyKind::Flowchart, 0, &rule);
+        let routes = compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule);
 
         assert_eq!(routes.len(), 2);
         assert!(
@@ -1054,7 +1056,7 @@ mod tests {
         );
 
         assert!(
-            compile_rule_routes(RenderFamilyKind::State, 0, &rule)
+            compile_rule_routes(DiagramFamilyId::STATE, 0, &rule)
                 .iter()
                 .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
         );
@@ -1068,7 +1070,7 @@ mod tests {
                 .with_fill(CanvasPaint::solid("#abcdef").expect("valid fixture color")),
         )
         .with_ordinal(OrdinalSelector::exact(1).expect("valid ordinal"));
-        let routes = compile_rule_routes(RenderFamilyKind::Sequence, 0, &rule);
+        let routes = compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &rule);
 
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].disposition(), FamilyThemeDisposition::Unsupported);
@@ -1103,7 +1105,7 @@ mod tests {
             ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
         );
 
-        let solid_routes = compile_rule_routes(RenderFamilyKind::Sequence, 0, &solid);
+        let solid_routes = compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &solid);
         assert_eq!(solid_routes.len(), 2);
         assert!(
             solid_routes
@@ -1111,7 +1113,7 @@ mod tests {
                 .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
         );
         assert_eq!(
-            compile_rule_routes(RenderFamilyKind::Sequence, 0, &gradient_rule)[0].disposition(),
+            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &gradient_rule)[0].disposition(),
             FamilyThemeDisposition::Unsupported
         );
     }
@@ -1129,7 +1131,7 @@ mod tests {
             },
         );
 
-        let routes = compile_rule_routes(RenderFamilyKind::Flowchart, 0, &rule);
+        let routes = compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule);
 
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].disposition(), FamilyThemeDisposition::Unsupported);
@@ -1149,7 +1151,7 @@ mod tests {
             .expect("valid font size")
             .with_font_weight(700)
             .expect("valid font weight");
-        let routes = compile_base_typography_routes(RenderFamilyKind::Sequence, &typography);
+        let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &typography);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {
@@ -1175,7 +1177,7 @@ mod tests {
             .with_font_weight(700)
             .expect("valid font weight");
 
-        for family in [RenderFamilyKind::Flowchart, RenderFamilyKind::Swimlane] {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             let routes = compile_base_typography_routes(family, &typography);
 
             assert!(routes.iter().any(|route| {
@@ -1205,7 +1207,7 @@ mod tests {
             .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
             .with_font_size_px(18.0)
             .expect("valid font size");
-        let routes = compile_base_typography_routes(RenderFamilyKind::Sequence, &typography);
+        let routes = compile_base_typography_routes(DiagramFamilyId::SEQUENCE, &typography);
 
         assert_eq!(routes.len(), 2);
         assert!(routes.iter().any(|route| {

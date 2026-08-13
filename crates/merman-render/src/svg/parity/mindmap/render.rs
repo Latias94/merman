@@ -784,7 +784,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     let mut out = String::new();
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Mindmap, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::MINDMAP, diagram_id)
             .write_open(
                 &mut out,
                 root_spec,

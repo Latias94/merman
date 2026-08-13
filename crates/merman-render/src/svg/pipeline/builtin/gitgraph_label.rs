@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 
 use super::util::{extract_quoted_attr, find_tag_end, set_or_insert_quoted_attr};
-use crate::family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -19,7 +19,7 @@ impl SvgPostprocessor for GitGraphBranchLabelBaselinePostprocessor {
         svg: Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        if ctx.family_kind() != Some(RenderFamilyKind::GitGraph) || !svg.contains("branch-label") {
+        if ctx.family_id() != Some(DiagramFamilyId::GIT_GRAPH) || !svg.contains("branch-label") {
             return Ok(svg);
         }
 
@@ -260,7 +260,7 @@ mod tests {
     fn gitgraph_branch_label_text_uses_rect_center_baseline() {
         let svg = r#"<svg id="g"><g><rect class="branchLabelBkg label0" rx="4" ry="4" x="-69" y="-1.5" width="53" height="21" transform="translate(-19, -8.5)"/><g class="branchLabel"><g class="label branch-label0" transform="translate(-79, -9.5)"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">main</tspan></text></g></g></g></svg>"#;
         let metadata =
-            SvgPostprocessMetadata::from_svg(svg).with_family_kind(RenderFamilyKind::GitGraph);
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(DiagramFamilyId::GIT_GRAPH);
         let session = render_session();
 
         let out = SvgPipeline::parity()
@@ -281,7 +281,7 @@ mod tests {
     fn gitgraph_branch_label_postprocessor_ignores_other_diagrams() {
         let svg = r#"<svg id="g"><g><rect class="branchLabelBkg label0" y="-1.5" height="21"/><g class="label branch-label0"><text><tspan dy="1em">main</tspan></text></g></g></svg>"#;
         let metadata =
-            SvgPostprocessMetadata::from_svg(svg).with_family_kind(RenderFamilyKind::Flowchart);
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(DiagramFamilyId::FLOWCHART);
         let session = render_session();
 
         let out = SvgPipeline::parity()
@@ -296,7 +296,7 @@ mod tests {
     fn gitgraph_branch_label_uses_shared_quoted_attr_scanner() {
         let svg = r#"<svg id="g"><g><rect class = 'branchLabelBkg label0' rx="4" ry="4" x="-69" y='-1.5' width="53" height='21' transform = 'translate(-19, -8.5)'/><g class="branchLabel"><g class = 'label branch-label0' transform = 'translate(-79, -9.5)'><text y='0'><tspan xml:space="preserve" dy='1em' x="0" class="row">main</tspan></text></g></g></g></svg>"#;
         let metadata =
-            SvgPostprocessMetadata::from_svg(svg).with_family_kind(RenderFamilyKind::GitGraph);
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(DiagramFamilyId::GIT_GRAPH);
         let session = render_session();
 
         let out = SvgPipeline::parity()

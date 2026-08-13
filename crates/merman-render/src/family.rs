@@ -14,11 +14,11 @@ use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{
+    BuiltinRenderSemantic, DiagramFamilyId, ParseMetadata, ParsedDiagramRender, RenderSemanticModel,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
-
-pub use crate::render_family::RenderFamilyKind;
 
 /// Capabilities required by one parsed typed render operation before layout starts.
 ///
@@ -28,7 +28,7 @@ pub use crate::render_family::RenderFamilyKind;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderCapabilityPlan {
     diagram_type: String,
-    family_kind: RenderFamilyKind,
+    family_id: DiagramFamilyId,
     required: Vec<RenderCapability>,
     missing: Vec<RenderCapability>,
 }
@@ -40,8 +40,8 @@ impl RenderCapabilityPlan {
     }
 
     /// Returns the authoritative typed render family selected before layout starts.
-    pub const fn family_kind(&self) -> RenderFamilyKind {
-        self.family_kind
+    pub const fn family_id(&self) -> DiagramFamilyId {
+        self.family_id
     }
 
     /// Returns every optional capability this operation requires.
@@ -351,7 +351,7 @@ impl From<SourceStyleResidualReason> for FamilyStyleResidualReason {
 /// Frozen family-local style evidence retained through SVG postprocessing and completion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FamilyStyleReport {
-    family_kind: RenderFamilyKind,
+    family_id: DiagramFamilyId,
     evaluation: FamilyStyleEvaluation,
     output_mutated: bool,
     theme_required: Vec<FamilyThemeMechanismKey>,
@@ -389,7 +389,7 @@ impl FamilyStyleReport {
             }
         }
         Self {
-            family_kind: plan.family_kind,
+            family_id: plan.family_id,
             evaluation,
             output_mutated: plan.output_mutated,
             theme_required: plan.theme_evidence.required.clone(),
@@ -423,8 +423,8 @@ impl FamilyStyleReport {
         self
     }
 
-    pub const fn family_kind(&self) -> RenderFamilyKind {
-        self.family_kind
+    pub const fn family_id(&self) -> DiagramFamilyId {
+        self.family_id
     }
 
     pub const fn evaluation(&self) -> FamilyStyleEvaluation {
@@ -551,17 +551,17 @@ impl FamilyStyleReport {
     fn ensure_portable(&self) -> Result<()> {
         if self.output_mutated {
             return Err(Error::UnverifiedFamilyOutputMutation {
-                family_kind: self.family_kind,
+                family_id: self.family_id,
             });
         }
         self.ensure_compatibility_portable()?;
         match self.verification() {
             FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
             FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
-                family_kind: self.family_kind,
+                family_id: self.family_id,
             }),
             FamilyStyleVerification::Incomplete => Err(Error::IncompleteFamilyTheme {
-                family_kind: self.family_kind,
+                family_id: self.family_id,
                 required_count: self.theme_required.len(),
                 accounted_count: self.theme_applied.len()
                     + self.theme_not_applicable.len()
@@ -570,13 +570,13 @@ impl FamilyStyleReport {
             FamilyStyleVerification::Unverified => {
                 if !self.theme_residuals.is_empty() {
                     return Err(Error::UnverifiedFamilyTheme {
-                        family_kind: self.family_kind,
+                        family_id: self.family_id,
                         residual_count: self.theme_residuals.len(),
                     });
                 }
                 debug_assert!(!self.residuals.is_empty());
                 Err(Error::UnverifiedFamilyStyle {
-                    family_kind: self.family_kind,
+                    family_id: self.family_id,
                     residual_count: self.residuals.len(),
                 })
             }
@@ -586,13 +586,13 @@ impl FamilyStyleReport {
     fn ensure_compatibility_portable(&self) -> Result<()> {
         if self.compatibility_residual_count != 0 {
             return Err(Error::LegacyFamilyThemeCompatibility {
-                family_kind: self.family_kind,
+                family_id: self.family_id,
                 residual_count: self.compatibility_residual_count,
             });
         }
         if self.mermaid_compatibility_residual_count != 0 {
             return Err(Error::MermaidThemeCompatibility {
-                family_kind: self.family_kind,
+                family_id: self.family_id,
                 residual_count: self.mermaid_compatibility_residual_count,
             });
         }
@@ -628,8 +628,8 @@ impl FamilyRenderReport {
         }
     }
 
-    pub const fn family_kind(&self) -> RenderFamilyKind {
-        self.style.family_kind()
+    pub const fn family_id(&self) -> DiagramFamilyId {
+        self.style.family_id()
     }
 
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
@@ -667,7 +667,7 @@ impl FamilyRenderReport {
             + self.style.theme_not_applicable.len()
             + self.style.theme_residuals.len();
         crate::__private::FamilyEvidenceSummary::new(
-            self.style.family_kind,
+            self.style.family_id,
             crate::__private::FamilyEvidenceStatus::from_verification(self.style.verification()),
             self.style.theme_required.len(),
             accounted_count,
@@ -878,7 +878,7 @@ enum FamilyStylePayload {
 
 #[derive(Debug)]
 pub(crate) struct ResolvedFamilyStylePlan {
-    family_kind: RenderFamilyKind,
+    family_id: DiagramFamilyId,
     resolved_theme: Option<Box<ResolvedDiagramTheme>>,
     theme_evidence: FamilyThemeEvidence,
     source_style_residuals: Vec<SourceStyleResidual>,
@@ -890,10 +890,10 @@ pub(crate) struct ResolvedFamilyStylePlan {
 }
 
 impl ResolvedFamilyStylePlan {
-    fn new(session: &RenderSession, family_kind: RenderFamilyKind) -> Self {
+    fn new(session: &RenderSession, family_id: DiagramFamilyId) -> Self {
         let resolved_theme = session
             .theme()
-            .map(|theme| Box::new(theme.resolve(family_kind)));
+            .map(|theme| Box::new(theme.resolve(family_id)));
         let theme_evidence = FamilyThemeEvidence::from_theme(resolved_theme.as_deref());
         let payload = if !FamilyThemeEvidence::not_applicable(resolved_theme.as_deref()) {
             FamilyStylePayload::Unadapted
@@ -901,7 +901,7 @@ impl ResolvedFamilyStylePlan {
             FamilyStylePayload::NotApplicable
         };
         Self {
-            family_kind,
+            family_id,
             resolved_theme,
             theme_evidence,
             source_style_residuals: Vec::new(),
@@ -921,7 +921,7 @@ impl ResolvedFamilyStylePlan {
         prepared_text_available: bool,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
-        debug_assert_eq!(self.family_kind, RenderFamilyKind::State);
+        debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
         let (plan, theme_evidence) = crate::state::StateStylePlan::resolve_with_evidence(
             model,
             effective_config,
@@ -947,8 +947,8 @@ impl ResolvedFamilyStylePlan {
         source_style_residuals: Vec<SourceStyleResidual>,
     ) {
         debug_assert!(matches!(
-            self.family_kind,
-            RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+            self.family_id,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
         ));
         self.theme_evidence = evidence;
         self.source_style_residuals = source_style_residuals;
@@ -962,7 +962,7 @@ impl ResolvedFamilyStylePlan {
     }
 
     fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
-        debug_assert_eq!(self.family_kind, RenderFamilyKind::Sequence);
+        debug_assert_eq!(self.family_id, DiagramFamilyId::SEQUENCE);
         self.theme_evidence = evidence;
         self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref()) {
             FamilyStylePayload::NotApplicable
@@ -975,7 +975,7 @@ impl ResolvedFamilyStylePlan {
         &mut self,
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
     ) {
-        debug_assert_eq!(self.family_kind, RenderFamilyKind::State);
+        debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
         let effect_capabilities_applied =
             self.theme_evidence
                 .applied_capabilities()
@@ -1008,7 +1008,7 @@ impl ResolvedFamilyStylePlan {
     }
 
     fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
-        if self.family_kind == RenderFamilyKind::State {
+        if self.family_id == DiagramFamilyId::STATE {
             self.theme_evidence
                 .mark_state_output_visibility_filtered(debug);
         }
@@ -1033,8 +1033,8 @@ impl ResolvedFamilyStylePlan {
             return Ok(());
         }
         let waits_for_svg_evidence = matches!(
-            self.family_kind,
-            RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane | RenderFamilyKind::Sequence
+            self.family_id,
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::SEQUENCE
         ) && self
             .resolved_theme
             .as_deref()
@@ -1047,8 +1047,8 @@ impl ResolvedFamilyStylePlan {
         }
     }
 
-    pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
-        self.family_kind
+    pub(crate) const fn family_id(&self) -> DiagramFamilyId {
+        self.family_id
     }
 
     pub(crate) fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
@@ -1067,7 +1067,7 @@ impl ResolvedFamilyStylePlan {
 
 #[derive(Clone, Copy)]
 pub(crate) struct FamilyExecutionView<'a> {
-    family_kind: RenderFamilyKind,
+    family_id: DiagramFamilyId,
     session: &'a RenderSession,
     root_theme: Option<&'a RootThemePlan>,
     style_plan: Option<&'a ResolvedFamilyStylePlan>,
@@ -1080,7 +1080,7 @@ impl<'a> FamilyExecutionView<'a> {
         style_plan: &'a ResolvedFamilyStylePlan,
     ) -> Self {
         let execution = Self {
-            family_kind: style_plan.family_kind(),
+            family_id: style_plan.family_id(),
             session,
             root_theme: Some(root_theme),
             style_plan: Some(style_plan),
@@ -1091,17 +1091,19 @@ impl<'a> FamilyExecutionView<'a> {
             "family theme plan presence must match the render session"
         );
         debug_assert_eq!(
-            execution.resolved_theme().map(ResolvedDiagramTheme::family),
+            execution
+                .resolved_theme()
+                .map(ResolvedDiagramTheme::family_id),
             session
                 .theme_recipe_fingerprint()
-                .map(|_| style_plan.family_kind()),
+                .map(|_| style_plan.family_id()),
             "family theme plan must match the planned render family"
         );
         execution
     }
 
-    pub(crate) const fn family_kind(self) -> RenderFamilyKind {
-        self.family_kind
+    pub(crate) const fn family_id(self) -> DiagramFamilyId {
+        self.family_id
     }
 
     pub(crate) const fn session(self) -> &'a RenderSession {
@@ -1124,9 +1126,9 @@ impl<'a> FamilyExecutionView<'a> {
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(session: &'a RenderSession, family_kind: RenderFamilyKind) -> Self {
+    pub(crate) fn for_test(session: &'a RenderSession, family_id: DiagramFamilyId) -> Self {
         Self {
-            family_kind,
+            family_id,
             session,
             root_theme: None,
             style_plan: None,
@@ -1135,9 +1137,9 @@ impl<'a> FamilyExecutionView<'a> {
 }
 
 impl FamilyRenderContext {
-    fn resolve(session: RenderSession, family_kind: RenderFamilyKind) -> Self {
+    fn resolve(session: RenderSession, family_id: DiagramFamilyId) -> Self {
         let root_theme = RootThemePlan::from_theme(session.theme());
-        let style_plan = ResolvedFamilyStylePlan::new(&session, family_kind);
+        let style_plan = ResolvedFamilyStylePlan::new(&session, family_id);
         Self {
             root_theme,
             style_plan,
@@ -1145,8 +1147,8 @@ impl FamilyRenderContext {
         }
     }
 
-    const fn family_kind(&self) -> RenderFamilyKind {
-        self.style_plan.family_kind()
+    const fn family_id(&self) -> DiagramFamilyId {
+        self.style_plan.family_id()
     }
 
     fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
@@ -1501,42 +1503,42 @@ fn clone_json_value_nonrecursive(value: &serde_json::Value) -> serde_json::Value
 }
 
 impl BuiltinFamilyArtifact {
-    pub fn kind(&self) -> RenderFamilyKind {
+    pub fn family_id(&self) -> DiagramFamilyId {
         match self {
-            Self::Error(_) => RenderFamilyKind::Error,
-            Self::Mindmap(_) => RenderFamilyKind::Mindmap,
-            Self::State(_) => RenderFamilyKind::State,
-            Self::Sequence(_) => RenderFamilyKind::Sequence,
-            Self::Zenuml(_) => RenderFamilyKind::Zenuml,
-            Self::Flowchart(_) => RenderFamilyKind::Flowchart,
-            Self::Swimlane(_) => RenderFamilyKind::Swimlane,
+            Self::Error(_) => DiagramFamilyId::ERROR,
+            Self::Mindmap(_) => DiagramFamilyId::MINDMAP,
+            Self::State(_) => DiagramFamilyId::STATE,
+            Self::Sequence(_) => DiagramFamilyId::SEQUENCE,
+            Self::Zenuml(_) => DiagramFamilyId::ZENUML,
+            Self::Flowchart(_) => DiagramFamilyId::FLOWCHART,
+            Self::Swimlane(_) => DiagramFamilyId::SWIMLANE,
             #[cfg(feature = "layout-cytoscape")]
-            Self::Architecture(_) => RenderFamilyKind::Architecture,
-            Self::Class(_) => RenderFamilyKind::Class,
-            Self::C4(_) => RenderFamilyKind::C4,
-            Self::Cynefin(_) => RenderFamilyKind::Cynefin,
-            Self::Wardley(_) => RenderFamilyKind::Wardley,
-            Self::Railroad(_) => RenderFamilyKind::Railroad,
-            Self::Kanban(_) => RenderFamilyKind::Kanban,
-            Self::Gantt(_) => RenderFamilyKind::Gantt,
-            Self::Pie(_) => RenderFamilyKind::Pie,
-            Self::Packet(_) => RenderFamilyKind::Packet,
-            Self::Timeline(_) => RenderFamilyKind::Timeline,
-            Self::Journey(_) => RenderFamilyKind::Journey,
-            Self::Requirement(_) => RenderFamilyKind::Requirement,
-            Self::Sankey(_) => RenderFamilyKind::Sankey,
-            Self::Radar(_) => RenderFamilyKind::Radar,
-            Self::Info(_) => RenderFamilyKind::Info,
-            Self::Treemap(_) => RenderFamilyKind::Treemap,
-            Self::Block(_) => RenderFamilyKind::Block,
-            Self::Er(_) => RenderFamilyKind::Er,
-            Self::QuadrantChart(_) => RenderFamilyKind::QuadrantChart,
-            Self::XyChart(_) => RenderFamilyKind::XyChart,
-            Self::GitGraph(_) => RenderFamilyKind::GitGraph,
-            Self::TreeView(_) => RenderFamilyKind::TreeView,
-            Self::Ishikawa(_) => RenderFamilyKind::Ishikawa,
-            Self::EventModeling(_) => RenderFamilyKind::EventModeling,
-            Self::Venn(_) => RenderFamilyKind::Venn,
+            Self::Architecture(_) => DiagramFamilyId::ARCHITECTURE,
+            Self::Class(_) => DiagramFamilyId::CLASS,
+            Self::C4(_) => DiagramFamilyId::C4,
+            Self::Cynefin(_) => DiagramFamilyId::CYNEFIN,
+            Self::Wardley(_) => DiagramFamilyId::WARDLEY,
+            Self::Railroad(_) => DiagramFamilyId::RAILROAD,
+            Self::Kanban(_) => DiagramFamilyId::KANBAN,
+            Self::Gantt(_) => DiagramFamilyId::GANTT,
+            Self::Pie(_) => DiagramFamilyId::PIE,
+            Self::Packet(_) => DiagramFamilyId::PACKET,
+            Self::Timeline(_) => DiagramFamilyId::TIMELINE,
+            Self::Journey(_) => DiagramFamilyId::JOURNEY,
+            Self::Requirement(_) => DiagramFamilyId::REQUIREMENT,
+            Self::Sankey(_) => DiagramFamilyId::SANKEY,
+            Self::Radar(_) => DiagramFamilyId::RADAR,
+            Self::Info(_) => DiagramFamilyId::INFO,
+            Self::Treemap(_) => DiagramFamilyId::TREEMAP,
+            Self::Block(_) => DiagramFamilyId::BLOCK,
+            Self::Er(_) => DiagramFamilyId::ER,
+            Self::QuadrantChart(_) => DiagramFamilyId::QUADRANT_CHART,
+            Self::XyChart(_) => DiagramFamilyId::XY_CHART,
+            Self::GitGraph(_) => DiagramFamilyId::GIT_GRAPH,
+            Self::TreeView(_) => DiagramFamilyId::TREE_VIEW,
+            Self::Ishikawa(_) => DiagramFamilyId::ISHIKAWA,
+            Self::EventModeling(_) => DiagramFamilyId::EVENT_MODELING,
+            Self::Venn(_) => DiagramFamilyId::VENN,
         }
     }
 
@@ -1856,8 +1858,8 @@ impl RenderedFamilySvg {
         &self.metadata
     }
 
-    pub fn family_kind(&self) -> RenderFamilyKind {
-        self.style_report.family_kind()
+    pub fn family_id(&self) -> DiagramFamilyId {
+        self.style_report.family_id()
     }
 
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
@@ -1978,7 +1980,7 @@ impl RenderedFamilySvg {
 
     fn output_metadata(&self) -> SvgPostprocessMetadata {
         SvgPostprocessMetadata::from_svg(&self.svg)
-            .with_family_kind(self.family_kind())
+            .with_family_id(self.family_id())
             .with_diagram_type(self.metadata.diagram_type.clone())
             .with_optional_diagram_title(self.metadata.title.clone())
     }
@@ -2020,8 +2022,8 @@ impl RenderedResvgCompatibleSvg {
         &self.svg
     }
 
-    pub const fn family_kind(&self) -> RenderFamilyKind {
-        self.style_report.family_kind()
+    pub const fn family_id(&self) -> DiagramFamilyId {
+        self.style_report.family_id()
     }
 
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
@@ -2051,8 +2053,8 @@ impl FamilyRenderArtifact {
         family: BuiltinFamilyArtifact,
         context: FamilyRenderContext,
     ) -> Result<Self> {
-        let actual_family = family.kind();
-        let expected_family = context.family_kind();
+        let actual_family = family.family_id();
+        let expected_family = context.family_id();
         if actual_family != expected_family {
             return Err(Error::InvalidModel {
                 message: format!(
@@ -2073,8 +2075,8 @@ impl FamilyRenderArtifact {
         &self.metadata
     }
 
-    pub fn family_kind(&self) -> RenderFamilyKind {
-        self.family.kind()
+    pub fn family_id(&self) -> DiagramFamilyId {
+        self.family.family_id()
     }
 
     pub fn gantt_time_axis_diagnostics(&self) -> Option<GanttTimeAxisDiagnostics> {
@@ -2093,7 +2095,7 @@ impl FamilyRenderArtifact {
                     .map_err(|error| {
                         format!(
                             "failed to project {} compatibility JSON: {error}",
-                            self.family.kind()
+                            self.family.family_id()
                         )
                     })
             })
@@ -2382,54 +2384,10 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
     required
 }
 
-fn detect_render_family(parsed: &ParsedDiagramRender) -> Option<RenderFamilyKind> {
-    let effective_config = &parsed.metadata().effective_config;
-    Some(match parsed.model() {
-        RenderSemanticModel::Error(_) => RenderFamilyKind::Error,
-        RenderSemanticModel::Mindmap(_) => RenderFamilyKind::Mindmap,
-        RenderSemanticModel::State(_) => RenderFamilyKind::State,
-        RenderSemanticModel::Sequence(_) => RenderFamilyKind::Sequence,
-        RenderSemanticModel::Zenuml(_) => RenderFamilyKind::Zenuml,
-        RenderSemanticModel::Flowchart(_)
-            if effective_config.get_str("layout") == Some("swimlane") =>
-        {
-            RenderFamilyKind::Swimlane
-        }
-        RenderSemanticModel::Flowchart(_) => RenderFamilyKind::Flowchart,
-        RenderSemanticModel::Architecture(_) => RenderFamilyKind::Architecture,
-        RenderSemanticModel::Class(_) => RenderFamilyKind::Class,
-        RenderSemanticModel::C4(_) => RenderFamilyKind::C4,
-        RenderSemanticModel::Cynefin(_) => RenderFamilyKind::Cynefin,
-        RenderSemanticModel::Wardley(_) => RenderFamilyKind::Wardley,
-        RenderSemanticModel::Railroad(_) => RenderFamilyKind::Railroad,
-        RenderSemanticModel::Kanban(_) => RenderFamilyKind::Kanban,
-        RenderSemanticModel::Gantt(_) => RenderFamilyKind::Gantt,
-        RenderSemanticModel::Pie(_) => RenderFamilyKind::Pie,
-        RenderSemanticModel::Packet(_) => RenderFamilyKind::Packet,
-        RenderSemanticModel::Timeline(_) => RenderFamilyKind::Timeline,
-        RenderSemanticModel::Journey(_) => RenderFamilyKind::Journey,
-        RenderSemanticModel::Requirement(_) => RenderFamilyKind::Requirement,
-        RenderSemanticModel::Sankey(_) => RenderFamilyKind::Sankey,
-        RenderSemanticModel::Radar(_) => RenderFamilyKind::Radar,
-        RenderSemanticModel::Info(_) => RenderFamilyKind::Info,
-        RenderSemanticModel::Treemap(_) => RenderFamilyKind::Treemap,
-        RenderSemanticModel::Block(_) => RenderFamilyKind::Block,
-        RenderSemanticModel::Er(_) => RenderFamilyKind::Er,
-        RenderSemanticModel::QuadrantChart(_) => RenderFamilyKind::QuadrantChart,
-        RenderSemanticModel::XyChart(_) => RenderFamilyKind::XyChart,
-        RenderSemanticModel::GitGraph(_) => RenderFamilyKind::GitGraph,
-        RenderSemanticModel::TreeView(_) => RenderFamilyKind::TreeView,
-        RenderSemanticModel::Ishikawa(_) => RenderFamilyKind::Ishikawa,
-        RenderSemanticModel::EventModeling(_) => RenderFamilyKind::EventModeling,
-        RenderSemanticModel::Venn(_) => RenderFamilyKind::Venn,
-        RenderSemanticModel::CustomJson(_) => return None,
-    })
-}
-
 fn validate_render_input(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
-) -> Result<RenderFamilyKind> {
+) -> Result<DiagramFamilyId> {
     let meta = parsed.metadata();
     let model = parsed.model();
     if !merman_core::__private::theme_parse_evidence(meta)
@@ -2456,7 +2414,7 @@ fn validate_render_input(
     }
 
     session.resource_policy().check_parsed_render(parsed)?;
-    detect_render_family(parsed).ok_or_else(|| Error::InvalidModel {
+    parsed.family_id().ok_or_else(|| Error::InvalidModel {
         message: format!(
             "render model variant {} has no built-in family for diagram type: {diagram_type}",
             model.kind()
@@ -2470,7 +2428,7 @@ pub fn plan_render(
     session: &RenderSession,
 ) -> Result<RenderCapabilityPlan> {
     let meta = parsed.metadata();
-    let family_kind = validate_render_input(parsed, session)?;
+    let family_id = validate_render_input(parsed, session)?;
     let required = required_capabilities(parsed);
     let missing = required
         .iter()
@@ -2479,7 +2437,7 @@ pub fn plan_render(
         .collect();
     Ok(RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),
-        family_kind,
+        family_id,
         required,
         missing,
     })
@@ -2550,11 +2508,11 @@ pub fn prepare(
     }
     let plan = plan_render(&parsed, &session)?;
     plan.ensure_available()?;
-    let expected_family = plan.family_kind();
+    let expected_family = plan.family_id();
     let context = FamilyRenderContext::resolve(session, expected_family);
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    if expected_family == RenderFamilyKind::Class {
+    if expected_family == DiagramFamilyId::CLASS {
         prepare_class_render(parsed, options, context)
     } else {
         prepare_non_class_render(parsed, options, context)
@@ -2647,8 +2605,8 @@ fn prepare_non_class_render(
                 crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
             })?)
         }
-        RenderSemanticModel::Flowchart(model) => match execution.family_kind() {
-            RenderFamilyKind::Swimlane => {
+        RenderSemanticModel::Flowchart(model) => match execution.family_id() {
+            DiagramFamilyId::SWIMLANE => {
                 BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                     model,
                     flowchart_label_sources,
@@ -2669,7 +2627,7 @@ fn prepare_non_class_render(
                     },
                 )?)
             }
-            RenderFamilyKind::Flowchart => {
+            DiagramFamilyId::FLOWCHART => {
                 BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
                     model,
                     flowchart_label_sources,
@@ -3038,18 +2996,15 @@ mod tests {
     fn flowchart_node_theme(style: ThemeStylePatch) -> DiagramTheme {
         DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(
-                        ThemeRule::new(ThemeTarget::Node, style)
-                            .for_family(RenderFamilyKind::Flowchart),
-                    ),
-                ),
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(ThemeTarget::Node, style).for_family(DiagramFamilyId::FLOWCHART),
+                )),
             )
             .expect("compile Flowchart Node theme")
     }
 
     fn flowchart_node_stroke_width_theme(
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
         stroke_width: f32,
     ) -> DiagramTheme {
         DiagramThemeCompiler::new()
@@ -3070,7 +3025,7 @@ mod tests {
     }
 
     fn flowchart_node_stroke_dasharray_theme(
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
         stroke_dasharray: impl IntoIterator<Item = f32>,
     ) -> DiagramTheme {
         DiagramThemeCompiler::new()
@@ -3090,7 +3045,7 @@ mod tests {
             .expect("compile Flowchart Node stroke-dasharray theme")
     }
 
-    fn flowchart_node_radius_theme(family: RenderFamilyKind, radius: f32) -> DiagramTheme {
+    fn flowchart_node_radius_theme(family: DiagramFamilyId, radius: f32) -> DiagramTheme {
         DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
@@ -3111,26 +3066,26 @@ mod tests {
             .expect("compile Flowchart Node radius theme")
     }
 
-    fn flowchart_node_label_font_stack_theme(family: RenderFamilyKind) -> DiagramTheme {
+    fn flowchart_node_label_font_stack_theme(family: DiagramFamilyId) -> DiagramTheme {
         flowchart_node_label_font_stack_theme_with_base(family, None)
     }
 
     fn flowchart_node_label_font_stack_theme_with_base(
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
         base_font_stack: Option<FontStack>,
     ) -> DiagramTheme {
         flowchart_node_label_typography_theme(family, base_font_stack, None, None)
     }
 
     fn flowchart_node_label_font_stack_and_size_theme_with_base(
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
         base_font_size_px: Option<f32>,
     ) -> DiagramTheme {
         flowchart_node_label_typography_theme(family, None, Some(26.0), base_font_size_px)
     }
 
     fn flowchart_node_label_font_size_theme_without_catalog(
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
     ) -> DiagramTheme {
         DiagramThemeCompiler::new()
             .compile(
@@ -3154,7 +3109,7 @@ mod tests {
     }
 
     fn flowchart_node_label_typography_theme(
-        family: RenderFamilyKind,
+        family: DiagramFamilyId,
         base_font_stack: Option<FontStack>,
         node_label_font_size_px: Option<f32>,
         base_font_size_px: Option<f32>,
@@ -3307,7 +3262,7 @@ mod tests {
         theme_residuals: Vec<FamilyThemeResidual>,
     ) -> FamilyStyleReport {
         FamilyStyleReport {
-            family_kind: RenderFamilyKind::State,
+            family_id: DiagramFamilyId::STATE,
             evaluation,
             output_mutated: false,
             theme_required: required,
@@ -3394,7 +3349,7 @@ mod tests {
             .expect_err("strict portability must reject incomplete family evidence");
         assert_eq!(
             error.incomplete_family_theme(),
-            Some((RenderFamilyKind::State, 1, 0))
+            Some((DiagramFamilyId::STATE, 1, 0))
         );
 
         let mut mermaid_compatibility =
@@ -3407,7 +3362,7 @@ mod tests {
         assert!(matches!(
             mermaid_compatibility.ensure_portable(),
             Err(Error::MermaidThemeCompatibility {
-                family_kind: RenderFamilyKind::State,
+                family_id: DiagramFamilyId::STATE,
                 residual_count: 1,
             })
         ));
@@ -3443,7 +3398,7 @@ mod tests {
         assert!(matches!(
             error,
             Error::MermaidThemeCompatibility {
-                family_kind: RenderFamilyKind::State,
+                family_id: DiagramFamilyId::STATE,
                 residual_count: 1,
             }
         ));
@@ -3498,7 +3453,7 @@ mod tests {
         assert!(matches!(
             error,
             Error::LegacyFamilyThemeCompatibility {
-                family_kind: RenderFamilyKind::State,
+                family_id: DiagramFamilyId::STATE,
                 residual_count: 1,
                 ..
             }
@@ -3576,17 +3531,17 @@ mod tests {
             (
                 Engine::new(),
                 "flowchart TD\nA --> B\n",
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
             ),
             (
                 Engine::new(),
                 "swimlane-beta LR\nA --> B\n",
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
             ),
             (
                 configured_swimlane,
                 "flowchart LR\nA --> B\n",
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
             ),
         ];
 
@@ -3597,7 +3552,7 @@ mod tests {
                 .expect("family fixture should produce a render model");
             let plan = plan_render(&parsed, &session()).unwrap();
 
-            assert_eq!(plan.family_kind(), expected_family, "{source}");
+            assert_eq!(plan.family_id(), expected_family, "{source}");
         }
     }
 
@@ -3613,12 +3568,12 @@ mod tests {
             (
                 Engine::new(),
                 "flowchart TD\nA --> B\n",
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
             ),
             (
                 configured_swimlane,
                 "flowchart LR\nA --> B\n",
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
             ),
         ];
 
@@ -3637,9 +3592,9 @@ mod tests {
                 .resolved_theme()
                 .expect("themed artifact should retain a resolved family plan");
 
-            assert_eq!(artifact.family_kind(), expected_family, "{source}");
-            assert_eq!(artifact.context.family_kind(), expected_family, "{source}");
-            assert_eq!(resolved_theme.family(), expected_family, "{source}");
+            assert_eq!(artifact.family_id(), expected_family, "{source}");
+            assert_eq!(artifact.context.family_id(), expected_family, "{source}");
+            assert_eq!(resolved_theme.family_id(), expected_family, "{source}");
             assert_eq!(
                 artifact.context.session().theme_recipe_fingerprint(),
                 Some(theme.recipe_fingerprint()),
@@ -3668,7 +3623,7 @@ mod tests {
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render themed family SVG");
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert_eq!(
             rendered.root_theme_report().evaluation(),
             RootThemeEvaluation::NotApplicable
@@ -3689,7 +3644,7 @@ mod tests {
         let rendered = rendered
             .apply_pipeline(&SvgPipeline::parity())
             .expect("apply themed family SVG pipeline");
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert_eq!(
             rendered.session.theme_recipe_fingerprint(),
             Some(theme.recipe_fingerprint())
@@ -3698,7 +3653,7 @@ mod tests {
         let finalized = rendered
             .finalize_resvg(&SvgPipeline::resvg_safe())
             .expect("finalize themed family SVG");
-        assert_eq!(finalized.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(finalized.family_id(), DiagramFamilyId::SWIMLANE);
         assert!(!finalized.style_report().is_verified());
         assert_eq!(
             finalized.session.theme_recipe_fingerprint(),
@@ -3710,10 +3665,7 @@ mod tests {
             completion.output().finalization_report().preset(),
             SvgPipelinePreset::ResvgSafe
         );
-        assert_eq!(
-            completion.report().family_kind(),
-            RenderFamilyKind::Swimlane
-        );
+        assert_eq!(completion.report().family_id(), DiagramFamilyId::SWIMLANE);
         assert_eq!(
             completion.report().theme_recipe_fingerprint(),
             Some(theme.recipe_fingerprint())
@@ -3728,7 +3680,7 @@ mod tests {
         assert_eq!(
             completion.report().style_report(),
             &FamilyStyleReport {
-                family_kind: RenderFamilyKind::Swimlane,
+                family_id: DiagramFamilyId::SWIMLANE,
                 evaluation: FamilyStyleEvaluation::NotApplicable,
                 output_mutated: false,
                 theme_required: Vec::new(),
@@ -4012,7 +3964,7 @@ mod tests {
         assert!(matches!(
             apply_error,
             Error::UnverifiedFamilyOutputMutation {
-                family_kind: RenderFamilyKind::Flowchart
+                family_id: DiagramFamilyId::FLOWCHART
             }
         ));
 
@@ -4025,7 +3977,7 @@ mod tests {
         assert!(matches!(
             finalize_error,
             Error::UnverifiedFamilyOutputMutation {
-                family_kind: RenderFamilyKind::Flowchart
+                family_id: DiagramFamilyId::FLOWCHART
             }
         ));
     }
@@ -4241,7 +4193,7 @@ mod tests {
                                 .with_fill(fill)
                                 .with_stroke(stroke),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -4296,7 +4248,7 @@ mod tests {
                                 .with_fill(CanvasPaint::Transparent)
                                 .with_stroke(CanvasPaint::Transparent),
                         )
-                        .for_family(RenderFamilyKind::Swimlane),
+                        .for_family(DiagramFamilyId::SWIMLANE),
                     ),
                 ),
             )
@@ -4319,7 +4271,7 @@ mod tests {
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("emitted typed Swimlane paint must satisfy strict portability");
 
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert!(
             rendered
                 .svg()
@@ -4350,7 +4302,7 @@ mod tests {
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap())
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -4403,7 +4355,7 @@ mod tests {
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap())
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -4521,7 +4473,7 @@ mod tests {
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 dynamic.style_report().residuals().len(),
             ))
         );
@@ -4577,9 +4529,9 @@ mod tests {
     #[test]
     fn require_portable_accepts_flowchart_and_swimlane_node_stroke_width_after_emission() {
         for (family, source) in [
-            (RenderFamilyKind::Flowchart, "flowchart LR\nA[Alpha]\n"),
+            (DiagramFamilyId::FLOWCHART, "flowchart LR\nA[Alpha]\n"),
             (
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
                 "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\n",
             ),
         ] {
@@ -4603,7 +4555,7 @@ mod tests {
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("classic Process writer should prove typed Node stroke width");
 
-            assert_eq!(rendered.family_kind(), family);
+            assert_eq!(rendered.family_id(), family);
             assert!(
                 flowchart_node_shape_style(rendered.svg(), "A")
                     .contains("stroke-width:2.5px !important")
@@ -4625,7 +4577,7 @@ mod tests {
 
     #[test]
     fn flowchart_source_and_explicit_config_own_node_stroke_width_precedence() {
-        let theme = flowchart_node_stroke_width_theme(RenderFamilyKind::Flowchart, 2.5);
+        let theme = flowchart_node_stroke_width_theme(DiagramFamilyId::FLOWCHART, 2.5);
         let render = |engine: Engine, source: &str| {
             let parsed = theme
                 .install_parse_compatibility(engine)
@@ -4685,7 +4637,7 @@ mod tests {
 
     #[test]
     fn unverified_flowchart_node_surfaces_keep_typed_stroke_width_fail_closed() {
-        let theme = flowchart_node_stroke_width_theme(RenderFamilyKind::Flowchart, 2.5);
+        let theme = flowchart_node_stroke_width_theme(DiagramFamilyId::FLOWCHART, 2.5);
         let cases = [
             r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
 flowchart LR
@@ -4737,7 +4689,7 @@ A[Alpha]
             };
             assert_eq!(
                 error.unverified_family_theme(),
-                Some((RenderFamilyKind::Flowchart, 1))
+                Some((DiagramFamilyId::FLOWCHART, 1))
             );
         }
     }
@@ -4745,9 +4697,9 @@ A[Alpha]
     #[test]
     fn require_portable_accepts_flowchart_and_swimlane_node_stroke_dasharray_after_emission() {
         for (family, source) in [
-            (RenderFamilyKind::Flowchart, "flowchart LR\nA[Alpha]\n"),
+            (DiagramFamilyId::FLOWCHART, "flowchart LR\nA[Alpha]\n"),
             (
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
                 "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\n",
             ),
         ] {
@@ -4771,7 +4723,7 @@ A[Alpha]
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("classic Process writer should prove typed Node stroke dasharray");
 
-            assert_eq!(rendered.family_kind(), family);
+            assert_eq!(rendered.family_id(), family);
             assert!(
                 flowchart_node_shape_style(rendered.svg(), "A")
                     .contains("stroke-dasharray:4 2 !important")
@@ -4800,7 +4752,7 @@ A[Alpha]
 
     #[test]
     fn flowchart_source_owns_node_stroke_dasharray_precedence() {
-        let theme = flowchart_node_stroke_dasharray_theme(RenderFamilyKind::Flowchart, [4.0, 2.0]);
+        let theme = flowchart_node_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
         let parsed = theme
             .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
@@ -4842,7 +4794,7 @@ A[Alpha]
 
     #[test]
     fn unverified_flowchart_node_surfaces_keep_typed_stroke_dasharray_fail_closed() {
-        let theme = flowchart_node_stroke_dasharray_theme(RenderFamilyKind::Flowchart, [4.0, 2.0]);
+        let theme = flowchart_node_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
         let cases = [
             r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
 flowchart LR
@@ -4894,7 +4846,7 @@ A[Alpha]
             };
             assert_eq!(
                 error.unverified_family_theme(),
-                Some((RenderFamilyKind::Flowchart, 1))
+                Some((DiagramFamilyId::FLOWCHART, 1))
             );
         }
     }
@@ -4902,9 +4854,9 @@ A[Alpha]
     #[test]
     fn require_portable_accepts_flowchart_and_swimlane_node_radius_after_emission() {
         for (family, source) in [
-            (RenderFamilyKind::Flowchart, "flowchart LR\nA[Alpha]\n"),
+            (DiagramFamilyId::FLOWCHART, "flowchart LR\nA[Alpha]\n"),
             (
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
                 "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\n",
             ),
         ] {
@@ -4928,7 +4880,7 @@ A[Alpha]
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("classic Process writer should prove typed Node radius");
 
-            assert_eq!(rendered.family_kind(), family);
+            assert_eq!(rendered.family_id(), family);
             assert_eq!(
                 flowchart_node_shape_attribute(rendered.svg(), "A", "rx").as_deref(),
                 Some("8")
@@ -4961,7 +4913,7 @@ A[Alpha]
 
     #[test]
     fn flowchart_source_and_explicit_config_own_node_radius_precedence() {
-        let theme = flowchart_node_radius_theme(RenderFamilyKind::Flowchart, 8.0);
+        let theme = flowchart_node_radius_theme(DiagramFamilyId::FLOWCHART, 8.0);
         let render = |engine: Engine, source: &str| {
             let parsed = theme
                 .install_parse_compatibility(engine)
@@ -5035,7 +4987,7 @@ A[Alpha]
 
     #[test]
     fn unverified_flowchart_node_surfaces_keep_typed_radius_fail_closed() {
-        let theme = flowchart_node_radius_theme(RenderFamilyKind::Flowchart, 8.0);
+        let theme = flowchart_node_radius_theme(DiagramFamilyId::FLOWCHART, 8.0);
         let cases = [
             r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
 flowchart LR
@@ -5087,7 +5039,7 @@ A[Alpha]
             };
             assert_eq!(
                 error.unverified_family_theme(),
-                Some((RenderFamilyKind::Flowchart, 1))
+                Some((DiagramFamilyId::FLOWCHART, 1))
             );
         }
     }
@@ -5117,7 +5069,7 @@ A[Alpha]
     fn require_portable_accepts_flowchart_and_swimlane_node_label_typography_after_emission() {
         for (family, source) in [
             (
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 r#"---
 config:
   htmlLabels: false
@@ -5129,7 +5081,7 @@ A[Alpha]
 "#,
             ),
             (
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
                 r#"---
 config:
   layout: swimlane
@@ -5162,7 +5114,7 @@ A[Alpha]
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("prepared SVG writer should prove typed NodeLabel typography");
 
-            assert_eq!(rendered.family_kind(), family);
+            assert_eq!(rendered.family_id(), family);
             let label_style = flowchart_node_label_style(rendered.svg(), "A");
             assert!(
                 label_style.contains("font-family:\"Excalifont\" !important"),
@@ -5204,7 +5156,7 @@ A[Alpha]
     fn typed_node_label_font_stack_outranks_legacy_base_typography() {
         for (family, source) in [
             (
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 r#"---
 config:
   htmlLabels: false
@@ -5216,7 +5168,7 @@ A[Alpha]
 "#,
             ),
             (
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
                 r#"---
 config:
   layout: swimlane
@@ -5277,7 +5229,7 @@ A[Alpha]
     fn typed_node_label_font_size_outranks_legacy_base_typography() {
         for (family, source) in [
             (
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 r#"---
 config:
   htmlLabels: false
@@ -5289,7 +5241,7 @@ A[Alpha]
 "#,
             ),
             (
-                RenderFamilyKind::Swimlane,
+                DiagramFamilyId::SWIMLANE,
                 r#"---
 config:
   layout: swimlane
@@ -5337,7 +5289,7 @@ A[Alpha]
 
     #[test]
     fn flowchart_source_and_explicit_config_own_node_label_font_stack_precedence() {
-        let theme = flowchart_node_label_font_stack_theme(RenderFamilyKind::Flowchart);
+        let theme = flowchart_node_label_font_stack_theme(DiagramFamilyId::FLOWCHART);
         let render = |engine: Engine, source: &str| {
             let parsed = theme
                 .install_parse_compatibility(engine)
@@ -5411,7 +5363,7 @@ A[测试]:::local
     #[test]
     fn flowchart_source_and_explicit_config_own_only_node_label_font_size_precedence() {
         let theme = flowchart_node_label_font_stack_and_size_theme_with_base(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             None,
         );
         let render = |engine: Engine, source: &str| {
@@ -5486,7 +5438,7 @@ A[Alpha]:::local
     #[test]
     fn flowchart_node_label_typography_rejects_unprepared_label_modes() {
         let theme = flowchart_node_label_font_stack_and_size_theme_with_base(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             None,
         );
         let cases = [
@@ -5541,7 +5493,7 @@ style A font-family:Excalifont
     #[test]
     fn flowchart_node_label_font_size_without_prepared_text_is_residual() {
         let theme =
-            flowchart_node_label_font_size_theme_without_catalog(RenderFamilyKind::Flowchart);
+            flowchart_node_label_font_size_theme_without_catalog(DiagramFamilyId::FLOWCHART);
         let source = r#"---
 config:
   htmlLabels: false
@@ -5604,7 +5556,7 @@ A[Alpha]
         assert!(matches!(
             strict_error,
             Error::UnverifiedFamilyTheme {
-                family_kind: RenderFamilyKind::Flowchart,
+                family_id: DiagramFamilyId::FLOWCHART,
                 residual_count: 1,
             }
         ));
@@ -5613,7 +5565,7 @@ A[Alpha]
     #[test]
     fn flowchart_node_without_label_makes_typed_typography_not_applicable() {
         let theme = flowchart_node_label_font_stack_and_size_theme_with_base(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             None,
         );
         let parsed = theme
@@ -5669,7 +5621,7 @@ A@{ shape: start }
     #[test]
     fn flowchart_escaped_font_size_is_not_a_node_label_override() {
         let theme = flowchart_node_label_font_stack_and_size_theme_with_base(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             None,
         );
         let source = r#"---
@@ -5747,7 +5699,7 @@ A[Alpha]:::local
         assert_eq!(
             strict_error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -5756,7 +5708,7 @@ A[Alpha]:::local
     #[test]
     fn flowchart_uppercase_font_size_is_not_a_node_label_override() {
         let theme = flowchart_node_label_font_stack_and_size_theme_with_base(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             None,
         );
         let parsed = theme
@@ -5814,7 +5766,7 @@ A[Alpha]:::local
     #[test]
     fn flowchart_entity_authored_unicode_space_consumes_typed_node_label_typography() {
         let theme = flowchart_node_label_font_stack_and_size_theme_with_base(
-            RenderFamilyKind::Flowchart,
+            DiagramFamilyId::FLOWCHART,
             None,
         );
         let source = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\nA[\"&nbsp;\"]\n";
@@ -5915,7 +5867,7 @@ A[Alpha]:::local
                                 ThemeStylePatch::default()
                                     .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                             )
-                            .for_family(RenderFamilyKind::Flowchart),
+                            .for_family(DiagramFamilyId::FLOWCHART),
                         ),
                     )
                     .with_mermaid_compatibility(compatibility),
@@ -6003,7 +5955,7 @@ A[Alpha]:::local
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -6067,7 +6019,7 @@ A[Alpha]
             assert_eq!(
                 error.unverified_family_theme(),
                 Some((
-                    RenderFamilyKind::Flowchart,
+                    DiagramFamilyId::FLOWCHART,
                     rendered.style_report().theme_residuals().len(),
                 ))
             );
@@ -6228,7 +6180,7 @@ A[Alpha]
             assert_eq!(
                 error.unverified_family_theme(),
                 Some((
-                    RenderFamilyKind::Flowchart,
+                    DiagramFamilyId::FLOWCHART,
                     rendered.style_report().theme_residuals().len(),
                 ))
             );
@@ -6358,7 +6310,7 @@ A[Alpha]
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -6437,7 +6389,7 @@ A[Alpha]
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -6543,7 +6495,7 @@ A[Alpha]
         assert!(matches!(
             error,
             Error::UnverifiedFamilyOutputMutation {
-                family_kind: RenderFamilyKind::Flowchart
+                family_id: DiagramFamilyId::FLOWCHART
             }
         ));
     }
@@ -6594,7 +6546,7 @@ A[Alpha]
         assert!(matches!(
             error,
             Error::UnverifiedFamilyOutputMutation {
-                family_kind: RenderFamilyKind::Flowchart
+                family_id: DiagramFamilyId::FLOWCHART
             }
         ));
     }
@@ -6652,7 +6604,7 @@ A[Alpha]
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -6717,7 +6669,7 @@ A[Alpha]
             };
         assert_eq!(
             error.unverified_family_style().map(|(family, _)| family),
-            Some(RenderFamilyKind::Flowchart)
+            Some(DiagramFamilyId::FLOWCHART)
         );
     }
 
@@ -6771,7 +6723,7 @@ A[Alpha]
             };
         assert_eq!(
             error.unverified_family_style().map(|(family, _)| family),
-            Some(RenderFamilyKind::Flowchart)
+            Some(DiagramFamilyId::FLOWCHART)
         );
     }
 
@@ -6824,7 +6776,7 @@ A[Alpha]
             };
         assert_eq!(
             error.unverified_family_style().map(|(family, _)| family),
-            Some(RenderFamilyKind::Flowchart)
+            Some(DiagramFamilyId::FLOWCHART)
         );
     }
 
@@ -6937,7 +6889,7 @@ linkStyle 1 font-weight:banana
             };
         assert_eq!(
             error.unverified_family_style().map(|(family, _)| family),
-            Some(RenderFamilyKind::Flowchart)
+            Some(DiagramFamilyId::FLOWCHART)
         );
     }
 
@@ -7002,7 +6954,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Swimlane),
+                        .for_family(DiagramFamilyId::SWIMLANE),
                     ),
                 ),
             )
@@ -7027,7 +6979,7 @@ style Empty font-weight:banana
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("best-effort output should preserve dynamic Swimlane style");
 
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert!(rendered.svg().contains("opacity:var(--alpha)"));
         assert!(rendered.style_report().residuals().iter().any(|residual| {
             residual.owner_id() == "Lane"
@@ -7056,7 +7008,7 @@ style Empty font-weight:banana
             };
         assert_eq!(
             error.unverified_family_style().map(|(family, _)| family),
-            Some(RenderFamilyKind::Swimlane)
+            Some(DiagramFamilyId::SWIMLANE)
         );
     }
 
@@ -7071,7 +7023,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Swimlane),
+                        .for_family(DiagramFamilyId::SWIMLANE),
                     ),
                 ),
             )
@@ -7108,7 +7060,7 @@ style Empty font-weight:banana
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("best-effort output should preserve sanitized Swimlane XHTML");
 
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert!(rendered.style_report().residuals().iter().any(|residual| {
             residual.owner_id() == "Rich"
                 && residual.property() == Some("color")
@@ -7134,7 +7086,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Swimlane),
+                        .for_family(DiagramFamilyId::SWIMLANE),
                     ),
                 ),
             )
@@ -7157,7 +7109,7 @@ style Empty font-weight:banana
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("best-effort output should preserve emitted edge label style");
 
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert!(rendered.style_report().residuals().iter().any(|residual| {
             residual.property() == Some("opacity")
                 && residual.channel() == FamilyStyleChannel::Shape
@@ -7213,7 +7165,7 @@ style Empty font-weight:banana
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -7268,7 +7220,7 @@ style Empty font-weight:banana
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -7318,7 +7270,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -7375,7 +7327,7 @@ style Empty font-weight:banana
         assert_eq!(
             error.unverified_family_theme(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().theme_residuals().len(),
             ))
         );
@@ -7417,7 +7369,7 @@ style Empty font-weight:banana
                     DiagramThemeSpec::new().with_styles(
                         ThemeRuleSet::default().with_rule(
                             ThemeRule::new(ThemeTarget::Node, style)
-                                .for_family(RenderFamilyKind::Flowchart),
+                                .for_family(DiagramFamilyId::FLOWCHART),
                         ),
                     ),
                 )
@@ -7461,7 +7413,7 @@ style Empty font-weight:banana
             assert_eq!(
                 error.unverified_family_theme(),
                 Some((
-                    RenderFamilyKind::Flowchart,
+                    DiagramFamilyId::FLOWCHART,
                     rendered.style_report().theme_residuals().len(),
                 ))
             );
@@ -7559,7 +7511,7 @@ style Empty font-weight:banana
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("emitted Swimlane ordinal palette must satisfy strict portability");
 
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
         assert!(
             flowchart_node_shape_style(rendered.svg(), "A").contains("fill:#ef4444 !important")
         );
@@ -7587,7 +7539,7 @@ style Empty font-weight:banana
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
                         .with_ordinal(OrdinalSelector::exact(2).unwrap())
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -7638,7 +7590,7 @@ style Empty font-weight:banana
         assert_eq!(
             error.unverified_family_theme(),
             Some((
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
                 rendered.style_report().theme_residuals().len(),
             ))
         );
@@ -7655,7 +7607,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Flowchart),
+                        .for_family(DiagramFamilyId::FLOWCHART),
                     ),
                 ),
             )
@@ -7677,7 +7629,7 @@ style Empty font-weight:banana
         assert!(matches!(
             error,
             Error::LegacyFamilyThemeCompatibility {
-                family_kind: RenderFamilyKind::Flowchart,
+                family_id: DiagramFamilyId::FLOWCHART,
                 residual_count: 1..,
             }
         ));
@@ -7694,7 +7646,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -7748,7 +7700,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -7802,7 +7754,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -7860,7 +7812,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -7890,7 +7842,7 @@ style Empty font-weight:banana
             };
             assert_eq!(
                 error.unverified_family_theme(),
-                Some((RenderFamilyKind::Sequence, 1))
+                Some((DiagramFamilyId::SEQUENCE, 1))
             );
         }
     }
@@ -7906,7 +7858,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -7964,7 +7916,7 @@ style Empty font-weight:banana
                             ThemeTarget::Actor,
                             ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8018,7 +7970,7 @@ style Empty font-weight:banana
             };
         assert_eq!(
             error.unverified_family_theme(),
-            Some((RenderFamilyKind::Sequence, 1))
+            Some((DiagramFamilyId::SEQUENCE, 1))
         );
     }
 
@@ -8033,7 +7985,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8099,7 +8051,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8165,7 +8117,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::LinearGradient(gradient)),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8214,7 +8166,7 @@ style Empty font-weight:banana
             };
         assert_eq!(
             error.unverified_family_theme(),
-            Some((RenderFamilyKind::Sequence, 1))
+            Some((DiagramFamilyId::SEQUENCE, 1))
         );
 
         let configured_parse = || {
@@ -8264,7 +8216,7 @@ style Empty font-weight:banana
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8333,7 +8285,7 @@ Alice->>Bob: Hello
             };
         assert_eq!(
             error.unverified_family_theme(),
-            Some((RenderFamilyKind::Sequence, 1))
+            Some((DiagramFamilyId::SEQUENCE, 1))
         );
     }
 
@@ -8348,7 +8300,7 @@ Alice->>Bob: Hello
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8398,7 +8350,7 @@ Alice->>Bob: Hello
                 };
                 assert_eq!(
                     error.unverified_family_theme(),
-                    Some((RenderFamilyKind::Sequence, 1))
+                    Some((DiagramFamilyId::SEQUENCE, 1))
                 );
             }
         }
@@ -8416,7 +8368,7 @@ Alice->>Bob: Hello
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
                         .with_ordinal(OrdinalSelector::exact(3).unwrap())
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -8473,7 +8425,7 @@ Alice->>Bob: Hello
                                     .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                             )
                             .with_ordinal(ordinal)
-                            .for_family(RenderFamilyKind::Sequence),
+                            .for_family(DiagramFamilyId::SEQUENCE),
                         )
                         .with_rule(
                             ThemeRule::new(
@@ -8482,18 +8434,17 @@ Alice->>Bob: Hello
                                     .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
                             )
                             .with_ordinal(ordinal)
-                            .for_family(RenderFamilyKind::Sequence),
+                            .for_family(DiagramFamilyId::SEQUENCE),
                         )
                         .with_rule(
                             ThemeRule::new(ThemeTarget::Actor, radius)
                                 .with_ordinal(ordinal)
-                                .for_family(RenderFamilyKind::Sequence),
+                                .for_family(DiagramFamilyId::SEQUENCE),
                         ),
                 ),
             )
             .expect("compile ordinal Sequence actor theme");
-        let source =
-            "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
+        let source = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n";
         let parse = || {
             theme
                 .install_parse_compatibility(Engine::new())
@@ -8505,10 +8456,7 @@ Alice->>Bob: Hello
             crate::environment::RenderEnvironment::deterministic()
                 .with_resource_policy(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
-                        .with_limit(
-                            crate::resources::ResourceLimitId::MaxLayoutWorkUnits,
-                            limit,
-                        )
+                        .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, limit)
                         .unwrap(),
                 )
                 .begin_session_with_theme(&theme)
@@ -8602,11 +8550,11 @@ Alice->>Bob: Hello
                                 ThemeStylePatch::default()
                                     .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                             )
-                            .for_family(RenderFamilyKind::Sequence),
+                            .for_family(DiagramFamilyId::SEQUENCE),
                         )
                         .with_rule(
                             ThemeRule::new(ThemeTarget::Actor, winning_style)
-                                .for_family(RenderFamilyKind::Sequence),
+                                .for_family(DiagramFamilyId::SEQUENCE),
                         ),
                 ),
             )
@@ -8670,7 +8618,7 @@ Alice->>Bob: Hello
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render State SVG");
 
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::State);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::STATE);
         assert_eq!(
             rendered.style_report().verification(),
             FamilyStyleVerification::Unverified
@@ -8965,7 +8913,7 @@ Alice->>Bob: Hello
         assert!(matches!(
             error,
             Error::UnverifiedFamilyTheme {
-                family_kind: RenderFamilyKind::State,
+                family_id: DiagramFamilyId::STATE,
                 residual_count: 1,
             }
         ));
@@ -9199,7 +9147,7 @@ Alice->>Bob: Hello
         assert_eq!(
             error.unverified_family_theme(),
             Some((
-                RenderFamilyKind::State,
+                DiagramFamilyId::STATE,
                 rendered.style_report().theme_residuals().len(),
             ))
         );
@@ -9248,7 +9196,7 @@ Alice->>Bob: Hello
         assert_eq!(
             error.unverified_family_style(),
             Some((
-                RenderFamilyKind::State,
+                DiagramFamilyId::STATE,
                 rendered.style_report().residuals().len(),
             ))
         );
@@ -9380,7 +9328,7 @@ Alice->>Bob: Hello
                     ThemeStylePatch::default()
                         .with_fill(CanvasPaint::solid("#ef4444").expect("valid node fill")),
                 )
-                .for_family(RenderFamilyKind::Flowchart),
+                .for_family(DiagramFamilyId::FLOWCHART),
             ),
         );
         let compiler = DiagramThemeCompiler::new();
@@ -9435,10 +9383,10 @@ Alice->>Bob: Hello
         let swimlane = prepare_non_class_render(
             flowchart,
             &options,
-            FamilyRenderContext::resolve(session(), RenderFamilyKind::Swimlane),
+            FamilyRenderContext::resolve(session(), DiagramFamilyId::SWIMLANE),
         )
         .expect("planned Swimlane family should drive layout");
-        assert_eq!(swimlane.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(swimlane.family_id(), DiagramFamilyId::SWIMLANE);
 
         let configured_swimlane = engine
             .parse_diagram_for_render_model_sync(
@@ -9450,10 +9398,10 @@ Alice->>Bob: Hello
         let flowchart = prepare_non_class_render(
             configured_swimlane,
             &options,
-            FamilyRenderContext::resolve(session(), RenderFamilyKind::Flowchart),
+            FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART),
         )
         .expect("planned Flowchart family should drive layout");
-        assert_eq!(flowchart.family_kind(), RenderFamilyKind::Flowchart);
+        assert_eq!(flowchart.family_id(), DiagramFamilyId::FLOWCHART);
     }
 
     #[test]
@@ -9466,7 +9414,7 @@ Alice->>Bob: Hello
         let error = match prepare_non_class_render(
             parsed,
             &LayoutOptions::default(),
-            FamilyRenderContext::resolve(session(), RenderFamilyKind::State),
+            FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
         ) {
             Ok(_) => panic!("State cannot consume a Flowchart semantic model"),
             Err(error) => error,
@@ -9492,7 +9440,7 @@ Alice->>Bob: Hello
         let error = match FamilyRenderArtifact::new(
             metadata,
             family,
-            FamilyRenderContext::resolve(session(), RenderFamilyKind::State),
+            FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
         ) {
             Ok(_) => panic!("family drift must be rejected"),
             Err(error) => error,
@@ -9516,13 +9464,10 @@ Alice->>Bob: Hello
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render unthemed family SVG");
-        assert_eq!(rendered.family_kind(), RenderFamilyKind::Flowchart);
+        assert_eq!(rendered.family_id(), DiagramFamilyId::FLOWCHART);
 
         let completion = rendered.into_completion();
-        assert_eq!(
-            completion.report().family_kind(),
-            RenderFamilyKind::Flowchart
-        );
+        assert_eq!(completion.report().family_id(), DiagramFamilyId::FLOWCHART);
         assert_eq!(completion.report().theme_recipe_fingerprint(), None);
         assert_eq!(
             completion
@@ -10084,40 +10029,40 @@ linkStyle 0 font-size:12px,font-style:italic
         let cases = vec![
             (
                 "classDiagram\nclass A\nclass B\nA --> B\n",
-                RenderFamilyKind::Class,
+                DiagramFamilyId::CLASS,
             ),
             (
                 "stateDiagram-v2\n[*] --> Idle\nIdle --> Active\n",
-                RenderFamilyKind::State,
+                DiagramFamilyId::STATE,
             ),
             (
                 "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
-                RenderFamilyKind::Er,
+                DiagramFamilyId::ER,
             ),
             (
                 "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
-                RenderFamilyKind::Mindmap,
+                DiagramFamilyId::MINDMAP,
             ),
             (
                 "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
-                RenderFamilyKind::Sequence,
+                DiagramFamilyId::SEQUENCE,
             ),
             (
                 "kanban\n  todo[Todo]\n    task[Task]\n",
-                RenderFamilyKind::Kanban,
+                DiagramFamilyId::KANBAN,
             ),
             (
                 "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Login\n  risk: high\n}\n",
-                RenderFamilyKind::Requirement,
+                DiagramFamilyId::REQUIREMENT,
             ),
-            ("sankey-beta\nA,B,10\n", RenderFamilyKind::Sankey),
+            ("sankey-beta\nA,B,10\n", DiagramFamilyId::SANKEY),
             (
                 "radar-beta\naxis A,B,C\ncurve score{1,2,3}\n",
-                RenderFamilyKind::Radar,
+                DiagramFamilyId::RADAR,
             ),
             (
                 "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
-                RenderFamilyKind::Venn,
+                DiagramFamilyId::VENN,
             ),
         ];
 
@@ -10126,7 +10071,7 @@ linkStyle 0 font-size:12px,font-style:italic
             let mut cases = cases;
             cases.push((
                 "mindmap\n  Root\n    First child\n    Second child\n",
-                RenderFamilyKind::Mindmap,
+                DiagramFamilyId::MINDMAP,
             ));
             cases
         };
@@ -10138,7 +10083,7 @@ linkStyle 0 font-size:12px,font-style:italic
                 .expect("the layout-work fixture should produce a render model");
             let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
 
-            assert_eq!(artifact.family_kind(), expected_family);
+            assert_eq!(artifact.family_id(), expected_family);
             assert!(
                 artifact.context.session().report().layout_work_units() > 0,
                 "{expected_family} must contribute layout work to the session report"
@@ -10149,16 +10094,16 @@ linkStyle 0 font-size:12px,font-style:italic
     #[test]
     fn prepared_text_retained_budget_has_an_exact_family_boundary() {
         let cases = [
-            ("stateDiagram-v2\nReady --> Done\n", RenderFamilyKind::State),
+            ("stateDiagram-v2\nReady --> Done\n", DiagramFamilyId::STATE),
             (
                 "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\nA -->|portable label| B\n",
-                RenderFamilyKind::Flowchart,
+                DiagramFamilyId::FLOWCHART,
             ),
         ];
 
         for (source, expected_family) in cases {
             let unbounded = prepare_with_prepared_text_retained_limit(source, None).unwrap();
-            assert_eq!(unbounded.family_kind(), expected_family);
+            assert_eq!(unbounded.family_id(), expected_family);
             let exact = unbounded
                 .context
                 .session
@@ -10248,21 +10193,21 @@ linkStyle 0 font-size:12px,font-style:italic
         let cases = [
             (
                 "classDiagram\nnamespace Outer {\n  class A\n  class B\n}\nA --> B\n",
-                RenderFamilyKind::Class,
+                DiagramFamilyId::CLASS,
             ),
             (
                 "stateDiagram-v2\nstate Parent {\n  [*] --> Idle\n  Idle --> Active\n}\nParent --> Outside\n",
-                RenderFamilyKind::State,
+                DiagramFamilyId::STATE,
             ),
             (
                 "erDiagram\nNODE {\n  string id\n}\nNODE ||--o{ NODE : leads\n",
-                RenderFamilyKind::Er,
+                DiagramFamilyId::ER,
             ),
         ];
 
         for (source, expected_family) in cases {
             let unbounded = prepare_with_unbounded_layout_work(source).unwrap();
-            assert_eq!(unbounded.family_kind(), expected_family);
+            assert_eq!(unbounded.family_id(), expected_family);
             let exact = unbounded.context.session.report().layout_work_units();
             assert!(exact > 0, "{expected_family} must report layout work");
             let expected_layout = unbounded.layout_json().unwrap();
@@ -10354,7 +10299,7 @@ system - satisfies -> req1
             .as_object()
             .expect("Requirement layout projection should remain an object");
 
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Requirement);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::REQUIREMENT);
         assert!(fields.contains_key("nodes"));
         assert!(fields.contains_key("edges"));
         assert!(fields.contains_key("bounds"));
@@ -10798,7 +10743,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
     fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart TD\nA --> B";
         let artifact = prepare_with_model_item_limit(source, 3).unwrap();
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::FLOWCHART);
 
         let error = match prepare_with_model_item_limit(source, 2) {
             Err(error) => error,
@@ -10811,7 +10756,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
     fn swimlane_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "swimlane-beta LR\nA --> B";
         let artifact = prepare_with_model_item_limit(source, 3).unwrap();
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::SWIMLANE);
 
         let error = match prepare_with_model_item_limit(source, 2) {
             Err(error) => error,
@@ -10824,7 +10769,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
     fn swimlane_rejects_pairwise_routing_work_before_layout() {
         let source = "swimlane-beta LR\nA --> B\nB --> C";
         let artifact = prepare_with_layout_work_limit(source, 1_000).unwrap();
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::SWIMLANE);
 
         let error = match prepare_with_layout_work_limit(source, 1) {
             Err(error) => error,
@@ -11184,7 +11129,7 @@ $$interface$$ ()-- Formula
     fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
         let source = "flowchart-elk TD\nA --> B";
         let artifact = prepare_with_model_item_limit(source, 3).unwrap();
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::FLOWCHART);
 
         let error = match prepare_with_model_item_limit(source, 2) {
             Err(error) => error,
@@ -11280,7 +11225,7 @@ Second: second,after first,2ms
             .unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
 
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Gantt);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::GANTT);
         let diagnostics = artifact
             .gantt_time_axis_diagnostics()
             .expect("Gantt tasks should expose time-axis diagnostics");
@@ -11305,7 +11250,7 @@ Second: second,after first,2ms
             .unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
 
-        assert_eq!(artifact.family_kind(), RenderFamilyKind::Error);
+        assert_eq!(artifact.family_id(), DiagramFamilyId::ERROR);
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();

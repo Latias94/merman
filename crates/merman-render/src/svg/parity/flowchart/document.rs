@@ -2,7 +2,7 @@ use super::super::root_svg;
 use super::super::util::{escape_attr_into, escape_xml_into};
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
-    pub family_kind: crate::family::RenderFamilyKind,
+    pub family_id: crate::DiagramFamilyId,
     pub diagram_id: &'a str,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
@@ -38,7 +38,7 @@ pub(super) fn prepare_flowchart_svg_document(
     );
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
-    let root_viewport = root_svg::RootViewportContext::new(request.family_kind, request.diagram_id);
+    let root_viewport = root_svg::RootViewportContext::new(request.family_id, request.diagram_id);
 
     let acc_title = request
         .model

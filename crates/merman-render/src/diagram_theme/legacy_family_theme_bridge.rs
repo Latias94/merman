@@ -7,7 +7,7 @@ use merman_core::__private::{
 use merman_core::{MermaidConfig, ParseControl, ParseControlResult};
 use serde_json::{Map, Value};
 
-use crate::render_family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 
 use super::canvas::CanvasPaint;
 use super::family_mechanism_matrix::{FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES};
@@ -34,7 +34,7 @@ pub(super) struct LegacyFamilyThemeBridge {
 #[derive(Debug)]
 struct LegacyFamilyThemeBridgeInner {
     family_programs: Arc<FamilyThemeProgramCache>,
-    artifacts: Mutex<HashMap<RenderFamilyKind, Arc<LegacyFamilyThemeArtifact>>>,
+    artifacts: Mutex<HashMap<DiagramFamilyId, Arc<LegacyFamilyThemeArtifact>>>,
 }
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ impl LegacyFamilyThemeBridge {
         }
     }
 
-    fn artifact_for_family(&self, family: RenderFamilyKind) -> Arc<LegacyFamilyThemeArtifact> {
+    fn artifact_for_family(&self, family: DiagramFamilyId) -> Arc<LegacyFamilyThemeArtifact> {
         let mut artifacts = self
             .inner
             .artifacts
@@ -69,7 +69,7 @@ impl LegacyFamilyThemeBridge {
     }
 
     #[cfg(test)]
-    fn compile_for_family(&self, family: RenderFamilyKind) -> Arc<LegacyFamilyThemeArtifact> {
+    fn compile_for_family(&self, family: DiagramFamilyId) -> Arc<LegacyFamilyThemeArtifact> {
         self.artifact_for_family(family)
     }
 
@@ -103,12 +103,12 @@ impl LegacyFamilyThemeBridge {
         control: &ParseControl,
     ) -> ParseControlResult<Option<ThemeFamilyCompatibilityOverlay>> {
         control.checkpoint()?;
-        let Some(family) = RenderFamilyKind::from_str(family) else {
+        let Some(family) = DiagramFamilyId::from_id(family) else {
             return Ok(None);
         };
         // State owns its compatibility path in the typed adapter and must never be projected
         // through the legacy Mermaid lane.
-        if family == RenderFamilyKind::State {
+        if family == DiagramFamilyId::STATE {
             return Ok(None);
         }
         let artifact = self.artifact_for_family(family);
@@ -118,70 +118,71 @@ impl LegacyFamilyThemeBridge {
 }
 
 #[cfg(test)]
-fn contribution_family(opaque_id: &str) -> Option<RenderFamilyKind> {
+fn contribution_family(opaque_id: &str) -> Option<DiagramFamilyId> {
     let family = opaque_id
         .strip_prefix(CONTRIBUTION_ID_PREFIX)?
         .split_once('.')?
         .0;
-    RenderFamilyKind::from_str(family)
+    DiagramFamilyId::from_id(family)
 }
 
 fn compile_selected_family(
     family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
 ) -> LegacyFamilyThemeArtifact {
     let mut builder = OverlayBuilder::new(family);
     match family {
-        RenderFamilyKind::Flowchart
-        | RenderFamilyKind::Swimlane
-        | RenderFamilyKind::Class
-        | RenderFamilyKind::Mindmap
-        | RenderFamilyKind::TreeView
-        | RenderFamilyKind::Block
-        | RenderFamilyKind::GitGraph => {
+        DiagramFamilyId::FLOWCHART
+        | DiagramFamilyId::SWIMLANE
+        | DiagramFamilyId::CLASS
+        | DiagramFamilyId::MINDMAP
+        | DiagramFamilyId::TREE_VIEW
+        | DiagramFamilyId::BLOCK
+        | DiagramFamilyId::GIT_GRAPH => {
             compile_node_family(&mut builder, family_programs, family);
         }
-        RenderFamilyKind::Sequence => {
+        DiagramFamilyId::SEQUENCE => {
             compile_sequence_family(&mut builder, family_programs);
         }
-        RenderFamilyKind::Gantt | RenderFamilyKind::Kanban => {
+        DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => {
             compile_task_family(&mut builder, family_programs, family);
         }
-        RenderFamilyKind::Requirement => {
+        DiagramFamilyId::REQUIREMENT => {
             compile_requirement_family(&mut builder, family_programs);
         }
-        RenderFamilyKind::Er => {
+        DiagramFamilyId::ER => {
             compile_er_family(&mut builder, family_programs);
         }
-        RenderFamilyKind::Pie => {
+        DiagramFamilyId::PIE => {
             compile_pie_family(&mut builder, family_programs);
         }
-        RenderFamilyKind::XyChart | RenderFamilyKind::QuadrantChart | RenderFamilyKind::Radar => {
+        DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
             compile_chart_family(&mut builder, family_programs, family);
         }
-        RenderFamilyKind::Timeline => {
+        DiagramFamilyId::TIMELINE => {
             compile_timeline_family(&mut builder, family_programs);
         }
-        RenderFamilyKind::Journey => {
+        DiagramFamilyId::JOURNEY => {
             compile_journey_family(&mut builder, family_programs);
         }
-        RenderFamilyKind::Error
-        | RenderFamilyKind::Zenuml
-        | RenderFamilyKind::Architecture
-        | RenderFamilyKind::C4
-        | RenderFamilyKind::Cynefin
-        | RenderFamilyKind::Wardley
-        | RenderFamilyKind::Railroad
-        | RenderFamilyKind::Packet
-        | RenderFamilyKind::Sankey
-        | RenderFamilyKind::Info
-        | RenderFamilyKind::Treemap
-        | RenderFamilyKind::Ishikawa
-        | RenderFamilyKind::EventModeling
-        | RenderFamilyKind::Venn => {
+        DiagramFamilyId::ERROR
+        | DiagramFamilyId::ZENUML
+        | DiagramFamilyId::ARCHITECTURE
+        | DiagramFamilyId::C4
+        | DiagramFamilyId::CYNEFIN
+        | DiagramFamilyId::WARDLEY
+        | DiagramFamilyId::RAILROAD
+        | DiagramFamilyId::PACKET
+        | DiagramFamilyId::SANKEY
+        | DiagramFamilyId::INFO
+        | DiagramFamilyId::TREEMAP
+        | DiagramFamilyId::ISHIKAWA
+        | DiagramFamilyId::EVENT_MODELING
+        | DiagramFamilyId::VENN => {
             compile_text_family(&mut builder, family_programs, family);
         }
-        RenderFamilyKind::State => {}
+        DiagramFamilyId::STATE => {}
+        _ => {}
     }
     let (overlay, contribution_ids) = builder.finish();
     #[cfg(not(test))]
@@ -196,7 +197,7 @@ fn compile_selected_family(
 fn compile_node_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
 ) {
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
@@ -269,7 +270,7 @@ fn compile_node_family(
     );
 
     match family {
-        RenderFamilyKind::Class => {
+        DiagramFamilyId::CLASS => {
             contributions.add_theme_variables(
                 "class.text",
                 [
@@ -304,7 +305,7 @@ fn compile_node_family(
                 ],
             );
         }
-        RenderFamilyKind::TreeView => {
+        DiagramFamilyId::TREE_VIEW => {
             let mut tree_view = Map::new();
             if let Some(value) = reader.text_fill(ThemeTarget::NodeLabel) {
                 tree_view.insert("labelColor".to_string(), Value::String(value));
@@ -317,7 +318,7 @@ fn compile_node_family(
             }
             contributions.add_theme_variable_object("tree-view", "treeView", tree_view);
         }
-        RenderFamilyKind::GitGraph => {
+        DiagramFamilyId::GIT_GRAPH => {
             contributions.add_theme_variables(
                 "git.commit",
                 [
@@ -338,7 +339,7 @@ fn compile_node_family(
                 PaletteProjection::Git { limit: 64 },
             );
         }
-        RenderFamilyKind::Mindmap => {
+        DiagramFamilyId::MINDMAP => {
             contributions.add_palette(
                 "node.palette",
                 reader.palette(ThemeTarget::Node),
@@ -355,7 +356,7 @@ fn compile_sequence_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
 ) {
-    let family = RenderFamilyKind::Sequence;
+    let family = DiagramFamilyId::SEQUENCE;
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
@@ -439,7 +440,7 @@ fn compile_sequence_family(
 fn compile_task_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
 ) {
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
@@ -458,7 +459,7 @@ fn compile_task_family(
     );
 
     match family {
-        RenderFamilyKind::Gantt => {
+        DiagramFamilyId::GANTT => {
             for (mapping, variant, fill_key, stroke_key) in [
                 (
                     "task.default",
@@ -510,7 +511,7 @@ fn compile_task_family(
                 ],
             );
         }
-        RenderFamilyKind::Kanban => {
+        DiagramFamilyId::KANBAN => {
             contributions.add_theme_variables(
                 "task.default",
                 [("nodeBorder", reader.stroke(ThemeTarget::Task))],
@@ -536,7 +537,7 @@ fn compile_requirement_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
 ) {
-    let family = RenderFamilyKind::Requirement;
+    let family = DiagramFamilyId::REQUIREMENT;
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
@@ -591,7 +592,7 @@ fn compile_requirement_family(
 }
 
 fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = RenderFamilyKind::Er;
+    let family = DiagramFamilyId::ER;
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
@@ -634,7 +635,7 @@ fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyTheme
 }
 
 fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = RenderFamilyKind::Pie;
+    let family = DiagramFamilyId::PIE;
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
@@ -669,7 +670,7 @@ fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThem
 fn compile_chart_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
 ) {
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
@@ -679,7 +680,7 @@ fn compile_chart_family(
     let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
     contributions.add_typography(&reader);
     match family {
-        RenderFamilyKind::XyChart => {
+        DiagramFamilyId::XY_CHART => {
             let palette = reader.palette(ThemeTarget::ChartSeries);
             contributions.add_xy_palette("series.palette", palette);
             let mut xy = Map::new();
@@ -701,7 +702,7 @@ fn compile_chart_family(
             }
             contributions.add_theme_variable_object("chart.text-axis", "xyChart", xy);
         }
-        RenderFamilyKind::QuadrantChart => {
+        DiagramFamilyId::QUADRANT_CHART => {
             contributions.add_theme_variables(
                 "chart.text-axis",
                 [
@@ -714,7 +715,7 @@ fn compile_chart_family(
                 ],
             );
         }
-        RenderFamilyKind::Radar => {
+        DiagramFamilyId::RADAR => {
             let palette = reader.palette(ThemeTarget::ChartSeries);
             contributions.add_palette(
                 "series.palette",
@@ -744,7 +745,7 @@ fn compile_timeline_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
 ) {
-    let family = RenderFamilyKind::Timeline;
+    let family = DiagramFamilyId::TIMELINE;
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
     contributions.add_typography(&reader);
@@ -766,7 +767,7 @@ fn compile_timeline_family(
 }
 
 fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
-    let family = RenderFamilyKind::Journey;
+    let family = DiagramFamilyId::JOURNEY;
     let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
     contributions.add_typography(&reader);
@@ -790,7 +791,7 @@ fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &Family
 fn compile_text_family(
     builder: &mut OverlayBuilder,
     family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
 ) {
     // Only the family-neutral Text and Title targets are direct here. Renderer-specific roles
     // remain unsupported until the public theme model has typed targets for them.
@@ -799,7 +800,7 @@ fn compile_text_family(
     contributions.add_typography(&reader);
     // Packet has no typed consumer for the family-neutral Text/Title compatibility variables.
     // Avoid writing unused global values until those renderer-specific roles are modeled.
-    if family != RenderFamilyKind::Packet {
+    if family != DiagramFamilyId::PACKET {
         contributions.add_theme_variables(
             "text.fill",
             [
@@ -816,7 +817,7 @@ struct FamilyStyleReader {
 }
 
 impl FamilyStyleReader {
-    fn new(family_programs: &FamilyThemeProgramCache, family: RenderFamilyKind) -> Self {
+    fn new(family_programs: &FamilyThemeProgramCache, family: DiagramFamilyId) -> Self {
         Self {
             program: family_programs.get_or_compile(family),
         }
@@ -989,7 +990,7 @@ fn solid_paint(paint: &CanvasPaint) -> Option<String> {
 }
 
 struct FamilyContributions {
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     entries: Vec<PendingContribution>,
 }
 
@@ -999,7 +1000,7 @@ struct PendingContribution {
 }
 
 impl FamilyContributions {
-    fn new(family: RenderFamilyKind) -> Self {
+    fn new(family: DiagramFamilyId) -> Self {
         Self {
             family,
             entries: Vec::new(),
@@ -1158,14 +1159,14 @@ fn bounded_palette_csv(palette: &[String]) -> String {
 }
 
 struct OverlayBuilder {
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     overlay: ThemeFamilyCompatibilityOverlayBuilder,
     contribution_ids: BTreeSet<String>,
     claimed_paths: BTreeSet<String>,
 }
 
 impl OverlayBuilder {
-    fn new(family: RenderFamilyKind) -> Self {
+    fn new(family: DiagramFamilyId) -> Self {
         Self {
             family,
             overlay: ThemeFamilyCompatibilityOverlayBuilder::new(
@@ -1177,7 +1178,7 @@ impl OverlayBuilder {
         }
     }
 
-    fn push(&mut self, family: RenderFamilyKind, mapping: &'static str, patch: Map<String, Value>) {
+    fn push(&mut self, family: DiagramFamilyId, mapping: &'static str, patch: Map<String, Value>) {
         debug_assert_eq!(family, self.family);
         let opaque_id = format!("{CONTRIBUTION_ID_PREFIX}{}.{}", family.as_str(), mapping);
         if self.contribution_ids.contains(&opaque_id) {
@@ -1400,7 +1401,7 @@ mod tests {
                         ThemeTarget::Edge,
                         ThemeStylePatch::default().with_stroke(solid("#f8fafc")),
                     )
-                    .for_family(RenderFamilyKind::Flowchart),
+                    .for_family(DiagramFamilyId::FLOWCHART),
                 ),
             ),
         );
@@ -1418,8 +1419,8 @@ mod tests {
         assert!(!first.is_empty());
         assert_eq!(bridge.cached_family_count(), 1);
         assert_eq!(family_programs.len(), 1);
-        assert!(family_programs.contains(RenderFamilyKind::Flowchart));
-        assert!(!family_programs.contains(RenderFamilyKind::Sequence));
+        assert!(family_programs.contains(DiagramFamilyId::FLOWCHART));
+        assert!(!family_programs.contains(DiagramFamilyId::SEQUENCE));
 
         let second = bridge
             .overlay_for_family("flowchart", &control)
@@ -1443,7 +1444,7 @@ mod tests {
             .expect("active control");
         assert_eq!(bridge.cached_family_count(), 2);
         assert_eq!(family_programs.len(), 2);
-        assert!(family_programs.contains(RenderFamilyKind::Sequence));
+        assert!(family_programs.contains(DiagramFamilyId::SEQUENCE));
     }
 
     #[test]
@@ -1461,15 +1462,15 @@ mod tests {
 
         for (family, direct_id) in [
             (
-                RenderFamilyKind::Mindmap,
+                DiagramFamilyId::MINDMAP,
                 "merman.legacy-family-theme.v1.mindmap.node.palette",
             ),
             (
-                RenderFamilyKind::GitGraph,
+                DiagramFamilyId::GIT_GRAPH,
                 "merman.legacy-family-theme.v1.gitGraph.node.palette",
             ),
             (
-                RenderFamilyKind::Kanban,
+                DiagramFamilyId::KANBAN,
                 "merman.legacy-family-theme.v1.kanban.task.palette.color-scale",
             ),
         ] {
@@ -1486,10 +1487,10 @@ mod tests {
                     ThemeTarget::JourneyTask,
                     ThemeStylePatch::default().with_fill(solid("#ef4444")),
                 )
-                .for_family(RenderFamilyKind::Journey),
+                .for_family(DiagramFamilyId::JOURNEY),
             ),
         );
-        let artifact = bridge(&spec).compile_for_family(RenderFamilyKind::Journey);
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::JOURNEY);
 
         assert!(
             artifact
@@ -1503,10 +1504,10 @@ mod tests {
         let mut clear = ThemeStylePatch::default();
         clear.paint.fill = Specified::Clear;
         let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-            ThemeRule::new(ThemeTarget::PieSlice, clear).for_family(RenderFamilyKind::Pie),
+            ThemeRule::new(ThemeTarget::PieSlice, clear).for_family(DiagramFamilyId::PIE),
         ));
         let bridge = bridge(&spec);
-        let artifact = bridge.compile_for_family(RenderFamilyKind::Pie);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::PIE);
 
         assert!(
             !artifact
@@ -1524,14 +1525,14 @@ mod tests {
                         ThemeTarget::Node,
                         ThemeStylePatch::default().with_fill(solid("#ef4444")),
                     )
-                    .for_family(RenderFamilyKind::Flowchart),
+                    .for_family(DiagramFamilyId::FLOWCHART),
                 )
                 .with_rule(
                     ThemeRule::new(
                         ThemeTarget::Actor,
                         ThemeStylePatch::default().with_fill(solid("#22c55e")),
                     )
-                    .for_family(RenderFamilyKind::Sequence),
+                    .for_family(DiagramFamilyId::SEQUENCE),
                 ),
         );
 
@@ -1579,7 +1580,7 @@ mod tests {
                         .with_fill(solid("#fef3c7"))
                         .with_stroke(solid("#a16207")),
                 )
-                .for_family(RenderFamilyKind::Swimlane),
+                .for_family(DiagramFamilyId::SWIMLANE),
             ),
         );
 
@@ -1618,7 +1619,7 @@ mod tests {
             .expect("valid font size");
         let spec = DiagramThemeSpec::new().with_typography(
             TypographySpec::default()
-                .with_family_style(RenderFamilyKind::Sequence, sequence_typography),
+                .with_family_style(DiagramFamilyId::SEQUENCE, sequence_typography),
         );
 
         let sequence = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
@@ -1650,7 +1651,7 @@ mod tests {
             .expect("valid font weight");
         let spec = DiagramThemeSpec::new().with_typography(
             TypographySpec::default()
-                .with_family_style(RenderFamilyKind::Sequence, sequence_typography),
+                .with_family_style(DiagramFamilyId::SEQUENCE, sequence_typography),
         );
         let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
 
@@ -1683,7 +1684,7 @@ mod tests {
             .with_font_size_px(18.0)
             .expect("valid font size");
         let spec = DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(RenderFamilyKind::Sequence, typography),
+            TypographySpec::default().with_family_style(DiagramFamilyId::SEQUENCE, typography),
         );
         let parsed = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
         let baseline = parse(
@@ -1714,7 +1715,7 @@ mod tests {
             ThemeTarget::State,
             ThemeStylePatch::default().with_fill(solid("#2563eb")),
         )
-        .for_family(RenderFamilyKind::State);
+        .for_family(DiagramFamilyId::STATE);
         let state_only = DiagramThemeSpec::new()
             .with_canvas(CanvasSpec::solid("#0f172a").expect("valid canvas"))
             .with_styles(ThemeRuleSet::default().with_rule(state_rule));
@@ -1782,12 +1783,12 @@ mod tests {
 
     #[test]
     fn overlay_builder_keeps_the_first_assignment_without_panicking() {
-        let mut builder = OverlayBuilder::new(RenderFamilyKind::Flowchart);
-        let mut direct = FamilyContributions::new(RenderFamilyKind::Flowchart);
+        let mut builder = OverlayBuilder::new(DiagramFamilyId::FLOWCHART);
+        let mut direct = FamilyContributions::new(DiagramFamilyId::FLOWCHART);
         direct.add_theme_variables("direct", [("primaryColor", Some("#ef4444".to_string()))]);
         direct.finish_into(&mut builder);
 
-        let mut duplicate = FamilyContributions::new(RenderFamilyKind::Flowchart);
+        let mut duplicate = FamilyContributions::new(DiagramFamilyId::FLOWCHART);
         duplicate.add_theme_variables("duplicate", [("primaryColor", Some("#22c55e".to_string()))]);
         duplicate.finish_into(&mut builder);
 
@@ -1804,11 +1805,11 @@ mod tests {
                     ThemeTarget::Node,
                     ThemeStylePatch::default().with_fill(solid("#ef4444")),
                 )
-                .for_family(RenderFamilyKind::Flowchart),
+                .for_family(DiagramFamilyId::FLOWCHART),
             ),
         );
         let bridge = bridge(&spec);
-        let artifact = bridge.compile_for_family(RenderFamilyKind::Flowchart);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::FLOWCHART);
         assert!(
             !artifact
                 .contribution_ids
@@ -1845,7 +1846,7 @@ mod tests {
             ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, edge)),
         );
         let bridge = bridge(&spec);
-        bridge.compile_for_family(RenderFamilyKind::Flowchart);
+        bridge.compile_for_family(DiagramFamilyId::FLOWCHART);
         assert!(
             !bridge.owns_contribution_id("merman.legacy-family-theme.v1.flowchart.edge.stroke")
         );
@@ -1863,8 +1864,7 @@ mod tests {
                     ThemeStylePatch::default().with_fill(solid("#f8fafc")),
                 ))
                 .with_rule(
-                    ThemeRule::new(ThemeTarget::Node, clear)
-                        .for_family(RenderFamilyKind::Flowchart),
+                    ThemeRule::new(ThemeTarget::Node, clear).for_family(DiagramFamilyId::FLOWCHART),
                 ),
         );
 
@@ -1888,7 +1888,7 @@ mod tests {
                             .with_fill(solid("#f8fafc"))
                             .with_stroke(solid("#94a3b8")),
                     )
-                    .for_family(RenderFamilyKind::Gantt),
+                    .for_family(DiagramFamilyId::GANTT),
                 )
                 .with_rule(
                     ThemeRule::new(
@@ -1897,7 +1897,7 @@ mod tests {
                             .with_fill(solid("#f1f5f9"))
                             .with_stroke(solid("#64748b")),
                     )
-                    .for_family(RenderFamilyKind::Gantt)
+                    .for_family(DiagramFamilyId::GANTT)
                     .with_variant(ThemeVariant::Active),
                 )
                 .with_rule(
@@ -1905,7 +1905,7 @@ mod tests {
                         ThemeTarget::Task,
                         ThemeStylePatch::default().with_stroke(solid("#059669")),
                     )
-                    .for_family(RenderFamilyKind::Gantt)
+                    .for_family(DiagramFamilyId::GANTT)
                     .with_variant(ThemeVariant::Success),
                 )
                 .with_rule(
@@ -1913,7 +1913,7 @@ mod tests {
                         ThemeTarget::Task,
                         ThemeStylePatch::default().with_stroke(solid("#dc2626")),
                     )
-                    .for_family(RenderFamilyKind::Gantt)
+                    .for_family(DiagramFamilyId::GANTT)
                     .with_variant(ThemeVariant::Error),
                 )
                 .with_rule(
@@ -1921,14 +1921,14 @@ mod tests {
                         ThemeTarget::Requirement,
                         ThemeStylePatch::default().with_fill(solid("#f8fafc")),
                     )
-                    .for_family(RenderFamilyKind::Requirement),
+                    .for_family(DiagramFamilyId::REQUIREMENT),
                 )
                 .with_rule(
                     ThemeRule::new(
                         ThemeTarget::Relation,
                         ThemeStylePatch::default().with_stroke(solid("#64748b")),
                     )
-                    .for_family(RenderFamilyKind::Requirement),
+                    .for_family(DiagramFamilyId::REQUIREMENT),
                 ),
         );
         let gantt = parse(&spec, GANTT_FIXTURE);

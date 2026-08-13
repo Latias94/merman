@@ -332,20 +332,20 @@ fn render_timeline_diagram_svg_inner(
 
     let mut out = String::new();
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Timeline, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::TIMELINE, diagram_id)
             .write_open(
-            &mut out,
-            root_spec,
-            root_svg::RootChrome {
-                dom: root_svg::RootDomProfile {
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                    trailing_newline: false,
-                    ..Default::default()
+                &mut out,
+                root_spec,
+                root_svg::RootChrome {
+                    dom: root_svg::RootDomProfile {
+                        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                        trailing_newline: false,
+                        ..Default::default()
+                    },
+                    ..root_svg::RootChrome::new(diagram_id, "timeline")
                 },
-                ..root_svg::RootChrome::new(diagram_id, "timeline")
-            },
-        )?;
+            )?;
     let (arrowhead_id, arrowhead_url) =
         if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
             (
@@ -456,7 +456,7 @@ fn render_timeline_diagram_svg_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
 
     #[test]
@@ -496,7 +496,7 @@ mod tests {
             .expect("render session");
         let debug = SvgDebugOptions::default();
         let execution =
-            SvgExecution::unthemed_for_test(&options, &debug, &session, RenderFamilyKind::Timeline)
+            SvgExecution::unthemed_for_test(&options, &debug, &session, DiagramFamilyId::TIMELINE)
                 .expect("SVG execution");
 
         let svg = render_timeline_diagram_svg_inner(

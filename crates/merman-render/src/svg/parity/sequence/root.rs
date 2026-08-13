@@ -41,9 +41,8 @@ pub(super) fn write_sequence_svg_root_open(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Sequence, diagram_id)
-            .write_open(out, root_spec, root_chrome)?;
+    let document = root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id)
+        .write_open(out, root_spec, root_chrome)?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(

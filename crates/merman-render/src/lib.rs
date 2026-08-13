@@ -43,7 +43,6 @@ pub mod pie;
 pub mod quadrantchart;
 pub mod radar;
 pub mod railroad;
-pub mod render_family;
 pub mod requirement;
 pub mod resources;
 pub mod sankey;
@@ -63,7 +62,7 @@ mod xml;
 pub mod xychart;
 pub mod zenuml;
 
-pub use render_family::RenderFamilyKind;
+pub use merman_core::DiagramFamilyId;
 
 /// Workspace-internal facade seams that are scheduled for deletion after family cutover.
 #[doc(hidden)]
@@ -107,7 +106,7 @@ pub mod __private {
     /// Bounded terminal family evidence projected for the workspace facade.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct FamilyEvidenceSummary {
-        family_kind: crate::RenderFamilyKind,
+        family_id: crate::DiagramFamilyId,
         status: FamilyEvidenceStatus,
         required_count: usize,
         accounted_count: usize,
@@ -121,7 +120,7 @@ pub mod __private {
     impl FamilyEvidenceSummary {
         #[allow(clippy::too_many_arguments)]
         pub(crate) const fn new(
-            family_kind: crate::RenderFamilyKind,
+            family_id: crate::DiagramFamilyId,
             status: FamilyEvidenceStatus,
             required_count: usize,
             accounted_count: usize,
@@ -132,7 +131,7 @@ pub mod __private {
             output_mutated: bool,
         ) -> Self {
             Self {
-                family_kind,
+                family_id,
                 status,
                 required_count,
                 accounted_count,
@@ -144,8 +143,8 @@ pub mod __private {
             }
         }
 
-        pub const fn family_kind(self) -> crate::RenderFamilyKind {
-            self.family_kind
+        pub const fn family_id(self) -> crate::DiagramFamilyId {
+            self.family_id
         }
 
         pub const fn status(self) -> FamilyEvidenceStatus {
@@ -378,46 +377,46 @@ pub enum Error {
         diagram_type: String,
     },
     #[error(
-        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_kind}`"
+        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_id}`"
     )]
     UnverifiedFamilyStyle {
-        family_kind: RenderFamilyKind,
+        family_id: DiagramFamilyId,
         residual_count: usize,
     },
     #[error(
-        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_kind}`"
+        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_id}`"
     )]
     UnverifiedFamilyTheme {
-        family_kind: RenderFamilyKind,
+        family_id: DiagramFamilyId,
         residual_count: usize,
     },
     #[error(
-        "portable theme rendering rejected SVG output mutation after family `{family_kind}` emitted its evidence"
+        "portable theme rendering rejected SVG output mutation after family `{family_id}` emitted its evidence"
     )]
-    UnverifiedFamilyOutputMutation { family_kind: RenderFamilyKind },
+    UnverifiedFamilyOutputMutation { family_id: DiagramFamilyId },
     #[error(
-        "portable theme rendering rejected {residual_count} legacy Mermaid compatibility contribution(s) for `{family_kind}`"
+        "portable theme rendering rejected {residual_count} legacy Mermaid compatibility contribution(s) for `{family_id}`"
     )]
     LegacyFamilyThemeCompatibility {
-        family_kind: RenderFamilyKind,
+        family_id: DiagramFamilyId,
         residual_count: usize,
     },
     #[error(
-        "portable theme rendering rejected {residual_count} explicit Mermaid compatibility field(s) for `{family_kind}`"
+        "portable theme rendering rejected {residual_count} explicit Mermaid compatibility field(s) for `{family_id}`"
     )]
     MermaidThemeCompatibility {
-        family_kind: RenderFamilyKind,
+        family_id: DiagramFamilyId,
         residual_count: usize,
     },
     #[error(
-        "portable theme rendering cannot evaluate structured family styles for unadapted family `{family_kind}`"
+        "portable theme rendering cannot evaluate structured family styles for unadapted family `{family_id}`"
     )]
-    UnadaptedFamilyTheme { family_kind: RenderFamilyKind },
+    UnadaptedFamilyTheme { family_id: DiagramFamilyId },
     #[error(
-        "portable theme rendering has incomplete structured family evidence for `{family_kind}`: accounted for {accounted_count} of {required_count} mechanism(s)"
+        "portable theme rendering has incomplete structured family evidence for `{family_id}`: accounted for {accounted_count} of {required_count} mechanism(s)"
     )]
     IncompleteFamilyTheme {
-        family_kind: RenderFamilyKind,
+        family_id: DiagramFamilyId,
         required_count: usize,
         accounted_count: usize,
     },
@@ -504,40 +503,40 @@ impl Error {
         }
     }
 
-    pub const fn unverified_family_style(&self) -> Option<(RenderFamilyKind, usize)> {
+    pub const fn unverified_family_style(&self) -> Option<(DiagramFamilyId, usize)> {
         match self {
             Self::UnverifiedFamilyStyle {
-                family_kind,
+                family_id,
                 residual_count,
-            } => Some((*family_kind, *residual_count)),
+            } => Some((*family_id, *residual_count)),
             _ => None,
         }
     }
 
-    pub const fn unadapted_family_theme(&self) -> Option<RenderFamilyKind> {
+    pub const fn unadapted_family_theme(&self) -> Option<DiagramFamilyId> {
         match self {
-            Self::UnadaptedFamilyTheme { family_kind } => Some(*family_kind),
+            Self::UnadaptedFamilyTheme { family_id } => Some(*family_id),
             _ => None,
         }
     }
 
-    pub const fn incomplete_family_theme(&self) -> Option<(RenderFamilyKind, usize, usize)> {
+    pub const fn incomplete_family_theme(&self) -> Option<(DiagramFamilyId, usize, usize)> {
         match self {
             Self::IncompleteFamilyTheme {
-                family_kind,
+                family_id,
                 required_count,
                 accounted_count,
-            } => Some((*family_kind, *required_count, *accounted_count)),
+            } => Some((*family_id, *required_count, *accounted_count)),
             _ => None,
         }
     }
 
-    pub const fn unverified_family_theme(&self) -> Option<(RenderFamilyKind, usize)> {
+    pub const fn unverified_family_theme(&self) -> Option<(DiagramFamilyId, usize)> {
         match self {
             Self::UnverifiedFamilyTheme {
-                family_kind,
+                family_id,
                 residual_count,
-            } => Some((*family_kind, *residual_count)),
+            } => Some((*family_id, *residual_count)),
             _ => None,
         }
     }
@@ -632,16 +631,16 @@ impl<'a> LayoutExecution<'a> {
     pub(crate) fn unthemed_for_test(
         request: &'a LayoutOptions,
         session: &'a RenderSession,
-        family_kind: RenderFamilyKind,
+        family_id: DiagramFamilyId,
     ) -> Self {
         Self::new(
             request,
-            crate::family::FamilyExecutionView::for_test(session, family_kind),
+            crate::family::FamilyExecutionView::for_test(session, family_id),
         )
     }
 
-    pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
-        self.family.family_kind()
+    pub(crate) const fn family_id(&self) -> DiagramFamilyId {
+        self.family.family_id()
     }
 
     pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
@@ -918,7 +917,7 @@ mod tests {
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::unthemed_for_test(options, session, RenderFamilyKind::Flowchart),
+            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::FLOWCHART),
         )
         .expect("flowchart layout")
     }
@@ -936,7 +935,7 @@ mod tests {
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::unthemed_for_test(options, session, RenderFamilyKind::Class),
+            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::CLASS),
         )
         .expect("class layout")
     }
@@ -974,7 +973,7 @@ mod tests {
             LayoutExecution::unthemed_for_test(
                 &LayoutOptions::default(),
                 &session,
-                RenderFamilyKind::Error,
+                DiagramFamilyId::ERROR,
             )
             .elk_operation_seed()
         }
@@ -999,10 +998,7 @@ mod tests {
             .unwrap();
 
         let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
-        assert_eq!(
-            artifact.family_kind(),
-            crate::family::RenderFamilyKind::Flowchart
-        );
+        assert_eq!(artifact.family_id(), crate::DiagramFamilyId::FLOWCHART);
     }
 
     #[cfg(feature = "layout-elk")]

@@ -36,7 +36,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "ishikawa");
     root_chrome.dom.trailing_newline = false;
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Ishikawa, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ISHIKAWA, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = ishikawa_css(layout, effective_config);

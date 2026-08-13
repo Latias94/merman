@@ -101,7 +101,7 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
     };
     let artifact = family::prepare(parsed, &LayoutOptions::default(), render_session())
         .expect("tidy-tree Mindmap must not require layout-cytoscape");
-    assert_eq!(artifact.family_kind().as_str(), "mindmap");
+    assert_eq!(artifact.family_id().as_str(), "mindmap");
 }
 
 #[cfg(not(feature = "layout-elk"))]

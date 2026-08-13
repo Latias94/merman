@@ -389,11 +389,11 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, ResolvedDiagramTheme, ThemeColorValue, ThemeTarget,
         ThemeVariant,
     };
-    use crate::render_family::RenderFamilyKind;
 
     fn solid_color(paint: &CanvasPaint) -> Option<String> {
         match paint {
@@ -406,7 +406,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(preset)
             .expect("built-in theme preset should compile");
-        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         (theme, resolved)
     }
 
@@ -454,7 +454,7 @@ mod tests {
                     .as_deref(),
                 Some(line)
             );
-            let chart = theme.resolve(RenderFamilyKind::XyChart);
+            let chart = theme.resolve(DiagramFamilyId::XY_CHART);
             assert_eq!(
                 chart
                     .series_color(ThemeTarget::ChartSeries, 1)
@@ -462,7 +462,7 @@ mod tests {
                     .as_deref(),
                 Some(first_series)
             );
-            let mindmap = theme.resolve(RenderFamilyKind::Mindmap);
+            let mindmap = theme.resolve(DiagramFamilyId::MINDMAP);
             assert_eq!(
                 mindmap
                     .series_color(ThemeTarget::Node, 1)
@@ -470,7 +470,7 @@ mod tests {
                     .as_deref(),
                 Some(first_series)
             );
-            let kanban = theme.resolve(RenderFamilyKind::Kanban);
+            let kanban = theme.resolve(DiagramFamilyId::KANBAN);
             assert_eq!(
                 kanban
                     .series_color(ThemeTarget::Task, 1)

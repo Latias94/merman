@@ -142,22 +142,19 @@ pub(crate) fn render_radar_diagram_svg_model(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Radar, diagram_id)
-            .write_open(
-                &mut out,
-                root_svg::RootViewportSpec::mermaid(
-                    root_svg::DiagramBounds::from_view_box(
-                        0.0,
-                        0.0,
-                        layout.svg_width,
-                        layout.svg_height,
-                    ),
-                    render_settings.use_max_width,
-                )
-                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
-                root_chrome,
-            )?;
+    let root_document = root_svg::RootViewportContext::new(
+        crate::DiagramFamilyId::RADAR,
+        diagram_id,
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.svg_width, layout.svg_height),
+            render_settings.use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
+        root_chrome,
+    )?;
 
     if has_acc_title {
         let _ = write!(
@@ -328,7 +325,7 @@ pub(crate) fn render_radar_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use crate::model::RadarAxisLayout;
 
     #[test]
@@ -442,7 +439,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = with_test_svg_execution(RenderFamilyKind::Radar, &options, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &options, |options| {
             render_radar_diagram_svg_model(
                 &layout,
                 &RadarDiagramRenderModel::default(),
@@ -488,7 +485,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = with_test_svg_execution(RenderFamilyKind::Radar, &options, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &options, |options| {
             render_radar_diagram_svg_model(
                 &layout,
                 &RadarDiagramRenderModel::default(),
@@ -547,7 +544,7 @@ mod tests {
         };
 
         let request = SvgRenderOptions::default();
-        let svg = with_test_svg_execution(RenderFamilyKind::Radar, &request, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::RADAR, &request, |options| {
             render_radar_diagram_svg_model(
                 &layout,
                 &RadarDiagramRenderModel::default(),

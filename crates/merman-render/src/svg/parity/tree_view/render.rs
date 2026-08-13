@@ -47,7 +47,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::TREE_VIEW, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = tree_view_css(effective_config_value);

@@ -79,7 +79,7 @@ fn render_class_diagram_svg_model_inner(
         + model.namespaces.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
     let root_context =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Class, diagram_id);
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::CLASS, diagram_id);
     let document = begin_class_svg_document(
         &mut out,
         model,

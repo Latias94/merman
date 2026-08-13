@@ -305,7 +305,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let root_context =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::State, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::STATE, diagram_id)
             .with_resource_policy(options.resource_policy());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
     root_chrome.class = Some("statediagram");

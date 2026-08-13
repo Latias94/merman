@@ -1958,7 +1958,7 @@ mod tests {
                 crate::diagram_theme::FontSourcePolicy::embedded_only(),
             ))
             .expect("fixture catalog should prepare");
-        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::Flowchart);
+        let resolved = theme.resolve(crate::DiagramFamilyId::FLOWCHART);
         let mut model = model(vec![node("A", Some("alpha"), None)], Vec::new());
         model.subgraphs.push(subgraph(
             "Portable cluster".to_string(),

@@ -1,7 +1,7 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
-use merman_render::family::{self, RenderFamilyKind};
+use merman_render::family::{self, DiagramFamilyId};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::Value;
 
@@ -14,7 +14,7 @@ fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String 
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("Wardley layout succeeds");
-    assert_eq!(artifact.family_kind(), RenderFamilyKind::Wardley);
+    assert_eq!(artifact.family_id(), DiagramFamilyId::WARDLEY);
 
     artifact
         .render_svg(

@@ -190,16 +190,13 @@ impl DiagramTheme {
         &self.0.report
     }
 
-    pub(crate) fn resolve(
-        &self,
-        family: crate::render_family::RenderFamilyKind,
-    ) -> ResolvedDiagramTheme {
+    pub(crate) fn resolve(&self, family: crate::DiagramFamilyId) -> ResolvedDiagramTheme {
         ResolvedDiagramTheme::new(self.clone(), family)
     }
 
     fn family_program(
         &self,
-        family: crate::render_family::RenderFamilyKind,
+        family: crate::DiagramFamilyId,
     ) -> Arc<family_program::FamilyThemeProgram> {
         self.0.family_programs.get_or_compile(family)
     }
@@ -282,7 +279,7 @@ pub enum ThemeCompileValidationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render_family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
 
     #[test]
     fn tokens_compile_into_one_reusable_typed_theme() {
@@ -340,7 +337,7 @@ mod tests {
             "typed token colors do not infer an official Mermaid darkMode input"
         );
 
-        let flowchart = first.resolve(RenderFamilyKind::Flowchart);
+        let flowchart = first.resolve(DiagramFamilyId::FLOWCHART);
         assert_eq!(
             flowchart
                 .style(ThemeTarget::Node, ThemeVariant::Default, None)
@@ -349,7 +346,7 @@ mod tests {
             Some("#1e293b".to_string())
         );
         assert_eq!(flowchart.series_color(ThemeTarget::ChartSeries, 5), None);
-        let chart = first.resolve(RenderFamilyKind::XyChart);
+        let chart = first.resolve(DiagramFamilyId::XY_CHART);
         assert_eq!(
             chart
                 .series_color(ThemeTarget::ChartSeries, 5)
@@ -394,7 +391,7 @@ mod tests {
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
 
-        let style = theme.resolve(RenderFamilyKind::Flowchart).style(
+        let style = theme.resolve(DiagramFamilyId::FLOWCHART).style(
             ThemeTarget::Node,
             ThemeVariant::Default,
             None,
@@ -418,7 +415,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
-        let resolved = theme.resolve(RenderFamilyKind::State);
+        let resolved = theme.resolve(DiagramFamilyId::STATE);
 
         let default_style = resolved.style(ThemeTarget::SpecialState, ThemeVariant::Default, None);
         assert_eq!(
@@ -443,7 +440,7 @@ mod tests {
                     ThemeTarget::Actor,
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#fff").unwrap()),
                 )
-                .for_family(RenderFamilyKind::Flowchart),
+                .for_family(DiagramFamilyId::FLOWCHART),
             ),
         );
         assert!(matches!(
@@ -459,7 +456,7 @@ mod tests {
                     ThemeTarget::Canvas,
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#fff").unwrap()),
                 )
-                .for_family(RenderFamilyKind::Flowchart),
+                .for_family(DiagramFamilyId::FLOWCHART),
             ),
         );
         assert!(matches!(

@@ -151,11 +151,11 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Gantt {
+            if prepared.family_id() != merman_core::DiagramFamilyId::GANTT {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.family_kind()
+                    prepared.family_id()
                 ));
             }
             let prepared = if let Some(runtime_policy) = gantt_calibrated_runtime_policy(

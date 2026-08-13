@@ -196,11 +196,11 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                 }
             };
 
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Er {
+            if prepared.family_id() != merman_core::DiagramFamilyId::ER {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.family_kind()
+                    prepared.family_id()
                 ));
             }
 

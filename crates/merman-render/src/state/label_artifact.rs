@@ -569,13 +569,13 @@ fn validate_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
         FontSourcePolicy, FontStack, OrdinalSelector, ResolvedDiagramTheme, Specified,
         TextStylePatch, ThemeAssets, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
         TypographySpec,
     };
-    use crate::render_family::RenderFamilyKind;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{
         DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, TextStyle,
@@ -650,7 +650,7 @@ mod tests {
                 FontSourcePolicy::embedded_only(),
             ))
             .expect("fixture catalog should prepare");
-        let resolved = theme.resolve(RenderFamilyKind::State);
+        let resolved = theme.resolve(DiagramFamilyId::STATE);
         let model = StateDiagramRenderModel {
             nodes: vec![StateDiagramRenderNode {
                 id: "Ready".to_string(),

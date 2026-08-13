@@ -383,12 +383,12 @@ impl<'a> SvgExecution<'a> {
         request: &'a SvgRenderOptions,
         debug: &'a SvgDebugOptions,
         session: &'a RenderSession,
-        family_kind: crate::family::RenderFamilyKind,
+        family_id: crate::DiagramFamilyId,
     ) -> Result<Self> {
         Self::new(
             request,
             debug,
-            FamilyExecutionView::for_test(session, family_kind),
+            FamilyExecutionView::for_test(session, family_id),
         )
     }
 
@@ -396,8 +396,8 @@ impl<'a> SvgExecution<'a> {
         &self.text_measurer
     }
 
-    pub(crate) const fn family_kind(&self) -> crate::family::RenderFamilyKind {
-        self.family.family_kind()
+    pub(crate) const fn family_id(&self) -> crate::DiagramFamilyId {
+        self.family.family_id()
     }
 
     pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
@@ -472,7 +472,7 @@ impl std::ops::Deref for SvgExecution<'_> {
 
 #[cfg(test)]
 pub(crate) fn with_test_svg_execution<T>(
-    family_kind: crate::family::RenderFamilyKind,
+    family_id: crate::DiagramFamilyId,
     request: &SvgRenderOptions,
     run: impl FnOnce(&SvgExecution<'_>) -> T,
 ) -> T {
@@ -480,7 +480,7 @@ pub(crate) fn with_test_svg_execution<T>(
         .begin_session()
         .expect("create test render session");
     let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::unthemed_for_test(request, &debug, &session, family_kind)
+    let execution = SvgExecution::unthemed_for_test(request, &debug, &session, family_id)
         .expect("default test SVG execution does not request timing");
     run(&execution)
 }
@@ -496,7 +496,7 @@ pub(crate) fn render_builtin_family_artifact(
     let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan())?;
-    let svg = rooted_svg.into_string_for(execution.family_kind())?;
+    let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) = apply_theme_css(
         svg,
         metadata.effective_config.as_value(),
@@ -537,7 +537,7 @@ pub(crate) fn render_architecture_family_artifact(
     )?;
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan())?;
-    let svg = rooted_svg.into_string_for(execution.family_kind())?;
+    let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) =
         apply_theme_css(svg, effective_config.as_value(), family_execution.session())?;
     let root_theme = if theme_css_applied {
@@ -840,7 +840,7 @@ mod operation_time_tests {
             &request,
             &debug,
             &session,
-            crate::family::RenderFamilyKind::Error,
+            crate::DiagramFamilyId::ERROR,
         )
         .expect("SVG execution");
 
@@ -858,7 +858,7 @@ mod operation_time_tests {
             &request,
             &debug,
             &session,
-            crate::family::RenderFamilyKind::Error,
+            crate::DiagramFamilyId::ERROR,
         )
         .expect("SVG execution");
 
@@ -889,7 +889,7 @@ mod operation_time_tests {
             &request,
             &debug,
             &session,
-            crate::family::RenderFamilyKind::Error,
+            crate::DiagramFamilyId::ERROR,
         )
         .expect("SVG execution");
 

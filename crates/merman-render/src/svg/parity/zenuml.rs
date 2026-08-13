@@ -32,7 +32,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     let mut chrome = root_svg::RootChrome::new(diagram_id, "zenuml");
     chrome.dom.trailing_newline = false;
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Zenuml, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ZENUML, diagram_id)
             .write_open(&mut out, root_spec, chrome)?;
 
     out.push_str("<defs><style>");

@@ -665,7 +665,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
 
     let mut out = String::new();
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Wardley, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::WARDLEY, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr);
 

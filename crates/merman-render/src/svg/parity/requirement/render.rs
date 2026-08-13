@@ -511,22 +511,20 @@ pub(crate) fn render_requirement_diagram_svg_model(
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Requirement,
-        diagram_id,
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::mermaid(
-            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-            render_settings.use_max_width,
-        )
-        .with_max_width(root_svg::RootMaxWidth::Precision {
-            value: vb_w,
-            significant_digits: 6,
-        }),
-        root_chrome,
-    )?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::REQUIREMENT, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::mermaid(
+                    root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+                    render_settings.use_max_width,
+                )
+                .with_max_width(root_svg::RootMaxWidth::Precision {
+                    value: vb_w,
+                    significant_digits: 6,
+                }),
+                root_chrome,
+            )?;
 
     out.push_str(&a11y_nodes);
 
@@ -979,8 +977,8 @@ fn push_requirement_shadow_defs(
 #[cfg(test)]
 mod tests {
     use super::super::*;
+    use crate::DiagramFamilyId;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::family::RenderFamilyKind;
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -1251,7 +1249,7 @@ mod tests {
         measurer: &dyn TextMeasurer,
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
-        with_test_svg_execution(RenderFamilyKind::Requirement, request, |options| {
+        with_test_svg_execution(DiagramFamilyId::REQUIREMENT, request, |options| {
             render_requirement_diagram_svg_model(
                 prepared,
                 model,
@@ -1261,7 +1259,7 @@ mod tests {
                 options,
             )
         })
-        .and_then(|svg| svg.into_string_for(RenderFamilyKind::Requirement))
+        .and_then(|svg| svg.into_string_for(DiagramFamilyId::REQUIREMENT))
     }
 
     #[test]

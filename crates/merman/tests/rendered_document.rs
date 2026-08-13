@@ -1,9 +1,9 @@
 use merman::svg::{
-    CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
-    DiagramThemeSpec, DocumentResidualReason, DocumentResidualStage, EffectBinding, EffectGraph,
-    EffectInput, EffectPrimitive, FilterRegion, FontAssetSpec, FontCatalogSpec,
-    FontEmbeddingRequirement, FontSource, FontStack, GradientStop, HeadlessError, HeadlessRenderer,
-    LinearGradient, RenderEnvironment, RenderError, RenderExecutionPath, RenderFamilyKind,
+    CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramFamilyId, DiagramTheme,
+    DiagramThemeCompiler, DiagramThemeSpec, DocumentResidualReason, DocumentResidualStage,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion, FontAssetSpec,
+    FontCatalogSpec, FontEmbeddingRequirement, FontSource, FontStack, GradientStop, HeadlessError,
+    HeadlessRenderer, LinearGradient, RenderEnvironment, RenderError, RenderExecutionPath,
     SvgPipeline, SvgPipelinePreset, TargetAdmissionReason, TargetAdmissionStatus,
     TextLayoutFailure, ThemeAssets, ThemeColorValue, ThemePreset, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeTextStyle, TrustedThemeLane, TypographySpec,
@@ -118,7 +118,7 @@ fn rendered_document_keeps_svg_resources_and_operation_evidence_correlated() {
     );
     assert_eq!(admitted.report().theme_recipe_fingerprint(), None);
     assert_eq!(admitted.report().theme_recipe_report(), None);
-    assert_eq!(admitted.report().family_kind(), RenderFamilyKind::Info);
+    assert_eq!(admitted.report().family_id(), DiagramFamilyId::INFO);
     assert_eq!(
         admitted
             .document_report()
@@ -546,8 +546,8 @@ fn themed_renderer_operations_freeze_one_theme_resource_identity() {
         document.report().theme_recipe_fingerprint(),
         Some(selected_theme.recipe_fingerprint())
     );
-    assert_eq!(document.family_kind(), RenderFamilyKind::Sequence);
-    assert_eq!(document.report().family_kind(), RenderFamilyKind::Sequence);
+    assert_eq!(document.family_id(), DiagramFamilyId::SEQUENCE);
+    assert_eq!(document.report().family_id(), DiagramFamilyId::SEQUENCE);
     assert_eq!(
         document.theme_recipe_report(),
         Some(selected_theme.report())
@@ -612,7 +612,7 @@ A[Portable 图 layout] --> B[Ready]"#;
             .reasons()
             .contains(&TargetAdmissionReason::PreparedHostBackend)
     );
-    assert_eq!(document.family_kind(), RenderFamilyKind::Flowchart);
+    assert_eq!(document.family_id(), DiagramFamilyId::FLOWCHART);
     let legacy_measurements = document.report().measurement().entries();
     assert!(
         legacy_measurements.iter().all(|entry| {
@@ -653,7 +653,7 @@ Ready --> Done : Prepared edge"#;
         &[FontSource::Embedded]
     );
     assert!(!document.document_report().prepared_text_is_host_dependent());
-    assert_eq!(document.family_kind(), RenderFamilyKind::State);
+    assert_eq!(document.family_id(), DiagramFamilyId::STATE);
     let admitted = document
         .admit_svg()
         .expect("best-effort custom-font State SVG should be admitted");
@@ -1163,8 +1163,8 @@ fn themed_pipeline_report_freezes_the_authoritative_swimlane_family() {
         .expect("pipeline render should succeed")
         .expect("flowchart source should render");
 
-    assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
-    assert_eq!(rendered.report().family_kind(), RenderFamilyKind::Swimlane);
+    assert_eq!(rendered.family_id(), DiagramFamilyId::SWIMLANE);
+    assert_eq!(rendered.report().family_id(), DiagramFamilyId::SWIMLANE);
     assert_eq!(
         rendered.report().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())

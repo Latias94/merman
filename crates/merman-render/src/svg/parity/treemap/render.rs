@@ -380,7 +380,7 @@ pub(crate) fn render_treemap_diagram_svg(
         ..root_svg::RootDomProfile::default()
     };
     let root_document =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Treemap, diagram_id)
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::TREEMAP, diagram_id)
             .write_open(
                 &mut out,
                 root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
@@ -873,7 +873,7 @@ pub(crate) fn render_treemap_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 
     fn leaf(name: impl Into<String>, value: f64, x0: f64, x1: f64, y1: f64) -> TreemapLeafLayout {
@@ -960,7 +960,7 @@ mod tests {
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
         let execution =
-            SvgExecution::unthemed_for_test(&request, &debug, &session, RenderFamilyKind::Treemap)
+            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::TREEMAP)
                 .expect("SVG execution");
         let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
 

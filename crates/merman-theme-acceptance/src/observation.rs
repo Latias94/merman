@@ -1,8 +1,9 @@
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+use merman::DiagramFamilyId;
 use merman::svg::{
-    DocumentRenderReport, FontSource, RenderFamilyKind, RenderTargetKind, TargetAdmissionReport,
+    DocumentRenderReport, FontSource, RenderTargetKind, TargetAdmissionReport,
     TargetAdmissionStatus, ThemeRecipeFingerprint,
 };
 use merman_theme_fixtures::{
@@ -90,7 +91,7 @@ impl C6RenderGroupReceipt {
     pub(crate) fn seal(
         key: C6RenderGroupKey,
         catalog: &ThemeFixtureCatalog,
-        actual_family: RenderFamilyKind,
+        actual_family: DiagramFamilyId,
         recipe_fingerprint: Option<ThemeRecipeFingerprint>,
         sealed_svg: &str,
         document: &DocumentRenderReport,
@@ -101,7 +102,7 @@ impl C6RenderGroupReceipt {
         require_group_evidence(
             &key,
             "render-family",
-            render_family_for_proof(key.family()) == actual_family,
+            family_id_for_proof(key.family()) == actual_family,
         )?;
         let source_sha256 = parse_hex_digest(fixture.source_sha256())
             .ok_or_else(|| group_evidence_mismatch(&key, "source-sha256"))?;
@@ -675,11 +676,11 @@ fn lane_for_target(target: ExpectedOutputTarget) -> C6RenderLane {
     }
 }
 
-fn render_family_for_proof(family: C6ProofFamily) -> RenderFamilyKind {
+fn family_id_for_proof(family: C6ProofFamily) -> DiagramFamilyId {
     match family {
-        C6ProofFamily::Flowchart => RenderFamilyKind::Flowchart,
-        C6ProofFamily::Sequence => RenderFamilyKind::Sequence,
-        C6ProofFamily::State => RenderFamilyKind::State,
+        C6ProofFamily::Flowchart => DiagramFamilyId::FLOWCHART,
+        C6ProofFamily::Sequence => DiagramFamilyId::SEQUENCE,
+        C6ProofFamily::State => DiagramFamilyId::STATE,
     }
 }
 
@@ -788,11 +789,7 @@ fn proof_theme_id(theme: C6ProofTheme) -> &'static str {
 }
 
 fn proof_family_id(family: C6ProofFamily) -> &'static str {
-    match family {
-        C6ProofFamily::Flowchart => "flowchart",
-        C6ProofFamily::Sequence => "sequence",
-        C6ProofFamily::State => "state",
-    }
+    family_id_for_proof(family).as_str()
 }
 
 fn expected_target_id(target: ExpectedOutputTarget) -> &'static str {

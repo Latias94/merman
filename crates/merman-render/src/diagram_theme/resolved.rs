@@ -1,4 +1,4 @@
-use crate::render_family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -663,7 +663,7 @@ impl ResolvedThemeStyle {
 #[derive(Debug, Clone)]
 pub struct ResolvedDiagramTheme {
     theme: super::DiagramTheme,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     program: Arc<FamilyThemeProgram>,
 }
 
@@ -680,7 +680,7 @@ pub(crate) enum ResolvedThemeEffect<'a> {
 }
 
 impl ResolvedDiagramTheme {
-    pub(crate) fn new(theme: super::DiagramTheme, family: RenderFamilyKind) -> Self {
+    pub(crate) fn new(theme: super::DiagramTheme, family: DiagramFamilyId) -> Self {
         let program = theme.family_program(family);
         Self {
             theme,
@@ -689,7 +689,7 @@ impl ResolvedDiagramTheme {
         }
     }
 
-    pub const fn family(&self) -> RenderFamilyKind {
+    pub const fn family_id(&self) -> DiagramFamilyId {
         self.family
     }
 
@@ -872,7 +872,7 @@ impl ResolvedDiagramTheme {
 #[cfg(test)]
 pub(crate) fn resolve_style(
     spec: &super::DiagramThemeSpec,
-    family: RenderFamilyKind,
+    family: DiagramFamilyId,
     target: ThemeTarget,
     variant: ThemeVariant,
     ordinal: Option<usize>,
@@ -932,7 +932,7 @@ mod tests {
                     ThemeTarget::Node,
                     ThemeStylePatch::default().with_stroke(node_stroke.clone()),
                 )
-                .for_family(RenderFamilyKind::Flowchart),
+                .for_family(DiagramFamilyId::FLOWCHART),
             )
             .with_rule(ThemeRule::new(
                 ThemeTarget::State,
@@ -943,7 +943,7 @@ mod tests {
                     ThemeTarget::Text,
                     ThemeStylePatch::default().with_fill(state_text_fill),
                 )
-                .for_family(RenderFamilyKind::State),
+                .for_family(DiagramFamilyId::STATE),
             )
             .with_ordinal_palette(
                 ThemeTarget::ChartSeries,
@@ -956,7 +956,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
-        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
 
         let node = resolved.style(ThemeTarget::Node, ThemeVariant::Default, None);
         assert_eq!(node.fill(), Some(&node_fill));
@@ -1026,7 +1026,7 @@ mod tests {
             )
             .expect("compile theme");
 
-        let resolved = theme.resolve(RenderFamilyKind::State);
+        let resolved = theme.resolve(DiagramFamilyId::STATE);
         assert_eq!(
             resolved
                 .style(ThemeTarget::Canvas, ThemeVariant::Default, None)
@@ -1057,7 +1057,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .unwrap();
-        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
 
         for variant in ThemeVariant::ALL.iter().copied() {
             for ordinal in [None, Some(0), Some(1), Some(2), Some(3)] {
@@ -1065,7 +1065,7 @@ mod tests {
                     resolved.style(ThemeTarget::Node, variant, ordinal),
                     resolve_style(
                         theme.spec(),
-                        RenderFamilyKind::Flowchart,
+                        DiagramFamilyId::FLOWCHART,
                         ThemeTarget::Node,
                         variant,
                         ordinal,
@@ -1109,7 +1109,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile theme");
-        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
 
         let default = resolved.style(ThemeTarget::Node, ThemeVariant::Default, None);
         assert_eq!(default.fill(), Some(&fill));
@@ -1169,7 +1169,7 @@ mod tests {
         let resolved = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile interleaved theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
             .style(ThemeTarget::Node, ThemeVariant::Default, Some(1));
 
         assert_eq!(resolved.fill(), Some(&late_fill));
@@ -1207,7 +1207,7 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile text-target theme");
-        let resolved = theme.resolve(RenderFamilyKind::Flowchart).text_style(
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART).text_style(
             ThemeTarget::NodeLabel,
             ThemeVariant::Default,
             Some(1),
@@ -1261,7 +1261,7 @@ mod tests {
         let resolved = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile metered theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
@@ -1309,7 +1309,7 @@ mod tests {
         let resolved = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(rules))
             .expect("compile bounded theme")
-            .resolve(RenderFamilyKind::Flowchart);
+            .resolve(DiagramFamilyId::FLOWCHART);
         let mut policy = RenderResourcePolicy::unbounded_for_trusted_input();
         policy
             .apply_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
@@ -1358,12 +1358,12 @@ mod tests {
             )
             .expect("compile repeated-rule theme");
 
-        let one_rule_style = one_rule.resolve(RenderFamilyKind::Flowchart).style(
+        let one_rule_style = one_rule.resolve(DiagramFamilyId::FLOWCHART).style(
             ThemeTarget::Node,
             ThemeVariant::Default,
             None,
         );
-        let repeated_rule_style = repeated_rule.resolve(RenderFamilyKind::Flowchart).style(
+        let repeated_rule_style = repeated_rule.resolve(DiagramFamilyId::FLOWCHART).style(
             ThemeTarget::Node,
             ThemeVariant::Default,
             None,
@@ -1382,12 +1382,12 @@ mod tests {
                 ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, clear_fill)),
             ))
             .expect("compile clear theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
             .style(ThemeTarget::Node, ThemeVariant::Default, None);
         let unspecified = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new())
             .expect("compile empty theme")
-            .resolve(RenderFamilyKind::Flowchart)
+            .resolve(DiagramFamilyId::FLOWCHART)
             .style(ThemeTarget::Node, ThemeVariant::Default, None);
 
         assert_eq!(cleared.fill(), unspecified.fill());

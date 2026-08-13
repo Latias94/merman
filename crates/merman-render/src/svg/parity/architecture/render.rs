@@ -290,10 +290,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         settings.css.len(),
         a11y.nodes.len(),
     ));
-    let root_viewport = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Architecture,
-        diagram_id,
-    );
+    let root_viewport =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
     let root_document = begin_architecture_document(
         &mut out,
         &root_viewport,

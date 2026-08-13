@@ -625,7 +625,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let aria_describedby = acc_descr.is_some().then_some(aria_desc_id.as_str());
     let aria_labelledby = acc_title.is_some().then_some(aria_title_id.as_str());
     let root_context =
-        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::GitGraph, diagram_id);
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::GIT_GRAPH, diagram_id);
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::responsive(),
@@ -1293,7 +1293,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::DiagramFamilyId;
     use serde_json::json;
 
     fn lr_merge_layout(commit_y: f64) -> crate::model::GitGraphDiagramLayout {
@@ -1342,7 +1342,7 @@ mod tests {
         config: &serde_json::Value,
     ) -> String {
         let request = SvgRenderOptions::default();
-        with_test_svg_execution(RenderFamilyKind::GitGraph, &request, |options| {
+        with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 layout,
                 None,
@@ -1354,7 +1354,7 @@ mod tests {
             )
         })
         .expect("render gitGraph SVG")
-        .into_string_for(RenderFamilyKind::GitGraph)
+        .into_string_for(DiagramFamilyId::GIT_GRAPH)
         .expect("gitGraph root provenance")
     }
 
@@ -1449,7 +1449,7 @@ mod tests {
         };
 
         let request = SvgRenderOptions::default();
-        let svg = with_test_svg_execution(RenderFamilyKind::GitGraph, &request, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_model(
                 &lr_merge_layout(-2.0),
                 &model,
@@ -1684,7 +1684,7 @@ mod tests {
             arrows: Vec::new(),
         };
         let request = SvgRenderOptions::default();
-        let svg = with_test_svg_execution(RenderFamilyKind::GitGraph, &request, |options| {
+        let svg = with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,
                 None,

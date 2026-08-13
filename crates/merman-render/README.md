@@ -77,11 +77,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rendered = rendered.finalize_resvg(&SvgPipeline::resvg_safe())?;
     let completion = rendered.into_completion();
     assert_eq!(
-        completion.report().family_kind(),
-        family::RenderFamilyKind::Flowchart
+        completion.report().family_id(),
+        merman_render::DiagramFamilyId::FLOWCHART
     );
     let (svg, report) = completion.into_output_and_report();
-    assert_eq!(report.family_kind(), family::RenderFamilyKind::Flowchart);
+    assert_eq!(report.family_id(), merman_render::DiagramFamilyId::FLOWCHART);
     println!("{}", svg.as_str());
 
     Ok(())

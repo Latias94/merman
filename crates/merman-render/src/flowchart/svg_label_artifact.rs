@@ -1806,13 +1806,13 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
 mod tests {
     use std::cell::{Cell, RefCell};
 
+    use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontSourcePolicy,
         FontStack, Specified, TextStylePatch, TextTransform, ThemeAssets, ThemeRule, ThemeRuleSet,
         ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
     };
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::render_family::RenderFamilyKind;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{
         NativeTextLayoutBackend, PrepareCatalogRequest, PreparedTextCssTypographyOverrides,
@@ -1886,7 +1886,7 @@ mod tests {
                             ..ThemeStylePatch::default()
                         },
                     )
-                    .for_family(RenderFamilyKind::Flowchart),
+                    .for_family(DiagramFamilyId::FLOWCHART),
                 ),
             );
         }
@@ -1899,7 +1899,7 @@ mod tests {
                 FontSourcePolicy::embedded_only(),
             ))
             .expect("fixture catalog should prepare");
-        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+        let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
         (prepared, resolved)
     }
 

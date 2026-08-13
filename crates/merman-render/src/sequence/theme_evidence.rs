@@ -366,11 +366,11 @@ fn unsupported_reason_for_facet(facet: FamilyThemeRuleFacet) -> FamilyThemeResid
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
         ThemeStylePatch,
     };
-    use crate::render_family::RenderFamilyKind;
 
     #[test]
     fn actor_rule_is_not_applicable_when_terminal_model_has_no_actors() {
@@ -383,12 +383,12 @@ mod tests {
                             ThemeStylePatch::default()
                                 .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                         )
-                        .for_family(RenderFamilyKind::Sequence),
+                        .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
             .expect("compile Sequence actor theme");
-        let resolved = theme.resolve(RenderFamilyKind::Sequence);
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
         let evidence = SequenceThemeEvidenceRecorder::default().finish(Some(&resolved));
 
         assert_eq!(

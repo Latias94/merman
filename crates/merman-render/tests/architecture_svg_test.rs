@@ -7,7 +7,7 @@ use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
     TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use merman_render::family::{self, RenderFamilyKind};
+use merman_render::family::{self, DiagramFamilyId};
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;
@@ -617,8 +617,8 @@ fn architecture_svg_uses_the_session_measurement_route() {
         .expect("render Architecture artifact");
     let completion = rendered.into_completion();
     assert_eq!(
-        completion.report().family_kind(),
-        RenderFamilyKind::Architecture
+        completion.report().family_id(),
+        DiagramFamilyId::ARCHITECTURE
     );
     let (host_svg, family_report) = completion.into_output_and_report();
 
@@ -684,8 +684,8 @@ fn architecture_svg_uses_the_session_measurement_route() {
         .expect("render parity Architecture artifact");
     let completion = parity_rendered.into_completion();
     assert_eq!(
-        completion.report().family_kind(),
-        RenderFamilyKind::Architecture
+        completion.report().family_id(),
+        DiagramFamilyId::ARCHITECTURE
     );
     let (parity_svg, _) = completion.into_output_and_report();
     assert_ne!(
@@ -725,8 +725,8 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
             .expect("render Architecture artifact");
         let completion = rendered.into_completion();
         assert_eq!(
-            completion.report().family_kind(),
-            RenderFamilyKind::Architecture
+            completion.report().family_id(),
+            DiagramFamilyId::ARCHITECTURE
         );
         let (svg, _) = completion.into_output_and_report();
         (layout, svg)

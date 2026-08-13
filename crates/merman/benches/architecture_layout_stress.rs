@@ -29,7 +29,7 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
                 let session = environment.begin_session().expect("render session");
                 let artifact = family::prepare(black_box(parsed.clone()), &layout_options, session)
                     .expect("prepare");
-                black_box(artifact.family_kind());
+                black_box(artifact.family_id());
             }
         });
     });

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use crate::render_family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
 
 use super::DiagramThemeSpec;
@@ -36,7 +36,7 @@ pub(super) struct FamilyThemeProgram {
 #[derive(Debug)]
 pub(super) struct FamilyThemeProgramCache {
     spec: Arc<DiagramThemeSpec>,
-    programs: Mutex<HashMap<RenderFamilyKind, Arc<FamilyThemeProgram>>>,
+    programs: Mutex<HashMap<DiagramFamilyId, Arc<FamilyThemeProgram>>>,
 }
 
 impl FamilyThemeProgramCache {
@@ -47,7 +47,7 @@ impl FamilyThemeProgramCache {
         }
     }
 
-    pub(super) fn get_or_compile(&self, family: RenderFamilyKind) -> Arc<FamilyThemeProgram> {
+    pub(super) fn get_or_compile(&self, family: DiagramFamilyId) -> Arc<FamilyThemeProgram> {
         let mut programs = self
             .programs
             .lock()
@@ -61,7 +61,7 @@ impl FamilyThemeProgramCache {
     }
 
     #[cfg(test)]
-    pub(super) fn contains(&self, family: RenderFamilyKind) -> bool {
+    pub(super) fn contains(&self, family: DiagramFamilyId) -> bool {
         self.programs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -86,7 +86,7 @@ struct FamilyRuleSlot {
 }
 
 impl FamilyThemeProgram {
-    pub(super) fn compile(spec: Arc<DiagramThemeSpec>, family: RenderFamilyKind) -> Self {
+    pub(super) fn compile(spec: Arc<DiagramThemeSpec>, family: DiagramFamilyId) -> Self {
         let base_typography = spec.typography().family_style(family).clone();
         let mut rule_indices = Vec::new();
         let mut slots = BTreeMap::<ThemeTarget, FamilyRuleSlot>::new();
@@ -440,9 +440,9 @@ mod tests {
         let spec = Arc::new(DiagramThemeSpec::default());
         let cache = FamilyThemeProgramCache::new(spec);
 
-        let first = cache.get_or_compile(RenderFamilyKind::Flowchart);
-        let second = cache.get_or_compile(RenderFamilyKind::Flowchart);
-        let state = cache.get_or_compile(RenderFamilyKind::State);
+        let first = cache.get_or_compile(DiagramFamilyId::FLOWCHART);
+        let second = cache.get_or_compile(DiagramFamilyId::FLOWCHART);
+        let state = cache.get_or_compile(DiagramFamilyId::STATE);
 
         assert!(Arc::ptr_eq(&first, &second));
         assert!(!Arc::ptr_eq(&first, &state));
@@ -458,11 +458,11 @@ mod tests {
                         ThemeTarget::Node,
                         ThemeStylePatch::default().with_fill(paint.clone()),
                     )
-                    .for_family(RenderFamilyKind::Flowchart),
+                    .for_family(DiagramFamilyId::FLOWCHART),
                 ),
             ),
         );
-        let program = FamilyThemeProgram::compile(spec, RenderFamilyKind::Flowchart);
+        let program = FamilyThemeProgram::compile(spec, DiagramFamilyId::FLOWCHART);
         let facet = FamilyThemeRuleFacet::fill(&Specified::Value(paint)).expect("fill facet");
 
         assert_eq!(

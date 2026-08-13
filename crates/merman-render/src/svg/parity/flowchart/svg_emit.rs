@@ -381,10 +381,10 @@ pub(super) fn render_flowchart_svg_model(
     )?;
 
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
-        family_kind: if swimlane_layout.is_some() {
-            crate::family::RenderFamilyKind::Swimlane
+        family_id: if swimlane_layout.is_some() {
+            crate::DiagramFamilyId::SWIMLANE
         } else {
-            crate::family::RenderFamilyKind::Flowchart
+            crate::DiagramFamilyId::FLOWCHART
         },
         diagram_id,
         diagram_type,

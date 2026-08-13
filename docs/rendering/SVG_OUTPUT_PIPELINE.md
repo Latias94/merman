@@ -88,9 +88,9 @@ The public convenience boundaries are:
   selected preset is `resvg_safe`.
 
 The source-string helpers extract root SVG attributes only as descriptive metadata. They never
-promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
-Only the typed family render operation can retain that capability through postprocessing. A
-diagram-type string alone does not authorize a family-specific fallback, and
+promote `aria-roledescription` or any other SVG text into the catalog-owned `DiagramFamilyId`
+capability. Only the typed family render operation can retain that capability through
+postprocessing. A diagram-type string alone does not authorize a family-specific fallback, and
 `finalize_resvg_svg(svg, session)` deliberately performs only family-agnostic cleanup.
 
 ## Host Postprocessors
