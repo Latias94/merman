@@ -1,5 +1,5 @@
 use crate::common::{
-    BindingError, BindingResourceLimitCause, BindingStatus, binding_ascii_grid_cells,
+    BindingError, BindingResourceLimitCause, BindingStatus, binding_ascii_resource_policy,
     binding_input_resource_policy, binding_site_config, no_diagram_error, source_text,
 };
 
@@ -18,6 +18,7 @@ pub(crate) struct AsciiOperationConfig {
     runtime_policy: merman::runtime::RuntimePolicy,
     parse_options: merman::ParseOptions,
     render_options: merman::ascii::AsciiRenderOptions,
+    ascii_resources: merman::ascii::AsciiResourcePolicy,
     resources: merman::resources::InputResourcePolicy,
     site_config: Option<merman::MermaidConfig>,
 }
@@ -63,15 +64,15 @@ impl AsciiOperationConfig {
         } else {
             merman::ParseOptions::strict()
         };
-        let mut render_options = ascii_options_from_json(options)?;
-        render_options.max_grid_cells =
-            binding_ascii_grid_cells(options.analysis.resources.as_ref())?;
+        let render_options = ascii_options_from_json(options)?;
+        let ascii_resources = binding_ascii_resource_policy(options.analysis.resources.as_ref())?;
         let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
         let site_config = binding_site_config(options)?;
         Ok(Self {
             runtime_policy,
             parse_options,
             render_options,
+            ascii_resources,
             resources,
             site_config,
         })
@@ -81,7 +82,7 @@ impl AsciiOperationConfig {
         let resource_profile = self.resources.profile();
         let mut request = merman::AsciiRequest::default();
         request.options = self.render_options;
-        request.resources.max_grid_cells = Some(self.render_options.max_grid_cells);
+        request.resources = self.ascii_resources;
         let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
             engine = engine.with_site_config(site_config);
@@ -306,18 +307,6 @@ fn classify_render_error(
             merman::ascii::AsciiError::UnsupportedDiagram { .. }
             | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
                 BindingError::new(BindingStatus::UnsupportedOperation, err.to_string())
-            }
-            merman::ascii::AsciiError::RenderLimitExceeded { actual, limit } => {
-                BindingError::resource_limit(
-                    merman::ascii::ASCII_RESOURCE_LIMIT_DESCRIPTORS[0].phase,
-                    merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-                    actual as u64,
-                    limit as u64,
-                    resource_profile.id(),
-                    format!(
-                        "ASCII render grid has {actual} cells, exceeding configured limit {limit}"
-                    ),
-                )
             }
             _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },

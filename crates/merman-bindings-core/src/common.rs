@@ -1800,16 +1800,23 @@ pub(crate) fn binding_input_resource_policy(
 }
 
 #[cfg(feature = "ascii")]
-pub(crate) fn binding_ascii_grid_cells(
+pub(crate) fn binding_ascii_resource_policy(
     resources: Option<&ResourceOptionsJson>,
-) -> Result<usize, BindingError> {
+) -> Result<merman::ascii::AsciiResourcePolicy, BindingError> {
     let default_resources = ResourceOptionsJson::default();
     let values = effective_resource_limits(resources.unwrap_or(&default_resources))?;
-    Ok(values
-        .get(merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
-        .copied()
-        .flatten()
-        .unwrap_or(usize::MAX))
+    Ok(
+        match values
+            .get(merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
+            .copied()
+            .flatten()
+        {
+            Some(max_grid_cells) => {
+                merman::ascii::AsciiResourcePolicy::with_max_grid_cells(max_grid_cells)
+            }
+            None => merman::ascii::AsciiResourcePolicy::unbounded(),
+        },
+    )
 }
 
 #[cfg(feature = "svg")]
