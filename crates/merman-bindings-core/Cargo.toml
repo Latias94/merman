@@ -44,6 +44,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 
 [dev-dependencies]
 criterion = "0.8.2"
+merman-render.workspace = true
 roxmltree.workspace = true
 sha2.workspace = true
 

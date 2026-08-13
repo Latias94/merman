@@ -132,8 +132,8 @@ mod tests {
     use crate::BindingStatus;
     use serde_json::Value;
 
-    fn render_session() -> merman::svg::RenderSession {
-        merman::svg::RenderEnvironment::deterministic()
+    fn render_session() -> merman_render::environment::RenderSession {
+        merman_render::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("render session")
     }

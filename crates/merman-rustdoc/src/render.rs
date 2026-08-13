@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use merman::{
-    MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
-    svg::{RenderEnvironment, SvgPipeline},
+    MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest, svg::SvgPipeline,
 };
 use serde_json::Value;
 
@@ -152,7 +152,7 @@ fn render_mermaid_svg(
     }
 
     let request = SvgRequest {
-        environment: RenderEnvironment::deterministic(),
+        environment: SvgEnvironment::deterministic(),
         pipeline: match pipeline {
             PipelineMode::Parity => None,
             PipelineMode::Readable => Some(SvgPipeline::readable()),

@@ -10,10 +10,10 @@ use crate::common::{
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
     HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions, MeasurementProfileId,
-    Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy, RenderEnvironment,
+    Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
 };
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
@@ -29,7 +29,8 @@ pub(super) struct RenderRequestPlan {
 }
 
 pub(super) struct RenderOperationConfig {
-    environment: RenderEnvironment,
+    environment: SvgEnvironment,
+    runtime_policy: merman::runtime::RuntimePolicy,
     input_resources: merman::resources::InputResourcePolicy,
     lenient_parsing: bool,
     presentation: Option<Presentation>,
@@ -228,9 +229,8 @@ impl RenderOperationConfig {
     ) -> Result<Self, BindingError> {
         let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
         let input_resources = *render_resources.input_policy();
-        let mut environment = RenderEnvironment::deterministic()
-            .with_capability_policy(capability_policy)
-            .with_runtime_policy(runtime_policy);
+        let mut environment =
+            SvgEnvironment::deterministic().with_capability_policy(capability_policy);
         environment = environment.with_resource_policy(render_resources);
         if let Some(environment_json) = options.environment.as_ref() {
             if let Some(kind) = environment_json.text_measurement.as_deref() {
@@ -358,6 +358,7 @@ impl RenderOperationConfig {
 
         Ok(Self {
             environment,
+            runtime_policy,
             input_resources,
             lenient_parsing,
             presentation,
@@ -396,8 +397,7 @@ impl RenderOperationConfig {
 
         let input_resources = self.input_resources;
         let resource_profile = input_resources.profile();
-        let mut engine =
-            merman::Engine::new().with_runtime_policy(environment.runtime_policy().clone());
+        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
         let resolved_presentation = self.presentation.map(Presentation::resolve);
         let presentation_policy = resolved_presentation
             .as_ref()
@@ -948,7 +948,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_today_freezes_the_binding_clock_across_sessions() {
+    fn fixed_today_freezes_the_binding_clock_across_operations() {
         let options = crate::common::parse_options(
             br#"{
                 "fixed_today": "2026-06-10",
@@ -959,12 +959,11 @@ mod tests {
         let policy =
             binding_runtime_policy_from(&options, merman::runtime::RuntimePolicy::deterministic())
                 .expect("binding time policy");
-        let environment = RenderEnvironment::deterministic().with_runtime_policy(policy);
 
-        let first = environment.begin_session().expect("first session");
-        let second = environment.begin_session().expect("second session");
+        let first = policy.begin_operation().expect("first operation");
+        let second = policy.begin_operation().expect("second operation");
 
-        assert_eq!(first.operation_context(), second.operation_context());
+        assert_eq!(first, second);
         assert_eq!(first.unix_millis(), 1_781_046_000_000);
         assert_eq!(first.local_time_zone().fixed_offset_minutes(), Some(60));
     }
