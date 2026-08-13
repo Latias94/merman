@@ -52,7 +52,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         g
     } else {
         let Some(g) = owned_geom.as_ref() else {
-            if ctx.resolved_theme.is_some() {
+            let source_residuals =
+                emitted_styles.emitted_shape_source_residuals(edge.id.as_str(), false);
+            if ctx.resolved_theme.is_some() || !source_residuals.is_empty() {
                 ctx.theme_evidence.record_edge_emission(
                     &ctx.edge_theme,
                     crate::flowchart::FlowchartEdgeThemeEmission {
@@ -61,7 +63,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                             false,
                         ),
                     },
-                    &emitted_styles.emitted_shape_source_residuals(edge.id.as_str(), false),
+                    &source_residuals,
                 );
             }
             return;
@@ -215,20 +217,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             &source_residuals,
         );
     }
-    let inline_declaration_ordinal_base = edge
-        .classes
-        .iter()
-        .filter_map(|class_id| ctx.class_defs.get(class_id))
-        .flatten()
-        .map(|style| crate::flowchart::flowchart_split_mermaid_style_decls(style).count())
-        .sum();
-    ctx.theme_evidence
-        .record_source_residuals(&raw_emitted_edge_path_residuals(
-            edge.id.as_str(),
-            &ctx.default_edge_style,
-            &edge.style,
-            inline_declaration_ordinal_base,
-        ));
     if let Some(residual) = marker_color
         .as_ref()
         .and_then(FlowchartEdgeMarkerColor::residual)

@@ -6783,6 +6783,73 @@ A[Alpha]
     }
 
     #[test]
+    fn flowchart_invalid_assigned_edge_class_declaration_is_a_source_residual() {
+        let theme = flowchart_node_theme(
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+        );
+        let source =
+            "flowchart LR\nA edge@--> B\nclassDef unsafe filter:url(#alpha)\nclass edge unsafe\n";
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model")
+        };
+
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort render session"),
+        )
+        .expect("prepare invalid assigned edge class declaration")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort output should report the dropped declaration");
+
+        assert!(!rendered.svg().contains("filter:url(#alpha)"));
+        let residual = rendered
+            .style_report()
+            .residuals()
+            .iter()
+            .find(|residual| {
+                residual.owner_id() == "edge"
+                    && residual.class_id() == Some("unsafe")
+                    && residual.raw() == "filter:url(#alpha)"
+            })
+            .expect("invalid assigned declaration residual");
+        assert_eq!(residual.property(), None);
+        assert_eq!(residual.origin(), FamilyStyleOrigin::AssignedClass);
+        assert_eq!(residual.channel(), FamilyStyleChannel::Shape);
+        assert_eq!(residual.assignment_ordinal(), Some(0));
+        assert_eq!(residual.declaration_ordinal(), 0);
+        assert_eq!(
+            residual.reason(),
+            FamilyStyleResidualReason::InvalidDeclaration
+        );
+
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict render session"),
+        )
+        .expect("strict verification must wait for edge emission");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("invalid assigned edge declaration must fail strict portability"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_style().map(|(family, _)| family),
+            Some(DiagramFamilyId::FLOWCHART)
+        );
+    }
+
+    #[test]
     fn flowchart_edge_label_invalid_typography_is_a_source_residual() {
         let theme = flowchart_node_theme(
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),

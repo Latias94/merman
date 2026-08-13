@@ -25,6 +25,7 @@ pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     shape_sources: Vec<PendingSourceDeclaration>,
     generated_shape_sources: Vec<PendingSourceDeclaration>,
     label_sources: Vec<PendingSourceDeclaration>,
+    invalid_sources: Vec<PendingInvalidSourceDeclaration>,
 }
 
 #[derive(Debug, Clone)]
@@ -173,6 +174,22 @@ impl PendingSourceDeclaration {
     }
 }
 
+#[derive(Debug, Clone)]
+struct PendingInvalidSourceDeclaration {
+    raw: String,
+    provenance: PendingSourceProvenance,
+    channel: crate::diagram_theme::SourceStyleChannel,
+}
+
+impl PendingInvalidSourceDeclaration {
+    fn bind(&self, owner_id: &str) -> crate::diagram_theme::SourceStyleResidual {
+        crate::diagram_theme::SourceStyleResidual::invalid(
+            &self.raw,
+            self.provenance.bind(owner_id, self.channel),
+        )
+    }
+}
+
 pub(in crate::svg::parity::flowchart) struct FlowchartNodeSourceEvidence {
     pub(in crate::svg::parity::flowchart) fill: crate::flowchart::FlowchartSourceFacetStatus,
     pub(in crate::svg::parity::flowchart) stroke: crate::flowchart::FlowchartSourceFacetStatus,
@@ -185,6 +202,18 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeSourceEvidence {
 }
 
 impl FlowchartCompiledStyles {
+    fn invalid_source_residuals(
+        &self,
+        owner_id: &str,
+        channel: crate::diagram_theme::SourceStyleChannel,
+    ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
+        self.invalid_sources
+            .iter()
+            .filter(|source| source.channel == channel)
+            .map(|source| source.bind(owner_id))
+            .collect()
+    }
+
     pub(super) fn emitted_edge_class_declarations(&self) -> &[(String, String)] {
         &self.edge_class_declarations
     }
@@ -338,13 +367,16 @@ impl FlowchartCompiledStyles {
             receipt,
             &wrapper_has_class,
         );
-        let mut residuals = fill_residual
-            .into_iter()
-            .chain(stroke_residual)
-            .chain(stroke_width_residual)
-            .chain(stroke_dasharray_residual)
-            .chain(radius_residuals)
-            .collect::<Vec<_>>();
+        let mut residuals = self
+            .invalid_source_residuals(owner_id, crate::diagram_theme::SourceStyleChannel::Shape);
+        residuals.extend(
+            fill_residual
+                .into_iter()
+                .chain(stroke_residual)
+                .chain(stroke_width_residual)
+                .chain(stroke_dasharray_residual)
+                .chain(radius_residuals),
+        );
 
         for direct_source in &self.shape_sources {
             let property = direct_source.prepared.property();
@@ -406,25 +438,29 @@ impl FlowchartCompiledStyles {
         owner_id: &str,
         source_style_verified: bool,
     ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
-        self.shape_sources
-            .iter()
-            .filter(|source| !source.prepared.property().starts_with("--"))
-            .filter_map(|source| {
-                let declaration = source.bind(
-                    owner_id,
-                    crate::diagram_theme::SourceStyleChannel::Shape,
-                    false,
-                );
-                emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
-                    |reason| {
-                        crate::diagram_theme::SourceStyleResidual::from_declaration(
-                            &declaration,
-                            reason,
-                        )
-                    },
-                )
-            })
-            .collect()
+        let mut residuals = self
+            .invalid_source_residuals(owner_id, crate::diagram_theme::SourceStyleChannel::Shape);
+        residuals.extend(
+            self.shape_sources
+                .iter()
+                .filter(|source| !source.prepared.property().starts_with("--"))
+                .filter_map(|source| {
+                    let declaration = source.bind(
+                        owner_id,
+                        crate::diagram_theme::SourceStyleChannel::Shape,
+                        false,
+                    );
+                    emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
+                        |reason| {
+                            crate::diagram_theme::SourceStyleResidual::from_declaration(
+                                &declaration,
+                                reason,
+                            )
+                        },
+                    )
+                }),
+        );
+        residuals
     }
 
     pub(super) fn emitted_edge_source_residuals(
@@ -432,26 +468,30 @@ impl FlowchartCompiledStyles {
         owner_id: &str,
         hand_drawn: bool,
     ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
-        self.shape_sources
-            .iter()
-            .filter(|source| !source.prepared.property().starts_with("--"))
-            .filter_map(|source| {
-                let declaration = source.bind(
-                    owner_id,
-                    crate::diagram_theme::SourceStyleChannel::Shape,
-                    false,
-                );
-                let source_style_verified = !hand_drawn || source.provenance.is_inline();
-                emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
-                    |reason| {
-                        crate::diagram_theme::SourceStyleResidual::from_declaration(
-                            &declaration,
-                            reason,
-                        )
-                    },
-                )
-            })
-            .collect()
+        let mut residuals = self
+            .invalid_source_residuals(owner_id, crate::diagram_theme::SourceStyleChannel::Shape);
+        residuals.extend(
+            self.shape_sources
+                .iter()
+                .filter(|source| !source.prepared.property().starts_with("--"))
+                .filter_map(|source| {
+                    let declaration = source.bind(
+                        owner_id,
+                        crate::diagram_theme::SourceStyleChannel::Shape,
+                        false,
+                    );
+                    let source_style_verified = !hand_drawn || source.provenance.is_inline();
+                    emitted_shape_source_residual_reason(&declaration, source_style_verified).map(
+                        |reason| {
+                            crate::diagram_theme::SourceStyleResidual::from_declaration(
+                                &declaration,
+                                reason,
+                            )
+                        },
+                    )
+                }),
+        );
+        residuals
     }
 
     pub(super) fn emitted_label_source_residuals(
@@ -478,28 +518,25 @@ impl FlowchartCompiledStyles {
             crate::svg::parity::flowchart::render::node::emission::FlowchartNodeFacetReach,
         >,
     ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
-        self.label_sources
-            .iter()
-            .filter_map(|source| {
-                let declaration = source.bind(
-                    owner_id,
-                    crate::diagram_theme::SourceStyleChannel::Label,
-                    false,
-                );
-                let verified = if matches!(declaration.property(), "font-family" | "font-size") {
-                    let reach = prepared_typography_reach?;
-                    reach.is_verified()
-                } else {
-                    typography_verified
-                };
-                label_source_residual_reason(&declaration, verified).map(|reason| {
-                    crate::diagram_theme::SourceStyleResidual::from_declaration(
-                        &declaration,
-                        reason,
-                    )
-                })
+        let mut residuals = self
+            .invalid_source_residuals(owner_id, crate::diagram_theme::SourceStyleChannel::Label);
+        residuals.extend(self.label_sources.iter().filter_map(|source| {
+            let declaration = source.bind(
+                owner_id,
+                crate::diagram_theme::SourceStyleChannel::Label,
+                false,
+            );
+            let verified = if matches!(declaration.property(), "font-family" | "font-size") {
+                let reach = prepared_typography_reach?;
+                reach.is_verified()
+            } else {
+                typography_verified
+            };
+            label_source_residual_reason(&declaration, verified).map(|reason| {
+                crate::diagram_theme::SourceStyleResidual::from_declaration(&declaration, reason)
             })
-            .collect()
+        }));
+        residuals
     }
 
     pub(super) fn emitted_html_label_source_residuals(
@@ -706,34 +743,6 @@ fn contains_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> bool {
         .as_bytes()
         .windows(needle.len())
         .any(|window| window.eq_ignore_ascii_case(needle))
-}
-
-pub(super) fn raw_emitted_edge_path_residuals(
-    owner_id: &str,
-    styles_a: &[String],
-    styles_b: &[String],
-    declaration_ordinal_base: usize,
-) -> Vec<crate::diagram_theme::SourceStyleResidual> {
-    let mut residuals = Vec::new();
-    let mut declaration_ordinal = declaration_ordinal_base;
-    for style in styles_a.iter().chain(styles_b.iter()) {
-        let declarations =
-            crate::flowchart::flowchart_split_mermaid_style_decls(style).collect::<Vec<_>>();
-        for raw in declarations {
-            let provenance = crate::diagram_theme::SourceStyleProvenance::inline(
-                owner_id,
-                crate::diagram_theme::SourceStyleChannel::Shape,
-                declaration_ordinal,
-            );
-            declaration_ordinal += 1;
-            if let Err(residual) =
-                crate::diagram_theme::SourceStyleDeclaration::parse(raw, provenance)
-            {
-                residuals.push(residual);
-            }
-        }
-    }
-    residuals
 }
 
 fn emitted_shape_source<'a>(
@@ -1228,6 +1237,7 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
     let mut semantic = SemanticMap::default();
     let mut emission = EmissionMap::default();
     let mut edge_class_declarations = Vec::new();
+    let mut invalid_sources = Vec::new();
 
     let mut declaration_ordinal = 0;
     for (assignment_ordinal, c) in classes.iter().enumerate() {
@@ -1238,9 +1248,19 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
             for d in crate::flowchart::flowchart_split_mermaid_style_decls(d) {
                 let ordinal = declaration_ordinal;
                 declaration_ordinal += 1;
+                let provenance = PendingSourceProvenance::AssignedClass {
+                    class_id: c.clone(),
+                    assignment_ordinal,
+                    declaration_ordinal: ordinal,
+                };
                 let Some(declaration) =
                     crate::diagram_theme::PreparedSourceStyleDeclaration::parse(d)
                 else {
+                    invalid_sources.push(PendingInvalidSourceDeclaration {
+                        raw: d.to_string(),
+                        channel: invalid_source_style_channel(d),
+                        provenance,
+                    });
                     continue;
                 };
                 let prepared = Arc::new(declaration);
@@ -1253,14 +1273,7 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
                     ));
                 }
                 emission.set(Arc::clone(&prepared));
-                semantic.set(
-                    prepared,
-                    PendingSourceProvenance::AssignedClass {
-                        class_id: c.clone(),
-                        assignment_ordinal,
-                        declaration_ordinal: ordinal,
-                    },
-                );
+                semantic.set(prepared, provenance);
             }
         }
     }
@@ -1269,18 +1282,21 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
         for d in crate::flowchart::flowchart_split_mermaid_style_decls(d) {
             let ordinal = declaration_ordinal;
             declaration_ordinal += 1;
+            let provenance = PendingSourceProvenance::Inline {
+                declaration_ordinal: ordinal,
+            };
             let Some(declaration) = crate::diagram_theme::PreparedSourceStyleDeclaration::parse(d)
             else {
+                invalid_sources.push(PendingInvalidSourceDeclaration {
+                    raw: d.to_string(),
+                    channel: invalid_source_style_channel(d),
+                    provenance,
+                });
                 continue;
             };
             let prepared = Arc::new(declaration);
             emission.set(Arc::clone(&prepared));
-            semantic.set(
-                prepared,
-                PendingSourceProvenance::Inline {
-                    declaration_ordinal: ordinal,
-                },
-            );
+            semantic.set(prepared, provenance);
         }
     }
 
@@ -1461,6 +1477,20 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
         shape_sources,
         generated_shape_sources,
         label_sources,
+        invalid_sources,
+    }
+}
+
+fn invalid_source_style_channel(raw: &str) -> crate::diagram_theme::SourceStyleChannel {
+    let property = raw
+        .trim()
+        .split_once(':')
+        .map(|(property, _)| property.trim())
+        .unwrap_or_default();
+    if crate::flowchart::flowchart_is_source_spelled_label_style_key(property) {
+        crate::diagram_theme::SourceStyleChannel::Label
+    } else {
+        crate::diagram_theme::SourceStyleChannel::Shape
     }
 }
 
@@ -1554,6 +1584,7 @@ mod tests {
             shape_sources: Vec::new(),
             generated_shape_sources: Vec::new(),
             label_sources: Vec::new(),
+            invalid_sources: Vec::new(),
         }
     }
 
@@ -1617,6 +1648,48 @@ mod tests {
             crate::flowchart::FlowchartSourceFacetStatus::Admitted
         );
         assert_eq!(styles.stroke.as_deref(), Some("#2563eb"));
+    }
+
+    #[test]
+    fn invalid_assigned_class_declarations_keep_element_provenance() {
+        let class_defs = IndexMap::from([(
+            "unsafe".to_string(),
+            vec!["font-size:".to_string(), "filter:url(#alpha)".to_string()],
+        )]);
+        let styles = flowchart_compile_styles(&class_defs, &["unsafe".to_string()], &[], &[]);
+
+        let shape_residuals = styles.emitted_edge_source_residuals("edge", false);
+        assert_eq!(shape_residuals.len(), 1);
+        assert_eq!(shape_residuals[0].raw(), "filter:url(#alpha)");
+        assert_eq!(shape_residuals[0].property(), None);
+        assert_eq!(shape_residuals[0].provenance().owner_id(), "edge");
+        assert_eq!(shape_residuals[0].provenance().class_id(), Some("unsafe"));
+        assert_eq!(
+            shape_residuals[0].provenance().origin(),
+            crate::diagram_theme::SourceStyleOrigin::AssignedClass
+        );
+        assert_eq!(
+            shape_residuals[0].provenance().channel(),
+            crate::diagram_theme::SourceStyleChannel::Shape
+        );
+        assert_eq!(
+            shape_residuals[0].provenance().assignment_ordinal(),
+            Some(0)
+        );
+        assert_eq!(shape_residuals[0].provenance().declaration_ordinal(), 1);
+        assert_eq!(
+            shape_residuals[0].reason(),
+            crate::diagram_theme::SourceStyleResidualReason::InvalidDeclaration
+        );
+
+        let label_residuals = styles.emitted_label_source_residuals("edge", false);
+        assert_eq!(label_residuals.len(), 1);
+        assert_eq!(label_residuals[0].raw(), "font-size:");
+        assert_eq!(
+            label_residuals[0].provenance().channel(),
+            crate::diagram_theme::SourceStyleChannel::Label
+        );
+        assert_eq!(label_residuals[0].provenance().declaration_ordinal(), 0);
     }
 
     #[test]
