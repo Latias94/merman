@@ -59,8 +59,8 @@ pub use editor::{
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
-    diagram_type_metadata_id, diagram_type_render_model_kind,
+    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id,
+    diagram_type_family_kind, diagram_type_metadata_id, diagram_type_render_model_kind,
 };
 pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{

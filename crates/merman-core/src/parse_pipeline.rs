@@ -940,10 +940,10 @@ impl<'a> ParsePipeline<'a> {
         control: &ParseControl,
     ) -> ParseControlResult<crate::config::ConfigOverlayApplication> {
         let mut application = crate::config::ConfigOverlayApplication::default();
-        let Some(family) = Self::post_detection_render_family(diagram_type, effective_config)
-        else {
+        let Some(family) = family::operation_family_id(diagram_type, effective_config) else {
             return Ok(application);
         };
+        let family = family.as_str();
         if let Some(overlay) = &self.engine.post_detection_config_overlay {
             overlay.apply_family_controlled_in_lane(
                 family,
@@ -982,21 +982,6 @@ impl<'a> ParsePipeline<'a> {
             )?;
         }
         Ok(application)
-    }
-
-    fn post_detection_render_family(
-        diagram_type: &str,
-        effective_config: &MermaidConfig,
-    ) -> Option<&'static str> {
-        let logical_family = family::diagram_type_family_kind(diagram_type)?;
-        if matches!(logical_family, "flowchart" | "swimlane") {
-            return Some(if effective_config.get_str("layout") == Some("swimlane") {
-                "swimlane"
-            } else {
-                "flowchart"
-            });
-        }
-        Some(logical_family)
     }
 }
 

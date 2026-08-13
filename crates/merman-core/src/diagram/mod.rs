@@ -932,6 +932,15 @@ impl ParsedDiagramRender {
         &self.model
     }
 
+    /// Returns the catalog-owned family selected for this canonical render operation.
+    ///
+    /// The core parse pipeline has already applied detection defaults and effective configuration
+    /// before this value is observed, so renderers do not need to reconstruct family selection.
+    pub fn family_id(&self) -> crate::DiagramFamilyId {
+        crate::family::operation_family_id(&self.meta.diagram_type, &self.meta.effective_config)
+            .expect("built-in parsed render models belong to a catalog family")
+    }
+
     /// Consumes the parsed diagram and returns its canonical metadata/model projection.
     ///
     /// This intentionally omits parser-owned render context. Renderer integrations that need the

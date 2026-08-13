@@ -14,6 +14,7 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::Value;
+use std::fmt;
 use std::sync::OnceLock;
 
 pub(crate) type CombinedSemanticParser = fn(
@@ -247,13 +248,20 @@ pub struct DiagramFamilyCapability {
 /// The inner value is private so editor facts cannot invent family ownership from an arbitrary
 /// string. Instances only come from the admitted family catalog and are cheap to copy into
 /// lexical provenance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct DiagramFamilyId(&'static str);
 
 impl DiagramFamilyId {
-    pub fn as_str(self) -> &'static str {
+    /// Returns the stable string identifier used by public metadata and serde output.
+    pub const fn as_str(self) -> &'static str {
         self.0
+    }
+}
+
+impl fmt::Display for DiagramFamilyId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 
@@ -338,7 +346,7 @@ impl FamilyCatalogProjection {
                 variant.catalog_order,
                 DiagramFamilyCapability {
                     diagram_type: variant.id,
-                    logical_family_kind: family.logical_kind,
+                    logical_family_kind: family.id.as_str(),
                     metadata_id: variant.metadata.map(|metadata| metadata.id),
                     render_model_kind: variant.render_model_kind,
                     has_detector: variant.detector.is_some(),
@@ -449,8 +457,31 @@ pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
     find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
 }
 
-pub(crate) fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
-    find_variant(diagram_type).map(|(family, _)| DiagramFamilyId(family.logical_kind))
+/// Returns the catalog-owned logical family identity for one built-in Mermaid diagram type.
+pub fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
+    find_variant(diagram_type).map(|(family, _)| family.id)
+}
+
+/// Returns the built-in family that owns one operation after effective configuration is known.
+///
+/// Flowchart and Swimlane share one semantic implementation, so their operation identity follows
+/// the effective layout selected for the request. All other built-in families retain their
+/// catalog identity.
+pub(crate) fn operation_family_id(
+    diagram_type: &str,
+    effective_config: &MermaidConfig,
+) -> Option<DiagramFamilyId> {
+    let family = diagram_type_family_id(diagram_type)?;
+    if family == DiagramFamilyId::FLOWCHART || family == DiagramFamilyId::SWIMLANE {
+        return Some(
+            if effective_config.get_str("layout") == Some(DiagramFamilyId::SWIMLANE.as_str()) {
+                DiagramFamilyId::SWIMLANE
+            } else {
+                DiagramFamilyId::FLOWCHART
+            },
+        );
+    }
+    Some(family)
 }
 
 pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {
@@ -480,7 +511,10 @@ pub(crate) fn apply_diagram_type_config_effects(
     match default_effect {
         DefaultEffect::None => {}
         DefaultEffect::SwimlaneLayout if user_config.get_str("layout").is_none() => {
-            effective_config.set_value("layout", Value::String("swimlane".to_string()));
+            effective_config.set_value(
+                "layout",
+                Value::String(DiagramFamilyId::SWIMLANE.as_str().to_string()),
+            );
         }
         DefaultEffect::SwimlaneLayout => {}
     }
@@ -747,9 +781,50 @@ struct FamilyConfigDefinition {
 
 #[derive(Clone, Copy)]
 struct DiagramFamilyDefinition {
-    logical_kind: &'static str,
+    id: DiagramFamilyId,
     config: Option<FamilyConfigDefinition>,
     variants: &'static [FamilyVariantDefinition],
+}
+
+macro_rules! define_family_catalog {
+    (
+        $(
+            $constant:ident => $id:literal {
+                config: $config:expr,
+                variants: $variants:expr $(,)?
+            }
+        ),+ $(,)?
+    ) => {
+        impl DiagramFamilyId {
+            $(
+                #[doc = concat!("Built-in `", $id, "` diagram family identity.")]
+                pub const $constant: Self = Self($id);
+            )+
+
+            /// Returns every built-in family identity in pinned catalog order.
+            pub const fn all() -> &'static [Self] {
+                &[$(Self::$constant),+]
+            }
+
+            /// Parses one built-in family identity from its stable wire identifier.
+            pub fn from_id(value: &str) -> Option<Self> {
+                match value {
+                    $($id => Some(Self::$constant),)+
+                    _ => None,
+                }
+            }
+        }
+
+        const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
+            $(
+                DiagramFamilyDefinition {
+                    id: DiagramFamilyId::$constant,
+                    config: $config,
+                    variants: $variants,
+                },
+            )+
+        ];
+    };
 }
 
 macro_rules! variant {
@@ -1554,271 +1629,361 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     default_effect: DefaultEffect::None,
 }];
 
-const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
-    DiagramFamilyDefinition {
-        logical_kind: "error",
+define_family_catalog! {
+    ERROR => "error" {
         config: None,
         variants: ERROR_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "flowchart",
+    FLOWCHART => "flowchart" {
         config: Some(FamilyConfigDefinition {
             namespace: "flowchart",
             frontmatter_order: 7,
         }),
         variants: FLOWCHART_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "swimlane",
+    SWIMLANE => "swimlane" {
         config: Some(FamilyConfigDefinition {
             namespace: "swimlane",
             frontmatter_order: 23,
         }),
         variants: SWIMLANE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "mindmap",
+    MINDMAP => "mindmap" {
         config: Some(FamilyConfigDefinition {
             namespace: "mindmap",
             frontmatter_order: 13,
         }),
         variants: MINDMAP_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "architecture",
+    ARCHITECTURE => "architecture" {
         config: Some(FamilyConfigDefinition {
             namespace: "architecture",
             frontmatter_order: 0,
         }),
         variants: ARCHITECTURE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "zenuml",
+    ZENUML => "zenuml" {
         config: Some(FamilyConfigDefinition {
             namespace: "zenuml",
             frontmatter_order: 30,
         }),
         variants: ZENUML_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "sequence",
+    SEQUENCE => "sequence" {
         config: Some(FamilyConfigDefinition {
             namespace: "sequence",
             frontmatter_order: 21,
         }),
         variants: SEQUENCE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "c4",
+    C4 => "c4" {
         config: Some(FamilyConfigDefinition {
             namespace: "c4",
             frontmatter_order: 2,
         }),
         variants: C4_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "kanban",
+    KANBAN => "kanban" {
         config: Some(FamilyConfigDefinition {
             namespace: "kanban",
             frontmatter_order: 12,
         }),
         variants: KANBAN_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "class",
+    CLASS => "class" {
         config: Some(FamilyConfigDefinition {
             namespace: "class",
             frontmatter_order: 3,
         }),
         variants: CLASS_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "er",
+    ER => "er" {
         config: Some(FamilyConfigDefinition {
             namespace: "er",
             frontmatter_order: 5,
         }),
         variants: ER_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "gantt",
+    GANTT => "gantt" {
         config: Some(FamilyConfigDefinition {
             namespace: "gantt",
             frontmatter_order: 8,
         }),
         variants: GANTT_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "info",
+    INFO => "info" {
         config: None,
         variants: INFO_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "pie",
+    PIE => "pie" {
         config: Some(FamilyConfigDefinition {
             namespace: "pie",
             frontmatter_order: 15,
         }),
         variants: PIE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "requirement",
+    REQUIREMENT => "requirement" {
         config: Some(FamilyConfigDefinition {
             namespace: "requirement",
             frontmatter_order: 19,
         }),
         variants: REQUIREMENT_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "timeline",
+    TIMELINE => "timeline" {
         config: Some(FamilyConfigDefinition {
             namespace: "timeline",
             frontmatter_order: 24,
         }),
         variants: TIMELINE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "gitGraph",
+    GIT_GRAPH => "gitGraph" {
         config: Some(FamilyConfigDefinition {
             namespace: "gitGraph",
             frontmatter_order: 9,
         }),
         variants: GIT_GRAPH_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "state",
+    STATE => "state" {
         config: Some(FamilyConfigDefinition {
             namespace: "state",
             frontmatter_order: 22,
         }),
         variants: STATE_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "journey",
+    JOURNEY => "journey" {
         config: Some(FamilyConfigDefinition {
             namespace: "journey",
             frontmatter_order: 11,
         }),
         variants: JOURNEY_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "quadrantChart",
+    QUADRANT_CHART => "quadrantChart" {
         config: Some(FamilyConfigDefinition {
             namespace: "quadrantChart",
             frontmatter_order: 16,
         }),
         variants: QUADRANT_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "sankey",
+    SANKEY => "sankey" {
         config: Some(FamilyConfigDefinition {
             namespace: "sankey",
             frontmatter_order: 20,
         }),
         variants: SANKEY_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "packet",
+    PACKET => "packet" {
         config: Some(FamilyConfigDefinition {
             namespace: "packet",
             frontmatter_order: 14,
         }),
         variants: PACKET_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "xychart",
+    XY_CHART => "xychart" {
         config: Some(FamilyConfigDefinition {
             namespace: "xyChart",
             frontmatter_order: 29,
         }),
         variants: XYCHART_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "block",
+    BLOCK => "block" {
         config: Some(FamilyConfigDefinition {
             namespace: "block",
             frontmatter_order: 1,
         }),
         variants: BLOCK_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "eventmodeling",
+    EVENT_MODELING => "eventmodeling" {
         config: Some(FamilyConfigDefinition {
             namespace: "eventmodeling",
             frontmatter_order: 6,
         }),
         variants: EVENTMODELING_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "treeView",
+    TREE_VIEW => "treeView" {
         config: Some(FamilyConfigDefinition {
             namespace: "treeView",
             frontmatter_order: 25,
         }),
         variants: TREE_VIEW_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "radar",
+    RADAR => "radar" {
         config: Some(FamilyConfigDefinition {
             namespace: "radar",
             frontmatter_order: 17,
         }),
         variants: RADAR_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "ishikawa",
+    ISHIKAWA => "ishikawa" {
         config: Some(FamilyConfigDefinition {
             namespace: "ishikawa",
             frontmatter_order: 10,
         }),
         variants: ISHIKAWA_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "treemap",
+    TREEMAP => "treemap" {
         config: Some(FamilyConfigDefinition {
             namespace: "treemap",
             frontmatter_order: 26,
         }),
         variants: TREEMAP_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "railroad",
+    RAILROAD => "railroad" {
         config: Some(FamilyConfigDefinition {
             namespace: "railroad",
             frontmatter_order: 18,
         }),
         variants: RAILROAD_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "venn",
+    VENN => "venn" {
         config: Some(FamilyConfigDefinition {
             namespace: "venn",
             frontmatter_order: 27,
         }),
         variants: VENN_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "wardley",
+    WARDLEY => "wardley" {
         config: Some(FamilyConfigDefinition {
             namespace: "wardley-beta",
             frontmatter_order: 28,
         }),
         variants: WARDLEY_VARIANTS,
     },
-    DiagramFamilyDefinition {
-        logical_kind: "cynefin",
+    CYNEFIN => "cynefin" {
         config: Some(FamilyConfigDefinition {
             namespace: "cynefin",
             frontmatter_order: 4,
         }),
         variants: CYNEFIN_VARIANTS,
     },
-];
+}
 
 #[cfg(test)]
 mod catalog_tests {
     use super::*;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeSet, HashSet};
+
+    const EXPECTED_FAMILY_IDS: &[(DiagramFamilyId, &str)] = &[
+        (DiagramFamilyId::ERROR, "error"),
+        (DiagramFamilyId::FLOWCHART, "flowchart"),
+        (DiagramFamilyId::SWIMLANE, "swimlane"),
+        (DiagramFamilyId::MINDMAP, "mindmap"),
+        (DiagramFamilyId::ARCHITECTURE, "architecture"),
+        (DiagramFamilyId::ZENUML, "zenuml"),
+        (DiagramFamilyId::SEQUENCE, "sequence"),
+        (DiagramFamilyId::C4, "c4"),
+        (DiagramFamilyId::KANBAN, "kanban"),
+        (DiagramFamilyId::CLASS, "class"),
+        (DiagramFamilyId::ER, "er"),
+        (DiagramFamilyId::GANTT, "gantt"),
+        (DiagramFamilyId::INFO, "info"),
+        (DiagramFamilyId::PIE, "pie"),
+        (DiagramFamilyId::REQUIREMENT, "requirement"),
+        (DiagramFamilyId::TIMELINE, "timeline"),
+        (DiagramFamilyId::GIT_GRAPH, "gitGraph"),
+        (DiagramFamilyId::STATE, "state"),
+        (DiagramFamilyId::JOURNEY, "journey"),
+        (DiagramFamilyId::QUADRANT_CHART, "quadrantChart"),
+        (DiagramFamilyId::SANKEY, "sankey"),
+        (DiagramFamilyId::PACKET, "packet"),
+        (DiagramFamilyId::XY_CHART, "xychart"),
+        (DiagramFamilyId::BLOCK, "block"),
+        (DiagramFamilyId::EVENT_MODELING, "eventmodeling"),
+        (DiagramFamilyId::TREE_VIEW, "treeView"),
+        (DiagramFamilyId::RADAR, "radar"),
+        (DiagramFamilyId::ISHIKAWA, "ishikawa"),
+        (DiagramFamilyId::TREEMAP, "treemap"),
+        (DiagramFamilyId::RAILROAD, "railroad"),
+        (DiagramFamilyId::VENN, "venn"),
+        (DiagramFamilyId::WARDLEY, "wardley"),
+        (DiagramFamilyId::CYNEFIN, "cynefin"),
+    ];
+
+    #[test]
+    fn family_ids_are_unique_round_trip_and_keep_string_wire_values() {
+        let mut unique = HashSet::new();
+
+        for &(family, id) in EXPECTED_FAMILY_IDS {
+            assert!(unique.insert(family), "duplicate family id {id}");
+            assert_eq!(family.as_str(), id);
+            assert_eq!(family.to_string(), id);
+            assert_eq!(DiagramFamilyId::from_id(id), Some(family));
+            assert_eq!(
+                serde_json::to_value(family).unwrap(),
+                Value::String(id.into())
+            );
+        }
+
+        assert_eq!(unique.len(), 33);
+        assert_eq!(DiagramFamilyId::from_id("future-family"), None);
+    }
+
+    #[test]
+    fn public_family_catalog_exactly_covers_the_typed_core_catalog() {
+        let expected = EXPECTED_FAMILY_IDS
+            .iter()
+            .map(|(family, _)| *family)
+            .collect::<Vec<_>>();
+        let catalog = FAMILY_CATALOG
+            .iter()
+            .map(|family| family.id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(DiagramFamilyId::all(), expected.as_slice());
+        assert_eq!(catalog.as_slice(), expected.as_slice());
+        for family in FAMILY_CATALOG {
+            for variant in family.variants {
+                assert_eq!(diagram_type_family_id(variant.id), Some(family.id));
+            }
+        }
+    }
+
+    #[test]
+    fn operation_family_id_uses_effective_layout_for_flowchart_and_swimlane() {
+        for (diagram_type, layout, expected) in [
+            ("flowchart", None, DiagramFamilyId::FLOWCHART),
+            ("flowchart-v2", Some("dagre"), DiagramFamilyId::FLOWCHART),
+            ("flowchart-elk", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("flowchart", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+            ("swimlane", None, DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+        ] {
+            let mut config = MermaidConfig::empty_object();
+            if let Some(layout) = layout {
+                config.set_value("layout", Value::String(layout.to_string()));
+            }
+            assert_eq!(
+                operation_family_id(diagram_type, &config),
+                Some(expected),
+                "{diagram_type} with layout {layout:?}"
+            );
+        }
+
+        let user_config = MermaidConfig::empty_object();
+        let mut defaulted_swimlane =
+            MermaidConfig::from_value(serde_json::json!({"layout": "dagre"}));
+        apply_diagram_type_config_effects("swimlane", &user_config, &mut defaulted_swimlane);
+        assert_eq!(defaulted_swimlane.get_str("layout"), Some("swimlane"));
+        assert_eq!(
+            operation_family_id("swimlane", &defaulted_swimlane),
+            Some(DiagramFamilyId::SWIMLANE)
+        );
+
+        let user_config = MermaidConfig::from_value(serde_json::json!({"layout": "elk"}));
+        let mut configured_flowchart = user_config.clone();
+        apply_diagram_type_config_effects("swimlane", &user_config, &mut configured_flowchart);
+        assert_eq!(
+            operation_family_id("swimlane", &configured_flowchart),
+            Some(DiagramFamilyId::FLOWCHART)
+        );
+
+        let config = MermaidConfig::from_value(serde_json::json!({"layout": "swimlane"}));
+        assert_eq!(
+            operation_family_id("mindmap", &config),
+            Some(DiagramFamilyId::MINDMAP)
+        );
+        assert_eq!(operation_family_id("future-diagram", &config), None);
+    }
 
     #[test]
     fn public_metadata_ids_are_catalog_owned_instead_of_derived_from_family_names() {
