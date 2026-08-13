@@ -166,10 +166,15 @@ pub struct BindingError {
     status: BindingStatus,
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
+    details: Option<Box<BindingErrorDetails>>,
+    message: Box<str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct BindingErrorDetails {
     resource: Option<BindingResourceErrorDetails>,
     cancellation: Option<BindingCancellationErrorDetails>,
-    icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
-    message: Box<str>,
+    icon_registry: Option<BindingIconRegistryErrorDetails>,
 }
 
 /// Structured resource failure details carried by the additive error JSON payload.
@@ -240,16 +245,24 @@ pub struct BindingIconRegistryErrorDetails {
 }
 
 impl BindingError {
-    pub fn new(status: BindingStatus, message: impl Into<String>) -> Self {
+    fn classified(
+        status: BindingStatus,
+        kind: BindingErrorKind,
+        capability_id: Option<&'static str>,
+        details: Option<BindingErrorDetails>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             status,
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource: None,
-            cancellation: None,
-            icon_registry: None,
+            kind,
+            capability_id,
+            details: details.map(Box::new),
             message: message.into().into_boxed_str(),
         }
+    }
+
+    pub fn new(status: BindingStatus, message: impl Into<String>) -> Self {
+        Self::classified(status, BindingErrorKind::Generic, None, None, message)
     }
 
     /// Creates a caller-owned invalid-argument failure without requiring status reconstruction.
@@ -268,27 +281,23 @@ impl BindingError {
     }
 
     pub fn unknown_operation(message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::UnsupportedOperation,
-            kind: BindingErrorKind::UnknownOperation,
-            capability_id: None,
-            resource: None,
-            cancellation: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::UnsupportedOperation,
+            BindingErrorKind::UnknownOperation,
+            None,
+            None,
+            message,
+        )
     }
 
     pub fn missing_capability(capability_id: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::UnsupportedOperation,
-            kind: BindingErrorKind::MissingCapability,
-            capability_id: Some(capability_id),
-            resource: None,
-            cancellation: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::UnsupportedOperation,
+            BindingErrorKind::MissingCapability,
+            Some(capability_id),
+            None,
+            message,
+        )
     }
 
     /// Creates a caller-owned failure for a known operation or metadata endpoint that this
@@ -298,27 +307,23 @@ impl BindingError {
     }
 
     pub fn reentrant_call(message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::InvalidArgument,
-            kind: BindingErrorKind::ReentrantCall,
-            capability_id: None,
-            resource: None,
-            cancellation: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::InvalidArgument,
+            BindingErrorKind::ReentrantCall,
+            None,
+            None,
+            message,
+        )
     }
 
     pub fn busy(message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::Busy,
-            kind: BindingErrorKind::Busy,
-            capability_id: None,
-            resource: None,
-            cancellation: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::Busy,
+            BindingErrorKind::Busy,
+            None,
+            None,
+            message,
+        )
     }
 
     pub fn resource_limit(
@@ -350,22 +355,24 @@ impl BindingError {
         profile: &'static str,
         message: impl Into<String>,
     ) -> Self {
-        Self {
-            status: BindingStatus::ResourceLimitExceeded,
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource: Some(BindingResourceErrorDetails {
-                cause,
-                limit_id,
-                phase,
-                actual,
-                max,
-                profile,
+        Self::classified(
+            BindingStatus::ResourceLimitExceeded,
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource: Some(BindingResourceErrorDetails {
+                    cause,
+                    limit_id,
+                    phase,
+                    actual,
+                    max,
+                    profile,
+                }),
+                cancellation: None,
+                icon_registry: None,
             }),
-            cancellation: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+            message,
+        )
     }
 
     /// Creates the canonical structured failure for UTF-8 rejected before registry ingestion.
@@ -410,19 +417,21 @@ impl BindingError {
         resource: Option<BindingResourceErrorDetails>,
         message: impl Into<String>,
     ) -> Self {
-        Self {
-            status: icon_registry_error_status(kind),
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource,
-            cancellation: None,
-            icon_registry: Some(Box::new(BindingIconRegistryErrorDetails {
-                kind_id: kind.stable_id(),
-                pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
-                registration_name: None,
-            })),
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            icon_registry_error_status(kind),
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource,
+                cancellation: None,
+                icon_registry: Some(BindingIconRegistryErrorDetails {
+                    kind_id: kind.stable_id(),
+                    pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
+                    registration_name: None,
+                }),
+            }),
+            message,
+        )
     }
 
     pub const fn status(&self) -> BindingStatus {
@@ -437,30 +446,40 @@ impl BindingError {
         self.capability_id
     }
 
-    pub const fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
-        self.resource
+    pub fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
+        match self.details.as_deref() {
+            Some(details) => details.resource,
+            None => None,
+        }
     }
 
     #[must_use]
-    pub const fn cancellation_details(&self) -> Option<BindingCancellationErrorDetails> {
-        self.cancellation
+    pub fn cancellation_details(&self) -> Option<BindingCancellationErrorDetails> {
+        match self.details.as_deref() {
+            Some(details) => details.cancellation,
+            None => None,
+        }
     }
 
     /// Creates the canonical structured failure for cooperative cancellation or deadline expiry.
     pub fn cancelled(error: merman::OperationCancelled) -> Self {
-        Self {
-            status: BindingStatus::Cancelled,
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource: None,
-            cancellation: Some(BindingCancellationErrorDetails::from_operation(error)),
-            icon_registry: None,
-            message: error.to_string().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::Cancelled,
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource: None,
+                cancellation: Some(BindingCancellationErrorDetails::from_operation(error)),
+                icon_registry: None,
+            }),
+            error.to_string(),
+        )
     }
 
     pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
-        self.icon_registry.as_deref()
+        self.details
+            .as_deref()
+            .and_then(|details| details.icon_registry.as_ref())
     }
 
     pub fn message(&self) -> &str {
@@ -514,15 +533,17 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             }
             _ => None,
         };
-        Self {
-            status: icon_registry_error_status(error_kind),
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource,
-            cancellation: None,
-            icon_registry: Some(Box::new(details)),
-            message: message.into_boxed_str(),
-        }
+        Self::classified(
+            icon_registry_error_status(error_kind),
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource,
+                cancellation: None,
+                icon_registry: Some(details),
+            }),
+            message,
+        )
     }
 }
 
@@ -803,13 +824,14 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
 }
 
 pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
+    let details = error.details.as_deref();
     error_payload_json_bytes_with_details(
         error.status(),
         error.kind(),
         error.capability_id(),
-        error.resource.as_ref(),
-        error.icon_registry.as_deref(),
-        error.cancellation.as_ref(),
+        details.and_then(|details| details.resource.as_ref()),
+        details.and_then(|details| details.icon_registry.as_ref()),
+        details.and_then(|details| details.cancellation.as_ref()),
         error.message(),
     )
 }
@@ -817,6 +839,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
 /// Serializes a binding error for JavaScript transports without losing wide resource counts.
 #[doc(hidden)]
 pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
+    let details = error.details.as_deref();
     error_payload_json_bytes_with_details(
         error.status(),
         error.kind(),
@@ -824,8 +847,8 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error
             .resource_details()
             .map(BindingResourceErrorDetails::js_safe_json),
-        error.icon_registry.as_deref(),
-        error.cancellation.as_ref(),
+        details.and_then(|details| details.icon_registry.as_ref()),
+        details.and_then(|details| details.cancellation.as_ref()),
         error.message(),
     )
 }
