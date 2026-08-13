@@ -50,19 +50,21 @@ cargo nextest run -p merman-wasm --features ascii -j 1
 cargo nextest run -p merman-cli --no-default-features --features ascii -j 1
 ```
 
-The enclosing workstream observed this serial matrix green on 2026-08-10. Any later production
-change must rerun its affected commands; prose is not a substitute for an exact-HEAD test receipt.
+The implementation-package commands were observed during the phased work. This report does not
+contain an exact-current-HEAD receipt, so closeout remains provisional until a tracked receipt binds
+the final source revision, commands, environment, and results. Prose and untracked local drafts are
+not substitutes for that evidence.
 
 ## Phase 0-3 Gate
 
 | Phase | Evidence result | Tracked evidence | Admission consequence |
 | --- | --- | --- | --- |
 | Phase 0: terminal contract | Complete | `terminal_text_safety.rs`, `resource.rs`, `canvas.rs`, binding resource tests, and exhaustive capability tests cover safe text, grapheme ownership, checked extent, document/output budgets, and all 31 typed families. | A new family must consume the same safe-text, width-profile, resource, and encoder contracts; it cannot add an unbudgeted private renderer. |
-| Phase 1: Flowchart and Sequence | Complete at Partial | The immutable graph corpus is 45/79 exact plus 34 named renderable differences. Sequence keeps 17/17 normalized copied parity. Its 322-case imported corpus contains 321 Mermaid-valid fixtures that parse and render plus one intentional-invalid stress fixture that is rejected; promoted local semantic probes own broader marker, compound, signal, control, lifecycle, and actor claims. | Common families remain Partial where documented residuals exist; their evidence is not weakened to make a new family easier to add. |
+| Phase 1: Flowchart and Sequence | Complete at Partial | The immutable graph corpus is 40/79 exact plus 39 named renderable differences. Sequence keeps 17/17 normalized copied parity. Its 322-case imported corpus contains 321 Mermaid-valid fixtures that parse and render plus one intentional-invalid stress fixture that is rejected; promoted local semantic probes own broader marker, compound, signal, control, lifecycle, and actor claims. | Common families remain Partial where documented residuals exist; their evidence is not weakened to make a new family easier to add. |
 | Phase 2: Class, ER, State, XYChart | Complete at Partial | Class/ER imported fixtures prove admission, while shared relation-component probes, State model tests, and XYChart typed-coordinate tests own the retained semantic boundary and explicit fallbacks. | A new family may reuse mechanisms such as relation planning or plot cells, but must keep family semantics in its own adapter. |
 | Phase 3: existing-family truth | Complete | Runtime capabilities classify six families as Diagrammatic and eight as StructuredText. The support matrix records the retained fields and limits for all 14 available outputs. | StructuredText remains useful output but contributes zero to the ASCII diagram count and cannot satisfy a new-family admission. |
 
-The moving-reference lane contains 137 uniquely identified paths with validity, admission, semantic
+The moving-reference lane contains 140 uniquely identified paths with validity, admission, semantic
 feature, and evidence dispositions. The copied oracle remains immutable. The complete comparison
 policy and exact counts live in `crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md` and
 `crates/merman-ascii/V1_MERMAID_ASCII_COVERAGE.md`.

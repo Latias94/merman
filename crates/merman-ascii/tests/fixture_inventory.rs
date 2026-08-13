@@ -307,6 +307,26 @@ fn fixture_inventory_documents_graph_exact_and_gap_disposition() {
 }
 
 #[test]
+fn phase_gate_report_matches_executable_corpus_counts() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("merman-ascii must live under the workspace crates directory");
+    let report =
+        std::fs::read_to_string(workspace_root.join("docs/rendering/ASCII_PHASE_GATE_REPORT.md"))
+            .expect("phase gate report should be tracked");
+
+    assert!(
+        report.contains("40/79 exact plus 39 named renderable differences"),
+        "phase gate report must match the executable 40 exact / 39 gap graph disposition"
+    );
+    assert!(
+        report.contains("moving-reference lane contains 140 uniquely identified paths"),
+        "phase gate report must match the executable 140-path moving inventory"
+    );
+}
+
+#[test]
 fn reference_comparison_matches_executable_fixture_evidence() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let comparison = fs::read_to_string(manifest_dir.join("ASCII_REFERENCE_COMPARISON.md"))
