@@ -23,10 +23,10 @@ use crate::output::PublicationGuards;
 use crate::resources::ResolvedResourcePolicy;
 use crate::runtime::SharedWriter;
 use merman::OperationControl;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use merman::svg::RenderEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::SvgPipeline;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use merman_render::environment::RenderEnvironment;
 use std::io::Read;
 use std::path::Path;
 

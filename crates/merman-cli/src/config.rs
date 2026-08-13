@@ -17,9 +17,11 @@ use crate::invocation::ResolvedRenderOptions;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
+use merman::SvgEnvironment;
+#[cfg(feature = "svg")]
 use merman::svg::{
-    IconRegistry, LayoutOptions, MathRenderer, Presentation, PresentationProfile,
-    RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy,
+    IconRegistry, LayoutOptions, MathRenderer, Presentation, PresentationProfile, SvgRenderOptions,
+    TextMeasurementPolicy,
 };
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -33,10 +35,7 @@ pub(crate) struct ConfiguredRenderer {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl ConfiguredRenderer {
     #[cfg(feature = "svg")]
-    pub(crate) fn with_svg_environment(
-        mut self,
-        environment: merman::svg::RenderEnvironment,
-    ) -> Self {
+    pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg.environment = environment;
         self
     }
@@ -128,11 +127,6 @@ impl ResolvedCliRuntimePolicy {
 
     fn apply_engine(&self, engine: Engine) -> Engine {
         engine.with_runtime_policy(self.runtime_policy.clone())
-    }
-
-    #[cfg(feature = "svg")]
-    fn apply_environment(&self, environment: RenderEnvironment) -> RenderEnvironment {
-        environment.with_runtime_policy(self.runtime_policy.clone())
     }
 }
 
@@ -304,7 +298,7 @@ fn renderer_from_config(
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<ConfiguredRenderer, CliError> {
-    let mut environment = RenderEnvironment::deterministic()
+    let mut environment = SvgEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
         .with_resource_policy(resources.render_policy());
     if let Some(kind) = render.math_renderer {
@@ -316,8 +310,6 @@ fn renderer_from_config(
     if let Some(registry) = icon_registry {
         environment = environment.with_icon_registry(registry);
     }
-    environment = runtime.apply_environment(environment);
-
     let svg = SvgRenderOptions {
         diagram_id: render.svg_id.map(merman::svg::sanitize_svg_id),
         ..SvgRenderOptions::default()
