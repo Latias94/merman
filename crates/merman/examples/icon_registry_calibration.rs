@@ -5,9 +5,10 @@ mod allocator;
 
 use allocator::{AllocationMetrics, CountingSystemAllocator};
 use merman::svg::{
-    HeadlessRenderer, IconPack, IconRegistry, IconRegistryResourceLimitId, RenderEnvironment,
+    IconPack, IconRegistry, IconRegistryResourceLimitId, RenderEnvironment,
     icon_registry_resource_limit_descriptors,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -475,16 +476,27 @@ fn measure_render(
             "N{index}@{{ icon: \"{icon_key}\", label: \"{index}\" }}\n"
         ));
     }
-    let renderer = HeadlessRenderer::new()
-        .with_environment(RenderEnvironment::deterministic().with_icon_registry(registry));
+    let renderer = Renderer::new();
+    let request = SvgRequest {
+        environment: RenderEnvironment::deterministic().with_icon_registry(registry),
+        ..Default::default()
+    };
 
     let snapshot = ALLOCATOR.begin_measurement();
     let started = Instant::now();
-    let svg = match renderer.render_svg_sync(&source) {
-        Ok(Some(svg)) => svg,
-        Ok(None) => {
+    let svg = match renderer.render(RenderRequest::svg(
+        &source,
+        OperationControl::new(),
+        request,
+    )) {
+        Ok(RenderOutput::Svg(Some(svg))) => svg.into_parts().0,
+        Ok(RenderOutput::Svg(None)) => {
             ALLOCATOR.stop_measurement();
             return Err("calibration flowchart was not detected".into());
+        }
+        Ok(output) => {
+            ALLOCATOR.stop_measurement();
+            return Err(format!("unexpected render output: {output:?}").into());
         }
         Err(error) => {
             ALLOCATOR.stop_measurement();

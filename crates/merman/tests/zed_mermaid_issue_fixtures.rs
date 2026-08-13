@@ -1,7 +1,11 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::RenderResourceProfile;
-use merman::svg::{HeadlessRenderer, ResvgCompatibleSvg};
+#[cfg(feature = "png")]
+use merman::PngRequest;
+use merman::svg::{
+    RenderEnvironment, RenderResourcePolicy, RenderResourceProfile, SvgPipeline, SvgRenderOptions,
+};
+use merman::{OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -24,18 +28,46 @@ const ZED_50243_GANTT_COMPACT_FRONTMATTER: &str =
 const ZED_56199_FLOWCHART_PARTIAL_PARALLELOGRAM: &str =
     include_str!("../../../fixtures/zed_issues/zed_56199_flowchart_partial_parallelogram.mmd");
 
-fn renderer(id: &str) -> HeadlessRenderer {
-    HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id(id)
+fn render_with_profile(
+    name: &str,
+    source: &str,
+    profile: RenderResourceProfile,
+    parse_options: ParseOptions,
+    pipeline: Option<SvgPipeline>,
+) -> Result<Option<String>, merman::RenderError> {
+    let policy = RenderResourcePolicy::for_profile(profile);
+    let renderer = Renderer::new()
+        .with_parse_options(parse_options)
+        .with_resource_policy(policy.input_policy().clone());
+    let output = renderer.render(RenderRequest::svg(
+        source,
+        OperationControl::new(),
+        SvgRequest {
+            environment: RenderEnvironment::deterministic().with_resource_policy(policy),
+            options: SvgRenderOptions {
+                diagram_id: Some(name.to_string()),
+                ..Default::default()
+            },
+            pipeline,
+            ..Default::default()
+        },
+    ))?;
+    let RenderOutput::Svg(svg) = output else {
+        unreachable!("SVG request must return SVG output")
+    };
+    Ok(svg.map(|svg| svg.into_parts().0))
 }
 
 fn render_resvg_safe(name: &str, source: &str) -> String {
-    renderer(name)
-        .render_resvg_compatible_svg_sync(source)
-        .unwrap_or_else(|err| panic!("{name}: headless render failed: {err}"))
-        .map(ResvgCompatibleSvg::into_string)
-        .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+    render_with_profile(
+        name,
+        source,
+        RenderResourceProfile::Interactive,
+        ParseOptions::default(),
+        Some(SvgPipeline::resvg_safe()),
+    )
+    .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
+    .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
 fn deeply_nested_flowchart(depth: usize) -> String {
@@ -51,7 +83,7 @@ fn deeply_nested_flowchart(depth: usize) -> String {
 }
 
 #[test]
-fn zed_issue_fixtures_render_headless_resvg_safe() {
+fn zed_issue_fixtures_render_typed_resvg_safe() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
             "zed-57389",
@@ -225,19 +257,28 @@ fn zed_class_generics_fallback_text_is_not_double_escaped() {
 #[test]
 fn zed_deeply_nested_flowchart_respects_the_selected_resource_profile() {
     let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
-    let error = renderer("zed-deep-flowchart-interactive")
-        .render_svg_sync(&source)
-        .expect_err("the interactive profile must bound semantic nesting before layout");
+    let error = render_with_profile(
+        "zed-deep-flowchart-interactive",
+        &source,
+        RenderResourceProfile::Interactive,
+        ParseOptions::default(),
+        None,
+    )
+    .expect_err("the interactive profile must bound semantic nesting before layout");
     assert!(
         error.to_string().contains("max_model_nesting_depth"),
         "{error}"
     );
 
-    let svg = renderer("zed-deep-flowchart-unbounded")
-        .with_resource_profile(RenderResourceProfile::UnboundedForTrustedInput)
-        .render_svg_sync(&source)
-        .expect("unbounded trusted rendering should accept the deep SVG tree")
-        .expect("flowchart should be detected");
+    let svg = render_with_profile(
+        "zed-deep-flowchart-unbounded",
+        &source,
+        RenderResourceProfile::UnboundedForTrustedInput,
+        ParseOptions::default(),
+        None,
+    )
+    .expect("unbounded trusted rendering should accept the deep SVG tree")
+    .expect("flowchart should be detected");
 
     assert!(svg.contains("<svg"));
     assert!(!svg.contains(r#"aria-roledescription="error""#));
@@ -247,9 +288,24 @@ fn zed_deeply_nested_flowchart_respects_the_selected_resource_profile() {
 #[cfg(feature = "png")]
 fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
     let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
-    let error = renderer("zed-deep-flowchart-png")
-        .with_resource_profile(RenderResourceProfile::UnboundedForTrustedInput)
-        .render_png_sync(&source, &merman::svg::export::RasterOptions::default())
+    let policy = RenderResourcePolicy::for_profile(RenderResourceProfile::UnboundedForTrustedInput);
+    let error = Renderer::new()
+        .with_resource_policy(policy.input_policy().clone())
+        .render(RenderRequest::png(
+            &source,
+            OperationControl::new(),
+            PngRequest {
+                svg: SvgRequest {
+                    environment: RenderEnvironment::deterministic().with_resource_policy(policy),
+                    options: SvgRenderOptions {
+                        diagram_id: Some("zed-deep-flowchart-png".to_string()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                options: merman::svg::export::RasterOptions::default(),
+            },
+        ))
         .expect_err("rasterization must reject a tree deeper than the backend capability");
 
     assert!(
@@ -273,16 +329,17 @@ fn zed_resvg_safe_output_drops_empty_rect_placeholders() {
 #[test]
 fn zed_old_mermaid_rs_partial_parallelogram_stays_inside_result_boundary() {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        HeadlessRenderer::new()
-            .with_lenient_parsing()
-            .with_diagram_id("zed-56199")
-            .render_resvg_compatible_svg_sync(ZED_56199_FLOWCHART_PARTIAL_PARALLELOGRAM)
-            .map(|svg| svg.map(ResvgCompatibleSvg::into_string))
+        render_with_profile(
+            "zed-56199",
+            ZED_56199_FLOWCHART_PARTIAL_PARALLELOGRAM,
+            RenderResourceProfile::Interactive,
+            ParseOptions::lenient(),
+            Some(SvgPipeline::resvg_safe()),
+        )
     }));
 
-    let render_result =
-        result.expect("renderer must not panic on partially typed flowchart shapes");
-    let svg = render_result
+    let svg = result
+        .expect("renderer must not panic on partially typed flowchart shapes")
         .expect("lenient parser should return an error diagram instead of a render error")
         .expect("lenient parser should still produce an SVG error diagram");
 
