@@ -1,14 +1,14 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
     TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use merman_render::family::{self, DiagramFamilyId};
+use merman_render::family;
 use merman_render::resources::RenderResourcePolicy;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
+use merman_render::{DiagramFamilyId, LayoutOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

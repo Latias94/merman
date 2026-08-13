@@ -1,7 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
-use merman_render::family::{self, DiagramFamilyId};
+use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::Value;
 

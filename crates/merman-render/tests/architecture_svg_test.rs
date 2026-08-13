@@ -1,13 +1,14 @@
 #![cfg(feature = "layout-cytoscape")]
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
     TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use merman_render::family::{self, DiagramFamilyId};
+use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;

@@ -121,10 +121,7 @@ union A,B
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
-    assert_eq!(
-        artifact.family_id(),
-        merman_render::family::DiagramFamilyId::VENN
-    );
+    assert_eq!(artifact.family_id(), merman_render::DiagramFamilyId::VENN);
     let svg = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render SVG")
