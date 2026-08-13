@@ -100,7 +100,7 @@
         "maximum_counter": 2305843009213693951,
         "maximum_value": 9223372036854775807
       },
-      "description": "An opaque process-lifetime monotonic operation-control identity. A control token may be attached to requests, cancelled from another execution context, and released independently; execution clones the control before synchronous binding work and never holds the registry lock while running."
+      "description": "An opaque process-lifetime monotonic operation-control identity. A control token may be passed to execute_collect_controlled, cancelled from another execution context, and released independently; execution clones the control before synchronous binding work and never holds the registry lock while running."
     }
   ],
   "caller_memory_rules": [
@@ -327,6 +327,21 @@
         { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" }
       ],
       "description": "Release a live operation-control token from the process registry. An execution that cloned the control before release may continue to observe cancellation and deadline state; release never invalidates that in-flight clone."
+    },
+    {
+      "id": "execute_collect_controlled",
+      "c_name": "MermanNativeExecuteCollectControlledFn",
+      "rust_name": "MermanNativeExecuteCollectControlledFn",
+      "code": 10,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "engine", "c_type": "MermanNativeEngineToken", "rust_type": "MermanNativeEngineToken" },
+        { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" },
+        { "name": "request", "c_type": "const MermanNativeOperationRequest *", "rust_type": "*const MermanNativeOperationRequest" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Execute one generic operation with a live caller-owned control token. The request record remains byte-for-byte compatible with the original ABI 3 layout; zero selects the ordinary uncontrolled execution semantics."
     }
   ],
   "records": [
@@ -418,8 +433,7 @@
         { "name": "operation", "c_type": "MermanNativeOperationCode", "rust_type": "MermanNativeOperationCode", "ownership": "stable operation code" },
         { "name": "source", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call" },
         { "name": "uri", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; empty when not applicable" },
-        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; recursively overrides engine options except runtime_policy, which is constructor-owned" },
-        { "name": "operation_control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken", "ownership": "borrowed opaque control identity for the call; zero means no caller-supplied control and the request does not release the token" }
+        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; recursively overrides engine options except runtime_policy, which is constructor-owned" }
       ]
     },
     {

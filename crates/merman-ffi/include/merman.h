@@ -21,8 +21,8 @@ extern "C" {
 #endif
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
-#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:8ace28529f9b68f6e6ba6019daabcff99ae7f3e5d2782d912f70fbc9c9d43093"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:c6d306226ee98e926a7a6954e5d3f557e5c986586dcc7ac69e0c7b920961fdbf"
+#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:c787f0510e088b3e0f5f39b8dc2b6f3159a1e3fe640ec6a46ba37ad91e783cd5"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -155,7 +155,8 @@ enum {
     MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6,
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW = 7,
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL = 8,
-    MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9
+    MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9,
+    MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10
 };
 
 typedef uint64_t MermanNativeEngineToken;
@@ -185,6 +186,7 @@ typedef MermanNativeStatus (*MermanNativeEngineNewWithServicesFn)(const MermanNa
 typedef MermanNativeStatus (*MermanNativeOperationControlNewFn)(uint64_t timeout_ms, uint8_t has_timeout_ms, MermanNativeOperationControlToken *out_control, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeOperationControlCancelFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeOperationControlReleaseFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeExecuteCollectControlledFn)(MermanNativeEngineToken engine, MermanNativeOperationControlToken control, const MermanNativeOperationRequest *request, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 
 struct MermanNativeSlice {
     uint32_t struct_size;
@@ -245,7 +247,6 @@ struct MermanNativeOperationRequest {
     MermanNativeSlice source;
     MermanNativeSlice uri;
     MermanNativeSlice options_json;
-    MermanNativeOperationControlToken operation_control;
 };
 
 struct MermanNativeResult {
@@ -281,6 +282,7 @@ struct MermanNativeApi {
     MermanNativeOperationControlNewFn operation_control_new;
     MermanNativeOperationControlCancelFn operation_control_cancel;
     MermanNativeOperationControlReleaseFn operation_control_release;
+    MermanNativeExecuteCollectControlledFn execute_collect_controlled;
 };
 
 struct MermanNativeIconPack {
@@ -301,6 +303,7 @@ struct MermanNativeEngineServicesConfig {
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_new) + sizeof(((MermanNativeApi *)0)->operation_control_new)))
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_cancel) + sizeof(((MermanNativeApi *)0)->operation_control_cancel)))
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_release) + sizeof(((MermanNativeApi *)0)->operation_control_release)))
+#define MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, execute_collect_controlled) + sizeof(((MermanNativeApi *)0)->execute_collect_controlled)))
 
 /*
  * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
@@ -388,9 +391,9 @@ struct MermanNativeEngineServicesConfig {
  *   accidental engine-token use, every issued value remains positive when projected through a
  *   signed 64-bit host integer, and the token is not an authorization boundary.
  * - operation_control_token: An opaque process-lifetime monotonic operation-control identity. A
- *   control token may be attached to requests, cancelled from another execution context, and
- *   released independently; execution clones the control before synchronous binding work and never
- *   holds the registry lock while running.
+ *   control token may be passed to execute_collect_controlled, cancelled from another execution
+ *   context, and released independently; execution clones the control before synchronous binding
+ *   work and never holds the registry lock while running.
  *
  * Unsafe caller-memory preconditions from the ABI descriptor:
  * - record_pointer_alignment: Every caller-supplied native record pointer must be naturally aligned

@@ -2242,6 +2242,8 @@ class _NativeApi {
     required native.DartMermanNativeRuntimeCatalogFnFunction runtimeCatalog,
     required _NativeEngineCloser engineCloser,
     required native.DartMermanNativeExecuteCollectFnFunction executeCollect,
+    required native.DartMermanNativeExecuteCollectControlledFnFunction
+    executeCollectControlled,
     required native.DartMermanNativeResultFreeFnFunction resultFree,
     required native.DartMermanNativeMetadataCollectFnFunction metadataCollect,
     required native.DartMermanNativeEngineNewWithServicesFnFunction
@@ -2255,6 +2257,7 @@ class _NativeApi {
   }) : _runtimeCatalog = runtimeCatalog,
        _engineCloser = engineCloser,
        _executeCollect = executeCollect,
+       _executeCollectControlled = executeCollectControlled,
        _resultFree = resultFree,
        _metadataCollect = metadataCollect,
        _engineNewWithServices = engineNewWithServices,
@@ -2266,6 +2269,8 @@ class _NativeApi {
   final native.DartMermanNativeRuntimeCatalogFnFunction _runtimeCatalog;
   final _NativeEngineCloser _engineCloser;
   final native.DartMermanNativeExecuteCollectFnFunction _executeCollect;
+  final native.DartMermanNativeExecuteCollectControlledFnFunction
+  _executeCollectControlled;
   final native.DartMermanNativeResultFreeFnFunction _resultFree;
   final native.DartMermanNativeMetadataCollectFnFunction _metadataCollect;
   final native.DartMermanNativeEngineNewWithServicesFnFunction
@@ -2291,7 +2296,7 @@ class _NativeApi {
       request.ref.expected_abi_version = native.MERMAN_NATIVE_ABI_VERSION;
       final consumerTableSize = ffi.sizeOf<native.MermanNativeApi>();
       if (consumerTableSize <
-          native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE) {
+          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE) {
         throw MermanException.contract(
           'generated native API table is smaller than the current ABI 3 table',
         );
@@ -2369,6 +2374,10 @@ class _NativeApi {
         table.operation_control_release,
         'operation_control_release',
       );
+      _requireFunctionPointer(
+        table.execute_collect_controlled,
+        'execute_collect_controlled',
+      );
 
       return _NativeApi._(
         packageVersion: packageVersion,
@@ -2381,6 +2390,10 @@ class _NativeApi {
         ),
         executeCollect: table.execute_collect
             .asFunction<native.DartMermanNativeExecuteCollectFnFunction>(),
+        executeCollectControlled: table.execute_collect_controlled
+            .asFunction<
+              native.DartMermanNativeExecuteCollectControlledFnFunction
+            >(),
         resultFree: table.result_free
             .asFunction<native.DartMermanNativeResultFreeFnFunction>(),
         metadataCollect: table.metadata_collect
@@ -2390,9 +2403,7 @@ class _NativeApi {
               native.DartMermanNativeEngineNewWithServicesFnFunction
             >(),
         operationControlNew: table.operation_control_new
-            .asFunction<
-              native.DartMermanNativeOperationControlNewFnFunction
-            >(),
+            .asFunction<native.DartMermanNativeOperationControlNewFnFunction>(),
         operationControlCancel: table.operation_control_cancel
             .asFunction<
               native.DartMermanNativeOperationControlCancelFnFunction
@@ -2580,7 +2591,7 @@ class _NativeApi {
   MermanOperationControl createOperationControl({Duration? timeout}) {
     final timeoutMs = timeout?.inMilliseconds ?? 0;
     if (timeoutMs < 0) {
-      throw RangeError.value(timeout, 'timeout', 'must not be negative');
+      throw RangeError.value(timeoutMs, 'timeout', 'must not be negative');
     }
     final control = calloc<native.MermanNativeOperationControlToken>();
     final result = _NativeResult.allocate(_resultFree);
@@ -2649,7 +2660,14 @@ class _NativeApi {
     );
     final result = _NativeResult.allocate(_resultFree);
     try {
-      final status = _executeCollect(engine, request.pointer, result.pointer);
+      final status = operationControl == 0
+          ? _executeCollect(engine, request.pointer, result.pointer)
+          : _executeCollectControlled(
+              engine,
+              operationControl,
+              request.pointer,
+              result.pointer,
+            );
       result.requireWritten(status);
       final record = result.pointer.ref;
       final metadata = _copyBuffer(record.metadata_or_error_json);
@@ -2711,7 +2729,6 @@ class _NativeApi {
     final allocations = _NativeAllocationScope();
     request.ref.struct_size = ffi.sizeOf<native.MermanNativeOperationRequest>();
     request.ref.operation = operation.nativeCode;
-    request.ref.operation_control = operationControl;
     _writeSlice(request.ref.source, utf8.encode(source), allocations);
     _writeSlice(
       request.ref.uri,
@@ -2774,7 +2791,7 @@ bool nativeApiHasCurrentTableForTesting(int producerTableSize) =>
 
 bool _nativeApiHasCurrentTable(int producerTableSize) =>
     producerTableSize >=
-    native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE;
+    native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE;
 
 void _requireNativeResultWritten(
   native.MermanNativeResult result,

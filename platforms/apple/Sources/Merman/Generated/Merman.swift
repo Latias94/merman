@@ -644,7 +644,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
     /**
      * Executes a descriptor-owned output operation with a fresh engine configuration.
      */
-    func execute(request: MermanOperationRequest) throws  -> MermanOperationResult
+    func execute(request: MermanOperationRequestV4) throws  -> MermanOperationResult
 
     func layoutJson(source: String, optionsJson: String?) throws  -> String
 
@@ -844,12 +844,12 @@ open func diagramFamilyCapabilities() -> [MermanDiagramFamilyCapability]  {
     /**
      * Executes a descriptor-owned output operation with a fresh engine configuration.
      */
-open func execute(request: MermanOperationRequest)throws  -> MermanOperationResult  {
+open func execute(request: MermanOperationRequestV4)throws  -> MermanOperationResult  {
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_execute(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMermanOperationRequest_lower(request),uniffiCallStatus
+        FfiConverterTypeMermanOperationRequestV4_lower(request),uniffiCallStatus
     )
 })
 }
@@ -1142,7 +1142,7 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
     /**
      * Executes an operation using the reusable baseline plus request-local option overrides.
      */
-    func execute(request: MermanOperationRequest) throws  -> MermanOperationResult
+    func execute(request: MermanOperationRequestV4) throws  -> MermanOperationResult
 
     func layoutJson(source: String, optionsJson: String?) throws  -> String
 
@@ -1303,12 +1303,12 @@ open func close()throws   {try rustCallWithError(FfiConverterTypeMermanError_lif
     /**
      * Executes an operation using the reusable baseline plus request-local option overrides.
      */
-open func execute(request: MermanOperationRequest)throws  -> MermanOperationResult  {
+open func execute(request: MermanOperationRequestV4)throws  -> MermanOperationResult  {
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_execute(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMermanOperationRequest_lower(request),uniffiCallStatus
+        FfiConverterTypeMermanOperationRequestV4_lower(request),uniffiCallStatus
     )
 })
 }
@@ -2818,7 +2818,7 @@ public func FfiConverterTypeMermanOperationMetadata_lower(_ value: MermanOperati
  * engine's baseline for this operation. `control` optionally supplies a shared cancellation and
  * deadline context; execution clones it before entering the synchronous binding path.
  */
-public struct MermanOperationRequest {
+public struct MermanOperationRequestV4 {
     public var operationId: String
     public var source: String
     public var uri: String?
@@ -2841,16 +2841,16 @@ public struct MermanOperationRequest {
 }
 
 #if compiler(>=6)
-extension MermanOperationRequest: Sendable {}
+extension MermanOperationRequestV4: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMermanOperationRequest: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOperationRequest {
+public struct FfiConverterTypeMermanOperationRequestV4: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOperationRequestV4 {
         return
-            try MermanOperationRequest(
+            try MermanOperationRequestV4(
                 operationId: FfiConverterString.read(from: &buf),
                 source: FfiConverterString.read(from: &buf),
                 uri: FfiConverterOptionString.read(from: &buf),
@@ -2859,7 +2859,7 @@ public struct FfiConverterTypeMermanOperationRequest: FfiConverterRustBuffer {
         )
     }
 
-    public static func write(_ value: MermanOperationRequest, into buf: inout [UInt8]) {
+    public static func write(_ value: MermanOperationRequestV4, into buf: inout [UInt8]) {
         FfiConverterString.write(value.operationId, into: &buf)
         FfiConverterString.write(value.source, into: &buf)
         FfiConverterOptionString.write(value.uri, into: &buf)
@@ -2872,15 +2872,15 @@ public struct FfiConverterTypeMermanOperationRequest: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanOperationRequest_lift(_ buf: RustBuffer) throws -> MermanOperationRequest {
-    return try FfiConverterTypeMermanOperationRequest.lift(buf)
+public func FfiConverterTypeMermanOperationRequestV4_lift(_ buf: RustBuffer) throws -> MermanOperationRequestV4 {
+    return try FfiConverterTypeMermanOperationRequestV4.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanOperationRequest_lower(_ value: MermanOperationRequest) -> RustBuffer {
-    return FfiConverterTypeMermanOperationRequest.lower(value)
+public func FfiConverterTypeMermanOperationRequestV4_lower(_ value: MermanOperationRequestV4) -> RustBuffer {
+    return FfiConverterTypeMermanOperationRequestV4.lower(value)
 }
 
 
@@ -5041,7 +5041,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_diagram_family_capabilities() != 24556) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_execute() != 6359) {
+    if (uniffi_merman_uniffi_checksum_method_merman_execute() != 18404) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_layout_json() != 63419) {
@@ -5116,7 +5116,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanengine_close() != 63246) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 35616) {
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 12806) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_layout_json() != 2168) {

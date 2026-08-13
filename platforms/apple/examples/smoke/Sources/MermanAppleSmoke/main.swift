@@ -71,7 +71,7 @@ struct MermanAppleSmoke {
         }
 
         let deadline = MermanOperationControl(timeoutMs: 0)
-        let request = MermanOperationRequest(
+        let request = MermanOperationRequestV4(
             operationId: "svg",
             source: basicSource,
             uri: nil,

@@ -247,7 +247,7 @@ pub struct MermanValidationResult {
 /// engine's baseline for this operation. `control` optionally supplies a shared cancellation and
 /// deadline context; execution clones it before entering the synchronous binding path.
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct MermanOperationRequest {
+pub struct MermanOperationRequestV4 {
     pub operation_id: String,
     pub source: String,
     pub uri: Option<String>,
@@ -665,7 +665,7 @@ impl Merman {
     /// Executes a descriptor-owned output operation with a fresh engine configuration.
     pub fn execute(
         &self,
-        request: MermanOperationRequest,
+        request: MermanOperationRequestV4,
     ) -> Result<MermanOperationResult, MermanError> {
         execute_once_operation(&request)
     }
@@ -1064,7 +1064,7 @@ impl MermanEngine {
     /// Executes an operation using the reusable baseline plus request-local option overrides.
     pub fn execute(
         &self,
-        request: MermanOperationRequest,
+        request: MermanOperationRequestV4,
     ) -> Result<MermanOperationResult, MermanError> {
         self.with_reusable_operation(|engine| {
             execute_operation(
@@ -1281,7 +1281,7 @@ fn native_artifact_contract() -> &'static ValidatedArtifactContract {
 }
 
 fn execute_once_operation(
-    request: &MermanOperationRequest,
+    request: &MermanOperationRequestV4,
 ) -> Result<MermanOperationResult, MermanError> {
     let result = native_artifact_contract()
         .execute_once(binding_operation_request(
@@ -1296,8 +1296,8 @@ fn operation_request(
     operation: OperationKey,
     source: String,
     options_json: Option<String>,
-) -> MermanOperationRequest {
-    MermanOperationRequest {
+) -> MermanOperationRequestV4 {
+    MermanOperationRequestV4 {
         operation_id: operation.id().to_string(),
         source,
         uri: None,
@@ -1311,7 +1311,7 @@ fn operation_request_with_uri(
     source: String,
     uri: String,
     options_json: Option<String>,
-) -> MermanOperationRequest {
+) -> MermanOperationRequestV4 {
     let mut request = operation_request(operation, source, options_json);
     request.uri = Some(uri);
     request
@@ -1319,7 +1319,7 @@ fn operation_request_with_uri(
 
 fn execute_operation(
     engine: &BindingEngine,
-    request: &MermanOperationRequest,
+    request: &MermanOperationRequestV4,
     options_json: &[u8],
 ) -> Result<MermanOperationResult, MermanError> {
     let result = engine
@@ -1329,7 +1329,7 @@ fn execute_operation(
 }
 
 fn binding_operation_request<'a>(
-    request: &'a MermanOperationRequest,
+    request: &'a MermanOperationRequestV4,
     options_json: &'a [u8],
 ) -> merman_bindings_core::BindingOperationRequest<'a> {
     let binding_request = merman_bindings_core::BindingOperationRequest::new(
@@ -1534,6 +1534,68 @@ mod tests {
 
         assert_eq!(cancelled.reason, merman::CancelReason::DeadlineExceeded);
         assert_eq!(cancelled.phase, merman::OperationPhase::Admission);
+    }
+
+    #[test]
+    fn generic_request_preserves_pre_cancelled_control_details_and_no_output() {
+        let control = MermanOperationControl::new(None);
+        control.cancel();
+        let error = engine()
+            .execute(MermanOperationRequestV4 {
+                operation_id: "semantic-json".to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: None,
+                options_json: None,
+                control: Some(control),
+            })
+            .expect_err("pre-cancelled UniFFI request must publish no result");
+
+        let MermanError::Binding {
+            code,
+            code_name,
+            resource,
+            cancellation,
+            ..
+        } = error;
+        assert_eq!(code, BindingStatus::Cancelled.code());
+        assert_eq!(code_name, BindingStatus::Cancelled.code_name());
+        assert_eq!(resource, None);
+        assert_eq!(
+            cancellation,
+            Some(MermanCancelledDetails {
+                reason: "requested".to_string(),
+                phase: "admission".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn generic_request_preserves_zero_deadline_details_and_no_output() {
+        let error = engine()
+            .execute(MermanOperationRequestV4 {
+                operation_id: "semantic-json".to_string(),
+                source: "flowchart TD\nA --> B".to_string(),
+                uri: None,
+                options_json: None,
+                control: Some(MermanOperationControl::new(Some(0))),
+            })
+            .expect_err("expired UniFFI request must publish no result");
+
+        let MermanError::Binding {
+            code,
+            resource,
+            cancellation,
+            ..
+        } = error;
+        assert_eq!(code, BindingStatus::Cancelled.code());
+        assert_eq!(resource, None);
+        assert_eq!(
+            cancellation,
+            Some(MermanCancelledDetails {
+                reason: "deadline_exceeded".to_string(),
+                phase: "admission".to_string(),
+            })
+        );
     }
 
     fn reusable_engine(options_json: Option<String>) -> Arc<MermanEngine> {
@@ -2089,7 +2151,7 @@ mod tests {
     #[test]
     fn generic_operation_uses_the_descriptor_owned_semantic_path() {
         let result = engine()
-            .execute(MermanOperationRequest {
+            .execute(MermanOperationRequestV4 {
                 operation_id: "semantic-json".to_string(),
                 source: "flowchart TD\nA[Hello] --> B[World]".to_string(),
                 uri: None,
@@ -2147,7 +2209,7 @@ mod tests {
     #[test]
     fn generic_operation_exposes_the_svg_capability_plan() {
         let result = engine()
-            .execute(MermanOperationRequest {
+            .execute(MermanOperationRequestV4 {
                 operation_id: "svg-plan-json".to_string(),
                 source: "flowchart TD\nA[Hello] --> B[World]".to_string(),
                 uri: None,
@@ -2240,7 +2302,7 @@ mod tests {
 
     #[test]
     fn generic_one_shot_native_policy_matches_the_owner_adapter_probe() {
-        let request = MermanOperationRequest {
+        let request = MermanOperationRequestV4 {
             operation_id: "semantic-json".to_string(),
             source: "flowchart TD\nA --> B".to_string(),
             uri: None,
@@ -2288,7 +2350,7 @@ mod tests {
     #[test]
     fn generic_operation_distinguishes_unknown_operation_from_missing_capability() {
         let error = engine()
-            .execute(MermanOperationRequest {
+            .execute(MermanOperationRequestV4 {
                 operation_id: "not-an-operation".to_string(),
                 source: "flowchart TD\nA --> B".to_string(),
                 uri: None,
@@ -2618,7 +2680,7 @@ mod tests {
         )
         .unwrap();
         let generic = engine()
-            .execute(MermanOperationRequest {
+            .execute(MermanOperationRequestV4 {
                 operation_id: "analysis-facts-json".to_string(),
                 source,
                 uri: None,
@@ -3043,7 +3105,7 @@ mod tests {
     fn reusable_engine_rejects_request_runtime_policy() {
         let reusable = reusable_engine(None);
         let error = reusable
-            .execute(MermanOperationRequest {
+            .execute(MermanOperationRequestV4 {
                 operation_id: "semantic-json".to_string(),
                 source: "flowchart TD\nA --> B".to_string(),
                 uri: None,

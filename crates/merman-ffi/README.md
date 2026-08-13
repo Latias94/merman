@@ -78,11 +78,12 @@ The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PRE
 
 The ABI 3 minimum prefix ends at `engine_new_with_services` (function slot `6`). Operation control
 is an additive current-contract extension: `operation_control_new`, `operation_control_cancel`, and
-`operation_control_release` occupy slots `7`, `8`, and `9`. The generated
-`MERMAN_NATIVE_API_OPERATION_CONTROL_*_PREFIX_SIZE` macros identify each complete appended prefix.
-Release-matched consumers require the complete table through
-`MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE`; the smaller minimum prefix remains the
-layout-compatibility key rather than a supported reduced host surface.
+`operation_control_release` occupy slots `7`, `8`, and `9`, while
+`execute_collect_controlled` occupies slot `10`. The generated prefix-size macros identify each
+complete appended prefix. Release-matched consumers require the complete table through
+`MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; the smaller minimum prefix remains the
+layout-compatibility key rather than a supported reduced host surface. The append-only function
+preserves the original ABI 3 request-record layout.
 
 Caller-supplied record pointers must be naturally aligned. Every record and reachable byte range
 must remain readable, live, and immutable for the complete call, except for declared output
@@ -95,11 +96,10 @@ Every operation follows the same path:
 1. Call `merman_get_native_api`.
 2. Create an engine token with `api.engine_new`, or use `api.engine_new_with_services` when the
    engine owns Iconify packs.
-3. Optionally create an operation-control token with `api.operation_control_new` and attach it to
-   `MermanNativeOperationRequest.operation_control`; leave the field zero for no caller-supplied
-   control.
-4. Set `MermanNativeOperationRequest.operation` to the requested operation enum and call
-   `api.execute_collect`.
+3. Optionally create an operation-control token with `api.operation_control_new`.
+4. Set `MermanNativeOperationRequest.operation` to the requested operation enum. Call
+   `api.execute_collect` without a caller control, or call `api.execute_collect_controlled` with a
+   borrowed control token.
 5. Release every written result with `api.result_free`.
 6. Release any operation-control token with `api.operation_control_release`, then close the engine
    token with `api.engine_try_close`.
@@ -136,13 +136,14 @@ with `api.operation_control_new(timeout_ms, has_timeout_ms, &control, &result)`,
 control without a deadline and ignores `timeout_ms`; `has_timeout_ms == 1` installs a relative
 monotonic deadline, including an immediate deadline when `timeout_ms == 0`.
 
-`MermanNativeOperationRequest.operation_control == 0` means that the request has no
-caller-supplied control. A nonzero value is borrowed for the call: execution clones its shared
-state before synchronous work, does not release the token, and holds no control-registry lock while
-rendering. `api.operation_control_cancel(control)` atomically requests cancellation for a live
-token. `api.operation_control_release(control)` removes only the registry token; an operation that
-already cloned the control remains memory-safe and continues observing its cancellation/deadline
-state until it returns.
+Pass the token explicitly to
+`api.execute_collect_controlled(engine, control, &request, &result)`. A zero control selects the
+ordinary active-control behavior. A nonzero value is borrowed for the call: execution clones its
+shared state before synchronous work, does not release the token, and holds no control-registry
+lock while rendering. `api.operation_control_cancel(control)` atomically requests cancellation for
+a live token. `api.operation_control_release(control)` removes only the registry token; an
+operation that already cloned the control remains memory-safe and continues observing its
+cancellation/deadline state until it returns.
 
 Cancellation is cooperative, not thread termination. Parsing, layout, adapters, SVG
 post-processing, and export observe the request at explicit checkpoints. An opaque synchronous

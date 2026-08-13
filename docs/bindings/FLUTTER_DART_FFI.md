@@ -75,8 +75,8 @@ only complete fields safely initialized within that capacity, so a host never re
 function pointer. Release builds use the matching generated header and current complete table;
 historical five- or six-slot producers are not a supported compatibility target. The minimum ABI 3
 prefix still ends at `engine_new_with_services` (slot `6`), while the current Dart package requires
-the complete appended table through `operation_control_release` (slot `9`). The generated prefix
-constants for slots `7`-`9` make those complete boundaries explicit.
+the complete appended table through `execute_collect_controlled` (slot `10`). The generated prefix
+constants for slots `7`-`10` make those complete boundaries explicit.
 
 The returned digests have separate roles:
 
@@ -184,11 +184,11 @@ try {
 }
 ```
 
-At the C boundary, an omitted Dart control writes
-`MermanNativeOperationRequest.operation_control = 0`; zero means no caller-supplied token and the
-request owns nothing to release. A nonzero token is borrowed, may be reused across operations, and
-must be released explicitly. `release()` is idempotent in Dart and retires the token only; an
-operation that already cloned the control remains safe until it returns.
+At the C boundary, an omitted Dart control calls `execute_collect`; a supplied control calls the
+append-only `execute_collect_controlled` entry point without changing the ABI 3 request record. The
+nonzero token is borrowed, may be reused across operations, and must be released explicitly.
+`release()` is idempotent in Dart and retires the token only; an operation that already cloned the
+control remains safe until it returns.
 
 Cancellation is cooperative. The synchronous operation stops at its next parser, layout, adapter,
 post-processing, or export checkpoint and publishes no partial output. Opaque synchronous native
@@ -304,7 +304,7 @@ dart run example/smoke.dart
 ```
 
 The local contract test validates the current complete ABI
-3 table boundary through operation-control slot `9`, runtime-catalog and typed metadata relations,
+3 table boundary through controlled-execution slot `10`, runtime-catalog and typed metadata relations,
 package-version projection, BUSY/REENTRANT/CANCELLED decoding, and malformed native error payloads. The real-library smoke intentionally
 exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive

@@ -120,7 +120,7 @@ def main() -> None:
     deadline = merman.MermanOperationControl(timeout_ms=0)
     try:
         api.execute(
-            merman.MermanOperationRequest(
+            merman.MermanOperationRequestV4(
                 operation_id="svg",
                 source=BASIC_SOURCE,
                 uri=None,

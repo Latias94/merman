@@ -255,8 +255,9 @@ void projectsCurrentAbi3TableBoundaries() {
   _expect(
     native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW == 7 &&
         native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL == 8 &&
-        native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE == 9,
-    'operation-control functions must retain their appended ABI 3 slots',
+        native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE == 9 &&
+        native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED == 10,
+    'operation-control functions and controlled execution must retain their appended ABI 3 slots',
   );
   _expect(
     native.MERMAN_NATIVE_STATUS_BUSY == 16 &&
@@ -268,9 +269,9 @@ void projectsCurrentAbi3TableBoundaries() {
           native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1,
         ) &&
         ffi_transport.nativeApiHasCurrentTableForTesting(
-          native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
+          native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
         ),
-    'consumers must require the complete operation-control table prefix',
+    'consumers must require the complete controlled-execution table prefix',
   );
   _expect(
     native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE <
@@ -279,9 +280,11 @@ void projectsCurrentAbi3TableBoundaries() {
             native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE &&
         native.MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE <
             native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE &&
-        native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ==
-        ffi.sizeOf<native.MermanNativeApi>(),
-    'each appended control slot must end at one complete table prefix',
+        native.MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE <
+            native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE &&
+        native.MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ==
+            ffi.sizeOf<native.MermanNativeApi>(),
+    'each appended control or execution slot must end at one complete table prefix',
   );
 
   final request = calloc<native.MermanNativeApiRequest>();
@@ -1553,10 +1556,7 @@ void decodesMachineReadableNativeErrors() {
           'kind': 'generic',
           'capability_id': null,
           'details': {
-            'cancellation': {
-              'reason': 'deadline_exceeded',
-              'phase': 'layout',
-            },
+            'cancellation': {'reason': 'deadline_exceeded', 'phase': 'layout'},
           },
           'message': 'operation cancelled during layout',
         }),

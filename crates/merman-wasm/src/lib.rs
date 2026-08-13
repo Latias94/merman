@@ -395,13 +395,17 @@ fn execute_wasm_operation_with_services(
     services: merman_bindings_core::BindingEngineServices,
 ) -> Result<Vec<u8>, BindingError> {
     let (normalized_options, timeout) = wasm_options(options_json)?;
+    let control = wasm_operation_control(timeout);
+    control
+        .checkpoint_at(merman_bindings_core::OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
     let engine =
         wasm_artifact_contract().create_engine_with_services(&normalized_options, services)?;
+    control
+        .checkpoint_at(merman_bindings_core::OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
     engine
-        .execute(
-            BindingOperationRequest::new(operation_id, source)
-                .with_control(wasm_operation_control(timeout)),
-        )
+        .execute(BindingOperationRequest::new(operation_id, source).with_control(control))
         .map(merman_bindings_core::BindingOperationResult::into_data)
 }
 

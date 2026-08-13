@@ -14,8 +14,8 @@ or custom native host against the generated headers from the same Merman release
 4. Require every function in the release-matched table. The descriptor-selected minimum prefix
    ends at `engine_new_with_services` (slot `6`); the current table appends
    `operation_control_new`, `operation_control_cancel`, and `operation_control_release` at slots
-   `7`, `8`, and `9`. Require the complete
-   `MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE` instead of treating the minimum
+   `7`, `8`, and `9`, followed by `execute_collect_controlled` at slot `10`. Require the complete
+   `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE` instead of treating the minimum
    prefix as the complete current table.
 5. Fully zero-initialize `MermanNativeResult` with `MERMAN_NATIVE_RESULT_INIT` before every
    producing call.
@@ -27,10 +27,10 @@ or custom native host against the generated headers from the same Merman release
 9. Catch every host-language exception before it crosses the native callback boundary and return
    `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`.
 10. Use the generated text-measurement constants rather than hand-coding protocol numbers.
-11. Initialize `MermanNativeOperationRequest.operation_control` to zero when no caller-owned
-    control is attached. To cancel or set a deadline, create a nonzero
-    `MermanNativeOperationControlToken`, attach it to one or more synchronous requests, and release
-    it explicitly after the host no longer needs the registry identity.
+11. Keep using the unchanged ABI 3 `MermanNativeOperationRequest` layout. To cancel or set a
+    deadline, create a nonzero `MermanNativeOperationControlToken`, pass it explicitly to
+    `execute_collect_controlled`, and release it after the host no longer needs the registry
+    identity. Continue using `execute_collect` for uncontrolled calls.
 12. Decode `MERMAN_NATIVE_STATUS_CANCELLED` (`17`) separately from resource-limit failures and
     preserve `details.cancellation.reason` plus `details.cancellation.phase`.
 
@@ -41,7 +41,8 @@ identifies the complete release descriptor, while `capability_catalog_digest` id
 loaded artifact's callable feature surface. Release-matched hosts should validate the complete
 table they were generated against; partial historical tables are not a supported consumer target.
 The minimum prefix deliberately remains stable through slot `6`; the generated operation-control
-prefix macros describe the appended slot boundaries without changing that compatibility digest.
+and controlled-execute prefix macros describe the appended slot boundaries without changing that
+compatibility digest.
 
 ## Record, Result, And Service Rules
 
@@ -61,8 +62,9 @@ retains only the callback state whose lifetime is explicitly part of the service
 Operation controls have a separate opaque token domain. `operation_control_new` optionally installs
 a relative monotonic deadline; `operation_control_cancel` atomically requests cancellation; and
 `operation_control_release` retires the registry token without invalidating a control already
-cloned by an in-flight operation. A zero request field selects a fresh internal active control and
-does not release any caller token.
+cloned by an in-flight operation. `execute_collect_controlled` borrows a token without changing the
+frozen request-record layout; a zero token selects a fresh internal active control and owns nothing
+to release.
 
 Cancellation is cooperative. It is observed at parser, layout, adapter, post-processing, and export
 checkpoints, so it does not forcefully unwind Rust or foreign code. In particular, an opaque
@@ -75,6 +77,6 @@ status `17`, no partial output, and `details.cancellation` containing `reason` (
 
 Run the generated current-header C smoke test and the Rust ABI contract tests. Historical five-slot
 and six-slot headers are no longer checked in or compiled as compatibility fixtures. Size-tagged
-table bounds, ordered operation-control prefix macros, pointer alignment, overlap rejection,
-result/control-token ownership, publication rollback, cancellation payloads, and callback/close
-safety remain mandatory current-contract tests.
+table bounds, ordered operation-control and controlled-execute prefix macros, frozen request
+layout, pointer alignment, overlap rejection, result/control-token ownership, publication rollback,
+cancellation payloads, and callback/close safety remain mandatory current-contract tests.

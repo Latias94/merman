@@ -1022,7 +1022,6 @@ struct NativeOperationRequest<'a> {
     source: &'a [u8],
     uri: Option<&'a [u8]>,
     options_json: &'a [u8],
-    operation_control: MermanNativeOperationControlToken,
 }
 
 unsafe fn read_operation_request<'a>(
@@ -1048,7 +1047,6 @@ unsafe fn read_operation_request<'a>(
         source,
         uri: (!uri.is_empty()).then_some(uri),
         options_json,
-        operation_control: request.operation_control,
     })
 }
 
@@ -1121,6 +1119,7 @@ fn resolve_executable_native_operation(
 
 fn execute_with_engine<T>(
     token: MermanNativeEngineToken,
+    control_token: MermanNativeOperationControlToken,
     request: NativeOperationRequest<'_>,
     consume: impl FnOnce(NativeExecution) -> Result<T, NativeFailure>,
 ) -> Result<T, NativeFailure> {
@@ -1128,7 +1127,7 @@ fn execute_with_engine<T>(
     // Clone the operation control while the registry lock is held, then release every registry
     // lock before admission and synchronous execution. Releasing the token concurrently is safe:
     // the in-flight clone retains the control state until this operation returns.
-    let operation_control = acquire_operation_control(request.operation_control)?;
+    let operation_control = acquire_operation_control(control_token)?;
     // Freeze request classification before lifecycle admission. For a live token, NONE and
     // unknown numeric codes are caller errors regardless of transient busy/reentrant state.
     let operation = resolve_executable_native_operation(request.operation)?;
@@ -1427,6 +1426,7 @@ unsafe fn get_native_api_impl(
             operation_control_new: Some(native_operation_control_new),
             operation_control_cancel: Some(native_operation_control_cancel),
             operation_control_release: Some(native_operation_control_release),
+            execute_collect_controlled: Some(native_execute_collect_controlled),
         };
         let initialized_size = MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES
             .iter()
@@ -2486,13 +2486,27 @@ unsafe extern "C" fn native_execute_collect(
 ) -> MermanNativeStatus {
     unsafe {
         result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
-            execute_collect_impl(engine, request, out_result)
+            execute_collect_impl(engine, 0, request, out_result)
+        })
+    }
+}
+
+unsafe extern "C" fn native_execute_collect_controlled(
+    engine: MermanNativeEngineToken,
+    control: MermanNativeOperationControlToken,
+    request: *const MermanNativeOperationRequest,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            execute_collect_impl(engine, control, request, out_result)
         })
     }
 }
 
 unsafe fn execute_collect_impl(
     engine: MermanNativeEngineToken,
+    control: MermanNativeOperationControlToken,
     request: *const MermanNativeOperationRequest,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus {
@@ -2508,7 +2522,7 @@ unsafe fn execute_collect_impl(
         }
     };
     let operation = normalized_operation(request.operation);
-    match execute_with_engine(engine, request, |execution| {
+    match execute_with_engine(engine, control, request, |execution| {
         let status = unsafe {
             write_native_result(
                 out_result,
@@ -2579,6 +2593,7 @@ mod tests {
             operation_control_new: None,
             operation_control_cancel: None,
             operation_control_release: None,
+            execute_collect_controlled: None,
         }
     }
 
@@ -2766,7 +2781,6 @@ mod tests {
             source: borrowed_slice(source),
             uri: borrowed_slice(&[]),
             options_json: borrowed_slice(options_json),
-            operation_control: 0,
         }
     }
 
@@ -2940,6 +2954,48 @@ mod tests {
         assert!(api.operation_control_new.is_some());
         assert!(api.operation_control_cancel.is_some());
         assert!(api.operation_control_release.is_some());
+        assert!(api.execute_collect_controlled.is_some());
+    }
+
+    #[test]
+    fn operation_request_preserves_the_frozen_abi3_layout() {
+        #[repr(C)]
+        struct FrozenAbi3OperationRequest {
+            struct_size: u32,
+            operation: MermanNativeOperationCode,
+            source: MermanNativeSlice,
+            uri: MermanNativeSlice,
+            options_json: MermanNativeSlice,
+        }
+
+        assert_eq!(
+            std::mem::size_of::<MermanNativeOperationRequest>(),
+            std::mem::size_of::<FrozenAbi3OperationRequest>()
+        );
+        assert_eq!(
+            std::mem::align_of::<MermanNativeOperationRequest>(),
+            std::mem::align_of::<FrozenAbi3OperationRequest>()
+        );
+        assert_eq!(
+            std::mem::offset_of!(MermanNativeOperationRequest, struct_size),
+            std::mem::offset_of!(FrozenAbi3OperationRequest, struct_size)
+        );
+        assert_eq!(
+            std::mem::offset_of!(MermanNativeOperationRequest, operation),
+            std::mem::offset_of!(FrozenAbi3OperationRequest, operation)
+        );
+        assert_eq!(
+            std::mem::offset_of!(MermanNativeOperationRequest, source),
+            std::mem::offset_of!(FrozenAbi3OperationRequest, source)
+        );
+        assert_eq!(
+            std::mem::offset_of!(MermanNativeOperationRequest, uri),
+            std::mem::offset_of!(FrozenAbi3OperationRequest, uri)
+        );
+        assert_eq!(
+            std::mem::offset_of!(MermanNativeOperationRequest, options_json),
+            std::mem::offset_of!(FrozenAbi3OperationRequest, options_json)
+        );
     }
 
     #[test]
@@ -2973,7 +3029,7 @@ mod tests {
         );
         assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
         assert_eq!(
-            MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
+            MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
         assert!(buffer.api.metadata_collect.is_some());
@@ -3007,6 +3063,7 @@ mod tests {
                 MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE,
                 MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
                 MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
+                MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
             ]
         );
 
@@ -3070,14 +3127,15 @@ mod tests {
         );
         unsafe { api.result_free.unwrap()(&mut engine_result) };
 
-        let mut request = native_request(
+        let request = native_request(
             MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
             b"flowchart TD\nCancelled --> Request",
         );
-        request.operation_control = control;
         let mut result = native_result();
         assert_eq!(
-            unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+            unsafe {
+                api.execute_collect_controlled.unwrap()(engine, control, &request, &mut result)
+            },
             MERMAN_NATIVE_STATUS_CANCELLED
         );
         assert_eq!(result.status, MERMAN_NATIVE_STATUS_CANCELLED);

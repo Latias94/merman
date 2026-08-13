@@ -63,11 +63,12 @@ dynamically look up per-operation exports.
 The descriptor-selected minimum prefix includes `metadata_collect` at function-slot code `5` and
 `engine_new_with_services` at code `6`. The current table then appends
 `operation_control_new`, `operation_control_cancel`, and `operation_control_release` at codes `7`,
-`8`, and `9`. Their generated `MERMAN_NATIVE_API_OPERATION_CONTROL_*_PREFIX_SIZE` macros identify
-each complete table boundary. Release consumers require the complete current prefix through
-`MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE`; they must not treat the smaller minimum
-prefix as the complete release surface, fall back to the older constructor, or discard constructor
-services.
+`8`, and `9`, followed by `execute_collect_controlled` at code `10`. The generated prefix-size
+macros identify each complete table boundary. Release consumers require the complete current
+prefix through `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; they must not treat the
+smaller minimum prefix as the complete release surface, fall back to the older constructor, or
+discard constructor services. The controlled entry point is append-only so the original ABI 3
+operation-request record remains byte-for-byte stable.
 
 The returned digests have separate roles:
 
@@ -248,7 +249,6 @@ MermanNativeOperationRequest request = {
         .data = options,
         .len = sizeof(options) - 1,
     },
-    .operation_control = 0,
 };
 result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
 status = api.execute_collect(engine, &request, &result);
@@ -285,6 +285,8 @@ The current table exposes three appended operation-control functions:
   token. It may be called from another execution context while `execute_collect` is running.
 - `operation_control_release` (slot `9`) retires the registry identity. It does not cancel by
   itself and does not invalidate a control already cloned by an in-flight operation.
+- `execute_collect_controlled` (slot `10`) executes the unchanged ABI 3 request record with an
+  explicit borrowed control token. Passing zero selects ordinary active-control behavior.
 
 ```c
 MermanNativeOperationControlToken control = 0;
@@ -296,20 +298,19 @@ if (control_status != MERMAN_NATIVE_STATUS_OK) {
     /* No control token was published. */
 }
 
-request.operation_control = control;
 /* Another native execution context may call api.operation_control_cancel(control). */
-status = api.execute_collect(engine, &request, &result);
+status = api.execute_collect_controlled(engine, control, &request, &result);
 api.operation_control_release(control);
 ```
 
 As with every producing call, inspect or copy a failure result before `result_free`. The abbreviated
 snippet frees the creation result immediately only to keep the lifecycle example focused.
 
-Set `MermanNativeOperationRequest.operation_control` to zero when no caller-supplied control is
-needed. Zero selects the binding's ordinary active control and owns no token that the request must
-release. A nonzero token is borrowed for the call: the implementation clones its shared state while
-briefly holding the control registry, releases that lock before engine admission and rendering, and
-never consumes or releases the caller's token.
+Call `execute_collect` when no caller-supplied control is needed. For controlled execution, pass a
+token to `execute_collect_controlled`; zero is also accepted and selects ordinary active-control
+behavior. A nonzero token is borrowed for the call: the implementation clones its shared state
+while briefly holding the control registry, releases that lock before engine admission and
+rendering, and never consumes or releases the caller's token.
 
 Cancellation is cooperative. The parser, semantic pipeline, layout work accounting, native layout
 adapters, SVG post-processing, and export paths check the shared state at explicit boundaries. An

@@ -214,7 +214,6 @@ fn execute_operation(api: &MermanNativeApi, input: FuzzInput<'_>, selector: u8) 
         } else {
             input.options
         }),
-        operation_control: 0,
     };
     let mut output = empty_result();
     let output_status = unsafe { api.execute_collect.unwrap()(engine, &request, &mut output) };

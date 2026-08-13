@@ -186,7 +186,7 @@ fn normalize_generated_text(path: &Path) -> Result<(), Box<dyn std::error::Error
 
 #[cfg(test)]
 mod tests {
-    use super::swift_5_9_compatible_source;
+    use super::{swift_5_9_compatible_source, workspace_root};
 
     const GENERATED: &str = r#"before
     // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
@@ -216,6 +216,30 @@ after"#;
             compatible
         );
         assert!(swift_5_9_compatible_source("unrelated output").is_err());
+    }
+
+    #[test]
+    fn checked_in_api4_swift_rejects_the_api3_execute_checksums() {
+        let generated = std::fs::read_to_string(
+            workspace_root().join("platforms/apple/Sources/Merman/Generated/Merman.swift"),
+        )
+        .expect("read checked-in Swift binding");
+
+        assert!(generated.contains("MermanOperationRequestV4"));
+        assert!(
+            generated.contains("uniffi_merman_uniffi_checksum_method_merman_execute() != 18404")
+        );
+        assert!(
+            generated
+                .contains("uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 12806")
+        );
+        assert!(
+            !generated.contains("uniffi_merman_uniffi_checksum_method_merman_execute() != 6359")
+        );
+        assert!(
+            !generated
+                .contains("uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 35616")
+        );
     }
 }
 

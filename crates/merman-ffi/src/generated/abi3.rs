@@ -4,9 +4,9 @@
 
 pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:8ace28529f9b68f6e6ba6019daabcff99ae7f3e5d2782d912f70fbc9c9d43093";
+    "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:c6d306226ee98e926a7a6954e5d3f557e5c986586dcc7ac69e0c7b920961fdbf";
+    "sha256:c787f0510e088b3e0f5f39b8dc2b6f3159a1e3fe640ec6a46ba37ad91e783cd5";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -485,6 +485,7 @@ pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES: MermanNativeFunctionS
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW: MermanNativeFunctionSlot = 7;
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL: MermanNativeFunctionSlot = 8;
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE: MermanNativeFunctionSlot = 9;
+pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED: MermanNativeFunctionSlot = 10;
 
 pub type MermanNativeEngineToken = u64;
 pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = 3;
@@ -574,7 +575,6 @@ pub struct MermanNativeOperationRequest {
     pub source: MermanNativeSlice,
     pub uri: MermanNativeSlice,
     pub options_json: MermanNativeSlice,
-    pub operation_control: MermanNativeOperationControlToken,
 }
 
 /// A zero-initialized size-tagged operation result with an opaque process-lifetime allocation
@@ -624,6 +624,7 @@ pub struct MermanNativeApi {
     pub operation_control_new: Option<MermanNativeOperationControlNewFn>,
     pub operation_control_cancel: Option<MermanNativeOperationControlCancelFn>,
     pub operation_control_release: Option<MermanNativeOperationControlReleaseFn>,
+    pub execute_collect_controlled: Option<MermanNativeExecuteCollectControlledFn>,
 }
 
 /// One size-tagged borrowed IconifyJSON collection for transactional engine construction. A
@@ -689,6 +690,12 @@ pub type MermanNativeOperationControlCancelFn =
     unsafe extern "C" fn(control: MermanNativeOperationControlToken) -> MermanNativeStatus;
 pub type MermanNativeOperationControlReleaseFn =
     unsafe extern "C" fn(control: MermanNativeOperationControlToken) -> MermanNativeStatus;
+pub type MermanNativeExecuteCollectControlledFn = unsafe extern "C" fn(
+    engine: MermanNativeEngineToken,
+    control: MermanNativeOperationControlToken,
+    request: *const MermanNativeOperationRequest,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, engine_new_with_services)
@@ -706,11 +713,16 @@ pub const MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, operation_control_release)
         + std::mem::size_of::<Option<MermanNativeOperationControlReleaseFn>>()) as u32;
 
+pub const MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, execute_collect_controlled)
+        + std::mem::size_of::<Option<MermanNativeExecuteCollectControlledFn>>()) as u32;
+
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
+    MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
 ];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
