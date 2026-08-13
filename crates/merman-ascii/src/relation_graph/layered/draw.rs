@@ -41,29 +41,6 @@ pub(super) fn draw_relation_span_inclusive(
     Ok(())
 }
 
-pub(super) fn draw_relation_span_exclusive(
-    canvas: &mut Canvas,
-    x: usize,
-    start_y: usize,
-    end_y: usize,
-    ch: char,
-    chars: RelationLineChars,
-) -> Result<()> {
-    if start_y <= end_y {
-        for y in start_y..end_y {
-            put_relation_char(canvas, x, y, ch, chars)?;
-        }
-        return Ok(());
-    }
-
-    if let Some(first_y) = end_y.checked_add(1) {
-        for y in first_y..=start_y {
-            put_relation_char(canvas, x, y, ch, chars)?;
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn marker_line_with_role(
     marker: char,
     center: usize,

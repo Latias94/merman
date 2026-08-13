@@ -30,6 +30,7 @@ struct NamespaceRenderContext<'a> {
 #[derive(Debug)]
 struct NamespaceScopeIndex<'a> {
     namespace_parent: HashMap<&'a str, Option<&'a str>>,
+    namespace_route_id: HashMap<&'a str, &'a str>,
     endpoint_owner: HashMap<&'a str, Option<&'a str>>,
     relation_scope: Vec<Option<&'a str>>,
 }
@@ -72,7 +73,8 @@ impl<'a> NamespaceScopeIndex<'a> {
             .checked_mul(5)
             .ok_or_else(|| work_overflow(resources))?;
         let index_work = namespace_capacity
-            .checked_add(endpoint_capacity)
+            .checked_mul(2)
+            .and_then(|value| value.checked_add(endpoint_capacity))
             .and_then(|value| value.checked_add(model.relations.len()))
             .and_then(|value| {
                 value.checked_add(model.relations.len().checked_mul(scope_work_per_relation)?)
@@ -86,6 +88,13 @@ impl<'a> NamespaceScopeIndex<'a> {
             .map_err(|_| layout_allocation_failed())?;
         for namespace in model.namespaces.values() {
             namespace_parent.insert(namespace.id.as_str(), namespace.parent.as_deref());
+        }
+        let mut namespace_route_id = HashMap::new();
+        namespace_route_id
+            .try_reserve(namespace_capacity)
+            .map_err(|_| layout_allocation_failed())?;
+        for namespace in model.namespaces.values() {
+            namespace_route_id.insert(namespace.id.as_str(), namespace.dom_id.as_str());
         }
 
         let mut endpoint_owner = HashMap::new();
@@ -116,6 +125,7 @@ impl<'a> NamespaceScopeIndex<'a> {
 
         Ok(Self {
             namespace_parent,
+            namespace_route_id,
             endpoint_owner,
             relation_scope,
         })
@@ -214,10 +224,14 @@ impl<'a> NamespaceScopeIndex<'a> {
                 .get(child)
                 .copied()
                 .flatten()
-                .ok_or_else(|| inconsistent_class_namespace_ownership())?;
+                .ok_or_else(inconsistent_class_namespace_ownership)?;
         }
         Ok(ScopedEndpoint {
-            route_id: child,
+            route_id: self
+                .namespace_route_id
+                .get(child)
+                .copied()
+                .ok_or_else(inconsistent_class_namespace_ownership)?,
             facade_member: Some(endpoint_id),
         })
     }
@@ -818,12 +832,14 @@ fn render_namespace_box(
                 resources,
             )?
         };
-        children.push(RelationGraphBox::from_rendered_lines(
+        let relation_component = RelationGraphBox::from_rendered_lines(
             format!("{}::relations", namespace.id),
             component_lines,
             context.options.terminal_width_profile,
             resources,
-        )?);
+        )?;
+        children.clear();
+        children.push(relation_component);
     }
 
     visiting_namespace_ids.remove(namespace.id.as_str());
@@ -979,7 +995,7 @@ pub(super) fn render_namespace_container_box(
     )?);
 
     Ok(RelationGraphBox::new_with_lines(
-        namespace.id.clone(),
+        namespace.dom_id.clone(),
         lines,
         width,
         options.terminal_width_profile,
@@ -1140,8 +1156,8 @@ mod tests {
         let unbounded = AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
-        let mut measured = ResourceContext::new(unbounded);
-        NamespaceScopeIndex::new(&model, &aliases, &mut measured)
+        let measured = ResourceContext::new(unbounded);
+        NamespaceScopeIndex::new(&model, &aliases, &measured)
             .expect("unbounded namespace index should build");
         let exact_work = measured.layout_work_used();
         assert!(exact_work > 1);
@@ -1149,20 +1165,20 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact namespace-index work limit should be valid");
-        let mut exact = ResourceContext::new(exact_policy);
-        NamespaceScopeIndex::new(&model, &aliases, &mut exact)
+        let exact = ResourceContext::new(exact_policy);
+        NamespaceScopeIndex::new(&model, &aliases, &exact)
             .expect("exact namespace-index work should build");
         assert_eq!(exact.layout_work_used(), exact_work);
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("max-minus-one namespace-index work limit should be valid");
-        let mut below = ResourceContext::new(below_policy);
+        let below = ResourceContext::new(below_policy);
         below
             .charge_layout_work(1)
             .expect("test checkpoint should be admitted");
         let checkpoint = below.layout_work_used();
-        let error = NamespaceScopeIndex::new(&model, &aliases, &mut below)
+        let error = NamespaceScopeIndex::new(&model, &aliases, &below)
             .expect_err("max-minus-one namespace-index work must reject");
         assert!(matches!(
             error,
@@ -1190,11 +1206,11 @@ mod tests {
             .expect("Right namespace should exist")
             .parent = Some("Left".to_string());
         let aliases = namespace_facade_aliases(&model).expect("aliases should build");
-        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
 
-        let error = NamespaceScopeIndex::new(&model, &aliases, &mut resources)
+        let error = NamespaceScopeIndex::new(&model, &aliases, &resources)
             .expect_err("cyclic namespace parents must reject while building the scope index");
         assert!(matches!(
             error,

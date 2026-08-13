@@ -1,8 +1,8 @@
 use super::super::RelationGraphLabel;
 use super::boxes::PlacedRelationGraphBox;
 use super::draw::{
-    RelationLineChars, draw_relation_span_exclusive, draw_relation_span_inclusive,
-    put_relation_char, write_centered_relation_label, write_centered_relation_text,
+    RelationLineChars, draw_relation_span_inclusive, put_relation_char,
+    write_centered_relation_label, write_centered_relation_text,
 };
 use crate::AsciiError;
 use crate::Result;
@@ -89,7 +89,7 @@ impl RelationOverlay {
         }
     }
 
-    fn fits(&self, width: usize, height: usize) -> bool {
+    pub(crate) fn fits(&self, width: usize, height: usize) -> bool {
         match self {
             Self::Glyph { x, y, .. } => *x < width && *y < height,
             Self::Text {
@@ -186,51 +186,346 @@ impl RelationOverlayBounds {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LayeredRelationPhysicalSide {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+impl LayeredRelationPhysicalSide {
+    const ALL: [Self; 4] = [Self::Top, Self::Right, Self::Bottom, Self::Left];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LayeredRelationPhysicalPort {
+    side: LayeredRelationPhysicalSide,
+    marker_x: usize,
+    marker_y: usize,
+    path_x: usize,
+    path_y: usize,
+}
+
+impl LayeredRelationPhysicalPort {
+    pub(crate) fn side(self) -> LayeredRelationPhysicalSide {
+        self.side
+    }
+
+    pub(crate) fn x(self) -> usize {
+        self.marker_x
+    }
+
+    pub(crate) fn marker_y(self) -> usize {
+        self.marker_y
+    }
+
+    pub(crate) fn fits_box(self, relation_box: &PlacedRelationGraphBox<'_>) -> bool {
+        match self.side {
+            LayeredRelationPhysicalSide::Top => {
+                (relation_box.x()..=relation_box.right()).contains(&self.marker_x)
+                    && self.marker_y < relation_box.y()
+                    && self.path_y < relation_box.y()
+            }
+            LayeredRelationPhysicalSide::Bottom => {
+                (relation_box.x()..=relation_box.right()).contains(&self.marker_x)
+                    && self.marker_y > relation_box.bottom()
+                    && self.path_y > relation_box.bottom()
+            }
+            LayeredRelationPhysicalSide::Left => {
+                (relation_box.y()..=relation_box.bottom()).contains(&self.marker_y)
+                    && self.marker_x < relation_box.x()
+                    && self.path_x < relation_box.x()
+            }
+            LayeredRelationPhysicalSide::Right => {
+                (relation_box.y()..=relation_box.bottom()).contains(&self.marker_y)
+                    && self.marker_x > relation_box.right()
+                    && self.path_x > relation_box.right()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LayeredRelationRouteSegment {
+    Horizontal { y: usize, left: usize, right: usize },
+    Vertical { x: usize, top: usize, bottom: usize },
+}
+
+impl LayeredRelationRouteSegment {
+    fn horizontal(start_x: usize, end_x: usize, y: usize) -> Self {
+        Self::Horizontal {
+            y,
+            left: start_x.min(end_x),
+            right: start_x.max(end_x),
+        }
+    }
+
+    fn vertical(x: usize, start_y: usize, end_y: usize) -> Self {
+        Self::Vertical {
+            x,
+            top: start_y.min(end_y),
+            bottom: start_y.max(end_y),
+        }
+    }
+
+    fn draw(
+        self,
+        canvas: &mut Canvas,
+        vertical_char: char,
+        horizontal_char: char,
+        relation_chars: RelationLineChars,
+    ) -> Result<()> {
+        match self {
+            Self::Horizontal { y, left, right } => {
+                for x in left..=right {
+                    put_relation_char(canvas, x, y, horizontal_char, relation_chars)?;
+                }
+                Ok(())
+            }
+            Self::Vertical { x, top, bottom } => {
+                draw_relation_span_inclusive(canvas, x, top, bottom, vertical_char, relation_chars)
+            }
+        }
+    }
+
+    fn fits(self, width: usize, height: usize) -> bool {
+        match self {
+            Self::Horizontal { y, left, right } => right < width && left <= right && y < height,
+            Self::Vertical { x, top, bottom } => x < width && bottom < height && top <= bottom,
+        }
+    }
+
+    fn cell_count(self) -> Option<usize> {
+        match self {
+            Self::Horizontal { left, right, .. } => right.checked_sub(left)?.checked_add(1),
+            Self::Vertical { top, bottom, .. } => bottom.checked_sub(top)?.checked_add(1),
+        }
+    }
+
+    fn overlaps_rect(self, left: usize, top: usize, right: usize, bottom: usize) -> bool {
+        match self {
+            Self::Horizontal {
+                y,
+                left: segment_left,
+                right: segment_right,
+            } => (top..=bottom).contains(&y) && segment_left <= right && left <= segment_right,
+            Self::Vertical {
+                x,
+                top: segment_top,
+                bottom: segment_bottom,
+            } => (left..=right).contains(&x) && segment_top <= bottom && top <= segment_bottom,
+        }
+    }
+
+    fn overlaps(self, other: Self) -> bool {
+        match (self, other) {
+            (
+                Self::Horizontal {
+                    y: left_y,
+                    left: left_start,
+                    right: left_end,
+                },
+                Self::Horizontal {
+                    y: right_y,
+                    left: right_start,
+                    right: right_end,
+                },
+            ) => left_y == right_y && left_start <= right_end && right_start <= left_end,
+            (
+                Self::Vertical {
+                    x: left_x,
+                    top: left_start,
+                    bottom: left_end,
+                },
+                Self::Vertical {
+                    x: right_x,
+                    top: right_start,
+                    bottom: right_end,
+                },
+            ) => left_x == right_x && left_start <= right_end && right_start <= left_end,
+            (Self::Horizontal { y, left, right }, Self::Vertical { x, top, bottom })
+            | (Self::Vertical { x, top, bottom }, Self::Horizontal { y, left, right }) => {
+                (left..=right).contains(&x) && (top..=bottom).contains(&y)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LayeredRelationLabelPlacement {
+    LegacyAfterSource { route_y: usize },
+    TopLane { center_x: usize, y: usize },
+    BottomLane { center_x: usize, y: usize },
+    Vertical { center_x: usize, center_y: usize },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LayeredRelationRouteGeometry {
-    from_x: usize,
-    to_x: usize,
-    source_path_start_y: usize,
-    source_marker_y: usize,
-    route_y: usize,
-    target_marker_y: usize,
-    target_path_end_y: usize,
+    source: LayeredRelationPhysicalPort,
+    target: LayeredRelationPhysicalPort,
+    segments: [Option<LayeredRelationRouteSegment>; 3],
+    label_placement: LayeredRelationLabelPlacement,
 }
 
 impl LayeredRelationRouteGeometry {
+    pub(crate) fn source_port(&self) -> LayeredRelationPhysicalPort {
+        self.source
+    }
+
+    pub(crate) fn target_port(&self) -> LayeredRelationPhysicalPort {
+        self.target
+    }
+
     pub(crate) fn source_x(&self) -> usize {
-        self.from_x
+        self.source.x()
     }
 
     pub(crate) fn target_x(&self) -> usize {
-        self.to_x
-    }
-
-    pub(crate) fn route_y(&self) -> usize {
-        self.route_y
+        self.target.x()
     }
 
     pub(crate) fn source_marker_y(&self) -> usize {
-        self.source_marker_y
+        self.source.marker_y()
     }
 
     pub(crate) fn target_marker_y(&self) -> usize {
-        self.target_marker_y
+        self.target.marker_y()
     }
 
+    #[cfg(test)]
+    pub(crate) fn route_y(&self) -> usize {
+        match self.label_placement {
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => route_y,
+            LayeredRelationLabelPlacement::TopLane { y, .. }
+            | LayeredRelationLabelPlacement::BottomLane { y, .. } => y,
+            LayeredRelationLabelPlacement::Vertical { center_y, .. } => center_y,
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn label_y_after_source(&self) -> usize {
-        if self.source_marker_y <= self.target_marker_y {
+        if self.source.marker_y <= self.target.marker_y {
             return self
-                .source_marker_y
+                .source
+                .marker_y
                 .checked_add(1)
-                .unwrap_or(self.route_y())
+                .unwrap_or_else(|| self.route_y())
                 .min(self.route_y());
         }
 
-        self.source_marker_y
+        self.source
+            .marker_y
             .checked_sub(1)
-            .unwrap_or(self.route_y())
+            .unwrap_or_else(|| self.route_y())
             .max(self.route_y())
+    }
+
+    pub(crate) fn relation_label_anchor(
+        &self,
+        line_count: usize,
+        resources: &ResourceContext,
+    ) -> Result<(usize, usize)> {
+        let line_count = line_count.max(1);
+        match self.label_placement {
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => {
+                let y = if self.source.marker_y <= self.target.marker_y {
+                    resources
+                        .checked_grid_add(self.source.marker_y, 1)?
+                        .min(route_y)
+                } else {
+                    self.source.marker_y.saturating_sub(1).max(route_y)
+                };
+                Ok((
+                    resources.checked_grid_add(self.source.x(), self.target.x())? / 2,
+                    y,
+                ))
+            }
+            LayeredRelationLabelPlacement::TopLane { center_x, y } => Ok((center_x, y)),
+            LayeredRelationLabelPlacement::BottomLane { center_x, y } => Ok((
+                center_x,
+                y.checked_add(1)
+                    .and_then(|bottom| bottom.checked_sub(line_count))
+                    .ok_or_else(|| grid_overflow(resources))?,
+            )),
+            LayeredRelationLabelPlacement::Vertical { center_x, center_y } => Ok((
+                center_x,
+                center_y.saturating_sub(line_count.saturating_sub(1) / 2),
+            )),
+        }
+    }
+
+    pub(crate) fn endpoint_label_anchor(
+        &self,
+        source: bool,
+        line_count: usize,
+        resources: &ResourceContext,
+    ) -> Result<(usize, usize)> {
+        let port = if source { self.source } else { self.target };
+        let y = match port.side {
+            LayeredRelationPhysicalSide::Top => resources.checked_grid_add(port.marker_y, 1)?,
+            LayeredRelationPhysicalSide::Bottom => port
+                .marker_y
+                .checked_sub(line_count)
+                .ok_or_else(|| grid_overflow(resources))?,
+            LayeredRelationPhysicalSide::Left | LayeredRelationPhysicalSide::Right => port.marker_y,
+        };
+        Ok((port.marker_x, y))
+    }
+
+    fn segments(&self) -> impl Iterator<Item = LayeredRelationRouteSegment> + '_ {
+        self.segments.iter().flatten().copied()
+    }
+
+    pub(crate) fn segment_count(&self) -> usize {
+        self.segments().count()
+    }
+
+    fn work(&self, resources: &ResourceContext) -> Result<usize> {
+        let segment_work = self.segments().try_fold(0usize, |work, segment| {
+            work.checked_add(
+                segment
+                    .cell_count()
+                    .ok_or_else(|| work_overflow(resources))?,
+            )
+            .ok_or_else(|| work_overflow(resources))
+        })?;
+        if matches!(
+            self.label_placement,
+            LayeredRelationLabelPlacement::LegacyAfterSource { .. }
+        ) && self.segments[1].is_none()
+        {
+            return resources.checked_work_add(segment_work, 1);
+        }
+        Ok(segment_work)
+    }
+
+    pub(crate) fn fits(&self, width: usize, height: usize) -> bool {
+        self.segments().all(|segment| segment.fits(width, height))
+    }
+
+    pub(crate) fn overlaps_rect(
+        &self,
+        left: usize,
+        top: usize,
+        right: usize,
+        bottom: usize,
+    ) -> bool {
+        self.segments()
+            .any(|segment| segment.overlaps_rect(left, top, right, bottom))
+    }
+
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
+        self.segments()
+            .any(|left| other.segments().any(|right| left.overlaps(right)))
+    }
+
+    fn overlay_overlaps_route(&self, overlay: &RelationOverlay) -> bool {
+        overlay.bounds().is_some_and(|bounds| {
+            let right = bounds.right.saturating_sub(1);
+            let bottom = bounds.bottom.saturating_sub(1);
+            self.overlaps_rect(bounds.left, bounds.top, right, bottom)
+        })
     }
 }
 
@@ -261,44 +556,19 @@ impl LayeredRelationRoutePlan {
     }
 
     pub(crate) fn draw_route_at(&self, canvas: &mut Canvas) -> Result<()> {
-        draw_relation_span_inclusive(
-            canvas,
-            self.geometry.from_x,
-            self.geometry.source_path_start_y,
-            self.geometry.route_y,
-            self.vertical_char,
-            self.relation_chars,
-        )?;
-        if self.geometry.from_x != self.geometry.to_x {
-            let left = self.geometry.from_x.min(self.geometry.to_x);
-            let right = self.geometry.from_x.max(self.geometry.to_x);
-            for x in left..=right {
-                put_relation_char(
-                    canvas,
-                    x,
-                    self.geometry.route_y,
-                    self.horizontal_char,
-                    self.relation_chars,
-                )?;
-            }
+        for segment in self.geometry.segments() {
+            segment.draw(
+                canvas,
+                self.vertical_char,
+                self.horizontal_char,
+                self.relation_chars,
+            )?;
         }
-        draw_relation_span_exclusive(
-            canvas,
-            self.geometry.to_x,
-            self.geometry.route_y,
-            self.geometry.target_path_end_y,
-            self.vertical_char,
-            self.relation_chars,
-        )?;
         Ok(())
     }
 
-    pub(crate) fn source_x(&self) -> usize {
-        self.geometry.source_x()
-    }
-
-    pub(crate) fn target_x(&self) -> usize {
-        self.geometry.target_x()
+    pub(crate) fn geometry(&self) -> &LayeredRelationRouteGeometry {
+        &self.geometry
     }
 
     pub(crate) fn draw_overlays_at(&self, canvas: &mut Canvas) -> Result<()> {
@@ -309,14 +579,7 @@ impl LayeredRelationRoutePlan {
     }
 
     pub(crate) fn route_fits(&self, width: usize, height: usize) -> bool {
-        [
-            (self.geometry.from_x, self.geometry.source_path_start_y),
-            (self.geometry.from_x, self.geometry.route_y),
-            (self.geometry.to_x, self.geometry.route_y),
-            (self.geometry.to_x, self.geometry.target_path_end_y),
-        ]
-        .into_iter()
-        .all(|(x, y)| x < width && y < height)
+        self.geometry.fits(width, height)
     }
 
     pub(crate) fn overlays_fit(&self, width: usize, height: usize) -> bool {
@@ -338,41 +601,6 @@ impl LayeredRelationRoutePlan {
         })
     }
 
-    pub(crate) fn route_overlaps_rect(
-        &self,
-        left: usize,
-        top: usize,
-        right: usize,
-        bottom: usize,
-    ) -> bool {
-        let geometry = &self.geometry;
-        vertical_inclusive_overlaps_rect(
-            geometry.from_x,
-            geometry.source_path_start_y,
-            geometry.route_y,
-            left,
-            top,
-            right,
-            bottom,
-        ) || horizontal_inclusive_overlaps_rect(
-            geometry.from_x,
-            geometry.to_x,
-            geometry.route_y,
-            left,
-            top,
-            right,
-            bottom,
-        ) || vertical_exclusive_overlaps_rect(
-            geometry.to_x,
-            geometry.route_y,
-            geometry.target_path_end_y,
-            left,
-            top,
-            right,
-            bottom,
-        )
-    }
-
     pub(crate) fn overlays_overlap_rect(
         &self,
         left: usize,
@@ -384,60 +612,24 @@ impl LayeredRelationRoutePlan {
             .iter()
             .any(|overlay| overlay.overlaps_rect(left, top, right, bottom))
     }
-}
 
-#[allow(clippy::too_many_arguments)]
-fn vertical_inclusive_overlaps_rect(
-    x: usize,
-    start_y: usize,
-    end_y: usize,
-    left: usize,
-    top: usize,
-    right: usize,
-    bottom: usize,
-) -> bool {
-    let segment_top = start_y.min(end_y);
-    let segment_bottom = start_y.max(end_y);
-    (left..=right).contains(&x) && segment_top <= bottom && top <= segment_bottom
-}
-
-#[allow(clippy::too_many_arguments)]
-fn vertical_exclusive_overlaps_rect(
-    x: usize,
-    start_y: usize,
-    end_y: usize,
-    left: usize,
-    top: usize,
-    right: usize,
-    bottom: usize,
-) -> bool {
-    if !(left..=right).contains(&x) || start_y == end_y {
-        return false;
+    pub(crate) fn route_overlaps(&self, other: &Self) -> bool {
+        self.geometry.overlaps(&other.geometry)
     }
-    let (segment_top, segment_bottom) = if start_y < end_y {
-        (start_y, end_y - 1)
-    } else {
-        let Some(segment_top) = end_y.checked_add(1) else {
-            return false;
-        };
-        (segment_top, start_y)
-    };
-    segment_top <= bottom && top <= segment_bottom
-}
 
-#[allow(clippy::too_many_arguments)]
-fn horizontal_inclusive_overlaps_rect(
-    start_x: usize,
-    end_x: usize,
-    y: usize,
-    left: usize,
-    top: usize,
-    right: usize,
-    bottom: usize,
-) -> bool {
-    let segment_left = start_x.min(end_x);
-    let segment_right = start_x.max(end_x);
-    (top..=bottom).contains(&y) && segment_left <= right && left <= segment_right
+    pub(crate) fn overlays_overlap_route(&self, other: &Self) -> bool {
+        self.overlays
+            .iter()
+            .any(|overlay| other.geometry.overlay_overlaps_route(overlay))
+    }
+
+    pub(crate) fn segment_count(&self) -> usize {
+        self.geometry.segment_count()
+    }
+
+    pub(crate) fn overlay_count(&self) -> usize {
+        self.overlays.len()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -534,29 +726,40 @@ impl<'boxes, 'graph> LayeredRelationRouteRequest<'boxes, 'graph> {
     }
 }
 
-pub(crate) fn plan_layered_relation_route_draw(
+pub(crate) fn plan_layered_relation_route_geometry(
     request: LayeredRelationRouteRequest<'_, '_>,
-    style: LayeredRelationRouteStyle,
-    resources: &mut ResourceContext,
-    build_overlays: impl FnOnce(
-        &LayeredRelationRouteGeometry,
-        &mut ResourceContext,
-    ) -> Result<Vec<RelationOverlay>>,
-) -> Result<LayeredRelationRoutePlan> {
+    resources: &ResourceContext,
+) -> Result<LayeredRelationRouteGeometry> {
     resources.charge_layout_work(request.placed_boxes.len().max(1))?;
     let geometry = plan_layered_relation_route(request, resources)?;
-    let overlays = build_overlays(&geometry, resources)?;
+    resources.charge_layout_work(geometry.work(resources)?)?;
+    Ok(geometry)
+}
+
+pub(crate) fn plan_planar_k2_2_relation_route_geometry(
+    source: &PlacedRelationGraphBox<'_>,
+    target: &PlacedRelationGraphBox<'_>,
+    scene_height: usize,
+    profile: LayeredRelationRouteProfile,
+    resources: &ResourceContext,
+) -> Result<Option<LayeredRelationRouteGeometry>> {
+    resources.charge_layout_work(2)?;
+    let Some(geometry) =
+        plan_planar_k2_2_relation_route(source, target, scene_height, profile, resources)?
+    else {
+        return Ok(None);
+    };
+    resources.charge_layout_work(geometry.work(resources)?)?;
+    Ok(Some(geometry))
+}
+
+pub(crate) fn materialize_layered_relation_route_plan(
+    geometry: LayeredRelationRouteGeometry,
+    style: LayeredRelationRouteStyle,
+    resources: &ResourceContext,
+    overlays: Vec<RelationOverlay>,
+) -> Result<LayeredRelationRoutePlan> {
     resources.charge_layout_work(overlays.len().max(1))?;
-    let vertical_work = geometry
-        .source_path_start_y
-        .abs_diff(geometry.route_y)
-        .checked_add(geometry.route_y.abs_diff(geometry.target_path_end_y))
-        .ok_or_else(|| work_overflow(resources))?;
-    let route_work = vertical_work
-        .checked_add(geometry.from_x.abs_diff(geometry.to_x))
-        .and_then(|value| value.checked_add(3))
-        .ok_or_else(|| work_overflow(resources))?;
-    resources.charge_layout_work(route_work)?;
     Ok(LayeredRelationRoutePlan::new(
         geometry,
         style.vertical_char,
@@ -596,7 +799,7 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
     top: &PlacedRelationGraphBox<'_>,
     bottom: &PlacedRelationGraphBox<'_>,
     lane_offset: isize,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
 ) -> Result<isize> {
     resources.charge_layout_work(placed_boxes.len().max(1))?;
     let lower_bound = top.y().min(bottom.y());
@@ -663,7 +866,7 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
 
 pub(crate) fn plan_layered_relation_route(
     request: LayeredRelationRouteRequest<'_, '_>,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
 ) -> Result<LayeredRelationRouteGeometry> {
     let lane_offset = spanning_lane_offset_around_intermediate_boxes(
         request.placed_boxes,
@@ -681,83 +884,295 @@ pub(crate) fn plan_layered_relation_route(
     let endpoint_label_gap = request.profile.endpoint_label_gap;
 
     if target_top > resources.checked_grid_add(source_bottom, request.profile.min_vertical_gap)? {
-        return Ok(LayeredRelationRouteGeometry {
-            from_x,
-            to_x,
-            source_path_start_y: checked_add_gap(
+        let source = LayeredRelationPhysicalPort {
+            side: LayeredRelationPhysicalSide::Bottom,
+            marker_x: from_x,
+            marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
+            path_x: from_x,
+            path_y: checked_add_gap(
                 source_bottom,
                 request.profile.source_path_start_offset,
                 endpoint_label_gap,
                 resources,
             )?,
-            source_marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
-            route_y: checked_sub_gap(
-                target_top,
-                request.profile.route_y_offset_from_target,
-                endpoint_label_gap,
-                resources,
-            )?,
-            target_marker_y: checked_sub_gap(target_top, 1, endpoint_label_gap, resources)?,
-            target_path_end_y: checked_sub_gap(
-                target_top,
-                request.profile.target_path_end_offset_from_target,
-                endpoint_label_gap,
-                resources,
-            )?,
-        });
+        };
+        let target_boundary_y = checked_sub_gap(
+            target_top,
+            request.profile.target_path_end_offset_from_target,
+            endpoint_label_gap,
+            resources,
+        )?;
+        let target = LayeredRelationPhysicalPort {
+            side: LayeredRelationPhysicalSide::Top,
+            marker_x: to_x,
+            marker_y: checked_sub_gap(target_top, 1, endpoint_label_gap, resources)?,
+            path_x: to_x,
+            path_y: target_boundary_y
+                .checked_sub(1)
+                .ok_or_else(|| grid_overflow(resources))?,
+        };
+        let route_y = checked_sub_gap(
+            target_top,
+            request.profile.route_y_offset_from_target,
+            endpoint_label_gap,
+            resources,
+        )?;
+        return Ok(three_segment_geometry(
+            source,
+            target,
+            route_y,
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y },
+        ));
     }
 
     if source_top > resources.checked_grid_add(target_bottom, request.profile.min_vertical_gap)? {
-        return Ok(LayeredRelationRouteGeometry {
-            from_x,
-            to_x,
-            source_path_start_y: checked_sub_gap(
+        let source = LayeredRelationPhysicalPort {
+            side: LayeredRelationPhysicalSide::Top,
+            marker_x: from_x,
+            marker_y: checked_sub_gap(source_top, 1, endpoint_label_gap, resources)?,
+            path_x: from_x,
+            path_y: checked_sub_gap(
                 source_top,
                 request.profile.source_path_start_offset,
                 endpoint_label_gap,
                 resources,
             )?,
-            source_marker_y: checked_sub_gap(source_top, 1, endpoint_label_gap, resources)?,
-            route_y: checked_add_gap(
-                target_bottom,
-                request.profile.route_y_offset_from_target,
-                endpoint_label_gap,
-                resources,
-            )?,
-            target_marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
-            target_path_end_y: checked_add_gap(
-                target_bottom,
-                request.profile.target_path_end_offset_from_target,
-                endpoint_label_gap,
-                resources,
-            )?,
-        });
+        };
+        let target_boundary_y = checked_add_gap(
+            target_bottom,
+            request.profile.target_path_end_offset_from_target,
+            endpoint_label_gap,
+            resources,
+        )?;
+        let target = LayeredRelationPhysicalPort {
+            side: LayeredRelationPhysicalSide::Bottom,
+            marker_x: to_x,
+            marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
+            path_x: to_x,
+            path_y: resources.checked_grid_add(target_boundary_y, 1)?,
+        };
+        let route_y = checked_add_gap(
+            target_bottom,
+            request.profile.route_y_offset_from_target,
+            endpoint_label_gap,
+            resources,
+        )?;
+        return Ok(three_segment_geometry(
+            source,
+            target,
+            route_y,
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y },
+        ));
     }
 
-    Ok(LayeredRelationRouteGeometry {
-        from_x,
-        to_x,
-        source_path_start_y: checked_add_gap(
+    let source = LayeredRelationPhysicalPort {
+        side: LayeredRelationPhysicalSide::Bottom,
+        marker_x: from_x,
+        marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
+        path_x: from_x,
+        path_y: checked_add_gap(
             source_bottom,
             request.profile.source_path_start_offset,
             endpoint_label_gap,
             resources,
         )?,
-        source_marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
-        route_y: checked_add_gap(
-            source_bottom.max(target_bottom),
-            request.profile.route_y_offset_from_target,
-            endpoint_label_gap,
-            resources,
-        )?,
-        target_marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
-        target_path_end_y: checked_add_gap(
-            target_bottom,
-            request.profile.target_path_end_offset_from_target,
-            endpoint_label_gap,
-            resources,
-        )?,
-    })
+    };
+    let target_boundary_y = checked_add_gap(
+        target_bottom,
+        request.profile.target_path_end_offset_from_target,
+        endpoint_label_gap,
+        resources,
+    )?;
+    let target = LayeredRelationPhysicalPort {
+        side: LayeredRelationPhysicalSide::Bottom,
+        marker_x: to_x,
+        marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
+        path_x: to_x,
+        path_y: resources.checked_grid_add(target_boundary_y, 1)?,
+    };
+    let route_y = checked_add_gap(
+        source_bottom.max(target_bottom),
+        request.profile.route_y_offset_from_target,
+        endpoint_label_gap,
+        resources,
+    )?;
+    Ok(three_segment_geometry(
+        source,
+        target,
+        route_y,
+        LayeredRelationLabelPlacement::LegacyAfterSource { route_y },
+    ))
+}
+
+fn plan_planar_k2_2_relation_route(
+    source_box: &PlacedRelationGraphBox<'_>,
+    target_box: &PlacedRelationGraphBox<'_>,
+    scene_height: usize,
+    profile: LayeredRelationRouteProfile,
+    resources: &ResourceContext,
+) -> Result<Option<LayeredRelationRouteGeometry>> {
+    if source_box.y() == target_box.y() {
+        let (side, route_y, placement) = if source_box.y() < scene_height / 2 {
+            (
+                LayeredRelationPhysicalSide::Top,
+                0,
+                LayeredRelationLabelPlacement::TopLane {
+                    center_x: resources
+                        .checked_grid_add(source_box.center_x(), target_box.center_x())?
+                        / 2,
+                    y: 0,
+                },
+            )
+        } else {
+            let route_y = scene_height
+                .checked_sub(1)
+                .ok_or_else(|| grid_overflow(resources))?;
+            (
+                LayeredRelationPhysicalSide::Bottom,
+                route_y,
+                LayeredRelationLabelPlacement::BottomLane {
+                    center_x: resources
+                        .checked_grid_add(source_box.center_x(), target_box.center_x())?
+                        / 2,
+                    y: route_y,
+                },
+            )
+        };
+        let source = physical_port(source_box, side, true, profile, resources)?;
+        let target = physical_port(target_box, side, false, profile, resources)?;
+        return Ok(Some(three_segment_geometry(
+            source, target, route_y, placement,
+        )));
+    }
+
+    let (source_side, target_side) = if source_box.y() < target_box.y() {
+        (
+            LayeredRelationPhysicalSide::Bottom,
+            LayeredRelationPhysicalSide::Top,
+        )
+    } else {
+        (
+            LayeredRelationPhysicalSide::Top,
+            LayeredRelationPhysicalSide::Bottom,
+        )
+    };
+    let source = physical_port(source_box, source_side, true, profile, resources)?;
+    let target = physical_port(target_box, target_side, false, profile, resources)?;
+    if source.path_x != target.path_x {
+        return Ok(None);
+    }
+    let center_y = source
+        .path_y
+        .checked_add(target.path_y)
+        .ok_or_else(|| grid_overflow(resources))?
+        / 2;
+    Ok(Some(LayeredRelationRouteGeometry {
+        source,
+        target,
+        segments: [
+            Some(LayeredRelationRouteSegment::vertical(
+                source.path_x,
+                source.path_y,
+                target.path_y,
+            )),
+            None,
+            None,
+        ],
+        label_placement: LayeredRelationLabelPlacement::Vertical {
+            center_x: source.path_x,
+            center_y,
+        },
+    }))
+}
+
+fn physical_port(
+    relation_box: &PlacedRelationGraphBox<'_>,
+    side: LayeredRelationPhysicalSide,
+    source: bool,
+    profile: LayeredRelationRouteProfile,
+    resources: &ResourceContext,
+) -> Result<LayeredRelationPhysicalPort> {
+    debug_assert!(LayeredRelationPhysicalSide::ALL.contains(&side));
+    let gap = profile.endpoint_label_gap;
+    let marker_offset = resources.checked_grid_add(1, gap)?;
+    let path_offset = if source {
+        resources.checked_grid_add(profile.source_path_start_offset, gap)?
+    } else {
+        resources.checked_grid_add(
+            resources.checked_grid_add(profile.target_path_end_offset_from_target, gap)?,
+            1,
+        )?
+    };
+    match side {
+        LayeredRelationPhysicalSide::Top => Ok(LayeredRelationPhysicalPort {
+            side,
+            marker_x: relation_box.center_x(),
+            marker_y: relation_box
+                .y()
+                .checked_sub(marker_offset)
+                .ok_or_else(|| grid_overflow(resources))?,
+            path_x: relation_box.center_x(),
+            path_y: relation_box
+                .y()
+                .checked_sub(path_offset)
+                .ok_or_else(|| grid_overflow(resources))?,
+        }),
+        LayeredRelationPhysicalSide::Bottom => Ok(LayeredRelationPhysicalPort {
+            side,
+            marker_x: relation_box.center_x(),
+            marker_y: resources.checked_grid_add(relation_box.bottom(), marker_offset)?,
+            path_x: relation_box.center_x(),
+            path_y: resources.checked_grid_add(relation_box.bottom(), path_offset)?,
+        }),
+        LayeredRelationPhysicalSide::Left => Ok(LayeredRelationPhysicalPort {
+            side,
+            marker_x: relation_box
+                .x()
+                .checked_sub(marker_offset)
+                .ok_or_else(|| grid_overflow(resources))?,
+            marker_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
+            path_x: relation_box
+                .x()
+                .checked_sub(path_offset)
+                .ok_or_else(|| grid_overflow(resources))?,
+            path_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
+        }),
+        LayeredRelationPhysicalSide::Right => Ok(LayeredRelationPhysicalPort {
+            side,
+            marker_x: resources.checked_grid_add(relation_box.right(), marker_offset)?,
+            marker_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
+            path_x: resources.checked_grid_add(relation_box.right(), path_offset)?,
+            path_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
+        }),
+    }
+}
+
+fn three_segment_geometry(
+    source: LayeredRelationPhysicalPort,
+    target: LayeredRelationPhysicalPort,
+    route_y: usize,
+    label_placement: LayeredRelationLabelPlacement,
+) -> LayeredRelationRouteGeometry {
+    let horizontal = (source.path_x != target.path_x)
+        .then(|| LayeredRelationRouteSegment::horizontal(source.path_x, target.path_x, route_y));
+    LayeredRelationRouteGeometry {
+        source,
+        target,
+        segments: [
+            Some(LayeredRelationRouteSegment::vertical(
+                source.path_x,
+                source.path_y,
+                route_y,
+            )),
+            horizontal,
+            Some(LayeredRelationRouteSegment::vertical(
+                target.path_x,
+                route_y,
+                target.path_y,
+            )),
+        ],
+        label_placement,
+    }
 }
 
 fn route_column_crosses_any_box(

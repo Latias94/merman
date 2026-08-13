@@ -69,7 +69,7 @@ pub(crate) trait RelationComponentAdapter<R> {
         &self,
         relation: &R,
         geometry: &LayeredRelationRouteGeometry,
-        resources: &mut ResourceContext,
+        resources: &ResourceContext,
     ) -> Result<Vec<RelationOverlay>>;
 
     fn plan_vertical_region<'plan>(
@@ -670,6 +670,24 @@ where
     )
 }
 
+#[derive(Debug)]
+enum LayeredRouteBatchError {
+    Resource(AsciiError),
+    Semantic(LayeredRelationSummaryReason),
+}
+
+impl From<AsciiError> for LayeredRouteBatchError {
+    fn from(error: AsciiError) -> Self {
+        Self::Resource(error)
+    }
+}
+
+struct PlannedLayeredRoute {
+    edge_index: usize,
+    style: LayeredRelationRouteStyle,
+    geometry: LayeredRelationRouteGeometry,
+}
+
 fn plan_layered_relation_component_ref_result<'boxes, R, A>(
     boxes: &[&'boxes RelationGraphBox],
     relations: &[&R],
@@ -716,70 +734,279 @@ where
         }
     };
 
-    let mut route_plans = Vec::new();
-    resources.charge_layout_work(scene.draw_order().len().max(1))?;
-    route_plans
-        .try_reserve_exact(scene.draw_order().len())
-        .map_err(|_| layout_allocation_failed())?;
-    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-        let relation = relations[edge_index];
-        let style = adapter.layered_route_style(relation)?;
-        let Some(route_plan) = scene.plan_edge_draw(
-            edge_index,
-            lane_offset,
-            style,
-            resources,
-            |geometry, resources| adapter.layered_relation_overlays(relation, geometry, resources),
-        )?
-        else {
-            continue;
+    let (route_plans, extent) =
+        match plan_layered_route_batch(&scene, relations, resources, adapter) {
+            Ok(plan) => plan,
+            Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
+            Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
         };
 
-        if !scene.edge_ports_fit(edge_index, route_plan.source_x(), route_plan.target_x()) {
-            return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+    Ok(Ok(LayeredRelationPaintPlan {
+        scene,
+        routes: route_plans,
+        extent,
+    }))
+}
+
+fn plan_layered_route_batch<R, A>(
+    scene: &LayeredRelationScene<'_>,
+    relations: &[&R],
+    resources: &ResourceContext,
+    adapter: &A,
+) -> std::result::Result<
+    (
+        Vec<LayeredRelationRoutePlan>,
+        crate::resource::LogicalExtent,
+    ),
+    LayeredRouteBatchError,
+>
+where
+    A: RelationComponentAdapter<R>,
+{
+    resources.transaction(|resources| {
+        resources.charge_layout_work(scene.draw_order().len().max(1))?;
+        let mut planned = Vec::new();
+        planned
+            .try_reserve_exact(scene.draw_order().len())
+            .map_err(|_| layout_allocation_failed())?;
+        for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+            let Some(relation) = relations.get(edge_index).copied() else {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::RouteCollision,
+                ));
+            };
+            let style = adapter.layered_route_style(relation)?;
+            let Some(geometry) =
+                scene.plan_edge_geometry(edge_index, lane_offset, style.profile(), resources)?
+            else {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::RouteCollision,
+                ));
+            };
+
+            if !scene.edge_ports_fit(edge_index, &geometry) {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::RouteCollision,
+                ));
+            }
+
+            planned.push(PlannedLayeredRoute {
+                edge_index,
+                style,
+                geometry,
+            });
         }
 
-        route_plans.push(route_plan);
-    }
+        validate_layered_route_geometries(scene, &planned, resources)?;
 
+        let mut route_plans = Vec::new();
+        route_plans
+            .try_reserve_exact(planned.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for route in planned {
+            let Some(relation) = relations.get(route.edge_index).copied() else {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::RouteCollision,
+                ));
+            };
+            let overlays =
+                adapter.layered_relation_overlays(relation, &route.geometry, resources)?;
+            route_plans.push(materialize_layered_relation_route_plan(
+                route.geometry,
+                route.style,
+                resources,
+                overlays,
+            )?);
+        }
+        validate_layered_route_batch(scene, &route_plans, resources)?;
+        let extent = resources.grid_extent(scene.width(), scene.height())?;
+        Ok((route_plans, extent))
+    })
+}
+
+fn validate_layered_route_geometries(
+    scene: &LayeredRelationScene<'_>,
+    routes: &[PlannedLayeredRoute],
+    resources: &ResourceContext,
+) -> std::result::Result<(), LayeredRouteBatchError> {
+    let segment_count = routes.iter().try_fold(0usize, |total, route| {
+        resources.checked_work_add(total, route.geometry.segment_count())
+    })?;
+    let box_work = resources.checked_work_mul(segment_count, scene.placed_box_count().max(1))?;
+    let pair_work = if scene.is_planar_k2_2() {
+        routes
+            .iter()
+            .enumerate()
+            .try_fold(0usize, |total, (index, route)| {
+                routes[index + 1..].iter().try_fold(total, |total, other| {
+                    resources.checked_work_add(
+                        total,
+                        resources.checked_work_mul(
+                            route.geometry.segment_count(),
+                            other.geometry.segment_count(),
+                        )?,
+                    )
+                })
+            })?
+    } else {
+        0
+    };
+    let validation_work = resources
+        .checked_work_add(box_work, pair_work)?
+        .checked_add(routes.len())
+        .ok_or_else(|| resources.work_overflow())?;
+    resources.charge_layout_work(validation_work.max(1))?;
+    if scene.is_planar_k2_2() && routes.len() != 4 {
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::RouteCollision,
+        ));
+    }
+    if routes
+        .iter()
+        .any(|route| !route.geometry.fits(scene.width(), scene.height()))
+    {
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::RouteCollision,
+        ));
+    }
+    if scene.is_planar_k2_2() {
+        for (index, route) in routes.iter().enumerate() {
+            if routes[index + 1..]
+                .iter()
+                .any(|other| route.geometry.overlaps(&other.geometry))
+            {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::RouteCollision,
+                ));
+            }
+        }
+    }
+    if routes
+        .iter()
+        .any(|route| scene.route_geometry_overlaps_box(&route.geometry))
+    {
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::RouteCollision,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_layered_route_batch(
+    scene: &LayeredRelationScene<'_>,
+    route_plans: &[LayeredRelationRoutePlan],
+    resources: &ResourceContext,
+) -> std::result::Result<(), LayeredRouteBatchError> {
+    let segment_count = route_plans.iter().try_fold(0usize, |total, route| {
+        resources.checked_work_add(total, route.segment_count())
+    })?;
+    let overlay_count = route_plans.iter().try_fold(0usize, |total, route| {
+        resources.checked_work_add(total, route.overlay_count())
+    })?;
+    let box_work = resources.checked_work_mul(
+        resources.checked_work_add(segment_count, overlay_count)?,
+        scene.placed_box_count().max(1),
+    )?;
+    let pair_work = route_plans
+        .iter()
+        .enumerate()
+        .try_fold(0usize, |total, (index, route)| {
+            route_plans[index + 1..]
+                .iter()
+                .try_fold(total, |total, other| {
+                    let overlay_overlay =
+                        resources.checked_work_mul(route.overlay_count(), other.overlay_count())?;
+                    let planar_work = if scene.is_planar_k2_2() {
+                        let route_route = resources
+                            .checked_work_mul(route.segment_count(), other.segment_count())?;
+                        let overlay_route = resources.checked_work_add(
+                            resources
+                                .checked_work_mul(route.overlay_count(), other.segment_count())?,
+                            resources
+                                .checked_work_mul(other.overlay_count(), route.segment_count())?,
+                        )?;
+                        resources.checked_work_add(route_route, overlay_route)?
+                    } else {
+                        0
+                    };
+                    resources.checked_work_add(
+                        total,
+                        resources.checked_work_add(overlay_overlay, planar_work)?,
+                    )
+                })
+        })?;
+    let validation_work = resources
+        .checked_work_add(box_work, pair_work)?
+        .checked_add(route_plans.len())
+        .ok_or_else(|| resources.work_overflow())?;
+    resources.charge_layout_work(validation_work.max(1))?;
+    if scene.is_planar_k2_2() && route_plans.len() != 4 {
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::RouteCollision,
+        ));
+    }
     if route_plans
         .iter()
         .any(|route_plan| !route_plan.route_fits(scene.width(), scene.height()))
     {
-        return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::RouteCollision,
+        ));
     }
     if route_plans
         .iter()
         .any(|route_plan| !route_plan.overlays_fit(scene.width(), scene.height()))
     {
-        return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::OverlayCollision,
+        ));
     }
     for (index, route_plan) in route_plans.iter().enumerate() {
         if route_plans[index + 1..]
             .iter()
             .any(|other| route_plan.overlays_overlap(other))
         {
-            return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::OverlayCollision,
+            ));
+        }
+    }
+    if scene.is_planar_k2_2() {
+        for (index, route_plan) in route_plans.iter().enumerate() {
+            if route_plans[index + 1..]
+                .iter()
+                .any(|other| route_plan.route_overlaps(other))
+            {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::RouteCollision,
+                ));
+            }
+            if route_plans[index + 1..].iter().any(|other| {
+                route_plan.overlays_overlap_route(other) || other.overlays_overlap_route(route_plan)
+            }) {
+                return Err(LayeredRouteBatchError::Semantic(
+                    LayeredRelationSummaryReason::OverlayCollision,
+                ));
+            }
         }
     }
     if route_plans
         .iter()
         .any(|route_plan| scene.route_overlaps_box(route_plan))
     {
-        return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::RouteCollision,
+        ));
     }
     if route_plans
         .iter()
         .any(|route_plan| scene.overlays_overlap_box(route_plan))
     {
-        return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
+        return Err(LayeredRouteBatchError::Semantic(
+            LayeredRelationSummaryReason::OverlayCollision,
+        ));
     }
-    let extent = resources.grid_extent(scene.width(), scene.height())?;
-    Ok(Ok(LayeredRelationPaintPlan {
-        scene,
-        routes: route_plans,
-        extent,
-    }))
+    Ok(())
 }
 
 fn grid_overflow(resources: &ResourceContext) -> AsciiError {

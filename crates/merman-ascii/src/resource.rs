@@ -488,7 +488,10 @@ impl ResourceContext {
     /// reject the phase after work or document cells have been charged. This boundary restores
     /// both ledgers to their entry values on any error while preserving successful charges.
     /// Nested transactions are safe because each call restores only its own checkpoint.
-    pub(crate) fn transaction<T>(&self, operation: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
+    pub(crate) fn transaction<T, E>(
+        &self,
+        operation: impl FnOnce(&Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
         let layout_work_checkpoint = self.layout_work_used.get();
         let document_cells_checkpoint = self.document_cells_used.get();
         match operation(self) {
@@ -806,6 +809,34 @@ mod tests {
 
         assert_eq!(resources.layout_work_used(), 3);
         assert_eq!(resources.document_cells_used(), 4);
+    }
+
+    #[test]
+    fn transaction_rolls_back_domain_errors_without_an_ascii_error_adapter() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum PlanningFailure {
+            RouteCollision,
+        }
+
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        resources
+            .charge_usage(2, 3)
+            .expect("the checkpoint should start with prior usage");
+
+        let error = resources
+            .transaction(|resources| {
+                resources
+                    .charge_usage(4, 5)
+                    .expect("the speculative usage should fit");
+                Err::<(), _>(PlanningFailure::RouteCollision)
+            })
+            .expect_err("the domain failure should roll back the transaction");
+
+        assert_eq!(error, PlanningFailure::RouteCollision);
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
     }
 
     #[test]

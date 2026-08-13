@@ -507,7 +507,7 @@ fn validate_unique_class_render_ids(
             model
                 .namespaces
                 .values()
-                .map(|namespace| namespace.id.as_str()),
+                .map(|namespace| namespace.dom_id.as_str()),
         );
     for id in rendered_ids {
         if !ids.insert(id) {
@@ -1866,7 +1866,7 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
         &self,
         layout: &RelationLayout<'relation>,
         geometry: &relation_graph::LayeredRelationRouteGeometry,
-        resources: &mut ResourceContext,
+        resources: &ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
         resources.charge_layout_work(3)?;
         let mut overlays = Vec::new();
@@ -1874,48 +1874,58 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
             .try_reserve_exact(4)
             .map_err(|_| layout_allocation_failed())?;
         if let Some(label) = layout.top_endpoint_label.as_ref() {
+            let (center_x, y) =
+                geometry.endpoint_label_anchor(true, label.line_count(), resources)?;
             overlays.push(RelationOverlay::label(
-                geometry.source_x(),
-                geometry
-                    .source_marker_y()
-                    .checked_sub(label.line_count())
-                    .ok_or_else(|| grid_overflow(resources))?,
+                center_x,
+                y,
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));
         }
         if let Some(label) = layout.label.as_ref() {
-            let center_x =
-                resources.checked_grid_add(geometry.source_x(), geometry.target_x())? / 2;
+            let (center_x, y) = geometry.relation_label_anchor(label.line_count(), resources)?;
             overlays.push(RelationOverlay::label(
                 center_x,
-                geometry.label_y_after_source(),
+                y,
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));
         }
 
         if let Some(marker) = layout.top_marker {
+            let port = geometry.source_port();
             overlays.push(RelationOverlay::glyph(
-                geometry.source_x(),
-                geometry.source_marker_y(),
-                marker_char(marker, MarkerSide::Top, self.charset),
+                port.x(),
+                port.marker_y(),
+                marker_char(
+                    marker,
+                    marker_side_for_physical_port(port.side())?,
+                    self.charset,
+                ),
                 AsciiColorRole::EdgeArrow,
             ));
         }
         if let Some(marker) = layout.bottom_marker {
+            let port = geometry.target_port();
             overlays.push(RelationOverlay::glyph(
-                geometry.target_x(),
-                geometry.target_marker_y(),
-                marker_char(marker, MarkerSide::Bottom, self.charset),
+                port.x(),
+                port.marker_y(),
+                marker_char(
+                    marker,
+                    marker_side_for_physical_port(port.side())?,
+                    self.charset,
+                ),
                 AsciiColorRole::EdgeArrow,
             ));
         }
 
         if let Some(label) = layout.bottom_endpoint_label.as_ref() {
+            let (center_x, y) =
+                geometry.endpoint_label_anchor(false, label.line_count(), resources)?;
             overlays.push(RelationOverlay::label(
-                geometry.target_x(),
-                resources.checked_grid_add(geometry.target_marker_y(), 1)?,
+                center_x,
+                y,
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));
@@ -1972,6 +1982,22 @@ impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relatio
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
         class_layered_error(error)
+    }
+}
+
+fn marker_side_for_physical_port(
+    side: relation_graph::LayeredRelationPhysicalSide,
+) -> Result<MarkerSide> {
+    match side {
+        relation_graph::LayeredRelationPhysicalSide::Top => Ok(MarkerSide::Bottom),
+        relation_graph::LayeredRelationPhysicalSide::Bottom => Ok(MarkerSide::Top),
+        relation_graph::LayeredRelationPhysicalSide::Left
+        | relation_graph::LayeredRelationPhysicalSide::Right => {
+            Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "horizontal ports in layered relationship layouts",
+            })
+        }
     }
 }
 
@@ -2314,6 +2340,7 @@ fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -
     for namespace in model.namespaces.values() {
         charge_text_layout(resources, &namespace.id)?;
         charge_text_layout(resources, &namespace.label)?;
+        charge_text_layout(resources, &namespace.dom_id)?;
         if let Some(parent) = namespace.parent.as_deref() {
             charge_text_layout(resources, parent)?;
         }

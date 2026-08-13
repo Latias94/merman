@@ -133,7 +133,7 @@ where
         &self,
         _relation: &R,
         _geometry: &LayeredRelationRouteGeometry,
-        _resources: &mut ResourceContext,
+        _resources: &ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
         if self.overlap == TestRelationOverlap::Overlay {
             return Ok(vec![RelationOverlay::glyph(
@@ -210,6 +210,13 @@ where
 
 fn test_resources(options: &AsciiRenderOptions) -> ResourceContext {
     ResourceContext::new(options.resources)
+}
+
+fn strict_k2_2_boxes() -> Vec<RelationGraphBox> {
+    ["a", "b", "c", "d"]
+        .into_iter()
+        .map(|id| RelationGraphBox::new(id.to_string(), vec![id.to_uppercase()], 1))
+        .collect()
 }
 
 fn options_with_grid_limit(max: usize) -> AsciiRenderOptions {

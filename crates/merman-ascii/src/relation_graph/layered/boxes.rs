@@ -98,7 +98,6 @@ impl PlacedRelationGraphBox<'_> {
         self.relation_box.width()
     }
 
-    #[cfg(test)]
     pub(crate) fn height(&self) -> usize {
         self.relation_box.height()
     }
@@ -128,6 +127,12 @@ impl PlacedRelationGraphBox<'_> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LayeredRelationLayoutKind {
+    Standard,
+    PlanarK2x2,
+}
+
 #[cfg(test)]
 impl<'a> PlacedRelationGraphBox<'a> {
     pub(crate) fn for_test(
@@ -155,6 +160,7 @@ pub(crate) struct LayeredRelationPlan<'a> {
     placed: Vec<PlacedRelationGraphBox<'a>>,
     width: usize,
     height: usize,
+    layout_kind: LayeredRelationLayoutKind,
 }
 
 impl<'a> LayeredRelationPlan<'a> {
@@ -168,6 +174,10 @@ impl<'a> LayeredRelationPlan<'a> {
 
     pub(crate) fn height(&self) -> usize {
         self.height
+    }
+
+    pub(crate) fn layout_kind(&self) -> LayeredRelationLayoutKind {
+        self.layout_kind
     }
 }
 
@@ -309,14 +319,40 @@ pub(crate) fn plan_layered_relation_boxes<'a>(
     horizontal_gap: usize,
     resources: &mut ResourceContext,
 ) -> std::result::Result<LayeredRelationPlan<'a>, LayeredRelationPlanningError> {
+    if let Some(level_groups) = strict_k2_2_cycle_groups(boxes, edges, resources)? {
+        let levels = HashMap::new();
+        let (placed, width, height) = place_layered_boxes(
+            &level_groups,
+            edges,
+            &levels,
+            horizontal_gap,
+            LayeredRelationLayoutKind::PlanarK2x2,
+            resources,
+        )?;
+        return Ok(LayeredRelationPlan {
+            placed,
+            width,
+            height,
+            layout_kind: LayeredRelationLayoutKind::PlanarK2x2,
+        });
+    }
+
     let levels = layered_relation_levels(boxes, edges, resources)?;
-    let level_groups = choose_ordered_layered_groups(boxes, edges, &levels, resources)?;
-    let (placed, width, height) =
-        place_layered_boxes(&level_groups, edges, &levels, horizontal_gap, resources)?;
+    let (level_groups, layout_kind) =
+        choose_ordered_layered_groups(boxes, edges, &levels, resources)?;
+    let (placed, width, height) = place_layered_boxes(
+        &level_groups,
+        edges,
+        &levels,
+        horizontal_gap,
+        layout_kind,
+        resources,
+    )?;
     Ok(LayeredRelationPlan {
         placed,
         width,
         height,
+        layout_kind,
     })
 }
 
@@ -400,7 +436,10 @@ fn choose_ordered_layered_groups<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     resources: &mut ResourceContext,
-) -> std::result::Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
+) -> std::result::Result<
+    (Vec<Vec<&'a RelationGraphBox>>, LayeredRelationLayoutKind),
+    LayeredRelationPlanningError,
+> {
     let base = initial_layered_groups(boxes, levels, resources)?;
     let max_sweeps = level_sweep_candidate_count(base.len(), resources)?;
     let mut seen = HashSet::new();
@@ -415,7 +454,7 @@ fn choose_ordered_layered_groups<'a>(
     if let Some(level_groups) = score_ordered_layered_group_candidate(
         &base, edges, levels, &mut seen, &mut best, resources,
     )? {
-        return Ok(level_groups);
+        return Ok((level_groups, LayeredRelationLayoutKind::Standard));
     }
 
     for first_sweep in [LayeredRelationSweep::Downward, LayeredRelationSweep::Upward] {
@@ -431,18 +470,128 @@ fn choose_ordered_layered_groups<'a>(
             if let Some(level_groups) = score_ordered_layered_group_candidate(
                 &groups, edges, levels, &mut seen, &mut best, resources,
             )? {
-                return Ok(level_groups);
+                return Ok((level_groups, LayeredRelationLayoutKind::Standard));
             }
         }
     }
 
     let Some((crossings, level_groups)) = best else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), LayeredRelationLayoutKind::Standard));
     };
     if crossings == 0 {
-        Ok(level_groups)
+        Ok((level_groups, LayeredRelationLayoutKind::Standard))
     } else {
         Err(LayeredRelationError::Crossing.into())
+    }
+}
+
+fn strict_k2_2_cycle_groups<'a>(
+    boxes: &[&'a RelationGraphBox],
+    edges: &[LayeredRelationEdge],
+    resources: &ResourceContext,
+) -> Result<Option<Vec<Vec<&'a RelationGraphBox>>>, LayeredRelationPlanningError> {
+    if boxes.len() != 4 || edges.len() != 4 {
+        return Ok(None);
+    }
+
+    let work = boxes
+        .len()
+        .checked_add(
+            edges
+                .len()
+                .checked_mul(boxes.len())
+                .ok_or_else(|| work_overflow(resources))?,
+        )
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(work)?;
+
+    let mut ordered_boxes = Vec::new();
+    ordered_boxes
+        .try_reserve_exact(boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    ordered_boxes.extend(boxes.iter().copied());
+    ordered_boxes.sort_by_key(|relation_box| relation_box.id());
+    if ordered_boxes
+        .windows(2)
+        .any(|pair| pair[0].id() == pair[1].id())
+    {
+        return Ok(None);
+    }
+
+    let mut pairs = HashSet::new();
+    pairs
+        .try_reserve(edges.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for edge in edges {
+        if find_box_ref(boxes, edge.source_id()).is_none()
+            || find_box_ref(boxes, edge.target_id()).is_none()
+        {
+            return Err(LayeredRelationError::MissingEndpoint.into());
+        }
+        if edge.source_id() == edge.target_id()
+            || !pairs.insert(ordered_endpoint_pair(edge.source_id(), edge.target_id()))
+        {
+            return Ok(None);
+        }
+    }
+
+    let first = ordered_boxes[0];
+    let mut neighbors = Vec::new();
+    neighbors
+        .try_reserve_exact(2)
+        .map_err(|_| layout_allocation_failed())?;
+    for edge in edges {
+        if edge.source_id() == first.id() {
+            neighbors.push(edge.target_id());
+        } else if edge.target_id() == first.id() {
+            neighbors.push(edge.source_id());
+        }
+    }
+    neighbors.sort_unstable();
+    neighbors.dedup();
+    let [first_neighbor_id, second_neighbor_id] = neighbors.as_slice() else {
+        return Ok(None);
+    };
+    let first_neighbor_id = *first_neighbor_id;
+    let second_neighbor_id = *second_neighbor_id;
+    let Some(first_neighbor) = find_box_ref(boxes, first_neighbor_id) else {
+        return Err(LayeredRelationError::MissingEndpoint.into());
+    };
+    let Some(second_neighbor) = find_box_ref(boxes, second_neighbor_id) else {
+        return Err(LayeredRelationError::MissingEndpoint.into());
+    };
+    let mut opposite_candidates = ordered_boxes.iter().copied().filter(|relation_box| {
+        relation_box.id() != first.id()
+            && relation_box.id() != first_neighbor_id
+            && relation_box.id() != second_neighbor_id
+    });
+    let Some(opposite) = opposite_candidates.next() else {
+        return Ok(None);
+    };
+    if opposite_candidates.next().is_some()
+        || ![
+            ordered_endpoint_pair(first.id(), first_neighbor.id()),
+            ordered_endpoint_pair(first.id(), second_neighbor.id()),
+            ordered_endpoint_pair(opposite.id(), first_neighbor.id()),
+            ordered_endpoint_pair(opposite.id(), second_neighbor.id()),
+        ]
+        .iter()
+        .all(|pair| pairs.contains(pair))
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        vec![first, first_neighbor],
+        vec![second_neighbor, opposite],
+    ]))
+}
+
+fn ordered_endpoint_pair<'a>(left: &'a str, right: &'a str) -> (&'a str, &'a str) {
+    if left <= right {
+        (left, right)
+    } else {
+        (right, left)
     }
 }
 
@@ -825,8 +974,13 @@ fn place_layered_boxes<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     horizontal_gap: usize,
+    layout_kind: LayeredRelationLayoutKind,
     resources: &mut ResourceContext,
 ) -> Result<(Vec<PlacedRelationGraphBox<'a>>, usize, usize), LayeredRelationPlanningError> {
+    if layout_kind == LayeredRelationLayoutKind::PlanarK2x2 {
+        return place_planar_k2_2_boxes(level_groups, edges, horizontal_gap, resources);
+    }
+
     let max_level = level_groups.len().saturating_sub(1);
 
     let mut group_widths = Vec::new();
@@ -933,6 +1087,85 @@ fn place_layered_boxes<'a>(
 
     debug_assert_eq!(y, height);
     Ok((placed, content_width, height))
+}
+
+fn place_planar_k2_2_boxes<'a>(
+    rows: &[Vec<&'a RelationGraphBox>],
+    edges: &[LayeredRelationEdge],
+    horizontal_gap: usize,
+    resources: &ResourceContext,
+) -> Result<(Vec<PlacedRelationGraphBox<'a>>, usize, usize), LayeredRelationPlanningError> {
+    let [top, bottom] = rows else {
+        return Err(LayeredRelationError::Crossing.into());
+    };
+    let ([top_left, top_right], [bottom_left, bottom_right]) = (top.as_slice(), bottom.as_slice())
+    else {
+        return Err(LayeredRelationError::Crossing.into());
+    };
+
+    let left_width = top_left.width().max(bottom_left.width());
+    let right_width = top_right.width().max(bottom_right.width());
+    let column_width = resources.checked_grid_add(
+        resources.checked_grid_add(left_width, horizontal_gap)?,
+        right_width,
+    )?;
+    let max_label_width = edges.iter().map(|edge| edge.label_width).max().unwrap_or(0);
+    let label_margin = resources.checked_grid_add(max_label_width / 2, 1)?;
+    let width =
+        resources.checked_grid_add(column_width, resources.checked_grid_mul(label_margin, 2)?)?;
+
+    let max_label_lines = edges
+        .iter()
+        .map(|edge| edge.label_line_count)
+        .max()
+        .unwrap_or(0);
+    let exterior_margin = resources.checked_grid_add(max_label_lines, 3)?;
+    let middle_gap = resources.checked_grid_add(max_label_lines, 3)?.max(5);
+    let top_height = top_left.height().max(top_right.height());
+    let bottom_height = bottom_left.height().max(bottom_right.height());
+    let bottom_y = resources.checked_grid_add(
+        resources.checked_grid_add(exterior_margin, top_height)?,
+        middle_gap,
+    )?;
+    let height = resources.checked_grid_add(
+        resources.checked_grid_add(bottom_y, bottom_height)?,
+        exterior_margin,
+    )?;
+    resources.grid_extent(width, height)?;
+    resources.charge_layout_work(4)?;
+
+    let left_center = resources.checked_grid_add(label_margin, left_width / 2)?;
+    let right_center = resources.checked_grid_add(
+        resources.checked_grid_add(label_margin, left_width)?,
+        resources.checked_grid_add(horizontal_gap, right_width / 2)?,
+    )?;
+    let mut placed = Vec::new();
+    placed
+        .try_reserve_exact(4)
+        .map_err(|_| layout_allocation_failed())?;
+    for (relation_box, center_x, y) in [
+        (*top_left, left_center, exterior_margin),
+        (*top_right, right_center, exterior_margin),
+        (*bottom_left, left_center, bottom_y),
+        (*bottom_right, right_center, bottom_y),
+    ] {
+        let x = center_x
+            .checked_sub(relation_box.width() / 2)
+            .ok_or_else(|| grid_overflow(resources))?;
+        let right_exclusive = resources.checked_grid_add(x, relation_box.width())?;
+        let bottom_exclusive = resources.checked_grid_add(y, relation_box.height())?;
+        placed.push(PlacedRelationGraphBox {
+            id: relation_box.id(),
+            relation_box,
+            x,
+            y,
+            center_x,
+            right: right_exclusive.checked_sub(1).unwrap_or(x),
+            bottom: bottom_exclusive.checked_sub(1).unwrap_or(y),
+        });
+    }
+
+    Ok((placed, width, height))
 }
 
 fn spanning_lane_margin(

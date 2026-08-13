@@ -986,7 +986,7 @@ impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLay
         &self,
         layout: &ErRelationLayout<'_>,
         geometry: &relation_graph::LayeredRelationRouteGeometry,
-        resources: &mut ResourceContext,
+        resources: &ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
         resources.charge_layout_work(3)?;
         let top_cardinality = cardinality_marker(layout.top_cardinality, self.charset)?;
@@ -1004,11 +1004,10 @@ impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLay
             self.width_profile,
         ));
         if let Some(label) = layout.label.as_ref() {
-            let center_x =
-                resources.checked_grid_add(geometry.source_x(), geometry.target_x())? / 2;
+            let (center_x, y) = geometry.relation_label_anchor(label.line_count(), resources)?;
             overlays.push(RelationOverlay::label(
                 center_x,
-                geometry.label_y_after_source(),
+                y,
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));

@@ -166,3 +166,129 @@ fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
     );
     assert!(rendered.contains("relations:\nA --> B\nA --> B\n"));
 }
+
+#[test]
+fn strict_k2_2_overlay_collision_rolls_back_the_atomic_route_batch() {
+    let boxes = strict_k2_2_boxes();
+    let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
+    let options = AsciiRenderOptions::ascii();
+    let mut resources = test_resources(&options);
+    let adapter = TestRelationAdapter {
+        summary_reason: Cell::new(None),
+        overlap: TestRelationOverlap::Overlay,
+    };
+    let box_refs = boxes.iter().collect::<Vec<_>>();
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let scene = match plan_layered_relation_scene(
+        &box_refs,
+        edges,
+        4,
+        options.terminal_width_profile,
+        &mut resources,
+    )
+    .expect("strict K2,2 scene should plan")
+    {
+        LayeredRelationScenePlan::Routed(scene) => scene,
+        LayeredRelationScenePlan::Summary(reason) => {
+            panic!("strict K2,2 should not summarize before route planning: {reason:?}")
+        }
+    };
+    let relation_refs = relations.iter().collect::<Vec<_>>();
+    let work_before = resources.layout_work_used();
+    let document_before = resources.document_cells_used();
+
+    let error = plan_layered_route_batch(&scene, &relation_refs, &resources, &adapter)
+        .expect_err("a colliding overlay must reject the whole K2,2 route batch");
+
+    assert!(matches!(
+        error,
+        LayeredRouteBatchError::Semantic(LayeredRelationSummaryReason::OverlayCollision)
+    ));
+    assert_eq!(resources.layout_work_used(), work_before);
+    assert_eq!(resources.document_cells_used(), document_before);
+}
+
+#[test]
+fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
+    let boxes = strict_k2_2_boxes();
+    let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
+    let options = AsciiRenderOptions::ascii();
+    let adapter = TestRelationAdapter {
+        summary_reason: Cell::new(None),
+        overlap: TestRelationOverlap::None,
+    };
+
+    let build_scene = |resources: &mut ResourceContext| {
+        let box_refs = boxes.iter().collect::<Vec<_>>();
+        let edges = relations
+            .iter()
+            .map(|relation| adapter.build_edges(relation))
+            .collect::<Vec<_>>();
+        match plan_layered_relation_scene(
+            &box_refs,
+            edges,
+            4,
+            options.terminal_width_profile,
+            resources,
+        )
+        .expect("strict K2,2 scene should plan")
+        {
+            LayeredRelationScenePlan::Routed(scene) => scene,
+            LayeredRelationScenePlan::Summary(reason) => {
+                panic!("strict K2,2 should not summarize before route planning: {reason:?}")
+            }
+        }
+    };
+    let relation_refs = relations.iter().collect::<Vec<_>>();
+
+    let mut measured_resources = test_resources(&options);
+    let measured_scene = build_scene(&mut measured_resources);
+    let work_before = measured_resources.layout_work_used();
+    let (plans, _) = plan_layered_route_batch(
+        &measured_scene,
+        &relation_refs,
+        &measured_resources,
+        &adapter,
+    )
+    .expect("unbounded K2,2 route batch should plan");
+    assert_eq!(plans.len(), 4);
+    let route_work = measured_resources
+        .layout_work_used()
+        .checked_sub(work_before)
+        .expect("route work should be monotonic");
+
+    let exact_options = AsciiRenderOptions::ascii()
+        .with_resource_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            work_before + route_work,
+        )
+        .expect("exact work limit should be valid");
+    let mut exact_resources = test_resources(&exact_options);
+    let exact_scene = build_scene(&mut exact_resources);
+    let exact_before = exact_resources.layout_work_used();
+    assert_eq!(exact_before, work_before);
+    let (exact_plans, _) =
+        plan_layered_route_batch(&exact_scene, &relation_refs, &exact_resources, &adapter)
+            .expect("the exact route work budget should admit");
+    assert_eq!(exact_plans.len(), 4);
+    assert_eq!(exact_resources.layout_work_used(), work_before + route_work);
+
+    let below_options = AsciiRenderOptions::ascii()
+        .with_resource_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            work_before + route_work - 1,
+        )
+        .expect("N-1 work limit should be valid");
+    let mut below_resources = test_resources(&below_options);
+    let below_scene = build_scene(&mut below_resources);
+    let below_before = below_resources.layout_work_used();
+    assert_eq!(below_before, work_before);
+    let error = plan_layered_route_batch(&below_scene, &relation_refs, &below_resources, &adapter)
+        .expect_err("the N-1 route work budget must reject");
+    assert!(matches!(error, LayeredRouteBatchError::Resource(_)));
+    assert_eq!(below_resources.layout_work_used(), below_before);
+    assert_eq!(below_resources.document_cells_used(), 0);
+}

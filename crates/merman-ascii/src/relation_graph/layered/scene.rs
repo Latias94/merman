@@ -1,12 +1,12 @@
 use super::super::RelationGraphBox;
 use super::boxes::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationPlan, LayeredRelationPlanningError,
-    PlacedRelationGraphBox, plan_layered_relation_boxes,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationLayoutKind, LayeredRelationPlan,
+    LayeredRelationPlanningError, PlacedRelationGraphBox, plan_layered_relation_boxes,
 };
 use super::lanes::parallel_relation_lane_offsets;
 use super::route::{
     LayeredRelationRouteGeometry, LayeredRelationRoutePlan, LayeredRelationRouteRequest,
-    LayeredRelationRouteStyle, RelationOverlay, plan_layered_relation_route_draw,
+    plan_layered_relation_route_geometry, plan_planar_k2_2_relation_route_geometry,
 };
 use crate::canvas::Canvas;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
@@ -145,8 +145,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
     pub(crate) fn edge_ports_fit(
         &self,
         edge_index: usize,
-        source_x: usize,
-        target_x: usize,
+        geometry: &LayeredRelationRouteGeometry,
     ) -> bool {
         let Some(edge) = self.edges.get(edge_index) else {
             return false;
@@ -167,8 +166,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         else {
             return false;
         };
-        (source.x()..=source.right()).contains(&source_x)
-            && (target.x()..=target.right()).contains(&target_x)
+        geometry.source_port().fits_box(source) && geometry.target_port().fits_box(target)
     }
 
     pub(crate) fn canvas_with_boxes(
@@ -316,9 +314,29 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         &self.draw_order
     }
 
+    pub(crate) fn is_planar_k2_2(&self) -> bool {
+        self.plan.layout_kind() == LayeredRelationLayoutKind::PlanarK2x2
+    }
+
+    pub(crate) fn placed_box_count(&self) -> usize {
+        self.plan.placed_boxes().len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn placed_boxes(&self) -> &[PlacedRelationGraphBox<'boxes>] {
+        self.plan.placed_boxes()
+    }
+
     pub(crate) fn route_overlaps_box(&self, route: &LayeredRelationRoutePlan) -> bool {
+        self.route_geometry_overlaps_box(route.geometry())
+    }
+
+    pub(crate) fn route_geometry_overlaps_box(
+        &self,
+        geometry: &LayeredRelationRouteGeometry,
+    ) -> bool {
         self.plan.placed_boxes().iter().any(|placed| {
-            route.route_overlaps_rect(placed.x(), placed.y(), placed.right(), placed.bottom())
+            geometry.overlaps_rect(placed.x(), placed.y(), placed.right(), placed.bottom())
         })
     }
 
@@ -328,31 +346,34 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         })
     }
 
-    pub(crate) fn plan_edge_draw(
+    pub(crate) fn plan_edge_geometry(
         &self,
         edge_index: usize,
         lane_offset: isize,
-        style: LayeredRelationRouteStyle,
-        resources: &mut ResourceContext,
-        build_overlays: impl FnOnce(
-            &LayeredRelationRouteGeometry,
-            &mut ResourceContext,
-        ) -> Result<Vec<RelationOverlay>>,
-    ) -> Result<Option<LayeredRelationRoutePlan>> {
-        let Some((top, bottom)) = self.edge_endpoints(edge_index) else {
+        profile: super::route::LayeredRelationRouteProfile,
+        resources: &ResourceContext,
+    ) -> Result<Option<LayeredRelationRouteGeometry>> {
+        let Some((source, target)) = self.edge_endpoints(edge_index) else {
             return Ok(None);
         };
-        plan_layered_relation_route_draw(
+        if self.is_planar_k2_2() {
+            return plan_planar_k2_2_relation_route_geometry(
+                source,
+                target,
+                self.height(),
+                profile,
+                resources,
+            );
+        }
+        plan_layered_relation_route_geometry(
             LayeredRelationRouteRequest::new(
                 self.plan.placed_boxes(),
-                top,
-                bottom,
+                source,
+                target,
                 lane_offset,
-                style.profile(),
+                profile,
             ),
-            style,
             resources,
-            build_overlays,
         )
         .map(Some)
     }
@@ -365,17 +386,17 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         &PlacedRelationGraphBox<'boxes>,
     )> {
         let edge = self.edges.get(edge_index)?;
-        let top = self
+        let source = self
             .plan
             .placed_boxes()
             .iter()
             .find(|placed_box| placed_box.id() == edge.source_id())?;
-        let bottom = self
+        let target = self
             .plan
             .placed_boxes()
             .iter()
             .find(|placed_box| placed_box.id() == edge.target_id())?;
-        Some((top, bottom))
+        Some((source, target))
     }
 }
 
@@ -653,20 +674,16 @@ mod tests {
             .expect("snapshot should fit");
 
         let route = scene
-            .plan_edge_draw(
-                0,
-                0,
-                LayeredRelationRouteStyle::new(
-                    '|',
-                    '-',
-                    RelationLineChars::new(['-', '|', '.', ':'], '+'),
-                    LayeredRelationRouteProfile::class(),
-                ),
-                &mut resources,
-                |_, _| Ok(Vec::new()),
-            )
+            .plan_edge_geometry(0, 0, LayeredRelationRouteProfile::class(), &resources)
             .expect("route planning should fit")
             .expect("edge endpoints should exist");
+        let route = LayeredRelationRoutePlan::new(
+            route,
+            '|',
+            '-',
+            RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            Vec::new(),
+        );
         route
             .draw_route_at(&mut canvas)
             .expect("route glyphs should fit the test canvas");

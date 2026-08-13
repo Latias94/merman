@@ -69,6 +69,124 @@ fn layered_relation_plan_reserves_width_for_reverse_parallel_lanes() {
     assert_eq!(plan.width(), 7);
 }
 
+fn strict_k2_2_edges(endpoints: [(&'static str, &'static str); 4]) -> Vec<LayeredRelationEdge> {
+    endpoints
+        .into_iter()
+        .map(|(source, target)| LayeredRelationEdge::new(source, target, 2, 1))
+        .collect()
+}
+
+fn strict_k2_2_scene<'a>(
+    boxes: &'a [RelationGraphBox],
+    edges: Vec<LayeredRelationEdge>,
+    resources: &mut ResourceContext,
+) -> LayeredRelationScene<'a> {
+    let box_refs = boxes.iter().collect::<Vec<_>>();
+    LayeredRelationScene::new(
+        &box_refs,
+        edges,
+        4,
+        TerminalWidthProfile::Unicode,
+        resources,
+    )
+    .expect("strict K2,2 should use its bounded planar scene")
+}
+
+fn strict_k2_2_geometries(
+    scene: &LayeredRelationScene<'_>,
+    resources: &ResourceContext,
+) -> Vec<LayeredRelationRouteGeometry> {
+    scene
+        .draw_order()
+        .iter()
+        .map(|(edge_index, lane_offset)| {
+            scene
+                .plan_edge_geometry(
+                    *edge_index,
+                    *lane_offset,
+                    LayeredRelationRouteProfile::class(),
+                    resources,
+                )
+                .expect("K2,2 route geometry should fit the bounded scene")
+                .expect("K2,2 endpoints must exist")
+        })
+        .collect()
+}
+
+#[test]
+fn strict_k2_2_uses_a_direction_independent_cycle_with_four_disjoint_routes() {
+    let boxes = strict_k2_2_boxes();
+    let edges = strict_k2_2_edges([("a", "c"), ("d", "a"), ("c", "b"), ("b", "d")]);
+    let options = AsciiRenderOptions::ascii();
+    let mut resources = test_resources(&options);
+    let scene = strict_k2_2_scene(&boxes, edges, &mut resources);
+
+    assert!(scene.is_planar_k2_2());
+    let position = |id: &str| {
+        scene
+            .placed_boxes()
+            .iter()
+            .find(|placed| placed.id() == id)
+            .map(|placed| (placed.x(), placed.y()))
+            .expect("K2,2 box should be placed")
+    };
+    let a = position("a");
+    let b = position("b");
+    let c = position("c");
+    let d = position("d");
+    assert_eq!(a.1, c.1, "A/C must occupy the top cycle row");
+    assert_eq!(d.1, b.1, "D/B must occupy the bottom cycle row");
+    assert_eq!(a.0, d.0, "A/D must share the left route column");
+    assert_eq!(c.0, b.0, "C/B must share the right route column");
+    assert!(a.1 < d.1);
+
+    let geometries = strict_k2_2_geometries(&scene, &resources);
+    assert_eq!(geometries.len(), 4);
+    for (index, geometry) in geometries.iter().enumerate() {
+        assert!(geometry.fits(scene.width(), scene.height()));
+        assert!(
+            !scene.route_geometry_overlaps_box(geometry),
+            "route {index} must not cross any box"
+        );
+        for (other_index, other) in geometries[index + 1..].iter().enumerate() {
+            assert!(
+                !geometry.overlaps(other),
+                "route pair ({index}, {}) must not create a false junction",
+                index + other_index + 1
+            );
+        }
+    }
+}
+
+#[test]
+fn strict_k2_2_geometry_is_stable_when_declarations_are_reordered() {
+    let boxes = strict_k2_2_boxes();
+    let options = AsciiRenderOptions::ascii();
+    let mut first_resources = test_resources(&options);
+    let first = strict_k2_2_scene(
+        &boxes,
+        strict_k2_2_edges([("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")]),
+        &mut first_resources,
+    );
+    let mut second_resources = test_resources(&options);
+    let second = strict_k2_2_scene(
+        &boxes,
+        strict_k2_2_edges([("d", "b"), ("c", "b"), ("d", "a"), ("c", "a")]),
+        &mut second_resources,
+    );
+
+    let placements = |scene: &LayeredRelationScene<'_>| {
+        let mut placed = scene
+            .placed_boxes()
+            .iter()
+            .map(|placed| (placed.id().to_owned(), placed.x(), placed.y()))
+            .collect::<Vec<_>>();
+        placed.sort_unstable();
+        placed
+    };
+    assert_eq!(placements(&first), placements(&second));
+}
+
 #[test]
 fn layered_relation_route_plan_draws_route_and_overlays() {
     let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
@@ -78,7 +196,7 @@ fn layered_relation_route_plan_draws_route_and_overlays() {
         PlacedRelationGraphBox::for_test("bottom", &bottom_box, 0, 4),
     ];
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let resources = test_resources(&options);
     let geometry = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -87,7 +205,7 @@ fn layered_relation_route_plan_draws_route_and_overlays() {
             0,
             LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ),
-        &mut resources,
+        &resources,
     )
     .expect("route geometry should fit");
     let route = LayeredRelationRoutePlan::new(
@@ -151,7 +269,7 @@ fn layered_relation_route_label_y_follows_source_to_target_direction() {
     ];
 
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let resources = test_resources(&options);
     let downward = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -160,10 +278,10 @@ fn layered_relation_route_label_y_follows_source_to_target_direction() {
             0,
             LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ),
-        &mut resources,
+        &resources,
     )
     .expect("downward route should fit");
-    let mut resources = test_resources(&options);
+    let resources = test_resources(&options);
     let upward = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -172,7 +290,7 @@ fn layered_relation_route_label_y_follows_source_to_target_direction() {
             0,
             LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ),
-        &mut resources,
+        &resources,
     )
     .expect("upward route should fit");
 
@@ -190,7 +308,7 @@ fn layered_relation_route_profile_reserves_rows_for_multiline_endpoint_labels() 
     ];
 
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let resources = test_resources(&options);
     let geometry = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -199,7 +317,7 @@ fn layered_relation_route_profile_reserves_rows_for_multiline_endpoint_labels() 
             0,
             LayeredRelationRouteProfile::new(1, 1, 1, 0, 2),
         ),
-        &mut resources,
+        &resources,
     )
     .expect("labeled route should fit");
 
@@ -221,7 +339,7 @@ fn layered_relation_route_plan_avoids_intermediate_boxes() {
     ];
 
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let resources = test_resources(&options);
     let geometry = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -230,7 +348,7 @@ fn layered_relation_route_plan_avoids_intermediate_boxes() {
             0,
             LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ),
-        &mut resources,
+        &resources,
     )
     .expect("spanning route should fit");
 
@@ -255,13 +373,9 @@ fn layered_relation_route_uses_right_exterior_when_left_has_no_margin() {
     ];
 
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let resources = test_resources(&options);
     let lane_offset = spanning_lane_offset_around_intermediate_boxes(
-        &placed,
-        &placed[0],
-        &placed[3],
-        0,
-        &mut resources,
+        &placed, &placed[0], &placed[3], 0, &resources,
     )
     .expect("a blocked route at the left canvas edge should use the right exterior");
 

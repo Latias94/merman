@@ -341,6 +341,31 @@ fn class_render_model_rejects_duplicate_rendered_ids() {
 }
 
 #[test]
+fn class_parser_class_and_namespace_same_id_keep_distinct_route_ownership() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "class Domain\n",
+            "namespace Domain {\n",
+            "  class A\n",
+            "}\n",
+            "Domain --> A : owns",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("class and namespace semantic ids should occupy separate render-id domains");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    assert_eq!(
+        rendered.matches("│ Domain │").count(),
+        2,
+        "the class and namespace titles should each render once:\n{rendered}"
+    );
+    assert_eq!(rendered.matches("│ A │").count(), 1, "{rendered}");
+    assert!(rendered.contains("owns"), "{rendered}");
+}
+
+#[test]
 fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
     let mut model = parse_class_model("classDiagram\nclass A");
     model
@@ -1182,6 +1207,16 @@ fn class_parser_nested_sibling_relation_routes_at_nearest_common_scope() {
         assert!(
             rendered.contains(expected),
             "missing {expected:?}:\n{rendered}"
+        );
+    }
+    for class_name in ["DartBinding", "Renderer"] {
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|line| line.contains(&format!("│ {class_name} │")))
+                .count(),
+            1,
+            "nested namespace relation routing should render class {class_name:?} once:\n{rendered}"
         );
     }
 }
@@ -2070,6 +2105,43 @@ fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
             "C --> B : cb\n",
         )
     );
+}
+
+#[test]
+fn class_parser_k2_2_relationships_use_a_bounded_planar_layout() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "class A\n",
+            "class B\n",
+            "class C\n",
+            "class D\n",
+            "A --> C : ac\n",
+            "A o-- D : ad\n",
+            "B ..> C : bc\n",
+            "B *-- D : bd",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("bounded K2,2 class relationships should render diagrammatically");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "a strict K2,2 component should use the bounded planar layout:\n{rendered}"
+    );
+    for expected in ["ac", "ad", "bc", "bd", "^", "v", "o", "*"] {
+        assert!(
+            rendered.contains(expected),
+            "bounded K2,2 output should retain {expected:?}:\n{rendered}"
+        );
+    }
+    for node in ["A", "B", "C", "D"] {
+        assert_eq!(
+            rendered.matches(&format!("| {node} |")).count(),
+            1,
+            "bounded K2,2 output should render node {node:?} exactly once:\n{rendered}"
+        );
+    }
 }
 
 #[test]
