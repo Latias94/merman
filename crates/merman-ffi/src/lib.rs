@@ -42,10 +42,15 @@ struct NativeFailure {
     status: MermanNativeStatus,
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
-    resource: Option<BindingResourceErrorDetails>,
-    icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
-    cancellation: Option<NativeCancellationDetails>,
+    details: Option<Box<NativeFailureDetails>>,
     message: Box<str>,
+}
+
+#[derive(Debug, Default)]
+struct NativeFailureDetails {
+    resource: Option<BindingResourceErrorDetails>,
+    icon_registry: Option<BindingIconRegistryErrorDetails>,
+    cancellation: Option<NativeCancellationDetails>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,9 +90,12 @@ impl NativeFailure {
             status,
             kind,
             capability_id,
-            resource,
-            icon_registry: None,
-            cancellation: None,
+            details: resource.map(|resource| {
+                Box::new(NativeFailureDetails {
+                    resource: Some(resource),
+                    ..NativeFailureDetails::default()
+                })
+            }),
             message: message.into().into_boxed_str(),
         }
     }
@@ -355,21 +363,18 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         "capability_id": failure.capability_id,
         "message": failure.message.as_ref(),
     });
-    if failure.resource.is_some()
-        || failure.icon_registry.is_some()
-        || failure.cancellation.is_some()
-    {
+    if let Some(failure_details) = failure.details.as_deref() {
         let mut details = serde_json::Map::new();
-        if let Some(resource) = failure.resource {
+        if let Some(resource) = failure_details.resource {
             details.insert("resource".to_string(), serde_json::json!(resource));
         }
-        if let Some(icon_registry) = failure.icon_registry.as_deref() {
+        if let Some(icon_registry) = failure_details.icon_registry.as_ref() {
             details.insert(
                 "icon_registry".to_string(),
                 serde_json::json!(icon_registry),
             );
         }
-        if let Some(cancellation) = failure.cancellation {
+        if let Some(cancellation) = failure_details.cancellation {
             details.insert(
                 "cancellation".to_string(),
                 serde_json::json!({
@@ -415,22 +420,27 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::Busy => MERMAN_NATIVE_STATUS_BUSY,
         BindingStatus::Cancelled => MERMAN_NATIVE_STATUS_CANCELLED,
     };
-    let icon_registry = error.icon_registry_details().cloned().map(Box::new);
+    let resource = error.resource_details();
+    let icon_registry = error.icon_registry_details().cloned();
+    let cancellation = error
+        .cancellation_details()
+        .map(|details| NativeCancellationDetails {
+            reason: details.reason,
+            phase: details.phase,
+        });
     let mut failure = NativeFailure::classified(
         status,
         error.kind(),
         error.capability_id(),
-        error.resource_details(),
+        None,
         error.message(),
     );
-    failure.icon_registry = icon_registry;
-    if error.status() == BindingStatus::Cancelled {
-        if let Some(details) = error.cancellation_details() {
-            failure.cancellation = Some(NativeCancellationDetails {
-                reason: details.reason,
-                phase: details.phase,
-            });
-        }
+    if resource.is_some() || icon_registry.is_some() || cancellation.is_some() {
+        failure.details = Some(Box::new(NativeFailureDetails {
+            resource,
+            icon_registry,
+            cancellation,
+        }));
     }
     failure
 }
@@ -4112,7 +4122,10 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             let failure = preflight_native_icon_pack_resource_limits(packs)
                 .expect_err("resource preflight must reject the synthetic lengths");
             assert_eq!(failure.status, MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED);
-            let resource = failure
+            let failure_details = failure
+                .details
+                .expect("structured failure must retain details");
+            let resource = failure_details
                 .resource
                 .expect("resource failure must retain resource details");
             assert_eq!(resource.limit_id, limit.stable_id());
@@ -4120,7 +4133,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             assert_eq!(resource.actual, actual);
             assert_eq!(resource.max, limit.fixed_value());
             assert_eq!(resource.profile, "constructor-fixed");
-            let details = failure
+            let details = failure_details
                 .icon_registry
                 .expect("resource failure must retain icon registry details");
             assert_eq!(details.kind_id, "resource_limit_exceeded");

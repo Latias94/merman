@@ -74,8 +74,19 @@ int merman_header_smoke(void) {
     if (MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES != 6) {
         return 18;
     }
-    if (MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE != sizeof(MermanNativeApi)) {
+    if (
+        MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE !=
+        offsetof(MermanNativeApi, engine_new_with_services) + sizeof(api.engine_new_with_services)
+    ) {
         return 16;
+    }
+    if (
+        MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE >= MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE ||
+        MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE >= MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE ||
+        MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE >= MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ||
+        MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE != sizeof(MermanNativeApi)
+    ) {
+        return 19;
     }
     if (
         strcmp(MERMAN_NATIVE_ERROR_KIND_GENERIC, "generic") != 0 ||
@@ -149,8 +160,19 @@ static_assert(
     "unexpected service constructor slot"
 );
 static_assert(
-    MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE == sizeof(MermanNativeApi),
-    "the current minimum prefix must include the complete release table"
+    MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ==
+        offsetof(MermanNativeApi, engine_new_with_services) +
+            sizeof(MermanNativeApi::engine_new_with_services),
+    "the ABI 3 minimum prefix must end at the service constructor"
+);
+static_assert(
+    MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE &&
+        MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE <
+            MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE &&
+        MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE <
+            MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE &&
+        MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE == sizeof(MermanNativeApi),
+    "operation-control slots must expose ordered appended prefixes"
 );
 static_assert(
     MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_MINIMUM == 1 &&
