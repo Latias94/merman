@@ -222,7 +222,8 @@ fn canonical_characterization_matrix_covers_every_variant_and_logical_family() {
             .find(|fact| fact.diagram_type == row.variant_id)
             .unwrap_or_else(|| panic!("missing capability for {}", row.variant_id));
         assert_eq!(
-            fact.logical_family_kind, row.logical_family,
+            fact.family_id.as_str(),
+            row.logical_family,
             "{} logical family",
             row.variant_id
         );
@@ -337,7 +338,8 @@ fn canonical_characterization_matrix_executes_representative_and_malformed_contr
                 })
                 .unwrap_or_else(|| panic!("{} returned no combined model", row.variant_id));
             assert_eq!(
-                crate::diagram_type_family_kind(&parsed.metadata().diagram_type),
+                crate::diagram_type_family_id(&parsed.metadata().diagram_type)
+                    .map(crate::DiagramFamilyId::as_str),
                 Some(row.logical_family),
                 "{} combined detection left its logical family",
                 row.variant_id

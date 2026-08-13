@@ -4,12 +4,12 @@ import test from "node:test";
 import * as webApi from "../dist/index.js";
 
 const capabilities = [
-  capability("flowchart-v2", "flowchart"),
-  capability("gitGraph", "gitgraph"),
-  capability("railroad-abnf", "railroadAbnf"),
-  capability("error", null),
-  capability("ambiguous", "flowchart"),
-  capability("ambiguous", "gitgraph"),
+  capability("flowchart-v2", "flowchart", "flowchart"),
+  capability("gitGraph", "gitGraph", "gitgraph"),
+  capability("railroad-abnf", "railroad", "railroadAbnf"),
+  capability("error", "error", null),
+  capability("ambiguous", "flowchart", "flowchart"),
+  capability("ambiguous", "gitGraph", "gitgraph"),
 ];
 
 let analysisResult = facts("gitGraph", "dagre", "parsed");
@@ -159,12 +159,11 @@ function diagram(syntaxId, effectiveLayoutId, parseDisposition) {
   };
 }
 
-function capability(diagramType, metadataId) {
+function capability(diagramType, familyId, metadataId) {
   return {
     diagram_type: diagramType,
-    logical_family_kind: diagramType,
+    family_id: familyId,
     metadata_id: metadataId,
-    render_model_kind: null,
     has_detector: true,
     has_semantic_parser: true,
     has_editor_parser: true,

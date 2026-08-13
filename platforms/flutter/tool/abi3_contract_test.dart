@@ -330,9 +330,8 @@ void decodesTypedMetadataCatalogs() {
   });
   final family = MermanDiagramFamilyCapability.fromJson({
     'diagram_type': 'flowchart-v2',
-    'logical_family_kind': 'flowchart',
+    'family_id': 'flowchart',
     'metadata_id': 'flowchart',
-    'render_model_kind': 'flowchart',
     'has_detector': true,
     'has_semantic_parser': true,
     'has_editor_parser': true,
@@ -386,8 +385,7 @@ void decodesTypedMetadataCatalogs() {
     ascii.evidence.single.note == 'typed evidence' &&
         ascii.supportedSemantics.length == 2 &&
         family.metadataId == 'flowchart' &&
-        family.logicalFamilyKind == 'flowchart' &&
-        family.renderModelKind == 'flowchart' &&
+        family.familyId == 'flowchart' &&
         family.hasDetector &&
         family.hasSemanticParser &&
         family.hasEditorParser &&
@@ -420,9 +418,8 @@ void acceptsAdditiveTypedMetadataFields() {
   });
   final family = MermanDiagramFamilyCapability.fromJson({
     'diagram_type': 'flowchart-v2',
-    'logical_family_kind': 'flowchart',
+    'family_id': 'flowchart',
     'metadata_id': null,
-    'render_model_kind': null,
     'has_detector': true,
     'has_semantic_parser': true,
     'has_editor_parser': true,

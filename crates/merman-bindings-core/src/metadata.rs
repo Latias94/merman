@@ -1530,8 +1530,7 @@ mod tests {
             .find(|capability| capability.diagram_type == "flowchart")
             .expect("flowchart capability should be present");
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
-        assert_eq!(flowchart.logical_family_kind, "flowchart");
-        assert_eq!(flowchart.render_model_kind, Some("flowchart"));
+        assert_eq!(flowchart.family_id, merman::DiagramFamilyId::FLOWCHART);
         assert!(flowchart.has_detector);
         assert!(flowchart.has_semantic_parser);
         assert!(flowchart.has_editor_parser);
@@ -1545,8 +1544,7 @@ mod tests {
             .find(|capability| capability.diagram_type == "swimlane")
             .expect("11.16 swimlane capability should be present");
         assert_eq!(swimlane.metadata_id, Some("swimlane"));
-        assert_eq!(swimlane.logical_family_kind, "swimlane");
-        assert_eq!(swimlane.render_model_kind, Some("flowchart"));
+        assert_eq!(swimlane.family_id, merman::DiagramFamilyId::SWIMLANE);
         assert!(swimlane.has_detector);
         assert!(swimlane.has_semantic_parser);
         assert!(swimlane.has_editor_parser);
@@ -1877,8 +1875,9 @@ mod tests {
             .iter()
             .find(|capability| capability["diagram_type"] == "flowchart")
             .expect("flowchart family capability should be present");
-        assert_eq!(flowchart["logical_family_kind"], "flowchart");
-        assert_eq!(flowchart["render_model_kind"], "flowchart");
+        assert_eq!(flowchart["family_id"], "flowchart");
+        assert!(flowchart.get("logical_family_kind").is_none());
+        assert!(flowchart.get("render_model_kind").is_none());
         assert_eq!(flowchart["has_detector"], true);
         assert_eq!(flowchart["has_editor_parser"], true);
         assert_eq!(flowchart["has_combined_parser"], true);

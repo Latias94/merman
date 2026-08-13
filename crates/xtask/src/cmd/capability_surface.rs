@@ -291,10 +291,7 @@ fn is_diagram_specific_feature_name(id: &str) -> bool {
     merman_core::diagram_family_capabilities()
         .iter()
         .any(|fact| {
-            fact.diagram_type == id
-                || fact.logical_family_kind == id
-                || fact.metadata_id == Some(id)
-                || fact.render_model_kind == Some(id)
+            fact.diagram_type == id || fact.family_id.as_str() == id || fact.metadata_id == Some(id)
         })
 }
 

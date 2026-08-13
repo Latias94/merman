@@ -152,9 +152,9 @@ pub use merman_core::{
     ParseCancelled, ParseControl, ParseControlResult, ParseDiagnostic, ParseDiagnosticSpanKind,
     ParseMetadata, ParseOptions, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts,
     PreprocessResult, PreprocessedSource, RenderDiagramRegistry, RenderSemanticModel, Result,
-    SourceSpan, diagram_family_capabilities, diagram_header_facts, diagram_type_family_kind,
-    diagram_type_metadata_id, diagram_type_render_model_kind, preprocess_diagram,
-    preprocess_diagram_with_known_type, supported_diagrams, supported_theme_ids, supported_themes,
+    SourceSpan, diagram_family_capabilities, diagram_header_facts, diagram_type_family_id,
+    diagram_type_metadata_id, preprocess_diagram, preprocess_diagram_with_known_type,
+    supported_diagrams, supported_theme_ids, supported_themes,
 };
 pub use merman_core::{
     baseline, detect, diagram, diagrams, error, models, preprocess, resources, runtime, time,

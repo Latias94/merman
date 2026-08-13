@@ -1122,9 +1122,8 @@ mod tests {
         let capabilities = merman_bindings_core::diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
-                && capability.logical_family_kind == "flowchart"
+                && capability.family_id.as_str() == "flowchart"
                 && capability.metadata_id == Some("flowchart")
-                && capability.render_model_kind == Some("flowchart")
                 && capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser

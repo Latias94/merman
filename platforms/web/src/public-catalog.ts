@@ -155,9 +155,8 @@ export interface TextMeasurementCapabilities {
 
 export interface DiagramFamilyCapability {
   diagram_type: string;
-  logical_family_kind: string;
+  family_id: string;
   metadata_id: DiagramType | null;
-  render_model_kind: string | null;
   has_detector: boolean;
   has_semantic_parser: boolean;
   has_editor_parser: boolean;

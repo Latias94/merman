@@ -477,9 +477,8 @@ assert.equal(
   familyCapabilities.some(
     (capability) =>
       capability.diagram_type === "flowchart" &&
-      capability.logical_family_kind === "flowchart" &&
+      capability.family_id === "flowchart" &&
       capability.metadata_id === "flowchart" &&
-      capability.render_model_kind === "flowchart" &&
       capability.has_detector &&
       capability.has_semantic_parser &&
       capability.has_editor_parser &&

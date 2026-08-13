@@ -221,12 +221,10 @@ pub struct DiagramHeaderFact {
 pub struct DiagramFamilyCapability {
     /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,
-    /// Logical diagram family. This does not change when a family reuses another render model.
-    pub logical_family_kind: &'static str,
+    /// Catalog-owned logical family identity.
+    pub family_id: DiagramFamilyId,
     /// Public supported-diagram metadata id, when this family contributes an admitted renderer.
     pub metadata_id: Option<&'static str>,
-    /// Typed render-model kind, when this id owns a typed render projection.
-    pub render_model_kind: Option<&'static str>,
     /// Whether this id participates in automatic detection.
     pub has_detector: bool,
     /// Whether the pinned catalog has a semantic parser for this diagram type.
@@ -346,9 +344,8 @@ impl FamilyCatalogProjection {
                 variant.catalog_order,
                 DiagramFamilyCapability {
                     diagram_type: variant.id,
-                    logical_family_kind: family.id.as_str(),
+                    family_id: family.id,
                     metadata_id: variant.metadata.map(|metadata| metadata.id),
-                    render_model_kind: variant.render_model_kind,
                     has_detector: variant.detector.is_some(),
                     has_semantic_parser: variant.semantic.is_some(),
                     has_editor_parser: variant.combined.is_some(),
@@ -449,10 +446,6 @@ pub(crate) fn render_model_kind_supports_diagram_type(
         .any(|fact| fact.id == diagram_type && fact.model_kind == model_kind)
 }
 
-pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
-    diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)
-}
-
 pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
     find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
 }
@@ -482,10 +475,6 @@ pub(crate) fn operation_family_id(
         );
     }
     Some(family)
-}
-
-pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {
-    find_variant(diagram_type).and_then(|(_, variant)| variant.render_model_kind)
 }
 
 pub(crate) fn apply_diagram_type_config_effects(

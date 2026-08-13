@@ -291,15 +291,8 @@ function normalizeDiagramFamilyCapability(
       : assertDiagramType(String(capability.metadata_id));
   return {
     diagram_type: capability.diagram_type,
-    logical_family_kind: assertStringField(
-      capability.logical_family_kind,
-      "diagram logical family kind"
-    ),
+    family_id: assertStringField(capability.family_id, "diagram family id"),
     metadata_id: metadataId,
-    render_model_kind: assertNullableStringField(
-      capability.render_model_kind,
-      "diagram render model kind"
-    ),
     has_detector: assertBooleanField(capability.has_detector, "diagram detector capability"),
     has_semantic_parser: assertBooleanField(
       capability.has_semantic_parser,

@@ -2280,9 +2280,8 @@ public func FfiConverterTypeMermanAsciiCapabilityEvidence_lower(_ value: MermanA
 
 public struct MermanDiagramFamilyCapability: Equatable, Hashable {
     public var diagramType: String
-    public var logicalFamilyKind: String
+    public var familyId: String
     public var metadataId: String?
-    public var renderModelKind: String?
     public var hasDetector: Bool
     public var hasSemanticParser: Bool
     public var hasEditorParser: Bool
@@ -2293,11 +2292,10 @@ public struct MermanDiagramFamilyCapability: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(diagramType: String, logicalFamilyKind: String, metadataId: String?, renderModelKind: String?, hasDetector: Bool, hasSemanticParser: Bool, hasEditorParser: Bool, hasCombinedParser: Bool, hasRenderParser: Bool, hasHeader: Bool, configNamespace: String?) {
+    public init(diagramType: String, familyId: String, metadataId: String?, hasDetector: Bool, hasSemanticParser: Bool, hasEditorParser: Bool, hasCombinedParser: Bool, hasRenderParser: Bool, hasHeader: Bool, configNamespace: String?) {
         self.diagramType = diagramType
-        self.logicalFamilyKind = logicalFamilyKind
+        self.familyId = familyId
         self.metadataId = metadataId
-        self.renderModelKind = renderModelKind
         self.hasDetector = hasDetector
         self.hasSemanticParser = hasSemanticParser
         self.hasEditorParser = hasEditorParser
@@ -2324,9 +2322,8 @@ public struct FfiConverterTypeMermanDiagramFamilyCapability: FfiConverterRustBuf
         return
             try MermanDiagramFamilyCapability(
                 diagramType: FfiConverterString.read(from: &buf),
-                logicalFamilyKind: FfiConverterString.read(from: &buf),
+                familyId: FfiConverterString.read(from: &buf),
                 metadataId: FfiConverterOptionString.read(from: &buf),
-                renderModelKind: FfiConverterOptionString.read(from: &buf),
                 hasDetector: FfiConverterBool.read(from: &buf),
                 hasSemanticParser: FfiConverterBool.read(from: &buf),
                 hasEditorParser: FfiConverterBool.read(from: &buf),
@@ -2339,9 +2336,8 @@ public struct FfiConverterTypeMermanDiagramFamilyCapability: FfiConverterRustBuf
 
     public static func write(_ value: MermanDiagramFamilyCapability, into buf: inout [UInt8]) {
         FfiConverterString.write(value.diagramType, into: &buf)
-        FfiConverterString.write(value.logicalFamilyKind, into: &buf)
+        FfiConverterString.write(value.familyId, into: &buf)
         FfiConverterOptionString.write(value.metadataId, into: &buf)
-        FfiConverterOptionString.write(value.renderModelKind, into: &buf)
         FfiConverterBool.write(value.hasDetector, into: &buf)
         FfiConverterBool.write(value.hasSemanticParser, into: &buf)
         FfiConverterBool.write(value.hasEditorParser, into: &buf)

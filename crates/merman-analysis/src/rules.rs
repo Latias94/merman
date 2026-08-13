@@ -840,7 +840,9 @@ pub(crate) fn parsed_source_lint_candidates_cancellable(
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
-    if merman_core::diagram_type_family_kind(diagram_type) != Some("flowchart") {
+    if merman_core::diagram_type_family_id(diagram_type)
+        != Some(merman_core::DiagramFamilyId::FLOWCHART)
+    {
         return Ok(Vec::new());
     }
     let diagnostics = deprecated_flowchart_html_labels_diagnostics(

@@ -441,9 +441,8 @@ class MermanAsciiCapability {
 class MermanDiagramFamilyCapability {
   const MermanDiagramFamilyCapability({
     required this.diagramType,
-    required this.logicalFamilyKind,
+    required this.familyId,
     required this.metadataId,
-    required this.renderModelKind,
     required this.hasDetector,
     required this.hasSemanticParser,
     required this.hasEditorParser,
@@ -454,9 +453,8 @@ class MermanDiagramFamilyCapability {
   });
 
   final String diagramType;
-  final String logicalFamilyKind;
+  final String familyId;
   final String? metadataId;
-  final String? renderModelKind;
   final bool hasDetector;
   final bool hasSemanticParser;
   final bool hasEditorParser;
@@ -472,12 +470,6 @@ class MermanDiagramFamilyCapability {
         'diagram family capability.metadata_id must be a string or null',
       );
     }
-    final renderModelKind = json['render_model_kind'];
-    if (renderModelKind != null && renderModelKind is! String) {
-      throw MermanException.contract(
-        'diagram family capability.render_model_kind must be a string or null',
-      );
-    }
     final configNamespace = json['config_namespace'];
     if (configNamespace != null && configNamespace is! String) {
       throw MermanException.contract(
@@ -490,13 +482,12 @@ class MermanDiagramFamilyCapability {
         'diagram_type',
         'diagram family capability',
       ),
-      logicalFamilyKind: _requiredString(
+      familyId: _requiredString(
         json,
-        'logical_family_kind',
+        'family_id',
         'diagram family capability',
       ),
       metadataId: metadataId as String?,
-      renderModelKind: renderModelKind as String?,
       hasDetector: _requiredBool(
         json,
         'has_detector',

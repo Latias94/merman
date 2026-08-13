@@ -251,9 +251,8 @@ pub struct MermanOperationResult {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanDiagramFamilyCapability {
     pub diagram_type: String,
-    pub logical_family_kind: String,
+    pub family_id: String,
     pub metadata_id: Option<String>,
-    pub render_model_kind: Option<String>,
     pub has_detector: bool,
     pub has_semantic_parser: bool,
     pub has_editor_parser: bool,
@@ -851,9 +850,8 @@ impl Merman {
             .into_iter()
             .map(|capability| MermanDiagramFamilyCapability {
                 diagram_type: capability.diagram_type.to_string(),
-                logical_family_kind: capability.logical_family_kind.to_string(),
+                family_id: capability.family_id.to_string(),
                 metadata_id: capability.metadata_id.map(str::to_string),
-                render_model_kind: capability.render_model_kind.map(str::to_string),
                 has_detector: capability.has_detector,
                 has_semantic_parser: capability.has_semantic_parser,
                 has_editor_parser: capability.has_editor_parser,
@@ -2740,9 +2738,8 @@ mod tests {
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
-                && capability.logical_family_kind == "flowchart"
+                && capability.family_id == "flowchart"
                 && capability.metadata_id.as_deref() == Some("flowchart")
-                && capability.render_model_kind.as_deref() == Some("flowchart")
                 && capability.has_detector
                 && capability.has_semantic_parser
                 && capability.has_editor_parser
