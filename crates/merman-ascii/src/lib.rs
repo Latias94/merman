@@ -120,39 +120,27 @@ fn render_model_with_execution(
         }
         RenderSemanticModel::Gantt(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = gantt::render_gantt_diagram(model, options, local_time_zone);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            gantt::render_gantt_diagram(model, options, local_time_zone, execution)
         }
         RenderSemanticModel::GitGraph(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = git_graph::render_git_graph_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            git_graph::render_git_graph_diagram(model, options, execution)
         }
         RenderSemanticModel::Journey(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = journey::render_journey_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            journey::render_journey_diagram(model, options, execution)
         }
         RenderSemanticModel::Kanban(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = kanban::render_kanban_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            kanban::render_kanban_diagram(model, options, execution)
         }
         RenderSemanticModel::Mindmap(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = mindmap::render_mindmap_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            mindmap::render_mindmap_diagram(model, options, execution)
         }
         RenderSemanticModel::Packet(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = packet::render_packet_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            packet::render_packet_diagram(model, options, execution)
         }
         RenderSemanticModel::Sequence(model) => {
             execution.checkpoint(merman_core::OperationPhase::Semantic)?;
@@ -167,9 +155,7 @@ fn render_model_with_execution(
         }
         RenderSemanticModel::Timeline(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = timeline::render_timeline_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            timeline::render_timeline_diagram(model, options, execution)
         }
         RenderSemanticModel::XyChart(model) => {
             execution.checkpoint(merman_core::OperationPhase::Semantic)?;
@@ -177,9 +163,7 @@ fn render_model_with_execution(
         }
         RenderSemanticModel::TreeView(model) => {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let rendered = tree_view::render_tree_view_diagram(model, options);
-            execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            Ok(rendered)
+            tree_view::render_tree_view_diagram(model, options, execution)
         }
         other => Err(AsciiError::UnsupportedDiagram {
             diagram_type: other.kind().to_string(),

@@ -73,14 +73,6 @@ impl<'a> AsciiExecution<'a> {
         self.resources
     }
 
-    /// Uses a different target-local policy while retaining the caller-owned control.
-    pub(crate) const fn with_resources(self, resources: AsciiResourcePolicy) -> Self {
-        Self {
-            control: self.control,
-            resources,
-        }
-    }
-
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
         match self.control {
             Some(control) => control.checkpoint_at(phase).map_err(AsciiError::Cancelled),

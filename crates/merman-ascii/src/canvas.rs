@@ -553,7 +553,9 @@ fn push_html_escaped_char(out: &mut String, ch: char) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operation::{AsciiExecution, AsciiResourcePolicy};
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn finish_plain_ignores_color_roles() {
@@ -568,6 +570,24 @@ mod tests {
             ),
             "AB!\n"
         );
+    }
+
+    #[test]
+    fn controlled_plain_finish_stops_during_row_emission() {
+        let canvas = Canvas::new(4, 8);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let execution = AsciiExecution::new(&control, AsciiResourcePolicy::default());
+
+        let error = canvas
+            .finish_with_options_with_execution(&AsciiRenderOptions::ascii(), execution)
+            .expect_err("canvas emission must stop without publishing partial text");
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
     }
 
     #[test]

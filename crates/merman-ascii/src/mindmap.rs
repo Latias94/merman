@@ -1,3 +1,5 @@
+use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::mindmap::{
@@ -14,13 +16,15 @@ const EMPTY: &str = "    ";
 pub(super) fn render_mindmap_diagram(
     model: &MindmapDiagramRenderModel,
     _options: &AsciiRenderOptions,
-) -> String {
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     let mut lines = Vec::new();
-    let nodes_by_id = index_nodes(&model.nodes);
-    let children_by_id = build_children_map(&model.edges);
-    let roots = root_ids(&model.nodes, &model.edges);
+    let nodes_by_id = index_nodes(&model.nodes, execution)?;
+    let children_by_id = build_children_map(&model.edges, execution)?;
+    let roots = root_ids(&model.nodes, &model.edges, execution)?;
 
     for (index, root_id) in roots.iter().enumerate() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         if index > 0 {
             lines.push(String::new());
         }
@@ -34,40 +38,55 @@ pub(super) fn render_mindmap_diagram(
                 &nodes_by_id,
                 &mut visiting,
                 &mut lines,
-            );
+                execution,
+            )?;
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    Ok(trim_trailing_blank_lines(lines).join("\n"))
 }
 
-fn index_nodes(nodes: &[MindmapDiagramRenderNode]) -> HashMap<&str, &MindmapDiagramRenderNode> {
+fn index_nodes<'a>(
+    nodes: &'a [MindmapDiagramRenderNode],
+    execution: AsciiExecution<'_>,
+) -> Result<HashMap<&'a str, &'a MindmapDiagramRenderNode>> {
     let mut out = HashMap::with_capacity(nodes.len());
     for node in nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         out.insert(node.id.as_str(), node);
     }
-    out
+    Ok(out)
 }
 
-fn build_children_map(edges: &[MindmapDiagramRenderEdge]) -> HashMap<String, Vec<String>> {
+fn build_children_map(
+    edges: &[MindmapDiagramRenderEdge],
+    execution: AsciiExecution<'_>,
+) -> Result<HashMap<String, Vec<String>>> {
     let mut children: HashMap<String, Vec<String>> = HashMap::new();
     for edge in edges {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         let siblings = children.entry(edge.start.clone()).or_default();
         if !siblings.iter().any(|child| child == &edge.end) {
             siblings.push(edge.end.clone());
         }
     }
-    children
+    Ok(children)
 }
 
-fn root_ids(nodes: &[MindmapDiagramRenderNode], edges: &[MindmapDiagramRenderEdge]) -> Vec<String> {
+fn root_ids(
+    nodes: &[MindmapDiagramRenderNode],
+    edges: &[MindmapDiagramRenderEdge],
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<String>> {
     let mut incoming = HashSet::new();
     for edge in edges {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         incoming.insert(edge.end.as_str());
     }
 
     let mut roots = Vec::new();
     for node in nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         if !incoming.contains(node.id.as_str()) {
             roots.push(node.id.clone());
         }
@@ -79,7 +98,7 @@ fn root_ids(nodes: &[MindmapDiagramRenderNode], edges: &[MindmapDiagramRenderEdg
         roots.push(node.id.clone());
     }
 
-    roots
+    Ok(roots)
 }
 
 fn render_children<'a>(
@@ -89,12 +108,14 @@ fn render_children<'a>(
     nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
     visiting: &mut HashSet<&'a str>,
     lines: &mut Vec<String>,
-) {
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     let Some(children) = children_by_id.get(node.id.as_str()) else {
-        return;
+        return Ok(());
     };
 
     for (index, child_id) in children.iter().enumerate() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let Some(child) = nodes_by_id.get(child_id.as_str()) else {
             continue;
         };
@@ -142,9 +163,11 @@ fn render_children<'a>(
             nodes_by_id,
             visiting,
             lines,
-        );
+            execution,
+        )?;
         visiting.remove(child.id.as_str());
     }
+    Ok(())
 }
 
 fn push_wrapped_label(lines: &mut Vec<String>, prefix: &str, label: &str) {

@@ -1,8 +1,10 @@
 use super::LayeredRelationSummaryReason;
-use super::{
-    RelationGraphBox, RelationGraphLabel, RelationGraphLine, render_stacked_boxes_with_section,
-};
+#[cfg(test)]
+use super::render_stacked_boxes_with_section;
+use super::{RelationGraphBox, RelationGraphLabel, RelationGraphLine};
+use crate::Result;
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 
@@ -34,6 +36,7 @@ impl RelationGraphSummaryRow {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn render_stacked_boxes_with_relation_summary(
     boxes: &[RelationGraphBox],
     rows: &[RelationGraphSummaryRow],
@@ -49,6 +52,29 @@ pub(crate) fn render_stacked_boxes_with_relation_summary(
     )
 }
 
+pub(crate) fn render_stacked_boxes_with_relation_summary_with_execution(
+    boxes: &[RelationGraphBox],
+    rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let mut lines = super::stacked_box_lines_with_execution(boxes, execution)?;
+    let summary_lines = relation_summary_lines_with_execution(rows, reason, options, execution)?;
+    if !summary_lines.is_empty() {
+        if !lines.is_empty() {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.push(RelationGraphLine::with_role(
+            "relations:".to_string(),
+            AsciiColorRole::MutedText,
+        ));
+        lines.extend(summary_lines);
+    }
+    super::render_lines_with_options_with_execution(&lines, options, execution)
+}
+
+#[cfg(test)]
 pub(crate) fn relation_summary_rows_lines<R>(
     relations: &[R],
     options: &AsciiRenderOptions,
@@ -63,6 +89,22 @@ pub(crate) fn relation_summary_rows_lines<R>(
     Ok(relation_summary_lines(&rows, reason, options))
 }
 
+pub(crate) fn relation_summary_rows_lines_with_execution<R>(
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    reason: Option<LayeredRelationSummaryReason>,
+    execution: AsciiExecution<'_>,
+    mut build_row: impl FnMut(&R) -> crate::Result<RelationGraphSummaryRow>,
+) -> crate::Result<Vec<RelationGraphLine>> {
+    let mut rows = Vec::with_capacity(relations.len());
+    for relation in relations {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        rows.push(build_row(relation)?);
+    }
+    relation_summary_lines_with_execution(&rows, reason, options, execution)
+}
+
+#[cfg(test)]
 fn relation_summary_lines(
     rows: &[RelationGraphSummaryRow],
     reason: Option<LayeredRelationSummaryReason>,
@@ -131,6 +173,74 @@ fn relation_summary_lines(
     }
 
     lines
+}
+
+fn relation_summary_lines_with_execution(
+    rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationGraphLine>> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut source_width = 0;
+    let mut connector_width = 0;
+    let mut target_width = 0;
+    for row in rows {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        source_width = source_width.max(display_width(&row.source));
+        connector_width = connector_width.max(display_width(&row.connector));
+        target_width = target_width.max(display_width(&row.target));
+    }
+    let label_prefix_width = source_width + connector_width + target_width + 5;
+
+    let mut lines = Vec::new();
+    if options.relation_summary_diagnostics
+        && let Some(reason) = reason
+    {
+        lines.push(RelationGraphLine::with_role(
+            format!("reason: {}", relation_summary_reason_text(reason)),
+            AsciiColorRole::MutedText,
+        ));
+    }
+
+    for row in rows {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        let mut line = String::new();
+        line.push_str(&pad_right(&row.source, source_width));
+        line.push(' ');
+        line.push_str(&pad_right(&row.connector, connector_width));
+        line.push(' ');
+        line.push_str(&pad_right(&row.target, target_width));
+
+        match row.label.as_ref() {
+            Some(label) if !label.lines().is_empty() => {
+                let label_lines = label.lines();
+                line.push_str(" : ");
+                line.push_str(&label_lines[0]);
+                lines.push(RelationGraphLine::with_role(
+                    line,
+                    AsciiColorRole::EdgeLabel,
+                ));
+                for continuation in label_lines.iter().skip(1) {
+                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                    lines.push(RelationGraphLine::with_role(
+                        format!("{}{}", " ".repeat(label_prefix_width), continuation),
+                        AsciiColorRole::EdgeLabel,
+                    ));
+                }
+            }
+            _ => lines.push(RelationGraphLine::with_role(
+                line,
+                AsciiColorRole::EdgeLabel,
+            )),
+        }
+    }
+
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(lines)
 }
 
 fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> String {

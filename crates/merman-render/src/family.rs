@@ -778,6 +778,7 @@ impl FamilyRenderArtifact {
     }
 
     pub fn layout_json(&self) -> Result<serde_json::Value> {
+        self.session.checkpoint(OperationPhase::Emit)?;
         let semantic = self
             .compatibility_projection
             .get_or_init(|| {
@@ -826,6 +827,7 @@ impl FamilyRenderArtifact {
             clone_json_value_nonrecursive(semantic),
         );
         projection.insert("layout".to_string(), layout);
+        self.session.checkpoint(OperationPhase::Emit)?;
         Ok(serde_json::Value::Object(projection))
     }
 

@@ -887,6 +887,27 @@ fn mindmap_typed_render_model_projects_exact_compatibility_json() {
 }
 
 #[test]
+fn mindmap_json_projection_observes_cancellation_inside_large_models() {
+    let source = deep_mindmap_chain(512);
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let typed = parse_mindmap_model_for_render(&source, &parsed.meta).unwrap();
+    let control = crate::OperationControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(
+        super::render_model::render_model_to_compat_json_controlled(
+            &typed,
+            &parsed.meta,
+            &control,
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn mindmap_get_data_projects_look_and_theme_shape_like_mermaid_11_15() {
     let model = parse(
         r#"%%{init: {"theme": "redux", "look": "neo"}}%%

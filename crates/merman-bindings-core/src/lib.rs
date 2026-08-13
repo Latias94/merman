@@ -57,7 +57,7 @@ pub use lifecycle::{
     BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,
     BindingEngineAdmissionMode, BindingOperationAdmission,
 };
-pub use merman::OperationControl;
+pub use merman::{OperationControl, OperationPhase};
 pub use metadata::{
     BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
     PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,

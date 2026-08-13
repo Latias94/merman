@@ -1,3 +1,5 @@
+#[cfg(feature = "svg")]
+use std::sync::Arc;
 use std::time::Duration;
 
 use merman::{
@@ -5,6 +7,23 @@ use merman::{
     Renderer, SemanticArtifact,
     resources::{InputResourceLimitId, InputResourcePolicy},
 };
+
+#[cfg(feature = "svg")]
+#[derive(Debug)]
+struct CancellingTextMeasurer {
+    control: OperationControl,
+}
+
+#[cfg(feature = "svg")]
+impl merman::svg::HostTextMeasurer for CancellingTextMeasurer {
+    fn measure(
+        &self,
+        _request: merman::svg::HostTextMeasurementRequest<'_>,
+    ) -> merman::svg::HostMeasurementResult {
+        self.control.cancel();
+        Ok(None)
+    }
+}
 
 #[test]
 fn semantic_request_uses_the_canonical_operation_runner() {
@@ -153,6 +172,62 @@ fn semantic_artifact_exposes_compatibility_json_without_family_types() {
         .compatibility_json()
         .expect("compatibility JSON should be projected");
     assert_eq!(json["type"], "flowchart-v2");
+}
+
+#[test]
+fn compatibility_json_observes_the_artifact_operation_control() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("parse should succeed")
+        .expect("diagram should be detected");
+    control.cancel();
+
+    let error = artifact
+        .compatibility_json()
+        .expect_err("semantic projection must observe cancellation");
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Semantic
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn layout_json_observes_cancellation_after_layout_preparation() {
+    let control = OperationControl::new();
+    let identity = merman::svg::TextMeasurementProfileIdentity::new(
+        merman::svg::MeasurementProfileId::new("merman.test-cancelling-host")
+            .expect("static profile id"),
+        "render-operation-test@1",
+    )
+    .expect("static profile identity");
+    let policy = merman::svg::TextMeasurementPolicy::host_display(
+        identity,
+        Arc::new(CancellingTextMeasurer {
+            control: control.clone(),
+        }),
+        merman::svg::TextMeasurementPhase::ALL,
+    );
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_text_measurement_policy(policy),
+        ..Default::default()
+    };
+
+    let error = Renderer::new()
+        .render(RenderRequest::layout_json(
+            "flowchart TD\nA[Start] --> B[Done]",
+            control,
+            request,
+        ))
+        .expect_err("layout projection must not return after its control terminates");
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == merman::CancelReason::Requested
+    ));
 }
 
 #[cfg(feature = "svg")]

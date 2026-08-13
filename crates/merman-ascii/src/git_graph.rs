@@ -1,3 +1,5 @@
+use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
@@ -7,7 +9,8 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 pub(super) fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
     _options: &AsciiRenderOptions,
-) -> String {
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     let mut lines = Vec::new();
 
     lines.push(format!(
@@ -24,18 +27,16 @@ pub(super) fn render_git_graph_diagram(
         lines.push(format!("accDescr: {descr}"));
     }
     if !model.branches.is_empty() {
-        lines.push(format!(
-            "branches: {}",
-            model
-                .branches
-                .iter()
-                .map(|branch| branch.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        let mut branches = Vec::with_capacity(model.branches.len());
+        for branch in &model.branches {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            branches.push(branch.name.as_str());
+        }
+        lines.push(format!("branches: {}", branches.join(", ")));
     }
 
     for commit in &model.commits {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         push_wrapped_prefixed_line(
             &mut lines,
             "  - ",
@@ -48,6 +49,7 @@ pub(super) fn render_git_graph_diagram(
     if !model.warning_facts.is_empty() {
         lines.push("warnings:".to_string());
         for warning in &model.warning_facts {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             push_wrapped_prefixed_line(
                 &mut lines,
                 "  - ",
@@ -58,7 +60,7 @@ pub(super) fn render_git_graph_diagram(
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    Ok(trim_trailing_blank_lines(lines).join("\n"))
 }
 
 fn render_commit_text(commit: &GitGraphCommitRenderModel) -> String {

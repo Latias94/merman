@@ -246,9 +246,19 @@ impl SvgPipeline {
                 metadata,
                 session,
             );
-            current = postprocessor
-                .process(current, &ctx)
-                .map_err(|err| Error::svg_postprocess(postprocessor.name(), err.to_string()))?;
+            current = match postprocessor.process(current, &ctx) {
+                Ok(current) => current,
+                Err(error @ (Error::Cancelled(_) | Error::ResourceLimitExceeded(_))) => {
+                    return Err(error);
+                }
+                Err(error) => {
+                    session.checkpoint(OperationPhase::Postprocess)?;
+                    return Err(Error::svg_postprocess(
+                        postprocessor.name(),
+                        error.to_string(),
+                    ));
+                }
+            };
             session.checkpoint(OperationPhase::Postprocess)?;
             session
                 .resource_policy()
@@ -796,5 +806,43 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("error-pass"));
         assert!(message.contains("boom"));
+    }
+
+    struct CancelAndErrorPass(OperationControl);
+
+    impl SvgPostprocessor for CancelAndErrorPass {
+        fn name(&self) -> &'static str {
+            "cancel-and-error"
+        }
+
+        fn process<'a>(
+            &self,
+            _svg: Cow<'a, str>,
+            _ctx: &SvgPostprocessContext<'_>,
+        ) -> Result<Cow<'a, str>> {
+            self.0.cancel();
+            Err(Error::InvalidModel {
+                message: "opaque failure".to_string(),
+            })
+        }
+    }
+
+    #[test]
+    fn cancellation_observed_after_a_failing_postprocessor_wins_over_wrapping() {
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .unwrap();
+
+        let error = SvgPipeline::parity()
+            .with_postprocessor(CancelAndErrorPass(control))
+            .process_to_string("<svg/>", &session)
+            .unwrap_err();
+
+        let Error::Cancelled(error) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(error.phase, OperationPhase::Postprocess);
+        assert_eq!(error.reason, CancelReason::Requested);
     }
 }

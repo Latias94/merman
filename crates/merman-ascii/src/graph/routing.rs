@@ -286,6 +286,8 @@ mod tests {
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
     use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
+    use crate::operation::{AsciiExecution, AsciiResourcePolicy};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -513,6 +515,40 @@ mod tests {
         }
 
         assert_eq!(scene.canvas_extent(), (expected_width, expected_height));
+    }
+
+    #[test]
+    fn prepare_route_scene_stops_during_edge_planning() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for index in 0..10 {
+            graph.add_node(format!("n{index}"), format!("N{index}"));
+            if index > 0 {
+                graph.add_edge(format!("n{}", index - 1), format!("n{index}"));
+            }
+        }
+        let graph_layout = layout_graph(&graph, &options);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let execution = AsciiExecution::new(&control, AsciiResourcePolicy::default());
+
+        let error = match prepare_route_scene_with_execution(
+            &graph,
+            &graph_layout,
+            &graph.edges,
+            &charset,
+            execution,
+        ) {
+            Ok(_) => panic!("route planning must stop without publishing a scene"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
     }
 
     fn planned_cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {

@@ -1188,7 +1188,7 @@ fn controlled_render_model_parse_stops_inside_family_parser() {
     assert_eq!(error.reason, CancelReason::Requested);
     assert!(matches!(
         error.phase,
-        OperationPhase::Parse | OperationPhase::Semantic | OperationPhase::Unknown
+        OperationPhase::Parse | OperationPhase::Semantic
     ));
 }
 

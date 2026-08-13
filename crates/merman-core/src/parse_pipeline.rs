@@ -436,7 +436,7 @@ impl<'a> ParsePipeline<'a> {
         operation_context: &runtime::OperationContext,
     ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
         operation.checkpoint_at(OperationPhase::Admission)?;
-        let control = operation.clone();
+        let control = operation.for_phase(OperationPhase::Parse);
         control.checkpoint_at(OperationPhase::Parse)?;
         runtime::with_operation_context(operation_context, || {
             let timing = ParseTiming::Render;

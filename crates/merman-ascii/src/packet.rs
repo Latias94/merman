@@ -1,3 +1,5 @@
+use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::text::{
     display_width, normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines,
@@ -9,7 +11,8 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 pub(super) fn render_packet_diagram(
     model: &PacketDiagramRenderModel,
     _options: &AsciiRenderOptions,
-) -> String {
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     let mut lines = Vec::new();
 
     if let Some(title) = normalize_optional_text(model.title.as_deref()) {
@@ -23,7 +26,13 @@ pub(super) fn render_packet_diagram(
     }
 
     for (row_idx, row) in model.packet.iter().enumerate() {
-        let blocks = row.iter().map(render_block).collect::<Vec<_>>().join(" | ");
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        let mut blocks = Vec::with_capacity(row.len());
+        for block in row {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            blocks.push(render_block(block));
+        }
+        let blocks = blocks.join(" | ");
         let prefix = format!("row {}: ", row_idx + 1);
         let continuation_prefix = " ".repeat(display_width(&prefix));
         push_wrapped_prefixed_line(
@@ -35,7 +44,7 @@ pub(super) fn render_packet_diagram(
         );
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    Ok(trim_trailing_blank_lines(lines).join("\n"))
 }
 
 fn render_block(block: &PacketRenderBlock) -> String {

@@ -19,7 +19,6 @@ fixed-capabilities = ["analysis"]
 
 [features]
 default = []
-test-support = ["merman-core/test-support"]
 system-clock = ["merman-core/system-clock"]
 system-timezone = ["merman-core/system-timezone"]
 system-random = ["merman-core/system-random"]

@@ -252,27 +252,28 @@ impl BindingEngine {
                 #[cfg(feature = "analysis")]
                 {
                     let analyzer = Analyzer::with_options(configs.analysis);
-                    control
-                        .checkpoint_at(OperationPhase::Analysis)
-                        .map_err(BindingError::cancelled)?;
                     let data = match operation.key() {
-                        crate::OperationKey::AnalysisJson => analyze_json_with(&analyzer, source),
+                        crate::OperationKey::AnalysisJson => {
+                            analyze_json_with(&analyzer, source, &control)
+                        }
                         crate::OperationKey::AnalysisFactsJson => {
-                            analyze_facts_json_with(&analyzer, source)
+                            analyze_facts_json_with(&analyzer, source, &control)
                         }
                         crate::OperationKey::ValidationJson => {
-                            validate_json_with(&analyzer, source)
+                            validate_json_with(&analyzer, source, &control)
                         }
                         crate::OperationKey::DocumentAnalysisJson => analyze_document_json_with(
                             &analyzer,
                             source,
                             _uri.expect("validated document URI presence"),
+                            &control,
                         ),
                         crate::OperationKey::DocumentAnalysisFactsJson => {
                             analyze_document_facts_json_with(
                                 &analyzer,
                                 source,
                                 _uri.expect("validated document URI presence"),
+                                &control,
                             )
                         }
                         _ => unreachable!("analysis projection requires an analysis operation"),
@@ -620,14 +621,18 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("analysis-json", source))
     }
 
-    pub(crate) fn analyze_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn analyze_json_data(
+        &self,
+        source: &[u8],
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_json_with(&self.analyzer, source)
+            analyze_json_with(&self.analyzer, source, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("analysis", "analysis"))
         }
     }
@@ -639,14 +644,18 @@ impl BindingEngine {
         ))
     }
 
-    pub(crate) fn analysis_facts_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn analysis_facts_json_data(
+        &self,
+        source: &[u8],
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_facts_json_with(&self.analyzer, source)
+            analyze_facts_json_with(&self.analyzer, source, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("analysis facts", "analysis"))
         }
     }
@@ -665,14 +674,15 @@ impl BindingEngine {
         &self,
         source: &[u8],
         uri: &[u8],
+        control: &OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_document_json_with(&self.analyzer, source, uri)
+            analyze_document_json_with(&self.analyzer, source, uri, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
-            let _ = (source, uri);
+            let _ = (source, uri, control);
             Err(common::feature_required_error(
                 "document analysis",
                 "analysis",
@@ -695,14 +705,15 @@ impl BindingEngine {
         &self,
         source: &[u8],
         uri: &[u8],
+        control: &OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            analyze_document_facts_json_with(&self.analyzer, source, uri)
+            analyze_document_facts_json_with(&self.analyzer, source, uri, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
-            let _ = (source, uri);
+            let _ = (source, uri, control);
             Err(common::feature_required_error(
                 "document analysis facts",
                 "analysis",
@@ -717,32 +728,50 @@ impl BindingEngine {
         ))
     }
 
-    pub(crate) fn validate_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn validate_json_data(
+        &self,
+        source: &[u8],
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            validate_json_with(&self.analyzer, source)
+            validate_json_with(&self.analyzer, source, control)
         }
         #[cfg(not(feature = "analysis"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("validation", "analysis"))
         }
     }
 }
 
 #[cfg(feature = "analysis")]
-fn analyze_json_with(analyzer: &Analyzer, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+fn analyze_json_with(
+    analyzer: &Analyzer,
+    source: &[u8],
+    control: &OperationControl,
+) -> Result<Vec<u8>, BindingError> {
     let source = common::source_text_utf8(source)?;
+    let cancellation = merman_analysis::AnalysisCancellationToken::from_operation_control(control);
     analyzer
-        .analyze_json(source)
+        .analyze_cancellable(Arc::from(source), &cancellation)
+        .map_err(|error| analysis_cancelled(error, &cancellation))?
+        .to_json_bytes()
         .map_err(common::internal_json_error)
 }
 
 #[cfg(feature = "analysis")]
-fn analyze_facts_json_with(analyzer: &Analyzer, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+fn analyze_facts_json_with(
+    analyzer: &Analyzer,
+    source: &[u8],
+    control: &OperationControl,
+) -> Result<Vec<u8>, BindingError> {
     let source = common::source_text_utf8(source)?;
+    let cancellation = merman_analysis::AnalysisCancellationToken::from_operation_control(control);
     analyzer
-        .analyze_facts_json(source)
+        .analyze_facts_cancellable(Arc::from(source), &cancellation)
+        .map_err(|error| analysis_cancelled(error, &cancellation))?
+        .to_json_bytes()
         .map_err(common::internal_json_error)
 }
 
@@ -751,11 +780,15 @@ fn analyze_document_json_with(
     analyzer: &Analyzer,
     source: &[u8],
     uri: &[u8],
+    control: &OperationControl,
 ) -> Result<Vec<u8>, BindingError> {
     let source = common::source_text_utf8(source)?;
     let uri = common::source_text_utf8(uri)?;
     let descriptor = common::source_descriptor_for_uri(uri);
-    merman_analysis::analyze_document(source, analyzer, descriptor)
+    let cancellation = merman_analysis::AnalysisCancellationToken::from_operation_control(control);
+    analyzer
+        .analyze_source_cancellable(Arc::from(source), descriptor, &cancellation)
+        .map_err(|error| analysis_cancelled(error, &cancellation))?
         .to_json_bytes()
         .map_err(common::internal_json_error)
 }
@@ -765,19 +798,47 @@ fn analyze_document_facts_json_with(
     analyzer: &Analyzer,
     source: &[u8],
     uri: &[u8],
+    control: &OperationControl,
 ) -> Result<Vec<u8>, BindingError> {
     let source = common::source_text_utf8(source)?;
     let uri = common::source_text_utf8(uri)?;
     let descriptor = common::source_descriptor_for_uri(uri);
-    merman_analysis::analyze_document_facts(source, analyzer, descriptor)
+    let cancellation = merman_analysis::AnalysisCancellationToken::from_operation_control(control);
+    analyzer
+        .analyze_source_facts_cancellable(Arc::from(source), descriptor, &cancellation)
+        .map_err(|error| analysis_cancelled(error, &cancellation))?
         .to_json_bytes()
         .map_err(common::internal_json_error)
 }
 
 #[cfg(feature = "analysis")]
-fn validate_json_with(analyzer: &Analyzer, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+fn validate_json_with(
+    analyzer: &Analyzer,
+    source: &[u8],
+    control: &OperationControl,
+) -> Result<Vec<u8>, BindingError> {
     let source = common::source_text_utf8(source)?;
-    common::validation_payload_json_from_analysis(&analyzer.analyze(source))
+    let cancellation = merman_analysis::AnalysisCancellationToken::from_operation_control(control);
+    let payload = analyzer
+        .analyze_cancellable(Arc::from(source), &cancellation)
+        .map_err(|error| analysis_cancelled(error, &cancellation))?;
+    cancellation
+        .checkpoint()
+        .map_err(|error| analysis_cancelled(error, &cancellation))?;
+    common::validation_payload_json_from_analysis(&payload)
+}
+
+#[cfg(feature = "analysis")]
+fn analysis_cancelled(
+    _: merman_analysis::AnalysisCancelled,
+    cancellation: &merman_analysis::AnalysisCancellationToken,
+) -> BindingError {
+    BindingError::cancelled(cancellation.operation_cancellation().unwrap_or(
+        merman::OperationCancelled {
+            phase: OperationPhase::Analysis,
+            reason: merman::CancelReason::Requested,
+        },
+    ))
 }
 
 fn ensure_selected_runtime_policy(
@@ -944,7 +1005,8 @@ impl SemanticOperationEngine {
 
         let model = parsed
             .model()
-            .compatibility_json(parsed.metadata())
+            .compatibility_json_controlled(parsed.metadata(), control)
+            .map_err(BindingError::cancelled)?
             .map_err(classify_semantic_error)?;
         control
             .checkpoint_at(OperationPhase::Postprocess)

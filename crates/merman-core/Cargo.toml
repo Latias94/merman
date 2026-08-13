@@ -20,6 +20,7 @@ artifact-profile-required = true
 # Mermaid language parsing, configuration, sanitization, detection, and family facts are the
 # unconditional core contract. Features only admit explicit system adapters.
 default = []
+operation-deadlines = ["dep:web-time"]
 test-support = []
 system-clock = []
 system-timezone = [
@@ -34,7 +35,7 @@ system-timezone = [
     "jiff/perf-inline",
 ]
 system-random = ["dep:getrandom", "getrandom/std"]
-system-timing = []
+system-timing = ["dep:web-time"]
 
 [dependencies]
 euclid.workspace = true
@@ -54,7 +55,7 @@ getrandom = { workspace = true, optional = true }
 ryu-js.workspace = true
 rustc-hash.workspace = true
 sha2 = { workspace = true, optional = true }
-web-time.workspace = true
+web-time = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }

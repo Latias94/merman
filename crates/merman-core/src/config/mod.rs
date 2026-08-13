@@ -390,9 +390,16 @@ pub(crate) fn replace_value_nonrecursive(slot: &mut Value, value: Value) {
 
 pub(crate) fn clone_value_nonrecursive(value: &Value) -> Value {
     let control = OperationControl::new();
-    clone_value_nonrecursive_controlled(value, usize::MAX, usize::MAX, &control)
-        .expect("a private parse control cannot be cancelled")
-        .expect("unbounded config cloning cannot exceed its budget")
+    clone_value_nonrecursive_with_control(value, &control)
+        .expect("a private operation control cannot be cancelled")
+}
+
+pub(crate) fn clone_value_nonrecursive_with_control(
+    value: &Value,
+    control: &OperationControl,
+) -> OperationControlResult<Value> {
+    clone_value_nonrecursive_controlled(value, usize::MAX, usize::MAX, control)
+        .map(|value| value.expect("unbounded config cloning cannot exceed its budget"))
 }
 
 fn clone_value_nonrecursive_controlled(

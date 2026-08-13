@@ -1015,7 +1015,7 @@ pub(crate) fn render_model_to_compat_json(
         .expect("a private parse control cannot be cancelled")
 }
 
-pub(super) fn render_model_to_compat_json_controlled(
+pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
     control: &OperationControl,

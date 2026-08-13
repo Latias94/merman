@@ -774,16 +774,19 @@ impl ValidatedArtifactContract {
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
         let operation = resolve_operation_request(&request)?;
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         crate::common::validate_one_shot_resource_options(
             request.options_json,
             operation.resource_scope(),
         )?;
         let engine = self.create_engine(request.options_json)?;
-        let admitted = self.admit_operation(operation)?;
-        let control = request.control_or_default();
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
+        let admitted = self.admit_operation(operation)?;
         engine.execute_admitted(admitted, request.source, request.uri, control)
     }
 
@@ -792,16 +795,19 @@ impl ValidatedArtifactContract {
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
         let operation = resolve_operation_request(&request)?;
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         crate::common::validate_one_shot_resource_options(
             request.options_json,
             operation.resource_scope(),
         )?;
         let engine = self.create_engine(request.options_json)?;
-        let admitted = self.admit_operation(operation)?;
-        let control = request.control_or_default();
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
+        let admitted = self.admit_operation(operation)?;
         engine.execute_admitted_data(admitted, request.source, request.uri, control)
     }
 }
@@ -916,21 +922,26 @@ impl BindingEngine {
                 .layout_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::AnalysisJson => self
-                .analyze_json_data(source)
+                .analyze_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::AnalysisFactsJson => self
-                .analysis_facts_json_data(source)
+                .analysis_facts_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::ValidationJson => self
-                .validate_json_data(source)
+                .validate_json_data(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisJson => self
-                .analyze_document_json_data(source, uri.expect("validated document URI presence"))
+                .analyze_document_json_data(
+                    source,
+                    uri.expect("validated document URI presence"),
+                    &control,
+                )
                 .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisFactsJson => self
                 .analyze_document_facts_json_data(
                     source,
                     uri.expect("validated document URI presence"),
+                    &control,
                 )
                 .map(BindingOperationOutput::plain),
         }?;
@@ -1562,6 +1573,30 @@ mod tests {
         }
     }
 
+    #[test]
+    fn one_shot_pre_cancelled_request_precedes_invalid_options_after_operation_resolution() {
+        let control = OperationControl::new();
+        control.cancel();
+
+        let error = execute_once(
+            BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                .with_options_json(b"{")
+                .with_control(control),
+        )
+        .expect_err("admission cancellation must skip option parsing and engine construction");
+        assert_structured_requested_cancellation(&error, "admission");
+
+        let unknown_control = OperationControl::new();
+        unknown_control.cancel();
+        let unknown = execute_once(
+            BindingOperationRequest::new("unknown-operation", b"flowchart TD\nA --> B")
+                .with_options_json(b"{")
+                .with_control(unknown_control),
+        )
+        .expect_err("operation resolution keeps precedence over cancellation");
+        assert_eq!(unknown.kind(), crate::BindingErrorKind::UnknownOperation);
+    }
+
     #[cfg(feature = "svg")]
     #[test]
     fn svg_request_propagates_caller_control_into_the_canonical_renderer() {
@@ -1586,24 +1621,8 @@ mod tests {
             )
             .expect_err("a pre-cancelled request must not produce render output");
         assert_structured_requested_cancellation(&error, "admission");
-
-        let control = OperationControl::new();
-        // The binding execution path consumes admission and parse checkpoints first. The next
-        // checkpoint must therefore be the canonical renderer's operation admission. A renderer
-        // that substitutes a fresh control would only observe this at the outer postprocess step.
-        control.cancel_after_checkpoints(2);
-
-        let error = engine
-            .execute(
-                BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
-                    .with_control(control),
-            )
-            .expect_err("the caller-owned control must cancel before any render output escapes");
-
-        assert_structured_requested_cancellation(&error, "admission");
     }
 
-    #[cfg(any(feature = "svg", feature = "ascii"))]
     fn assert_structured_requested_cancellation(error: &BindingError, phase: &'static str) {
         assert_eq!(error.status(), BindingStatus::Cancelled);
         assert_eq!(error.resource_details(), None);
@@ -1614,6 +1633,87 @@ mod tests {
                 phase,
             })
         );
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn every_analysis_operation_propagates_caller_cancellation_during_analysis() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        for operation_id in [
+            "analysis-json",
+            "analysis-facts-json",
+            "validation-json",
+            "document-analysis-json",
+            "document-analysis-facts-json",
+        ] {
+            let control = OperationControl::new();
+            control.cancel();
+            let mut request = BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+                .with_control(control);
+            if operation_id.starts_with("document-") {
+                request = request.with_uri(b"file:///diagram.md");
+            }
+
+            let error = engine
+                .execute(request)
+                .expect_err("caller cancellation must stop analysis before output escapes");
+
+            assert_eq!(error.status(), BindingStatus::Cancelled, "{operation_id}");
+            assert_eq!(error.resource_details(), None, "{operation_id}");
+            assert!(
+                matches!(
+                    error.cancellation_details(),
+                    Some(crate::BindingCancellationErrorDetails {
+                        reason: "requested",
+                        phase: "admission" | "analysis",
+                    })
+                ),
+                "{operation_id}",
+            );
+        }
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn every_analysis_operation_preserves_caller_deadline_reason() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        for operation_id in [
+            "analysis-json",
+            "analysis-facts-json",
+            "validation-json",
+            "document-analysis-json",
+            "document-analysis-facts-json",
+        ] {
+            let expired = OperationControl::new().with_deadline(std::time::Duration::ZERO);
+            let result = match operation_id {
+                "analysis-json" => engine.analyze_json_data(b"flowchart TD\nA --> B", &expired),
+                "analysis-facts-json" => {
+                    engine.analysis_facts_json_data(b"flowchart TD\nA --> B", &expired)
+                }
+                "validation-json" => engine.validate_json_data(b"flowchart TD\nA --> B", &expired),
+                "document-analysis-json" => engine.analyze_document_json_data(
+                    b"```mermaid\nflowchart TD\nA --> B\n```\n",
+                    b"file:///diagram.md",
+                    &expired,
+                ),
+                "document-analysis-facts-json" => engine.analyze_document_facts_json_data(
+                    b"```mermaid\nflowchart TD\nA --> B\n```\n",
+                    b"file:///diagram.md",
+                    &expired,
+                ),
+                _ => unreachable!(),
+            };
+            let error = result.expect_err("an expired caller deadline must stop analysis");
+            assert_eq!(error.status(), BindingStatus::Cancelled, "{operation_id}");
+            assert_eq!(
+                error.cancellation_details(),
+                Some(crate::BindingCancellationErrorDetails {
+                    reason: "deadline_exceeded",
+                    phase: "analysis",
+                }),
+                "{operation_id}",
+            );
+        }
     }
 
     #[cfg(feature = "svg")]

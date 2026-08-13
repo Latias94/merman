@@ -11,12 +11,12 @@ use merman_core::{
 use crate::render::RenderError;
 
 /// Immutable operation-owned values shared by every target adapter.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct Operation {
-    pub(crate) engine: Engine,
+    engine: Engine,
     pub(crate) control: OperationControl,
     pub(crate) context: OperationContext,
-    pub(crate) resources: InputResourcePolicy,
+    resources: InputResourcePolicy,
 }
 
 impl Operation {
@@ -47,7 +47,7 @@ impl Operation {
     }
 
     pub(crate) fn parse_render_model(
-        &self,
+        self,
         source: &str,
         parse_options: ParseOptions,
     ) -> Result<Option<SemanticArtifact>, RenderError> {
@@ -77,10 +77,21 @@ impl Operation {
             .map_err(RenderError::Cancelled)?;
         Ok(Some(SemanticArtifact {
             parsed,
-            #[cfg(any(feature = "svg", feature = "ascii"))]
-            operation: self.clone(),
+            operation: OperationExecution {
+                control: self.control,
+                #[cfg(any(feature = "svg", feature = "ascii"))]
+                context: self.context,
+            },
         }))
     }
+}
+
+/// Operation state that remains relevant after parsing has completed.
+#[derive(Debug)]
+pub(crate) struct OperationExecution {
+    pub(crate) control: OperationControl,
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    pub(crate) context: OperationContext,
 }
 
 /// A format-neutral semantic artifact paired with the operation that produced it.
@@ -90,8 +101,7 @@ impl Operation {
 #[derive(Debug)]
 pub struct SemanticArtifact {
     pub(crate) parsed: ParsedDiagramRender,
-    #[cfg(any(feature = "svg", feature = "ascii"))]
-    pub(crate) operation: Operation,
+    pub(crate) operation: OperationExecution,
 }
 
 impl SemanticArtifact {
@@ -111,7 +121,7 @@ impl SemanticArtifact {
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]
-    pub(crate) fn into_parts(self) -> (ParsedDiagramRender, Operation) {
+    pub(crate) fn into_parts(self) -> (ParsedDiagramRender, OperationExecution) {
         (self.parsed, self.operation)
     }
 }

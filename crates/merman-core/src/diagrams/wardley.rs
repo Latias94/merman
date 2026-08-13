@@ -246,7 +246,7 @@ pub(crate) fn render_model_to_compat_json(
         .expect("a private parse control cannot be cancelled")
 }
 
-fn render_model_to_compat_json_controlled(
+pub(crate) fn render_model_to_compat_json_controlled(
     model: &WardleyDiagramRenderModel,
     meta: &ParseMetadata,
     control: &OperationControl,

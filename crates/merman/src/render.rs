@@ -10,6 +10,8 @@ use merman_core::{
 };
 
 use crate::operation_runner::Operation;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use crate::operation_runner::OperationExecution;
 
 #[cfg(feature = "ascii")]
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
@@ -711,7 +713,8 @@ impl SemanticArtifact {
     pub fn compatibility_json(&self) -> Result<serde_json::Value, RenderError> {
         self.parsed
             .model()
-            .compatibility_json(self.parsed.metadata())
+            .compatibility_json_controlled(self.parsed.metadata(), &self.operation.control)
+            .map_err(RenderError::Cancelled)?
             .map_err(RenderError::Parse)
     }
 
@@ -811,10 +814,8 @@ fn render_layout_json_target(
     )
     .map_err(map_svg_error)?;
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    artifact
-        .layout_json()
-        .map(|layout| Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
-        .map_err(map_svg_error)
+    let layout = artifact.layout_json().map_err(map_svg_error)?;
+    Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
 }
 
 #[cfg(feature = "svg")]
@@ -835,7 +836,7 @@ fn render_svg_plan_target(
 fn prepare_resvg_target(
     semantic: SemanticArtifact,
     request: &SvgRequest,
-) -> Result<Option<(merman_render::svg::ResvgCompatibleSvg, Operation)>, RenderError> {
+) -> Result<Option<(merman_render::svg::ResvgCompatibleSvg, OperationExecution)>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     let session = request
         .environment

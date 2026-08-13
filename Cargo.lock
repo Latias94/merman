@@ -2512,6 +2512,7 @@ dependencies = [
  "js-sys",
  "merman-analysis",
  "merman-bindings-core",
+ "merman-core",
  "merman-editor-core",
  "serde",
  "serde-wasm-bindgen",

@@ -373,6 +373,28 @@ impl Analyzer {
         }
     }
 
+    /// Generates diagnostics for an explicit request-local source descriptor.
+    pub fn analyze_source_cancellable(
+        &self,
+        source: Arc<str>,
+        descriptor: SourceDescriptor,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        self.with_capture_source(descriptor)
+            .analyze_cancellable(source, cancellation)
+    }
+
+    /// Generates facts for an explicit request-local source descriptor.
+    pub fn analyze_source_facts_cancellable(
+        &self,
+        source: Arc<str>,
+        descriptor: SourceDescriptor,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<crate::AnalysisFactsPayload, AnalysisCancelled> {
+        self.with_capture_source(descriptor)
+            .analyze_facts_cancellable(source, cancellation)
+    }
+
     pub(crate) fn try_for_operation(
         &self,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
@@ -547,6 +569,39 @@ impl Analyzer {
 
     pub fn analyze_facts_json(&self, source: &str) -> Result<Vec<u8>, serde_json::Error> {
         self.analyze_facts(source).to_json_bytes()
+    }
+
+    /// Generates and projects diagnostics cooperatively using one caller-owned cancellation token.
+    pub fn analyze_cancellable(
+        &self,
+        source: Arc<str>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        match self.analyze_generation_shared_cancellable(source, cancellation)? {
+            AnalysisCaptureOutcome::Ready(generation) => {
+                generation.project_cancellable(self.options.diagnostic_policy(), cancellation)
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                cancellation.checkpoint()?;
+                Ok(rejection.into_payload())
+            }
+        }
+    }
+
+    /// Generates and projects the facts contract cooperatively using one cancellation token.
+    pub fn analyze_facts_cancellable(
+        &self,
+        source: Arc<str>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<crate::AnalysisFactsPayload, AnalysisCancelled> {
+        match self.analyze_generation_shared_cancellable(source, cancellation)? {
+            AnalysisCaptureOutcome::Ready(generation) => generation
+                .to_facts_payload_cancellable(self.options.diagnostic_policy(), cancellation),
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                cancellation.checkpoint()?;
+                Ok(crate::AnalysisFactsPayload::from_rejection(&rejection))
+            }
+        }
     }
 
     pub(crate) fn analyze_diagram(

@@ -46,6 +46,11 @@ fn main() -> Result<(), merman_core::Error> {
 
 `merman-core` has no default Cargo features. Mermaid parsing, configuration, sanitization, detection, and family facts are unconditional; optional `system-*` features only make explicit host runtime adapters available.
 
+Relative operation deadlines use the native monotonic clock on supported targets. Browser-facing
+`wasm32-unknown-unknown` artifacts must enable `operation-deadlines` to expose the deadline methods
+and use the Web monotonic clock. This keeps browser adapters out of pure WASM dependency closures;
+cancellation remains available in every artifact.
+
 ## Deterministic Time
 
 Use `time::CivilDate` for date-only runtime controls such as `Engine::with_fixed_today`. Its canonical text syntax uses four unsigned digits for years `0000` through `9999`, a leading `+` for later years, and `-` plus at least four digits for negative years. The signed 32-bit year domain includes Mermaid's `+10000` and `-10000` boundaries. `time::CivilDateTime`, `time::UtcOffset`, and `time::OffsetDateTime` provide checked calendar and instant conversions without exposing a third-party time type in the public API.

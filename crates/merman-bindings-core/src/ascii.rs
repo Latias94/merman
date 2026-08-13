@@ -422,17 +422,15 @@ mod tests {
     fn render_ascii_accepts_relation_summary_diagnostics_option() {
         let text = String::from_utf8(
             render_ascii(
-                b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
-                br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
+                b"classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
+                br#"{ "resources": { "limits": { "max_ascii_grid_cells": 10000 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
             )
             .unwrap(),
         )
         .unwrap();
 
         assert!(text.contains("relations:"), "{text}");
-        assert!(text.contains("reason: grid_budget"), "{text}");
-        assert!(text.contains("actual="), "{text}");
-        assert!(text.contains("limit=1"), "{text}");
+        assert!(text.contains("reason: crossing"), "{text}");
     }
 
     #[test]

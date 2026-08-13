@@ -1,6 +1,6 @@
 use crate::{
     EditorSemanticFacts, Error, MermaidConfig, OperationControl, OperationControlResult,
-    ParseMetadata, Result, editor::SourceSpan,
+    OperationPhase, ParseMetadata, Result, editor::SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -446,6 +446,17 @@ mod builtin_render_semantic_private {
 /// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
 pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
     fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value>;
+
+    fn compatibility_json_controlled(
+        &self,
+        meta: &ParseMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Value>> {
+        control.checkpoint()?;
+        let projected = self.compatibility_json(meta);
+        control.checkpoint()?;
+        Ok(projected)
+    }
 }
 
 macro_rules! impl_builtin_render_semantic {
@@ -460,13 +471,34 @@ macro_rules! impl_builtin_render_semantic {
     };
 }
 
+macro_rules! impl_builtin_render_semantic_controlled {
+    ($model:path, $project:path, $controlled_project:path) => {
+        impl builtin_render_semantic_private::Sealed for $model {}
+
+        impl BuiltinRenderSemantic for $model {
+            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
+                $project(self, meta)
+            }
+
+            fn compatibility_json_controlled(
+                &self,
+                meta: &ParseMetadata,
+                control: &OperationControl,
+            ) -> OperationControlResult<Result<Value>> {
+                $controlled_project(self, meta, control)
+            }
+        }
+    };
+}
+
 impl_builtin_render_semantic!(
     crate::diagrams::error_diagram::ErrorDiagramRenderModel,
     crate::diagrams::error_diagram::render_model_to_compat_json
 );
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::mindmap::MindmapDiagramRenderModel,
-    crate::diagrams::mindmap::render_model_to_compat_json
+    crate::diagrams::mindmap::render_model_to_compat_json,
+    crate::diagrams::mindmap::render_model_to_compat_json_controlled
 );
 impl_builtin_render_semantic!(
     crate::diagrams::state::StateDiagramRenderModel,
@@ -484,9 +516,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::flowchart::FlowchartModel,
     crate::diagrams::flowchart::render_model_to_compat_json
 );
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::architecture::ArchitectureDiagramRenderModel,
-    crate::diagrams::architecture::render_model_to_compat_json
+    crate::diagrams::architecture::render_model_to_compat_json,
+    crate::diagrams::architecture::render_model_to_compat_json_controlled
 );
 impl_builtin_render_semantic!(
     crate::models::class_diagram::ClassDiagram,
@@ -508,9 +541,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::kanban::KanbanDiagramRenderModel,
     crate::diagrams::kanban::render_model_to_compat_json
 );
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::gantt::GanttDiagramRenderModel,
-    crate::diagrams::gantt::render_model_to_compat_json
+    crate::diagrams::gantt::render_model_to_compat_json,
+    crate::diagrams::gantt::render_model_to_compat_json_controlled
 );
 impl_builtin_render_semantic!(
     crate::diagrams::pie::PieDiagramRenderModel,
@@ -584,9 +618,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::venn::VennDiagramRenderModel,
     crate::diagrams::venn::render_model_to_compat_json
 );
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::wardley::WardleyDiagramRenderModel,
-    crate::diagrams::wardley::render_model_to_compat_json
+    crate::diagrams::wardley::render_model_to_compat_json,
+    crate::diagrams::wardley::render_model_to_compat_json_controlled
 );
 
 impl RenderSemanticModel {
@@ -716,41 +751,59 @@ impl RenderSemanticModel {
     /// Built-in families delegate to their own lossless projector. This never reparses source;
     /// custom adapters retain their explicitly named JSON boundary.
     pub fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
-        match self {
-            Self::Error(model) => model.compatibility_json(meta),
-            Self::CustomJson(model) => Ok(crate::config::clone_value_nonrecursive(model.value())),
-            Self::Mindmap(model) => model.compatibility_json(meta),
-            Self::State(model) => model.compatibility_json(meta),
-            Self::Sequence(model) => model.compatibility_json(meta),
-            Self::Zenuml(model) => model.compatibility_json(meta),
-            Self::Flowchart(model) => model.compatibility_json(meta),
-            Self::Architecture(model) => model.compatibility_json(meta),
-            Self::Class(model) => model.compatibility_json(meta),
-            Self::C4(model) => model.compatibility_json(meta),
-            Self::Cynefin(model) => model.compatibility_json(meta),
-            Self::Railroad(model) => model.compatibility_json(meta),
-            Self::Kanban(model) => model.compatibility_json(meta),
-            Self::Gantt(model) => model.compatibility_json(meta),
-            Self::Pie(model) => model.compatibility_json(meta),
-            Self::Packet(model) => model.compatibility_json(meta),
-            Self::Timeline(model) => model.compatibility_json(meta),
-            Self::Journey(model) => model.compatibility_json(meta),
-            Self::Requirement(model) => model.compatibility_json(meta),
-            Self::Sankey(model) => model.compatibility_json(meta),
-            Self::Radar(model) => model.compatibility_json(meta),
-            Self::Info(model) => model.compatibility_json(meta),
-            Self::Treemap(model) => model.compatibility_json(meta),
-            Self::Block(model) => model.compatibility_json(meta),
-            Self::Er(model) => model.compatibility_json(meta),
-            Self::QuadrantChart(model) => model.compatibility_json(meta),
-            Self::XyChart(model) => model.compatibility_json(meta),
-            Self::GitGraph(model) => model.compatibility_json(meta),
-            Self::TreeView(model) => model.compatibility_json(meta),
-            Self::Ishikawa(model) => model.compatibility_json(meta),
-            Self::EventModeling(model) => model.compatibility_json(meta),
-            Self::Venn(model) => model.compatibility_json(meta),
-            Self::Wardley(model) => model.compatibility_json(meta),
-        }
+        let control = OperationControl::new();
+        self.compatibility_json_controlled(meta, &control)
+            .expect("a private operation control cannot be cancelled")
+    }
+
+    /// Projects the public compatibility JSON while observing the caller's operation control.
+    pub fn compatibility_json_controlled(
+        &self,
+        meta: &ParseMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Value>> {
+        let control = control.for_phase(OperationPhase::Semantic);
+        control.checkpoint()?;
+        let projected = match self {
+            Self::Error(model) => model.compatibility_json_controlled(meta, &control),
+            Self::CustomJson(model) => {
+                crate::config::clone_value_nonrecursive_with_control(model.value(), &control)
+                    .map(Ok)
+            }
+            Self::Mindmap(model) => model.compatibility_json_controlled(meta, &control),
+            Self::State(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Sequence(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Zenuml(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Flowchart(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Architecture(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Class(model) => model.compatibility_json_controlled(meta, &control),
+            Self::C4(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Cynefin(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Railroad(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Kanban(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Gantt(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Pie(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Packet(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Timeline(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Journey(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Requirement(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Sankey(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Radar(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Info(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Treemap(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Block(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Er(model) => model.compatibility_json_controlled(meta, &control),
+            Self::QuadrantChart(model) => model.compatibility_json_controlled(meta, &control),
+            Self::XyChart(model) => model.compatibility_json_controlled(meta, &control),
+            Self::GitGraph(model) => model.compatibility_json_controlled(meta, &control),
+            Self::TreeView(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Ishikawa(model) => model.compatibility_json_controlled(meta, &control),
+            Self::EventModeling(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Venn(model) => model.compatibility_json_controlled(meta, &control),
+            Self::Wardley(model) => model.compatibility_json_controlled(meta, &control),
+        }?;
+        control.checkpoint()?;
+        Ok(projected)
     }
 
     /// Returns whether this typed model can represent the given Mermaid diagram type id.
