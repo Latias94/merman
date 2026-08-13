@@ -60,6 +60,20 @@
         panic("merman profile field `" + key + "` was removed; use `diagram-theme` or `typography`")
       }
     }
+    for key in ("scoped-css", "scoped_css") {
+      if key in profile {
+        panic(
+          "merman profile field `" + key + "` was removed; use `diagram-theme`, `theme-variables`, or `background`",
+        )
+      }
+    }
+    for key in ("css-override-policy", "css_override_policy") {
+      if key in profile {
+        panic(
+          "merman profile field `" + key + "` was removed; CSS override policy is restricted to trusted Rust or native CLI hosts",
+        )
+      }
+    }
     if "theme" in profile {
       panic("merman profile field `theme` was renamed to `theme-variables`")
     }
@@ -321,8 +335,6 @@
   background: none,
   layout: none,
   environment: none,
-  scoped-css: none,
-  css-override-policy: none,
   drop-native-duplicate-fallbacks: none,
   text-measurement: none,
   math-renderer: none,
@@ -347,8 +359,6 @@
     background: background,
     layout: layout,
     environment: environment,
-    scoped-css: scoped-css,
-    css-override-policy: css-override-policy,
     drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
     text-measurement: text-measurement,
     math-renderer: math-renderer,
@@ -377,8 +387,6 @@
   background: none,
   layout: none,
   environment: none,
-  scoped-css: none,
-  css-override-policy: none,
   drop-native-duplicate-fallbacks: none,
   text-measurement: none,
   math-renderer: none,
@@ -429,11 +437,6 @@
   let id = choose-value(profile-field(profile, "id"), id)
   let diagram-id = choose-value(profile-field(profile, "diagram-id", alt: "diagram_id"), diagram-id)
   let background = choose-value(profile-field(profile, "background"), background)
-  let scoped-css = choose-value(profile-field(profile, "scoped-css", alt: "scoped_css"), scoped-css)
-  let css-override-policy = choose-value(
-    profile-field(profile, "css-override-policy", alt: "css_override_policy"),
-    css-override-policy,
-  )
   let drop-native-duplicate-fallbacks = choose-value(
     profile-field(
       profile,
@@ -492,8 +495,6 @@
         diagram_id: choose-value(id, diagram-id),
         pipeline: pipeline,
         root_background_color: background,
-        scoped_css: scoped-css,
-        css_override_policy: css-override-policy,
         drop_native_duplicate_fallbacks: drop-native-duplicate-fallbacks,
       ),
     )

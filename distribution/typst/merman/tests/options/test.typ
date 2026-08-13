@@ -1,5 +1,24 @@
 #import "../../src/options.typ": context-text-style, mermaid-profile, render-config
 
+#let default-options = render-config().binding_options
+#assert(
+  not "scoped_css" in default-options.svg,
+  message: "default options JSON must omit removed scoped CSS controls",
+)
+#assert(
+  not "css_override_policy" in default-options.svg,
+  message: "default options JSON must omit removed CSS override controls",
+)
+#let default-options-json = json.encode(default-options)
+#assert(
+  not default-options-json.contains("scoped_css"),
+  message: "encoded default options must omit removed scoped CSS controls",
+)
+#assert(
+  not default-options-json.contains("css_override_policy"),
+  message: "encoded default options must omit removed CSS override controls",
+)
+
 #assert.eq(context-text-style("Arial", 12pt).font_stack, ("Arial",))
 #assert.eq(context-text-style("Arial", 12pt).font_size_px, 16)
 

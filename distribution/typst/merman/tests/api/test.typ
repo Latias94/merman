@@ -82,6 +82,34 @@
 #assert(options-svg.contains("API Options Sans"), message: "options should bypass high-level fields")
 #assert(not options-svg.contains("api-direct"), message: "direct id should not override options")
 
+#let raw-scoped-css-result = mermaid-result(
+  source,
+  options: (version: 2, svg: (scoped_css: ".node rect { fill: red; }")),
+)
+#assert(
+  not raw-scoped-css-result.ok,
+  message: "raw scoped CSS must remain rejected by the general binding boundary",
+)
+#assert.eq(raw-scoped-css-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")
+#assert(
+  raw-scoped-css-result.message.contains("svg.scoped_css"),
+  message: "raw scoped CSS errors should identify the rejected binding field",
+)
+
+#let raw-css-override-policy-result = mermaid-result(
+  source,
+  options: (version: 2, svg: (css_override_policy: "preserve")),
+)
+#assert(
+  not raw-css-override-policy-result.ok,
+  message: "raw CSS override policy must remain rejected by the general binding boundary",
+)
+#assert.eq(raw-css-override-policy-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")
+#assert(
+  raw-css-override-policy-result.message.contains("svg.css_override_policy"),
+  message: "raw CSS override errors should identify the rejected binding field",
+)
+
 #let forest-svg = mermaid-svg(
   source,
   id: "api-theme-layer",

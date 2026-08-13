@@ -232,18 +232,20 @@ This entry point is explicit-only unless `document-context: true` is set.
 Advanced renderer parameters:
 
 - `pipeline`: `"resvg-safe"` by default for embedded Typst images. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
-- `site-config`: full Mermaid site config object.
+- `site-config`: bounded Mermaid site config object. General bindings reject host-owned `themeCSS` and `secure`; use the typed theme inputs for appearance instead.
 - `layout`: full binding layout object for container geometry. This overrides the container shorthands.
 - `container-width`, `container-height`: shorthands for `layout.container_width` and `layout.container_height`.
 - `environment`: full binding render-environment object. Use `text_measurement` and `math_renderer` fields when composing options directly.
 - `text-measurement`, `math-renderer`: shorthands for `environment.text_measurement` and `environment.math_renderer`. Direct values override `environment`, which overrides profile environment values.
-- `scoped-css`, `css-override-policy`, `drop-native-duplicate-fallbacks`: SVG post-processing shorthands.
+- `drop-native-duplicate-fallbacks`: SVG post-processing shorthand for removing duplicate native fallback text.
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
-- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. The plugin reserves the constrained `resources` ceiling; documents may provide stricter limits, while looser profiles or overrides return a structured options error.
+- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. It does not bypass general binding validation: `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` remain rejected because raw CSS and cascade policy belong to trusted Rust or native CLI hosts. The plugin also reserves the constrained `resources` ceiling; documents may provide stricter limits, while looser profiles or overrides return a structured options error.
+
+Typst does not expose the removed `scoped-css` or `css-override-policy` high-level controls. Use `diagram-theme`, `theme-variables`, or `background` for document-owned presentation needs.
 
 ### `mermaid-profile(..)`
 
-Returns a reusable Typst settings dictionary. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path. The removed `presentation-profile`, `host-theme`, and `merman-modern` inputs are not compatibility aliases.
+Returns a reusable Typst settings dictionary. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path. The removed `presentation-profile`, `host-theme`, `merman-modern`, `scoped-css`, and `css-override-policy` inputs are not compatibility aliases; handwritten dictionaries using a removed field fail with a migration diagnostic.
 
 ### `mermaid-figure(source, ..)`
 
