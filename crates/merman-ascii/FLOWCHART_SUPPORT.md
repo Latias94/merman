@@ -129,5 +129,5 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii flowchart`
 
 Golden tests compare against immutable copied `mermaid-ascii` fixtures for the supported subset. The
-current corpus has 79 graph fixtures: 45 remain exact byte matches and 34 are named deterministic
+current corpus has 79 graph fixtures: 40 remain exact byte matches and 39 are named deterministic
 layout/route differences that must still render and are covered by parser-backed semantic tests.

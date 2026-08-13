@@ -90,7 +90,7 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     primaryProjection: "diagrammatic",
     structuredTextFallback: true,
     supportedSemantics: [
-      "entity boxes, attributes, and key tokens",
+      "entity boxes, attributes, key tokens, and attribute comments",
       "relationship labels, cardinalities, and identifying relationships",
       "four directions, self-relations, and routed relation components",
       "lossless crossing, port-fit, route, and collision summaries",
@@ -98,6 +98,7 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     limits: [
       "complex cyclic topology can summarize",
       "unknown cardinality or relationship kinds are unsupported",
+      "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
     ],
   },
   flowchart: {

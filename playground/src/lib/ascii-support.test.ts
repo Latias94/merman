@@ -172,6 +172,21 @@ test("fallback projection fields derive the compatibility support level", () => 
     )
   );
 
+  const er = byType.get("er")!;
+  assert.ok(
+    er.supported_semantics.includes(
+      "entity boxes, attributes, key tokens, and attribute comments"
+    )
+  );
+  assert.ok(
+    er.limits.includes(
+      "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output"
+    )
+  );
+  assert.ok(
+    er.limits.every((limit) => !limit.includes("attribute comments"))
+  );
+
   const sequence = byType.get("sequence")!;
   assert.ok(
     sequence.supported_semantics.includes(

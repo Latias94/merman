@@ -34,6 +34,7 @@ assert the topology policy directly instead of inferring it only from rendered t
 | Tight `max_ascii_grid_cells` budgets | Local policy | Supported hard error | Structured resource-error fixture with exact details |
 | Disconnected components / isolated nodes | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Namespace-qualified class names | Local semantic tests | Supported | Local semantic fixtures |
+| Simple sibling-namespace, namespace-to-root, and nested-sibling relationships | Mermaid 11.16.1 typed namespace ownership plus local semantic tests | Supported through nearest-scope namespace facades with byte-length-framed leaf identity | Parser-backed namespace routing tests; dense/colliding scenes retain lossless summary fallback |
 | Endpoint labels / cardinality strings attached to a relation | Mermaid class cardinality tests and `beautiful-mermaid` parser/renderer | Supported | Exact vertical fixtures and summary regressions |
 | Notes and note-for links | Mermaid class parser / SVG behavior | Supported | Local semantic fixtures with exact snapshots |
 | Lollipop relations and interface nodes | Mermaid class parser / SVG behavior | Supported | Routed-grid fixtures and summary regressions |

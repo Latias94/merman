@@ -232,7 +232,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         structured_text_fallback: true,
         supported_semantics: &[
             "entity boxes",
-            "attributes and key tokens",
+            "attributes, key tokens, and attribute comments",
             "relationship labels",
             "cardinality markers",
             "parent diamond cardinality markers",
@@ -249,7 +249,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "complex cyclic or collision-prone topology can summarize",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
-            "accessibility, comments, and styling metadata are intentionally omitted from terminal output",
+            "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -1092,10 +1092,20 @@ mod tests {
 
         assert!(er.limits.iter().any(|limit| {
             limit.contains("accessibility")
-                && limit.contains("comments")
+                && limit.contains("Mermaid diagram source comments")
                 && limit.contains("styling")
                 && limit.contains("intentionally omitted")
         }));
+        assert!(
+            !er.limits
+                .iter()
+                .any(|limit| limit.contains("attribute comments"))
+        );
+        assert!(
+            er.supported_semantics
+                .iter()
+                .any(|semantic| semantic.contains("attribute comments"))
+        );
     }
 
     #[test]
