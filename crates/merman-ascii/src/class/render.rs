@@ -2365,6 +2365,7 @@ mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::diagram::RenderSemanticModel;
+    use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions};
     use std::cell::Cell;
 

@@ -94,10 +94,12 @@ impl<'a> ComposedTextPlan<'a> {
         })
     }
 
+    #[cfg(test)]
     pub(crate) const fn materialized_bytes(&self) -> usize {
         self.metrics.materialized_bytes
     }
 
+    #[cfg(test)]
     pub(crate) const fn materialization_work_units(&self) -> usize {
         self.metrics.materialization_work_units
     }
