@@ -56,11 +56,22 @@ When tracked SVG bytes under `fixtures/upstream-svgs/` change, verify the select
 cargo run --locked -p xtask -- verify-mermaid-reference
 ```
 
-When comparator or root viewport behavior changes, run the focused root-contract tests. Run the full
-`parity-root` sweep only when the change can affect tracked SVG structure or viewport policy:
+When a renderer implementation, renderer profile, comparator normalization, or tracked upstream SVG
+changes, run the first blocking Linux CI comparison exactly before handoff. A focused `--diagram`
+or `--filter` run is useful while iterating but does not replace this full structure gate:
+
+```text
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode structure --dom-decimals 3
+```
+
+When comparator or root viewport behavior changes, also run the focused root-contract tests and the
+remaining blocking parity sweeps:
 
 ```text
 cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode parity --dom-decimals 3
 cargo run --locked --release -p xtask -- compare-all-svgs \
   --check-dom --dom-mode parity-root --dom-decimals 3 \
   --flowchart-text-measurer vendored --report-root
@@ -71,8 +82,9 @@ deterministic root canaries. Browser-measured bbox numbers remain diagnostic. Pa
 painted-content containment oracle; run the focused Playground desktop browser suite locally only
 when changing that oracle or its browser integration.
 
-Completion criterion: selected-source verification passes when applicable, root-contract tests pass,
-and the full parity or browser owner lane is either green or explicitly deferred to its PR workflow.
+Completion criterion: selected-source verification passes when applicable; the exact full structure
+gate passes for renderer, profile, normalization, or tracked-SVG changes; and the root-contract and
+parity gates required by the changed surface pass or have an explicit PR-workflow owner and reason.
 
 ## Refresh generated legal material in dependency order
 
