@@ -27,11 +27,11 @@
       "phase": "ascii_layout_work",
       "source": "flowchart TD\nA[Hello] --> B[World]",
       "expected": {
-        "headless_ascii": 2733,
-        "binding_interactive": 2770,
-        "wasm_interactive": 2770,
-        "uniffi_interactive": 2770,
-        "cli_trusted_native": 2733
+        "headless_ascii": 2868,
+        "binding_interactive": 2905,
+        "wasm_interactive": 2905,
+        "uniffi_interactive": 2905,
+        "cli_trusted_native": 2868
       }
     },
     {
