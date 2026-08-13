@@ -239,10 +239,10 @@ impl std::fmt::Display for FamilyStyleResidualReason {
 /// renderer report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FamilyStyleResidual {
-    raw: String,
-    property: Option<String>,
-    owner_id: String,
-    class_id: Option<String>,
+    raw: std::sync::Arc<str>,
+    property: Option<std::sync::Arc<str>>,
+    owner_id: std::sync::Arc<str>,
+    class_id: Option<std::sync::Arc<str>>,
     origin: FamilyStyleOrigin,
     channel: FamilyStyleChannel,
     assignment_ordinal: Option<usize>,
@@ -254,10 +254,10 @@ impl FamilyStyleResidual {
     fn freeze(residual: &SourceStyleResidual) -> Self {
         let provenance = residual.provenance();
         Self {
-            raw: residual.raw().to_string(),
-            property: residual.property().map(str::to_string),
-            owner_id: provenance.owner_id().to_string(),
-            class_id: provenance.class_id().map(str::to_string),
+            raw: residual.raw_arc(),
+            property: residual.property_arc(),
+            owner_id: provenance.owner_id_arc(),
+            class_id: provenance.class_id_arc(),
             origin: provenance.origin().into(),
             channel: provenance.channel().into(),
             assignment_ordinal: provenance.assignment_ordinal(),
@@ -1266,6 +1266,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
 }
@@ -1277,6 +1278,10 @@ impl<L> FlowchartFamilyArtifact<L> {
 
     pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
         &self.label_sources
+    }
+
+    pub(crate) const fn edge_style_plan(&self) -> &crate::svg::FlowchartEdgeStylePlan {
+        &self.edge_style_plan
     }
 
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
@@ -2280,10 +2285,12 @@ fn prepare_flowchart_artifact<L>(
     resolved_theme: Option<&ResolvedDiagramTheme>,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
+    edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderLabelSources,
         &crate::flowchart::FlowchartSvgLabelSidecarBuilder,
+        &crate::svg::FlowchartEdgeStylePlan,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
     let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
@@ -2292,7 +2299,12 @@ fn prepare_flowchart_artifact<L>(
         work_meter,
     )
     .with_typography_config_ownership(typography_config_ownership);
-    let layout = layout(&semantic, &label_sources, &svg_label_sidecar)?;
+    let layout = layout(
+        &semantic,
+        &label_sources,
+        &svg_label_sidecar,
+        &edge_style_plan,
+    )?;
     let svg_label_sidecar = svg_label_sidecar.finish();
     if let Some(error) = svg_label_sidecar.prepared_resource_error().cloned() {
         return Err(error.into());
@@ -2303,6 +2315,7 @@ fn prepare_flowchart_artifact<L>(
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
         label_sources,
+        edge_style_plan,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
     }))
@@ -2626,6 +2639,12 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Flowchart(model) => match execution.family_id() {
             DiagramFamilyId::SWIMLANE => {
+                let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+                    &model,
+                    &meta.effective_config,
+                    true,
+                    execution.work_meter_ref(),
+                )?;
                 BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                     model,
                     flowchart_label_sources,
@@ -2633,7 +2652,8 @@ fn prepare_non_class_render(
                     execution.resolved_theme(),
                     crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                     execution.work_meter(),
-                    |model, label_sources, svg_label_sidecar| {
+                    edge_style_plan,
+                    |model, label_sources, svg_label_sidecar, edge_style_plan| {
                         crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                             model,
                             label_sources,
@@ -2641,12 +2661,19 @@ fn prepare_non_class_render(
                             execution.text_measurer(),
                             execution.math_renderer(),
                             Some(svg_label_sidecar),
+                            edge_style_plan,
                             execution.work_meter(),
                         )
                     },
                 )?)
             }
             DiagramFamilyId::FLOWCHART => {
+                let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+                    &model,
+                    &meta.effective_config,
+                    false,
+                    execution.work_meter_ref(),
+                )?;
                 BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
                     model,
                     flowchart_label_sources,
@@ -2654,7 +2681,8 @@ fn prepare_non_class_render(
                     execution.resolved_theme(),
                     crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                     execution.work_meter(),
-                    |model, label_sources, svg_label_sidecar| {
+                    edge_style_plan,
+                    |model, label_sources, svg_label_sidecar, edge_style_plan| {
                         crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
                             diagram_type,
                             model,
@@ -2662,6 +2690,7 @@ fn prepare_non_class_render(
                             &meta.effective_config,
                             &execution,
                             Some(svg_label_sidecar),
+                            edge_style_plan,
                         )
                     },
                 )?)

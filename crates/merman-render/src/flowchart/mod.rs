@@ -100,16 +100,16 @@ pub(crate) use shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
     is_flowchart_process_shape, validate_flowchart_model_shapes,
 };
+#[cfg(test)]
+pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
-    flowchart_apply_html_node_class_box_metrics, flowchart_effective_edge_label_text_style,
-    flowchart_effective_edge_label_text_style_with_provenance,
-    flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
+    FlowchartTextStyleResolution, flowchart_apply_html_node_class_box_metrics,
+    flowchart_apply_text_style_decl, flowchart_effective_node_class_names,
+    flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes,
     flowchart_effective_text_style_for_node_classes_with_provenance,
     flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
-    flowchart_swimlane_label_rect_text_style,
-    flowchart_swimlane_label_rect_text_style_with_provenance,
 };
 pub(crate) use svg_label_artifact::{
     FlowchartLabelTypographyOverrides, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,

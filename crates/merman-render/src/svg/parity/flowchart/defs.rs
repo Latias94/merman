@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use super::super::util::{escape_xml, escape_xml_display};
-use super::{FlowchartRenderCtx, flowchart_config_look, flowchart_resolve_edge_marker_color};
+use super::{FlowchartRenderCtx, flowchart_config_look};
 
 pub(in crate::svg::parity::flowchart) struct FlowchartDefs<'a> {
     diagram_id: &'a str,
@@ -238,19 +238,12 @@ fn collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
     let hand_drawn = flowchart_config_look(ctx.config) == "handDrawn";
 
     for e in ctx.edges_by_id.values() {
-        let Some(marker) = flowchart_resolve_edge_marker_color(
-            ctx.class_defs,
-            &e.classes,
-            &ctx.default_edge_style,
-            &e.style,
-            e.id.as_str(),
-            hand_drawn,
-        ) else {
+        let Some(marker_color) = ctx.edge_style_plan.marker_color(e.id.as_str(), hand_drawn) else {
             continue;
         };
-        let cid = marker_color_id(marker.value());
+        let cid = marker_color_id(marker_color);
         if !cid.is_empty() && seen.insert(cid) {
-            out.push(marker.value().to_string());
+            out.push(marker_color.to_string());
         }
     }
 

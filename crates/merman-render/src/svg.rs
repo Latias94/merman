@@ -13,6 +13,7 @@ mod parity;
 mod pipeline;
 pub(crate) mod scanner;
 
+pub(crate) use parity::FlowchartEdgeStylePlan;
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::theme as render_theme;

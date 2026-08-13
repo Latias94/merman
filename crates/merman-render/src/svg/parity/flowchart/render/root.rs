@@ -72,7 +72,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         if !frame.as_ref().is_some_and(|frame| frame.initialized)
             && let Some(frame) = frame.as_mut()
         {
-            initialize_flowchart_root_frame(out, ctx, session, frame);
+            initialize_flowchart_root_frame(out, ctx, session, frame)?;
         }
 
         let mut pushed_nested = false;
@@ -101,7 +101,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                     current.origin_x,
                     current.content_origin_y,
                     &*session.edge_cache,
-                );
+                )?;
                 continue;
             }
 
@@ -188,8 +188,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     let edges = flowchart_elk_edges(ctx);
     drop(_g_edges_select);
 
-    render_flowchart_elk_edge_paths(out, ctx, session, &edges);
-    render_flowchart_elk_edge_labels(out, ctx, session, &edges);
+    render_flowchart_elk_edge_paths(out, ctx, session, &edges)?;
+    render_flowchart_elk_edge_labels(out, ctx, session, &edges)?;
     Ok(())
 }
 
@@ -312,11 +312,11 @@ fn render_flowchart_elk_edge_paths(
     ctx: &FlowchartRenderCtx<'_>,
     session: &mut FlowchartRootRenderSession<'_, '_>,
     edges: &[&crate::flowchart::FlowEdge],
-) {
+) -> crate::Result<()> {
     let _g_edge_paths = detail_guard(session.timing, &mut session.details.edge_paths);
     if edges.is_empty() {
         out.push_str(r#"<g class="edges edgePaths"/>"#);
-        return;
+        return Ok(());
     }
 
     out.push_str(r#"<g class="edges edgePaths">"#);
@@ -330,9 +330,10 @@ fn render_flowchart_elk_edge_paths(
             0.0,
             &mut scratch,
             &mut *session.edge_cache,
-        );
+        )?;
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn render_flowchart_elk_edge_labels(
@@ -340,11 +341,11 @@ fn render_flowchart_elk_edge_labels(
     ctx: &FlowchartRenderCtx<'_>,
     session: &mut FlowchartRootRenderSession<'_, '_>,
     edges: &[&crate::flowchart::FlowEdge],
-) {
+) -> crate::Result<()> {
     let _g_edge_labels = detail_guard(session.timing, &mut session.details.edge_labels);
     if edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
-        return;
+        return Ok(());
     }
 
     out.push_str(r#"<g class="edgeLabels">"#);
@@ -356,9 +357,10 @@ fn render_flowchart_elk_edge_labels(
         }
     }
     for e in edges {
-        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache);
+        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache)?;
     }
     out.push_str("</g>");
+    Ok(())
 }
 
 fn initialize_flowchart_root_frame<'a>(
@@ -366,7 +368,7 @@ fn initialize_flowchart_root_frame<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     session: &mut FlowchartRootRenderSession<'_, '_>,
     frame: &mut FlowchartRootFrame<'a>,
-) {
+) -> crate::Result<()> {
     session.details.root_calls += 1;
 
     let (origin_x, origin_y, transform_attr) = if let Some(cid) = frame.cluster_id {
@@ -525,7 +527,7 @@ fn initialize_flowchart_root_frame<'a>(
                 frame.content_origin_y,
                 &mut scratch,
                 &mut *session.edge_cache,
-            );
+            )?;
         }
         out.push_str("</g>");
     }
@@ -554,7 +556,7 @@ fn initialize_flowchart_root_frame<'a>(
                     origin_x,
                     frame.content_origin_y,
                     &*session.edge_cache,
-                );
+                )?;
             }
         } else {
             // Mermaid emits HTML edge-label wrappers in graph edge order. Empty labels stay in
@@ -567,7 +569,7 @@ fn initialize_flowchart_root_frame<'a>(
                     origin_x,
                     frame.content_origin_y,
                     &*session.edge_cache,
-                );
+                )?;
             }
         }
         out.push_str("</g>");
@@ -616,4 +618,5 @@ fn initialize_flowchart_root_frame<'a>(
 
     frame.dom_order = dom_order;
     frame.initialized = true;
+    Ok(())
 }

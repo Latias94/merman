@@ -73,7 +73,11 @@ pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
     )
 }
 
-fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str, value: &str) {
+pub(crate) fn flowchart_apply_text_style_decl(
+    style: &mut std::borrow::Cow<'_, TextStyle>,
+    key: &str,
+    value: &str,
+) {
     match key.trim() {
         "font-size" => {
             let inherited_px = style.as_ref().font_size;
@@ -114,6 +118,15 @@ impl AsRef<TextStyle> for FlowchartTextStyleResolution<'_> {
     }
 }
 
+impl<'a> FlowchartTextStyleResolution<'a> {
+    pub(crate) fn borrowed(style: &'a TextStyle) -> Self {
+        Self {
+            style: Cow::Borrowed(style),
+            prepared_text_overrides: PreparedTextCssTypographyOverrides::default(),
+        }
+    }
+}
+
 impl std::ops::Deref for FlowchartTextStyleResolution<'_> {
     type Target = TextStyle;
 
@@ -131,7 +144,7 @@ fn apply_text_style_decl_with_provenance(
     if !flowchart_is_source_spelled_label_style_key(key) {
         return;
     }
-    apply_text_style_decl(style, key, value);
+    flowchart_apply_text_style_decl(style, key, value);
     prepared_text_overrides.observe_declaration(key, value);
 }
 
@@ -268,6 +281,7 @@ pub(crate) fn flowchart_effective_text_style_for_classes_with_provenance<'a>(
 /// Mermaid first compiles edge classes and then applies the concatenated `linkStyle default`
 /// and per-edge declarations. The resulting style is applied after SVG line wrapping, but it owns
 /// the final text bbox used by the layout graph.
+#[cfg(test)]
 pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
@@ -285,6 +299,7 @@ pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     .style
 }
 
+#[cfg(test)]
 pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
@@ -324,6 +339,7 @@ pub(crate) fn flowchart_effective_edge_label_text_style_with_provenance<'a>(
 /// Mermaid's Swimlane adapter moves an edge label onto a fresh `labelRect` node and copies only
 /// the first entry from the already-concatenated default/edge `labelStyle` array. Classes and later
 /// style entries remain on the original edge and must not affect the label node's measurement.
+#[cfg(test)]
 pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
     base: &'a TextStyle,
     default_edge_styles: &[String],
@@ -333,6 +349,7 @@ pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
         .style
 }
 
+#[cfg(test)]
 pub(crate) fn flowchart_swimlane_label_rect_text_style_with_provenance<'a>(
     base: &'a TextStyle,
     default_edge_styles: &[String],

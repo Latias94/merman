@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
@@ -898,10 +898,10 @@ impl FlowchartMechanismObservation {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct FlowchartSourceResidualKey {
-    raw: String,
-    property: Option<String>,
-    owner_id: String,
-    class_id: Option<String>,
+    raw: Arc<str>,
+    property: Option<Arc<str>>,
+    owner_id: Arc<str>,
+    class_id: Option<Arc<str>>,
     origin: &'static str,
     channel: &'static str,
     assignment_ordinal: Option<usize>,
@@ -913,10 +913,10 @@ impl From<&SourceStyleResidual> for FlowchartSourceResidualKey {
     fn from(residual: &SourceStyleResidual) -> Self {
         let provenance = residual.provenance();
         Self {
-            raw: residual.raw().to_string(),
-            property: residual.property().map(str::to_string),
-            owner_id: provenance.owner_id().to_string(),
-            class_id: provenance.class_id().map(str::to_string),
+            raw: residual.raw_arc(),
+            property: residual.property_arc(),
+            owner_id: provenance.owner_id_arc(),
+            class_id: provenance.class_id_arc(),
             origin: provenance.origin().id(),
             channel: provenance.channel().id(),
             assignment_ordinal: provenance.assignment_ordinal(),

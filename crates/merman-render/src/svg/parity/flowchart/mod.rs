@@ -6,6 +6,7 @@ mod defs;
 mod document;
 mod edge;
 mod edge_geom;
+mod edge_style_plan;
 mod hierarchy;
 mod label;
 mod render;
@@ -23,6 +24,7 @@ use edge::*;
 pub(in crate::svg::parity::flowchart) use edge_geom::{
     FlowchartEdgePathGeomRequest, flowchart_compute_edge_path_geom,
 };
+pub(crate) use edge_style_plan::FlowchartEdgeStylePlan;
 use hierarchy::*;
 pub(super) use label::*;
 pub(super) use style::*;

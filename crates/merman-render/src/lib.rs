@@ -784,6 +784,12 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        options.work_meter_ref(),
+    )?;
     layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
         diagram_type,
         model,
@@ -791,6 +797,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         effective_config,
         options,
         None,
+        &edge_style_plan,
     )
 }
 
@@ -801,6 +808,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
     if uses_elk_layout(effective_config) {
         return layout_flowchart_elk_typed_by_feature(
@@ -810,6 +818,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by
             effective_config,
             options,
             svg_label_sidecar,
+            edge_style_plan,
         );
     }
 
@@ -820,6 +829,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by
         options.text_measurer(),
         options.math_renderer(),
         svg_label_sidecar,
+        edge_style_plan,
         options.work_meter(),
     )
 }
@@ -832,6 +842,7 @@ fn layout_flowchart_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
     flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
@@ -842,6 +853,7 @@ fn layout_flowchart_elk_typed_by_feature(
             options.math_renderer(),
             options.elk_operation_seed(),
             svg_label_sidecar,
+            edge_style_plan,
             options.work_meter(),
         ),
     )
@@ -855,6 +867,7 @@ fn layout_flowchart_elk_typed_by_feature(
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
     _svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
+    _edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
     Err(Error::MissingCapability {
         capability: RenderCapability::LayoutElk,

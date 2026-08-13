@@ -11,16 +11,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     origin_y: f64,
     scratch: &mut FlowchartEdgeDataPointsScratch,
     edge_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> crate::Result<()> {
     let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
     let data_look = flowchart_config_look(ctx.config);
     let hand_drawn = data_look == "handDrawn";
-    let emitted_styles = flowchart_compile_styles(
-        ctx.class_defs,
-        &edge.classes,
-        &ctx.default_edge_style,
-        &edge.style,
-    );
+    let emitted_styles = ctx.edge_style_plan.edge(edge.id.as_str())?;
     let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
         emitted_styles.emitted_edge_source_stroke_status(hand_drawn),
         ctx.edge_stroke_config_override,
@@ -66,7 +61,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                     &source_residuals,
                 );
             }
-            return;
+            return Ok(());
         };
         g
     };
@@ -83,15 +78,16 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     };
     let d = rough_d.as_deref().unwrap_or(d);
 
-    let marker_color = flowchart_resolve_edge_marker_color(
-        ctx.class_defs,
-        &edge.classes,
-        &ctx.default_edge_style,
-        &edge.style,
+    // Admit the repeated source-style payload before the output buffer is mutated. Class
+    // declarations may be shared by many edges, so relying only on the final whole-document check
+    // would allow an attacker-controlled E x D expansion to allocate before rejection.
+    ctx.edge_style_plan.admit_edge_source_style_svg_bytes(
         edge.id.as_str(),
-        hand_drawn,
-    );
-    let marker_color_value = marker_color.as_ref().map(FlowchartEdgeMarkerColor::value);
+        out.len(),
+        ctx.work_meter,
+    )?;
+
+    let marker_color_value = emitted_styles.edge_marker_color(hand_drawn);
 
     fn write_style_joined(out: &mut String, a: &[String], b: &[String]) {
         let mut first = true;
@@ -132,7 +128,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         );
         out.push_str(&scratch.style_escaped);
     } else {
-        for (index, (property, value)) in emitted_styles
+        for (index, declaration) in emitted_styles
             .emitted_edge_class_declarations()
             .iter()
             .enumerate()
@@ -143,8 +139,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             let _ = write!(
                 out,
                 "{}:{}",
-                escape_xml_display(property),
-                escape_xml_display(value)
+                escape_xml_display(declaration.property_css()),
+                escape_xml_display(declaration.source_value())
             );
         }
         if !emitted_styles.emitted_edge_class_declarations().is_empty() {
@@ -217,14 +213,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             &source_residuals,
         );
     }
-    if let Some(residual) = marker_color
-        .as_ref()
-        .and_then(FlowchartEdgeMarkerColor::residual)
-    {
-        ctx.theme_evidence
-            .record_source_residuals(std::slice::from_ref(residual));
-    }
-
     if let Some(emitted_d_for_label) = rough_d
         && let Some(cache_entry) = edge_cache.get_mut(edge.id.as_str())
         && (cache_entry.origin_x - origin_x).abs() <= 1e-9
@@ -232,6 +220,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     {
         cache_entry.geom.emitted_d_for_label = Some(emitted_d_for_label);
     }
+    Ok(())
 }
 
 fn flowchart_edge_is_animated(

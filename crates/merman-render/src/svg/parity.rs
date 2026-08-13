@@ -31,6 +31,7 @@ mod er;
 mod error;
 mod eventmodeling;
 mod flowchart;
+pub(crate) use flowchart::FlowchartEdgeStylePlan;
 #[cfg(test)]
 pub(crate) use flowchart::write_flowchart_svg_label_plan_for_test;
 mod gantt;

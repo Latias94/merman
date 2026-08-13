@@ -499,6 +499,23 @@ pub(super) fn escape_xml_display(text: &str) -> EscapeXmlDisplay<'_> {
     EscapeXmlDisplay(text)
 }
 
+pub(super) fn escaped_xml_len(text: &str) -> usize {
+    if xml_text_is_plain_ascii(text) {
+        return text.len();
+    }
+
+    let decoded = decode_mermaid_entities_for_render_text(text);
+    let text = decoded.as_ref();
+    text.char_indices().fold(0usize, |len, (index, ch)| {
+        let replacement = if ch == '>' && text[..index].ends_with("]]") {
+            Some("&gt;")
+        } else {
+            xml_text_replacement(ch)
+        };
+        len.saturating_add(replacement.map_or(ch.len_utf8(), str::len))
+    })
+}
+
 pub(super) struct EscapeXmlDisplay<'a>(&'a str);
 
 impl std::fmt::Display for EscapeXmlDisplay<'_> {

@@ -6,7 +6,7 @@ use crate::flowchart::{
     FlowchartSvgWidthMode, NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes_with_provenance,
     flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
-    flowchart_node_svg_width_mode, flowchart_swimlane_label_rect_text_style_with_provenance,
+    flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_typography_overrides, node_layout_dimensions,
 };
 use crate::math::MathRenderer;
@@ -43,6 +43,7 @@ struct MeasureContext<'a> {
     settings: &'a crate::flowchart::FlowchartLayoutSettings,
     title_html_labels: bool,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
 }
 
 fn measure_content_node(
@@ -139,7 +140,7 @@ fn measure_edge_label(
     parent_id: Option<String>,
     owner: FlowchartSvgLabelOwner,
     ctx: &MeasureContext<'_>,
-) -> WorkingNode {
+) -> crate::Result<WorkingNode> {
     // Mermaid turns Swimlane edge labels into fresh `labelRect` nodes. The conversion copies the
     // label and label style, but deliberately does not copy `edge.labelType`; `labelHelper`
     // therefore treats the new node as ordinary non-Markdown text. Its initial width is zero, so
@@ -151,16 +152,9 @@ fn measure_edge_label(
     } else {
         &ctx.settings.text_style
     };
-    let default_edge_styles = ctx
-        .model
-        .edge_defaults
-        .as_ref()
-        .map_or(&[][..], |defaults| defaults.style.as_slice());
-    let style = flowchart_swimlane_label_rect_text_style_with_provenance(
-        base_style,
-        default_edge_styles,
-        &edge.style,
-    );
+    let style = ctx
+        .edge_style_plan
+        .swimlane_edge_label_text_style(edge.id.as_str(), base_style)?;
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";
@@ -182,7 +176,7 @@ fn measure_edge_label(
         FlowchartSvgWidthMode::Bbox,
     );
 
-    WorkingNode {
+    Ok(WorkingNode {
         id: label_node_id,
         label: semantic_label.to_string(),
         label_type: label_type.to_string(),
@@ -204,7 +198,7 @@ fn measure_edge_label(
         order: 0,
         content_top: None,
         title_rect: None,
-    }
+    })
 }
 
 fn working_edge(edge: &FlowEdge) -> WorkingEdge {
@@ -273,7 +267,8 @@ pub(super) fn prepare(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
-) -> WorkingLayout {
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+) -> crate::Result<WorkingLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
     let direction = normalize_direction(model.direction.as_deref());
@@ -289,6 +284,7 @@ pub(super) fn prepare(
         settings: &settings,
         title_html_labels: swimlane_title_html_labels,
         svg_label_sidecar,
+        edge_style_plan,
     };
 
     // FlowDB builds parentDB by walking subgraphs from last to first.
@@ -464,7 +460,7 @@ pub(super) fn prepare(
                 label_parent,
                 FlowchartSvgLabelOwner::SwimlaneEdgeLabel(edge_index),
                 &measure_ctx,
-            );
+            )?;
             nodes.insert(label_node_id.clone(), label_node);
             original.label_node_id = Some(label_node_id.clone());
             graph_edges.push(WorkingEdge {
@@ -511,5 +507,5 @@ pub(super) fn prepare(
         top_lane_order,
     };
     layout.refresh_top_lane_ids();
-    layout
+    Ok(layout)
 }

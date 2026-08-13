@@ -23,7 +23,6 @@ use super::{
     FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides, FlowchartRenderModelRef,
     FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
     flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_edge_label_text_style_with_provenance,
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
@@ -35,6 +34,7 @@ pub(crate) struct FlowchartElkLayoutExecution<'a> {
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
 }
 
@@ -44,6 +44,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         operation_seed: elk::ElkOperationSeed,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
+        edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
         work_meter: Arc<OperationWorkMeter>,
     ) -> Self {
         Self {
@@ -51,6 +52,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
             math_renderer,
             operation_seed,
             svg_label_sidecar,
+            edge_style_plan,
             work_meter,
         }
     }
@@ -96,11 +98,24 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
     operation_seed: elk::ElkOperationSeed,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        work_meter.as_ref(),
+    )?;
     layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
         &FlowchartRenderLabelSources::default(),
         effective_config,
-        FlowchartElkLayoutExecution::new(measurer, math_renderer, operation_seed, None, work_meter),
+        FlowchartElkLayoutExecution::new(
+            measurer,
+            math_renderer,
+            operation_seed,
+            None,
+            &edge_style_plan,
+            work_meter,
+        ),
     )
 }
 
@@ -118,6 +133,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         execution.measurer,
         execution.math_renderer,
         execution.svg_label_sidecar,
+        execution.edge_style_plan,
         Some(&mut work_control),
     )?;
     let layout = match elk::layout_with_operation_seed_and_work_control(
@@ -536,6 +552,14 @@ fn build_flowchart_elk_graph_with_render_labels(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        &OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ),
+    )?;
     build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         render_label_sources,
@@ -543,6 +567,7 @@ fn build_flowchart_elk_graph_with_render_labels(
         measurer,
         math_renderer,
         None,
+        &edge_style_plan,
         None,
     )
 }
@@ -555,6 +580,14 @@ fn build_flowchart_elk_graph_with_work_control(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        &OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ),
+    )?;
     build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         &FlowchartRenderLabelSources::default(),
@@ -562,6 +595,7 @@ fn build_flowchart_elk_graph_with_work_control(
         measurer,
         math_renderer,
         None,
+        &edge_style_plan,
         work_control,
     )
 }
@@ -636,6 +670,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
@@ -785,8 +820,9 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
                 edge_wrap_mode,
                 edge_html_labels,
                 svg_label_sidecar,
+                edge_style_plan,
             },
-        );
+        )?;
         edges.push(elk::Edge {
             id: edge.id.clone(),
             source: edge.from.clone(),
@@ -851,6 +887,7 @@ struct EdgeMeasureContext<'a> {
     edge_wrap_mode: WrapMode,
     edge_html_labels: bool,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
 }
 
 fn dir_to_elk_direction(dir: &str) -> elk::Direction {
@@ -1683,25 +1720,16 @@ fn edge_label(
     edge: &FlowEdge,
     owner: FlowchartSvgLabelOwner,
     ctx: EdgeMeasureContext<'_>,
-) -> Option<elk::Label> {
+) -> Result<Option<elk::Label>> {
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
-        return None;
+        return Ok(None);
     }
 
-    let default_edge_styles = ctx
-        .model
-        .edge_defaults
-        .as_ref()
-        .map_or(&[][..], |defaults| defaults.style.as_slice());
-    let edge_text_style = flowchart_effective_edge_label_text_style_with_provenance(
-        ctx.edge_label_base_style,
-        &ctx.model.class_defs,
-        &edge.classes,
-        default_edge_styles,
-        &edge.style,
-    );
+    let edge_text_style = ctx
+        .edge_style_plan
+        .edge_label_text_style(edge.id.as_str(), ctx.edge_label_base_style)?;
     let metrics = if label_type == "markdown" && ctx.edge_wrap_mode != WrapMode::HtmlLike {
         crate::text::measure_wrapped_markdown_with_inline_styles(
             ctx.measurer,
@@ -1761,7 +1789,7 @@ fn edge_label(
         )
     };
 
-    Some(elk::Label { width, height })
+    Ok(Some(elk::Label { width, height }))
 }
 
 fn flow_node_to_elk_node(
@@ -1894,6 +1922,13 @@ mod tests {
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
         let builder = FlowchartSvgLabelSidecarBuilder::default();
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &config,
+            false,
+            session.work_meter().as_ref(),
+        )
+        .expect("prepare edge styles");
 
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
@@ -1902,6 +1937,7 @@ mod tests {
             &measurer,
             None,
             Some(&builder),
+            &edge_style_plan,
             None,
         )
         .expect("build ELK graph");
@@ -1977,6 +2013,13 @@ mod tests {
             .expect("deterministic session");
         let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
         let builder = FlowchartSvgLabelSidecarBuilder::new(Some(&prepared), Some(&resolved));
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &config,
+            false,
+            session.work_meter().as_ref(),
+        )
+        .expect("prepare edge styles");
 
         build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
@@ -1985,6 +2028,7 @@ mod tests {
             &measurer,
             None,
             Some(&builder),
+            &edge_style_plan,
             None,
         )
         .expect("build ELK graph");

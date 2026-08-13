@@ -79,6 +79,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
@@ -96,7 +97,8 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         measurer,
         math_renderer,
         svg_label_sidecar,
-    );
+        edge_style_plan,
+    )?;
     let reversed = sugiyama::run(&mut working, config);
     for edge in &mut working.original_edges {
         edge.reversed_for_layout = reversed.contains(&edge.id);

@@ -24,6 +24,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             diagram_title: metadata.title.as_deref(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
             theme_evidence: artifact.theme_evidence(),
+            edge_style_plan: artifact.edge_style_plan(),
         },
         options,
     )
@@ -39,6 +40,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) diagram_title: Option<&'a str>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
     pub(super) theme_evidence: &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
+    pub(super) edge_style_plan: &'a FlowchartEdgeStylePlan,
 }
 
 pub(super) fn render_flowchart_svg_model(
@@ -55,6 +57,7 @@ pub(super) fn render_flowchart_svg_model(
         diagram_title,
         svg_label_sidecar,
         theme_evidence,
+        edge_style_plan,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -242,7 +245,6 @@ pub(super) fn render_flowchart_svg_model(
         options.resolved_theme(),
         options.work_meter(),
     )?;
-
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let ctx = FlowchartRenderCtx {
         model,
@@ -265,6 +267,7 @@ pub(super) fn render_flowchart_svg_model(
         swimlane_title_html_labels,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
+        edge_style_plan,
         node_border_color,
         node_fill_color,
         node_stroke_width,
@@ -423,7 +426,14 @@ pub(super) fn render_flowchart_svg_model(
         + layout.nodes.len().saturating_mul(256)
         + render_edges.len().saturating_mul(256)
         + layout.clusters.len().saturating_mul(128);
-    let mut out = String::with_capacity(estimated_svg_bytes);
+    let initial_svg_capacity = options
+        .work_meter()
+        .policy()
+        .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+        .map_or(estimated_svg_bytes, |maximum| {
+            estimated_svg_bytes.min(maximum)
+        });
+    let mut out = String::with_capacity(initial_svg_capacity);
 
     let root_document = document.push_root_open(&mut out)?;
     document.push_accessibility_metadata(&mut out);

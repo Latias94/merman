@@ -39,8 +39,8 @@ impl SourceStyleChannel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceStyleProvenance {
-    owner_id: String,
-    class_id: Option<String>,
+    owner_id: Arc<str>,
+    class_id: Option<Arc<str>>,
     origin: SourceStyleOrigin,
     channel: SourceStyleChannel,
     assignment_ordinal: Option<usize>,
@@ -49,8 +49,8 @@ pub(crate) struct SourceStyleProvenance {
 
 impl SourceStyleProvenance {
     pub(crate) fn assigned_class(
-        owner_id: impl Into<String>,
-        class_id: impl Into<String>,
+        owner_id: impl Into<Arc<str>>,
+        class_id: impl Into<Arc<str>>,
         channel: SourceStyleChannel,
         assignment_ordinal: usize,
         declaration_ordinal: usize,
@@ -66,7 +66,7 @@ impl SourceStyleProvenance {
     }
 
     pub(crate) fn inline(
-        owner_id: impl Into<String>,
+        owner_id: impl Into<Arc<str>>,
         channel: SourceStyleChannel,
         declaration_ordinal: usize,
     ) -> Self {
@@ -81,7 +81,7 @@ impl SourceStyleProvenance {
     }
 
     pub(crate) fn generated_class_css(
-        class_id: impl Into<String>,
+        class_id: impl Into<Arc<str>>,
         channel: SourceStyleChannel,
         declaration_ordinal: usize,
     ) -> Self {
@@ -97,7 +97,7 @@ impl SourceStyleProvenance {
     }
 
     pub(crate) fn label_style(
-        owner_id: impl Into<String>,
+        owner_id: impl Into<Arc<str>>,
         channel: SourceStyleChannel,
         declaration_ordinal: usize,
     ) -> Self {
@@ -115,8 +115,16 @@ impl SourceStyleProvenance {
         &self.owner_id
     }
 
+    pub(crate) fn owner_id_arc(&self) -> Arc<str> {
+        Arc::clone(&self.owner_id)
+    }
+
     pub(crate) fn class_id(&self) -> Option<&str> {
         self.class_id.as_deref()
+    }
+
+    pub(crate) fn class_id_arc(&self) -> Option<Arc<str>> {
+        self.class_id.as_ref().map(Arc::clone)
     }
 
     pub(crate) const fn origin(&self) -> SourceStyleOrigin {
@@ -138,11 +146,12 @@ impl SourceStyleProvenance {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PreparedSourceStyleDeclaration {
-    raw: String,
-    property: String,
-    property_css: String,
-    source_value: String,
-    value: String,
+    raw: Arc<str>,
+    property: Arc<str>,
+    property_css: Arc<str>,
+    source_value: Arc<str>,
+    value: Arc<str>,
+    important: bool,
     analysis: CssValueAnalysis,
 }
 
@@ -154,11 +163,12 @@ impl PreparedSourceStyleDeclaration {
 
     fn from_parsed(raw: &str, parsed: ParsedStyleDeclaration<'_>) -> Self {
         Self {
-            raw: raw.trim().to_string(),
-            property: parsed.property().to_string(),
-            property_css: parsed.property_css().to_string(),
-            source_value: parsed.source_value().to_string(),
-            value: parsed.value().to_string(),
+            raw: Arc::from(raw.trim()),
+            property: Arc::from(parsed.property()),
+            property_css: Arc::from(parsed.property_css()),
+            source_value: Arc::from(parsed.source_value()),
+            value: Arc::from(parsed.value()),
+            important: parsed.important(),
             analysis: parsed.analysis().clone(),
         }
     }
@@ -195,6 +205,10 @@ impl PreparedSourceStyleDeclaration {
         &self.value
     }
 
+    pub(crate) const fn important(&self) -> bool {
+        self.important
+    }
+
     pub(crate) const fn is_single_component_value(&self) -> bool {
         self.analysis.is_single_component()
     }
@@ -209,7 +223,7 @@ impl PreparedSourceStyleDeclaration {
 
     pub(crate) fn property_matches(&self, property: &str) -> bool {
         if self.property.starts_with("--") || property.starts_with("--") {
-            self.property == property
+            self.property.as_ref() == property
         } else {
             self.property.eq_ignore_ascii_case(property)
         }
@@ -247,6 +261,10 @@ impl SourceStyleDeclaration {
 
     pub(crate) fn value(&self) -> &str {
         self.prepared.value()
+    }
+
+    pub(crate) fn important(&self) -> bool {
+        self.prepared.important()
     }
 
     /// Validate a declaration before allowing it to participate in a typed winner.
@@ -304,16 +322,26 @@ impl SourceStyleResidualReason {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceStyleResidual {
-    raw: String,
-    property: Option<String>,
+    raw: Arc<str>,
+    property: Option<Arc<str>>,
     provenance: SourceStyleProvenance,
     reason: SourceStyleResidualReason,
 }
 
 impl SourceStyleResidual {
     pub(crate) fn invalid(raw: &str, provenance: SourceStyleProvenance) -> Self {
+        Self::invalid_prepared(Arc::from(raw.trim()), provenance)
+    }
+
+    pub(crate) fn invalid_prepared(raw: Arc<str>, provenance: SourceStyleProvenance) -> Self {
+        let trimmed = raw.trim();
+        let raw = if trimmed.len() == raw.len() {
+            raw
+        } else {
+            Arc::from(trimmed)
+        };
         Self {
-            raw: raw.trim().to_string(),
+            raw,
             property: None,
             provenance,
             reason: SourceStyleResidualReason::InvalidDeclaration,
@@ -325,8 +353,8 @@ impl SourceStyleResidual {
         reason: SourceStyleResidualReason,
     ) -> Self {
         Self {
-            raw: declaration.raw().to_string(),
-            property: Some(declaration.property().to_string()),
+            raw: Arc::clone(&declaration.prepared.raw),
+            property: Some(Arc::clone(&declaration.prepared.property)),
             provenance: declaration.provenance.clone(),
             reason,
         }
@@ -336,8 +364,16 @@ impl SourceStyleResidual {
         &self.raw
     }
 
+    pub(crate) fn raw_arc(&self) -> Arc<str> {
+        Arc::clone(&self.raw)
+    }
+
     pub(crate) fn property(&self) -> Option<&str> {
         self.property.as_deref()
+    }
+
+    pub(crate) fn property_arc(&self) -> Option<Arc<str>> {
+        self.property.as_ref().map(Arc::clone)
     }
 
     pub(crate) const fn provenance(&self) -> &SourceStyleProvenance {
@@ -369,6 +405,7 @@ mod tests {
 
         assert_eq!(declaration.property(), "font-size");
         assert_eq!(declaration.value(), "24px");
+        assert!(declaration.important());
         assert!(declaration.is_single_component_value());
         assert_eq!(
             declaration.resolve_font_size_px(CssFontSizeContext::uniform(16.0)),
@@ -458,5 +495,71 @@ mod tests {
             .admit(|prepared| prepared.resolve_font_size_px(CssFontSizeContext::uniform(16.0)))
             .expect_err("invalid scalar must produce an admission residual");
         assert_eq!(residual.reason(), SourceStyleResidualReason::InvalidValue);
+    }
+
+    #[test]
+    fn cloned_source_style_payloads_share_storage() {
+        let prepared = Arc::new(
+            PreparedSourceStyleDeclaration::parse("fill: red ! IMPORTANT")
+                .expect("prepared declaration"),
+        );
+        let prepared_clone = prepared.as_ref().clone();
+        assert!(prepared.important());
+        assert!(Arc::ptr_eq(&prepared.raw, &prepared_clone.raw));
+        assert!(Arc::ptr_eq(&prepared.property, &prepared_clone.property));
+        assert!(Arc::ptr_eq(
+            &prepared.property_css,
+            &prepared_clone.property_css
+        ));
+        assert!(Arc::ptr_eq(
+            &prepared.source_value,
+            &prepared_clone.source_value
+        ));
+        assert!(Arc::ptr_eq(&prepared.value, &prepared_clone.value));
+
+        let provenance = SourceStyleProvenance::assigned_class(
+            "Ready",
+            "active",
+            SourceStyleChannel::Shape,
+            0,
+            1,
+        );
+        let provenance_clone = provenance.clone();
+        assert!(Arc::ptr_eq(
+            &provenance.owner_id,
+            &provenance_clone.owner_id
+        ));
+        assert!(Arc::ptr_eq(
+            provenance.class_id.as_ref().expect("class id"),
+            provenance_clone.class_id.as_ref().expect("class id")
+        ));
+
+        let declaration = prepared.bind(provenance);
+        let residual = SourceStyleResidual::from_declaration(
+            &declaration,
+            SourceStyleResidualReason::UnsupportedSurface,
+        );
+        assert_eq!(residual.raw(), "fill: red ! IMPORTANT");
+        assert_eq!(residual.property(), Some("fill"));
+        assert!(Arc::ptr_eq(&declaration.prepared.raw, &residual.raw));
+        assert!(Arc::ptr_eq(
+            &declaration.prepared.property,
+            residual.property.as_ref().expect("property")
+        ));
+
+        let residual_clone = residual.clone();
+        assert!(Arc::ptr_eq(&residual.raw, &residual_clone.raw));
+        assert!(Arc::ptr_eq(
+            residual.property.as_ref().expect("property"),
+            residual_clone.property.as_ref().expect("property")
+        ));
+
+        let invalid_raw: Arc<str> = Arc::from("filter:url(#unsafe)");
+        let invalid = SourceStyleResidual::invalid_prepared(
+            Arc::clone(&invalid_raw),
+            SourceStyleProvenance::inline("Ready", SourceStyleChannel::Shape, 2),
+        );
+        assert!(Arc::ptr_eq(&invalid_raw, &invalid.raw));
+        assert_eq!(invalid.raw(), "filter:url(#unsafe)");
     }
 }

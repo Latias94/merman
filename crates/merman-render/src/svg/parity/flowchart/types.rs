@@ -4,6 +4,7 @@
 //! are used across flowchart SVG emission (rendering + viewBox computation).
 
 use super::super::*;
+use super::FlowchartEdgeStylePlan;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
@@ -31,6 +32,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) swimlane_title_html_labels: bool,
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
+    pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,

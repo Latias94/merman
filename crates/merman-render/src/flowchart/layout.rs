@@ -27,7 +27,6 @@ use super::{
     FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
     flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_edge_label_text_style_with_provenance,
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
@@ -1415,6 +1414,12 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+        model,
+        effective_config,
+        false,
+        work_meter.as_ref(),
+    )?;
     layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         &FlowchartRenderLabelSources::default(),
@@ -1422,6 +1427,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
         measurer,
         math_renderer,
         None,
+        &edge_style_plan,
         work_meter,
     )
 }
@@ -1433,6 +1439,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
     let mut work_control = DagreOperationWorkControl::new(work_meter);
@@ -1443,6 +1450,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
         measurer,
         math_renderer,
         svg_label_sidecar,
+        edge_style_plan,
         &mut work_control,
     )
 }
@@ -1454,6 +1462,7 @@ fn layout_flowchart_with_model(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     work_control: &mut DagreOperationWorkControl,
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
@@ -1975,10 +1984,6 @@ fn layout_flowchart_with_model(
     let mut edge_key_by_id: HashMap<String, String> = HashMap::new();
     let mut edge_id_by_key: HashMap<String, String> = HashMap::new();
 
-    let default_edge_styles = model
-        .edge_defaults
-        .as_ref()
-        .map_or(&[][..], |defaults| defaults.style.as_slice());
     work_control.charge_adapter(render_edges.len())?;
     for ((e, self_loop_meta), edge_owner_index) in render_edges
         .iter()
@@ -1997,13 +2002,11 @@ fn layout_flowchart_with_model(
         if edge_label_is_non_empty(model, e) {
             let label_text = model.edge_label_for_render(e).unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
-            let edge_text_style = flowchart_effective_edge_label_text_style_with_provenance(
-                edge_label_base_style,
-                &model.class_defs,
-                &e.classes,
-                default_edge_styles,
-                &e.style,
-            );
+            let style_edge_id = self_loop_meta
+                .as_ref()
+                .map_or(e.id.as_str(), |meta| meta.logical_edge_id.as_str());
+            let edge_text_style =
+                edge_style_plan.edge_label_text_style(style_edge_id, edge_label_base_style)?;
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
                 crate::text::measure_wrapped_markdown_with_inline_styles(
                     measurer,
@@ -3997,6 +4000,13 @@ mod tests {
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            model,
+            &parsed.metadata().effective_config,
+            false,
+            &meter,
+        )
+        .expect("prepare edge styles");
         let mut work_control = DagreOperationWorkControl::new(meter);
 
         layout_flowchart_with_model(
@@ -4006,6 +4016,7 @@ mod tests {
             &measurer,
             None,
             Some(&builder),
+            &edge_style_plan,
             &mut work_control,
         )
         .expect("layout ok");

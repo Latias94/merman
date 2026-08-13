@@ -10,6 +10,7 @@ pub(crate) struct ParsedStyleDeclaration<'a> {
     property_source: &'a str,
     source_value: &'a str,
     value: &'a str,
+    important: bool,
     analysis: CssValueAnalysis,
 }
 
@@ -35,6 +36,10 @@ impl<'a> ParsedStyleDeclaration<'a> {
 
     pub(crate) const fn value(&self) -> &'a str {
         self.value
+    }
+
+    pub(crate) const fn important(&self) -> bool {
+        self.important
     }
 
     pub(crate) const fn analysis(&self) -> &CssValueAnalysis {
@@ -71,7 +76,7 @@ pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaratio
     let property_end = parser.position();
     parser.expect_colon().ok()?;
     let value_start = parser.position();
-    let (value_end, analysis) =
+    let (value_end, analysis, important) =
         parse_css_value_from_parser(&mut parser, value_start, CssValuePolicy::MermaidSourceStyle)
             .ok()?;
     let source_value = parser.slice(value_start..parser.position()).trim();
@@ -92,6 +97,7 @@ pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaratio
         property_source,
         source_value,
         value,
+        important,
         analysis,
     })
 }
@@ -335,7 +341,7 @@ fn parse_css_value(raw: &str, policy: CssValuePolicy) -> Option<ParsedCssValue<'
     let mut input = ParserInput::new(raw);
     let mut parser = Parser::new(&mut input);
     let value_start = parser.position();
-    let (value_end, analysis) =
+    let (value_end, analysis, _) =
         parse_css_value_from_parser(&mut parser, value_start, policy).ok()?;
     let value = parser.slice(value_start..value_end).trim();
     (!value.is_empty()).then_some(ParsedCssValue { value, analysis })
@@ -345,7 +351,7 @@ fn parse_css_value_from_parser<'i, 't>(
     parser: &mut Parser<'i, 't>,
     value_start: SourcePosition,
     policy: CssValuePolicy,
-) -> Result<(SourcePosition, CssValueAnalysis), ParseError<'i, ()>> {
+) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<'i, ()>> {
     let mut component_count = 0;
     let mut scalar = None;
     loop {
@@ -362,6 +368,7 @@ fn parse_css_value_from_parser<'i, 't>(
                         scalar,
                         component_count,
                     },
+                    false,
                 );
             }
             Err(error) => return Err(error.into()),
@@ -384,6 +391,7 @@ fn parse_css_value_from_parser<'i, 't>(
                             scalar,
                             component_count,
                         },
+                        true,
                     );
                 }
                 return Err(parser.new_custom_error(()));
@@ -410,12 +418,13 @@ fn finish_css_value<'i, 't>(
     value_start: SourcePosition,
     value_end: SourcePosition,
     analysis: CssValueAnalysis,
-) -> Result<(SourcePosition, CssValueAnalysis), ParseError<'i, ()>> {
+    important: bool,
+) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<'i, ()>> {
     let source = parser.slice(value_start..parser.position());
     if !css_value_source_is_safe(source) {
         return Err(parser.new_custom_error(()));
     }
-    Ok((value_end, analysis))
+    Ok((value_end, analysis, important))
 }
 
 fn parse_css_scalar(token: &Token<'_>, token_source: &str) -> Option<CssScalar> {
@@ -663,6 +672,7 @@ mod tests {
         assert_eq!(parsed.property(), "font-size");
         assert_eq!(parsed.value(), "24px");
         assert_eq!(parsed.source_value(), "24px !IMPORTANT");
+        assert!(parsed.important());
         assert!(parsed.is_single_component_value());
         let custom = parse_style_declaration("--BrandColor: #fff").expect("custom property");
         assert_eq!(custom.property(), "--BrandColor");
@@ -683,6 +693,24 @@ mod tests {
             None
         );
         assert_eq!(parse_style_declaration("fill: red !foo"), None);
+    }
+
+    #[test]
+    fn parsed_declarations_expose_structured_important_priority() {
+        for raw in [
+            "fill:red!important",
+            "fill: red ! IMPORTANT",
+            "fill: red !ImPoRtAnT;",
+        ] {
+            let parsed = parse_style_declaration(raw).expect("important declaration");
+            assert!(parsed.important(), "raw={raw}");
+            assert_eq!(parsed.value(), "red", "raw={raw}");
+        }
+
+        for raw in ["fill: red", "content: \"important!\""] {
+            let parsed = parse_style_declaration(raw).expect("ordinary declaration");
+            assert!(!parsed.important(), "raw={raw}");
+        }
     }
 
     #[test]

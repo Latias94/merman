@@ -92,22 +92,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     origin_x: f64,
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> crate::Result<()> {
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let compiled_label_styles = flowchart_compile_styles(
-        ctx.class_defs,
-        &edge.classes,
-        &ctx.default_edge_style,
-        &edge.style,
-    );
-    let edge_metrics_style = crate::flowchart::flowchart_effective_edge_label_text_style(
-        &ctx.text_style,
-        ctx.class_defs,
-        &edge.classes,
-        &ctx.default_edge_style,
-        &edge.style,
-    );
+    let compiled_label_styles = ctx.edge_style_plan.edge(edge.id.as_str())?;
+    let edge_metrics_style = compiled_label_styles.effective_edge_label_text_style(&ctx.text_style);
     let svg_edge_label_text_style: Cow<'_, str> =
         if compiled_label_styles.label_style.contains("color:") {
             Cow::Owned(compiled_label_styles.label_style.replace("color:", "fill:"))
@@ -226,7 +215,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         }
                         out.push_str("</g></g></g>");
                         record_label_source(label_type != "markdown", None);
-                        return;
+                        return Ok(());
                     }
                 } else {
                     let w = lbl.width.max(0.0);
@@ -271,7 +260,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     }
                     out.push_str("</g></g></g>");
                     record_label_source(label_type != "markdown", None);
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -320,7 +309,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 }
                 out.push_str("</g></g></g>");
                 record_label_source(label_type != "markdown", None);
-                return;
+                return Ok(());
             }
         }
 
@@ -332,7 +321,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
         record_label_source(false, None);
-        return;
+        return Ok(());
     }
 
     let label_html = if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
@@ -382,7 +371,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 label_html
             );
             record_label_source(true, Some(&label_html));
-            return;
+            return Ok(());
         }
 
         if !crate::flowchart::flowchart_label_text_is_empty_for_mode(
@@ -454,7 +443,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 label_html
             );
             record_label_source(true, Some(&label_html));
-            return;
+            return Ok(());
         }
     }
 
@@ -466,6 +455,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         span_style_attr
     );
     record_label_source(true, None);
+    Ok(())
 }
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
@@ -476,12 +466,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     origin_x: f64,
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
-) {
+) -> crate::Result<()> {
     let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
-        return;
+        return Ok(());
     };
     let Some(label) = layout_edge.label.as_ref() else {
-        return;
+        return Ok(());
     };
 
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
@@ -492,18 +482,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         .default_edge_style
         .first()
         .or_else(|| edge.style.first());
-    let compiled_label_styles = flowchart_compile_styles(
-        &IndexMap::new(),
-        &[],
-        first_label_style.map(std::slice::from_ref).unwrap_or(&[]),
-        &[],
-    );
+    let compiled_label_styles = ctx.edge_style_plan.swimlane_label(edge.id.as_str())?;
     let first_label_style = first_label_style.map_or("", String::as_str);
-    let label_text_style = crate::flowchart::flowchart_swimlane_label_rect_text_style(
-        &ctx.text_style,
-        &ctx.default_edge_style,
-        &edge.style,
-    );
+    let label_text_style = ctx
+        .edge_style_plan
+        .swimlane_edge_label_text_style(edge.id.as_str(), &ctx.text_style)?;
     // Swimlane's private `positionEdgeLabel` recomputes whenever `insertEdge` returns a paths
     // object, independent of the ordinary updated-path heuristic.
     let position = resolve_flowchart_edge_label_position(
@@ -531,7 +514,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         fmt_display(-height / 2.0),
     );
     ctx.theme_evidence.record_source_residuals(
-        &compiled_label_styles.emitted_shape_source_residuals(edge.id.as_str(), true),
+        &compiled_label_styles.map_or_else(Vec::new, |styles| {
+            styles.emitted_shape_source_residuals(edge.id.as_str(), true)
+        }),
     );
 
     if ctx.node_html_labels {
@@ -560,14 +545,16 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             OptionalStyleXmlAttr(&html_label_style),
             label_html,
         );
-        ctx.theme_evidence.record_source_residuals(
-            &compiled_label_styles.emitted_html_label_source_residuals(
-                edge.id.as_str(),
-                true,
-                &label_html,
-            ),
-        );
-        return;
+        if let Some(compiled_label_styles) = compiled_label_styles {
+            ctx.theme_evidence.record_source_residuals(
+                &compiled_label_styles.emitted_html_label_source_residuals(
+                    edge.id.as_str(),
+                    true,
+                    &label_html,
+                ),
+            );
+        }
+        return Ok(());
     }
 
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
@@ -586,9 +573,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     );
     write_flowchart_svg_label_plan(out, &prepared, true);
     out.push_str("</g></g></g>");
-    ctx.theme_evidence.record_source_residuals(
-        &compiled_label_styles.emitted_label_source_residuals(edge.id.as_str(), true),
-    );
+    if let Some(compiled_label_styles) = compiled_label_styles {
+        ctx.theme_evidence.record_source_residuals(
+            &compiled_label_styles.emitted_label_source_residuals(edge.id.as_str(), true),
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
