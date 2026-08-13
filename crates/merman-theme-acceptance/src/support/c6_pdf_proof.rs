@@ -4,9 +4,7 @@ use lopdf::{
     Document, Object, ObjectId, Stream,
     content::{Content, Operation},
 };
-use merman_theme_fixtures::{
-    C6ArtifactAssertion, ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism,
-};
+use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
 
 use super::C6ObservedMechanismDisposition;
 
@@ -84,11 +82,7 @@ pub(crate) fn prove_brutalist_state_pdf(
     )
     .unwrap_or_else(|error| panic!("prove the final C6 PDF State labels: {error}"));
 
-    super::C6TargetProof::verified(
-        C6ArtifactAssertion::PdfDocument,
-        bytes,
-        applied_mechanisms(),
-    )
+    super::C6TargetProof::brutalist_state_pdf(bytes, applied_mechanisms())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -121,6 +115,7 @@ impl Rgb {
         }
     }
 
+    #[cfg(test)]
     fn components(self) -> [f32; 3] {
         [
             f32::from(self.red) / 255.0,

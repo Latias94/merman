@@ -3,24 +3,24 @@ use std::path::{Path, PathBuf};
 
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
-    DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
-    FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement, FontSource, FontStack,
-    OrdinalPalette, RenderEnvironment, RenderFamilyKind, RenderTargetKind, RenderedDocument,
-    Specified, TargetAdmissionStatus, ThemeAssets, ThemeCapability, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, TypographySpec,
+    DiagramThemeSpec, DocumentRenderReport, EffectBinding, EffectGraph, EffectInput,
+    EffectPrimitive, FilterRegion, FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement,
+    FontSource, FontStack, OrdinalPalette, RenderEnvironment, RenderFamilyKind, RenderTargetKind,
+    RenderedDocument, Specified, TargetAdmissionReport, TargetAdmissionStatus, ThemeAssets,
+    ThemeCapability, ThemeColorValue, ThemePortabilityRequirement, ThemeRecipeFingerprint,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman::{Engine, MermaidConfig};
 use merman_theme_fixtures::{
-    C6AcceptanceCatalog, C6ArtifactAssertion, C6EnforcedCell, C6ExpectedFontSource, C6ProofFamily,
-    C6ProofTheme, C6RequiredAdmission, ExpectedOutputTarget, ReferenceCanvasLayer,
-    ReferenceDiagramFamily, ReferenceFontBinding, ReferenceSemanticRule, ReferenceSemanticTarget,
-    ReferenceThemeInput, ReferenceThemeMechanism, ThemeFixtureCatalog,
+    C6AcceptanceCatalog, C6EnforcedCell, C6ProofFamily, C6ProofTheme, ExpectedOutputTarget,
+    ReferenceCanvasLayer, ReferenceDiagramFamily, ReferenceFontBinding, ReferenceSemanticRule,
+    ReferenceSemanticTarget, ReferenceThemeInput, ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 
 use crate::observation::{
-    C6ExecutionReport, C6ObservedCell, C6ObservedMechanismDisposition, C6ObservedReport,
-    C6RuntimeError, C6TargetProof, observe_cell_from_reports,
+    C6CellReceipt, C6ExecutionReport, C6ObservedMechanismDisposition, C6ReceiptBook,
+    C6RenderGroupKey, C6RenderGroupReceipt, C6RenderLane, C6RuntimeError, C6TargetProof,
+    seal_cell_from_reports,
 };
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -49,46 +49,121 @@ fn themes_root() -> PathBuf {
 pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
     let theme_catalog = ThemeFixtureCatalog::load(themes_root())?;
     let acceptance = C6AcceptanceCatalog::load(&theme_catalog)?;
-    let enforced_cells = acceptance.enforced_tranche().cells().collect::<Vec<_>>();
-    if enforced_cells.is_empty() {
-        return Err(C6RuntimeError::EmptyTranche);
-    }
-    for cell in &enforced_cells {
-        if cell.key().theme() != C6ProofTheme::Brutalist
-            || cell.key().family() != C6ProofFamily::State
-            || !matches!(
-                cell.key().target(),
-                ExpectedOutputTarget::StandaloneSvg
-                    | ExpectedOutputTarget::Png
-                    | ExpectedOutputTarget::Jpeg
-                    | ExpectedOutputTarget::Pdf
-            )
-        {
-            return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
-        }
-    }
+    run_catalog(&theme_catalog, &acceptance)
+}
 
-    let fixture_id = enforced_cells
-        .first()
-        .expect("the enforced C6 tranche must not be empty")
-        .source_fixture_id();
-    if !enforced_cells
-        .iter()
-        .all(|cell| cell.source_fixture_id() == fixture_id)
-    {
-        return Err(C6RuntimeError::MultipleSourceFixtures);
+fn run_catalog(
+    theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
+) -> Result<C6ExecutionReport, C6RuntimeError> {
+    let plan = C6ExecutionPlan::from_catalog(&acceptance)?;
+    let expected_keys = acceptance
+        .enforced_tranche()
+        .cells()
+        .map(C6EnforcedCell::key)
+        .collect::<Vec<_>>();
+    let mut group_receipts = Vec::with_capacity(plan.groups.len());
+    let mut cell_receipts = Vec::with_capacity(expected_keys.len());
+    for group in plan.groups {
+        let completed = execute_render_group(theme_catalog, group)?;
+        group_receipts.push(completed.receipt);
+        cell_receipts.extend(completed.cells);
     }
+    C6ReceiptBook::from_receipts(expected_keys, group_receipts, cell_receipts)?
+        .evaluate(acceptance, theme_catalog)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum C6RenderGroupAdapter {
+    BrutalistState,
+}
+
+#[derive(Debug)]
+struct C6RenderGroupPlan {
+    key: C6RenderGroupKey,
+    adapter: C6RenderGroupAdapter,
+    cells: Vec<C6EnforcedCell>,
+}
+
+#[derive(Debug)]
+struct C6ExecutionPlan {
+    groups: Vec<C6RenderGroupPlan>,
+}
+
+impl C6ExecutionPlan {
+    fn from_catalog(acceptance: &C6AcceptanceCatalog) -> Result<Self, C6RuntimeError> {
+        let enforced = acceptance.enforced_tranche().cells().collect::<Vec<_>>();
+        if enforced.is_empty() {
+            return Err(C6RuntimeError::EmptyTranche);
+        }
+
+        let mut grouped =
+            BTreeMap::<C6RenderGroupKey, (C6RenderGroupAdapter, Vec<C6EnforcedCell>)>::new();
+        for cell in enforced {
+            let adapter = adapter_for_cell(cell)?;
+            let key = C6RenderGroupKey::for_cell(cell);
+            let entry = grouped.entry(key).or_insert_with(|| (adapter, Vec::new()));
+            if entry.0 != adapter {
+                return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
+            }
+            entry.1.push(cell.clone());
+        }
+
+        Ok(Self {
+            groups: grouped
+                .into_iter()
+                .map(|(key, (adapter, cells))| C6RenderGroupPlan {
+                    key,
+                    adapter,
+                    cells,
+                })
+                .collect(),
+        })
+    }
+}
+
+fn adapter_for_cell(cell: &C6EnforcedCell) -> Result<C6RenderGroupAdapter, C6RuntimeError> {
+    let key = C6RenderGroupKey::for_cell(cell);
+    match (key.theme(), key.family(), key.lane(), cell.key().target()) {
+        (
+            C6ProofTheme::Brutalist,
+            C6ProofFamily::State,
+            C6RenderLane::Native,
+            ExpectedOutputTarget::StandaloneSvg
+            | ExpectedOutputTarget::Png
+            | ExpectedOutputTarget::Jpeg
+            | ExpectedOutputTarget::Pdf,
+        ) => Ok(C6RenderGroupAdapter::BrutalistState),
+        _ => Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() }),
+    }
+}
+
+struct C6CompletedRenderGroup {
+    receipt: C6RenderGroupReceipt,
+    cells: Vec<C6CellReceipt>,
+}
+
+fn execute_render_group(
+    theme_catalog: &ThemeFixtureCatalog,
+    group: C6RenderGroupPlan,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
+    match group.adapter {
+        C6RenderGroupAdapter::BrutalistState => execute_brutalist_state_group(theme_catalog, group),
+    }
+}
+
+fn execute_brutalist_state_group(
+    theme_catalog: &ThemeFixtureCatalog,
+    group: C6RenderGroupPlan,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
     let fixture = theme_catalog
-        .fixture(fixture_id)
-        .expect("the enforced C6 fixture must exist");
+        .fixture(group.key.source_fixture_id())
+        .ok_or_else(|| render_group_error(&group.key, "source-fixture"))?;
     let input = fixture
         .theme_input()
-        .expect("the first enforced C6 fixture must own a typed theme input");
-    assert_eq!(input.fixture_id(), fixture.id());
-    let source = theme_catalog
-        .source_text(fixture.id())
-        .expect("read the hash-validated C6 Mermaid source");
-    let theme = compile_brutalist_state_theme(&theme_catalog, input);
+        .ok_or_else(|| render_group_error(&group.key, "theme-input"))?;
+    let source = theme_catalog.source_text(fixture.id())?;
+    let theme = compile_brutalist_state_theme(theme_catalog, input);
     assert_eq!(
         theme
             .report()
@@ -112,118 +187,109 @@ pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
     let admitted = document
         .clone()
         .admit_svg()
-        .expect("the shared C6 sealed document must pass strict SVG admission");
-    let mechanisms = assert_brutalist_state_svg(input, admitted.as_str());
+        .expect("the C6 render group must pass strict SVG admission");
+    let sealed_svg = admitted.as_str();
+    let mechanisms = assert_brutalist_state_svg(input, sealed_svg);
     assert_eq!(
         mechanisms.keys().copied().collect::<BTreeSet<_>>(),
         input.mechanisms()
     );
-
-    for cell in &enforced_cells {
-        assert_enforced_brutalist_state_contract(&theme_catalog, &acceptance, cell);
-    }
-
-    let png_cell = enforced_cells
-        .iter()
-        .find(|cell| cell.key().target() == ExpectedOutputTarget::Png)
-        .ok_or(C6RuntimeError::MissingPngTarget)?;
-    let (png, png_proof) = observe_brutalist_state_png(
-        png_cell,
-        &theme_catalog,
-        input,
-        admitted.as_str(),
-        &theme,
-        &document,
+    let group_receipt = C6RenderGroupReceipt::seal(
+        group.key.clone(),
+        theme_catalog,
+        document.family_kind(),
+        document.theme_recipe_fingerprint(),
+        sealed_svg,
+        admitted.document_report(),
     )?;
-    let enforced_count = enforced_cells.len();
-    let mut observed = Vec::with_capacity(enforced_count);
-    for cell in enforced_cells {
-        let observation = match cell.key().target() {
-            ExpectedOutputTarget::StandaloneSvg => observe_brutalist_state_standalone(
-                cell,
-                &theme_catalog,
-                input,
-                &document,
-                &mechanisms,
-            )?,
-            ExpectedOutputTarget::Png => png.clone(),
+
+    let needs_png_support = group.cells.iter().any(|cell| {
+        matches!(
+            cell.key().target(),
+            ExpectedOutputTarget::Png | ExpectedOutputTarget::Jpeg
+        )
+    });
+    let png_support = needs_png_support
+        .then(|| observe_brutalist_state_png(input, sealed_svg, &theme, &document))
+        .transpose()?;
+
+    let mut cells = Vec::with_capacity(group.cells.len());
+    for enforced in &group.cells {
+        let observation = match enforced.key().target() {
+            ExpectedOutputTarget::StandaloneSvg => C6TargetObservation {
+                recipe_fingerprint: document.theme_recipe_fingerprint(),
+                document: admitted.document_report().clone(),
+                admission: admitted.target_admission().clone(),
+                proof: C6TargetProof::brutalist_state_standalone_svg(
+                    sealed_svg.as_bytes(),
+                    mechanisms.clone(),
+                ),
+            },
+            ExpectedOutputTarget::Png => png_support
+                .as_ref()
+                .expect("PNG support was planned for the PNG cell")
+                .0
+                .clone(),
             ExpectedOutputTarget::Jpeg => observe_brutalist_state_jpeg(
-                cell,
-                &theme_catalog,
                 input,
-                admitted.as_str(),
+                sealed_svg,
                 &theme,
                 &document,
-                &png_proof,
+                &png_support
+                    .as_ref()
+                    .expect("PNG control proof was planned for the JPEG cell")
+                    .1,
             )?,
-            ExpectedOutputTarget::Pdf => observe_brutalist_state_pdf(
-                cell,
-                &theme_catalog,
-                input,
-                admitted.as_str(),
-                &theme,
-                &document,
-            )?,
+            ExpectedOutputTarget::Pdf => {
+                observe_brutalist_state_pdf(input, sealed_svg, &theme, &document)?
+            }
             ExpectedOutputTarget::BrowserSvg => {
-                return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
+                return Err(C6RuntimeError::UnsupportedEnforcedCell {
+                    key: enforced.key(),
+                });
             }
         };
-        observed.push(observation);
+        cells.push(observation.seal(enforced, &group_receipt, sealed_svg)?);
     }
-    let report = C6ObservedReport::from_enforced_cells(acceptance.enforced_tranche(), observed)?;
-    let evaluation = report.evaluate(
-        &acceptance,
-        &theme_catalog,
-        &theme,
-        &document,
-        admitted.as_str(),
-    )?;
 
-    assert_eq!(evaluation.verified_cell_count(), enforced_count);
-    assert_eq!(evaluation.enforced_cell_count(), enforced_count);
-    Ok(evaluation)
+    Ok(C6CompletedRenderGroup {
+        receipt: group_receipt,
+        cells,
+    })
 }
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn assert_enforced_brutalist_state_contract(
-    theme_catalog: &ThemeFixtureCatalog,
-    acceptance: &C6AcceptanceCatalog,
-    enforced: &C6EnforcedCell,
-) {
-    let fixture = theme_catalog
-        .fixture(enforced.source_fixture_id())
-        .expect("the enforced fixture was validated while loading the acceptance catalog");
-    assert_eq!(
-        fixture.source_family(),
-        ReferenceDiagramFamily::StateDiagram
-    );
-    let input = fixture
-        .theme_input()
-        .expect("the C6 fixture must own a typed theme input");
-    let expectation = acceptance
-        .specification()
-        .cell(enforced.key())
-        .expect("the enforced cell must have a final expectation")
-        .expectation();
-    let expected_mechanisms = expectation
-        .mechanism_requirements()
-        .keys()
-        .copied()
-        .collect::<BTreeSet<_>>();
-    assert_eq!(input.mechanisms(), expected_mechanisms);
-    assert_eq!(expectation.expected_residual_ids(), &BTreeSet::new());
-    assert_eq!(
-        expectation.required_font_source(),
-        C6ExpectedFontSource::Embedded
-    );
-    assert_eq!(
-        expectation.required_admission(),
-        C6RequiredAdmission::Portable
-    );
-    assert_eq!(
-        expectation.required_artifact_assertion(),
-        artifact_assertion_for_target(enforced.key().target())
-    );
+fn render_group_error(key: &C6RenderGroupKey, field: &'static str) -> C6RuntimeError {
+    C6RuntimeError::RenderGroupEvidenceMismatch {
+        group: key.label(),
+        field,
+    }
+}
+
+#[derive(Clone)]
+struct C6TargetObservation {
+    recipe_fingerprint: Option<ThemeRecipeFingerprint>,
+    document: DocumentRenderReport,
+    admission: TargetAdmissionReport,
+    proof: C6TargetProof,
+}
+
+impl C6TargetObservation {
+    fn seal(
+        self,
+        enforced: &C6EnforcedCell,
+        group: &C6RenderGroupReceipt,
+        sealed_svg: &str,
+    ) -> Result<C6CellReceipt, C6RuntimeError> {
+        seal_cell_from_reports(
+            enforced,
+            group,
+            self.recipe_fingerprint,
+            sealed_svg,
+            &self.document,
+            &self.admission,
+            self.proof,
+        )
+    }
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -254,44 +320,12 @@ fn assert_brutalist_state_document(document: &RenderedDocument, theme: &DiagramT
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn observe_brutalist_state_standalone(
-    enforced: &C6EnforcedCell,
-    theme_catalog: &ThemeFixtureCatalog,
-    input: &ReferenceThemeInput,
-    document: &RenderedDocument,
-    mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-) -> Result<C6ObservedCell, C6RuntimeError> {
-    let admitted = document
-        .clone()
-        .admit_svg()
-        .expect("the C6 standalone SVG must pass strict terminal admission");
-    let observed_mechanisms = assert_brutalist_state_svg(input, admitted.as_str());
-    assert_eq!(&observed_mechanisms, mechanisms);
-    let proof = C6TargetProof::verified(
-        C6ArtifactAssertion::StandaloneSvgDocument,
-        admitted.as_str().as_bytes(),
-        observed_mechanisms,
-    );
-    observe_cell_from_reports(
-        enforced,
-        theme_catalog,
-        document.theme_recipe_fingerprint(),
-        admitted.as_str(),
-        admitted.document_report(),
-        admitted.target_admission(),
-        proof,
-    )
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn observe_brutalist_state_png(
-    enforced: &C6EnforcedCell,
-    theme_catalog: &ThemeFixtureCatalog,
     input: &ReferenceThemeInput,
     sealed_svg: &str,
     theme: &DiagramTheme,
     document: &RenderedDocument,
-) -> Result<(C6ObservedCell, PngArtifactProof), C6RuntimeError> {
+) -> Result<(C6TargetObservation, PngArtifactProof), C6RuntimeError> {
     let resource_fingerprint = document.resource_fingerprint();
     let prepared = document
         .clone()
@@ -325,29 +359,24 @@ fn observe_brutalist_state_png(
         theme.recipe_fingerprint(),
     );
     Ok((
-        observe_cell_from_reports(
-            enforced,
-            theme_catalog,
-            report.operation_report().theme_recipe_fingerprint(),
-            sealed_svg,
-            report.document_report(),
-            report.target_admission(),
-            target_proof,
-        )?,
+        C6TargetObservation {
+            recipe_fingerprint: report.operation_report().theme_recipe_fingerprint(),
+            document: report.document_report().clone(),
+            admission: report.target_admission().clone(),
+            proof: target_proof,
+        },
         proof,
     ))
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn observe_brutalist_state_jpeg(
-    enforced: &C6EnforcedCell,
-    theme_catalog: &ThemeFixtureCatalog,
     input: &ReferenceThemeInput,
     sealed_svg: &str,
     theme: &DiagramTheme,
     document: &RenderedDocument,
     png_proof: &PngArtifactProof,
-) -> Result<C6ObservedCell, C6RuntimeError> {
+) -> Result<C6TargetObservation, C6RuntimeError> {
     let resource_fingerprint = document.resource_fingerprint();
     let prepared = document
         .clone()
@@ -379,26 +408,21 @@ fn observe_brutalist_state_jpeg(
         resource_fingerprint,
         theme.recipe_fingerprint(),
     );
-    observe_cell_from_reports(
-        enforced,
-        theme_catalog,
-        report.operation_report().theme_recipe_fingerprint(),
-        sealed_svg,
-        report.document_report(),
-        report.target_admission(),
+    Ok(C6TargetObservation {
+        recipe_fingerprint: report.operation_report().theme_recipe_fingerprint(),
+        document: report.document_report().clone(),
+        admission: report.target_admission().clone(),
         proof,
-    )
+    })
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn observe_brutalist_state_pdf(
-    enforced: &C6EnforcedCell,
-    theme_catalog: &ThemeFixtureCatalog,
     input: &ReferenceThemeInput,
     sealed_svg: &str,
     theme: &DiagramTheme,
     document: &RenderedDocument,
-) -> Result<C6ObservedCell, C6RuntimeError> {
+) -> Result<C6TargetObservation, C6RuntimeError> {
     let resource_fingerprint = document.resource_fingerprint();
     let prepared = document
         .clone()
@@ -435,29 +459,14 @@ fn observe_brutalist_state_pdf(
         resource_fingerprint,
         theme.recipe_fingerprint(),
     );
-    observe_cell_from_reports(
-        enforced,
-        theme_catalog,
-        report.operation_report().theme_recipe_fingerprint(),
-        sealed_svg,
-        report.document_report(),
-        report.target_admission(),
+    Ok(C6TargetObservation {
+        recipe_fingerprint: report.operation_report().theme_recipe_fingerprint(),
+        document: report.document_report().clone(),
+        admission: report.target_admission().clone(),
         proof,
-    )
+    })
 }
 
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn artifact_assertion_for_target(target: ExpectedOutputTarget) -> C6ArtifactAssertion {
-    match target {
-        ExpectedOutputTarget::BrowserSvg => C6ArtifactAssertion::BrowserSvgDom,
-        ExpectedOutputTarget::StandaloneSvg => C6ArtifactAssertion::StandaloneSvgDocument,
-        ExpectedOutputTarget::Png => C6ArtifactAssertion::PngImage,
-        ExpectedOutputTarget::Jpeg => C6ArtifactAssertion::JpegImage,
-        ExpectedOutputTarget::Pdf => C6ArtifactAssertion::PdfDocument,
-    }
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn assert_png_artifact(bytes: &[u8]) {
     assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -984,4 +993,67 @@ fn style_number(node: roxmltree::Node<'_, '_>, property: &str) -> Option<f32> {
 
 fn number_attribute(node: roxmltree::Node<'_, '_>, attribute: &str) -> Option<f32> {
     node.attribute(attribute)?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_theme_fixtures::C6_ACCEPTANCE_RELATIVE_PATH;
+    use serde_json::{Value, json};
+    use std::fs;
+
+    fn acceptance_value(theme_catalog: &ThemeFixtureCatalog) -> Value {
+        let json = fs::read_to_string(theme_catalog.root().join(C6_ACCEPTANCE_RELATIVE_PATH))
+            .expect("read C6 acceptance catalog");
+        serde_json::from_str(&json).expect("parse C6 acceptance catalog")
+    }
+
+    fn retain_only_brutalist_state_target(value: &mut Value, selected: ExpectedOutputTarget) {
+        for cell in value["cells"].as_array_mut().expect("C6 cells") {
+            if cell["theme"] == "brutalist" && cell["family"] == "state" {
+                let target = match cell["target"].as_str().expect("target id") {
+                    "browser-svg" => ExpectedOutputTarget::BrowserSvg,
+                    "standalone-svg" => ExpectedOutputTarget::StandaloneSvg,
+                    "png" => ExpectedOutputTarget::Png,
+                    "jpeg" => ExpectedOutputTarget::Jpeg,
+                    "pdf" => ExpectedOutputTarget::Pdf,
+                    other => panic!("unexpected target {other}"),
+                };
+                cell["enforcement"] = if target == selected {
+                    json!({
+                        "kind": "enforced",
+                        "sourceFixtureId": "fixture-c6-brutalist-state"
+                    })
+                } else {
+                    json!({
+                        "kind": "deferred",
+                        "blocker": "runtime-runner-missing"
+                    })
+                };
+            } else if cell["enforcement"]["kind"] == "enforced" {
+                cell["enforcement"] = json!({
+                    "kind": "deferred",
+                    "blocker": "family-adapter-incomplete"
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn jpeg_only_tranche_uses_an_internal_png_control_without_requiring_a_png_cell() {
+        let theme_catalog = ThemeFixtureCatalog::load(themes_root()).expect("load theme fixtures");
+        let mut value = acceptance_value(&theme_catalog);
+        retain_only_brutalist_state_target(&mut value, ExpectedOutputTarget::Jpeg);
+        let acceptance = C6AcceptanceCatalog::from_json(
+            &serde_json::to_string(&value).expect("serialize C6 acceptance catalog"),
+            &theme_catalog,
+        )
+        .expect("load JPEG-only C6 acceptance catalog");
+
+        let report = run_catalog(&theme_catalog, &acceptance).expect("prove JPEG-only tranche");
+
+        assert_eq!(report.verified_cell_count(), 1);
+        assert_eq!(report.render_group_count(), 1);
+        assert_ne!(report.execution_digest(), &[0; 32]);
+    }
 }

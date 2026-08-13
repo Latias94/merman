@@ -575,6 +575,48 @@ fn validate_enforced_source_fixture(
             "enforced source fixture family does not match the proof family",
         );
     }
+
+    let theme = theme_catalog
+        .theme(cell.key.theme.reference_name())
+        .ok_or_else(|| CatalogError::InvalidC6AcceptanceCell {
+            key: cell.key.label(),
+            reason: format!(
+                "reference theme `{}` is absent from the source catalog",
+                cell.key.theme.reference_name()
+            ),
+        })?;
+    if !theme.fixture_ids().contains(fixture.id()) {
+        return invalid_cell(
+            cell.key,
+            format!(
+                "enforced source fixture `{}` does not belong to reference theme `{}`",
+                fixture.id(),
+                theme.reference_name()
+            ),
+        );
+    }
+
+    let input = fixture
+        .theme_input()
+        .ok_or_else(|| CatalogError::InvalidC6AcceptanceCell {
+            key: cell.key.label(),
+            reason: format!(
+                "enforced source fixture `{}` lacks a typed theme input",
+                fixture.id()
+            ),
+        })?;
+    if input.fixture_id() != fixture.id() {
+        return invalid_cell(
+            cell.key,
+            "typed theme input fixture id does not match the enforced source fixture",
+        );
+    }
+    if input.mechanisms() != *theme.source_mechanisms() {
+        return invalid_cell(
+            cell.key,
+            "typed theme input mechanisms do not exactly match the reference theme",
+        );
+    }
     Ok(())
 }
 

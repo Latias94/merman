@@ -164,26 +164,26 @@ fn committed_catalog_separates_complete_spec_from_current_tranche() {
 }
 
 #[test]
-fn parser_accepts_a_tranche_change_without_theme_or_family_whitelists() {
+fn parser_accepts_a_valid_tranche_expansion_without_target_whitelists() {
     let source_catalog = source_catalog();
     let mut value = committed_acceptance_value();
-    cell_mut(&mut value, "spotless", "flowchart", "standalone-svg")["enforcement"] = json!({
+    cell_mut(&mut value, "brutalist", "state", "browser-svg")["enforcement"] = json!({
         "kind": "enforced",
-        "sourceFixtureId": "fixture-token-baseline"
+        "sourceFixtureId": "fixture-c6-brutalist-state"
     });
 
     let catalog = parse_value(&value, &source_catalog).expect("expanded tranche is data-driven");
     let key = C6CellKey::new(
-        C6ProofTheme::Spotless,
-        C6ProofFamily::Flowchart,
-        ExpectedOutputTarget::StandaloneSvg,
+        C6ProofTheme::Brutalist,
+        C6ProofFamily::State,
+        ExpectedOutputTarget::BrowserSvg,
     );
     assert_eq!(
         catalog
             .enforced_tranche()
             .cell(key)
             .map(|cell| cell.source_fixture_id()),
-        Some("fixture-token-baseline")
+        Some("fixture-c6-brutalist-state")
     );
     assert_eq!(catalog.enforced_tranche().cells().len(), 5);
 }
@@ -324,5 +324,43 @@ fn expectation_and_enforcement_invariants_fail_closed() {
             assert!(reason.contains("does not match the proof family"));
         }
         other => panic!("Sequence enforcement accepted a Flowchart fixture: {other:?}"),
+    }
+
+    let mut fixture_from_another_theme = committed_acceptance_value();
+    cell_mut(
+        &mut fixture_from_another_theme,
+        "brutalist",
+        "state",
+        "browser-svg",
+    )["enforcement"] = json!({
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-semantic-style-capabilities"
+    });
+    match parse_value(&fixture_from_another_theme, &source_catalog) {
+        Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
+            assert!(reason.contains("does not belong to reference theme `brutalist`"));
+        }
+        other => panic!("Brutalist enforcement accepted another theme's fixture: {other:?}"),
+    }
+
+    let mut incomplete_theme_input = committed_acceptance_value();
+    cell_mut(
+        &mut incomplete_theme_input,
+        "brutalist",
+        "flowchart",
+        "standalone-svg",
+    )["enforcement"] = json!({
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-token-baseline"
+    });
+    match parse_value(&incomplete_theme_input, &source_catalog) {
+        Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
+            assert!(
+                reason.contains(
+                    "typed theme input mechanisms do not exactly match the reference theme"
+                )
+            );
+        }
+        other => panic!("C6 enforcement accepted an incomplete theme input: {other:?}"),
     }
 }

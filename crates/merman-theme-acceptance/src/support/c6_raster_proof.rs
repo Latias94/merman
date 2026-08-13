@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
 
 use image::ImageFormat;
-use merman_theme_fixtures::{
-    C6ArtifactAssertion, ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism,
-};
+use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
 
 use super::C6ObservedMechanismDisposition;
 
@@ -35,11 +33,7 @@ pub(crate) struct PngArtifactProof {
 
 impl PngArtifactProof {
     pub(crate) fn target_proof(&self, bytes: &[u8]) -> super::C6TargetProof {
-        super::C6TargetProof::verified(
-            C6ArtifactAssertion::PngImage,
-            bytes,
-            self.mechanisms.clone(),
-        )
+        super::C6TargetProof::brutalist_state_png(bytes, self.mechanisms.clone())
     }
 }
 
@@ -75,7 +69,7 @@ pub(crate) fn prove_brutalist_state_jpeg(
     assert_eq!(raster.height, png.raster.height);
     assert_brutalist_state_raster(&contract, &geometry, &raster, 18);
     assert_jpeg_tracks_png(&raster, &png.raster, &contract, &geometry);
-    super::C6TargetProof::verified(C6ArtifactAssertion::JpegImage, bytes, applied_mechanisms())
+    super::C6TargetProof::brutalist_state_jpeg(bytes, applied_mechanisms())
 }
 
 fn applied_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {

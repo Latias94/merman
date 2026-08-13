@@ -4,7 +4,7 @@
 //! observation receipts and evaluators remain private so callers cannot report their own success.
 //!
 //! ```compile_fail
-//! use merman_theme_acceptance::C6ObservedCell;
+//! use merman_theme_acceptance::C6CellReceipt;
 //! ```
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
