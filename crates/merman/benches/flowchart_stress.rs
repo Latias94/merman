@@ -213,9 +213,6 @@ fn source_digest(source: &str) -> String {
 }
 
 fn assert_cluster_edge_panel_roles(model: &serde_json::Value) {
-    let nodes = model["nodes"]
-        .as_array()
-        .expect("synthetic Flowchart nodes");
     let edges = model["edges"]
         .as_array()
         .expect("synthetic Flowchart edges");
@@ -645,7 +642,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
     let mut public = c.benchmark_group("flowchart_label_public");
     for (name, input) in &cases {
         let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
-        public.bench_function(*name, |b| {
+        public.bench_function(name.as_str(), |b| {
             b.iter(|| {
                 let output = renderer
                     .render(RenderRequest::svg(
@@ -663,7 +660,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
     let mut prepare = c.benchmark_group("flowchart_label_prepare");
     for (name, input) in &cases {
         let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
-        prepare.bench_function(*name, |b| {
+        prepare.bench_function(name.as_str(), |b| {
             b.iter_batched(
                 || prepare_semantic(&renderer, black_box(input.as_str())),
                 |semantic| {
@@ -682,7 +679,7 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
 
     for (name, input) in &cases {
         let request = typed_svg_request(&merman::svg::sanitize_svg_id(name), &layout, &environment);
-        group.bench_function(*name, |b| {
+        group.bench_function(name.as_str(), |b| {
             b.iter_batched(
                 || prepare_semantic(&renderer, black_box(input.as_str())),
                 |semantic| {
