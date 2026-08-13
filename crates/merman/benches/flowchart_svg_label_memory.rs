@@ -2,7 +2,10 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, PreparedRender, RenderFamilyKind, RuntimePolicy};
+use merman::svg::RuntimePolicy;
+use merman::{
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SemanticArtifact,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -226,13 +229,12 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-fn projected_node_labels(prepared: &PreparedRender) -> Result<(u32, bool), ProbeError> {
-    let projection = prepared
-        .layout_json()
-        .map_err(|error| ProbeError::new(format!("layout projection failed: {error}")))?;
+fn projected_node_labels(semantic: &SemanticArtifact) -> Result<(u32, bool), ProbeError> {
+    let projection = semantic
+        .compatibility_json()
+        .map_err(|error| ProbeError::new(format!("semantic projection failed: {error}")))?;
     let nodes = projection
-        .get("semantic")
-        .and_then(|semantic| semantic.get("nodes"))
+        .get("nodes")
         .and_then(serde_json::Value::as_array)
         .ok_or_else(|| ProbeError::new("prepared Flowchart projection has no semantic nodes"))?;
     let count = u32::try_from(nodes.len())
@@ -248,6 +250,16 @@ fn projected_node_labels(prepared: &PreparedRender) -> Result<(u32, bool), Probe
     Ok((count, labels.len() == nodes.len()))
 }
 
+fn prepare_flowchart(renderer: &Renderer, source: &str) -> Result<SemanticArtifact, ProbeError> {
+    let output = renderer
+        .render(RenderRequest::semantic(source, OperationControl::new()))
+        .map_err(|error| ProbeError::new(format!("render preparation failed: {error}")))?;
+    let RenderOutput::Semantic(Some(semantic)) = output else {
+        return Err(ProbeError::new("render preparation returned no diagram"));
+    };
+    Ok(semantic)
+}
+
 fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     if std::env::args_os().nth(1).is_some() {
         return Err(ProbeError::new(
@@ -259,61 +271,58 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     validate_request(&request)?;
     let executable_sha256 = executable_sha256()?;
     let source = build_flowchart(request.scale, request.seed)?;
-    let renderer = HeadlessRenderer::new()
-        .with_strict_parsing()
-        .with_vendored_text_measurer()
-        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed))
-        .with_diagram_id("flowchart-svg-label-memory");
+    let renderer = Renderer::new()
+        .with_engine(
+            Engine::new()
+                .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
+        )
+        .with_parse_options(ParseOptions::strict());
 
     // Materialize parser/engine state before the measurement window. The retained signal must
-    // describe the prepared render artifact, not the renderer's first-use caches.
+    // describe the operation-owned semantic artifact, not the renderer's first-use parser caches.
     renderer
+        .engine()
         .parse_metadata_sync(&source)
         .map_err(|error| ProbeError::new(format!("metadata preparation failed: {error}")))?;
 
     let input_label_count = request.scale * LABELS_PER_SCALE;
     let workload_units = input_label_count;
     let snapshot_live_bytes = ALLOCATOR.begin_measurement();
-    let (prepared, metadata_diagram_type_matches, prepared_family_flowchart, html_labels_disabled) =
-        match request.mode {
-            Mode::Operation => {
-                let prepared = renderer
-                    .prepare_render_sync(&source)
-                    .map_err(|error| {
-                        ProbeError::new(format!("render preparation failed: {error}"))
-                    })?
-                    .ok_or_else(|| ProbeError::new("render preparation returned no diagram"))?;
-                let metadata_diagram_type_matches =
-                    prepared.metadata().diagram_type == DIAGRAM_TYPE;
-                let prepared_family_flowchart =
-                    prepared.family_kind() == RenderFamilyKind::Flowchart;
-                let html_labels_disabled =
-                    prepared.metadata().effective_config.get_bool("htmlLabels") == Some(false);
-                (
-                    Some(prepared),
-                    metadata_diagram_type_matches,
-                    prepared_family_flowchart,
-                    html_labels_disabled,
-                )
-            }
-            Mode::Zero => (None, false, false, false),
-        };
+    let semantic = match request.mode {
+        Mode::Operation => Some(prepare_flowchart(&renderer, &source)?),
+        Mode::Zero => None,
+    };
 
-    // Keep the prepared artifact live until the allocator records the checkpoint.
-    let prepared_render_alive_at_checkpoint = std::hint::black_box(prepared.as_ref()).is_some();
+    // Keep the format-neutral artifact live until the allocator records the checkpoint. The
+    // response field retains its historical name so existing evidence readers remain compatible.
+    let prepared_render_alive_at_checkpoint = std::hint::black_box(semantic.as_ref()).is_some();
     let metrics = ALLOCATOR.finish_measurement(snapshot_live_bytes);
 
-    // Inspect the public prepared projection after the allocator checkpoint so the receipt proves
-    // the measured artifact contains the registered label workload without charging compatibility
-    // JSON materialization to the candidate's retained-memory result.
-    let (projected_node_label_count, unique_projected_node_labels) = prepared
-        .as_ref()
-        .map(projected_node_labels)
-        .transpose()?
-        .unwrap_or((0, false));
+    // Inspect the public compatibility projection after the allocator checkpoint so the receipt
+    // proves the measured artifact contains the registered label workload without charging JSON
+    // materialization to the candidate's retained-memory result.
+    let (
+        metadata_diagram_type_matches,
+        prepared_family_flowchart,
+        html_labels_disabled,
+        projected_node_label_count,
+        unique_projected_node_labels,
+    ) = match semantic.as_ref() {
+        Some(semantic) => {
+            let (count, unique) = projected_node_labels(semantic)?;
+            (
+                semantic.diagram_type() == DIAGRAM_TYPE,
+                semantic.semantic_kind() == "flowchart",
+                semantic.metadata().effective_config.get_bool("htmlLabels") == Some(false),
+                count,
+                unique,
+            )
+        }
+        None => (false, false, false, 0, false),
+    };
     let projected_node_labels_match_workload =
-        projected_node_label_count == input_label_count && prepared.is_some();
-    drop(prepared);
+        projected_node_label_count == input_label_count && semantic.is_some();
+    drop(semantic);
     let live_bytes_after_drop = ALLOCATOR.begin_measurement();
     ALLOCATOR.stop_measurement();
 

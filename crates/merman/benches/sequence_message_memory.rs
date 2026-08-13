@@ -2,7 +2,10 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, PreparedRender, RenderFamilyKind, RuntimePolicy};
+use merman::svg::RuntimePolicy;
+use merman::{
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SemanticArtifact,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -274,23 +277,12 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     output
 }
 
-fn prepare_sequence(
-    renderer: &HeadlessRenderer,
-    source: &str,
-) -> Result<PreparedRender, ProbeError> {
-    let prepared = renderer
-        .prepare_render_sync(source)
-        .map_err(|error| ProbeError::new(format!("Sequence preparation failed: {error}")))?
-        .ok_or_else(|| ProbeError::new("Sequence preparation returned no diagram"))?;
-    Ok(prepared)
-}
-
-fn projected_message_count(prepared: &PreparedRender) -> Result<u32, ProbeError> {
-    let projection = prepared
-        .layout_json()
-        .map_err(|error| ProbeError::new(format!("Sequence layout projection failed: {error}")))?;
+fn projected_message_count(semantic: &SemanticArtifact) -> Result<u32, ProbeError> {
+    let projection = semantic.compatibility_json().map_err(|error| {
+        ProbeError::new(format!("Sequence semantic projection failed: {error}"))
+    })?;
     let messages = projection
-        .pointer("/semantic/messages")
+        .get("messages")
         .and_then(serde_json::Value::as_array)
         .ok_or_else(|| ProbeError::new("prepared Sequence projection has no semantic messages"))?;
     let ordinary_messages = messages
@@ -304,6 +296,22 @@ fn projected_message_count(prepared: &PreparedRender) -> Result<u32, ProbeError>
         .count();
     u32::try_from(ordinary_messages)
         .map_err(|_| ProbeError::new("prepared Sequence message count exceeds u32"))
+}
+
+fn prepare_sequence(
+    renderer: &Renderer,
+    source: &str,
+    operation: &str,
+) -> Result<SemanticArtifact, ProbeError> {
+    let output = renderer
+        .render(RenderRequest::semantic(source, OperationControl::new()))
+        .map_err(|error| ProbeError::new(format!("Sequence {operation} failed: {error}")))?;
+    let RenderOutput::Semantic(Some(semantic)) = output else {
+        return Err(ProbeError::new(format!(
+            "Sequence {operation} returned no diagram"
+        )));
+    };
+    Ok(semantic)
 }
 
 fn execute_probe() -> Result<ProbeResponse, ProbeError> {
@@ -321,40 +329,38 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     let message_count = request.scale;
     let (source, equal_length_message_labels) =
         build_sequence(message_count, request.seed, message_profile)?;
-    let renderer = HeadlessRenderer::new()
-        .with_strict_parsing()
-        .with_vendored_text_measurer()
-        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed))
-        .with_diagram_id("sequence-message-memory");
+    let renderer = Renderer::new()
+        .with_engine(
+            Engine::new()
+                .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
+        )
+        .with_parse_options(ParseOptions::strict());
 
     // Warm the exact public route so the measured reused-engine operation excludes lazy parser,
-    // registry, style, and layout initialization retained by the process.
-    let warmup = renderer
-        .prepare_render_sync("sequenceDiagram\n  A->>B: warmup\n")
-        .map_err(|error| ProbeError::new(format!("Sequence warmup failed: {error}")))?
-        .ok_or_else(|| ProbeError::new("Sequence warmup returned no diagram"))?;
+    // registry, and semantic-model initialization retained by the process.
+    let warmup = prepare_sequence(&renderer, "sequenceDiagram\n  A->>B: warmup\n", "warmup")?;
     drop(warmup);
 
     let snapshot_live_bytes = ALLOCATOR.begin_measurement();
-    let prepared = match request.mode {
-        Mode::Operation => Some(prepare_sequence(&renderer, &source)?),
+    let semantic = match request.mode {
+        Mode::Operation => Some(prepare_sequence(&renderer, &source, "preparation")?),
         Mode::Zero => None,
     };
-    let prepared_render_alive_at_checkpoint = prepared.is_some();
+    let prepared_render_alive_at_checkpoint = semantic.is_some();
     let metrics = ALLOCATOR.finish_measurement(snapshot_live_bytes);
 
-    // Inspect the public projection after the allocator checkpoint so compatibility JSON work is
-    // not attributed to the operation-owned sidecar retained by the prepared artifact.
+    // Inspect the compatibility projection after the allocator checkpoint so JSON materialization
+    // is not attributed to the operation-owned semantic artifact's retained-memory result.
     let (metadata_diagram_type_matches, prepared_family_sequence, projected_message_count_matches) =
-        match prepared.as_ref() {
-            Some(prepared) => (
-                prepared.metadata().diagram_type == DIAGRAM_TYPE,
-                prepared.family_kind() == RenderFamilyKind::Sequence,
-                projected_message_count(prepared)? == message_count,
+        match semantic.as_ref() {
+            Some(semantic) => (
+                semantic.diagram_type() == DIAGRAM_TYPE,
+                semantic.semantic_kind() == "sequence",
+                projected_message_count(semantic)? == message_count,
             ),
             None => (false, false, false),
         };
-    drop(prepared);
+    drop(semantic);
     let live_bytes_after_drop = ALLOCATOR.begin_measurement();
     ALLOCATOR.stop_measurement();
 
