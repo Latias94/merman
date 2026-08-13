@@ -22,13 +22,14 @@ pub(crate) fn execute_render(
                 PreparedSingleOutput::Text {
                     renderer,
                     options,
+                    resources,
                     admission,
                     ..
                 } => {
                     let permit = admission.acquire_controlled(&single.control)?;
                     let mut request = merman::AsciiRequest::default();
                     request.options = options.clone();
-                    request.resources.max_grid_cells = Some(options.max_grid_cells);
+                    request.resources = *resources;
                     let output = renderer.renderer.render(renderer.request(
                         &single.source,
                         merman::RenderTarget::Ascii(request),

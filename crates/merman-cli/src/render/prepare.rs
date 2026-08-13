@@ -54,6 +54,7 @@ pub(super) enum PreparedSingleOutput {
         destination: ResolvedDestination,
         renderer: crate::config::ConfiguredRenderer,
         options: merman::ascii::AsciiRenderOptions,
+        resources: merman::ascii::AsciiResourcePolicy,
         admission: BackendAdmission,
     },
     #[cfg(feature = "svg")]
@@ -318,9 +319,10 @@ fn prepare_single(
         ResolvedOutput::Text {
             destination,
             options,
+            resources,
         } => {
             let ascii = options;
-            let admission = BackendAdmission::for_text(&common.resources, &ascii)?;
+            let admission = BackendAdmission::for_text(&common.resources, resources)?;
             let renderer =
                 crate::config::ascii_renderer_for_resolved(&common.parse, &common.resources)?;
             Ok(PreparedSingleRender {
@@ -330,6 +332,7 @@ fn prepare_single(
                     destination,
                     renderer,
                     options: ascii,
+                    resources,
                     admission,
                 },
                 publications,

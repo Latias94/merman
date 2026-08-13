@@ -49,12 +49,15 @@ impl BackendAdmission {
     #[cfg(feature = "ascii")]
     pub(super) fn for_text(
         resources: &ResolvedResourcePolicy,
-        options: &merman::ascii::AsciiRenderOptions,
+        ascii_resources: merman::ascii::AsciiResourcePolicy,
     ) -> Result<Self, CliError> {
         let Some(_) = resources.batch().scheduling_weight_bytes else {
             return Self::unbounded(resources);
         };
-        let grid_cells = u64::try_from(options.max_grid_cells).map_err(|_| {
+        let Some(max_grid_cells) = ascii_resources.max_grid_cells() else {
+            return Self::exclusive_unmeasured(resources);
+        };
+        let grid_cells = u64::try_from(max_grid_cells).map_err(|_| {
             CliError::InvalidInput("ASCII grid admission weight does not fit u64".to_string())
         })?;
         let weight = checked_sum(&[
@@ -175,6 +178,23 @@ impl BackendAdmission {
         let mut admission = Self::bounded(resources, 1)?;
         admission.enforce_actual_bound = false;
         Ok(admission)
+    }
+
+    #[cfg(feature = "ascii")]
+    fn exclusive_unmeasured(resources: &ResolvedResourcePolicy) -> Result<Self, CliError> {
+        let ledger = resources.checked_scheduling_weight();
+        let weight = ledger.max().ok_or_else(|| {
+            CliError::InvalidInput(
+                "exclusive backend admission requires a finite scheduling budget".to_string(),
+            )
+        })?;
+        Ok(Self {
+            budget: Arc::new(BackendAdmissionBudget::new(ledger)),
+            weight,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            actual_prefix_weight: 0,
+            enforce_actual_bound: false,
+        })
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
