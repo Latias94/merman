@@ -10,7 +10,7 @@ use crate::diagram::{
 };
 use crate::{
     DiagramWarningFact, EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -19,8 +19,8 @@ use std::sync::OnceLock;
 pub(crate) type CombinedSemanticParser = fn(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<CombinedSemanticParse>;
+    control: &OperationControl,
+) -> OperationControlResult<CombinedSemanticParse>;
 
 pub(crate) type WarningSemanticParser =
     fn(code: &str, meta: &ParseMetadata) -> Result<WarningSemanticParse>;
@@ -212,11 +212,13 @@ impl CombinedSemanticParse {
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::{CombinedSemanticParse, CombinedSemanticParser};
-    use crate::{EditorSemanticFacts, Error, ParseControl, ParseControlResult, ParseMetadata};
+    use crate::{
+        EditorSemanticFacts, Error, OperationControl, OperationControlResult, ParseMetadata,
+    };
     use serde_json::Value;
 
     pub(crate) fn into_result(
-        parsed: ParseControlResult<CombinedSemanticParse>,
+        parsed: OperationControlResult<CombinedSemanticParse>,
     ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
         let (model, editor_facts, _) = parsed
             .expect("a private parse control cannot be cancelled")
@@ -229,7 +231,7 @@ pub(crate) mod test_support {
         code: &str,
         meta: &ParseMetadata,
     ) -> EditorSemanticFacts {
-        parser(code, meta, &ParseControl::new())
+        parser(code, meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
             .into_parts()
             .1
@@ -556,10 +558,17 @@ pub(crate) fn apply_diagram_type_config_effects(
 
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
-        fn $fn_name(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
-            $parser(code, meta)
+        fn $fn_name(
+            code: &str,
+            meta: &ParseMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+            control.checkpoint()?;
+            let result = $parser(code, meta)
                 .map($variant)
-                .map(RenderSemanticParseOutput::new)
+                .map(RenderSemanticParseOutput::new);
+            control.checkpoint()?;
+            Ok(result)
         }
     };
 }
@@ -589,10 +598,16 @@ render_parser!(
     crate::diagrams::sequence::parse_sequence_model_for_render,
     RenderSemanticModel::Sequence
 );
-fn render_flowchart(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
-    let (model, label_sources) =
-        crate::diagrams::flowchart::parse_flowchart_model_with_render_context(code, meta)?;
-    Ok(RenderSemanticParseOutput::flowchart(model, label_sources))
+fn render_flowchart(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    let result = crate::diagrams::flowchart::parse_flowchart_model_with_render_context_controlled(
+        code, meta, control,
+    )?;
+    Ok(result
+        .map(|(model, label_sources)| RenderSemanticParseOutput::flowchart(model, label_sources)))
 }
 render_parser!(
     render_class,

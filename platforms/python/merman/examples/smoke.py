@@ -117,6 +117,28 @@ def main() -> None:
     else:
         raise RuntimeError("resource failure did not return a binding error")
 
+    deadline = merman.MermanOperationControl(timeout_ms=0)
+    try:
+        api.execute(
+            merman.MermanOperationRequestV4(
+                operation_id="svg",
+                source=BASIC_SOURCE,
+                uri=None,
+                options_json=None,
+                control=deadline,
+            )
+        )
+    except merman.MermanError.Binding as error:
+        require(
+            error.code_name == "MERMAN_CANCELLED"
+            and error.cancellation is not None
+            and error.cancellation.reason == "deadline_exceeded"
+            and error.cancellation.phase == "admission",
+            "deadline failure lost its structured cancellation details",
+        )
+    else:
+        raise RuntimeError("expired operation deadline did not cancel the request")
+
     engine.close()
     print("merman Python UniFFI smoke passed")
 

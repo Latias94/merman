@@ -1,13 +1,15 @@
 #![cfg(feature = "svg")]
 #![recursion_limit = "256"]
 
-use merman::MermaidConfig;
 use merman::svg::{
-    CssOverridePolicy, CssOverridePostprocessor, HeadlessRenderer, ScopedCssPostprocessor,
-    SvgPipeline,
+    CssOverridePolicy, CssOverridePostprocessor, ScopedCssPostprocessor, SvgPipeline,
+    SvgRenderOptions,
+};
+use merman::{
+    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
 
-fn zed_like_renderer(id: &str) -> HeadlessRenderer {
+fn zed_like_engine() -> Engine {
     let theme_config = MermaidConfig::from_value(serde_json::json!({
         "theme": "base",
         "darkMode": true,
@@ -97,10 +99,7 @@ fn zed_like_renderer(id: &str) -> HeadlessRenderer {
         }
     }));
 
-    HeadlessRenderer::new()
-        .with_site_config(theme_config)
-        .with_vendored_text_measurer()
-        .with_diagram_id(id)
+    Engine::new().with_site_config(theme_config)
 }
 
 fn render_zed_safe(name: &str, source: &str) -> String {
@@ -122,11 +121,25 @@ fn render_zed_with_host_css(name: &str, source: &str, host_css: &str) -> String 
 }
 
 fn render_zed_with_pipeline(name: &str, source: &str, pipeline: &SvgPipeline) -> String {
-    zed_like_renderer(name)
-        .render_resvg_compatible_svg_with_pipeline_sync(source, pipeline)
-        .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
-        .unwrap_or_else(|| panic!("{name}: no diagram detected"))
-        .into_string()
+    let output = Renderer::new()
+        .with_engine(zed_like_engine())
+        .render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            SvgRequest {
+                options: SvgRenderOptions {
+                    diagram_id: Some(name.to_string()),
+                    ..Default::default()
+                },
+                pipeline: Some(pipeline.clone()),
+                ..Default::default()
+            },
+        ))
+        .unwrap_or_else(|err| panic!("{name}: render failed: {err}"));
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("{name}: no diagram detected");
+    };
+    svg.into_parts().0
 }
 
 fn assert_zed_safe_svg(name: &str, svg: &str) {

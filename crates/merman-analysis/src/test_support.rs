@@ -1,7 +1,7 @@
 use merman_core::preprocess::SourceConfigEvidence;
 
 pub(crate) fn capture_source_config_evidence(source: &str) -> SourceConfigEvidence {
-    let control = merman_core::ParseControl::new();
+    let control = merman_core::OperationControl::new();
     match merman_core::Engine::new()
         .capture_diagram_snapshot_controlled_sync(source, &control)
         .expect("a private parse control cannot be cancelled")

@@ -13,7 +13,7 @@ mod gantt;
 use er::{compare_er_args, compare_er_request};
 use flowchart::{compare_flowchart_args, compare_flowchart_request};
 use gantt::{compare_gantt_args, compare_gantt_request};
-pub(crate) use gantt::{gantt_baseline_local_offset_minutes, gantt_compare_environment};
+pub(crate) use gantt::{gantt_baseline_local_offset_minutes, gantt_baseline_runtime_policy};
 
 pub(crate) use flowchart::{
     audit_flowchart_elk_parity_coverage, check_flowchart_elk_parity,
@@ -733,7 +733,7 @@ mod tests {
             );
             assert_eq!(
                 fact.render_path(),
-                merman::svg::RenderExecutionPath::HeadlessOperationTyped,
+                merman::OperationExecutionPath::Renderer,
                 "{} must verify the canonical typed operation",
                 fact.diagram
             );

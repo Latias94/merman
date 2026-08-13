@@ -60,9 +60,15 @@ not a promise that historical partial tables remain supported. Release consumers
 generated table, require every function pointer they call, and never reconstruct function names or
 dynamically look up per-operation exports.
 
-The current table includes `metadata_collect` at function-slot code `5` and
-`engine_new_with_services` at code `6`. Release consumers require both functions and must not fall
-back to the older constructor or silently discard constructor services.
+The descriptor-selected minimum prefix includes `metadata_collect` at function-slot code `5` and
+`engine_new_with_services` at code `6`. The current table then appends
+`operation_control_new`, `operation_control_cancel`, and `operation_control_release` at codes `7`,
+`8`, and `9`, followed by `execute_collect_controlled` at code `10`. The generated prefix-size
+macros identify each complete table boundary. Release consumers require the complete current
+prefix through `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; they must not treat the
+smaller minimum prefix as the complete release surface, fall back to the older constructor, or
+discard constructor services. The controlled entry point is append-only so the original ABI 3
+operation-request record remains byte-for-byte stable.
 
 The returned digests have separate roles:
 
@@ -266,6 +272,81 @@ matching leaves, while omitted nested values remain inherited. The engine baseli
 after the call. Runtime-policy selection is engine-owned; a request containing `runtime_policy`
 fails with `MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR`.
 
+## Cooperative Operation Control
+
+The current table exposes three appended operation-control functions:
+
+- `operation_control_new` (slot `7`) creates an opaque
+  `MermanNativeOperationControlToken`. `has_timeout_ms == 0` creates a control without a deadline;
+  `has_timeout_ms == 1` installs a relative monotonic deadline using `timeout_ms`, where zero means
+  an immediate deadline. Initialize `out_control` to zero and `out_result` with
+  `MERMAN_NATIVE_RESULT_INIT`.
+- `operation_control_cancel` (slot `8`) atomically requests cooperative cancellation for a live
+  token. It may be called from another execution context while `execute_collect` is running.
+- `operation_control_release` (slot `9`) retires the registry identity. It does not cancel by
+  itself and does not invalidate a control already cloned by an in-flight operation.
+- `execute_collect_controlled` (slot `10`) executes the unchanged ABI 3 request record with an
+  explicit borrowed control token. Passing zero selects ordinary active-control behavior.
+
+```c
+MermanNativeOperationControlToken control = 0;
+MermanNativeResult control_result = MERMAN_NATIVE_RESULT_INIT;
+MermanNativeStatus control_status =
+    api.operation_control_new(250, 1, &control, &control_result);
+api.result_free(&control_result);
+if (control_status != MERMAN_NATIVE_STATUS_OK) {
+    /* No control token was published. */
+}
+
+/* Another native execution context may call api.operation_control_cancel(control). */
+status = api.execute_collect_controlled(engine, control, &request, &result);
+api.operation_control_release(control);
+```
+
+As with every producing call, inspect or copy a failure result before `result_free`. The abbreviated
+snippet frees the creation result immediately only to keep the lifecycle example focused.
+
+Call `execute_collect` when no caller-supplied control is needed. For controlled execution, pass a
+token to `execute_collect_controlled`; zero is also accepted and selects ordinary active-control
+behavior. A nonzero token is borrowed for the call: the implementation clones its shared state
+while briefly holding the control registry, releases that lock before engine admission and
+rendering, and never consumes or releases the caller's token.
+
+Cancellation is cooperative. The parser, semantic pipeline, layout work accounting, native layout
+adapters, SVG post-processing, and export paths check the shared state at explicit boundaries. An
+opaque synchronous backend or host callback cannot be forcefully unwound; a cancellation request
+made during such a call is observed after it returns to the next checkpoint. Hosts that require a
+hard latency bound across arbitrary foreign code must isolate the operation in a worker or process
+they can terminate.
+
+On observation, the operation returns `MERMAN_NATIVE_STATUS_CANCELLED` (`17`), publishes no partial
+output, and writes an ordinary owned failure result. The additive details identify why and where
+the operation stopped:
+
+```json
+{
+  "version": 1,
+  "ok": false,
+  "status": 17,
+  "status_name": "cancelled",
+  "kind": "generic",
+  "capability_id": null,
+  "message": "operation cancelled during layout: requested",
+  "details": {
+    "cancellation": {
+      "reason": "requested",
+      "phase": "layout"
+    }
+  }
+}
+```
+
+Stable reasons are `requested` and `deadline_exceeded`. The phase is the checkpoint that observed
+the terminal state (`admission`, `parse`, `semantic`, `analysis`, `layout`, `emit`, `postprocess`,
+`export`, or `unknown`). Cancellation is not `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED`:
+resource limits provide deterministic work ceilings, whereas controls stop work that the host no
+longer wants.
+
 ## Results, Errors, And Ownership
 
 The status return and `MermanNativeResult.status` agree. On successful generic operations, `data`
@@ -297,7 +378,8 @@ nullable `capability_id`:
 Icon-registry construction failures add `details.icon_registry` with a stable `kind_id`, optional
 `pack_index`, and a bounded registration name when safe to report. Fixed constructor ceilings also
 add `details.resource` with the stable limit ID, phase, actual value, maximum, and
-`constructor-fixed` profile. These are additive fields under the frozen five-kind error envelope.
+`constructor-fixed` profile. Cancelled operations add `details.cancellation` with `reason` and
+`phase`. These are additive fields under the frozen five-kind error envelope.
 
 The ABI 3 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
 `missing-capability`, `reentrant-call`, and `busy`. Consumers should still treat an unknown kind as
@@ -309,6 +391,8 @@ the numeric status or message text. `reentrant-call` uses
 `MERMAN_NATIVE_STATUS_REENTRANT_CALL` when a host callback re-enters or tries to close the same
 engine. `busy` uses `MERMAN_NATIVE_STATUS_BUSY` when a callback-configured engine cannot admit a
 competing operation or any engine still has an active operation during a close attempt.
+`MERMAN_NATIVE_STATUS_CANCELLED` uses the generic error kind and must be classified through the
+numeric status plus `details.cancellation`, not folded into resource-limit handling.
 
 `data` and `metadata_or_error_json` are Merman-owned buffers only after Merman has written the
 result record. Every Merman-written result owns a process-lifetime monotonic, nonzero
@@ -325,11 +409,11 @@ If the process-lifetime token space itself is exhausted, the producing call retu
 `MERMAN_NATIVE_STATUS_INTERNAL_ERROR` and leaves a valid zero-initialized result record untouched;
 it cannot write a conforming owned result without a nonzero token.
 
-Engine values are opaque nonzero `uint64_t` tokens, not pointers. Engine and result-allocation
-tokens use separate low-bit domains over independent monotonic counters. The sign bit is never set,
-so every valid token remains positive when a generated language binding represents it as a signed
-64-bit integer. Domain tagging rejects accidental cross-kind use; it is not authorization or
-hostile same-process tenant isolation.
+Engine values and operation controls are opaque nonzero `uint64_t` tokens, not pointers. Engine,
+operation-control, and result-allocation tokens use separate low-bit domains over independent
+monotonic counters. The sign bit is never set, so every valid token remains positive when a
+generated language binding represents it as a signed 64-bit integer. Domain tagging rejects
+accidental cross-kind use; it is not authorization or hostile same-process tenant isolation.
 `api.engine_try_close(engine)` never waits:
 
 - If a host callback is active, it returns `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
@@ -365,6 +449,9 @@ boundary. Merman can convert only a status value that the callback actually retu
 catch a foreign exception. A language binding must catch callback failures on the host side and
 return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. In C++17 and newer, the generated callback and
 function-pointer types are declared `noexcept` to make this contract visible to the type system.
+The operation control remains visible to the surrounding renderer, but it cannot preempt the
+opaque callback body; cancellation or deadline expiry is observed after the callback returns to a
+renderer checkpoint.
 
 ## Contract Evolution Rules
 
@@ -374,8 +461,9 @@ function-pointer types are declared `noexcept` to make this contract visible to 
   compatibility check. Treat
   the full descriptor digest, capability catalog digest, package version, and generated
   C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
-- Function slots and codes may only be appended. Changing an existing wire layout requires a new
-  ABI version.
+- Function slots and codes may only be appended. Slots `7`-`9` are the current operation-control
+  append, while the descriptor-selected minimum prefix remains through slot `6`. Changing an
+  existing wire layout requires a new ABI version.
 - The descriptor and generated Rust/C/Dart projections are the single current ABI authority.
   Descriptor validation, the derived minimum-prefix layout digest, generated-file freshness, and
   current-header lifecycle tests cover layout, ownership, token, status, and operation semantics.
@@ -383,7 +471,8 @@ function-pointer types are declared `noexcept` to make this contract visible to 
   artifacts; no second semantic snapshot or hand-maintained approval digest is required.
 - A future generated header may add slots. Current consumers require the complete table they were
   generated against instead of maintaining hand-written historical fallbacks.
-- Result ownership, token-domain/free behavior, callback non-local-exit prohibition, nonblocking
+- Result ownership, engine/control/allocation token-domain behavior, cooperative cancellation and
+  deadline details, callback non-local-exit prohibition, nonblocking
   close semantics, both constructors' storage separation and zero-output precondition,
   constructor-service ownership, caller-memory obligations, `NONE` handling, status-kind mappings,
   and the closed error-kind vocabulary are defined in the descriptor and exercised by generated

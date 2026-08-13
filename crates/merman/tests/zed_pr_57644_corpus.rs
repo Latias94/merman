@@ -1,6 +1,7 @@
 #![cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 
-use merman::svg::{HeadlessRenderer, ResvgCompatibleSvg};
+use merman::svg::SvgPipeline;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
@@ -48,13 +49,24 @@ fn zed_pr_57644_corpus_renders_headless_resvg_safe() {
             .unwrap_or("<invalid fixture name>");
         let source = std::fs::read_to_string(&fixture)
             .unwrap_or_else(|err| panic!("{name}: read {}: {err}", fixture.display()));
-        let svg = HeadlessRenderer::new()
-            .with_vendored_text_measurer()
-            .with_diagram_id(name)
-            .render_resvg_compatible_svg_sync(&source)
-            .unwrap_or_else(|err| panic!("{name}: headless render failed: {err}"))
-            .map(ResvgCompatibleSvg::into_string)
-            .unwrap_or_else(|| panic!("{name}: no diagram detected"));
+        let request = SvgRequest {
+            options: merman::svg::SvgRenderOptions {
+                diagram_id: Some(name.to_string()),
+                ..Default::default()
+            },
+            pipeline: Some(SvgPipeline::resvg_safe()),
+            ..Default::default()
+        };
+        let output = Renderer::new()
+            .render(
+                RenderRequest::svg(&source, OperationControl::new(), request)
+                    .with_parse_options(merman::ParseOptions::strict()),
+            )
+            .unwrap_or_else(|err| panic!("{name}: render failed: {err}"));
+        let RenderOutput::Svg(Some(svg)) = output else {
+            panic!("{name}: no diagram detected");
+        };
+        let svg = svg.svg();
 
         assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
         assert!(

@@ -98,6 +98,27 @@ impl BindingResourceLimitCause {
     }
 }
 
+/// Structured cooperative-cancellation details carried by the additive error payload.
+///
+/// The binding layer projects the core operation error to stable strings so transports do not
+/// need to depend on the non-exhaustive core phase enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingCancellationErrorDetails {
+    pub reason: &'static str,
+    pub phase: &'static str,
+}
+
+impl BindingCancellationErrorDetails {
+    #[must_use]
+    pub const fn from_operation(error: merman::OperationCancelled) -> Self {
+        Self {
+            reason: error.reason.as_str(),
+            phase: error.phase.as_str(),
+        }
+    }
+}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingStatus {
@@ -113,6 +134,7 @@ pub enum BindingStatus {
     InternalError = 9,
     ResourceLimitExceeded = 10,
     Busy = 11,
+    Cancelled = 12,
 }
 
 impl BindingStatus {
@@ -134,6 +156,7 @@ impl BindingStatus {
             Self::InternalError => "MERMAN_INTERNAL_ERROR",
             Self::ResourceLimitExceeded => "MERMAN_RESOURCE_LIMIT_EXCEEDED",
             Self::Busy => "MERMAN_BUSY",
+            Self::Cancelled => "MERMAN_CANCELLED",
         }
     }
 }
@@ -143,9 +166,15 @@ pub struct BindingError {
     status: BindingStatus,
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
-    resource: Option<BindingResourceErrorDetails>,
-    icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
+    details: Option<Box<BindingErrorDetails>>,
     message: Box<str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct BindingErrorDetails {
+    resource: Option<BindingResourceErrorDetails>,
+    cancellation: Option<BindingCancellationErrorDetails>,
+    icon_registry: Option<BindingIconRegistryErrorDetails>,
 }
 
 /// Structured resource failure details carried by the additive error JSON payload.
@@ -216,15 +245,24 @@ pub struct BindingIconRegistryErrorDetails {
 }
 
 impl BindingError {
-    pub fn new(status: BindingStatus, message: impl Into<String>) -> Self {
+    fn classified(
+        status: BindingStatus,
+        kind: BindingErrorKind,
+        capability_id: Option<&'static str>,
+        details: Option<BindingErrorDetails>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             status,
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource: None,
-            icon_registry: None,
+            kind,
+            capability_id,
+            details: details.map(Box::new),
             message: message.into().into_boxed_str(),
         }
+    }
+
+    pub fn new(status: BindingStatus, message: impl Into<String>) -> Self {
+        Self::classified(status, BindingErrorKind::Generic, None, None, message)
     }
 
     /// Creates a caller-owned invalid-argument failure without requiring status reconstruction.
@@ -243,25 +281,23 @@ impl BindingError {
     }
 
     pub fn unknown_operation(message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::UnsupportedOperation,
-            kind: BindingErrorKind::UnknownOperation,
-            capability_id: None,
-            resource: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::UnsupportedOperation,
+            BindingErrorKind::UnknownOperation,
+            None,
+            None,
+            message,
+        )
     }
 
     pub fn missing_capability(capability_id: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::UnsupportedOperation,
-            kind: BindingErrorKind::MissingCapability,
-            capability_id: Some(capability_id),
-            resource: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::UnsupportedOperation,
+            BindingErrorKind::MissingCapability,
+            Some(capability_id),
+            None,
+            message,
+        )
     }
 
     /// Creates a caller-owned failure for a known operation or metadata endpoint that this
@@ -271,25 +307,23 @@ impl BindingError {
     }
 
     pub fn reentrant_call(message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::InvalidArgument,
-            kind: BindingErrorKind::ReentrantCall,
-            capability_id: None,
-            resource: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::InvalidArgument,
+            BindingErrorKind::ReentrantCall,
+            None,
+            None,
+            message,
+        )
     }
 
     pub fn busy(message: impl Into<String>) -> Self {
-        Self {
-            status: BindingStatus::Busy,
-            kind: BindingErrorKind::Busy,
-            capability_id: None,
-            resource: None,
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            BindingStatus::Busy,
+            BindingErrorKind::Busy,
+            None,
+            None,
+            message,
+        )
     }
 
     pub fn resource_limit(
@@ -321,21 +355,24 @@ impl BindingError {
         profile: &'static str,
         message: impl Into<String>,
     ) -> Self {
-        Self {
-            status: BindingStatus::ResourceLimitExceeded,
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource: Some(BindingResourceErrorDetails {
-                cause,
-                limit_id,
-                phase,
-                actual,
-                max,
-                profile,
+        Self::classified(
+            BindingStatus::ResourceLimitExceeded,
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource: Some(BindingResourceErrorDetails {
+                    cause,
+                    limit_id,
+                    phase,
+                    actual,
+                    max,
+                    profile,
+                }),
+                cancellation: None,
+                icon_registry: None,
             }),
-            icon_registry: None,
-            message: message.into().into_boxed_str(),
-        }
+            message,
+        )
     }
 
     /// Creates the canonical structured failure for UTF-8 rejected before registry ingestion.
@@ -380,18 +417,21 @@ impl BindingError {
         resource: Option<BindingResourceErrorDetails>,
         message: impl Into<String>,
     ) -> Self {
-        Self {
-            status: icon_registry_error_status(kind),
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource,
-            icon_registry: Some(Box::new(BindingIconRegistryErrorDetails {
-                kind_id: kind.stable_id(),
-                pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
-                registration_name: None,
-            })),
-            message: message.into().into_boxed_str(),
-        }
+        Self::classified(
+            icon_registry_error_status(kind),
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource,
+                cancellation: None,
+                icon_registry: Some(BindingIconRegistryErrorDetails {
+                    kind_id: kind.stable_id(),
+                    pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
+                    registration_name: None,
+                }),
+            }),
+            message,
+        )
     }
 
     pub const fn status(&self) -> BindingStatus {
@@ -406,12 +446,40 @@ impl BindingError {
         self.capability_id
     }
 
-    pub const fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
-        self.resource
+    pub fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
+        match self.details.as_deref() {
+            Some(details) => details.resource,
+            None => None,
+        }
+    }
+
+    #[must_use]
+    pub fn cancellation_details(&self) -> Option<BindingCancellationErrorDetails> {
+        match self.details.as_deref() {
+            Some(details) => details.cancellation,
+            None => None,
+        }
+    }
+
+    /// Creates the canonical structured failure for cooperative cancellation or deadline expiry.
+    pub fn cancelled(error: merman::OperationCancelled) -> Self {
+        Self::classified(
+            BindingStatus::Cancelled,
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource: None,
+                cancellation: Some(BindingCancellationErrorDetails::from_operation(error)),
+                icon_registry: None,
+            }),
+            error.to_string(),
+        )
     }
 
     pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
-        self.icon_registry.as_deref()
+        self.details
+            .as_deref()
+            .and_then(|details| details.icon_registry.as_ref())
     }
 
     pub fn message(&self) -> &str {
@@ -465,14 +533,17 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             }
             _ => None,
         };
-        Self {
-            status: icon_registry_error_status(error_kind),
-            kind: BindingErrorKind::Generic,
-            capability_id: None,
-            resource,
-            icon_registry: Some(Box::new(details)),
-            message: message.into_boxed_str(),
-        }
+        Self::classified(
+            icon_registry_error_status(error_kind),
+            BindingErrorKind::Generic,
+            None,
+            Some(BindingErrorDetails {
+                resource,
+                cancellation: None,
+                icon_registry: Some(details),
+            }),
+            message,
+        )
     }
 }
 
@@ -512,6 +583,8 @@ struct ErrorDetails<'a, R> {
     resource: Option<R>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cancellation: Option<&'a BindingCancellationErrorDetails>,
 }
 
 #[derive(Debug, Serialize)]
@@ -745,17 +818,20 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
         None,
         None,
         None,
+        None,
         message,
     )
 }
 
 pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
+    let details = error.details.as_deref();
     error_payload_json_bytes_with_details(
         error.status(),
         error.kind(),
         error.capability_id(),
-        error.resource.as_ref(),
-        error.icon_registry.as_deref(),
+        details.and_then(|details| details.resource.as_ref()),
+        details.and_then(|details| details.icon_registry.as_ref()),
+        details.and_then(|details| details.cancellation.as_ref()),
         error.message(),
     )
 }
@@ -763,6 +839,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
 /// Serializes a binding error for JavaScript transports without losing wide resource counts.
 #[doc(hidden)]
 pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
+    let details = error.details.as_deref();
     error_payload_json_bytes_with_details(
         error.status(),
         error.kind(),
@@ -770,7 +847,8 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error
             .resource_details()
             .map(BindingResourceErrorDetails::js_safe_json),
-        error.icon_registry.as_deref(),
+        details.and_then(|details| details.icon_registry.as_ref()),
+        details.and_then(|details| details.cancellation.as_ref()),
         error.message(),
     )
 }
@@ -781,6 +859,7 @@ fn error_payload_json_bytes_with_details<R>(
     capability_id: Option<&str>,
     resource: Option<R>,
     icon_registry: Option<&BindingIconRegistryErrorDetails>,
+    cancellation: Option<&BindingCancellationErrorDetails>,
     message: &str,
 ) -> Vec<u8>
 where
@@ -793,10 +872,12 @@ where
         code_name: status.code_name(),
         kind: kind.id(),
         capability_id,
-        details: (resource.is_some() || icon_registry.is_some()).then_some(ErrorDetails {
-            resource,
-            icon_registry,
-        }),
+        details: (resource.is_some() || icon_registry.is_some() || cancellation.is_some())
+            .then_some(ErrorDetails {
+                resource,
+                icon_registry,
+                cancellation,
+            }),
         message,
     };
     serde_json::to_vec(&payload).unwrap_or_else(|_| {
@@ -1792,16 +1873,23 @@ pub(crate) fn binding_input_resource_policy(
 }
 
 #[cfg(feature = "ascii")]
-pub(crate) fn binding_ascii_grid_cells(
+pub(crate) fn binding_ascii_resource_policy(
     resources: Option<&ResourceOptionsJson>,
-) -> Result<usize, BindingError> {
+) -> Result<merman::ascii::AsciiResourcePolicy, BindingError> {
     let default_resources = ResourceOptionsJson::default();
     let values = effective_resource_limits(resources.unwrap_or(&default_resources))?;
-    Ok(values
-        .get(merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
-        .copied()
-        .flatten()
-        .unwrap_or(usize::MAX))
+    Ok(
+        match values
+            .get(merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
+            .copied()
+            .flatten()
+        {
+            Some(max_grid_cells) => {
+                merman::ascii::AsciiResourcePolicy::with_max_grid_cells(max_grid_cells)
+            }
+            None => merman::ascii::AsciiResourcePolicy::unbounded(),
+        },
+    )
 }
 
 #[cfg(feature = "svg")]
@@ -1845,7 +1933,6 @@ fn binding_resource_profile(
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub(crate) struct BindingExportResourceOptions {
-    pub(crate) profile: merman::resources::ResourceProfile,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(crate) raster_size_limit: merman::svg::export::RasterSizeLimit,
     pub(crate) embedded_image_limit: merman::svg::export::EmbeddedImageLimit,
@@ -1860,10 +1947,7 @@ pub(crate) fn binding_export_resource_options(
 ) -> Result<BindingExportResourceOptions, BindingError> {
     let default_resources = ResourceOptionsJson::default();
     let values = effective_resource_limits(resources.unwrap_or(&default_resources))?;
-    let profile = binding_resource_profile(resources)?;
-
     Ok(BindingExportResourceOptions {
-        profile,
         #[cfg(any(feature = "png", feature = "jpeg"))]
         raster_size_limit: merman::svg::export::RasterSizeLimit::new(
             export_resource_u32(
@@ -2380,6 +2464,35 @@ mod tests {
         assert_eq!(json["details"]["resource"]["max"], 800_000);
         assert_eq!(std::mem::size_of::<BindingResourceLimitCause>(), 1);
         assert!(std::mem::size_of::<BindingError>() < 128);
+    }
+
+    #[test]
+    fn cancellation_payload_is_structured_and_disjoint_from_resource_details() {
+        let cancelled = BindingError::cancelled(merman::OperationCancelled {
+            phase: merman::OperationPhase::Layout,
+            reason: merman::CancelReason::DeadlineExceeded,
+        });
+        assert_eq!(cancelled.status(), BindingStatus::Cancelled);
+        assert_eq!(cancelled.status().code(), 12);
+        assert_eq!(cancelled.status().code_name(), "MERMAN_CANCELLED");
+        assert_eq!(cancelled.resource_details(), None);
+        assert_eq!(
+            cancelled.cancellation_details(),
+            Some(BindingCancellationErrorDetails {
+                reason: "deadline_exceeded",
+                phase: "layout",
+            })
+        );
+
+        let json: Value =
+            serde_json::from_slice(&binding_error_payload_json_bytes(&cancelled)).unwrap();
+        assert_eq!(json["code_name"], "MERMAN_CANCELLED");
+        assert_eq!(
+            json["details"]["cancellation"]["reason"],
+            "deadline_exceeded"
+        );
+        assert_eq!(json["details"]["cancellation"]["phase"], "layout");
+        assert!(json["details"].get("resource").is_none());
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

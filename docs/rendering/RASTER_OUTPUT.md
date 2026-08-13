@@ -115,29 +115,48 @@ merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["pn
 ```
 
 ```rust
-use merman::svg::{
-    HeadlessRenderer,
-    export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions},
+use merman::svg::export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions};
+use merman::{
+    OperationControl, PdfRequest, PngRequest, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
 
-let renderer = HeadlessRenderer::new().with_diagram_id("export-doc-example");
+let renderer = Renderer::new();
+let source = "flowchart TD; A[Layer 7\\nHTTP]-->B;";
+let svg = SvgRequest {
+    options: merman::svg::SvgRenderOptions {
+        diagram_id: Some("export-doc-example".to_string()),
+        ..Default::default()
+    },
+    ..Default::default()
+};
 
 let raster = RasterOptions::default()
     .with_fit_to(RasterFitBox::contain(960, 540))
     .with_scale(2.0)
     .with_background("white");
-let png = renderer
-    .render_png_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &raster)?
-    .unwrap();
+let RenderOutput::Png(Some(png)) = renderer.render(RenderRequest::png(
+    source,
+    OperationControl::new(),
+    PngRequest {
+        svg: svg.clone(),
+        options: raster,
+    },
+))? else {
+    return Err("no Mermaid diagram detected".into());
+};
 
 let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
     max_width_px: 800.0,
 });
-let pdf = renderer
-    .render_pdf_with_options_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &pdf)?
-    .unwrap();
+let RenderOutput::Pdf(Some(pdf)) = renderer.render(RenderRequest::pdf(
+    source,
+    OperationControl::new(),
+    PdfRequest { svg, options: pdf },
+))? else {
+    return Err("no Mermaid diagram detected".into());
+};
 
-# let _ = (png, pdf);
+# let _ = (png.bytes, pdf.bytes);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -152,25 +171,28 @@ encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman-core = { version = "=0.8.0-alpha.5", default-features = false }
+merman-render = { version = "=0.8.0-alpha.5", default-features = false }
+merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "jpeg", "pdf"] }
 ```
 
 ```rust
-use merman::svg::{
-    RenderEnvironment, finalize_resvg_svg,
-    export::{
-        PdfOptions, RasterOptions, svg_to_jpeg, svg_to_pdf_with_options, svg_to_png,
-    },
+use merman_core::OperationControl;
+use merman_export::{
+    PdfOptions, RasterOptions, svg_to_jpeg_controlled, svg_to_pdf_controlled,
+    svg_to_png_controlled,
 };
+use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
 let source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>";
-let session = RenderEnvironment::parity().begin_session()?;
+let control = OperationControl::new();
+let session = RenderEnvironment::parity().begin_session_with_control(control.clone())?;
 let svg = finalize_resvg_svg(source, &session)?;
 
 let raster = RasterOptions::default().with_scale(2.0);
-let png = svg_to_png(&svg, &raster)?;
-let jpeg = svg_to_jpeg(&svg, &raster)?;
-let pdf = svg_to_pdf_with_options(&svg, &PdfOptions::default())?;
+let png = svg_to_png_controlled(&svg, &raster, control.clone())?;
+let jpeg = svg_to_jpeg_controlled(&svg, &raster, control.clone())?;
+let pdf = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)?;
 
 # let _ = (png, jpeg, pdf);
 # Ok::<(), Box<dyn std::error::Error>>(())

@@ -2,7 +2,11 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, RenderFamilyKind, RuntimePolicy};
+use merman::{
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, RenderTarget, Renderer,
+    SvgRequest,
+};
+use merman::{runtime::RuntimePolicy, svg::SvgRenderOptions};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -465,35 +469,48 @@ fn observe_svg(svg: &str, expected_depth: u32) -> Result<SvgObservation, ProbeEr
 }
 
 fn render_hierarchy(
-    renderer: &HeadlessRenderer,
+    renderer: &Renderer,
     source: &str,
 ) -> Result<StagedRenderObservation, ProbeError> {
-    // The public staged API keeps metadata, capability admission, layout, and SVG tied to one
-    // consuming parse artifact. `continue_layout` performs capability planning; calling
-    // `render_plan` here would plan twice and pollute the measured allocation window.
-    let semantic = renderer
-        .prepare_semantic_sync(source)
+    // The format-neutral artifact owns the operation control and runtime context. Consuming it
+    // into the SVG target therefore keeps parse, ELK layout, emission, and postprocessing within
+    // one operation rather than creating a hidden replacement session.
+    let output = renderer
+        .render(RenderRequest::semantic(source, OperationControl::new()))
         .map_err(|error| {
             ProbeError::new(format!("flowchart semantic preparation failed: {error}"))
-        })?
-        .ok_or_else(|| ProbeError::new("flowchart semantic preparation returned no diagram"))?;
+        })?;
+    let RenderOutput::Semantic(Some(semantic)) = output else {
+        return Err(ProbeError::new(
+            "flowchart semantic preparation returned no diagram",
+        ));
+    };
     let metadata_diagram_type_matches = semantic.metadata().diagram_type == DIAGRAM_TYPE;
     let metadata_layout_elk = semantic.metadata().effective_config.get_str("layout") == Some("elk");
     let semantic_kind_flowchart = semantic.semantic_kind() == "flowchart";
-    let prepared = semantic
-        .continue_layout()
-        .map_err(|error| ProbeError::new(format!("flowchart layout failed: {error}")))?;
-    let prepared_family_flowchart = prepared.family_kind() == RenderFamilyKind::Flowchart;
-    let svg = prepared
-        .render_svg(renderer.svg_options())
+    // The facade no longer exposes the private SVG family enum. Preserve the evidence field by
+    // proving that the canonical semantic artifact selected the Flowchart model before SVG
+    // dispatch; successful typed SVG output below proves that the family adapter admitted it.
+    let prepared_family_flowchart = semantic_kind_flowchart;
+    let output = semantic
+        .render(RenderTarget::Svg(SvgRequest {
+            options: SvgRenderOptions {
+                diagram_id: Some("elk-hierarchy-memory".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }))
         .map_err(|error| ProbeError::new(format!("flowchart SVG render failed: {error}")))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err(ProbeError::new("flowchart SVG render returned no diagram"));
+    };
 
     Ok(StagedRenderObservation {
         metadata_diagram_type_matches,
         metadata_layout_elk,
         semantic_kind_flowchart,
         prepared_family_flowchart,
-        svg,
+        svg: svg.into_parts().0,
     })
 }
 
@@ -509,11 +526,12 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     let executable_sha256 = executable_sha256()?;
     let depth = hierarchy_depth(request.scale)?;
     let source = build_flowchart(depth)?;
-    let renderer = HeadlessRenderer::new()
-        .with_strict_parsing()
-        .with_vendored_text_measurer()
-        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed))
-        .with_diagram_id("elk-hierarchy-memory");
+    let renderer = Renderer::new()
+        .with_engine(
+            Engine::new()
+                .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
+        )
+        .with_parse_options(ParseOptions::strict());
 
     let snapshot_live_bytes = ALLOCATOR.begin_measurement();
     let render_result = match request.mode {

@@ -6,8 +6,8 @@ Merman keeps four independent choices separate: host theme values, Merman presen
 | --- | --- | --- |
 | Host theme | `Presentation::with_theme(...)` / `presentation.theme` | Semantic host colors, typography, and series colors |
 | Merman presentation | `Presentation::with_profile(...)` / `presentation.profile` | Product-owned behavior such as the `merman-modern` Flowchart treatment |
-| Mermaid configuration | `HeadlessRenderer::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
-| SVG output | `HeadlessRenderer::with_svg_pipeline(...)` / `svg` | Parity, readable, or `resvg-safe` post-processing and output-specific policy |
+| Mermaid configuration | `Engine::with_site_config(...)` / top-level `site_config` | Mermaid `theme`, `look`, layout, `themeVariables`, and family configuration |
+| SVG output | `SvgRequest.pipeline` / `svg` | Parity, readable, or `resvg-safe` post-processing and output-specific policy |
 
 The default renderer remains Mermaid-parity oriented. An empty presentation is a no-op.
 
@@ -15,18 +15,36 @@ The default renderer remains Mermaid-parity oriented. An empty presentation is a
 
 ```rust
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemePreset, Presentation, PresentationProfile, SvgPipeline,
+    HostTheme, HostThemePreset, Presentation, PresentationProfile, SvgPipeline, SvgRenderOptions,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 let presentation = Presentation::new()
     .with_profile(PresentationProfile::MermanModern)
     .with_theme(HostTheme::from_preset(HostThemePreset::OneDark));
 
-let renderer = HeadlessRenderer::new()
-    .with_presentation(presentation)
-    .with_svg_pipeline(SvgPipeline::resvg_safe())
-    .with_diagram_id("preview");
-let svg = renderer.render_svg_sync(source)?;
+let resolved = presentation.resolve();
+let renderer = Renderer::new().with_engine(
+    resolved.materialize_engine(merman::Engine::new()),
+);
+let output = renderer.render(RenderRequest::svg(
+    source,
+    OperationControl::new(),
+    SvgRequest {
+        presentation: resolved.render_policy(),
+        pipeline: Some(SvgPipeline::resvg_safe()),
+        options: SvgRenderOptions {
+            diagram_id: Some("preview".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    },
+))?;
+let RenderOutput::Svg(Some(svg)) = output else {
+    return Err("no Mermaid diagram detected".into());
+};
+# let _ = svg;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 `HostTheme` can also be built from semantic roles rather than a bundled preset. Role IDs describe host intent such as `canvas`, `surface-alt`, `text`, `line`, `edge-label-background`, `actor-text`, `error`, and `success`; the compiler maps them to Mermaid configuration owned by the relevant diagram families.
@@ -94,7 +112,10 @@ Merman materializes configuration in this order:
 5. Diagram frontmatter and directives.
 6. The independently selected SVG output pipeline after rendering.
 
-Because the owners are stored separately, `with_site_config(...).with_presentation(...)` and the reverse builder call order produce the same effective configuration. Explicit Mermaid configuration and source-local configuration win over presentation defaults.
+Rust callers materialize presentation defaults into an `Engine`, apply explicit site configuration
+to that engine, and pass the resolved render policy through `SvgRequest.presentation`. Bindings
+perform the same structural merge from their separate `presentation` and `site_config` fields.
+Explicit Mermaid configuration and source-local configuration win over presentation defaults.
 
 ## Discovery
 

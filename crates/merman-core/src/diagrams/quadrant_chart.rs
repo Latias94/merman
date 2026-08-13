@@ -3,7 +3,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
@@ -932,15 +932,15 @@ fn construct_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure> {
-    construct_quadrant_chart_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_quadrant_chart_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_quadrant_chart_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.set(QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -964,8 +964,8 @@ fn parse_quadrant_chart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<QuadrantSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = QuadrantDb::default();
     db.clear();
@@ -1504,8 +1504,8 @@ pub(crate) fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<V
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_quadrant_chart_semantic_source_controlled(code, meta, control)?;
     Ok(crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -1925,10 +1925,13 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(quadrant_syntax_construction_count(), 1);
 
         reset_quadrant_syntax_construction_count();
-        let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_quadrant_chart_json_and_editor_facts(text, &parsed.meta, &ParseControl::new()),
-        )
-        .expect("Quadrant combined projection succeeds");
+        let (combined_json, combined_editor) =
+            crate::family::test_support::into_result(parse_quadrant_chart_json_and_editor_facts(
+                text,
+                &parsed.meta,
+                &OperationControl::new(),
+            ))
+            .expect("Quadrant combined projection succeeds");
         assert_eq!(quadrant_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
         assert!(!combined_editor.symbols.is_empty());

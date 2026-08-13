@@ -1,10 +1,10 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
+    AsciiResourcePolicy, AsciiRgb, render_model, render_model_with_operation,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
 
 fn parse_er_render_model(input: &str) -> RenderSemanticModel {
@@ -27,6 +27,26 @@ fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<
     let model = parse_er_render_model(input);
 
     render_model(&model, options)
+}
+
+fn render_er_with_grid_limit(
+    input: &str,
+    options: &AsciiRenderOptions,
+    max_grid_cells: usize,
+) -> merman_ascii::Result<String> {
+    let model = parse_er_render_model(input);
+    let control = OperationControl::new();
+    let context = Engine::new()
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+
+    render_model_with_operation(
+        &model,
+        options,
+        &control,
+        &context,
+        AsciiResourcePolicy::with_max_grid_cells(max_grid_cells),
+    )
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -86,8 +106,11 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
 }
 
 fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
-    let err = merman_ascii::render_er(model, &AsciiRenderOptions::ascii())
-        .expect_err("ER model should be rejected as unsupported");
+    let err = render_model(
+        &RenderSemanticModel::Er(model.clone()),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("ER model should be rejected as unsupported");
 
     assert_eq!(
         err,
@@ -99,11 +122,11 @@ fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static s
 }
 
 #[test]
-fn er_local_semantic_fixture_covers_wide_attributes_and_summary_labels() {
+fn er_local_semantic_fixture_covers_wide_attributes_and_relation_labels() {
     let input = read_local_semantic_fixture("er/wide_attributes_and_summary_labels.mmd");
-    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+    let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_er(&input, &options)
+    let rendered = render_er_with_grid_limit(&input, &options, 10_000)
         .expect("ER diagram with wide attributes and relation labels should render");
 
     for expected in [
@@ -112,9 +135,6 @@ fn er_local_semantic_fixture_covers_wide_attributes_and_summary_labels() {
         "ORDER",
         "状态🚀",
         "AUDIT",
-        "relations:",
-        "CUSTOMER ||--o{ ORDER",
-        "ORDER    ||--|| AUDIT",
         "下单🚀",
         "记录数据",
     ] {
@@ -125,7 +145,7 @@ fn er_local_semantic_fixture_covers_wide_attributes_and_summary_labels() {
     }
     assert!(
         !rendered.contains("<br>"),
-        "wide ER relation summary should not leak Mermaid break syntax:\n{rendered}"
+        "wide ER relation labels should not leak Mermaid break syntax:\n{rendered}"
     );
 }
 
@@ -861,80 +881,45 @@ fn er_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
 }
 
 #[test]
-fn er_parser_relationship_layout_falls_back_to_summary_when_grid_budget_is_tight() {
-    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+fn er_parser_relationship_layout_rejects_when_grid_budget_cannot_fit_output() {
+    let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_er(
+    let error = render_er_with_grid_limit(
         "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : \"places<br>orders\"\nORDER ||--|| INVOICE : bills",
         &options,
+        1,
     )
-    .expect("ER relationships should fall back to relation summary when grid budget is tight");
+    .expect_err("an ER fallback that cannot fit the output budget must be rejected");
 
-    for expected in [
-        "CUSTOMER",
-        "ORDER",
-        "INVOICE",
-        "relations:",
-        "CUSTOMER ||--o{ ORDER",
-        "||--|| INVOICE",
-        "places",
-        "bills",
-        "orders",
-    ] {
-        assert!(
-            rendered.contains(expected),
-            "tight-budget ER relation summary should keep {expected:?} visible:\n{rendered}"
-        );
-    }
-    assert!(
-        !rendered.contains(" / "),
-        "tight-budget ER relation summary should keep multiline labels as continuation rows:\n{rendered}"
-    );
-    assert!(
-        !rendered.contains("reason:"),
-        "ER relation summary diagnostics should be opt-in:\n{rendered}"
-    );
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
 }
 
 #[test]
-fn er_parser_relation_summary_can_show_grid_budget_diagnostic() {
-    let options = AsciiRenderOptions::ascii()
-        .with_max_grid_cells(1)
-        .with_relation_summary_diagnostics(true);
+fn er_parser_grid_budget_failure_remains_a_structured_resource_error() {
+    let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
 
-    let rendered = render_er(
+    let error = render_er_with_grid_limit(
         "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : places\nORDER ||--|| INVOICE : bills",
         &options,
+        1,
     )
-    .expect("ER relation summary diagnostic should render");
+    .expect_err("diagnostics must not bypass the final ER canvas budget");
 
-    assert!(rendered.contains("relations:"), "{rendered}");
-    assert!(rendered.contains("reason: grid_budget"), "{rendered}");
-    assert!(rendered.contains("limit=1"), "{rendered}");
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
 }
 
 #[test]
-fn er_parser_independent_relationship_pairs_do_not_share_grid_budget() {
-    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+fn er_parser_final_relation_canvas_obeys_the_grid_budget() {
+    let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_er(
+    let error = render_er_with_grid_limit(
         "erDiagram\nCUSTOMER ||--o{ ORDER : places\nINVOICE ||--|| PAYMENT : captures",
         &options,
+        1,
     )
-    .expect("independent ER relationship pairs should render separately");
+    .expect_err("the final joined ER canvas must obey the operation grid budget");
 
-    for expected in [
-        "CUSTOMER", "ORDER", "INVOICE", "PAYMENT", "places", "captures",
-    ] {
-        assert!(
-            rendered.contains(expected),
-            "independent ER relationship pairs should keep {expected:?} visible:\n{rendered}"
-        );
-    }
-    assert!(
-        !rendered.contains("relations:"),
-        "independent ER relationship pairs should not share one tight grid budget:\n{rendered}"
-    );
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
 }
 
 #[test]

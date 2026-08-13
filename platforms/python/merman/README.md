@@ -28,7 +28,7 @@ svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequest` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequest.options_json`; `execute()` has no separate options argument.
+The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. API 4 requests also carry an optional `MermanOperationControl` for cooperative cancellation and relative deadlines.
 
 ## Reuse An Engine
 
@@ -72,6 +72,12 @@ Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is
 Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `4` and is independent from native C ABI and the text-measurement protocol version.
 
 Diagnostics use schema `1` and parser facts use schema `2`, independently of UniFFI binding API `4`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies.
+
+For generic operations, construct `MermanOperationControl(timeout_ms=...)`, retain it in the host,
+and put it in `MermanOperationRequestV4.control`. Calling `cancel()` from another thread requests
+cooperative termination. `MermanError.Binding.cancellation` reports the reason and observed phase;
+resource failures continue to use the separate `resource` field. Opaque callbacks may complete
+before the next checkpoint, so hard preemption requires a worker or process boundary.
 
 ## Text Measurement
 

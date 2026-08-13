@@ -1,4 +1,6 @@
-use merman::{MermaidConfig, svg::HeadlessRenderer};
+use merman::{
+    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+};
 
 const SOURCE: &str = r#"flowchart TD
     Host[Host-owned defaults] --> Diagram[Mermaid source]
@@ -17,14 +19,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "lineColor": "#16a34a"
         }
     }));
-    let renderer = HeadlessRenderer::new()
-        .with_site_config(site_config)
-        .with_strict_parsing()
-        .with_diagram_id("configured-mermaid-example");
-    let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
+    let renderer = Renderer::new()
+        .with_engine(Engine::new().with_site_config(site_config))
+        .with_parse_options(merman::ParseOptions::strict());
+    let request = SvgRequest {
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some("configured-mermaid-example".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = renderer.render(RenderRequest::svg(SOURCE, OperationControl::new(), request))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
 
-    print!("{svg}");
+    print!("{}", svg.svg());
     Ok(())
 }

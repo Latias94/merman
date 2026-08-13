@@ -28,7 +28,7 @@ impl BoundedMigrationConfig {
             .clone_value_bounded_controlled(
                 MAX_CONFIG_MIGRATION_FIX_WEIGHT_BYTES,
                 MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
-                cancellation.parse_control(),
+                cancellation.operation_control(),
             )
             .map_err(|_| AnalysisCancelled)
             .map(|config| config.map(Self))
@@ -292,7 +292,7 @@ fn frontmatter_config_edit_cancellable(
         .clone_value_bounded_controlled(
             MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES,
             MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
-            cancellation.parse_control(),
+            cancellation.operation_control(),
         )
         .map_err(|_| AnalysisCancelled)?
     else {

@@ -1,15 +1,34 @@
 #![cfg(all(feature = "svg", feature = "layout-elk"))]
 
-use merman::svg::HeadlessRenderer;
+use merman::svg::SvgRenderOptions;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+fn render_svg(diagram_id: &str, source: &str) -> String {
+    let output = Renderer::new()
+        .render(RenderRequest::svg(
+            source,
+            OperationControl::new(),
+            SvgRequest {
+                options: SvgRenderOptions {
+                    diagram_id: Some(diagram_id.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ))
+        .expect("render should succeed");
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("diagram should be detected");
+    };
+    svg.into_parts().0
+}
 
 #[test]
-fn headless_renderer_renders_flowchart_elk_svg() {
-    let svg = HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id("flowchart-elk-smoke")
-        .render_svg_sync("flowchart-elk TD\nA[Alpha] --> B[Beta]")
-        .expect("render should succeed")
-        .expect("diagram should be detected");
+fn renderer_renders_flowchart_elk_svg() {
+    let svg = render_svg(
+        "flowchart-elk-smoke",
+        "flowchart-elk TD\nA[Alpha] --> B[Beta]",
+    );
 
     assert!(svg.starts_with("<svg"));
     assert!(svg.contains("Alpha"));
@@ -18,13 +37,11 @@ fn headless_renderer_renders_flowchart_elk_svg() {
 }
 
 #[test]
-fn headless_renderer_uses_flowchart_elk_svg_contract() {
-    let svg = HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id("flowchart-elk-contract")
-        .render_svg_sync("flowchart-elk LR\nA --> B\nA --> C")
-        .expect("render should succeed")
-        .expect("diagram should be detected");
+fn renderer_uses_flowchart_elk_svg_contract() {
+    let svg = render_svg(
+        "flowchart-elk-contract",
+        "flowchart-elk LR\nA --> B\nA --> C",
+    );
 
     assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
     assert!(svg.contains("flowchart-elk-contract_flowchart-elk-pointEnd"));
@@ -36,13 +53,11 @@ fn headless_renderer_uses_flowchart_elk_svg_contract() {
 }
 
 #[test]
-fn headless_renderer_keeps_flowchart_elk_cutter_jog_for_straight_shape_edge() {
-    let svg = HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id("flowchart-elk-straight-cutter")
-        .render_svg_sync("flowchart-elk TD\nA([Start]) ==> B[Step 1]")
-        .expect("render should succeed")
-        .expect("diagram should be detected");
+fn renderer_keeps_flowchart_elk_cutter_jog_for_straight_shape_edge() {
+    let svg = render_svg(
+        "flowchart-elk-straight-cutter",
+        "flowchart-elk TD\nA([Start]) ==> B[Step 1]",
+    );
 
     let path = edge_path_chunk(&svg, "flowchart-elk-straight-cutter-L_A_B_0");
     let d = path_attr(path, "d");
@@ -58,7 +73,7 @@ fn headless_renderer_keeps_flowchart_elk_cutter_jog_for_straight_shape_edge() {
 }
 
 #[test]
-fn headless_renderer_renders_documented_flowchart_elk_public_config() {
+fn renderer_renders_documented_flowchart_elk_public_config() {
     let source = r#"---
 config:
   layout: elk
@@ -71,12 +86,7 @@ flowchart LR
   B -->|Option 1| C[Path 1]
   B -->|Option 2| D[Path 2]"#;
 
-    let svg = HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id("flowchart-elk-public-config")
-        .render_svg_sync(source)
-        .expect("render should succeed")
-        .expect("diagram should be detected");
+    let svg = render_svg("flowchart-elk-public-config", source);
 
     assert!(svg.starts_with("<svg"));
     for expected in [
@@ -96,7 +106,7 @@ flowchart LR
 }
 
 #[test]
-fn headless_renderer_renders_reported_flowchart_elk_linear_segments_case() {
+fn renderer_renders_reported_flowchart_elk_linear_segments_case() {
     let source = r#"---
 config:
   layout: elk
@@ -109,12 +119,7 @@ flowchart LR
   B -->|Option 1| C[Path 1]
   B -->|Option 2| D[Path 2]"#;
 
-    let svg = HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id("flowchart-elk-linear-segments-reported")
-        .render_svg_sync(source)
-        .expect("render should succeed")
-        .expect("diagram should be detected");
+    let svg = render_svg("flowchart-elk-linear-segments-reported", source);
 
     assert!(svg.contains("Start"));
     assert!(svg.contains("Choose Path"));
@@ -124,7 +129,7 @@ flowchart LR
 }
 
 #[test]
-fn headless_renderer_renders_public_flowchart_elk_node_placement_strategies() {
+fn renderer_renders_public_flowchart_elk_node_placement_strategies() {
     for strategy in [
         "BRANDES_KOEPF",
         "SIMPLE",
@@ -144,12 +149,7 @@ flowchart TD
         );
 
         let diagram_id = format!("flowchart-elk-{strategy}");
-        let svg = HeadlessRenderer::new()
-            .with_vendored_text_measurer()
-            .with_diagram_id(&diagram_id)
-            .render_svg_sync(&source)
-            .unwrap_or_else(|err| panic!("{strategy} render should succeed: {err}"))
-            .unwrap_or_else(|| panic!("{strategy} diagram should be detected"));
+        let svg = render_svg(&diagram_id, &source);
 
         assert!(svg.contains("Alpha"));
         assert!(svg.contains("Beta"));
@@ -159,7 +159,7 @@ flowchart TD
 }
 
 #[test]
-fn headless_renderer_renders_public_flowchart_elk_node_placement_alignments() {
+fn renderer_renders_public_flowchart_elk_node_placement_alignments() {
     for alignment in [
         "NONE",
         "LEFTUP",
@@ -181,12 +181,7 @@ flowchart TD
         );
 
         let diagram_id = format!("flowchart-elk-alignment-{alignment}");
-        let svg = HeadlessRenderer::new()
-            .with_vendored_text_measurer()
-            .with_diagram_id(&diagram_id)
-            .render_svg_sync(&source)
-            .unwrap_or_else(|err| panic!("{alignment} render should succeed: {err}"))
-            .unwrap_or_else(|| panic!("{alignment} diagram should be detected"));
+        let svg = render_svg(&diagram_id, &source);
 
         assert!(svg.contains("Alpha"));
         assert!(svg.contains("Beta"));
@@ -196,7 +191,7 @@ flowchart TD
 }
 
 #[test]
-fn headless_renderer_renders_public_flowchart_elk_cycle_breaking_strategies() {
+fn renderer_renders_public_flowchart_elk_cycle_breaking_strategies() {
     for strategy in [
         "GREEDY",
         "DEPTH_FIRST",
@@ -218,12 +213,7 @@ flowchart TD
         );
 
         let diagram_id = format!("flowchart-elk-cycle-{strategy}");
-        let svg = HeadlessRenderer::new()
-            .with_vendored_text_measurer()
-            .with_diagram_id(&diagram_id)
-            .render_svg_sync(&source)
-            .unwrap_or_else(|err| panic!("{strategy} render should succeed: {err}"))
-            .unwrap_or_else(|| panic!("{strategy} diagram should be detected"));
+        let svg = render_svg(&diagram_id, &source);
 
         assert!(svg.contains("Alpha"));
         assert!(svg.contains("Beta"));
@@ -233,7 +223,7 @@ flowchart TD
 }
 
 #[test]
-fn headless_renderer_renders_public_flowchart_elk_alignment_and_entry_config() {
+fn renderer_renders_public_flowchart_elk_alignment_and_entry_config() {
     let source = r#"---
 config:
   layout: elk
@@ -246,12 +236,7 @@ flowchart TD
   B --> C[Loop]
   C --> A"#;
 
-    let svg = HeadlessRenderer::new()
-        .with_vendored_text_measurer()
-        .with_diagram_id("flowchart-elk-alignment-entry")
-        .render_svg_sync(source)
-        .expect("render should succeed")
-        .expect("diagram should be detected");
+    let svg = render_svg("flowchart-elk-alignment-entry", source);
 
     assert!(svg.contains("Entry"));
     assert!(svg.contains("Step"));

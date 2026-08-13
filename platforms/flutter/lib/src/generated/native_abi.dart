@@ -91,6 +91,10 @@ import 'dart:ffi' as ffi;
 /// identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects
 /// accidental engine-token use, every issued value remains positive when projected through a
 /// signed 64-bit host integer, and the token is not an authorization boundary.
+/// - operation_control_token: An opaque process-lifetime monotonic operation-control identity. A
+/// control token may be passed to execute_collect_controlled, cancelled from another execution
+/// context, and released independently; execution clones the control before synchronous binding
+/// work and never holds the registry lock while running.
 ///
 /// Unsafe caller-memory preconditions from the ABI descriptor:
 /// - record_pointer_alignment: Every caller-supplied native record pointer must be naturally aligned
@@ -135,6 +139,8 @@ typedef MermanNativeFunctionSlot = ffi.Int32;
 typedef DartMermanNativeFunctionSlot = int;
 typedef MermanNativeEngineToken = ffi.Uint64;
 typedef DartMermanNativeEngineToken = int;
+typedef MermanNativeOperationControlToken = ffi.Uint64;
+typedef DartMermanNativeOperationControlToken = int;
 
 final class MermanNativeSlice extends ffi.Struct {
   @ffi.Uint32()
@@ -406,6 +412,60 @@ typedef MermanNativeEngineNewWithServicesFn =
     ffi.Pointer<
       ffi.NativeFunction<MermanNativeEngineNewWithServicesFnFunction>
     >;
+typedef MermanNativeOperationControlNewFnFunction =
+    MermanNativeStatus Function(
+      ffi.Uint64 timeout_ms,
+      ffi.Uint8 has_timeout_ms,
+      ffi.Pointer<MermanNativeOperationControlToken> out_control,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef DartMermanNativeOperationControlNewFnFunction =
+    DartMermanNativeStatus Function(
+      int timeout_ms,
+      int has_timeout_ms,
+      ffi.Pointer<MermanNativeOperationControlToken> out_control,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef MermanNativeOperationControlNewFn =
+    ffi.Pointer<ffi.NativeFunction<MermanNativeOperationControlNewFnFunction>>;
+typedef MermanNativeOperationControlCancelFnFunction =
+    MermanNativeStatus Function(MermanNativeOperationControlToken control);
+typedef DartMermanNativeOperationControlCancelFnFunction =
+    DartMermanNativeStatus Function(
+      DartMermanNativeOperationControlToken control,
+    );
+typedef MermanNativeOperationControlCancelFn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeOperationControlCancelFnFunction>
+    >;
+typedef MermanNativeOperationControlReleaseFnFunction =
+    MermanNativeStatus Function(MermanNativeOperationControlToken control);
+typedef DartMermanNativeOperationControlReleaseFnFunction =
+    DartMermanNativeStatus Function(
+      DartMermanNativeOperationControlToken control,
+    );
+typedef MermanNativeOperationControlReleaseFn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeOperationControlReleaseFnFunction>
+    >;
+typedef MermanNativeExecuteCollectControlledFnFunction =
+    MermanNativeStatus Function(
+      MermanNativeEngineToken engine,
+      MermanNativeOperationControlToken control,
+      ffi.Pointer<MermanNativeOperationRequest> request,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef DartMermanNativeExecuteCollectControlledFnFunction =
+    DartMermanNativeStatus Function(
+      DartMermanNativeEngineToken engine,
+      DartMermanNativeOperationControlToken control,
+      ffi.Pointer<MermanNativeOperationRequest> request,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef MermanNativeExecuteCollectControlledFn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeExecuteCollectControlledFnFunction>
+    >;
 
 final class MermanNativeApi extends ffi.Struct {
   @ffi.Uint32()
@@ -435,6 +495,14 @@ final class MermanNativeApi extends ffi.Struct {
   external MermanNativeMetadataCollectFn metadata_collect;
 
   external MermanNativeEngineNewWithServicesFn engine_new_with_services;
+
+  external MermanNativeOperationControlNewFn operation_control_new;
+
+  external MermanNativeOperationControlCancelFn operation_control_cancel;
+
+  external MermanNativeOperationControlReleaseFn operation_control_release;
+
+  external MermanNativeExecuteCollectControlledFn execute_collect_controlled;
 }
 
 const int MERMAN_TEXT_WRAP_MODE_SVG_LIKE = 0;
@@ -541,6 +609,8 @@ const int MERMAN_NATIVE_STATUS_INVALID_ENGINE = 15;
 
 const int MERMAN_NATIVE_STATUS_BUSY = 16;
 
+const int MERMAN_NATIVE_STATUS_CANCELLED = 17;
+
 const int MERMAN_NATIVE_OPERATION_NONE = 0;
 
 const int MERMAN_NATIVE_OPERATION_SVG = 1;
@@ -583,6 +653,14 @@ const int MERMAN_NATIVE_FUNCTION_METADATA_COLLECT = 5;
 
 const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6;
 
+const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW = 7;
+
+const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL = 8;
+
+const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9;
+
+const int MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10;
+
 const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 const int MERMAN_NATIVE_ABI_VERSION = 3;
@@ -591,7 +669,7 @@ const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
     'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a';
+    'sha256:c787f0510e088b3e0f5f39b8dc2b6f3159a1e3fe640ec6a46ba37ad91e783cd5';
 
 const int MERMAN_NATIVE_RESULT_SCHEMA_VERSION = 1;
 
@@ -757,3 +835,11 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON =
     'application/json';
 
 const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 160;
+
+const int MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE = 168;
+
+const int MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE = 176;
+
+const int MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE = 184;
+
+const int MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE = 192;

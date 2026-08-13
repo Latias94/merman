@@ -1,27 +1,14 @@
-#[cfg(test)]
-use std::sync::Arc;
-#[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-#[cfg(test)]
-const NO_SCHEDULED_CANCELLATION: usize = usize::MAX;
-
 /// A cheap, runtime-independent cancellation signal for CPU-bound analysis.
 #[derive(Debug, Clone)]
 pub struct AnalysisCancellationToken {
-    parse_control: merman_core::ParseControl,
-    #[cfg(test)]
-    successful_checkpoints_before_cancellation: Arc<AtomicUsize>,
+    operation: merman_core::OperationControl,
 }
 
 impl Default for AnalysisCancellationToken {
     fn default() -> Self {
         Self {
-            parse_control: merman_core::ParseControl::new(),
-            #[cfg(test)]
-            successful_checkpoints_before_cancellation: Arc::new(AtomicUsize::new(
-                NO_SCHEDULED_CANCELLATION,
-            )),
+            operation: merman_core::OperationControl::new()
+                .for_phase(merman_core::OperationPhase::Analysis),
         }
     }
 }
@@ -31,53 +18,50 @@ impl AnalysisCancellationToken {
         Self::default()
     }
 
+    /// Shares a caller-owned operation control with the analysis pipeline.
+    ///
+    /// Unnamed analysis checkpoints report the analysis phase while cancellation and deadline
+    /// state remain shared with the caller.
+    pub fn from_operation_control(operation: &merman_core::OperationControl) -> Self {
+        Self {
+            operation: operation.for_phase(merman_core::OperationPhase::Analysis),
+        }
+    }
+
     /// Creates an independently cancellable child that also observes this token.
     pub fn child(&self) -> Self {
         Self {
-            parse_control: self.parse_control.child(),
-            #[cfg(test)]
-            successful_checkpoints_before_cancellation: Arc::new(AtomicUsize::new(
-                NO_SCHEDULED_CANCELLATION,
-            )),
+            operation: self.operation.child(),
         }
     }
 
     pub fn cancel(&self) {
-        self.parse_control.cancel();
+        self.operation.cancel();
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.parse_control.is_cancelled()
+        self.operation.is_cancelled()
     }
 
     pub fn checkpoint(&self) -> Result<(), AnalysisCancelled> {
-        self.parse_control
-            .checkpoint()
-            .map_err(|_| AnalysisCancelled)?;
-
-        #[cfg(test)]
-        if let Ok(remaining) = self
-            .successful_checkpoints_before_cancellation
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
-                (remaining != NO_SCHEDULED_CANCELLATION).then(|| remaining.saturating_sub(1))
-            })
-            && remaining == 0
-        {
-            self.cancel();
-            return Err(AnalysisCancelled);
-        }
-
-        Ok(())
+        self.operation.checkpoint().map_err(|_| AnalysisCancelled)
     }
 
-    pub(crate) fn parse_control(&self) -> &merman_core::ParseControl {
-        &self.parse_control
+    /// Returns the structured terminal condition currently observed by this analysis token.
+    #[must_use]
+    pub fn operation_cancellation(&self) -> Option<merman_core::OperationCancelled> {
+        self.operation.checkpoint().err()
     }
 
+    pub(crate) fn operation_control(&self) -> &merman_core::OperationControl {
+        &self.operation
+    }
+
+    /// Schedules deterministic cancellation for tests after the requested successful checkpoints.
     #[cfg(test)]
-    pub(crate) fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
-        self.successful_checkpoints_before_cancellation
-            .store(successful_checkpoints, Ordering::Relaxed);
+    pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
+        self.operation
+            .cancel_after_checkpoints(successful_checkpoints);
     }
 }
 
@@ -114,5 +98,30 @@ mod tests {
         parent.cancel();
         assert!(sibling.is_cancelled());
         assert_eq!(sibling.checkpoint(), Err(AnalysisCancelled));
+    }
+
+    #[test]
+    fn caller_operation_cancellation_propagates_with_analysis_phase() {
+        let operation = merman_core::OperationControl::new();
+        let token = AnalysisCancellationToken::from_operation_control(&operation);
+
+        operation.cancel();
+
+        assert_eq!(token.checkpoint(), Err(AnalysisCancelled));
+        let error = token.operation_cancellation().unwrap();
+        assert_eq!(error.phase, merman_core::OperationPhase::Analysis);
+        assert_eq!(error.reason, merman_core::CancelReason::Requested);
+    }
+
+    #[test]
+    fn caller_operation_deadline_propagates_with_analysis_phase() {
+        let operation =
+            merman_core::OperationControl::new().with_deadline(std::time::Duration::ZERO);
+        let token = AnalysisCancellationToken::from_operation_control(&operation);
+
+        assert_eq!(token.checkpoint(), Err(AnalysisCancelled));
+        let error = token.operation_cancellation().unwrap();
+        assert_eq!(error.phase, merman_core::OperationPhase::Analysis);
+        assert_eq!(error.reason, merman_core::CancelReason::DeadlineExceeded);
     }
 }

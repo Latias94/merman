@@ -3,7 +3,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::{EditorLexemeJournal, trailing_ascii_whitespace_slot},
 };
 use indexmap::IndexMap;
@@ -188,8 +188,8 @@ fn clone_block_shallow(block: &Block) -> Block {
 
 fn clone_block_tree_nonrecursive(
     block: &Block,
-    control: &ParseControl,
-) -> ParseControlResult<Block> {
+    control: &OperationControl,
+) -> OperationControlResult<Block> {
     let mut completed: HashMap<*const Block, Block> = HashMap::new();
     let mut stack = vec![(block, false)];
     let mut visited_count = 0usize;
@@ -331,8 +331,8 @@ impl BlockDb {
         &mut self,
         blocks: Vec<Block>,
         config: &MermaidConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let root_id = self.root_id.clone();
         self.populate_block_database(blocks, &root_id, config, control)?;
         let root_children = self
@@ -353,8 +353,8 @@ impl BlockDb {
         blocks: Vec<Block>,
         parent_id: &str,
         config: &MermaidConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let mut stack = vec![PopulateFrame::new(parent_id.to_string(), blocks)];
         let mut visited_count = 0usize;
 
@@ -734,8 +734,8 @@ impl BlockParseFailure {
 fn construct_block_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<BlockSemanticSource, BlockParseFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<BlockSemanticSource, BlockParseFailure>> {
     #[cfg(test)]
     BLOCK_SYNTAX_CONSTRUCTION_COUNT.set(BLOCK_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -784,7 +784,7 @@ pub(crate) fn parse_block_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<BlockDiagramRenderModel> {
-    let source = construct_block_semantic_source(code, meta, &ParseControl::new())
+    let source = construct_block_semantic_source(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)?;
     Ok(block_db_to_render_model(&source.db))
@@ -1089,8 +1089,8 @@ fn push_block_id_list(
 pub(crate) fn parse_block_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_block_semantic_source(code, meta, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
         construction,
@@ -1290,7 +1290,7 @@ fn block_error_with_fallback_span(error: Error, fallback: SourceSpan) -> (Error,
 
 struct Parser<'input, 'control> {
     input: &'input str,
-    control: &'control ParseControl,
+    control: &'control OperationControl,
     pos: usize,
     gen_counter: i64,
     declared_entities: HashSet<String>,
@@ -1299,7 +1299,7 @@ struct Parser<'input, 'control> {
 }
 
 impl<'input, 'control> Parser<'input, 'control> {
-    fn new(input: &'input str, control: &'control ParseControl) -> Self {
+    fn new(input: &'input str, control: &'control OperationControl) -> Self {
         Self {
             input,
             control,
@@ -1556,7 +1556,10 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
     }
 
-    fn parse_document(&mut self, stop_on_end: bool) -> ParseControlResult<Result<BlockDocument>> {
+    fn parse_document(
+        &mut self,
+        stop_on_end: bool,
+    ) -> OperationControlResult<Result<BlockDocument>> {
         let mut frames = vec![DocumentFrame::root()];
         let mut first_failure = None;
 
@@ -2663,7 +2666,7 @@ pub(crate) fn parse_block_with_warning_facts(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<crate::family::WarningSemanticParse> {
-    let source = construct_block_semantic_source(code, meta, &ParseControl::new())
+    let source = construct_block_semantic_source(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)?;
     let model = block_db_to_render_model(&source.db);
@@ -2705,15 +2708,15 @@ mod tests {
         space.block_type = "space".to_string();
         space.label = Some(String::new());
         space.width = Some(1_024);
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(3);
         let mut db = BlockDb::default();
         db.clear();
 
-        assert_eq!(
+        assert!(matches!(
             db.set_hierarchy(vec![space], &MermaidConfig::default(), &control),
-            Err(crate::ParseCancelled)
-        );
+            Err(crate::OperationCancelled { .. })
+        ));
         assert!(db.block_database.len() > 2);
         assert!(db.block_database.len() < 1_024);
     }
@@ -2866,7 +2869,7 @@ C<["Route"]>(left,down)
 
         reset_block_syntax_construction_count();
         let (combined_json, combined_facts) = crate::family::test_support::into_result(
-            parse_block_json_and_editor_facts(text, &meta, &ParseControl::new()),
+            parse_block_json_and_editor_facts(text, &meta, &OperationControl::new()),
         )
         .unwrap();
         assert_eq!(

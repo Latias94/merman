@@ -24,3 +24,6 @@ default = []
 merman-core.workspace = true
 thiserror.workspace = true
 unicode-width.workspace = true
+
+[dev-dependencies]
+merman-core = { workspace = true, features = ["test-support"] }

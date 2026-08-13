@@ -1,9 +1,11 @@
 #![cfg(feature = "svg")]
 
-use merman::Engine;
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemePreset, Presentation, PresentationAspectState,
-    PresentationProfile, SvgPipeline, SvgPipelinePreset,
+    HostTheme, HostThemePreset, Presentation, PresentationAspectState, PresentationProfile,
+    ResolvedPresentation, SvgPipeline, SvgPipelinePreset,
+};
+use merman::{
+    Engine, OperationControl, RenderOutput, RenderRequest, Renderer, SemanticArtifact, SvgRequest,
 };
 use merman_core::MermaidConfig;
 use serde_json::{Value, json};
@@ -14,10 +16,130 @@ fn config(value: Value) -> MermaidConfig {
     MermaidConfig::from_value(value)
 }
 
-fn effective_config(renderer: &HeadlessRenderer, source: &str) -> Value {
+#[derive(Debug, Clone)]
+struct TypedSvgRenderer {
+    base_engine: Engine,
+    presentation: Option<ResolvedPresentation>,
+    site_config_layers: Vec<MermaidConfig>,
+    request: SvgRequest,
+}
+
+impl TypedSvgRenderer {
+    fn new() -> Self {
+        Self {
+            base_engine: Engine::new(),
+            presentation: None,
+            site_config_layers: Vec::new(),
+            request: SvgRequest::default(),
+        }
+    }
+
+    fn with_engine(mut self, engine: Engine) -> Self {
+        self.base_engine = engine;
+        self
+    }
+
+    fn with_presentation(mut self, presentation: Presentation) -> Self {
+        self.presentation = Some(presentation.resolve());
+        self
+    }
+
+    fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
+        self.site_config_layers.push(site_config);
+        self
+    }
+
+    fn with_svg_pipeline(mut self, pipeline: SvgPipeline) -> Self {
+        self.request.pipeline = Some(pipeline);
+        self
+    }
+
+    fn svg_pipeline(&self) -> Option<&SvgPipeline> {
+        self.request.pipeline.as_ref()
+    }
+
+    fn materialized_engine(&self) -> Engine {
+        let mut engine = self.base_engine.clone();
+        if let Some(presentation) = &self.presentation {
+            engine = presentation.materialize_engine(engine);
+        }
+        for site_config in &self.site_config_layers {
+            engine = engine.with_site_config(site_config.clone());
+        }
+        engine
+    }
+
+    fn svg_request(&self) -> SvgRequest {
+        let mut request = self.request.clone();
+        request.presentation = self
+            .presentation
+            .as_ref()
+            .map(ResolvedPresentation::render_policy)
+            .unwrap_or_default();
+        request
+    }
+
+    fn renderer(&self) -> Renderer {
+        Renderer::new().with_engine(self.materialized_engine())
+    }
+
+    fn prepare_semantic(&self, source: &str) -> SemanticArtifact {
+        self.renderer()
+            .prepare_semantic(source, OperationControl::new())
+            .expect("semantic preparation should succeed")
+            .expect("diagram should be detected")
+    }
+
+    fn render_svg(&self, source: &str) -> String {
+        let output = self
+            .renderer()
+            .render(RenderRequest::svg(
+                source,
+                OperationControl::new(),
+                self.svg_request(),
+            ))
+            .expect("SVG render should succeed");
+        let RenderOutput::Svg(Some(svg)) = output else {
+            panic!("diagram should be detected");
+        };
+        svg.into_parts().0
+    }
+
+    fn layout_json(&self, source: &str) -> Value {
+        let output = self
+            .renderer()
+            .render(RenderRequest::layout_json(
+                source,
+                OperationControl::new(),
+                self.svg_request(),
+            ))
+            .expect("layout projection should succeed");
+        let RenderOutput::LayoutJson(Some(layout)) = output else {
+            panic!("diagram should be detected");
+        };
+        layout.into_parts().0
+    }
+
+    fn plan_svg(&self, source: &str) -> merman::svg::RenderCapabilityPlan {
+        let output = self
+            .renderer()
+            .render(RenderRequest::svg_plan(
+                source,
+                OperationControl::new(),
+                self.svg_request(),
+            ))
+            .expect("SVG plan should succeed");
+        let RenderOutput::SvgPlan(Some(plan)) = output else {
+            panic!("diagram should be detected");
+        };
+        plan
+    }
+}
+
+fn effective_config(renderer: &TypedSvgRenderer, source: &str) -> Value {
     renderer
-        .parse_metadata_sync(source)
-        .expect("metadata parse should succeed")
+        .prepare_semantic(source)
+        .metadata()
         .effective_config
         .as_value()
         .clone()
@@ -71,11 +193,11 @@ fn renderer_configuration_precedence_is_independent_of_builder_order() {
         "themeVariables": { "lineColor": "#123456" },
     }));
 
-    let forward = HeadlessRenderer::new()
+    let forward = TypedSvgRenderer::new()
         .with_engine(base.clone())
         .with_presentation(presentation())
         .with_site_config(explicit.clone());
-    let reverse = HeadlessRenderer::new()
+    let reverse = TypedSvgRenderer::new()
         .with_site_config(explicit)
         .with_presentation(presentation())
         .with_engine(base);
@@ -94,7 +216,7 @@ fn source_config_remains_the_final_nonsecure_mermaid_layer() {
     let source = r##"%%{init: {"theme": "neutral", "sequence": {"actorMargin": 88}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({
             "theme": "dark",
@@ -113,7 +235,7 @@ fn source_config_cannot_override_secure_theme_variables() {
     let source = r##"%%{init: {"themeVariables": {"lineColor": "#abcdef"}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = HeadlessRenderer::new().with_site_config(config(json!({
+    let renderer = TypedSvgRenderer::new().with_site_config(config(json!({
         "themeVariables": { "lineColor": "#123456" },
     })));
 
@@ -123,7 +245,7 @@ Alice->>Bob: Hello"##;
 
 #[test]
 fn repeated_site_config_layers_preserve_engine_normalization_order() {
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_site_config(config(json!({ "fontFamily": "First Font" })))
         .with_site_config(config(json!({
             "themeVariables": { "fontFamily": "Second Font" },
@@ -136,13 +258,13 @@ fn repeated_site_config_layers_preserve_engine_normalization_order() {
 
 #[test]
 fn presentation_does_not_select_or_override_svg_output_policy() {
-    let no_output = HeadlessRenderer::new().with_presentation(presentation());
+    let no_output = TypedSvgRenderer::new().with_presentation(presentation());
     assert!(no_output.svg_pipeline().is_none());
 
-    let forward = HeadlessRenderer::new()
+    let forward = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_svg_pipeline(SvgPipeline::readable());
-    let reverse = HeadlessRenderer::new()
+    let reverse = TypedSvgRenderer::new()
         .with_svg_pipeline(SvgPipeline::readable())
         .with_presentation(presentation());
 
@@ -157,35 +279,33 @@ fn presentation_does_not_select_or_override_svg_output_policy() {
 }
 
 #[test]
-fn direct_parse_and_prepared_semantic_share_the_same_materialized_engine() {
-    let renderer = HeadlessRenderer::new()
+fn direct_parse_and_semantic_artifact_share_the_same_materialized_engine() {
+    let renderer = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({ "theme": "dark" })));
 
     let direct = effective_config(&renderer, SOURCE);
     let exposed = renderer
-        .engine()
+        .materialized_engine()
         .parse_metadata_sync(SOURCE)
         .expect("materialized engine metadata should succeed")
         .effective_config
         .as_value()
         .clone();
-    let prepared = renderer
-        .prepare_semantic_sync(SOURCE)
-        .expect("prepared semantic should succeed")
-        .expect("sequence diagram should be detected")
+    let artifact = renderer
+        .prepare_semantic(SOURCE)
         .metadata()
         .effective_config
         .as_value()
         .clone();
 
     assert_eq!(exposed, direct);
-    assert_eq!(prepared, direct);
+    assert_eq!(artifact, direct);
 }
 
 #[test]
 fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() {
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({
             "flowchart": {
@@ -202,10 +322,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
 
     let effective = effective_config(&renderer, source);
     assert_eq!(effective["flowchart"]["defaultRenderer"], "dagre-wrapper");
-    let svg = renderer
-        .render_svg_sync(source)
-        .expect("typed presentation render should succeed")
-        .expect("flowchart should be detected");
+    let svg = renderer.render_svg(source);
     let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
     let label = document
         .descendants()
@@ -224,7 +341,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
     assert_eq!(background.attribute("rx"), Some("4"));
     assert_eq!(background.attribute("ry"), Some("4"));
 
-    let isolated = HeadlessRenderer::new()
+    let isolated = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({
             "flowchart": { "defaultRenderer": "dagre-wrapper" },
@@ -234,10 +351,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
     assert!(effective["flowchart"].get("edgeLabelPadding").is_none());
     assert!(effective["flowchart"].get("compactEdgeCorners").is_none());
 
-    let layout = isolated
-        .layout_json_sync(source)
-        .expect("layout projection should succeed")
-        .expect("flowchart should be detected");
+    let layout = isolated.layout_json(source);
     assert_json_keys_absent(
         &layout,
         &["edgeCornerRadius", "edgeLabelPadding", "compactEdgeCorners"],
@@ -246,11 +360,9 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
 
 #[test]
 fn render_plan_reports_each_presentation_aspect_independently() {
-    let sequence = HeadlessRenderer::new()
+    let sequence = TypedSvgRenderer::new()
         .with_presentation(presentation())
-        .plan_svg_sync(SOURCE)
-        .expect("sequence plan should succeed")
-        .expect("sequence diagram should be detected");
+        .plan_svg(SOURCE);
     assert_eq!(sequence.presentation_profile_id(), Some("merman-modern"));
     assert_eq!(
         aspect_state(&sequence, "global-defaults"),
@@ -265,14 +377,12 @@ fn render_plan_reports_each_presentation_aspect_independently() {
         PresentationAspectState::Inactive
     );
 
-    let dagre = HeadlessRenderer::new()
+    let dagre = TypedSvgRenderer::new()
         .with_presentation(presentation())
         .with_site_config(config(json!({
             "flowchart": { "defaultRenderer": "dagre-wrapper" },
         })))
-        .plan_svg_sync("flowchart TD\nA --> B")
-        .expect("Flowchart plan should succeed")
-        .expect("Flowchart should be detected");
+        .plan_svg("flowchart TD\nA --> B");
     assert!(dagre.is_ready());
     assert_eq!(
         aspect_state(&dagre, "flowchart-svg"),
@@ -283,11 +393,9 @@ fn render_plan_reports_each_presentation_aspect_independently() {
         PresentationAspectState::Inactive
     );
 
-    let default_flowchart = HeadlessRenderer::new()
+    let default_flowchart = TypedSvgRenderer::new()
         .with_presentation(presentation())
-        .plan_svg_sync("flowchart TD\nA --> B")
-        .expect("Flowchart plan should succeed")
-        .expect("Flowchart should be detected");
+        .plan_svg("flowchart TD\nA --> B");
     let expected_state = if merman::svg::layout_elk_available() {
         PresentationAspectState::Active
     } else {
@@ -298,10 +406,7 @@ fn render_plan_reports_each_presentation_aspect_independently() {
         expected_state
     );
 
-    let parity = HeadlessRenderer::new()
-        .plan_svg_sync(SOURCE)
-        .expect("parity plan should succeed")
-        .expect("sequence diagram should be detected");
+    let parity = TypedSvgRenderer::new().plan_svg(SOURCE);
     assert_eq!(parity.presentation_profile_id(), None);
     assert!(parity.presentation_aspects().is_empty());
 }

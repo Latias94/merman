@@ -73,8 +73,8 @@ fn layout_snapshot_site_config() -> merman::MermaidConfig {
     }))
 }
 
-fn layout_snapshot_environment() -> merman::svg::RenderEnvironment {
-    merman::svg::RenderEnvironment::deterministic()
+fn layout_snapshot_environment() -> merman_render::environment::RenderEnvironment {
+    merman_render::environment::RenderEnvironment::deterministic()
         .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::deterministic())
 }
 

@@ -16,10 +16,11 @@ The generated API exposes:
 - `MermanEngine` for reusable operations with immutable constructor options and services;
 - `MermanEngineServices`, `MermanIconPack`, and `MermanIconRegistry` for constructor-owned host
   services;
-- `MermanOperationRequest` and `MermanOperationResult` for generic descriptor-owned dispatch;
+- `MermanOperationRequestV4` and `MermanOperationResult` for generic descriptor-owned dispatch;
+- `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, message }` failures, where `resource` is optional typed limit evidence.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, cancellation, message }` failures, where resource and cancellation evidence remain separate optional records.
 
 `Merman::transport_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
@@ -33,12 +34,19 @@ initialization before it can decode the changed record layout. Regenerate the wh
 projection and deploy it with the matching native library; changing only the library is not
 supported.
 
-Every operation is available through `execute(request)`, and `MermanOperationRequest.options_json`
+Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
 `render_svg`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
+
+Set `MermanOperationRequestV4.control` when a host needs to cancel or deadline one synchronous
+operation. Retain another reference and call `cancel()` from a different thread or callback. The
+request clones the shared control before execution and reports `MermanCancelledDetails` with the
+observed reason and phase; cancellation is not projected as a resource limit. Opaque host callbacks
+and single-call encoders can only be checked before and after invocation, so hard interruption
+still requires worker or process isolation.
 
 The generated resource helper takes an optional profile. Leave it unset when a reusable request
 must inherit its constructor ceiling; only generated override IDs can be serialized into
@@ -54,6 +62,9 @@ merge rules.
 the effective policy maximum was exceeded, while `arithmetic_overflow` means safe work accounting
 could not represent the required amount. Consumers should branch on this field rather than parse
 the display message.
+
+`MermanCancelledDetails.reason` is `requested` or `deadline_exceeded`; `phase` identifies the
+checkpoint that observed the terminal state. A cancelled operation returns no partial output.
 
 `MermanErrorKind::UnknownOperation` identifies an operation outside the descriptor vocabulary and has no
 capability ID. `MermanErrorKind::MissingCapability` identifies a valid request whose artifact lacks
@@ -161,6 +172,9 @@ contract.
   on `kind`, use the optional known payload, and preserve `raw_json` for future kinds.
 - Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
   open discovery values. Closed request-input vocabularies remain generated enums/value sets.
+- Move generated API 3 wrappers and libraries together to API 4 before using operation controls or
+  structured cancellation details. Do not pair source generated for one API version with a library
+  whose runtime catalog reports another.
 
 ## Verification
 

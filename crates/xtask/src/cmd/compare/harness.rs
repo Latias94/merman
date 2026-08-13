@@ -118,8 +118,8 @@ pub(crate) struct DiagramVerificationFact {
 }
 
 impl DiagramVerificationFact {
-    pub(crate) const fn render_path(self) -> merman::svg::RenderExecutionPath {
-        merman::svg::RenderExecutionPath::HeadlessOperationTyped
+    pub(crate) const fn render_path(self) -> merman::OperationExecutionPath {
+        merman::OperationExecutionPath::Renderer
     }
 
     pub(crate) const fn supports_root_report(self) -> bool {
@@ -216,29 +216,24 @@ impl CompareRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderOperationContract {
-    render_path: merman::svg::RenderExecutionPath,
+    render_path: merman::OperationExecutionPath,
     measurement_routes: [merman::svg::TextMeasurementRoute; 4],
 }
 
 impl RenderOperationContract {
     pub(crate) fn from_environment(
-        environment: &merman::svg::RenderEnvironment,
+        environment: &merman::SvgEnvironment,
     ) -> Result<Self, XtaskError> {
-        let session = environment.begin_session().map_err(|error| {
-            XtaskError::SvgCompareFailed(format!(
-                "failed to freeze compare render operation contract: {error}"
-            ))
-        })?;
         Ok(Self {
-            render_path: merman::svg::RenderExecutionPath::HeadlessOperationTyped,
-            measurement_routes: session.report().measurement_routes().clone(),
+            render_path: merman::OperationExecutionPath::Renderer,
+            measurement_routes: environment.text_measurement_routes(),
         })
     }
 
-    fn from_report(report: &merman::svg::RenderOperationReport) -> Self {
+    fn from_evidence(evidence: &merman::RenderEvidence) -> Self {
         Self {
-            render_path: report.execution_path(),
-            measurement_routes: report.measurement_routes().clone(),
+            render_path: evidence.execution_path(),
+            measurement_routes: evidence.measurement_routes().clone(),
         }
     }
 }
@@ -251,7 +246,7 @@ pub(crate) struct ObservedRenderOperations {
 
 #[derive(Debug)]
 pub(crate) struct ObservedRenderEvidence {
-    execution_path: merman::svg::RenderExecutionPath,
+    execution_path: merman::OperationExecutionPath,
     measurement_routes: usize,
 }
 
@@ -263,7 +258,7 @@ impl ObservedRenderEvidence {
     #[cfg(test)]
     const fn test_only() -> Self {
         Self {
-            execution_path: merman::svg::RenderExecutionPath::HeadlessOperationTyped,
+            execution_path: merman::OperationExecutionPath::Renderer,
             measurement_routes: 4,
         }
     }
@@ -271,7 +266,7 @@ impl ObservedRenderEvidence {
 
 impl ObservedRenderOperations {
     pub(crate) fn from_environment(
-        environment: &merman::svg::RenderEnvironment,
+        environment: &merman::SvgEnvironment,
     ) -> Result<Self, XtaskError> {
         Ok(Self {
             expected: RenderOperationContract::from_environment(environment)?,
@@ -282,10 +277,10 @@ impl ObservedRenderOperations {
     pub(crate) fn observe(
         &mut self,
         fixture: &str,
-        report: &merman::svg::RenderOperationReport,
+        evidence: &merman::RenderEvidence,
     ) -> Result<ObservedRenderEvidence, String> {
-        let observed = RenderOperationContract::from_report(report);
-        validate_measurement_provenance(fixture, report)?;
+        let observed = RenderOperationContract::from_evidence(evidence);
+        validate_measurement_provenance(fixture, evidence)?;
         if observed != self.expected {
             return Err(format!(
                 "render operation contract diverged for {fixture}: expected {:?}, observed {observed:?}",
@@ -443,20 +438,83 @@ impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
     }
 }
 
-pub(crate) fn prepared_semantic_requires_math(
+pub(crate) fn source_requires_math(
     fixture_path: &Path,
-    semantic: &merman::svg::PreparedSemantic,
+    renderer: &merman::Renderer,
+    source: &str,
+    request: merman::SvgRequest,
 ) -> Result<bool, String> {
-    Ok(semantic
-        .render_plan()
+    let output = renderer
+        .render(merman::RenderRequest::svg_plan(
+            source,
+            merman::OperationControl::new(),
+            request,
+        ))
         .map_err(|error| {
             format!(
                 "capability planning failed for {}: {error}",
                 fixture_path.display()
             )
-        })?
+        })?;
+    let merman::RenderOutput::SvgPlan(Some(plan)) = output else {
+        return Err(format!(
+            "capability planning returned no plan for {}",
+            fixture_path.display()
+        ));
+    };
+    Ok(plan
         .required_capabilities()
         .contains(&merman::svg::RenderCapability::Math))
+}
+
+pub(crate) fn svg_request(
+    environment: merman::SvgEnvironment,
+    layout: merman::svg::LayoutOptions,
+    diagram_id: Option<String>,
+) -> merman::SvgRequest {
+    merman::SvgRequest {
+        environment,
+        layout,
+        options: merman::svg::SvgRenderOptions {
+            diagram_id,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn render_source_svg(
+    renderer: &merman::Renderer,
+    source: &str,
+    request: merman::SvgRequest,
+) -> Result<merman::SvgOutput, String> {
+    let output = renderer
+        .render(merman::RenderRequest::svg(
+            source,
+            merman::OperationControl::new(),
+            request,
+        ))
+        .map_err(|error| error.to_string())?;
+    match output {
+        merman::RenderOutput::Svg(Some(output)) => Ok(output),
+        merman::RenderOutput::Svg(None) => Err("render produced no SVG".to_string()),
+        _ => Err("typed SVG request returned an unexpected target".to_string()),
+    }
+}
+
+pub(crate) fn render_semantic_svg(
+    semantic: merman::SemanticArtifact,
+    request: merman::SvgRequest,
+) -> Result<merman::SvgOutput, String> {
+    let output = semantic
+        .render(merman::RenderTarget::Svg(request))
+        .map_err(|error| error.to_string())?;
+    match output {
+        merman::RenderOutput::Svg(Some(output)) => Ok(output),
+        merman::RenderOutput::Svg(None) => Err("render produced no SVG".to_string()),
+        _ => Err("typed SVG request returned an unexpected target".to_string()),
+    }
 }
 
 pub(crate) fn begin_required_math_evidence(
@@ -495,11 +553,11 @@ fn format_measurement_identity(identity: &merman::svg::TextMeasurementProfileIde
 
 fn validate_measurement_provenance(
     fixture: &str,
-    report: &merman::svg::RenderOperationReport,
+    evidence: &merman::RenderEvidence,
 ) -> Result<(), String> {
-    for summary in report.measurement().entries() {
+    for summary in evidence.measurement().entries() {
         let provenance = summary.provenance();
-        let Some(route) = report
+        let Some(route) = evidence
             .measurement_routes()
             .iter()
             .find(|route| route.phase == provenance.phase)
@@ -675,7 +733,7 @@ impl CompareEvidence {
     fn record_render(&mut self, evidence: ObservedRenderEvidence) {
         debug_assert_eq!(
             evidence.execution_path,
-            merman::svg::RenderExecutionPath::HeadlessOperationTyped
+            merman::OperationExecutionPath::Renderer
         );
         self.rendered_fixtures += evidence.render_count();
         self.observed_operation_reports += 1;
@@ -840,10 +898,7 @@ pub(crate) fn run_canonical_svg_compare(
     fact: DiagramVerificationFact,
     request: CompareRequest,
 ) -> CompareRunResult {
-    debug_assert_eq!(
-        fact.render_path(),
-        merman::svg::RenderExecutionPath::HeadlessOperationTyped
-    );
+    debug_assert_eq!(fact.render_path(), merman::OperationExecutionPath::Renderer);
 
     let engine = match fact.render_profile {
         RenderProfile::Standard | RenderProfile::SequenceMath => super::svg_compare_engine(),
@@ -882,17 +937,15 @@ pub(crate) fn run_canonical_svg_compare(
         .map(ObservedNodeMathRenderer::new);
 
     let layout_options = super::svg_compare_layout_opts();
-    let mut environment = merman::svg::RenderEnvironment::deterministic();
+    let mut environment = merman::SvgEnvironment::deterministic();
     if let Some(renderer) = observed_node_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
     let observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let renderer = merman::svg::HeadlessRenderer::new()
+    let renderer = merman::Renderer::new()
         .with_engine(engine.clone())
-        .with_parse_options(fact.parse_policy.options())
-        .with_layout_options(layout_options)
-        .with_environment(environment);
+        .with_parse_options(fact.parse_policy.options());
 
     let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
     let requested_dom_mode = svgdom::DomMode::parse(dom_mode);
@@ -960,11 +1013,13 @@ pub(crate) fn run_canonical_svg_compare(
         },
         |state, input| {
             let fixture_renderer = match input.site_config.clone() {
-                Some(site_config) => renderer.clone().with_site_config(site_config),
+                Some(site_config) => renderer
+                    .clone()
+                    .with_engine(engine.clone().with_site_config(site_config)),
                 None => renderer.clone(),
             };
             let semantic = fixture_renderer
-                .prepare_semantic_sync(input.text)
+                .prepare_semantic(input.text, merman::OperationControl::new())
                 .map_err(|error| {
                     format!("parse failed for {}: {error}", input.fixture_path.display())
                 })?
@@ -972,19 +1027,17 @@ pub(crate) fn run_canonical_svg_compare(
                     format!("no diagram detected in {}", input.fixture_path.display())
                 })?;
             let requires_math = fact.specialist == SpecialistHook::SequenceMath
-                && prepared_semantic_requires_math(input.fixture_path, &semantic)?;
+                && source_requires_math(
+                    input.fixture_path,
+                    &fixture_renderer,
+                    input.text,
+                    svg_request(environment.clone(), layout_options.clone(), None),
+                )?;
             let required_math_evidence_before = requires_math
                 .then(|| {
                     begin_required_math_evidence(input.stem, observed_node_math_renderer.as_deref())
                 })
                 .transpose()?;
-
-            let prepared = semantic.continue_layout().map_err(|error| {
-                format!(
-                    "layout failed for {}: {error}",
-                    input.fixture_path.display()
-                )
-            })?;
 
             let diagram_id = match fact.diagram_id_policy {
                 DiagramIdPolicy::SanitizedStem => super::sanitize_svg_id(input.stem),
@@ -996,10 +1049,11 @@ pub(crate) fn run_canonical_svg_compare(
                     ));
                 }
             };
-            let svg_options = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(diagram_id),
-                ..Default::default()
-            };
+            let svg_request = svg_request(
+                environment.clone(),
+                layout_options.clone(),
+                Some(diagram_id),
+            );
 
             match fact.specialist {
                 SpecialistHook::None => {}
@@ -1014,7 +1068,7 @@ pub(crate) fn run_canonical_svg_compare(
                 }
             }
 
-            let rendered = prepared.render_svg_report(&svg_options).map_err(|error| {
+            let rendered = render_semantic_svg(semantic, svg_request).map_err(|error| {
                 format!(
                     "render failed for {}: {error}",
                     input.fixture_path.display()
@@ -1022,8 +1076,8 @@ pub(crate) fn run_canonical_svg_compare(
             })?;
             let render_evidence = state
                 .observed_operations
-                .observe(input.stem, rendered.report())?;
-            let local_svg = rendered.into_svg();
+                .observe(input.stem, rendered.evidence())?;
+            let local_svg = rendered.svg().to_owned();
             let mut fixture_notes = Vec::new();
             let browser_measured_math = if let Some(before) = required_math_evidence_before {
                 let observed = observed_node_math_renderer
@@ -1879,25 +1933,27 @@ mod tests {
     #[test]
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
         for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
-            let environment = merman::svg::RenderEnvironment::deterministic();
+            let environment = merman::SvgEnvironment::deterministic();
             let mut observed = ObservedRenderOperations::from_environment(&environment)
                 .expect("representative operation contract");
             let diagram_id = format!("computed-root-{}", fact.diagram);
-            let rendered = merman::svg::HeadlessRenderer::new()
+            let renderer = merman::Renderer::new()
                 .with_engine(super::super::svg_compare_engine())
-                .with_parse_options(fact.parse_policy.options())
-                .with_layout_options(super::super::svg_compare_layout_opts())
-                .with_environment(environment)
-                .with_diagram_id(&diagram_id)
-                .render_svg_report_sync(fact.representative_source)
-                .unwrap_or_else(|error| {
-                    panic!("{} representative render failed: {error}", fact.diagram)
-                })
-                .unwrap_or_else(|| {
-                    panic!("{} representative source was not detected", fact.diagram)
-                });
+                .with_parse_options(fact.parse_policy.options());
+            let rendered = render_source_svg(
+                &renderer,
+                fact.representative_source,
+                svg_request(
+                    environment,
+                    super::super::svg_compare_layout_opts(),
+                    Some(diagram_id.clone()),
+                ),
+            )
+            .unwrap_or_else(|error| {
+                panic!("{} representative render failed: {error}", fact.diagram)
+            });
             observed
-                .observe(fact.diagram, rendered.report())
+                .observe(fact.diagram, rendered.evidence())
                 .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
 
             let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
@@ -2175,14 +2231,17 @@ mod tests {
             .join(format!("{name}-{}-{nonce}", std::process::id()))
     }
 
-    fn render_info_for_evidence(stem: &str) -> merman::svg::RenderedSvg {
-        merman::svg::HeadlessRenderer::new()
-            .with_engine(super::super::svg_compare_engine())
-            .with_layout_options(super::super::svg_compare_layout_opts())
-            .with_diagram_id(stem)
-            .render_svg_report_sync("info")
-            .expect("Info render should succeed")
-            .expect("Info should be detected")
+    fn render_info_for_evidence(stem: &str) -> merman::SvgOutput {
+        render_source_svg(
+            &merman::Renderer::new().with_engine(super::super::svg_compare_engine()),
+            "info",
+            svg_request(
+                merman::SvgEnvironment::deterministic(),
+                super::super::svg_compare_layout_opts(),
+                Some(stem.to_string()),
+            ),
+        )
+        .expect("Info render should succeed")
     }
 
     #[test]
@@ -2471,7 +2530,7 @@ mod tests {
         let out_path = root.join("report.md");
         fs::create_dir_all(root.join("harness_probe").join("rendered.svg"))
             .expect("conflicting local SVG directory should be created");
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(
@@ -2492,10 +2551,10 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let render_evidence = observed.observe(input.stem, rendered.report())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
                     render_evidence,
-                    local_svg: rendered.into_svg(),
+                    local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
                     notes: Vec::new(),
@@ -2543,7 +2602,7 @@ mod tests {
 
         let out_path = root.join("report.md");
         fs::create_dir_all(&out_path).expect("conflicting report directory should be created");
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(
@@ -2564,10 +2623,10 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let render_evidence = observed.observe(input.stem, rendered.report())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
                     render_evidence,
-                    local_svg: rendered.into_svg(),
+                    local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
                     notes: Vec::new(),

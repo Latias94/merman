@@ -1,10 +1,7 @@
 #![cfg(feature = "svg")]
 
-use merman::ParseOptions;
-use merman::svg::{
-    HeadlessRenderer, LayoutOptions, RenderFamilyKind, RenderResourcePolicy, SvgRenderOptions,
-    prepare_render_sync,
-};
+use merman::svg::{LayoutOptions, RenderResourcePolicy, SvgRenderOptions};
+use merman::{OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -19,20 +16,28 @@ struct RenderedEdge {
     style: String,
 }
 
+fn svg_request(diagram_id: &str) -> SvgRequest {
+    SvgRequest {
+        layout: LayoutOptions::headless_svg_defaults(),
+        options: SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 fn try_render_swimlane(source: &str, diagram_id: &str) -> Result<String, String> {
-    prepare_render_sync(
-        &merman::Engine::new(),
-        source,
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .map_err(|error| format!("prepare failed: {error}"))?
-    .ok_or_else(|| "no diagram detected".to_string())?
-    .render_svg(&SvgRenderOptions {
-        diagram_id: Some(diagram_id.to_string()),
-        ..SvgRenderOptions::default()
-    })
-    .map_err(|error| format!("SVG render failed: {error}"))
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(source, OperationControl::new(), svg_request(diagram_id))
+                .with_parse_options(ParseOptions::strict()),
+        )
+        .map_err(|error| format!("SVG render failed: {error}"))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no diagram detected".to_string());
+    };
+    Ok(svg.into_parts().0)
 }
 
 fn render_swimlane(source: &str, diagram_id: &str) -> String {
@@ -99,29 +104,52 @@ fn swimlane_edge_label_uses_html(svg: &str) -> bool {
 }
 
 #[test]
-fn line_hop_work_budget_is_reported_by_the_headless_render_operation() {
+fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
     // The fixture's stable preflight estimate is 90 units. Probe the precise layout boundary so
     // this contract remains about operation-wide accounting rather than internal routing passes.
-    let (layout_boundary, prepared) = (90..=256)
+    let layout_boundary = (90..=256)
         .find_map(|max_layout_work_units| {
-            let renderer = HeadlessRenderer::new().with_resource_policy(
-                RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(
-                        merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
-                        max_layout_work_units,
-                    )
-                    .unwrap(),
-            );
-            match renderer.prepare_render_sync(DOCS_BASIC) {
-                Ok(Some(prepared)) => Some((max_layout_work_units, prepared)),
-                Ok(None) => panic!("expected swimlane diagram"),
+            let resources = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
+                    max_layout_work_units,
+                )
+                .unwrap();
+            let request = SvgRequest {
+                environment: merman::SvgEnvironment::deterministic()
+                    .with_resource_policy(resources),
+                ..svg_request("swimlane-budget-probe")
+            };
+            match Renderer::new().render(RenderRequest::layout_json(
+                DOCS_BASIC,
+                OperationControl::new(),
+                request,
+            )) {
+                Ok(RenderOutput::LayoutJson(Some(_))) => Some(max_layout_work_units),
+                Ok(RenderOutput::LayoutJson(None)) => panic!("expected swimlane diagram"),
+                Ok(_) => panic!("unexpected target output"),
                 Err(error) if error.to_string().contains("max_layout_work_units") => None,
                 Err(error) => panic!("unexpected layout error: {error}"),
             }
         })
         .expect("layout must fit within the bounded probe range");
-    let error = prepared
-        .render_svg(&SvgRenderOptions::default())
+    let request = SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
+                    layout_boundary,
+                )
+                .unwrap(),
+        ),
+        ..Default::default()
+    };
+    let error = Renderer::new()
+        .render(RenderRequest::svg(
+            DOCS_BASIC,
+            OperationControl::new(),
+            request,
+        ))
         .expect_err("line-hop segment inspection must consume the remaining operation budget");
     assert!(
         error.to_string().contains("max_layout_work_units"),
@@ -130,18 +158,24 @@ fn line_hop_work_budget_is_reported_by_the_headless_render_operation() {
 
     let without_line_hops =
         format!("---\nconfig:\n  swimlane:\n    lineHops: false\n---\n{DOCS_BASIC}");
-    HeadlessRenderer::new()
-        .with_resource_policy(
+    let request = SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_resource_policy(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
                     layout_boundary,
                 )
                 .unwrap(),
-        )
-        .render_svg_sync(&without_line_hops)
-        .expect("the same budget must admit rendering when line-hop inspection is disabled")
-        .expect("swimlane diagram");
+        ),
+        ..Default::default()
+    };
+    Renderer::new()
+        .render(RenderRequest::svg(
+            &without_line_hops,
+            OperationControl::new(),
+            request,
+        ))
+        .expect("the same budget must admit rendering when line-hop inspection is disabled");
 }
 
 fn rendered_edges(svg: &str) -> BTreeMap<String, RenderedEdge> {
@@ -179,15 +213,20 @@ fn car_sales_with(line_hops: &str, look: Option<&str>) -> String {
 }
 
 fn docs_basic_layout() -> Value {
-    let prepared = prepare_render_sync(
-        &merman::Engine::new(),
-        DOCS_BASIC,
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .expect("swimlane prepare")
-    .expect("swimlane diagram");
-    prepared.layout_json().expect("swimlane layout JSON")["layout"]["SwimlaneDiagram"].clone()
+    let output = Renderer::new()
+        .render(
+            RenderRequest::layout_json(
+                DOCS_BASIC,
+                OperationControl::new(),
+                svg_request("swimlane-layout"),
+            )
+            .with_parse_options(ParseOptions::strict()),
+        )
+        .expect("swimlane layout");
+    let RenderOutput::LayoutJson(Some(layout)) = output else {
+        panic!("swimlane diagram");
+    };
+    layout.layout()["layout"]["SwimlaneDiagram"].clone()
 }
 
 fn assert_near(actual: f64, expected: f64) {
@@ -214,30 +253,30 @@ fn by_id<'a>(values: &'a Value, id: &str) -> &'a Value {
 
 #[test]
 fn default_swimlane_uses_the_typed_swimlane_artifact() {
-    let prepared = prepare_render_sync(
-        &merman::Engine::new(),
-        DOCS_BASIC,
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .expect("swimlane prepare")
-    .expect("swimlane diagram");
-
-    assert_eq!(prepared.metadata().diagram_type, "swimlane");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Swimlane);
+    let renderer = Renderer::new();
+    let semantic = renderer
+        .prepare_semantic(DOCS_BASIC, OperationControl::new())
+        .expect("swimlane prepare")
+        .expect("swimlane diagram");
+    assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
-        prepared.metadata().effective_config.get_str("layout"),
+        semantic.metadata().effective_config.get_str("layout"),
         Some("swimlane")
     );
-    let layout_json = prepared.layout_json().expect("swimlane layout JSON");
-    assert!(layout_json["layout"]["SwimlaneDiagram"].is_object());
 
-    let svg = prepared
-        .render_svg(&SvgRenderOptions {
-            diagram_id: Some("typed-swimlane".to_string()),
-            ..SvgRenderOptions::default()
-        })
-        .expect("swimlane SVG");
+    let layout_output = renderer
+        .render(RenderRequest::layout_json(
+            DOCS_BASIC,
+            OperationControl::new(),
+            svg_request("typed-swimlane"),
+        ))
+        .expect("swimlane layout JSON");
+    let RenderOutput::LayoutJson(Some(layout_output)) = layout_output else {
+        panic!("expected swimlane layout JSON");
+    };
+    assert!(layout_output.layout()["layout"]["SwimlaneDiagram"].is_object());
+
+    let svg = render_swimlane(DOCS_BASIC, "typed-swimlane");
 
     assert!(svg.contains(r#"aria-roledescription="swimlane""#), "{svg}");
     assert_eq!(svg.matches(r#"class="cluster swimlane""#).count(), 3);
@@ -395,48 +434,26 @@ fn docs_basic_geometry_matches_mermaid_11_16_swimlane_pipeline() {
 #[test]
 fn explicit_dagre_override_uses_the_flowchart_artifact() {
     let source = format!("---\nconfig:\n  layout: dagre\n---\n{}", DOCS_BASIC);
-    let prepared = prepare_render_sync(
-        &merman::Engine::new(),
-        &source,
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .expect("dagre override prepare")
-    .expect("swimlane diagram with dagre override");
-
-    assert_eq!(prepared.metadata().diagram_type, "swimlane");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Flowchart);
+    let semantic = Renderer::new()
+        .prepare_semantic(&source, OperationControl::new())
+        .expect("dagre override prepare")
+        .expect("swimlane diagram with dagre override");
+    assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
-        prepared.metadata().effective_config.get_str("layout"),
+        semantic.metadata().effective_config.get_str("layout"),
         Some("dagre")
     );
-    let svg = prepared
-        .render_svg(&SvgRenderOptions {
-            diagram_id: Some("swimlane-dagre".to_string()),
-            ..SvgRenderOptions::default()
-        })
-        .expect("dagre override SVG");
+    let svg = render_swimlane(&source, "swimlane-dagre");
     assert!(!svg.contains("swimlane-title"), "{svg}");
     assert!(!svg.contains("swimlane-body"), "{svg}");
 }
 
 #[test]
 fn loose_nodes_render_the_synthetic_default_lane() {
-    let prepared = prepare_render_sync(
-        &merman::Engine::new(),
+    let svg = render_swimlane(
         "swimlane-beta LR\nA[Start] --> B[Done]\n",
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .expect("default-lane prepare")
-    .expect("default-lane diagram");
-
-    let svg = prepared
-        .render_svg(&SvgRenderOptions {
-            diagram_id: Some("swimlane-default-lane".to_string()),
-            ..SvgRenderOptions::default()
-        })
-        .expect("default-lane SVG");
+        "swimlane-default-lane",
+    );
 
     assert!(
         svg.contains(
@@ -466,23 +483,16 @@ flowchart LR
   end
   A --> B
 "#;
-    let prepared = prepare_render_sync(
-        &merman::Engine::new(),
-        source,
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .expect("flowchart swimlane-layout prepare")
-    .expect("flowchart swimlane-layout diagram");
-
-    assert_eq!(prepared.metadata().diagram_type, "flowchart-v2");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Swimlane);
-    let svg = prepared
-        .render_svg(&SvgRenderOptions {
-            diagram_id: Some("flowchart-swimlane-layout".to_string()),
-            ..SvgRenderOptions::default()
-        })
-        .expect("flowchart swimlane-layout SVG");
+    let semantic = Renderer::new()
+        .prepare_semantic(source, OperationControl::new())
+        .expect("flowchart swimlane-layout prepare")
+        .expect("flowchart swimlane-layout diagram");
+    assert_eq!(semantic.metadata().diagram_type, "flowchart-v2");
+    assert_eq!(
+        semantic.metadata().effective_config.get_str("layout"),
+        Some("swimlane")
+    );
+    let svg = render_swimlane(source, "flowchart-swimlane-layout");
 
     assert!(
         svg.contains(r#"aria-roledescription="flowchart-v2""#),
@@ -581,27 +591,16 @@ fn line_hops_run_after_neo_and_hand_drawn_edge_construction() {
 #[test]
 fn explicit_elk_override_uses_the_flowchart_artifact() {
     let source = format!("---\nconfig:\n  layout: elk\n---\n{}", DOCS_BASIC);
-    let prepared = prepare_render_sync(
-        &merman::Engine::new(),
-        &source,
-        ParseOptions::strict(),
-        &LayoutOptions::headless_svg_defaults(),
-    )
-    .expect("ELK override prepare")
-    .expect("swimlane diagram with ELK override");
-
-    assert_eq!(prepared.metadata().diagram_type, "swimlane");
-    assert_eq!(prepared.family_kind(), RenderFamilyKind::Flowchart);
+    let semantic = Renderer::new()
+        .prepare_semantic(&source, OperationControl::new())
+        .expect("ELK override prepare")
+        .expect("swimlane diagram with ELK override");
+    assert_eq!(semantic.metadata().diagram_type, "swimlane");
     assert_eq!(
-        prepared.metadata().effective_config.get_str("layout"),
+        semantic.metadata().effective_config.get_str("layout"),
         Some("elk")
     );
-    let svg = prepared
-        .render_svg(&SvgRenderOptions {
-            diagram_id: Some("swimlane-elk".to_string()),
-            ..SvgRenderOptions::default()
-        })
-        .expect("ELK override SVG");
+    let svg = render_swimlane(&source, "swimlane-elk");
     assert!(!svg.contains("swimlane-title"), "{svg}");
     assert!(!svg.contains("swimlane-body"), "{svg}");
 }

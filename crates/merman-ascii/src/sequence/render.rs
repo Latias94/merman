@@ -4,6 +4,7 @@ use super::plan::SequenceRowPlan;
 use super::text::{SequenceLine, padded_line, trim_right};
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,9 +98,18 @@ impl SequenceChars {
     }
 }
 
-pub(crate) fn render_sequence_diagram(
+pub(crate) fn render_sequence_diagram_with_execution(
     diagram: &AsciiSequenceDiagram,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    render_sequence_diagram_inner(diagram, options, Some(execution))
+}
+
+fn render_sequence_diagram_inner(
+    diagram: &AsciiSequenceDiagram,
+    options: &AsciiRenderOptions,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<String> {
     options.validate()?;
     if diagram.participants.is_empty() {
@@ -109,11 +119,27 @@ pub(crate) fn render_sequence_diagram(
         });
     }
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     let chars = SequenceChars::for_options(options);
     let layout = calculate_layout(diagram, options);
-    let row_plan =
-        SequenceRowPlan::build(diagram, &layout, &chars, options.sequence_mirror_actors)?;
-    Ok(row_plan.render(diagram, &layout, &chars, options))
+    let row_plan = if let Some(execution) = execution {
+        SequenceRowPlan::build_with_execution(
+            diagram,
+            &layout,
+            &chars,
+            options.sequence_mirror_actors,
+            execution,
+        )?
+    } else {
+        SequenceRowPlan::build(diagram, &layout, &chars, options.sequence_mirror_actors)?
+    };
+    if let Some(execution) = execution {
+        row_plan.render_with_execution(diagram, &layout, &chars, options, execution)
+    } else {
+        Ok(row_plan.render(diagram, &layout, &chars, options))
+    }
 }
 
 pub(super) fn build_lifeline_line(

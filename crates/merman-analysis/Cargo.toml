@@ -33,3 +33,4 @@ thiserror.workspace = true
 
 [dev-dependencies]
 jsonschema.workspace = true
+merman-core = { workspace = true, features = ["test-support"] }

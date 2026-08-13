@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
 
-use crate::{Error, ParseControl, ParseControlResult, ParseMetadata, Result};
+use crate::{Error, OperationControl, OperationControlResult, ParseMetadata, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -80,7 +80,7 @@ pub(crate) fn render_model_to_compat_json(
     model: &MindmapDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -88,8 +88,8 @@ pub(crate) fn render_model_to_compat_json(
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     let mut nodes = Vec::with_capacity(model.nodes.len());
     for (index, node) in model.nodes.iter().enumerate() {
@@ -264,8 +264,8 @@ fn mindmap_edge_to_compat_json(edge: &MindmapDiagramRenderEdge) -> Value {
 fn mindmap_root_node_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     let mut node_index = HashMap::with_capacity(model.nodes.len());
     for (index, node) in model.nodes.iter().enumerate() {
         if index % 128 == 0 {

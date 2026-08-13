@@ -1,6 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
-use crate::{Error, MermaidConfig, ParseControl, ParseControlResult, Result};
+use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
@@ -23,18 +23,18 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) config: &'a MermaidConfig,
     pub(super) shape_data_documents:
         &'a HashMap<String, std::result::Result<serde_json::Value, String>>,
-    pub(super) control: &'a ParseControl,
+    pub(super) control: &'a OperationControl,
 }
 
 pub(super) fn apply_semantic_statements(
     statements: &[Stmt],
     ctx: &mut FlowchartSemanticContext<'_>,
-) -> ParseControlResult<Result<()>> {
+) -> OperationControlResult<Result<()>> {
     ctx.apply_statements(statements)
 }
 
 impl<'a> FlowchartSemanticContext<'a> {
-    fn apply_statements(&mut self, statements: &[Stmt]) -> ParseControlResult<Result<()>> {
+    fn apply_statements(&mut self, statements: &[Stmt]) -> OperationControlResult<Result<()>> {
         // Preserve the recursive preorder semantics while avoiding stack growth on nested
         // subgraphs.
         let mut stack = vec![statements.iter()];
@@ -231,7 +231,11 @@ impl<'a> FlowchartSemanticContext<'a> {
         Ok(Ok(()))
     }
 
-    fn add_class_to_target(&mut self, target: &str, class_name: &str) -> ParseControlResult<()> {
+    fn add_class_to_target(
+        &mut self,
+        target: &str,
+        class_name: &str,
+    ) -> OperationControlResult<()> {
         if let Some(&idx) = self.subgraph_index.get(target) {
             self.subgraphs[idx].classes.push(class_name.to_string());
         }
@@ -323,7 +327,7 @@ mod tests {
         };
         let config = MermaidConfig::empty_object();
         let shape_data_documents = HashMap::new();
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(3);
         let mut context = FlowchartSemanticContext {
             nodes: &mut nodes,
@@ -351,7 +355,7 @@ mod tests {
 
         assert!(matches!(
             apply_semantic_statements(&statements, &mut context),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 }

@@ -293,7 +293,7 @@ pub(crate) fn core_error_candidate(
     source_map: &SourceMap,
 ) -> CoreErrorCandidate {
     match error {
-        CoreError::ParseCancelled(error) => CoreErrorCandidate {
+        CoreError::OperationCancelled(error) => CoreErrorCandidate {
             candidate: rule_candidate(
                 PARSER_CONTRACT_VIOLATION_RULE,
                 AnalysisStatus::InternalError,

@@ -265,8 +265,8 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 ## Site Config
 
 `site_config` accepts the same Mermaid configuration object that Rust users pass through
-`HeadlessRenderer::with_site_config(...)`. It is intended for host-level Mermaid defaults such as
-theme selection, `themeVariables`, and Mermaid `themeCSS`:
+`Engine::with_site_config(...)` before constructing a `Renderer`. It is intended for host-level
+Mermaid defaults such as theme selection, `themeVariables`, and Mermaid `themeCSS`:
 
 ```json
 {

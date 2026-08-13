@@ -116,8 +116,8 @@ pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_cynefin_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let CynefinParseOutcome {
         source: CynefinSemanticSource {
             mut model,
@@ -187,15 +187,15 @@ fn parse_cynefin_semantic_source(
 }
 
 fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinParseOutcome {
-    construct_cynefin_parse_outcome_controlled(code, meta, &crate::ParseControl::new())
+    construct_cynefin_parse_outcome_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_cynefin_parse_outcome_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<CynefinParseOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<CynefinParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("cynefin");
@@ -449,8 +449,8 @@ fn split_header(line: &str, line_start: usize) -> Option<CynefinHeader<'_>> {
 fn parse_cynefin_line_parts_controlled(
     line: &str,
     line_start: usize,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<CynefinParsedLine> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<CynefinParsedLine> {
     let mut cursor = CynefinCursor::new(line, line_start);
     let mut parts = Vec::new();
     let mut error = None;
@@ -720,7 +720,7 @@ mod tests {
 
     #[test]
     fn controlled_parse_can_cancel_between_cynefin_lines() {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
@@ -729,7 +729,7 @@ mod tests {
                 &metadata(),
                 &control,
             ),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

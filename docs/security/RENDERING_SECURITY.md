@@ -245,3 +245,15 @@ For parser and sanitizer design context, see `docs/adr/0020-sanitization-and-sec
 `docs/adr/0024-dompurify-default-allowlists-and-generation.md`. The public capability split between
 Mermaid sanitization, headless SVG output, raster-resource closure, and browser navigation is
 recorded in `docs/adr/0078-headless-svg-security-capability-boundaries.md`.
+## Cancellation and deterministic resource limits
+
+Every source-to-output request owns one `OperationControl`. Explicit cancellation and an expired
+monotonic deadline are cooperative terminal outcomes and are reported separately from
+`ResourceLimitExceeded`. The latter is the deterministic accounting boundary for source bytes,
+layout work, SVG output, ASCII grid cells, and export resources. Checkpoints occur before charging
+work and around parser/layout/output boundaries; a terminated operation never returns a partial
+artifact.
+
+Opaque host callbacks and raster/PDF encoders can only be checked before and after the synchronous
+call. Hosts requiring hard stop semantics must isolate rendering in a worker or process and close
+that boundary, rather than treating a dropped async handle as thread interruption.

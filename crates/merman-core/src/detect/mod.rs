@@ -1,4 +1,4 @@
-use crate::{MermaidConfig, ParseControl, ParseControlResult, Result};
+use crate::{MermaidConfig, OperationControl, OperationControlResult, Result};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -50,7 +50,7 @@ impl DetectorRegistry {
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
     pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.detect_type_controlled(text, config, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -59,8 +59,8 @@ impl DetectorRegistry {
         &self,
         text: &str,
         config: &mut MermaidConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<&'static str>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<&'static str>> {
         control.checkpoint()?;
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         let no_frontmatter = remove_frontmatter(text);
@@ -93,7 +93,7 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.detect_type_precleaned_controlled(text, config, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -102,8 +102,8 @@ impl DetectorRegistry {
         &self,
         text: &str,
         config: &mut MermaidConfig,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<&'static str>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<&'static str>> {
         control.checkpoint()?;
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         for (index, det) in self.detectors.iter().enumerate() {
@@ -148,15 +148,15 @@ fn remove_frontmatter(text: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 fn remove_directives(text: &str) -> Cow<'_, str> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     remove_directives_controlled(text, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
 fn remove_directives_controlled<'a>(
     text: &'a str,
-    control: &ParseControl,
-) -> ParseControlResult<Cow<'a, str>> {
+    control: &OperationControl,
+) -> OperationControlResult<Cow<'a, str>> {
     control.checkpoint()?;
     let ranges = crate::preprocess::directive_removal_ranges_controlled(text, control)?;
     if ranges.is_empty() {
@@ -431,12 +431,12 @@ pub(crate) fn detector_zenuml(txt: &str, _config: &mut MermaidConfig) -> bool {
 #[cfg(test)]
 mod remove_directives_tests {
     use super::{DetectorRegistry, remove_directives};
-    use crate::{MermaidConfig, ParseCancelled, ParseControl};
+    use crate::{MermaidConfig, OperationCancelled, OperationControl};
     use std::borrow::Cow;
 
     #[test]
     fn controlled_detection_stops_before_iterating_detectors() {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel();
 
         let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
@@ -445,7 +445,7 @@ mod remove_directives_tests {
             &control,
         );
 
-        assert!(matches!(result, Err(ParseCancelled)));
+        assert!(matches!(result, Err(OperationCancelled { .. })));
     }
 
     #[test]

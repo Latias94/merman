@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. Cancellation is a distinct generated error detail with its observed reason and phase; it is not a resource-limit failure.
 - Advanced the direct UniFFI binding API to `4` because lint rule catalog records now include required `tags`. API 4 replaces `bindingApiVersion()` with `transportApiVersion()` and removes the old native method symbol, so API 3 generated Swift rejects the new library before decoding the changed record. Regenerate Swift and replace the XCFramework together.
 - The default XCFramework now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. Generated helpers remain available for custom artifacts; the bundled library reports typed capability absence instead of carrying every optional backend.
 - Analysis facts now use schema `2` and no longer include the Flowchart-only rich graph. Regenerate facts consumers for schema `2`; diagnostics remain on schema `1`.

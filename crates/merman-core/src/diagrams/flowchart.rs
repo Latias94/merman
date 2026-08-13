@@ -4,7 +4,7 @@ use crate::{
     DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind,
     EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticRole, EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
         lalrpop_recovery_span,
@@ -156,8 +156,8 @@ pub(crate) fn parse_flowchart_with_warning_facts(
 pub(crate) fn parse_flowchart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
     let FlowchartAccessibilityScan {
         parser_input: code,
@@ -225,11 +225,24 @@ pub(crate) fn parse_flowchart_model_for_render(
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_flowchart_model_with_render_context(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model_parts(meta)
+}
+
+pub(crate) fn parse_flowchart_model_with_render_context_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+    let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
+    match source {
+        Ok(source) => source.into_render_model_parts_controlled(meta, control),
+        Err(error) => Ok(Err(error)),
+    }
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -276,9 +289,30 @@ fn parse_flowchart_semantic_source(
         ..
     } = scan_flowchart_accessibility(code);
     let ast = parse_flowchart_ast(&code, meta)?;
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, &control)
         .expect("a private parse control cannot be cancelled")
+}
+
+fn parse_flowchart_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<FlowchartSemanticSource>> {
+    control.checkpoint()?;
+    let FlowchartAccessibilityScan {
+        parser_input: code,
+        title: acc_title,
+        description: acc_descr,
+        ..
+    } = scan_flowchart_accessibility_controlled(code, control)?;
+    control.checkpoint()?;
+    let ast = match parse_flowchart_ast(&code, meta) {
+        Ok(ast) => ast,
+        Err(error) => return Ok(Err(error)),
+    };
+    control.checkpoint()?;
+    parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, control)
 }
 
 fn parse_flowchart_semantic_source_from_ast_controlled(
@@ -286,8 +320,8 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
     acc_title: Option<String>,
     acc_descr: Option<String>,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<FlowchartSemanticSource>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<FlowchartSemanticSource>> {
     let shape_data_documents = prepare_flowchart_shape_data(&ast.statements, control)?;
     control.checkpoint()?;
     let inherit_dir = meta
@@ -389,8 +423,8 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
 
 fn prepare_flowchart_shape_data(
     statements: &[Stmt],
-    control: &ParseControl,
-) -> ParseControlResult<HashMap<String, std::result::Result<Value, String>>> {
+    control: &OperationControl,
+) -> OperationControlResult<HashMap<String, std::result::Result<Value, String>>> {
     let mut documents = HashMap::new();
     let mut stack = vec![statements.iter()];
     let mut visited = 0usize;
@@ -440,9 +474,9 @@ fn prepare_flowchart_shape_data(
 
 fn prepare_flowchart_shape_data_document(
     source: &str,
-    control: &ParseControl,
+    control: &OperationControl,
     documents: &mut HashMap<String, std::result::Result<Value, String>>,
-) -> ParseControlResult<()> {
+) -> OperationControlResult<()> {
     if documents.contains_key(source) {
         return control.checkpoint();
     }
@@ -483,7 +517,7 @@ struct FlowchartTokenTrace {
 impl FlowchartTokenTrace {
     fn parser_items<'a>(
         &'a self,
-        control: &'a ParseControl,
+        control: &'a OperationControl,
     ) -> impl Iterator<Item = FlowchartLexerItem> + 'a {
         let mut emitted = 0usize;
         self.items
@@ -512,8 +546,8 @@ impl FlowchartTokenTrace {
 fn construct_flowchart_token_trace(
     code: &str,
     accessibility_statements: &[FlowchartAccessibilityStatement],
-    control: &ParseControl,
-) -> ParseControlResult<FlowchartTokenTrace> {
+    control: &OperationControl,
+) -> OperationControlResult<FlowchartTokenTrace> {
     #[cfg(test)]
     FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.set(
         FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT
@@ -568,8 +602,8 @@ fn construct_flowchart_token_trace(
 
 fn parse_flowchart_ast_from_trace(
     trace: &FlowchartTokenTrace,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<FlowchartAst, Box<FlowchartAstParseError>>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<FlowchartAst, Box<FlowchartAstParseError>>> {
     control.checkpoint()?;
     let parsed = flowchart_grammar::FlowchartAstParser::new()
         .parse(trace.parser_items(control))
@@ -667,8 +701,8 @@ fn flowchart_warning_facts(
 
 fn editor_facts_from_flowchart_ast(
     ast: &FlowchartAst,
-    control: &ParseControl,
-) -> ParseControlResult<EditorSemanticFacts> {
+    control: &OperationControl,
+) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
     collect_editor_facts_from_statements(&ast.statements, &mut facts, control)?;
     Ok(facts)
@@ -677,8 +711,8 @@ fn editor_facts_from_flowchart_ast(
 fn recover_flowchart_editor_facts_from_tokens(
     code: &str,
     trace: FlowchartTokenTrace,
-    control: &ParseControl,
-) -> ParseControlResult<EditorSemanticFacts> {
+    control: &OperationControl,
+) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
@@ -713,8 +747,8 @@ fn flowchart_recovery_facts(
     trace: FlowchartTokenTrace,
     accessibility_statements: &[FlowchartAccessibilityStatement],
     error: &FlowchartAstParseError,
-    control: &ParseControl,
-) -> ParseControlResult<EditorSemanticFacts> {
+    control: &OperationControl,
+) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace, control)?;
     collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
     let span = flowchart_eof_recovery_insertion(error, parser_code, &facts)
@@ -767,8 +801,8 @@ fn collect_expected_syntax_from_tokens<'a>(
     code: &str,
     tokens: impl Iterator<Item = &'a FlowchartToken>,
     facts: &mut EditorSemanticFacts,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     for (index, (start, token, end)) in tokens.enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
@@ -939,8 +973,8 @@ fn collect_editor_fact_from_token(
 fn collect_editor_facts_from_statements(
     statements: &[Stmt],
     facts: &mut EditorSemanticFacts,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let mut emitted_edge_label_spans = HashSet::new();
     let mut seen_edge_ids = HashSet::new();
     let mut seen_entities = HashSet::new();
@@ -960,8 +994,8 @@ fn collect_editor_facts_from_statements_with_seen_edges(
     emitted_edge_label_spans: &mut HashSet<(usize, usize)>,
     seen_edge_ids: &mut HashSet<String>,
     seen_entities: &mut HashSet<String>,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let mut stack = vec![statements.iter()];
     let mut visited = 0usize;
     while let Some(iter) = stack.last_mut() {
@@ -1397,8 +1431,8 @@ pub(super) fn shape_value_expected_span(
 fn collect_accessibility_directive_prefixes(
     statements: &[FlowchartAccessibilityStatement],
     facts: &mut EditorSemanticFacts,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     for (index, statement) in statements.iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
@@ -1571,7 +1605,7 @@ impl FlowchartSemanticSource {
         self,
         meta: &ParseMetadata,
     ) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.into_render_model_parts_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -1579,8 +1613,8 @@ impl FlowchartSemanticSource {
     fn into_render_model_controlled(
         self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<FlowchartModel>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<FlowchartModel>> {
         Ok(self
             .into_render_model_parts_controlled(meta, control)?
             .map(|(model, _)| model))
@@ -1589,8 +1623,8 @@ impl FlowchartSemanticSource {
     fn into_render_model_parts_controlled(
         self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
         control.checkpoint()?;
         let FlowchartSemanticSource {
             acc_descr,
@@ -1682,8 +1716,8 @@ impl FlowchartSemanticSource {
 fn append_missing_subgraph_nodes(
     nodes: &mut Vec<Node>,
     subgraphs: &[FlowSubGraph],
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let mut existing_ids = HashSet::with_capacity(nodes.len());
     for (index, node) in nodes.iter().enumerate() {
         if index % 128 == 0 {
@@ -2132,12 +2166,12 @@ F -- "&nbsp;" --> G
             effective_config: MermaidConfig::empty_object(),
             title: None,
         };
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel();
 
         assert!(matches!(
             parse_flowchart_json_and_editor_facts("flowchart TD\nA-->B\n", &meta, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -2147,12 +2181,12 @@ F -- "&nbsp;" --> G
         for index in 0..512 {
             source.push_str(&format!("n{index}-->n{}\n", index + 1));
         }
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
             construct_flowchart_token_trace(&source, &[], &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
     }
@@ -2176,27 +2210,27 @@ F -- "&nbsp;" --> G
             [Stmt::Chain { nodes, .. }] if nodes.len() == 256
         ));
 
-        let shape_data_control = ParseControl::new();
+        let shape_data_control = OperationControl::new();
         shape_data_control.cancel_after_checkpoints(2);
         assert!(matches!(
             prepare_flowchart_shape_data(&ast.statements, &shape_data_control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
 
-        let editor_facts_control = ParseControl::new();
+        let editor_facts_control = OperationControl::new();
         editor_facts_control.cancel_after_checkpoints(2);
         assert!(matches!(
             editor_facts_from_flowchart_ast(&ast, &editor_facts_control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
 
         let semantic_source =
             parse_flowchart_semantic_source(&source, &meta).expect("large node group should build");
-        let render_control = ParseControl::new();
+        let render_control = OperationControl::new();
         render_control.cancel_after_checkpoints(2);
         assert!(matches!(
             semantic_source.into_render_model_controlled(&meta, &render_control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -2216,12 +2250,12 @@ F -- "&nbsp;" --> G
         let ast =
             parse_flowchart_ast(&source, &meta).expect("large subgraph node group should parse");
         let mut builder = SubgraphBuilder::new(false, ast.direction.clone());
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
             builder.visit_statements(&ast.statements, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

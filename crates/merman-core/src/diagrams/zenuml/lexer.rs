@@ -1,5 +1,5 @@
 use crate::{
-    EditorLexemeKind, EditorLexemeModifiers, ParseControl, ParseControlResult, SourceSpan,
+    EditorLexemeKind, EditorLexemeModifiers, OperationControl, OperationControlResult, SourceSpan,
     editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use unicode_general_category::{GeneralCategory, get_general_category};
@@ -151,14 +151,14 @@ impl Token {
 
 #[cfg(test)]
 pub(super) fn lex(source: &str) -> Vec<Token> {
-    lex_controlled(source, &ParseControl::new())
+    lex_controlled(source, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn lex_controlled(
     source: &str,
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Token>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Token>> {
     let mut tokens = Vec::new();
     let lexer = Lexer::new(source);
     for token in lexer {
@@ -173,14 +173,14 @@ pub(super) fn lex_controlled(
 
 #[cfg(test)]
 pub(super) fn parser_tokens(tokens: &[Token]) -> Vec<Token> {
-    parser_tokens_controlled(tokens, &ParseControl::new())
+    parser_tokens_controlled(tokens, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn parser_tokens_controlled(
     tokens: &[Token],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Token>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Token>> {
     let mut parser_tokens = Vec::new();
     for (index, token) in tokens.iter().enumerate() {
         if index % 128 == 0 {
@@ -198,8 +198,8 @@ pub(super) fn editor_lexemes_controlled(
     source: &str,
     tokens: &[Token],
     recovered: bool,
-    control: &ParseControl,
-) -> ParseControlResult<EditorLexemeBatchResult> {
+    control: &OperationControl,
+) -> OperationControlResult<EditorLexemeBatchResult> {
     let mut journal = if recovered {
         EditorLexemeJournal::family_recovery(source)
     } else {

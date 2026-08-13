@@ -2383,6 +2383,8 @@ dependencies = [
  "criterion",
  "merman",
  "merman-analysis",
+ "merman-core",
+ "merman-render",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",
@@ -2402,6 +2404,7 @@ dependencies = [
  "libc",
  "merman",
  "merman-analysis",
+ "merman-render",
  "png",
  "rayon",
  "reqwest",
@@ -2490,6 +2493,7 @@ version = "0.8.0-alpha.5"
 dependencies = [
  "cc",
  "libloading",
+ "merman",
  "merman-bindings-core",
  "serde_json",
  "sha2 0.10.9",
@@ -2598,6 +2602,7 @@ dependencies = [
 name = "merman-uniffi"
 version = "0.8.0-alpha.5"
 dependencies = [
+ "merman",
  "merman-bindings-core",
  "serde_json",
  "tempfile",

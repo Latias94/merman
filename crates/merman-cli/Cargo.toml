@@ -94,9 +94,9 @@ analysis = [
 ]
 svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
 ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
-png = ["svg", "merman/png"]
-jpeg = ["svg", "merman/jpeg"]
-pdf = ["svg", "merman/pdf"]
+png = ["svg", "dep:merman-render", "merman/png"]
+jpeg = ["svg", "dep:merman-render", "merman/jpeg"]
+pdf = ["svg", "dep:merman-render", "merman/pdf"]
 layout-cytoscape = ["svg", "merman/layout-cytoscape"]
 layout-elk = ["svg", "merman/layout-elk"]
 math = ["svg", "merman/math"]
@@ -127,6 +127,7 @@ clap_complete = { workspace = true, optional = true }
 hickory-resolver = { workspace = true, optional = true }
 merman = { workspace = true, default-features = false }
 merman-analysis = { workspace = true, optional = true, default-features = false }
+merman-render = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde.workspace = true
@@ -145,6 +146,7 @@ rustix = { workspace = true, optional = true }
 [dev-dependencies]
 assert_cmd = "2.2.2"
 clap_mangen.workspace = true
+merman-render.workspace = true
 png.workspace = true
 roxmltree.workspace = true
 tempfile = "3.27.0"

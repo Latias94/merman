@@ -2,7 +2,8 @@
 
 - Status: accepted for transport separation; package and capability mapping superseded by ADR-0076
 - Date: 2026-06-10
-- Last amended: 2026-08-11 (Web transport API 4 requires the editor-owned completion trigger export)
+- Last amended: 2026-08-13 (Web transport API 4 requires the editor-owned completion trigger
+  export and adds operation-scoped deadlines and cooperative cancellation)
 
 ADR-0076 now owns Web artifact profiles, package mappings, Typst artifact mappings, and capability
 semantic IDs through `capabilities/feature-surface-v1.json`. The one-package/subpath and legacy
@@ -67,6 +68,11 @@ flowchart LR
 2. `merman-wasm` remains explicitly browser/JS WASM.
    - It may use wasm-bindgen, serde-wasm-bindgen, and browser-compatible glue.
    - It must not be documented as the Typst or pure-WASM surface.
+   - Its current transport API is `4`. Transport-dispatched one-shot operation options may carry a
+     top-level `timeout_ms`; the transport converts it to an `OperationControl` deadline and reports
+     expiry as structured `MERMAN_CANCELLED` details with a reason and phase.
+   - Synchronous exports expose no mid-call `AbortSignal`. Deadlines are observed at cooperative
+     checkpoints, while hard cancellation requires a host-owned Worker or process boundary.
 
 3. `merman-typst-plugin` owns Typst-compatible WASM.
    - `crates/merman-typst-plugin/wasm-profiles.json` owns the plugin ABI number plus exact feature

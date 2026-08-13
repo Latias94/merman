@@ -2,8 +2,9 @@ use super::*;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, ParseControl,
-    ParseControlResult, SourceSpan, editor::EditorLexemeJournal, family::CombinedSemanticFailure,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, OperationControl,
+    OperationControlResult, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 use serde_json::Map;
 #[cfg(test)]
@@ -473,8 +474,8 @@ impl GanttAccDescrBlock {
     fn consume_remaining(
         mut self,
         cursor: &mut LineCursor<'_>,
-        control: &ParseControl,
-    ) -> ParseControlResult<Self> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Self> {
         while !self.complete {
             control.checkpoint()?;
             let Some((line, line_start)) = cursor.next_line() else {
@@ -906,8 +907,8 @@ pub(crate) fn parse_gantt_model_for_render(
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = match construct_gantt_semantic_source_controlled(code, meta, control)? {
         Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
         Err(error) => Err(error),
@@ -928,8 +929,8 @@ impl GanttSemanticSource {
     fn into_combined_parts_controlled(
         self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<(Result<Value>, EditorSemanticFacts)> {
+        control: &OperationControl,
+    ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self { db, editor_facts } = self;
         let model = match db {
             Some(db) => match gantt_db_to_render_model_controlled(db, control)? {
@@ -951,15 +952,15 @@ fn construct_gantt_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
-    construct_gantt_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_gantt_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_gantt_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     GANTT_SYNTAX_CONSTRUCTION_COUNT.set(GANTT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -983,8 +984,8 @@ fn parse_gantt_semantic_source_with_lexemes(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = GanttDb::default();
     db.clear();
@@ -1101,16 +1102,16 @@ pub(crate) fn render_model_to_compat_json(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
-pub(super) fn render_model_to_compat_json_controlled(
+pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(Ok(json!({})));
@@ -1164,8 +1165,8 @@ pub(super) fn render_model_to_compat_json_controlled(
 
 fn strings_to_json_controlled(
     strings: &[String],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Value>> {
     let mut values = Vec::with_capacity(strings.len());
     for (index, value) in strings.iter().enumerate() {
         if index % 128 == 0 {
@@ -1178,8 +1179,8 @@ fn strings_to_json_controlled(
 
 fn serialize_items_controlled<T: serde::Serialize>(
     items: &[T],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Value>> {
     let mut values = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
         if index % 128 == 0 {
@@ -1192,8 +1193,8 @@ fn serialize_items_controlled<T: serde::Serialize>(
 
 fn string_map_to_json_controlled(
     values: &HashMap<String, String>,
-    control: &ParseControl,
-) -> ParseControlResult<Map<String, Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Map<String, Value>> {
     let mut out = Map::with_capacity(values.len());
     for (index, (key, value)) in values.iter().enumerate() {
         if index % 128 == 0 {
@@ -1206,8 +1207,8 @@ fn string_map_to_json_controlled(
 
 fn serialize_map_to_json_controlled<T: serde::Serialize>(
     values: &HashMap<String, T>,
-    control: &ParseControl,
-) -> ParseControlResult<Map<String, Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Map<String, Value>> {
     let mut out = Map::with_capacity(values.len());
     for (index, (key, value)) in values.iter().enumerate() {
         if index % 128 == 0 {
@@ -1219,15 +1220,15 @@ fn serialize_map_to_json_controlled<T: serde::Serialize>(
 }
 
 fn gantt_db_to_render_model(db: GanttDb) -> Result<GanttDiagramRenderModel> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     gantt_db_to_render_model_controlled(db, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn gantt_db_to_render_model_controlled(
     mut db: GanttDb,
-    control: &ParseControl,
-) -> ParseControlResult<Result<GanttDiagramRenderModel>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
     control.checkpoint()?;
     let raw_tasks = db.take_tasks();
     let mut tasks = Vec::with_capacity(raw_tasks.len());
@@ -1567,8 +1568,8 @@ fn parse_gantt_statement(
     cursor: &mut LineCursor<'_>,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<Result<()>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<()>> {
     control.checkpoint()?;
     let stripped = strip_inline_comment(line);
     let t = stripped.trim();

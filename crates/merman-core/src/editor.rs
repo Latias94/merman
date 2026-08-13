@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
 use crate::{
-    ParseControl, ParseControlResult,
+    OperationControl, OperationControlResult,
     error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan},
     family::DiagramFamilyId,
 };
@@ -335,15 +335,15 @@ impl<'source> EditorLexemeJournal<'source> {
     }
 
     pub(crate) fn finish(self) -> EditorLexemeBatchResult {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.finish_controlled(&control)
             .expect("a private parse control cannot be cancelled")
     }
 
     pub(crate) fn finish_controlled(
         mut self,
-        control: &ParseControl,
-    ) -> ParseControlResult<EditorLexemeBatchResult> {
+        control: &OperationControl,
+    ) -> OperationControlResult<EditorLexemeBatchResult> {
         control.checkpoint()?;
         if let Some(error) = self.error {
             return Ok(Err(error));
@@ -771,8 +771,8 @@ impl EditorSemanticFacts {
     pub(crate) fn remap_lexemes_controlled(
         &mut self,
         mut remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
-        control: &ParseControl,
-    ) -> ParseControlResult<usize> {
+        control: &OperationControl,
+    ) -> OperationControlResult<usize> {
         let original_count = self.lexemes.len();
         let mut remapped = Vec::with_capacity(original_count);
         for (index, mut lexeme) in std::mem::take(&mut self.lexemes).into_iter().enumerate() {
@@ -795,7 +795,7 @@ impl EditorSemanticFacts {
         family: DiagramFamilyId,
         global_lexemes: &[EditorLexeme],
     ) {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.finalize_lexemes_controlled(family, global_lexemes, &control)
             .expect("a private parse control cannot be cancelled");
     }
@@ -804,8 +804,8 @@ impl EditorSemanticFacts {
         &mut self,
         family: DiagramFamilyId,
         global_lexemes: &[EditorLexeme],
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         control.checkpoint()?;
         if self.lexeme_failure.is_some() {
             self.lexemes.clear();
@@ -823,8 +823,8 @@ impl EditorSemanticFacts {
         &mut self,
         family: DiagramFamilyId,
         global_lexemes: &[EditorLexeme],
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<(), EditorLexemeFailure>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(), EditorLexemeFailure>> {
         for (index, lexeme) in self.lexemes.iter_mut().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
@@ -905,8 +905,8 @@ impl EditorSemanticFacts {
 
     pub(crate) fn finalize_expected_syntax_controlled(
         &mut self,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let mut seen = BTreeSet::new();
         let mut unique = Vec::with_capacity(self.expected_syntax.len());
         for (index, expected) in std::mem::take(&mut self.expected_syntax)
@@ -1173,7 +1173,7 @@ mod tests {
         EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
         lalrpop_parse_diagnostic,
     };
-    use crate::{ParseControl, ParseDiagnosticSpanKind};
+    use crate::{OperationControl, ParseDiagnosticSpanKind};
 
     #[test]
     fn rename_policies_follow_family_identifier_grammars() {
@@ -1394,12 +1394,12 @@ mod tests {
         facts.replace_family_lexemes(journal.finish());
         let family =
             crate::family::diagram_type_family_id("flowchart").expect("flowchart family identity");
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
             facts.finalize_lexemes_controlled(family, &[], &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
     }

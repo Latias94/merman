@@ -1,4 +1,5 @@
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
@@ -77,53 +78,42 @@ struct ErRelationComponentAdapter<'a> {
     entity_labels: &'a HashMap<String, String>,
 }
 
-pub(crate) fn render_er_diagram(
+pub(crate) fn render_er_diagram_with_execution(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     if model.entities.is_empty() {
         return Ok(String::new());
     }
-
     let charset = ErCharset::for_options(options);
-    let boxes = model
-        .entities
-        .values()
-        .map(|entity| render_entity_box(entity, options, charset))
-        .collect::<Vec<_>>();
-    let entity_labels = model
-        .entities
-        .values()
-        .map(|entity| (entity.id.clone(), entity_display_label(entity).to_string()))
-        .collect::<HashMap<_, _>>();
-
-    if model.relationships.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+    let mut boxes = Vec::with_capacity(model.entities.len());
+    let mut entity_labels = HashMap::with_capacity(model.entities.len());
+    for entity in model.entities.values() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        boxes.push(render_entity_box(entity, options, charset));
+        entity_labels.insert(entity.id.clone(), entity_display_label(entity).to_string());
     }
-
-    render_er_components(
-        &boxes,
-        &model.relationships,
-        &entity_labels,
-        options,
-        charset,
-    )
-}
-
-fn render_er_components(
-    boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    entity_labels: &HashMap<String, String>,
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-) -> Result<String> {
-    let adapter = ErRelationComponentAdapter {
-        charset,
-        entity_labels,
+    let rendered = if model.relationships.is_empty() {
+        relation_graph::render_stacked_boxes_with_options_with_execution(
+            &boxes, options, execution,
+        )?
+    } else {
+        let adapter = ErRelationComponentAdapter {
+            charset,
+            entity_labels: &entity_labels,
+        };
+        relation_graph::render_relation_components_with_execution(
+            &boxes,
+            &model.relationships,
+            options,
+            &adapter,
+            execution,
+        )?
     };
-    relation_graph::render_relation_components(boxes, relationships, options, &adapter)
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
 }
 
 fn render_entity_box(
@@ -299,14 +289,16 @@ fn render_parallel_vertical_relationships(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
     charset: ErCharset,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RelationGraphLine>> {
     let first = &relationships[0];
     let top = find_box(boxes, &first.entity_a)?;
     let bottom = find_box(boxes, &first.entity_b)?;
-    let lanes = relationships
-        .iter()
-        .map(|relationship| parallel_er_lane_rows(relationship, charset))
-        .collect::<Result<Vec<_>>>()?;
+    let mut lanes = Vec::with_capacity(relationships.len());
+    for relationship in relationships {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        lanes.push(parallel_er_lane_rows(relationship, charset)?);
+    }
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
     Ok(plan.render_lines())
@@ -429,7 +421,9 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         relation_box: &RenderedEntityBox,
         relationship: &ErRelationshipRenderModel,
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let rows = self_loop_rows_for_er_relationship(relationship, self.charset)?;
 
         let _ = options;
@@ -444,11 +438,16 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         relation_box: &RenderedEntityBox,
         relationships: &[ErRelationshipRenderModel],
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
-        let loops = relationships
-            .iter()
-            .map(|relationship| self_loop_rows_for_er_relationship(relationship, self.charset))
-            .collect::<Result<Vec<_>>>()?;
+        let mut loops = Vec::with_capacity(relationships.len());
+        for relationship in relationships {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            loops.push(self_loop_rows_for_er_relationship(
+                relationship,
+                self.charset,
+            )?);
+        }
 
         let _ = options;
         Ok(relation_graph::render_parallel_self_loops(
@@ -515,7 +514,9 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         boxes: &[RenderedEntityBox],
         relationship: &ErRelationshipRenderModel,
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let top = find_box(boxes, &relationship.entity_a)?;
         let bottom = find_box(boxes, &relationship.entity_b)?;
 
@@ -528,9 +529,10 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         boxes: &[RenderedEntityBox],
         relationships: &[ErRelationshipRenderModel],
         options: &AsciiRenderOptions,
+        execution: AsciiExecution<'_>,
     ) -> Result<Vec<RelationGraphLine>> {
         let _ = options;
-        render_parallel_vertical_relationships(boxes, relationships, self.charset)
+        render_parallel_vertical_relationships(boxes, relationships, self.charset, execution)
     }
 
     fn build_summary_row(

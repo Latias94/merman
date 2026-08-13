@@ -304,8 +304,19 @@ impl AnalysisGeneration {
         &self,
         policy: &AnalysisDiagnosticPolicy,
     ) -> AnalysisFactsPayload {
-        let payload = self.project(policy);
-        AnalysisFactsPayload::from_generation(self, &payload)
+        let cancellation = AnalysisCancellationToken::new();
+        self.to_facts_payload_cancellable(policy, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    /// Projects the serializable facts contract without reparsing this generation.
+    pub fn to_facts_payload_cancellable(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisFactsPayload, AnalysisCancelled> {
+        let payload = self.project_cancellable(policy, cancellation)?;
+        AnalysisFactsPayload::from_generation_cancellable(self, &payload, cancellation)
     }
 }
 
@@ -519,22 +530,30 @@ impl<'de> Deserialize<'de> for AnalysisFactsPayload {
 }
 
 impl AnalysisFactsPayload {
-    pub(crate) fn from_generation(
+    fn from_generation_cancellable(
         generation: &AnalysisGeneration,
         payload: &AnalysisPayload,
-    ) -> Self {
-        Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let mut diagrams = Vec::with_capacity(generation.diagrams().len());
+        for diagram in generation.diagrams() {
+            cancellation.checkpoint()?;
+            diagrams.push(AnalysisDiagramFacts::from_diagram_cancellable(
+                diagram,
+                generation.source_map(),
+                cancellation,
+            )?);
+        }
+        cancellation.checkpoint()?;
+        Ok(Self {
             version: ANALYSIS_FACTS_PAYLOAD_VERSION,
             valid: payload.valid,
             summary: payload.summary,
             source: payload.source.clone(),
             diagnostics: payload.diagnostics.clone(),
-            diagrams: generation
-                .diagrams()
-                .iter()
-                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, generation.source_map()))
-                .collect(),
-        }
+            diagrams,
+        })
     }
 
     pub fn from_rejection(rejection: &AnalysisRejection) -> Self {
@@ -574,25 +593,38 @@ pub struct AnalysisDiagramFacts {
 }
 
 impl AnalysisDiagramFacts {
-    fn from_diagram(diagram: &AnalyzedDiagram, source_map: &SourceMap) -> Self {
-        Self {
+    fn from_diagram_cancellable(
+        diagram: &AnalyzedDiagram,
+        source_map: &SourceMap,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let span = source_map
+            .span_cancellable(diagram.start, diagram.end, cancellation)?
+            .ok();
+        let body_span = source_map
+            .span_cancellable(diagram.body_start, diagram.body_end, cancellation)?
+            .ok();
+        let syntax = AnalysisDiagramSyntaxFacts::from_syntax_cancellable(
+            &diagram.syntax,
+            source_map,
+            diagram.body_start,
+            cancellation,
+        )?;
+        Ok(Self {
             source_id: diagram.source_id.clone(),
             index: diagram.index,
             kind: diagram_kind_name(diagram.kind).to_string(),
             source: diagram.source.clone(),
-            span: source_map.span(diagram.start, diagram.end).ok(),
-            body_span: source_map.span(diagram.body_start, diagram.body_end).ok(),
+            span,
+            body_span,
             text_len: diagram.text.len(),
             fence_delimiter: diagram
                 .fence_delimiter
                 .map(AnalysisFenceDelimiterFacts::from),
             parse_disposition: diagram.parse_disposition(),
-            syntax: AnalysisDiagramSyntaxFacts::from_syntax(
-                &diagram.syntax,
-                source_map,
-                diagram.body_start,
-            ),
-        }
+            syntax,
+        })
     }
 }
 
@@ -630,52 +662,92 @@ pub struct AnalysisDiagramSyntaxFacts {
 }
 
 impl AnalysisDiagramSyntaxFacts {
-    fn from_syntax(
+    fn from_syntax_cancellable(
         syntax: &AnalysisSyntaxFacts,
         source_map: &SourceMap,
         body_start: usize,
-    ) -> Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
         let text_index = &syntax.text_index;
         let fact_source = text_index.source();
-
-        Self {
+        cancellation.checkpoint()?;
+        let mut node_ids = Vec::new();
+        for node_id in text_index.node_ids() {
+            cancellation.checkpoint()?;
+            node_ids.push(node_id.clone());
+        }
+        let mut class_names = Vec::new();
+        for class_name in text_index.class_names() {
+            cancellation.checkpoint()?;
+            class_names.push(class_name.clone());
+        }
+        let mut directive_prefixes = Vec::new();
+        for directive_prefix in text_index.directive_prefixes() {
+            cancellation.checkpoint()?;
+            directive_prefixes.push(directive_prefix.clone());
+        }
+        let mut references = Vec::new();
+        for (group, spans) in text_index.reference_groups() {
+            cancellation.checkpoint()?;
+            references.push(AnalysisReferenceFacts::from_reference_cancellable(
+                group.name,
+                group.kind,
+                spans,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        let mut outline_items = Vec::new();
+        for item in text_index
+            .semantic_items()
+            .iter()
+            .filter(|item| item.role.contributes_outline())
+        {
+            cancellation.checkpoint()?;
+            outline_items.push(AnalysisLineItemFacts::from_item_cancellable(
+                item,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        let mut semantic_items = Vec::new();
+        for item in text_index.semantic_items() {
+            cancellation.checkpoint()?;
+            semantic_items.push(AnalysisSemanticItemFacts::from_item_cancellable(
+                item,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        let mut expected_syntax = Vec::new();
+        for expected in text_index.expected_syntax() {
+            cancellation.checkpoint()?;
+            expected_syntax.push(AnalysisExpectedSyntaxFacts::from_expected_cancellable(
+                expected,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        cancellation.checkpoint()?;
+        Ok(Self {
             diagram_type: syntax.diagram_type.clone(),
             effective_layout: syntax.effective_layout.clone(),
             fact_source,
             parser_backed: fact_source.is_parser_backed(),
             recovered: fact_source.is_recovered(),
             source_mapped_spans: fact_source.has_source_mapped_spans(),
-            node_ids: text_index.node_ids().cloned().collect(),
-            class_names: text_index.class_names().cloned().collect(),
-            directive_prefixes: text_index.directive_prefixes().cloned().collect(),
-            references: text_index
-                .reference_groups()
-                .into_iter()
-                .map(|(group, spans)| {
-                    AnalysisReferenceFacts::from_reference(
-                        group.name, group.kind, spans, source_map, body_start,
-                    )
-                })
-                .collect(),
-            outline_items: text_index
-                .semantic_items()
-                .iter()
-                .filter(|item| item.role.contributes_outline())
-                .map(|item| AnalysisLineItemFacts::from_item(item, source_map, body_start))
-                .collect(),
-            semantic_items: text_index
-                .semantic_items()
-                .iter()
-                .map(|item| AnalysisSemanticItemFacts::from_item(item, source_map, body_start))
-                .collect(),
-            expected_syntax: text_index
-                .expected_syntax()
-                .iter()
-                .map(|expected| {
-                    AnalysisExpectedSyntaxFacts::from_expected(expected, source_map, body_start)
-                })
-                .collect(),
-        }
+            node_ids,
+            class_names,
+            directive_prefixes,
+            references,
+            outline_items,
+            semantic_items,
+            expected_syntax,
+        })
     }
 }
 
@@ -781,21 +853,29 @@ pub struct AnalysisReferenceFacts {
 }
 
 impl AnalysisReferenceFacts {
-    fn from_reference(
+    fn from_reference_cancellable(
         name: String,
         kind: EditorSemanticKind,
         spans: Vec<crate::ByteSpan>,
         source_map: &SourceMap,
         body_start: usize,
-    ) -> Self {
-        Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let mut projected_spans = Vec::with_capacity(spans.len());
+        for span in spans {
+            cancellation.checkpoint()?;
+            projected_spans.push(AnalysisFactSpan::from_local_cancellable(
+                span,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        Ok(Self {
             name,
             kind: kind.into(),
-            spans: spans
-                .into_iter()
-                .map(|span| AnalysisFactSpan::from_local(span, source_map, body_start))
-                .collect(),
-        }
+            spans: projected_spans,
+        })
     }
 }
 
@@ -809,14 +889,29 @@ pub struct AnalysisLineItemFacts {
 }
 
 impl AnalysisLineItemFacts {
-    fn from_item(item: &EditorSemanticSymbol, source_map: &SourceMap, body_start: usize) -> Self {
-        Self {
+    fn from_item_cancellable(
+        item: &EditorSemanticSymbol,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Ok(Self {
             name: item.name.clone(),
             detail: item.detail.clone(),
             kind: item.kind.into(),
-            span: AnalysisFactSpan::from_source(item.span, source_map, body_start),
-            selection: AnalysisFactSpan::from_source(item.selection, source_map, body_start),
-        }
+            span: AnalysisFactSpan::from_source_cancellable(
+                item.span,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+            selection: AnalysisFactSpan::from_source_cancellable(
+                item.selection,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+        })
     }
 }
 
@@ -837,16 +932,31 @@ fn missing_rename_policy() -> EditorRenamePolicy {
 }
 
 impl AnalysisSemanticItemFacts {
-    fn from_item(item: &EditorSemanticSymbol, source_map: &SourceMap, body_start: usize) -> Self {
-        Self {
+    fn from_item_cancellable(
+        item: &EditorSemanticSymbol,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Ok(Self {
             name: item.name.clone(),
             detail: item.detail.clone(),
             kind: item.kind.into(),
             role: item.role.into(),
             rename_policy: item.rename_policy,
-            span: AnalysisFactSpan::from_source(item.span, source_map, body_start),
-            selection: AnalysisFactSpan::from_source(item.selection, source_map, body_start),
-        }
+            span: AnalysisFactSpan::from_source_cancellable(
+                item.span,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+            selection: AnalysisFactSpan::from_source_cancellable(
+                item.selection,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+        })
     }
 }
 
@@ -857,15 +967,21 @@ pub struct AnalysisExpectedSyntaxFacts {
 }
 
 impl AnalysisExpectedSyntaxFacts {
-    fn from_expected(
+    fn from_expected_cancellable(
         expected: &EditorExpectedSyntax,
         source_map: &SourceMap,
         body_start: usize,
-    ) -> Self {
-        Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Ok(Self {
             kind: expected.kind.into(),
-            span: AnalysisFactSpan::from_source(expected.span, source_map, body_start),
-        }
+            span: AnalysisFactSpan::from_source_cancellable(
+                expected.span,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+        })
     }
 }
 
@@ -876,24 +992,37 @@ pub struct AnalysisFactSpan {
 }
 
 impl AnalysisFactSpan {
-    fn from_source(local: SourceSpan, source_map: &SourceMap, body_start: usize) -> Self {
-        Self::from_local(
+    fn from_source_cancellable(
+        local: SourceSpan,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Self::from_local_cancellable(
             crate::ByteSpan {
                 start: local.start,
                 end: local.end,
             },
             source_map,
             body_start,
+            cancellation,
         )
     }
 
-    fn from_local(local: crate::ByteSpan, source_map: &SourceMap, body_start: usize) -> Self {
+    fn from_local_cancellable(
+        local: crate::ByteSpan,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
         let document_start = body_start.saturating_add(local.start);
         let document_end = body_start.saturating_add(local.end);
-        Self {
+        Ok(Self {
             local,
-            document: source_map.span(document_start, document_end).ok(),
-        }
+            document: source_map
+                .span_cancellable(document_start, document_end, cancellation)?
+                .ok(),
+        })
     }
 }
 

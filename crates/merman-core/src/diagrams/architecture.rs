@@ -1,7 +1,7 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl, ParseControlResult,
+    EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl, OperationControlResult,
     ParseMetadata, Result, SourceSpan,
     family::{CombinedSemanticFailure, CombinedSemanticParse},
 };
@@ -124,15 +124,15 @@ impl ArchitectureDb {
     }
 
     fn render_model(&self) -> ArchitectureDiagramRenderModel {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.render_model_controlled(&control)
             .expect("a private parse control cannot be cancelled")
     }
 
     fn render_model_controlled(
         &self,
-        control: &ParseControl,
-    ) -> ParseControlResult<ArchitectureDiagramRenderModel> {
+        control: &OperationControl,
+    ) -> OperationControlResult<ArchitectureDiagramRenderModel> {
         control.checkpoint()?;
         let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
         let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
@@ -515,8 +515,8 @@ impl ArchitectureDb {
         &mut self,
         direction: ArchitectureLayoutDirection,
         members: Vec<ArchitectureIdentifier>,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<()>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<()>> {
         control.checkpoint()?;
         if members.len() < 2 {
             return Ok(Err(Error::diagram_parse_fallback(
@@ -697,8 +697,8 @@ pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Val
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<CombinedSemanticParse> {
     control.checkpoint()?;
     let construction = match parse::parse_combined_semantic_source_controlled(code, meta, control)?
     {
@@ -744,7 +744,7 @@ pub(crate) fn render_model_to_compat_json(
     model: &ArchitectureDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -752,8 +752,8 @@ pub(crate) fn render_model_to_compat_json(
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &ArchitectureDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
@@ -847,8 +847,8 @@ fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Val
 fn architecture_render_node_to_compat_json(
     node: &ArchitectureRenderNode,
     edges: &[Value],
-    control: &ParseControl,
-) -> ParseControlResult<Value> {
+    control: &OperationControl,
+) -> OperationControlResult<Value> {
     let mut node_edges = Vec::with_capacity(node.edge_indices.len());
     for (index, edge_index) in node.edge_indices.iter().enumerate() {
         if index % 128 == 0 {
@@ -1853,8 +1853,8 @@ group child(cloud)[Child] in root\n";
         fn custom_architecture_parser(
             _code: &str,
             _meta: &ParseMetadata,
-            control: &crate::ParseControl,
-        ) -> crate::ParseControlResult<Result<Value>> {
+            control: &crate::OperationControl,
+        ) -> crate::OperationControlResult<Result<Value>> {
             control.checkpoint()?;
             Ok(Ok(json!({ "type": "custom-architecture" })))
         }

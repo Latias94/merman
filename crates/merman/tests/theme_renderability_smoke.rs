@@ -1,7 +1,8 @@
 #![cfg(feature = "svg")]
 
-use merman::MermaidConfig;
-use merman::svg::HeadlessRenderer;
+use merman::{
+    Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+};
 
 fn legacy_init_theme_compat_config() -> MermaidConfig {
     MermaidConfig::from_value(serde_json::json!({
@@ -21,13 +22,24 @@ fn render_svg(name: &str, source: &str) -> String {
 }
 
 fn render_svg_with_site_config(name: &str, source: &str, site_config: MermaidConfig) -> String {
-    HeadlessRenderer::new()
-        .with_site_config(site_config)
-        .with_vendored_text_measurer()
-        .with_diagram_id(name)
-        .render_svg_sync(source)
-        .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
-        .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+    let request = SvgRequest {
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some(name.to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = Renderer::new()
+        .with_engine(Engine::new().with_site_config(site_config))
+        .render(
+            RenderRequest::svg(source, OperationControl::new(), request)
+                .with_parse_options(merman::ParseOptions::strict()),
+        )
+        .unwrap_or_else(|err| panic!("{name}: render failed: {err}"));
+    let RenderOutput::Svg(Some(svg)) = output else {
+        panic!("{name}: no diagram detected");
+    };
+    svg.into_parts().0
 }
 
 #[cfg(feature = "layout-cytoscape")]

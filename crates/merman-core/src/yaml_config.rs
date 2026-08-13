@@ -1,4 +1,4 @@
-use crate::{ParseControl, ParseControlResult, preprocess::SourceConfigPath};
+use crate::{OperationControl, OperationControlResult, preprocess::SourceConfigPath};
 use granit_parser::{Event, Parser, ScalarStyle, Span, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
@@ -10,7 +10,7 @@ const YAML_PARSER_MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 
 #[cfg(test)]
 pub(crate) fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<Value, String> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     parse_yaml_value_controlled(input, max_nesting_depth, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -18,8 +18,8 @@ pub(crate) fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<
 pub(crate) fn parse_yaml_value_controlled(
     input: &str,
     max_nesting_depth: usize,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value, String>> {
     let materialization_budget = input
         .len()
         .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
@@ -49,8 +49,8 @@ pub(crate) struct YamlValueCapture {
 pub(crate) fn parse_yaml_value_capture_controlled(
     input: &str,
     max_nesting_depth: usize,
-    control: &ParseControl,
-) -> ParseControlResult<YamlValueCapture> {
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
     let materialization_budget = input
         .len()
         .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
@@ -69,8 +69,8 @@ pub(crate) fn parse_yaml_value_with_limits_controlled(
     max_input_bytes: usize,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value, String>> {
     Ok(parse_yaml_value_with_limits_capture_mode_controlled(
         input,
         max_input_bytes,
@@ -87,8 +87,8 @@ fn parse_yaml_value_with_limits_capture_controlled(
     max_input_bytes: usize,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    control: &ParseControl,
-) -> ParseControlResult<YamlValueCapture> {
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
     parse_yaml_value_with_limits_capture_mode_controlled(
         input,
         max_input_bytes,
@@ -105,8 +105,8 @@ fn parse_yaml_value_with_limits_capture_mode_controlled(
     max_nesting_depth: usize,
     materialization_budget: usize,
     capture_keys: bool,
-    control: &ParseControl,
-) -> ParseControlResult<YamlValueCapture> {
+    control: &OperationControl,
+) -> OperationControlResult<YamlValueCapture> {
     control.checkpoint()?;
     if input.len() > max_input_bytes {
         return Ok(YamlValueCapture {
@@ -450,8 +450,8 @@ impl YamlValueBuilder {
 
     fn finish_controlled(
         self,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Value, String>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Value, String>> {
         if !self.stack.is_empty() {
             return Ok(Err("incomplete YAML document".to_string()));
         }
@@ -586,8 +586,8 @@ fn materialize_yaml_controlled(
     root: NodeId,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value, String>> {
     control.checkpoint()?;
     let mut tasks = vec![MaterializeTask::Visit {
         node: root,
@@ -942,22 +942,22 @@ fn is_yaml_float_body(body: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ParseCancelled;
+    use crate::OperationCancelled;
     use serde_json::json;
 
     fn capture_yaml(input: &str) -> YamlValueCapture {
-        parse_yaml_value_capture_controlled(input, 16, &ParseControl::new())
+        parse_yaml_value_capture_controlled(input, 16, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
     #[test]
     fn controlled_yaml_parse_stops_before_consuming_events() {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel();
 
         let result = parse_yaml_value_controlled("value: 1\n", 16, &control);
 
-        assert!(matches!(result, Err(ParseCancelled)));
+        assert!(matches!(result, Err(OperationCancelled { .. })));
     }
 
     #[test]
@@ -1126,7 +1126,7 @@ config: *defaults
 
     #[test]
     fn caller_can_apply_a_stricter_yaml_materialization_budget() {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         let result = parse_yaml_value_with_limits_controlled(
             "values: [one, two, three, four]\n",
             1024,
@@ -1145,7 +1145,7 @@ config: *defaults
 
     #[test]
     fn caller_can_bound_the_third_party_yaml_parser_input() {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         let result = parse_yaml_value_with_limits_controlled(
             "value: a-very-long-single-token\n",
             8,

@@ -76,6 +76,15 @@ MermanNativeStatus merman_get_native_api(
 
 The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`, then receives the common prefix of a size-tagged function table. `MermanNativeApi.struct_size` is the host capacity on input and the largest complete producer prefix safely initialized within that capacity on output. The returned minimum-prefix digest is the compatibility key, the full descriptor digest records producer provenance, and the capability catalog digest identifies the loaded artifact. Every other record requires its exact generated size. Use `MERMAN_NATIVE_RESULT_INIT` to fully zero-initialize each result before a producing call; setting only `struct_size` in otherwise uninitialized storage is invalid. The generated C header and release C smoke tests carry the compile-run layout fingerprint, so applications should not implement a second runtime offset probe.
 
+The ABI 3 minimum prefix ends at `engine_new_with_services` (function slot `6`). Operation control
+is an additive current-contract extension: `operation_control_new`, `operation_control_cancel`, and
+`operation_control_release` occupy slots `7`, `8`, and `9`, while
+`execute_collect_controlled` occupies slot `10`. The generated prefix-size macros identify each
+complete appended prefix. Release-matched consumers require the complete table through
+`MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; the smaller minimum prefix remains the
+layout-compatibility key rather than a supported reduced host surface. The append-only function
+preserves the original ABI 3 request-record layout.
+
 Caller-supplied record pointers must be naturally aligned. Every record and reachable byte range
 must remain readable, live, and immutable for the complete call, except for declared output
 storage, which must remain writable. Merman can reject detectable size, alignment, range, and
@@ -87,9 +96,13 @@ Every operation follows the same path:
 1. Call `merman_get_native_api`.
 2. Create an engine token with `api.engine_new`, or use `api.engine_new_with_services` when the
    engine owns Iconify packs.
-3. Set `MermanNativeOperationRequest.operation` to the requested operation enum.
-4. Call `api.execute_collect`.
-5. Release every result with `api.result_free`, then close the token with `api.engine_try_close`.
+3. Optionally create an operation-control token with `api.operation_control_new`.
+4. Set `MermanNativeOperationRequest.operation` to the requested operation enum. Call
+   `api.execute_collect` without a caller control, or call `api.execute_collect_controlled` with a
+   borrowed control token.
+5. Release every written result with `api.result_free`.
+6. Release any operation-control token with `api.operation_control_release`, then close the engine
+   token with `api.engine_try_close`.
 
 Initialize the `out_engine` value to zero before either constructor; a nonzero value is rejected
 without being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel
@@ -115,6 +128,48 @@ Include [`include/merman_resource_contract.h`](include/merman_resource_contract.
 
 The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` distinguishes `unknown-operation`, `missing-capability`, `reentrant-call`, and `busy` from `generic`; only `missing-capability` carries a non-null descriptor `capability_id`.
 
+## Cooperative Operation Control
+
+`MermanNativeOperationControlToken` is an opaque nonzero token with its own token domain. Create one
+with `api.operation_control_new(timeout_ms, has_timeout_ms, &control, &result)`, initializing
+`control` to zero and `result` with `MERMAN_NATIVE_RESULT_INIT`. `has_timeout_ms == 0` creates a
+control without a deadline and ignores `timeout_ms`; `has_timeout_ms == 1` installs a relative
+monotonic deadline, including an immediate deadline when `timeout_ms == 0`.
+
+Pass the token explicitly to
+`api.execute_collect_controlled(engine, control, &request, &result)`. A zero control selects the
+ordinary active-control behavior. A nonzero value is borrowed for the call: execution clones its
+shared state before synchronous work, does not release the token, and holds no control-registry
+lock while rendering. `api.operation_control_cancel(control)` atomically requests cancellation for
+a live token. `api.operation_control_release(control)` removes only the registry token; an
+operation that already cloned the control remains memory-safe and continues observing its
+cancellation/deadline state until it returns.
+
+Cancellation is cooperative, not thread termination. Parsing, layout, adapters, SVG
+post-processing, and export observe the request at explicit checkpoints. An opaque synchronous
+backend or host callback cannot be forcefully interrupted; cancellation is observed after that
+call returns to a checkpoint. A cancelled operation returns
+`MERMAN_NATIVE_STATUS_CANCELLED` (`17`), publishes no partial output, and carries additive failure
+JSON at `details.cancellation`:
+
+```json
+{
+  "status": 17,
+  "status_name": "cancelled",
+  "kind": "generic",
+  "details": {
+    "cancellation": {
+      "reason": "requested",
+      "phase": "layout"
+    }
+  }
+}
+```
+
+The other stable reason is `deadline_exceeded`. Cancellation is distinct from
+`MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED`: resource budgets bound admitted work, while an
+operation control lets a host stop work that has become obsolete.
+
 [`examples/render_svg.c`](examples/render_svg.c) is the minimal discovery-and-render program.
 [`examples/render_svg_engine.c`](examples/render_svg_engine.c) shows one engine constructed with
 both a host text-measurement callback and a borrowed Iconify pack.
@@ -123,10 +178,10 @@ both a host text-measurement callback and a borrowed Iconify pack.
 
 `MermanNativeResult.data` and `metadata_or_error_json` are Merman-owned only after Merman has written the result, and only until `api.result_free(&result)`. Ownership is identified by a process-lifetime monotonic nonzero `allocation_token`, never by the nested buffer pointers or record address. Moving the complete result transfers ownership when the source is cleared and no duplicate live token remains. Zero, unknown, stale, and random tokens release nothing. Fully zero-initialize every result before a producing call, release every Merman-written result including failures before reuse, and never pass its buffers to a host allocator. Inputs and callback request slices are borrowed for the call only.
 
-Engine values are opaque nonzero tokens, not pointers. Engine and result-allocation tokens use
-disjoint low-bit domains while preserving the sign bit, so valid tokens remain positive in signed
-64-bit language projections. This catches accidental cross-kind use but does not authenticate a
-caller or isolate hostile same-process tenants. `engine_try_close` never waits: it returns
+Engine, operation-control, and result-allocation values are opaque nonzero tokens, not pointers.
+They use disjoint low-bit domains while preserving the sign bit, so valid tokens remain positive
+in signed 64-bit language projections. This catches accidental cross-kind use but does not
+authenticate a caller or isolate hostile same-process tenants. `engine_try_close` never waits: it returns
 `MERMAN_NATIVE_STATUS_BUSY` while an operation is active and
 `MERMAN_NATIVE_STATUS_REENTRANT_CALL` while the engine is inside its host callback, retaining the
 token in both cases. A successful close permanently prevents new admissions before retiring the
@@ -134,7 +189,7 @@ token and is the point after which the host may release the immutable callback a
 Callback-free engines admit concurrent operations; callback-configured engines reject a competing
 operation with the typed `busy` failure.
 
-Merman provides deterministic vendored text measurement by default. A preview host can set `MermanNativeEngineConfig.text_measure` to measure with its actual display font stack. The callback is synchronous; return `handled = 0` when a request cannot be answered faithfully and Merman will fall back for that request. A callback must not unwind, throw, propagate SEH, call `longjmp`, or otherwise cross the ABI through a non-local exit; catch host-language failures and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. The operation/result-kind and request vocabulary contracts are generated in [`include/merman_text_measurement_abi.h`](include/merman_text_measurement_abi.h).
+Merman provides deterministic vendored text measurement by default. A preview host can set `MermanNativeEngineConfig.text_measure` to measure with its actual display font stack. The callback is synchronous; return `handled = 0` when a request cannot be answered faithfully and Merman will fall back for that request. A callback must not unwind, throw, propagate SEH, call `longjmp`, or otherwise cross the ABI through a non-local exit; catch host-language failures and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. Cancellation does not preempt a callback: the callback must return normally before the renderer can observe the control at its next checkpoint. The operation/result-kind and request vocabulary contracts are generated in [`include/merman_text_measurement_abi.h`](include/merman_text_measurement_abi.h).
 
 ## Feature Selection
 

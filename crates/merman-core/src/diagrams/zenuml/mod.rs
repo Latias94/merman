@@ -11,7 +11,9 @@ mod model;
 mod parser;
 mod semantic;
 
-use crate::{EditorSemanticFacts, Error, ParseControl, ParseControlResult, ParseMetadata, Result};
+use crate::{
+    EditorSemanticFacts, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
+};
 use serde_json::Value;
 
 pub(crate) use model::render_model_to_compat_json;
@@ -41,8 +43,8 @@ pub(crate) fn parse_zenuml_model_for_render(
 pub(crate) fn parse_zenuml_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let source = construct_semantic_source(code, control)?;
     let construction = match &source.first_diagnostic {
         Some(diagnostic) => Err(crate::family::CombinedSemanticFailure::new(
@@ -70,7 +72,7 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
 }
 
 fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
-    let source = construct_semantic_source(code, &ParseControl::new())
+    let source = construct_semantic_source(code, &OperationControl::new())
         .expect("a private parse control cannot be cancelled");
     if let Some(diagnostic) = &source.first_diagnostic {
         return Err(Error::diagram_parse_exact(
@@ -84,8 +86,8 @@ fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSeman
 
 fn construct_semantic_source(
     code: &str,
-    control: &ParseControl,
-) -> ParseControlResult<ZenumlSemanticSource> {
+    control: &OperationControl,
+) -> OperationControlResult<ZenumlSemanticSource> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("zenuml");
 

@@ -58,14 +58,21 @@ Add the exact workspace prerelease:
 cargo add merman@0.8.0-alpha.5
 ```
 
-Render one Mermaid source string without constructing a renderer:
+Render one Mermaid source string through the operation-scoped facade:
 
 ```rust
-use merman::render_svg;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let svg = render_svg("flowchart TD\n  A[Start] --> B[Done]")?;
-    std::fs::write("diagram.svg", svg)?;
+    let output = Renderer::new().render(RenderRequest::svg(
+        "flowchart TD\n  A[Start] --> B[Done]",
+        OperationControl::new(),
+        SvgRequest::default(),
+    ))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    std::fs::write("diagram.svg", svg.svg())?;
     Ok(())
 }
 ```
@@ -76,12 +83,15 @@ Choose the narrowest Rust entry point that owns the task:
 
 | Task | Start with |
 | --- | --- |
-| Render one standalone SVG | `merman::render_svg` |
-| Embed several SVGs in one document | `merman::render_svg_with_id` |
-| Parse or inspect semantics without rendering | `merman::Engine` |
-| Reuse configuration, inspect layout, or export another format | `merman::svg::HeadlessRenderer` |
+| Render one standalone SVG | `Renderer::render(RenderRequest::svg(...))` |
+| Embed several SVGs in one document | Set a unique `SvgRequest.options.diagram_id` for each request |
+| Parse or inspect semantics without rendering | `Renderer::prepare_semantic` or `RenderTarget::Semantic` |
+| Inspect layout or export another format | `Renderer` with a typed `RenderRequest`/`RenderTarget` |
 
-`render_svg` uses the complete deterministic SVG defaults and reports ordinary prose or empty input as `RenderSvgError::NoDiagram`. `render_svg_with_id` is the same one-shot path with a caller-owned ID; supply IDs that remain unique after `merman::svg::sanitize_svg_id` normalization.
+`Renderer` uses deterministic defaults. An undetected diagram is represented by the selected
+`RenderOutput` variant containing `None`; cancellation, resource exhaustion, parse failure, and
+unsupported targets remain distinct structured errors. When several SVGs share one DOM, supply
+diagram IDs that remain unique after `merman::svg::sanitize_svg_id` normalization.
 
 The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) are self-contained files that can be copied into another crate. They cover one-shot SVG, same-DOM embedding, renderer reuse, PNG and terminal output, semantic and layout inspection, deterministic dates, site configuration, presentation themes, and consumer-specific SVG pipelines.
 
@@ -221,7 +231,9 @@ If an input needs a layout engine or math renderer that was not compiled, Merman
 Merman prioritizes parser, model, layout, theme, sanitizer, and SVG DOM convergence with pinned Mermaid source. It does not claim byte-for-byte Chromium pixels.
 
 - Browser font fallback, `getBBox()` floats, `foreignObject`, and RoughJS path geometry can remain documented residuals where no robust headless derivation exists.
-- Mermaid-parity SVG can contain HTML labels. Use `render_resvg_compatible_svg_sync()` or an export command when a raster consumer cannot render `foreignObject`; browser DOM insertion still requires a Web-host admission policy.
+- Mermaid-parity SVG can contain HTML labels. Select `SvgPipeline::resvg_safe()` on a typed SVG
+  request, or use a PNG/JPEG/PDF target, when a raster consumer cannot render `foreignObject`;
+  browser DOM insertion still requires a Web-host admission policy.
 - PNG, JPEG, and PDF are integration outputs with explicit allocation and resource limits; they are not browser screenshot parity contracts.
 - ASCII/Unicode support varies by diagram family and should be capability-checked.
 
