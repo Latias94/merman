@@ -306,7 +306,7 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
             .as_ref()
             .and_then(|data| data.get("id"))
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|id| id.starts_with("u1:"))
+            .is_some_and(|id| id.starts_with("u2:"))
     );
 
     server
@@ -345,7 +345,7 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
             .as_ref()
             .and_then(|data| data.get("id"))
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|id| id.starts_with("u1:"))
+            .is_some_and(|id| id.starts_with("u2:"))
     );
 
     server
@@ -514,7 +514,7 @@ async fn pull_diagnostics_for_document_diagram_rejection_use_canonical_resource_
             .as_ref()
             .and_then(|data| data.get("id"))
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|id| id.starts_with("u1:"))
+            .is_some_and(|id| id.starts_with("u2:"))
     );
 }
 

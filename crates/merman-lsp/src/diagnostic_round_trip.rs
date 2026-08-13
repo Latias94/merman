@@ -9,6 +9,7 @@ use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisPayload, DiagnosticFix,
 };
 use merman_editor_core::{EditorDiagnostic, analysis_diagnostic_to_editor};
+use sha2::{Digest as _, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
 use tower_lsp_server::ls_types::{
@@ -16,7 +17,9 @@ use tower_lsp_server::ls_types::{
 };
 
 const DIAGNOSTIC_ID_PREFIX: &str = "m1";
-const UNAVAILABLE_DIAGNOSTIC_ID_PREFIX: &str = "u1";
+const UNAVAILABLE_DIAGNOSTIC_ID_PREFIX: &str = "u2";
+const UNAVAILABLE_RESULT_ID_PREFIX: &str = "ur2";
+const UNAVAILABLE_URI_DIGEST_DOMAIN: &[u8] = b"merman-unavailable-diagnostic-uri-v1\0";
 
 /// One immutable server-owned diagnostic result projection and its optional fix provenance.
 #[derive(Debug)]
@@ -201,7 +204,10 @@ impl DiagnosticRoundTrip {
                 self.scope.diagnostic_generation.0,
             ),
             DiagnosticResultSource::Unavailable(source) => {
-                format!("ur1:{}", self.unavailable_scope(source))
+                format!(
+                    "{UNAVAILABLE_RESULT_ID_PREFIX}:{}",
+                    self.unavailable_scope(source)
+                )
             }
         }
     }
@@ -323,16 +329,22 @@ impl DiagnosticRoundTrip {
     }
 
     fn unavailable_scope(&self, source: UnavailableDiagnosticSource) -> String {
-        let uri = self.scope.uri.as_str();
         format!(
-            "{:x}:{uri}:{:016x}:{}:{:016x}:{}",
-            uri.len(),
+            "{}:{:016x}:{}:{:016x}:{}",
+            unavailable_uri_digest(&self.scope.uri),
             self.scope.document_epoch.0,
             self.scope.document_version,
             self.scope.diagnostic_generation.0,
             source.wire_name(),
         )
     }
+}
+
+fn unavailable_uri_digest(uri: &Uri) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(UNAVAILABLE_URI_DIGEST_DOMAIN);
+    hasher.update(uri.as_str().as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 impl UnavailableDiagnosticSource {
@@ -648,7 +660,7 @@ mod tests {
         assert_ne!(first_id(&original), first_id(&changed_version));
         assert_ne!(original.result_id(), changed_state.result_id());
         assert_ne!(first_id(&original), first_id(&changed_state));
-        assert!(first_id(&original).starts_with("u1:"));
+        assert!(first_id(&original).starts_with("u2:"));
         let data = original.diagnostics_with_profile(&ClientProtocolProfile::permissive())[0]
             .data
             .clone()
@@ -687,6 +699,55 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_identity_size_is_bounded_independently_of_uri_length() {
+        let short_uri = Uri::from_str("file:///tmp/short.mmd").unwrap();
+        let long_uri = Uri::from_str(&format!(
+            "file:///tmp/{}.mmd",
+            "nested-segment/".repeat(4096)
+        ))
+        .unwrap();
+        let diagnostic = analysis_diagnostic_to_editor(&AnalysisDiagnostic::error(
+            "merman.resource.source_bytes_exceeded",
+            DiagnosticCategory::Resource,
+            "source unavailable",
+        ));
+        let short = unavailable_round_trip(
+            short_uri,
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let long = unavailable_round_trip(
+            long_uri,
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic,
+        );
+        let profile = ClientProtocolProfile::permissive();
+        let short_id = first_id(&short);
+        let long_id = first_id(&long);
+
+        assert_eq!(short.result_id().len(), long.result_id().len());
+        assert_eq!(short_id.len(), long_id.len());
+        assert!(long.result_id().len() < 160);
+        assert!(long_id.len() < 180);
+        assert_ne!(short.result_id(), long.result_id());
+        assert_ne!(short_id, long_id);
+        let diagnostic_id = long.diagnostics_with_profile(&profile)[0]
+            .data
+            .as_ref()
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(diagnostic_id, long_id);
+    }
+
+    #[test]
     fn sync_lost_preserves_the_version_only_data_exception() {
         let uri = Uri::from_str("file:///tmp/sync-lost.mmd").unwrap();
         let diagnostic = analysis_diagnostic_to_editor(&AnalysisDiagnostic::error(
@@ -708,7 +769,7 @@ mod tests {
             .expect("sync-lost version data");
 
         assert_eq!(data, json!({ "documentVersion": DOCUMENT_VERSION }));
-        assert!(round_trip.result_id().starts_with("ur1:"));
+        assert!(round_trip.result_id().starts_with("ur2:"));
     }
 
     #[test]
