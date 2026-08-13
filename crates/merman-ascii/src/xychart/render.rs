@@ -16,7 +16,9 @@ use crate::safe_text::{
 };
 use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
 use crate::{AsciiRenderOptions, Result};
-use disclosure::{push_value_disclosure_lines, value_disclosure_line_width};
+use disclosure::{
+    band_domain_disclosure_line_width, push_value_disclosure_lines, value_disclosure_line_width,
+};
 use merman_core::diagrams::xychart::{
     XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
 };
@@ -215,7 +217,8 @@ fn render_vertical(
     let categories = &plan.category_labels;
     let mut document_resources = resources.scoped();
     let resources = &mut document_resources;
-    let requires_disclosure = plan.requires_disclosure(plot_area, false, resources)?;
+    let disclosure = plan.disclosure_plan(plot_area, false, resources)?;
+    let requires_disclosure = disclosure.values;
     let show_y_labels = axis_labels_visible(model.display.y_axis);
     let (tick_labels, min_label, gutter) = if show_y_labels {
         let tick_labels = vertical_tick_labels(y_range, plot_area, resources)?;
@@ -252,6 +255,7 @@ fn render_vertical(
         show_y_labels,
         baseline_mark,
         requires_disclosure,
+        disclosure,
         options,
         resources,
     )?;
@@ -265,7 +269,9 @@ fn render_vertical(
         if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
             || requires_disclosure
         {
-            push_value_disclosure_lines(&mut out, plan, chars, options, resources)?;
+            push_value_disclosure_lines(
+                &mut out, model, plan, chars, disclosure, options, resources,
+            )?;
         }
 
         if model.display.show_data_label && uses_compact_bar_data_labels(model) {
@@ -376,7 +382,8 @@ fn render_horizontal(
     let categories = &plan.horizontal_axis_labels;
     let mut document_resources = resources.scoped();
     let resources = &mut document_resources;
-    let requires_disclosure = plan.requires_disclosure(plot_area, true, resources)?;
+    let disclosure = plan.disclosure_plan(plot_area, true, resources)?;
+    let requires_disclosure = disclosure.values;
     let show_x_labels = axis_labels_visible(model.display.x_axis);
     let gutter = if show_x_labels {
         label_gutter(
@@ -404,6 +411,7 @@ fn render_horizontal(
         plot_prefix_width,
         baseline_mark,
         requires_disclosure,
+        disclosure,
         options,
         resources,
     )?;
@@ -417,7 +425,9 @@ fn render_horizontal(
         if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
             || requires_disclosure
         {
-            push_value_disclosure_lines(&mut out, plan, chars, options, resources)?;
+            push_value_disclosure_lines(
+                &mut out, model, plan, chars, disclosure, options, resources,
+            )?;
         }
 
         for plot_row in &plot_rows {
@@ -534,6 +544,7 @@ fn measure_vertical_document(
     show_y_labels: bool,
     baseline_mark: Option<char>,
     requires_disclosure: bool,
+    disclosure: super::plot::TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<ChartDocumentPlan> {
@@ -542,7 +553,15 @@ fn measure_vertical_document(
     if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
         || requires_disclosure
     {
-        measure_value_disclosure_lines(&mut document, plan, chars, options, resources)?;
+        measure_value_disclosure_lines(
+            &mut document,
+            model,
+            plan,
+            chars,
+            disclosure,
+            options,
+            resources,
+        )?;
     }
 
     let plot_row_width = resources.checked_grid_add(plot_prefix_width, plot_extent.width())?;
@@ -584,6 +603,7 @@ fn measure_horizontal_document(
     plot_prefix_width: usize,
     baseline_mark: Option<char>,
     requires_disclosure: bool,
+    disclosure: super::plot::TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<ChartDocumentPlan> {
@@ -592,7 +612,15 @@ fn measure_horizontal_document(
     if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
         || requires_disclosure
     {
-        measure_value_disclosure_lines(&mut document, plan, chars, options, resources)?;
+        measure_value_disclosure_lines(
+            &mut document,
+            model,
+            plan,
+            chars,
+            disclosure,
+            options,
+            resources,
+        )?;
     }
 
     let plot_row_width =
@@ -702,14 +730,23 @@ fn legend_line_width(
 
 fn measure_value_disclosure_lines(
     document: &mut ChartDocumentPlan,
+    model: &XyChartDiagramRenderModel,
     plan: &TerminalChartPlan,
     chars: ChartChars,
+    disclosure: super::plot::TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<()> {
+    if let Some(width) =
+        band_domain_disclosure_line_width(model, plan, disclosure, options, resources)?
+    {
+        document.include_line(width, resources)?;
+    }
     for series in &plan.series {
         resources.charge_layout_work(1)?;
-        if let Some(width) = value_disclosure_line_width(series, plan, chars, options, resources)? {
+        if let Some(width) =
+            value_disclosure_line_width(model, series, plan, chars, options, resources)?
+        {
             document.include_line(width, resources)?;
         }
     }

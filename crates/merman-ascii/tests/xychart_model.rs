@@ -1875,6 +1875,148 @@ fn xychart_orphan_point_labels_and_clipped_values_are_disclosed() {
 }
 
 #[test]
+fn xychart_point_labels_preserve_authored_whitespace_and_presence() {
+    let render = |point_labels: Vec<&str>| {
+        let model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![5.0],
+                data: vec![("A".to_string(), Some(5.0))],
+                point_labels: point_labels.into_iter().map(str::to_string).collect(),
+            }],
+        );
+
+        render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("authored point-label whitespace should render")
+    };
+
+    let leading = render(vec![" peak"]);
+    let trailing = render(vec!["peak "]);
+    let whitespace = render(vec![" "]);
+    let absent = render(Vec::new());
+    let orphan_whitespace = render(vec!["peak", " "]);
+
+    assert!(
+        leading.contains(r#"pointLabel(bytes=5)=" peak""#),
+        "{leading}"
+    );
+    assert!(
+        trailing.contains(r#"pointLabel(bytes=5)="peak ""#),
+        "{trailing}"
+    );
+    assert!(
+        whitespace.contains(r#"pointLabel(bytes=1)=" ""#),
+        "{whitespace}"
+    );
+    assert!(
+        orphan_whitespace.contains(r#"orphanPointLabels=[bytes=1=" "]"#),
+        "{orphan_whitespace}"
+    );
+    assert_ne!(leading, trailing);
+    assert_ne!(whitespace, absent);
+}
+
+#[test]
+fn xychart_nonempty_domain_discloses_empty_series_title_and_type() {
+    let render = |plot_type, title: &str| {
+        let model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type,
+                title: Some(title.to_string()),
+                values: Vec::new(),
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+        );
+
+        render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("empty series metadata should render")
+    };
+
+    let line = render(XyChartPlotType::Line, "Forecast");
+    let bar = render(XyChartPlotType::Bar, "Forecast");
+    let actual = render(XyChartPlotType::Line, "Actual");
+
+    assert!(
+        line.contains(
+            r#"values: * series=0 type=line title(bytes=8)="Forecast" samples=[] orphanPointLabels=[]"#
+        ),
+        "{line}"
+    );
+    assert!(
+        bar.contains(
+            r#"values: # series=0 type=bar title(bytes=8)="Forecast" samples=[] orphanPointLabels=[]"#
+        ),
+        "{bar}"
+    );
+    assert_ne!(line, bar);
+    assert_ne!(line, actual);
+}
+
+#[test]
+fn xychart_overwide_band_category_discloses_the_complete_axis_domain() {
+    let render = |unused_category: &str| {
+        let model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string(), unused_category.to_string()],
+            },
+            0.0,
+            10.0,
+            vec![
+                XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Line,
+                    title: None,
+                    values: vec![5.0],
+                    data: vec![("A".to_string(), Some(5.0))],
+                    point_labels: Vec::new(),
+                },
+                XyChartPlotRenderModel {
+                    plot_type: XyChartPlotType::Line,
+                    title: None,
+                    values: Vec::new(),
+                    data: Vec::new(),
+                    point_labels: Vec::new(),
+                },
+            ],
+        );
+        let options = AsciiRenderOptions::ascii().with_xychart_category_band_width(3);
+
+        render_typed_xychart(&model, &options)
+            .expect("overwide Band categories should render through exact disclosure")
+    };
+
+    let alphabetic = render("abcdef");
+    let alternate = render("abcxyz");
+
+    assert!(
+        alphabetic.contains(r#"xDomain: band categories=[bytes=1="A", bytes=6="abcdef"]"#),
+        "{alphabetic}"
+    );
+    assert!(
+        alternate.contains(r#"xDomain: band categories=[bytes=1="A", bytes=6="abcxyz"]"#),
+        "{alternate}"
+    );
+    assert_ne!(alphabetic, alternate);
+}
+
+#[test]
 fn xychart_duplicate_categories_keep_source_order_and_disclosure_identity() {
     let model = typed_xychart_model(
         "vertical",

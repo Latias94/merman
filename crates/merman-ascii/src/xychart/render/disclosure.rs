@@ -5,20 +5,29 @@ use crate::resource::ResourceContext;
 use crate::safe_text::visit_quoted_terminal_text;
 use crate::text::display_width_with_profile;
 use crate::xychart::plot::{
-    ChartChars, SeriesPlan, TerminalChartPlan, format_data_number, plot_type_name,
+    ChartChars, SeriesPlan, TerminalChartPlan, TerminalDisclosurePlan, format_data_number,
+    plot_type_name,
 };
-use crate::{AsciiRenderOptions, Result};
+use crate::{AsciiError, AsciiRenderOptions, Result};
+use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 
 pub(super) fn push_value_disclosure_lines(
     out: &mut ChartDocument,
+    model: &XyChartDiagramRenderModel,
     plan: &TerminalChartPlan,
     chars: ChartChars,
+    disclosure: TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<()> {
+    if disclosure.band_domain {
+        let line = band_domain_disclosure_line(model, plan, options, resources)?;
+        out.push(line, resources)?;
+    }
     for series in &plan.series {
         resources.charge_layout_work(1)?;
-        let Some(line) = value_disclosure_line(series, plan, chars, options, resources)? else {
+        let Some(line) = value_disclosure_line(model, series, plan, chars, options, resources)?
+        else {
             continue;
         };
         out.push(line, resources)?;
@@ -27,38 +36,33 @@ pub(super) fn push_value_disclosure_lines(
 }
 
 pub(super) fn value_disclosure_line_width(
+    model: &XyChartDiagramRenderModel,
     series: &SeriesPlan,
     plan: &TerminalChartPlan,
     chars: ChartChars,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<Option<usize>> {
-    if series.data.is_empty() && series.orphan_point_labels.is_empty() {
-        return Ok(None);
-    }
-
     let mut line = MeasuredDisclosureLine {
         width: 0,
         width_profile: options.terminal_width_profile,
     };
-    write_value_disclosure_line(&mut line, series, plan, chars, resources)?;
+    write_value_disclosure_line(&mut line, model, series, plan, chars, resources)?;
     Ok(Some(line.width))
 }
 
 fn value_disclosure_line(
+    model: &XyChartDiagramRenderModel,
     series: &SeriesPlan,
     plan: &TerminalChartPlan,
     chars: ChartChars,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<Option<ChartLine>> {
-    if series.data.is_empty() && series.orphan_point_labels.is_empty() {
-        return Ok(None);
-    }
-
     let mut line = new_chart_line(options, resources);
     write_value_disclosure_line(
         &mut StyledDisclosureLine { line: &mut line },
+        model,
         series,
         plan,
         chars,
@@ -66,6 +70,71 @@ fn value_disclosure_line(
     )?;
 
     Ok(Some(line))
+}
+
+pub(super) fn band_domain_disclosure_line_width(
+    model: &XyChartDiagramRenderModel,
+    plan: &TerminalChartPlan,
+    disclosure: TerminalDisclosurePlan,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<Option<usize>> {
+    if !disclosure.band_domain {
+        return Ok(None);
+    }
+
+    let mut line = MeasuredDisclosureLine {
+        width: 0,
+        width_profile: options.terminal_width_profile,
+    };
+    write_band_domain_disclosure_line(&mut line, model, plan, resources)?;
+    Ok(Some(line.width))
+}
+
+fn band_domain_disclosure_line(
+    model: &XyChartDiagramRenderModel,
+    plan: &TerminalChartPlan,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<ChartLine> {
+    let mut line = new_chart_line(options, resources);
+    write_band_domain_disclosure_line(
+        &mut StyledDisclosureLine { line: &mut line },
+        model,
+        plan,
+        resources,
+    )?;
+    Ok(line)
+}
+
+fn write_band_domain_disclosure_line(
+    line: &mut impl DisclosureLine,
+    model: &XyChartDiagramRenderModel,
+    plan: &TerminalChartPlan,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let crate::xychart::plot::AxisPlan::Band { .. } = &plan.x_axis else {
+        return Ok(());
+    };
+    let merman_core::diagrams::xychart::XyChartAxisRenderModel::Band { categories, .. } =
+        &model.x_axis
+    else {
+        return Err(invalid_disclosure_plan());
+    };
+
+    line.push_text(
+        "xDomain: band categories=[",
+        AsciiColorRole::Text,
+        resources,
+    )?;
+    for (index, category) in categories.iter().enumerate() {
+        resources.charge_layout_work(1)?;
+        if index > 0 {
+            line.push_text(", ", AsciiColorRole::Text, resources)?;
+        }
+        push_disclosure_value(line, category, resources)?;
+    }
+    line.push_char(']', AsciiColorRole::Text, resources)
 }
 
 trait DisclosureLine {
@@ -144,11 +213,16 @@ impl DisclosureLine for MeasuredDisclosureLine {
 
 fn write_value_disclosure_line(
     line: &mut impl DisclosureLine,
+    model: &XyChartDiagramRenderModel,
     series: &SeriesPlan,
     plan: &TerminalChartPlan,
     chars: ChartChars,
     resources: &mut ResourceContext,
 ) -> Result<()> {
+    let plot = model
+        .plots
+        .get(series.series_index)
+        .ok_or_else(invalid_disclosure_plan)?;
     line.push_text("values: ", AsciiColorRole::Text, resources)?;
     line.push_char(
         chars.legend_symbol(series.plot_type),
@@ -188,7 +262,7 @@ fn write_value_disclosure_line(
             }
             None => line.push_text("none", AsciiColorRole::Text, resources)?,
         }
-        match datum.point_label.as_deref() {
+        match plot.point_labels.get(index) {
             Some(point_label) => {
                 line.push_char(' ', AsciiColorRole::Text, resources)?;
                 push_disclosure_field(line, "pointLabel", point_label, resources)?;
@@ -213,7 +287,9 @@ fn write_value_disclosure_line(
     }
     line.push_text("] orphanPointLabels=[", AsciiColorRole::Text, resources)?;
 
-    for (index, point_label) in series.orphan_point_labels.iter().enumerate() {
+    let point_labels = plot.point_labels.as_slice();
+    let orphan_start = series.data.len().min(point_labels.len());
+    for (index, point_label) in point_labels[orphan_start..].iter().enumerate() {
         resources.charge_layout_work(1)?;
         if index > 0 {
             line.push_text(", ", AsciiColorRole::Text, resources)?;
@@ -221,6 +297,13 @@ fn write_value_disclosure_line(
         push_disclosure_value(line, point_label, resources)?;
     }
     line.push_char(']', AsciiColorRole::Text, resources)
+}
+
+fn invalid_disclosure_plan() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "xychart",
+        feature: "chart disclosure plan",
+    }
 }
 
 fn push_disclosure_usize(

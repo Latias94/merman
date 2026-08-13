@@ -387,7 +387,7 @@ impl AxisPlan {
 pub(super) struct SeriesDatum {
     pub(super) x: String,
     pub(super) value: Option<f64>,
-    pub(super) point_label: Option<String>,
+    pub(super) has_point_label: bool,
     authored_x: bool,
     slot: usize,
     normalized_x: Option<f64>,
@@ -400,7 +400,7 @@ pub(super) struct SeriesPlan {
     pub(super) plot_type: XyChartPlotType,
     pub(super) title: Option<String>,
     pub(super) data: Vec<SeriesDatum>,
-    pub(super) orphan_point_labels: Vec<String>,
+    pub(super) has_orphan_point_labels: bool,
     pub(super) bar_lane: Option<usize>,
 }
 
@@ -414,6 +414,12 @@ pub(super) struct TerminalChartPlan {
     pub(super) slot_count: usize,
     pub(super) bar_series_count: usize,
     pub(super) line_series_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct TerminalDisclosurePlan {
+    pub(super) values: bool,
+    pub(super) band_domain: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -550,22 +556,16 @@ impl TerminalChartPlan {
         }
     }
 
-    pub(super) fn requires_disclosure(
+    pub(super) fn disclosure_plan(
         &self,
         plot_area: XyChartPlotArea,
         horizontal: bool,
         resources: &mut ResourceContext,
-    ) -> Result<bool> {
+    ) -> Result<TerminalDisclosurePlan> {
         resources.charge_layout_work(1)?;
-        if self.series.len() > 1 {
-            return Ok(true);
-        }
-
         let grouped_bars_do_not_fit =
             !horizontal && self.bar_series_count > plot_area.category_band_width;
-        if grouped_bars_do_not_fit {
-            return Ok(true);
-        }
+        let values_are_ambiguous = self.series.len() > 1 || grouped_bars_do_not_fit;
 
         let axis_labels = if horizontal {
             &self.horizontal_axis_labels
@@ -576,39 +576,67 @@ impl TerminalChartPlan {
             matches!(&self.x_axis, AxisPlan::Band { categories } if categories.is_empty());
         for (index, category) in axis_labels.iter().enumerate() {
             resources.charge_layout_work(1)?;
-            if !horizontal
+            let category_loses_geometry = !horizontal
                 && display_width_with_profile(category, plot_area.width_profile)
-                    > plot_area.category_band_width
-            {
-                return Ok(true);
+                    > plot_area.category_band_width;
+            if category_loses_geometry {
+                return Ok(TerminalDisclosurePlan {
+                    values: true,
+                    band_domain: matches!(&self.x_axis, AxisPlan::Band { .. }),
+                });
             }
             for previous in &axis_labels[..index] {
                 resources.charge_layout_work(1)?;
                 if category == previous {
-                    return Ok(true);
+                    return Ok(TerminalDisclosurePlan {
+                        values: true,
+                        band_domain: matches!(&self.x_axis, AxisPlan::Band { .. }),
+                    });
                 }
             }
         }
 
+        if values_are_ambiguous {
+            return Ok(TerminalDisclosurePlan {
+                values: true,
+                band_domain: false,
+            });
+        }
+
         for series in &self.series {
             resources.charge_layout_work(1)?;
-            if series.title.is_some() {
-                return Ok(true);
+            if series.data.is_empty() && !series.has_orphan_point_labels {
+                return Ok(TerminalDisclosurePlan {
+                    values: true,
+                    band_domain: false,
+                });
             }
-            if !series.orphan_point_labels.is_empty() {
-                return Ok(true);
+            if series.title.is_some() {
+                return Ok(TerminalDisclosurePlan {
+                    values: true,
+                    band_domain: false,
+                });
+            }
+            if series.has_orphan_point_labels {
+                return Ok(TerminalDisclosurePlan {
+                    values: true,
+                    band_domain: false,
+                });
             }
             for (index, datum) in series.data.iter().enumerate() {
                 resources.charge_layout_work(1)?;
                 if (implicit_band_domain && datum.authored_x)
                     || datum.value.is_none()
-                    || datum.point_label.is_some()
+                    || datum.has_point_label
                     || datum
                         .value
                         .is_some_and(|value| !self.y_range.contains(value))
                     || datum.x_clipped
                 {
-                    return Ok(true);
+                    return Ok(TerminalDisclosurePlan {
+                        values: true,
+                        band_domain: false,
+                    });
                 }
 
                 let projected_point = if series.plot_type == XyChartPlotType::Line {
@@ -623,25 +651,34 @@ impl TerminalChartPlan {
                         && previous.value.is_some()
                         && self.sample_slot(previous) == self.sample_slot(datum)
                     {
-                        return Ok(true);
+                        return Ok(TerminalDisclosurePlan {
+                            values: true,
+                            band_domain: false,
+                        });
                     }
                     if projected_point.is_some()
                         && projected_point
                             == self.projected_point(previous, plot_area, horizontal, resources)?
                     {
-                        return Ok(true);
+                        return Ok(TerminalDisclosurePlan {
+                            values: true,
+                            band_domain: false,
+                        });
                     }
                     if !horizontal
                         && series.plot_type == XyChartPlotType::Bar
                         && self
                             .vertical_bars_overlap(series, datum, previous, plot_area, resources)?
                     {
-                        return Ok(true);
+                        return Ok(TerminalDisclosurePlan {
+                            values: true,
+                            band_domain: false,
+                        });
                     }
                 }
             }
         }
-        Ok(false)
+        Ok(TerminalDisclosurePlan::default())
     }
 
     fn projected_point(
@@ -897,7 +934,7 @@ fn build_series_plan(
             data.push(SeriesDatum {
                 x,
                 value: Some(value),
-                point_label: normalized_point_label(plot.point_labels.get(index)),
+                has_point_label: plot.point_labels.get(index).is_some(),
                 authored_x: false,
                 slot,
                 normalized_x,
@@ -912,7 +949,7 @@ fn build_series_plan(
             data.push(SeriesDatum {
                 x: x.clone(),
                 value: *value,
-                point_label: normalized_point_label(plot.point_labels.get(index)),
+                has_point_label: plot.point_labels.get(index).is_some(),
                 authored_x: !x.trim().is_empty(),
                 slot,
                 normalized_x,
@@ -921,27 +958,14 @@ fn build_series_plan(
         }
     }
 
-    let mut orphan_point_labels = Vec::new();
-    if plot.point_labels.len() > data_len {
-        orphan_point_labels
-            .try_reserve_exact(plot.point_labels.len() - data_len)
-            .map_err(|_| AsciiError::AllocationFailed {
-                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-            })?;
-        for label in &plot.point_labels[data_len..] {
-            resources.charge_layout_work(1)?;
-            if !label.trim().is_empty() {
-                orphan_point_labels.push(label.clone());
-            }
-        }
-    }
+    let has_orphan_point_labels = plot.point_labels.len() > data_len;
 
     Ok(SeriesPlan {
         series_index,
         plot_type: plot.plot_type,
         title: plot.title.clone(),
         data,
-        orphan_point_labels,
+        has_orphan_point_labels,
         bar_lane,
     })
 }
@@ -976,14 +1000,6 @@ fn fallback_x_label(axis: &AxisPlan, index: usize, count: usize) -> String {
             format_data_number(value)
         }
     }
-}
-
-fn normalized_point_label(label: Option<&String>) -> Option<String> {
-    label
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|label| !label.is_empty())
-        .map(ToOwned::to_owned)
 }
 
 fn build_value_range(
@@ -1656,7 +1672,7 @@ mod tests {
         let datum = |normalized_x| SeriesDatum {
             x: String::new(),
             value: Some(0.0),
-            point_label: None,
+            has_point_label: false,
             authored_x: false,
             slot: 0,
             normalized_x: Some(normalized_x),
