@@ -1086,11 +1086,12 @@ fn normalize_flowchart_elk_directive(body: &str) -> String {
 mod tests {
     use super::{
         FlowchartCompareRequest, FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
-        classify_flowchart_upstream_dir, compare_flowchart_args, render_source_svg,
+        classify_flowchart_upstream_dir, compare_flowchart_args,
         run_flowchart_compare_with_math_renderer, svg_request, write_flowchart_upstream_metadata,
     };
     use crate::cmd::compare::{
         CompareRequest, DEFAULT_LABEL_DELTA_REPORT_LIMIT, DiagramVerificationFact,
+        render_source_svg,
     };
     use std::path::Path;
     use std::sync::Arc;

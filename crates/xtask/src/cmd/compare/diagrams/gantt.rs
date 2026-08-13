@@ -282,7 +282,7 @@ mod tests {
 
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(480));
         assert_eq!(
-            context.local_date(),
+            context.today_local(),
             merman_core::time::CivilDate::new(2026, 2, 15).unwrap()
         );
     }
