@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-> **Alpha:** use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+> **Alpha:** the source tree uses direct UniFFI binding API `4`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
 ## Requirements
 
@@ -41,11 +41,17 @@ precondition(svg.hasPrefix("<svg"))
 
 `resourceOptionsJson` emits Options JSON schema `2`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
 
-Use `MermanOperationRequest` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
+Use `MermanOperationRequest` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
+
+Create `MermanOperationControl(timeoutMs:)` and attach it to a generic request when an editor or
+preview host must stop stale work. The host may retain the same object and call `cancel()` from
+another thread. Cancellation is cooperative and returns separate `MermanCancelledDetails`; it is
+not a resource-limit failure. Hard termination of an opaque callback still requires worker or
+process isolation.
 
 Empty or omitted options select deterministic runtime state. The default XCFramework does not bundle native clock, time-zone, or random adapters. A custom source build may enable `native-runtime` and then pass `{"runtime_policy":"native"}`; the default artifact returns a typed unsupported-operation error for that request. Generic operation metadata records the selected `runtime_policy`.
 
-Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID, `.missingCapability` preserves the stable descriptor ID required by the request, and resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`) plus typed limit evidence without message parsing.
+Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, optional `MermanResourceErrorDetails`, and optional `MermanCancelledDetails`. `.unknownOperation` has no capability ID, `.missingCapability` preserves the stable descriptor ID required by the request, resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`) plus typed limit evidence, and cancellation preserves its reason and checkpoint phase without message parsing.
 
 The default XCFramework includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits math, PNG, JPEG, and PDF. The generated helpers remain available for custom current-contract libraries; the default artifact returns `.missingCapability` with `math`, `png`, `jpeg`, or `pdf` as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
 

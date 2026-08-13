@@ -1509,7 +1509,6 @@ mod tests {
     #[cfg(feature = "svg")]
     use std::sync::{Barrier, Condvar, Mutex as StdMutex, Weak, mpsc};
     use std::thread;
-    use std::time::Duration;
 
     fn engine() -> Arc<Merman> {
         Merman::new()

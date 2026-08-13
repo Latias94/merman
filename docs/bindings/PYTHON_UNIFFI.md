@@ -70,7 +70,7 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version() == 3
+assert api.binding_api_version() == 4
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
@@ -127,17 +127,41 @@ custom current-contract library and otherwise raise `MermanError.Binding` with
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional
-`MermanResourceErrorDetails`, and message from `merman-bindings-core`. `UNKNOWN_OPERATION` has no
+`MermanResourceErrorDetails`, optional `MermanCancelledDetails`, and message from
+`merman-bindings-core`. `UNKNOWN_OPERATION` has no
 capability ID; `MISSING_CAPABILITY` preserves the exact descriptor ID. Resource failures expose the
 stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Consumers should not
 parse the message to distinguish these cases.
+
+Generic operations may attach a caller-owned `MermanOperationControl`:
+
+```python
+control = merman.MermanOperationControl(timeout_ms=250)
+request = merman.MermanOperationRequest(
+    operation_id="svg",
+    source="flowchart TD\nA --> B",
+    uri=None,
+    options_json=None,
+    control=control,
+)
+result = api.execute(request)
+
+# Retain `control` and call this from another thread when the request becomes stale.
+control.cancel()
+```
+
+Cancellation is cooperative. A cancelled operation raises `MermanError.Binding` with code name
+`MERMAN_CANCELLED` and `cancellation.reason` (`requested` or `deadline_exceeded`) plus the observed
+checkpoint `phase`. It is distinct from resource rejection and returns no partial output. Opaque
+callbacks and single-call encoders can only be checked before and after invocation; use worker or
+process isolation for hard preemption.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 `ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, or LSP rule configuration.
 
-The direct UniFFI binding API is `3`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `4`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
@@ -196,6 +220,8 @@ mutation lifecycle.
   `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
   takes positional optional services.
 - Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
+- Move API 3 generated modules and native libraries together to API 4. Generic request constructors
+  now require `control`; pass `None` until the host adopts `MermanOperationControl`.
 - Use the result-returning binary methods when callers need typed operation metadata or the
   effective output plan. Switch on `output_plan.kind`; read `raster` or `pdf_filter_images` when
   present, and retain `raw_json` for unknown future kinds.

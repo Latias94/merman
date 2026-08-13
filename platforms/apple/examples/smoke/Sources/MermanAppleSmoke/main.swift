@@ -4,6 +4,10 @@ import Merman
 @main
 struct MermanAppleSmoke {
     static func main() throws {
+        let client = Merman()
+        guard client.bindingApiVersion() == 4 else {
+            throw SmokeError.failed("unexpected UniFFI binding API version")
+        }
         let iconPack = MermanIconPack(
             json: #"{"icons":{"rocket":{"body":"<path data-icon=\"apple-registry\" d=\"M0 0H16V16H0z\"/>"}}}"#,
             registrationName: "smoke"
@@ -54,7 +58,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("resource failure did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, resource, _, _):
+            case let .Binding(_, codeName, _, _, resource, _, _, _):
                 guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
                       resource?.cause == "ceiling",
                       resource?.limitId == "max_source_bytes",
@@ -62,6 +66,30 @@ struct MermanAppleSmoke {
                       (resource?.actual ?? 0) > (resource?.max ?? UInt64.max),
                       resource?.profile == "constrained" else {
                     throw SmokeError.failed("resource failure lost its structured details")
+                }
+            }
+        }
+
+        let deadline = MermanOperationControl(timeoutMs: 0)
+        let request = MermanOperationRequest(
+            operationId: "svg",
+            source: basicSource,
+            uri: nil,
+            optionsJson: nil,
+            control: deadline
+        )
+        do {
+            _ = try client.execute(request: request)
+            throw SmokeError.failed("expired operation deadline did not cancel the request")
+        } catch let error as MermanError {
+            switch error {
+            case let .Binding(_, codeName, _, _, _, _, cancellation, _):
+                guard codeName == "MERMAN_CANCELLED",
+                      cancellation?.reason == "deadline_exceeded",
+                      cancellation?.phase == "admission" else {
+                    throw SmokeError.failed(
+                        "deadline failure lost its structured cancellation details"
+                    )
                 }
             }
         }
@@ -79,7 +107,7 @@ private func requireMissingCapability(
         try operation()
     } catch let error as MermanError {
         switch error {
-        case let .Binding(_, _, kind, actualCapabilityId, _, _, _):
+        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _):
             guard kind == .missingCapability, actualCapabilityId == capabilityId else {
                 throw SmokeError.failed(
                     "\(capabilityId) failure lost its missing-capability contract"
