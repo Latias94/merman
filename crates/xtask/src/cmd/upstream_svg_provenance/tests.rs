@@ -178,20 +178,23 @@ fn pinned_source_metadata_is_mermaid_11_16_1() {
 fn renderer_profiles_capture_seed_and_width_variants() {
     assert_eq!(
         renderer_profile("architecture", None),
-        "seeded-puppeteer-seed-1-date-now-1704067200000"
+        "seeded-puppeteer-seed-1-fixed-date-1704067200000"
     );
     assert_eq!(
         renderer_profile("gitgraph", None),
-        "seeded-puppeteer-seed-1-date-now-1704067200000"
+        "seeded-puppeteer-seed-1-fixed-date-1704067200000"
     );
     assert_eq!(
         renderer_profile("sequence", None),
-        "seeded-puppeteer-seed-1-date-now-1704067200000-sequence-math-settled-v1"
+        "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     );
-    assert_eq!(renderer_profile("gantt", None), "mmdc-default-width-1200");
+    assert_eq!(
+        renderer_profile("gantt", None),
+        "seeded-puppeteer-seed-1-fixed-date-1704067200000-width-1200"
+    );
     assert_eq!(
         renderer_profile("error", None),
-        "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
+        "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1"
     );
     assert_eq!(renderer_profile("flowchart", None), "mmdc-default");
 

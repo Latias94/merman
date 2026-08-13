@@ -46,7 +46,7 @@ use transaction::{
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
 const MANIFEST_SCHEMA_VERSION: u32 = 3;
-const RENDERER_REVISION: &str = "xtask-upstream-svg-v3";
+const RENDERER_REVISION: &str = "xtask-upstream-svg-v4";
 
 #[derive(Debug)]
 pub(crate) struct UpstreamSvgRenderContextSnapshot {
@@ -1411,10 +1411,10 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
 
 fn base_renderer_profile(diagram: &str) -> &'static str {
     match diagram {
-        "sequence" => "seeded-puppeteer-seed-1-date-now-1704067200000-sequence-math-settled-v1",
-        "architecture" | "gitgraph" => "seeded-puppeteer-seed-1-date-now-1704067200000",
-        "error" => "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1",
-        "gantt" => "mmdc-default-width-1200",
+        "sequence" => "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1",
+        "architecture" | "gitgraph" => "seeded-puppeteer-seed-1-fixed-date-1704067200000",
+        "error" => "seeded-puppeteer-seed-1-fixed-date-1704067200000-error-fallback-v1",
+        "gantt" => "seeded-puppeteer-seed-1-fixed-date-1704067200000-width-1200",
         _ => "mmdc-default",
     }
 }
