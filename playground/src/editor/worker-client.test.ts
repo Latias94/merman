@@ -11,6 +11,7 @@ import {
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
   type EditorDocumentSnapshot,
   type EditorWorkerRequest,
   type EditorWorkerResponse,
@@ -803,7 +804,7 @@ function ready(worker: PendingWorkerPort): void {
     protocol: EDITOR_WORKER_PROTOCOL,
     requestId: initialize.requestId,
     type: "ready",
-    transportApiVersion: 3,
+    transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: LEGEND_DIGEST,
     legend: { tokenTypes: ["keyword"], tokenModifiers: [] },

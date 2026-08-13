@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Advanced the generated UniFFI binding to API 4 after replacing the alpha.5 diagram-family capability fields `logical_family_kind` and `render_model_kind` with the core-owned `family_id`. Upgrade the Python package and matching native library together.
 - Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, and presentation-profile inputs are rejected; use `theme_catalog_json()` for open-ended compiled-theme discovery.
 

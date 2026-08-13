@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 4;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -2278,6 +2278,7 @@ mod tests {
         let engine = engine();
 
         assert_eq!(engine.binding_api_version(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 4);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 

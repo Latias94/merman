@@ -18,6 +18,7 @@ import {
   RUNTIME_CATALOG_MAX_SAFE_INTEGER,
   RUNTIME_CATALOG_SCHEMA_VERSION,
   TEXT_MEASUREMENT_PROVIDER_SPECS,
+  WEB_TRANSPORT_API_VERSION,
 } from "./generated/binding-contract.js";
 import {
   WEB_BINDING_OPERATIONS,
@@ -133,6 +134,7 @@ async function doInit(
   } else {
     await module.default({ module_or_path: wasm });
   }
+  assertWebTransportApiVersion(module);
   state.wasmModule = module;
   return module;
 }
@@ -200,11 +202,23 @@ export function supportedThemes(): ThemeName[] {
 }
 
 export function transportApiVersion(): number {
-  return assertSafeIntegerField(
-    getMerman().transportApiVersion(),
+  return assertWebTransportApiVersion(getMerman());
+}
+
+export { WEB_TRANSPORT_API_VERSION };
+
+function assertWebTransportApiVersion(module: MermanWasmModule): number {
+  const version = assertSafeIntegerField(
+    module.transportApiVersion(),
     "Web transport API version",
     1
   );
+  if (version !== WEB_TRANSPORT_API_VERSION) {
+    throw new Error(
+      `Merman Web transport API ${version} is incompatible with ${WEB_TRANSPORT_API_VERSION}.`
+    );
+  }
+  return version;
 }
 
 export function packageVersion(): string {

@@ -5,7 +5,7 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `3`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `4`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
 
 ## Public Model
@@ -21,7 +21,7 @@ The generated API exposes:
 - `MermanTextMeasurer` for synchronous host measurement; and
 - structured `MermanError::Binding { code, code_name, kind, capability_id, resource, message }` failures, where `resource` is optional typed limit evidence.
 
-`Merman::binding_api_version()` reports `3`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.

@@ -8,6 +8,7 @@ import type {
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
   type EditorWorkerQuery,
   type EditorWorkerResponse,
 } from "./protocol.ts";
@@ -55,7 +56,7 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     protocol: EDITOR_WORKER_PROTOCOL,
     type: "ready",
     requestId: 1,
-    transportApiVersion: 3,
+    transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: LEGEND_DIGEST,
     legend: { tokenTypes: ["keyword"], tokenModifiers: ["entity"] },
@@ -163,17 +164,20 @@ test("initialization rejects an unsupported Web transport API", async () => {
     ...runtimeBindings,
     runtimeCatalog: () =>
       ({
-        transport_api_version: 4,
+        transport_api_version: MERMAN_WEB_TRANSPORT_API_VERSION + 1,
         capabilities: { capability_ids: ["editor"] },
       }) as RuntimeCatalog,
-    transportApiVersion: () => 4,
+    transportApiVersion: () => MERMAN_WEB_TRANSPORT_API_VERSION + 1,
   });
 
   await runtime.receive(request(1, "initialize"));
   const response = port.take(1);
   assert.equal(response.type, "error");
   assert.equal(response.code, "PROTOCOL_MISMATCH");
-  assert.match(response.message, /incompatible with 3/u);
+  assert.match(
+    response.message,
+    new RegExp(`incompatible with ${MERMAN_WEB_TRANSPORT_API_VERSION}`, "u"),
+  );
 });
 
 test("invalid rename remains request-local and later diagnostics still work", async () => {
@@ -289,10 +293,10 @@ function bindings(
     legendDigest: LEGEND_DIGEST,
     runtimeCatalog: () =>
       ({
-        transport_api_version: 3,
+        transport_api_version: MERMAN_WEB_TRANSPORT_API_VERSION,
         capabilities: { capability_ids: ["editor"] },
       }) as RuntimeCatalog,
-    transportApiVersion: () => 3,
+    transportApiVersion: () => MERMAN_WEB_TRANSPORT_API_VERSION,
   };
 }
 

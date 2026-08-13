@@ -1,5 +1,11 @@
 use crate::{BindingPayloadSchemaKey, ConstructorServiceKey, TargetKey};
 
+/// Compatibility epoch for the generated JavaScript/WASM transport surface.
+///
+/// The Web package generator and the WASM producer share this value so a wrapper built for one
+/// incompatible surface cannot silently initialize another.
+pub const WEB_TRANSPORT_API_VERSION: u32 = 4;
+
 /// Feature-independent facade exposure projected into one concrete artifact selection.
 ///
 /// The registry owns the payload schemas and constructor-service candidates that a maintained
@@ -172,6 +178,7 @@ mod tests {
 
     #[test]
     fn transport_exposure_registry_is_bijective_and_sorted() {
+        assert_eq!(WEB_TRANSPORT_API_VERSION, 4);
         assert_eq!(
             BindingTransportKey::ALL.len(),
             TRANSPORT_EXPOSURE_SPECS.len()

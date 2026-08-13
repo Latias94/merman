@@ -83,6 +83,7 @@ export {
   supportedThemes,
   themeCatalog,
   transportApiVersion,
+  WEB_TRANSPORT_API_VERSION,
   withResourceOptions,
 } from "./runtime-core.js";
 export {

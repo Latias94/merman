@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Advanced the generated UniFFI binding to API 4 after replacing the alpha.5 diagram-family capability fields `logicalFamilyKind` and `renderModelKind` with the core-owned `familyId`. Upgrade the generated Swift source and matching native library together.
 - The default XCFramework now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. Generated helpers remain available for custom artifacts; the bundled library reports typed capability absence instead of carrying every optional backend.
 - Moved compiled visual styling to the closed `theme` preset-or-spec union and removed the prerelease presentation-profile surface. Decode `themeCatalogJson()` for artifact-aware compiled-theme discovery.
 

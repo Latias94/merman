@@ -18,7 +18,7 @@ The generated transport exposes generic operation dispatch plus stable convenien
 
 The browser transport currently reports:
 
-- transport API version `3`;
+- transport API version `4`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;

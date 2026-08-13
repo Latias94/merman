@@ -12,6 +12,7 @@ import type {
   EditorWorkerQuery,
   EditorWorkerQueryResult,
 } from "../editor/protocol.ts";
+import { MERMAN_WEB_TRANSPORT_API_VERSION } from "../editor/protocol.ts";
 import type {
   EditorLanguageIdentity,
   MermanLanguageWorkerClient,
@@ -29,7 +30,7 @@ const IDENTITY: EditorLanguageIdentity = Object.freeze({
     tokenModifiers: Object.freeze(["payload", "entity"]),
   }),
   legendDigest: "sha256:test-generated-token-descriptor",
-  transportApiVersion: 3,
+  transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
 });
 
 test("Monaco publishes planner-packed tokens without rereading source", async () => {

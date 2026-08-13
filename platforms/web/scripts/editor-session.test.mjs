@@ -11,6 +11,7 @@ if (typeof globalThis.document === "undefined") globalThis.document = {};
 
 const nativeSessions = [];
 let descriptorCalls = 0;
+const { WEB_TRANSPORT_API_VERSION } = coreRuntime;
 const coreTestImplementation = {
   getMerman: coreRuntime.getMerman,
   initMerman: coreRuntime.initMerman,
@@ -105,7 +106,7 @@ await webApi.initMerman({
   loader: async () => ({
     default: async () => {},
     packageVersion: () => "0.8.0-alpha.4",
-    transportApiVersion: () => 3,
+    transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
     runtimeCatalog: runtimeCatalogFixture,
     EditorSession: FakeNativeEditorSession,
     editorSearchDocumentSymbols(source, query, uri, optionsJson) {
@@ -308,7 +309,7 @@ function surfaceModule(recordDescriptorCall) {
   return {
     default: async () => {},
     packageVersion: () => "0.8.0-alpha.4",
-    transportApiVersion: () => 3,
+    transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
     runtimeCatalog: runtimeCatalogFixture,
     EditorSession: FakeNativeEditorSession,
     editorSemanticTokenDescriptor() {
@@ -333,7 +334,7 @@ function runtimeCatalogFixture({
 } = {}) {
   return {
     schema_version: 1,
-    transport_api_version: 3,
+    transport_api_version: WEB_TRANSPORT_API_VERSION,
     package_version: "0.8.0-alpha.4",
     options_schema_versions: [2],
     payload_schemas: [
@@ -811,7 +812,7 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
       async () => ({
         default: async () => {},
         packageVersion: () => "0.8.0-alpha.4",
-        transportApiVersion: () => 3,
+        transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
         runtimeCatalog: catalog,
       }),
       coreTestImplementation,
@@ -886,7 +887,7 @@ test("runtime catalog accepts unknown future IDs", async () => {
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => futureCatalog,
     }),
     coreTestImplementation,
@@ -959,7 +960,7 @@ test("runtime catalog preserves artifact-selected metadata and service subsets",
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => subsetCatalog,
     }),
     coreTestImplementation,
@@ -981,7 +982,7 @@ test("runtime catalog defaults additive discovery sections for legacy producers"
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => legacyCatalog,
     }),
     coreTestImplementation,
@@ -1020,7 +1021,7 @@ test("runtime catalog validates constructor service ownership and preserves exte
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => serviceCatalog,
     }),
     coreTestImplementation,
@@ -1061,7 +1062,7 @@ test("runtime catalog accepts text measurement for an internal rendering pipelin
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => pipelineCatalog,
     }),
     coreTestImplementation,
@@ -1132,7 +1133,7 @@ test("runtime catalog preserves wasm-bindgen optional and map projections", asyn
     async () => ({
       default: async () => {},
       packageVersion: () => "0.8.0-alpha.4",
-      transportApiVersion: () => 3,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       runtimeCatalog: () => catalog,
     }),
     coreTestImplementation,
@@ -1284,10 +1285,25 @@ test("Web transport API version rejects invalid module reports", async () => {
     }),
     coreTestImplementation,
   );
-  await runtime.initMerman();
-  assert.throws(
-    () => runtime.transportApiVersion(),
+  await assert.rejects(
+    () => runtime.initMerman(),
     /invalid Web transport API version/
+  );
+});
+
+test("Web transport API version rejects an older published epoch", async () => {
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION - 1,
+    }),
+    coreTestImplementation,
+  );
+  await assert.rejects(
+    () => runtime.initMerman(),
+    new RegExp(
+      `Web transport API ${WEB_TRANSPORT_API_VERSION - 1} is incompatible with ${WEB_TRANSPORT_API_VERSION}`,
+    ),
   );
 });
 

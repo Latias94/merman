@@ -8,7 +8,7 @@
 use merman_bindings_core::{
     ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
     CapabilityKey, ConstructorServiceKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure,
-    TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
+    TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract, WEB_TRANSPORT_API_VERSION,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -36,7 +36,7 @@ use serde::Deserialize;
 ///
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
-pub const WASM_TRANSPORT_API_VERSION: u32 = 3;
+pub const WASM_TRANSPORT_API_VERSION: u32 = WEB_TRANSPORT_API_VERSION;
 const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisFactsJson,
@@ -578,7 +578,7 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 3);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 4);
     }
 
     #[cfg(feature = "svg")]

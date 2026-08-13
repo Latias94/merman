@@ -134,7 +134,9 @@ pub use text_measurement::{
 };
 #[cfg(feature = "svg")]
 pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with};
-pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
+pub use transport_contract::{
+    BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,
+};
 
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

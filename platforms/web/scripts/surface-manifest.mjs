@@ -37,6 +37,8 @@ const metadataRuntimeExportNames = [
   "packageVersion",
 ];
 
+const metadataValueExportNames = ["WEB_TRANSPORT_API_VERSION"];
+
 const metadataWasmExportNames = [
   "runtimeCatalog",
   "themeCatalog",
@@ -178,7 +180,11 @@ export const surfaceModules = defineSurfaceModules([
       ...lifecycleRuntimeExportNames,
       ...metadataRuntimeExportNames,
     ],
-    valueExportNames: ["UNAVAILABLE_DIAGRAM_DETECTION", "encodeOptions"],
+    valueExportNames: [
+      "UNAVAILABLE_DIAGRAM_DETECTION",
+      "WEB_TRANSPORT_API_VERSION",
+      "encodeOptions",
+    ],
     internalValueExportNames: ["currentRuntimeState", "withResourceOptions"],
     exactValueExports: true,
   },
@@ -291,7 +297,10 @@ const analysisProfile = {
     ...metadataRuntimeExportNames,
     ...analysisMetadataRuntimeExportNames,
   ],
-  valueExportNames: packageStableValueExportNames,
+  valueExportNames: [
+    ...packageStableValueExportNames,
+    ...metadataValueExportNames,
+  ],
   wasmExportNames: [
     ...lifecycleWasmExportNames,
     ...analysisWasmExportNames,
@@ -308,6 +317,7 @@ const renderProfile = {
   ],
   valueExportNames: [
     ...packageStableValueExportNames,
+    ...metadataValueExportNames,
     ...packageRenderValueExportNames,
   ],
   wasmExportNames: [
@@ -326,7 +336,10 @@ const runtimeProfiles = Object.freeze({
       ...metadataRuntimeExportNames,
       ...asciiRuntimeExportNames,
     ],
-    valueExportNames: packageStableValueExportNames,
+    valueExportNames: [
+      ...packageStableValueExportNames,
+      ...metadataValueExportNames,
+    ],
     wasmExportNames: [
       ...lifecycleWasmExportNames,
       ...metadataWasmExportNames,
@@ -340,6 +353,7 @@ const runtimeProfiles = Object.freeze({
     ],
     valueExportNames: [
       ...packageStableValueExportNames,
+      ...metadataValueExportNames,
       ...editorDescriptorValueExportNames,
     ],
     wasmExportNames: [
@@ -356,6 +370,7 @@ const runtimeProfiles = Object.freeze({
     ],
     valueExportNames: [
       ...packageStableValueExportNames,
+      ...metadataValueExportNames,
       ...packageRenderValueExportNames,
       ...editorDescriptorValueExportNames,
     ],

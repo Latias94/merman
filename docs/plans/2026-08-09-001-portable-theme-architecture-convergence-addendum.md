@@ -68,6 +68,7 @@ release when a statement below differs.
 | Theme authoring freedom | Users may create new themes by composing the supported `ThemeTokens` and full `DiagramThemeSpec` vocabulary, including family-scoped rules and bounded resources, without modifying renderer code. A new semantic target or drawing primitive requires renderer work and a new capability/evidence gate. | Additive target descriptors may be introduced through versioned discovery; they do not become silently accepted selector strings. |
 | Built-in presets | A preset is a convenient, versioned materialization of the same typed recipe accepted from Rust, JSON, and bindings. The catalog is open to additional generally useful themes; Brutalist, Spotless, Cyberpunk, Modern Slate, or any later theme name is illustrative rather than a fixed roadmap or product-brand hierarchy. A preset must not select layout, Mermaid look, output pipeline, trusted postprocessors, or family-private behavior implicitly. | Alpha candidates may remain discovery-only while coverage is incomplete. Stable status is decided per preset from C6-backed family/target cells, allowed residuals, resource burden, and licensing rather than from theme name or catalog size. |
 | Preset cost boundary | Built-in presets should normally compile from static Merman-owned recipe data and reuse existing code and resources. They must not require a CSS/JavaScript interpreter, network access, brand crawler, application runtime, or substantial preset-only dependency/asset closure. Bundled fonts or other material assets require an explicit redistribution, size, resource-policy, and portability decision. | A heavier theme pack can live in an optional downstream package or host application instead of enlarging the core artifact. |
+| Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. The subtractive family-catalog correction therefore supersedes the August 2 FFI-plan KTD9 only for those two epochs: UniFFI advances to API 4 and Web/WASM advances to transport API 4. Native C ABI 3, runtime-catalog schema 1, Options schema 2, Android transport API 1, Typst plugin ABI 2, and the Node transport remain unchanged. The next prerelease must carry the corrected projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
 | C5 versus C6 | C5 owns compilation, facet-level routing, direct family consumption, and family-local tests. C6a owns native terminal evidence; C6b extends the same proof to Browser SVG, JPEG, and PDF. | A bridge route is removed only after its matching native C6a evidence passes. Broader target claims wait for C6b. |
 | Public surface timing | C7a-candidate may be declared only after C6a plus real pre-freeze family-writer/compiler round trips. C7a-rollout migrates bindings, Typst, examples, and native Merman CLI against that alpha candidate. C7a-contract freezes only after rollout verification. Fine-grained mechanism/evidence types and alpha preset IDs remain private or explicitly unstable. | Stable preset catalog and broader target/family claims require C6b. |
 | Official CLI | New theme selection belongs only to the Merman native render/batch surface. The official `mmdc` compatibility surface remains unchanged except for removal of provisional alpha fields. A document, Options JSON, or project config cannot self-authorize a trusted lane. | Any mmdc expansion requires a separate compatibility decision. |
@@ -85,7 +86,7 @@ owner.
 | R13, R43, R45; F2; AE15; KTD4, KTD8, KTD11; U3 external-host clauses | Native prepared text and external `HostDependent` safety are retained. External `Portable` promotion, fully attested host claims, stable external DTOs, and browser/FFI projection are deferred and do not participate in the current release. | C4a owns native proof, C4b owns crate-private external safety, C7c owns any future assurance contract. |
 | R24, R35, R48; F5; AE7, AE18 | Retained with a stricter authority boundary: raw CSS and arbitrary SVG remain explicit trusted compatibility inputs, never self-authorize through document/config data, and cannot bypass the independent terminal safety decision. | C2 terminal safety and C7a-rollout public-surface checks. |
 | R25, R47; F3, F7; AE17; KTD5; U4 | Retained and strengthened with the fixed terminal order: postprocess, active-content/CSS safety, resource closure, residual merge, then target admission. | C2. |
-| R33-R37; F4, F8; AE18-AE20; KTD1, KTD9, KTD10; U8-U10 | Retained but reordered: define a candidate native contract, migrate first-party consumers against it, then freeze only after rollout verification. The official `mmdc` surface does not gain new theme flags. | C7a. |
+| R33-R37; F4, F8; AE18-AE20; KTD1, KTD9, KTD10; U8-U10 | Retained but reordered: define a candidate native contract, migrate first-party consumers against it, then freeze only after rollout verification. KTD15 narrowly supersedes KTD9 for the already-published UniFFI and Web/WASM family-capability epochs; all other KTD9 version decisions remain in force. The official `mmdc` surface does not gain new theme flags. | C7a. |
 | R38-R41; AE3-AE6, AE19, AE20, AE22, AE23; KTD2, KTD6, KTD7, KTD12; U1, U6, U7, U11 | Retained. Positive public claims require family-writer and target-artifact evidence, not model expressiveness or fixture declarations alone. The full reference corpus remains a mechanism-classification source; publishing every reference theme as a preset or named showcase is not required. | C5, C6a, C6b, and C7b as specified below. |
 | R42, R49; AE11, AE13, AE18; KTD3, KTD13; U2 | Retained with effective runtime policy owned by `RenderEnvironment`/`RenderSession`; compiler policy is only an earlier resource/admission restriction and provenance. | C1-C3. |
 
@@ -246,6 +247,16 @@ Public presets declare per-target admission expectations and allowed residual ID
   Headless Mermaid parsing, analysis, layout, and rendering remains the project identity; parity is
   the compatibility target and typed customization is the visual layer within it. Covers
   R2-R4, R33-R41, and the current C5-C7 preset/discovery sequencing.
+- KTD15. **Advance only the published transports whose family-capability shape became
+  incompatible.** (implementation-evidence-settled - chosen over assigning two incompatible
+  required record shapes to epoch 3.) The alpha.5 UniFFI record and Web/WASM metadata payload
+  exposed `logical_family_kind` and renderer-owned `render_model_kind`; the corrected contract
+  exposes the core-owned `family_id` and removes renderer taxonomy. UniFFI and Web/WASM therefore
+  advance to epoch 4. Native C ABI 3 remains valid because its generic metadata transport and
+  function table did not change; runtime-catalog schema 1, Options schema 2, Android transport 1,
+  Typst ABI 2, and Node transport 1 also remain unchanged. This narrowly supersedes the August 2
+  FFI-plan KTD9 after alpha.5 publication and governs the family-catalog contraction in C5 and its
+  first-party binding rollout.
 
 ### Product Milestones
 
@@ -900,5 +911,7 @@ The August 6 R/A/F/AE identifiers remain the traceability source. The Supersedin
 section changes the current-release contract for external-host portability, policy ownership, DTO
 visibility, C5/C6 deletion ownership, product positioning, ThemeTokens contraction, preset admission,
 public-surface timing, milestone sequencing, and official CLI scope. KTD14 records the session-settled
-product-boundary and preset decision. Other Product Contract requirements remain in force or are
-explicitly deferred to C7b/C7c rather than silently discarded.
+product-boundary and preset decision. KTD15 records the narrow post-alpha.5 UniFFI and Web/WASM
+epoch correction without changing the C ABI, runtime-catalog schema, Options schema, Android,
+Typst, or Node contracts. Other Product Contract requirements remain in force or are explicitly
+deferred to C7b/C7c rather than silently discarded.

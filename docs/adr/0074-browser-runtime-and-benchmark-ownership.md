@@ -225,7 +225,7 @@ token plan. Results with stale document versions or descriptor digests are disca
 client wait does not claim to interrupt synchronous WASM execution; the completed stale result is
 ignored. Protocol or result-shape mismatch fails closed.
 
-The browser transport API is `3`; the runtime catalog, editor diagnostics, and shared analysis
+The browser transport API is `4`; the runtime catalog, editor diagnostics, and shared analysis
 facts use schema `1`. These numbers describe different contracts and do not advance together.
 
 ### 7. Examples And Detection Have Canonical Sources

@@ -12,8 +12,8 @@ use merman_bindings_core::{
     RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
     RuntimeConstructorResourceLimit, RuntimeOutputContract, RuntimePolicyExposure,
     TEXT_MEASUREMENT_PROTOCOL_VERSION, TargetKey, TextMeasurementProviderKey,
-    ValidatedArtifactContract, binding_operation_expectations, operation_metadata_contract,
-    runtime_constructor_resource_limits,
+    ValidatedArtifactContract, WEB_TRANSPORT_API_VERSION, binding_operation_expectations,
+    operation_metadata_contract, runtime_constructor_resource_limits,
 };
 use serde::Serialize;
 use std::fmt::Write as _;
@@ -637,6 +637,12 @@ fn render_web_typescript() -> String {
     writeln!(
         out,
         "export const RUNTIME_CATALOG_SCHEMA_VERSION = {RUNTIME_CATALOG_SCHEMA_VERSION} as const;"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "export const WEB_TRANSPORT_API_VERSION = {} as const;",
+        WEB_TRANSPORT_API_VERSION
     )
     .unwrap();
     writeln!(
