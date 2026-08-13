@@ -1,10 +1,10 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
+    AsciiResourcePolicy, AsciiRgb, render_model, render_model_with_operation,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
 
 fn parse_class_render_model(input: &str) -> RenderSemanticModel {
@@ -27,6 +27,26 @@ fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
     let model = parse_class_render_model(input);
 
     render_model(&model, options)
+}
+
+fn render_class_with_grid_limit(
+    input: &str,
+    options: &AsciiRenderOptions,
+    max_grid_cells: usize,
+) -> merman_ascii::Result<String> {
+    let model = parse_class_render_model(input);
+    let control = OperationControl::new();
+    let context = Engine::new()
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+
+    render_model_with_operation(
+        &model,
+        options,
+        &control,
+        &context,
+        AsciiResourcePolicy::with_max_grid_cells(max_grid_cells),
+    )
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -86,8 +106,11 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
 }
 
 fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
-    let err = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
-        .expect_err("class model should be rejected as unsupported");
+    let err = render_model(
+        &RenderSemanticModel::Class(model.clone()),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("class model should be rejected as unsupported");
 
     assert_eq!(
         err,
@@ -1130,9 +1153,9 @@ fn class_parser_endpoint_labels_are_routed_without_fallback_summary() {
 #[test]
 fn class_local_semantic_fixture_covers_wide_members_and_summary_labels() {
     let input = read_local_semantic_fixture("class/wide_members_and_summary_labels.mmd");
-    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+    let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_class(&input, &options)
+    let rendered = render_class_with_grid_limit(&input, &options, 1)
         .expect("class diagram with wide member and relation labels should render");
 
     for expected in [
@@ -1160,11 +1183,12 @@ fn class_local_semantic_fixture_covers_wide_members_and_summary_labels() {
 
 #[test]
 fn class_parser_independent_relation_pairs_do_not_share_grid_budget() {
-    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+    let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_class(
+    let rendered = render_class_with_grid_limit(
         "classDiagram\nclass A\nclass B\nclass C\nclass D\nA --> B : ab\nC --> D : cd",
         &options,
+        1,
     )
     .expect("independent relation pairs should render separately");
 
@@ -1374,11 +1398,12 @@ fn class_parser_dense_plain_associations_keep_summary_connector() {
 
 #[test]
 fn class_parser_relation_layout_falls_back_to_summary_when_grid_budget_is_tight() {
-    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+    let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_class(
+    let rendered = render_class_with_grid_limit(
         "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes<br>through\nService --> Repo : stores",
         &options,
+        1,
     )
     .expect("class relationships should fall back to relation summary when grid budget is tight");
 
@@ -1409,13 +1434,12 @@ fn class_parser_relation_layout_falls_back_to_summary_when_grid_budget_is_tight(
 
 #[test]
 fn class_parser_relation_summary_can_show_grid_budget_diagnostic() {
-    let options = AsciiRenderOptions::ascii()
-        .with_max_grid_cells(1)
-        .with_relation_summary_diagnostics(true);
+    let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
 
-    let rendered = render_class(
+    let rendered = render_class_with_grid_limit(
         "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
         &options,
+        1,
     )
     .expect("class relation summary diagnostic should render");
 

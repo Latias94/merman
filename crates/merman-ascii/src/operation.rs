@@ -6,10 +6,7 @@
 
 use crate::error::{AsciiError, Result};
 use crate::options::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID;
-use merman_core::runtime::OperationContext;
-use merman_core::{
-    OperationCancelled, OperationControl, OperationPhase, OperationResourceLimitExceeded,
-};
+use merman_core::{OperationControl, OperationPhase, OperationResourceLimitExceeded};
 
 /// ASCII-specific resource policy projected from the parent operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,42 +47,45 @@ impl AsciiResourcePolicy {
 
 /// Narrow operation projection consumed by the model-to-text backend.
 #[derive(Debug, Clone, Copy)]
-pub struct AsciiExecution<'a> {
-    control: &'a OperationControl,
-    context: &'a OperationContext,
+pub(crate) struct AsciiExecution<'a> {
+    control: Option<&'a OperationControl>,
     resources: AsciiResourcePolicy,
 }
 
 impl<'a> AsciiExecution<'a> {
     /// Creates a projection from the caller-owned operation state.
-    pub const fn new(
-        control: &'a OperationControl,
-        context: &'a OperationContext,
-        resources: AsciiResourcePolicy,
-    ) -> Self {
+    pub const fn new(control: &'a OperationControl, resources: AsciiResourcePolicy) -> Self {
         Self {
-            control,
-            context,
+            control: Some(control),
             resources,
         }
     }
 
-    pub const fn control(self) -> &'a OperationControl {
-        self.control
-    }
-
-    pub const fn context(self) -> &'a OperationContext {
-        self.context
+    /// Creates the execution projection used by the direct typed-model convenience entrypoint.
+    pub const fn standalone(resources: AsciiResourcePolicy) -> Self {
+        Self {
+            control: None,
+            resources,
+        }
     }
 
     pub const fn resources(self) -> AsciiResourcePolicy {
         self.resources
     }
 
+    /// Uses a different target-local policy while retaining the caller-owned control.
+    pub(crate) const fn with_resources(self, resources: AsciiResourcePolicy) -> Self {
+        Self {
+            control: self.control,
+            resources,
+        }
+    }
+
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
-        self.control
-            .checkpoint_at(phase)
-            .map_err(AsciiError::Cancelled)
+        match self.control {
+            Some(control) => control.checkpoint_at(phase).map_err(AsciiError::Cancelled),
+            None => Ok(()),
+        }
     }
 
     /// Checks and admits a target-local canvas allocation before it is materialized.
@@ -106,9 +106,5 @@ impl<'a> AsciiExecution<'a> {
             ));
         }
         Ok(())
-    }
-
-    pub fn cancelled(self, phase: OperationPhase) -> std::result::Result<(), OperationCancelled> {
-        self.control.checkpoint_at(phase)
     }
 }

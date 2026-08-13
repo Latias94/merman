@@ -21,6 +21,4 @@ pub enum AsciiError {
         diagram_type: &'static str,
         feature: &'static str,
     },
-    #[error("ASCII render grid has {actual} cells, exceeding configured limit {limit}")]
-    RenderLimitExceeded { actual: usize, limit: usize },
 }

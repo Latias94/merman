@@ -1,8 +1,8 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
+    AsciiResourcePolicy, AsciiRgb, render_model, render_model_with_operation,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
 
 fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -12,6 +12,29 @@ fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Re
         .expect("xychart should be detected");
 
     render_model(parsed.model(), options)
+}
+
+fn render_xychart_with_grid_limit(
+    input: &str,
+    options: &AsciiRenderOptions,
+    max_grid_cells: usize,
+) -> merman_ascii::Result<String> {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("xychart should parse")
+        .expect("xychart should be detected");
+    let control = OperationControl::new();
+    let context = Engine::new()
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+
+    render_model_with_operation(
+        parsed.model(),
+        options,
+        &control,
+        &context,
+        AsciiResourcePolicy::with_max_grid_cells(max_grid_cells),
+    )
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {
@@ -566,26 +589,27 @@ bar [4, 8]
 
 #[test]
 fn xychart_plot_area_respects_max_grid_cells() {
-    let mut options = AsciiRenderOptions::ascii();
-    options.max_grid_cells = 3;
+    let options = AsciiRenderOptions::ascii();
 
-    let err = render_xychart(
+    let err = render_xychart_with_grid_limit(
         r#"xychart
 x-axis [A, B]
 y-axis 0 --> 10
 bar [4, 8]
 "#,
         &options,
+        3,
     )
     .expect_err("xychart plot area should respect max_grid_cells");
 
-    assert_eq!(
+    assert!(matches!(
         err,
-        AsciiError::RenderLimitExceeded {
-            actual: 35,
-            limit: 3,
-        }
-    );
+        AsciiError::ResourceLimitExceeded(resource)
+            if resource.id == merman_ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID
+                && resource.phase == merman_core::OperationPhase::Layout
+                && resource.limit == 3
+                && resource.requested == 35
+    ));
 }
 
 #[test]

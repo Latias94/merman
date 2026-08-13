@@ -137,43 +137,6 @@ struct RelationLayout<'a> {
     bottom_endpoint_label: Option<RelationGraphLabel>,
 }
 
-pub(crate) fn render_class_diagram(
-    model: &ClassDiagram,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    let charset = ClassCharset::for_options(options);
-    let namespace_facade_aliases = namespace_facade_aliases(model);
-    if has_renderable_namespaces(model) {
-        return render_namespaced_class_diagram(model, options, charset, &namespace_facade_aliases);
-    }
-
-    let boxes = render_class_boxes(model, options, charset, &namespace_facade_aliases);
-    if boxes.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
-    }
-
-    let mut layouts = model
-        .relations
-        .iter()
-        .map(|relation| relation_layout(model, relation, &namespace_facade_aliases))
-        .collect::<Result<Vec<_>>>()?;
-    layouts.extend(note_relation_layouts(
-        model,
-        &namespace_facade_aliases,
-        &boxes,
-    ));
-
-    if layouts.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
-    }
-
-    render_class_components(&boxes, &layouts, options, charset)
-}
-
 pub(crate) fn render_class_diagram_with_execution(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
@@ -612,16 +575,6 @@ fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) 
         })
         .max_by_key(|(namespace_len, _)| *namespace_len)
         .and_then(|(_, local_id)| model.classes.contains_key(local_id).then_some(local_id))
-}
-
-fn render_class_components(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-) -> Result<String> {
-    let adapter = ClassRelationComponentAdapter { charset };
-    relation_graph::render_relation_components(boxes, layouts, options, &adapter)
 }
 
 fn render_class_component_lines(

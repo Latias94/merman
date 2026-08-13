@@ -4,7 +4,6 @@ use super::plot::{
 };
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
-use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::text::{StyledLine, display_width, truncate_display_width};
 use crate::{AsciiRenderOptions, Result};
@@ -14,13 +13,6 @@ use merman_core::diagrams::xychart::{
 };
 
 type ChartLine = StyledLine;
-
-pub(crate) fn render_xychart_diagram(
-    model: &XyChartDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    render_xychart_diagram_inner(model, options, None)
-}
 
 pub(crate) fn render_xychart_diagram_with_execution(
     model: &XyChartDiagramRenderModel,
@@ -54,8 +46,6 @@ fn render_xychart_diagram_inner(
         let cell_count = plot_area.horizontal_cell_count(categories.len());
         if let Some(execution) = execution {
             execution.admit_grid(cell_count)?;
-        } else {
-            enforce_plot_cell_limit(cell_count, options)?;
         }
         return render_horizontal(
             model,
@@ -71,8 +61,6 @@ fn render_xychart_diagram_inner(
     let cell_count = plot_area.vertical_cell_count(categories.len());
     if let Some(execution) = execution {
         execution.admit_grid(cell_count)?;
-    } else {
-        enforce_plot_cell_limit(cell_count, options)?;
     }
     render_vertical(
         model,
@@ -83,17 +71,6 @@ fn render_xychart_diagram_inner(
         options,
         execution,
     )
-}
-
-fn enforce_plot_cell_limit(actual: usize, options: &AsciiRenderOptions) -> Result<()> {
-    if actual > options.max_grid_cells {
-        return Err(AsciiError::RenderLimitExceeded {
-            actual,
-            limit: options.max_grid_cells,
-        });
-    }
-
-    Ok(())
 }
 
 fn render_vertical(

@@ -128,7 +128,7 @@ fn local_semantic_fixture_readme_documents_admission_policy() {
         "Class and ER relation fixtures are split by topology readability",
         "routed-grid fixtures",
         "structured relation-summary fixtures",
-        "`AsciiRenderOptions::max_grid_cells`",
+        "`AsciiResourcePolicy` grid budget",
     ] {
         assert!(
             readme.contains(expected),

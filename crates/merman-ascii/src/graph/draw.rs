@@ -7,16 +7,12 @@ use super::model::{
 use super::routing;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
-use crate::error::{AsciiError, Result};
+use crate::error::Result;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::terminal::char_display_width;
 use crate::text::display_width;
 use std::collections::HashSet;
-
-pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Result<String> {
-    render_graph_inner(graph, options, None)
-}
 
 pub(crate) fn render_graph_with_execution(
     graph: &AsciiGraph,
@@ -86,11 +82,6 @@ fn render_graph_inner(
     let actual_cells = width.saturating_mul(height);
     if let Some(execution) = execution {
         execution.admit_grid(actual_cells)?;
-    } else if actual_cells > options.max_grid_cells {
-        return Err(AsciiError::RenderLimitExceeded {
-            actual: actual_cells,
-            limit: options.max_grid_cells,
-        });
     }
 
     if let Some(execution) = execution {

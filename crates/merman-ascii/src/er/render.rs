@@ -78,41 +78,6 @@ struct ErRelationComponentAdapter<'a> {
     entity_labels: &'a HashMap<String, String>,
 }
 
-pub(crate) fn render_er_diagram(
-    model: &ErDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    if model.entities.is_empty() {
-        return Ok(String::new());
-    }
-
-    let charset = ErCharset::for_options(options);
-    let boxes = model
-        .entities
-        .values()
-        .map(|entity| render_entity_box(entity, options, charset))
-        .collect::<Vec<_>>();
-    let entity_labels = model
-        .entities
-        .values()
-        .map(|entity| (entity.id.clone(), entity_display_label(entity).to_string()))
-        .collect::<HashMap<_, _>>();
-
-    if model.relationships.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
-    }
-
-    render_er_components(
-        &boxes,
-        &model.relationships,
-        &entity_labels,
-        options,
-        charset,
-    )
-}
-
 pub(crate) fn render_er_diagram_with_execution(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -150,20 +115,6 @@ pub(crate) fn render_er_diagram_with_execution(
     };
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
     Ok(rendered)
-}
-
-fn render_er_components(
-    boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    entity_labels: &HashMap<String, String>,
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-) -> Result<String> {
-    let adapter = ErRelationComponentAdapter {
-        charset,
-        entity_labels,
-    };
-    relation_graph::render_relation_components(boxes, relationships, options, &adapter)
 }
 
 fn render_entity_box(

@@ -10,7 +10,6 @@ pub(crate) mod style;
 mod topology;
 
 pub(crate) use adapter::from_flowchart_model;
-pub(crate) use draw::render_graph;
 pub(crate) use draw::render_graph_with_execution;
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
@@ -21,7 +20,9 @@ pub(crate) use model::{
 mod graph_golden {
     use super::model::{AsciiGraph, GraphDirection};
     use super::*;
-    use crate::AsciiRenderOptions;
+    use crate::operation::AsciiExecution;
+    use crate::{AsciiRenderOptions, AsciiResourcePolicy};
+    use merman_core::OperationControl;
     use std::path::Path;
 
     fn fixture_expected(directory: &str, name: &str) -> String {
@@ -43,7 +44,12 @@ mod graph_golden {
         let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
         graph.add_node("A", "A");
 
-        let actual = render_graph(&graph, &AsciiRenderOptions::ascii()).unwrap();
+        let actual = render_graph_with_execution(
+            &graph,
+            &AsciiRenderOptions::ascii(),
+            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+        )
+        .unwrap();
 
         assert_eq!(actual, fixture_expected("ascii", "single_node.txt"));
     }
@@ -53,7 +59,12 @@ mod graph_golden {
         let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
         graph.add_node("A", "A");
 
-        let actual = render_graph(&graph, &AsciiRenderOptions::unicode()).unwrap();
+        let actual = render_graph_with_execution(
+            &graph,
+            &AsciiRenderOptions::unicode(),
+            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+        )
+        .unwrap();
 
         assert_eq!(
             actual,
@@ -68,7 +79,12 @@ mod graph_golden {
         graph.add_node("B", "B");
         graph.add_edge("A", "B");
 
-        let actual = render_graph(&graph, &AsciiRenderOptions::ascii()).unwrap();
+        let actual = render_graph_with_execution(
+            &graph,
+            &AsciiRenderOptions::ascii(),
+            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+        )
+        .unwrap();
 
         assert_eq!(actual, fixture_expected("ascii", "two_nodes_linked.txt"));
     }
@@ -80,7 +96,12 @@ mod graph_golden {
         graph.add_node("B", "B");
         graph.add_edge("A", "B");
 
-        let actual = render_graph(&graph, &AsciiRenderOptions::unicode()).unwrap();
+        let actual = render_graph_with_execution(
+            &graph,
+            &AsciiRenderOptions::unicode(),
+            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+        )
+        .unwrap();
 
         assert_eq!(
             actual,
@@ -95,7 +116,12 @@ mod graph_golden {
         graph.add_node("LongerName2", "LongerName2");
         graph.add_edge("LongerName1", "LongerName2");
 
-        let actual = render_graph(&graph, &AsciiRenderOptions::ascii()).unwrap();
+        let actual = render_graph_with_execution(
+            &graph,
+            &AsciiRenderOptions::ascii(),
+            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+        )
+        .unwrap();
 
         assert_eq!(
             actual,
@@ -112,7 +138,12 @@ mod graph_golden {
         graph.add_edge("A", "B");
         graph.add_edge("B", "C");
 
-        let actual = render_graph(&graph, &AsciiRenderOptions::ascii()).unwrap();
+        let actual = render_graph_with_execution(
+            &graph,
+            &AsciiRenderOptions::ascii(),
+            AsciiExecution::new(&OperationControl::new(), AsciiResourcePolicy::default()),
+        )
+        .unwrap();
 
         assert_eq!(actual, fixture_expected("ascii", "flowchart_tb_simple.txt"));
     }

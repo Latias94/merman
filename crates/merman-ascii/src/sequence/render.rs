@@ -98,13 +98,6 @@ impl SequenceChars {
     }
 }
 
-pub(crate) fn render_sequence_diagram(
-    diagram: &AsciiSequenceDiagram,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    render_sequence_diagram_inner(diagram, options, None)
-}
-
 pub(crate) fn render_sequence_diagram_with_execution(
     diagram: &AsciiSequenceDiagram,
     options: &AsciiRenderOptions,
