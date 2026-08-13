@@ -176,7 +176,7 @@ fn render_mermaid_svg(
     let RenderOutput::Svg(svg) = rendered else {
         unreachable!("SVG request must return SVG output");
     };
-    svg.ok_or_else(|| {
+    svg.map(|output| output.into_parts().0).ok_or_else(|| {
         Error::new(format!(
             "Mermaid diagram #{} did not produce SVG output",
             index + 1
