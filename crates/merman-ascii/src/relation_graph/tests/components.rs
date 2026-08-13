@@ -168,7 +168,7 @@ fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
 }
 
 #[test]
-fn strict_k2_2_overlay_collision_rolls_back_the_atomic_route_batch() {
+fn strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_cells() {
     let boxes = strict_k2_2_boxes();
     let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
     let options = AsciiRenderOptions::ascii();
@@ -207,8 +207,36 @@ fn strict_k2_2_overlay_collision_rolls_back_the_atomic_route_batch() {
         error,
         LayeredRouteBatchError::Semantic(LayeredRelationSummaryReason::OverlayCollision)
     ));
-    assert_eq!(resources.layout_work_used(), work_before);
+    assert!(resources.layout_work_used() > work_before);
     assert_eq!(resources.document_cells_used(), document_before);
+}
+
+#[test]
+fn pairwise_validation_work_uses_the_exact_linear_prefix_formula() {
+    let resources = ResourceContext::new(AsciiRenderOptions::ascii().resources);
+
+    let planar = measure_pairwise_validation_work([(2, 1), (3, 2), (5, 4)], &resources, true)
+        .expect("fixed pairwise work should fit");
+    assert_eq!(
+        planar,
+        PairwiseValidationWork {
+            segment_count: 10,
+            overlay_count: 7,
+            pair_work: 87,
+        }
+    );
+
+    let overlays_only =
+        measure_pairwise_validation_work([(2, 1), (3, 2), (5, 4)], &resources, false)
+            .expect("fixed overlay work should fit");
+    assert_eq!(
+        overlays_only,
+        PairwiseValidationWork {
+            segment_count: 10,
+            overlay_count: 7,
+            pair_work: 14,
+        }
+    );
 }
 
 #[test]
@@ -286,9 +314,26 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
     let below_scene = build_scene(&mut below_resources);
     let below_before = below_resources.layout_work_used();
     assert_eq!(below_before, work_before);
-    let error = plan_layered_route_batch(&below_scene, &relation_refs, &below_resources, &adapter)
-        .expect_err("the N-1 route work budget must reject");
+    let geometry_scan = Cell::new(false);
+    let materialized_scan = Cell::new(false);
+    let error = plan_layered_route_batch_with_probes(
+        &below_scene,
+        &relation_refs,
+        &below_resources,
+        &adapter,
+        || geometry_scan.set(true),
+        || materialized_scan.set(true),
+    )
+    .expect_err("the N-1 route work budget must reject");
     assert!(matches!(error, LayeredRouteBatchError::Resource(_)));
     assert_eq!(below_resources.layout_work_used(), below_before);
     assert_eq!(below_resources.document_cells_used(), 0);
+    assert!(
+        !materialized_scan.get(),
+        "the final pair scan must not start after an N-1 admission failure"
+    );
+    assert!(
+        geometry_scan.get(),
+        "the exact-minus-one boundary should fail at the later materialized pair admission"
+    );
 }

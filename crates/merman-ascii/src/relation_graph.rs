@@ -764,99 +764,203 @@ fn plan_layered_route_batch<R, A>(
 where
     A: RelationComponentAdapter<R>,
 {
-    resources.transaction(|resources| {
-        resources.charge_layout_work(scene.draw_order().len().max(1))?;
-        let mut planned = Vec::new();
-        planned
-            .try_reserve_exact(scene.draw_order().len())
-            .map_err(|_| layout_allocation_failed())?;
-        for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-            let Some(relation) = relations.get(edge_index).copied() else {
-                return Err(LayeredRouteBatchError::Semantic(
-                    LayeredRelationSummaryReason::RouteCollision,
-                ));
-            };
-            let style = adapter.layered_route_style(relation)?;
-            let Some(geometry) =
-                scene.plan_edge_geometry(edge_index, lane_offset, style.profile(), resources)?
-            else {
-                return Err(LayeredRouteBatchError::Semantic(
-                    LayeredRelationSummaryReason::RouteCollision,
-                ));
-            };
+    plan_layered_route_batch_with_probes(scene, relations, resources, adapter, || {}, || {})
+}
 
-            if !scene.edge_ports_fit(edge_index, &geometry) {
-                return Err(LayeredRouteBatchError::Semantic(
-                    LayeredRelationSummaryReason::RouteCollision,
-                ));
-            }
-
-            planned.push(PlannedLayeredRoute {
-                edge_index,
-                style,
-                geometry,
-            });
-        }
-
-        validate_layered_route_geometries(scene, &planned, resources)?;
-
-        let mut route_plans = Vec::new();
-        route_plans
-            .try_reserve_exact(planned.len())
-            .map_err(|_| layout_allocation_failed())?;
-        for route in planned {
-            let Some(relation) = relations.get(route.edge_index).copied() else {
-                return Err(LayeredRouteBatchError::Semantic(
-                    LayeredRelationSummaryReason::RouteCollision,
-                ));
-            };
-            let overlays =
-                adapter.layered_relation_overlays(relation, &route.geometry, resources)?;
-            route_plans.push(materialize_layered_relation_route_plan(
-                route.geometry,
-                route.style,
+fn plan_layered_route_batch_with_probes<R, A>(
+    scene: &LayeredRelationScene<'_>,
+    relations: &[&R],
+    resources: &ResourceContext,
+    adapter: &A,
+    before_geometry_collision_scan: impl FnOnce(),
+    before_materialized_collision_scan: impl FnOnce(),
+) -> std::result::Result<
+    (
+        Vec<LayeredRelationRoutePlan>,
+        crate::resource::LogicalExtent,
+    ),
+    LayeredRouteBatchError,
+>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let outcome: Result<
+        std::result::Result<
+            (
+                Vec<LayeredRelationRoutePlan>,
+                crate::resource::LogicalExtent,
+            ),
+            LayeredRelationSummaryReason,
+        >,
+    > = resources.transaction(|resources| {
+        match resources.transaction_preserving_layout_work(|resources| {
+            plan_layered_route_batch_in_transaction(
+                scene,
+                relations,
                 resources,
-                overlays,
-            )?);
+                adapter,
+                before_geometry_collision_scan,
+                before_materialized_collision_scan,
+            )
+        }) {
+            Ok(plan) => Ok(Ok(plan)),
+            Err(LayeredRouteBatchError::Semantic(reason)) => Ok(Err(reason)),
+            Err(LayeredRouteBatchError::Resource(error)) => Err(error),
         }
-        validate_layered_route_batch(scene, &route_plans, resources)?;
-        let extent = resources.grid_extent(scene.width(), scene.height())?;
-        Ok((route_plans, extent))
+    });
+
+    match outcome {
+        Ok(Ok(plan)) => Ok(plan),
+        Ok(Err(reason)) => Err(LayeredRouteBatchError::Semantic(reason)),
+        Err(error) => Err(LayeredRouteBatchError::Resource(error)),
+    }
+}
+
+fn plan_layered_route_batch_in_transaction<R, A>(
+    scene: &LayeredRelationScene<'_>,
+    relations: &[&R],
+    resources: &ResourceContext,
+    adapter: &A,
+    before_geometry_collision_scan: impl FnOnce(),
+    before_materialized_collision_scan: impl FnOnce(),
+) -> std::result::Result<
+    (
+        Vec<LayeredRelationRoutePlan>,
+        crate::resource::LogicalExtent,
+    ),
+    LayeredRouteBatchError,
+>
+where
+    A: RelationComponentAdapter<R>,
+{
+    resources.charge_layout_work(scene.draw_order().len().max(1))?;
+    let mut planned = Vec::new();
+    planned
+        .try_reserve_exact(scene.draw_order().len())
+        .map_err(|_| layout_allocation_failed())?;
+    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+        let Some(relation) = relations.get(edge_index).copied() else {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        };
+        let style = adapter.layered_route_style(relation)?;
+        let Some(geometry) =
+            scene.plan_edge_geometry(edge_index, lane_offset, style.profile(), resources)?
+        else {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        };
+
+        if !scene.edge_ports_fit(edge_index, &geometry) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        }
+
+        planned.push(PlannedLayeredRoute {
+            edge_index,
+            style,
+            geometry,
+        });
+    }
+
+    validate_layered_route_geometries_with_probe(
+        scene,
+        &planned,
+        resources,
+        before_geometry_collision_scan,
+    )?;
+
+    let mut route_plans = Vec::new();
+    route_plans
+        .try_reserve_exact(planned.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for route in planned {
+        let Some(relation) = relations.get(route.edge_index).copied() else {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        };
+        let overlays = adapter.layered_relation_overlays(relation, &route.geometry, resources)?;
+        route_plans.push(materialize_layered_relation_route_plan(
+            route.geometry,
+            route.style,
+            resources,
+            overlays,
+        )?);
+    }
+    validate_layered_route_batch_with_probe(
+        scene,
+        &route_plans,
+        resources,
+        before_materialized_collision_scan,
+    )?;
+    let extent = resources.grid_extent(scene.width(), scene.height())?;
+    Ok((route_plans, extent))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PairwiseValidationWork {
+    segment_count: usize,
+    overlay_count: usize,
+    pair_work: usize,
+}
+
+fn measure_pairwise_validation_work(
+    counts: impl IntoIterator<Item = (usize, usize)>,
+    resources: &ResourceContext,
+    include_planar_route_pairs: bool,
+) -> Result<PairwiseValidationWork> {
+    let mut segment_count = 0usize;
+    let mut overlay_count = 0usize;
+    let mut pair_work = 0usize;
+    for (segments, overlays) in counts {
+        pair_work = resources.checked_work_add(
+            pair_work,
+            resources.checked_work_mul(overlays, overlay_count)?,
+        )?;
+        if include_planar_route_pairs {
+            let route_pairs = resources.checked_work_mul(segments, segment_count)?;
+            let overlay_to_prior_routes = resources.checked_work_mul(overlays, segment_count)?;
+            let route_to_prior_overlays = resources.checked_work_mul(segments, overlay_count)?;
+            pair_work = resources.checked_work_add(
+                pair_work,
+                resources.checked_work_add(
+                    route_pairs,
+                    resources.checked_work_add(overlay_to_prior_routes, route_to_prior_overlays)?,
+                )?,
+            )?;
+        }
+        segment_count = resources.checked_work_add(segment_count, segments)?;
+        overlay_count = resources.checked_work_add(overlay_count, overlays)?;
+    }
+    Ok(PairwiseValidationWork {
+        segment_count,
+        overlay_count,
+        pair_work,
     })
 }
 
-fn validate_layered_route_geometries(
+fn validate_layered_route_geometries_with_probe(
     scene: &LayeredRelationScene<'_>,
     routes: &[PlannedLayeredRoute],
     resources: &ResourceContext,
+    before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
-    let segment_count = routes.iter().try_fold(0usize, |total, route| {
-        resources.checked_work_add(total, route.geometry.segment_count())
-    })?;
-    let box_work = resources.checked_work_mul(segment_count, scene.placed_box_count().max(1))?;
-    let pair_work = if scene.is_planar_k2_2() {
+    resources.charge_layout_work(routes.len().max(1))?;
+    let measured = measure_pairwise_validation_work(
         routes
             .iter()
-            .enumerate()
-            .try_fold(0usize, |total, (index, route)| {
-                routes[index + 1..].iter().try_fold(total, |total, other| {
-                    resources.checked_work_add(
-                        total,
-                        resources.checked_work_mul(
-                            route.geometry.segment_count(),
-                            other.geometry.segment_count(),
-                        )?,
-                    )
-                })
-            })?
-    } else {
-        0
-    };
-    let validation_work = resources
-        .checked_work_add(box_work, pair_work)?
-        .checked_add(routes.len())
-        .ok_or_else(|| resources.work_overflow())?;
-    resources.charge_layout_work(validation_work.max(1))?;
+            .map(|route| (route.geometry.segment_count(), 0)),
+        resources,
+        scene.is_planar_k2_2(),
+    )?;
+    let box_work =
+        resources.checked_work_mul(measured.segment_count, scene.placed_box_count().max(1))?;
+    resources.charge_layout_work(resources.checked_work_add(box_work, measured.pair_work)?)?;
+    before_collision_scan();
     if scene.is_planar_k2_2() && routes.len() != 4 {
         return Err(LayeredRouteBatchError::Semantic(
             LayeredRelationSummaryReason::RouteCollision,
@@ -893,54 +997,26 @@ fn validate_layered_route_geometries(
     Ok(())
 }
 
-fn validate_layered_route_batch(
+fn validate_layered_route_batch_with_probe(
     scene: &LayeredRelationScene<'_>,
     route_plans: &[LayeredRelationRoutePlan],
     resources: &ResourceContext,
+    before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
-    let segment_count = route_plans.iter().try_fold(0usize, |total, route| {
-        resources.checked_work_add(total, route.segment_count())
-    })?;
-    let overlay_count = route_plans.iter().try_fold(0usize, |total, route| {
-        resources.checked_work_add(total, route.overlay_count())
-    })?;
+    resources.charge_layout_work(route_plans.len().max(1))?;
+    let measured = measure_pairwise_validation_work(
+        route_plans
+            .iter()
+            .map(|route| (route.segment_count(), route.overlay_count())),
+        resources,
+        scene.is_planar_k2_2(),
+    )?;
     let box_work = resources.checked_work_mul(
-        resources.checked_work_add(segment_count, overlay_count)?,
+        resources.checked_work_add(measured.segment_count, measured.overlay_count)?,
         scene.placed_box_count().max(1),
     )?;
-    let pair_work = route_plans
-        .iter()
-        .enumerate()
-        .try_fold(0usize, |total, (index, route)| {
-            route_plans[index + 1..]
-                .iter()
-                .try_fold(total, |total, other| {
-                    let overlay_overlay =
-                        resources.checked_work_mul(route.overlay_count(), other.overlay_count())?;
-                    let planar_work = if scene.is_planar_k2_2() {
-                        let route_route = resources
-                            .checked_work_mul(route.segment_count(), other.segment_count())?;
-                        let overlay_route = resources.checked_work_add(
-                            resources
-                                .checked_work_mul(route.overlay_count(), other.segment_count())?,
-                            resources
-                                .checked_work_mul(other.overlay_count(), route.segment_count())?,
-                        )?;
-                        resources.checked_work_add(route_route, overlay_route)?
-                    } else {
-                        0
-                    };
-                    resources.checked_work_add(
-                        total,
-                        resources.checked_work_add(overlay_overlay, planar_work)?,
-                    )
-                })
-        })?;
-    let validation_work = resources
-        .checked_work_add(box_work, pair_work)?
-        .checked_add(route_plans.len())
-        .ok_or_else(|| resources.work_overflow())?;
-    resources.charge_layout_work(validation_work.max(1))?;
+    resources.charge_layout_work(resources.checked_work_add(box_work, measured.pair_work)?)?;
+    before_collision_scan();
     if scene.is_planar_k2_2() && route_plans.len() != 4 {
         return Err(LayeredRouteBatchError::Semantic(
             LayeredRelationSummaryReason::RouteCollision,

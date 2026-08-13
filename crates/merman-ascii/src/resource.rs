@@ -504,6 +504,26 @@ impl ResourceContext {
         }
     }
 
+    /// Runs a recoverable planning phase while retaining work already performed.
+    ///
+    /// Semantic fallbacks may discard speculative document rows, but the CPU work used to reach
+    /// that decision remains part of the successful render-wide budget. Callers that need a
+    /// resource failure to restore both ledgers should wrap this boundary in [`Self::transaction`]
+    /// and propagate the resource error through the outer transaction.
+    pub(crate) fn transaction_preserving_layout_work<T, E>(
+        &self,
+        operation: impl FnOnce(&Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
+        let document_cells_checkpoint = self.document_cells_used.get();
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.document_cells_used.set(document_cells_checkpoint);
+                Err(error)
+            }
+        }
+    }
+
     pub(crate) fn check_grapheme_bytes(&self, bytes: usize) -> Result<()> {
         self.policy
             .check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
@@ -836,6 +856,34 @@ mod tests {
 
         assert_eq!(error, PlanningFailure::RouteCollision);
         assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn recoverable_transaction_keeps_work_and_restores_document_cells() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum PlanningFailure {
+            RouteCollision,
+        }
+
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        resources
+            .charge_usage(2, 3)
+            .expect("the checkpoint should start with prior usage");
+
+        let error = resources
+            .transaction_preserving_layout_work(|resources| {
+                resources
+                    .charge_usage(4, 5)
+                    .expect("the speculative usage should fit");
+                Err::<(), _>(PlanningFailure::RouteCollision)
+            })
+            .expect_err("the semantic failure should discard speculative document cells");
+
+        assert_eq!(error, PlanningFailure::RouteCollision);
+        assert_eq!(resources.layout_work_used(), 6);
         assert_eq!(resources.document_cells_used(), 3);
     }
 
