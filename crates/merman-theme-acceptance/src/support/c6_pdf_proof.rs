@@ -1,14 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::{BrutalistStateFixtureContract, C6ProofError, C6ProofResult};
 use lopdf::{
-    Document, Object, ObjectId, Stream,
+    Document, LoadOptions, Object, ObjectId, Stream,
     content::{Content, Operation},
 };
-use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
-
-use super::C6ObservedMechanismDisposition;
 
 const MAX_PAGE_CONTENT_BYTES: usize = 1024 * 1024;
+const MAX_PDF_LOAD_STREAM_BYTES: usize = 32 * 1024 * 1024;
 const MAX_FILTER_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_FONT_BYTES: usize = 16 * 1024 * 1024;
 const PLACEMENT_TOLERANCE: f64 = 0.02;
@@ -17,60 +16,82 @@ const EFFECTIVELY_OPAQUE_ALPHA: u8 = 250;
 const STATE_IDS: [&str; 4] = ["Ready", "Review", "Done", "Archive"];
 
 pub(crate) fn prove_brutalist_state_pdf(
-    input: &ReferenceThemeInput,
+    fixture: &BrutalistStateFixtureContract<'_>,
     sealed_svg: &str,
     bytes: &[u8],
     filter_scale: f32,
-) -> super::C6TargetProof {
-    let contract = BrutalistStatePdfContract::from_fixture(input, filter_scale);
+) -> C6ProofResult<super::C6TargetProof> {
+    let contract = BrutalistStatePdfContract::from_fixture(fixture, filter_scale)?;
     let geometry = StateSvgGeometry::from_sealed_svg(sealed_svg)
-        .unwrap_or_else(|error| panic!("read the sealed C6 State geometry: {error}"));
-    let document = Document::load_mem(bytes).expect("parse the final C6 PDF artifact");
+        .map_err(|error| C6ProofError::new("pdf-svg-geometry", error))?;
+    let document = load_pdf_artifact(bytes)?;
     let pages = document.get_pages();
-    assert_eq!(pages.len(), 1, "the C6 PDF must contain exactly one page");
-    let page_id = *pages.values().next().expect("the C6 PDF page");
+    c6_ensure!(
+        "pdf-artifact",
+        pages.len() == 1,
+        "the C6 PDF must contain exactly one page, found {}",
+        pages.len()
+    );
+    let page_id = pages
+        .values()
+        .next()
+        .copied()
+        .ok_or_else(|| C6ProofError::new("pdf-artifact", "the C6 PDF page is missing"))?;
     let page_content = document
         .get_page_content_with_limit(page_id, MAX_PAGE_CONTENT_BYTES)
-        .expect("decode the bounded C6 PDF page content");
-    let operations = Content::decode_strict(&page_content)
-        .expect("strictly decode the final C6 PDF page operators");
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-page-content",
+                format!("decode the bounded C6 PDF page content: {error}"),
+            )
+        })?;
+    let operations = Content::decode_strict(&page_content).map_err(|error| {
+        C6ProofError::new(
+            "pdf-page-content",
+            format!("strictly decode the final C6 PDF page operators: {error}"),
+        )
+    })?;
 
     let page_box = page_media_box(&document, page_id)
-        .unwrap_or_else(|error| panic!("read the final C6 PDF page box: {error}"));
+        .map_err(|error| C6ProofError::new("pdf-page-box", error))?;
     let resources = PageDrawingResources::from_page(&document, page_id)
-        .unwrap_or_else(|error| panic!("read the final C6 PDF drawing resources: {error}"));
+        .map_err(|error| C6ProofError::new("pdf-resources", error))?;
     let placements = collect_drawn_page_images(
         &operations.operations,
         &resources.images,
         &resources.ext_gstates,
         page_box,
     )
-    .unwrap_or_else(|error| panic!("validate the final C6 PDF image placements: {error}"));
-    assert_eq!(
-        placements.len(),
+    .map_err(|error| C6ProofError::new("pdf-image-placement", error))?;
+    c6_ensure!(
+        "pdf-image-placement",
+        placements.len() == contract.node_fills.len(),
+        "each State node filter must become one drawn PDF image XObject; expected {}, found {}",
         contract.node_fills.len(),
-        "each State node filter must become one drawn PDF image XObject"
+        placements.len()
     );
 
     let observed_images = placements
         .into_iter()
-        .map(|placement| PlacedStateImage {
-            image: assert_filtered_state_image(&document, placement.image_id, &contract),
-            placement,
+        .map(|placement| {
+            Ok(PlacedStateImage {
+                image: prove_filtered_state_image(&document, placement.image_id, &contract)?,
+                placement,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<C6ProofResult<Vec<_>>>()?;
     let expected = expected_state_placements(&geometry, page_box, &contract)
-        .unwrap_or_else(|error| panic!("project the sealed C6 State geometry into PDF: {error}"));
+        .map_err(|error| C6ProofError::new("pdf-state-geometry", error))?;
     validate_state_image_placements(&expected, &observed_images, page_box)
-        .unwrap_or_else(|error| panic!("bind final C6 PDF images to State geometry: {error}"));
+        .map_err(|error| C6ProofError::new("pdf-state-binding", error))?;
     assert_canvas_solid(
         &operations.operations,
         &resources.ext_gstates,
         page_box,
         contract.canvas,
     )
-    .unwrap_or_else(|error| panic!("prove the final C6 PDF canvas paint: {error}"));
-    let font_resource = assert_embedded_font(&document, page_id, contract.font_family);
+    .map_err(|error| C6ProofError::new("pdf-canvas", error))?;
+    let font_resource = prove_embedded_font(&document, page_id, contract.font_family)?;
     assert_state_text_labels(
         &document,
         page_id,
@@ -80,9 +101,32 @@ pub(crate) fn prove_brutalist_state_pdf(
         contract.text,
         &font_resource,
     )
-    .unwrap_or_else(|error| panic!("prove the final C6 PDF State labels: {error}"));
+    .map_err(|error| C6ProofError::new("pdf-text", error))?;
 
-    super::C6TargetProof::brutalist_state_pdf(bytes, applied_mechanisms())
+    Ok(super::C6TargetProof::brutalist_state_pdf(
+        bytes,
+        super::brutalist_state_applied_mechanisms(),
+    ))
+}
+
+pub(super) fn load_pdf_artifact(bytes: &[u8]) -> C6ProofResult<Document> {
+    load_pdf_artifact_with_limit(bytes, MAX_PDF_LOAD_STREAM_BYTES)
+}
+
+fn load_pdf_artifact_with_limit(
+    bytes: &[u8],
+    max_decompressed_size: usize,
+) -> C6ProofResult<Document> {
+    Document::load_mem_with_options(
+        bytes,
+        LoadOptions::with_max_decompressed_size(max_decompressed_size),
+    )
+    .map_err(|error| {
+        C6ProofError::new(
+            "pdf-artifact",
+            format!("parse the final C6 PDF artifact: {error}"),
+        )
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,18 +137,31 @@ struct Rgb {
 }
 
 impl Rgb {
-    fn parse_hex(value: &str) -> Self {
-        let hex = value
-            .strip_prefix('#')
-            .filter(|hex| hex.len() == 6)
-            .unwrap_or_else(|| {
-                panic!("the C6 PDF proof requires a six-digit hex color, got {value}")
-            });
-        Self {
-            red: u8::from_str_radix(&hex[0..2], 16).expect("valid red channel"),
-            green: u8::from_str_radix(&hex[2..4], 16).expect("valid green channel"),
-            blue: u8::from_str_radix(&hex[4..6], 16).expect("valid blue channel"),
-        }
+    fn parse_hex(value: &str) -> C6ProofResult<Self> {
+        let Some(hex) = value.strip_prefix('#') else {
+            return Err(C6ProofError::new(
+                "pdf-contract",
+                format!("expected a six-digit hex color, got {value}"),
+            ));
+        };
+        c6_ensure!(
+            "pdf-contract",
+            hex.len() == 6 && hex.is_ascii() && hex.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "expected a six-digit hex color, got {value}"
+        );
+        let parse_channel = |range: std::ops::Range<usize>, name| {
+            u8::from_str_radix(&hex[range], 16).map_err(|error| {
+                C6ProofError::new(
+                    "pdf-contract",
+                    format!("invalid {name} channel in {value}: {error}"),
+                )
+            })
+        };
+        Ok(Self {
+            red: parse_channel(0..2, "red")?,
+            green: parse_channel(2..4, "green")?,
+            blue: parse_channel(4..6, "blue")?,
+        })
     }
 
     fn linear_rgb_roundtrip(self) -> Self {
@@ -139,51 +196,46 @@ struct BrutalistStatePdfContract<'a> {
 }
 
 impl<'a> BrutalistStatePdfContract<'a> {
-    fn from_fixture(input: &'a ReferenceThemeInput, filter_scale: f32) -> Self {
-        assert!(filter_scale.is_finite() && filter_scale > 0.0);
-        let tokens = input.tokens().expect("Brutalist requires typed tokens");
-        let font_stack = input.font_stack().expect("Brutalist requires a font stack");
-        assert_eq!(font_stack.families().len(), 1);
-        let node_style = input
-            .node_style()
-            .expect("Brutalist requires a typed State node style");
-        let border = node_style
-            .border()
-            .expect("Brutalist requires a node border");
-        let shadow = node_style
-            .shadow()
-            .expect("Brutalist requires a hard shadow");
-        assert_eq!(shadow.blur_px(), 0);
-        assert_eq!(shadow.spread_px(), 0);
-        assert!(shadow.offset_x_px() > 0 && shadow.offset_y_px() > 0);
-        let palette = match input.semantic_rules() {
-            [ReferenceSemanticRule::OrdinalPalette { colors, .. }] => colors,
-            _ => panic!("the C6 PDF proof requires one State ordinal palette"),
+    fn from_fixture(
+        fixture: &'a BrutalistStateFixtureContract<'_>,
+        filter_scale: f32,
+    ) -> C6ProofResult<Self> {
+        c6_ensure!(
+            "pdf-contract",
+            filter_scale.is_finite() && filter_scale > 0.0,
+            "PDF filter scale must be finite and positive, found {filter_scale}"
+        );
+        let tokens = fixture.tokens;
+        let border = fixture.border;
+        let shadow = fixture.shadow;
+        let palette = fixture.palette_colors;
+        let [first_fill, second_fill, third_fill] = palette else {
+            return Err(C6ProofError::new(
+                "pdf-contract",
+                format!(
+                    "the C6 PDF proof requires three State ordinal colors, found {}",
+                    palette.len()
+                ),
+            ));
         };
-        assert_eq!(palette.len(), 3);
-
         let scaled = |value: usize| (value as f32 * filter_scale).round() as usize;
-        Self {
-            canvas: Rgb::parse_hex(tokens.background()),
-            text: Rgb::parse_hex(tokens.text()),
-            font_family: &font_stack.families()[0],
+        Ok(Self {
+            canvas: Rgb::parse_hex(tokens.background())?,
+            text: Rgb::parse_hex(tokens.text())?,
+            font_family: fixture.font_family,
             node_fills: [
-                Rgb::parse_hex(&palette[0]).linear_rgb_roundtrip(),
-                Rgb::parse_hex(&palette[1]).linear_rgb_roundtrip(),
-                Rgb::parse_hex(&palette[2]).linear_rgb_roundtrip(),
-                Rgb::parse_hex(&palette[0]).linear_rgb_roundtrip(),
+                Rgb::parse_hex(first_fill)?.linear_rgb_roundtrip(),
+                Rgb::parse_hex(second_fill)?.linear_rgb_roundtrip(),
+                Rgb::parse_hex(third_fill)?.linear_rgb_roundtrip(),
+                Rgb::parse_hex(first_fill)?.linear_rgb_roundtrip(),
             ],
-            quantized_shadow: Rgb::parse_hex(shadow.color()).linear_rgb_roundtrip(),
+            quantized_shadow: Rgb::parse_hex(shadow.color())?.linear_rgb_roundtrip(),
             border_width_px: scaled(usize::from(border.width_px())),
-            corner_radius_px: scaled(usize::from(
-                node_style
-                    .corner_radius_px()
-                    .expect("Brutalist requires rounded State nodes"),
-            )),
+            corner_radius_px: scaled(usize::from(fixture.radius_px)),
             shadow_offset_x_px: scaled(usize::from(shadow.offset_x_px().unsigned_abs())),
             shadow_offset_y_px: scaled(usize::from(shadow.offset_y_px().unsigned_abs())),
             filter_scale: f64::from(filter_scale),
-        }
+        })
     }
 }
 
@@ -1213,48 +1265,102 @@ fn validate_state_image_placements(
     Ok(())
 }
 
-fn assert_filtered_state_image(
+fn prove_filtered_state_image(
     document: &Document,
     image_id: ObjectId,
     contract: &BrutalistStatePdfContract<'_>,
-) -> FilteredStateImage {
+) -> C6ProofResult<FilteredStateImage> {
     let image = document
         .get_object(image_id)
         .and_then(Object::as_stream)
-        .expect("read a drawn C6 PDF image XObject");
-    assert_image_dictionary(image, b"DeviceRGB");
-    let width = positive_dimension(image, b"Width");
-    let height = positive_dimension(image, b"Height");
-    let pixel_count = width.checked_mul(height).expect("bounded PDF image area");
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("read drawn C6 PDF image XObject {image_id:?}: {error}"),
+            )
+        })?;
+    validate_image_dictionary(image, b"DeviceRGB")?;
+    let width = positive_dimension(image, b"Width")?;
+    let height = positive_dimension(image, b"Height")?;
+    let pixel_count = width
+        .checked_mul(height)
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "PDF image area exceeds usize"))?;
     let rgb_len = pixel_count
         .checked_mul(3)
-        .expect("bounded PDF RGB image size");
-    assert!(rgb_len <= MAX_FILTER_IMAGE_BYTES);
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "PDF RGB image size exceeds usize"))?;
+    c6_ensure!(
+        "pdf-filter-image",
+        rgb_len <= MAX_FILTER_IMAGE_BYTES,
+        "PDF RGB filter image exceeds the {} byte proof limit, found {rgb_len}",
+        MAX_FILTER_IMAGE_BYTES
+    );
     let rgb = image
         .decompressed_content_with_limit(rgb_len)
-        .expect("decode the bounded C6 PDF RGB filter image");
-    assert_eq!(rgb.len(), rgb_len);
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("decode the bounded C6 PDF RGB filter image: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-filter-image",
+        rgb.len() == rgb_len,
+        "decoded PDF RGB filter image length must be {rgb_len}, found {}",
+        rgb.len()
+    );
 
     let mask_id = image
         .dict
         .get(b"SMask")
         .and_then(Object::as_reference)
-        .expect("each C6 PDF filter image must own a soft mask");
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("each C6 PDF filter image must own a soft mask: {error}"),
+            )
+        })?;
     let mask = document
         .get_object(mask_id)
         .and_then(Object::as_stream)
-        .expect("read the C6 PDF filter image soft mask");
-    assert_image_dictionary(mask, b"DeviceGray");
-    assert_eq!(positive_dimension(mask, b"Width"), width);
-    assert_eq!(positive_dimension(mask, b"Height"), height);
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("read the C6 PDF filter image soft mask: {error}"),
+            )
+        })?;
+    validate_image_dictionary(mask, b"DeviceGray")?;
+    let mask_width = positive_dimension(mask, b"Width")?;
+    let mask_height = positive_dimension(mask, b"Height")?;
+    c6_ensure!(
+        "pdf-filter-image",
+        mask_width == width && mask_height == height,
+        "PDF soft-mask dimensions must match the RGB image; mask={mask_width}x{mask_height}, rgb={width}x{height}"
+    );
     let alpha = mask
         .decompressed_content_with_limit(pixel_count)
-        .expect("decode the bounded C6 PDF alpha mask");
-    assert_eq!(alpha.len(), pixel_count);
-    assert!(alpha.contains(&0));
-    assert!(alpha.contains(&u8::MAX));
-    let visible_bounds = alpha_bounds(&alpha, width)
-        .expect("the final PDF filter image must contain visible pixels");
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("decode the bounded C6 PDF alpha mask: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-filter-image",
+        alpha.len() == pixel_count,
+        "decoded PDF alpha mask length must be {pixel_count}, found {}",
+        alpha.len()
+    );
+    c6_ensure!(
+        "pdf-filter-image",
+        alpha.contains(&0) && alpha.contains(&u8::MAX),
+        "PDF alpha mask must contain both transparent and opaque pixels"
+    );
+    let visible_bounds = alpha_bounds(&alpha, width).ok_or_else(|| {
+        C6ProofError::new(
+            "pdf-filter-image",
+            "the final PDF filter image must contain visible pixels",
+        )
+    })?;
 
     let (fill, fill_count) = contract
         .node_fills
@@ -1262,8 +1368,9 @@ fn assert_filtered_state_image(
         .copied()
         .map(|color| (color, count_color(&rgb, &alpha, color)))
         .max_by_key(|(_, count)| *count)
-        .expect("the C6 PDF node palette is non-empty");
-    assert!(
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "the C6 PDF node palette is empty"))?;
+    c6_ensure!(
+        "pdf-filter-image",
         fill_count >= pixel_count / 4,
         "one ordinal fill must dominate each localized State filter image"
     );
@@ -1273,45 +1380,76 @@ fn assert_filtered_state_image(
         .copied()
         .filter(|color| *color != fill)
     {
-        assert_eq!(
-            count_color(&rgb, &alpha, other),
-            0,
+        c6_ensure!(
+            "pdf-filter-image",
+            count_color(&rgb, &alpha, other) == 0,
             "a localized State image cannot contain another ordinal fill"
         );
     }
 
-    let fill_bounds = color_bounds(&rgb, &alpha, width, fill)
-        .expect("the dominant State fill must have a pixel extent");
-    let shadow_bounds = color_bounds(&rgb, &alpha, width, contract.quantized_shadow)
-        .expect("the final PDF image must contain the quantized hard shadow");
-    assert!(
+    let fill_bounds = color_bounds(&rgb, &alpha, width, fill).ok_or_else(|| {
+        C6ProofError::new(
+            "pdf-filter-image",
+            "the dominant State fill must have a pixel extent",
+        )
+    })?;
+    let shadow_bounds =
+        color_bounds(&rgb, &alpha, width, contract.quantized_shadow).ok_or_else(|| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                "the final PDF image must contain the quantized hard shadow",
+            )
+        })?;
+    c6_ensure!(
+        "pdf-filter-image",
         count_color(&rgb, &alpha, contract.quantized_shadow) >= pixel_count / 20,
         "the final PDF image must contain a substantial hard-shadow region"
     );
-    assert!(shadow_bounds.contains(fill_bounds));
+    c6_ensure!(
+        "pdf-filter-image",
+        shadow_bounds.contains(fill_bounds),
+        "the hard-shadow extent must contain the ordinal fill extent"
+    );
 
-    let left = fill_bounds.min_x - shadow_bounds.min_x;
-    let top = fill_bounds.min_y - shadow_bounds.min_y;
-    let right = shadow_bounds.max_x - fill_bounds.max_x;
-    let bottom = shadow_bounds.max_y - fill_bounds.max_y;
-    assert_near(left, contract.border_width_px, 2, "left border extent");
-    assert_near(top, contract.border_width_px, 2, "top border extent");
+    let left = fill_bounds
+        .min_x
+        .checked_sub(shadow_bounds.min_x)
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "invalid left shadow extent"))?;
+    let top = fill_bounds
+        .min_y
+        .checked_sub(shadow_bounds.min_y)
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "invalid top shadow extent"))?;
+    let right = shadow_bounds
+        .max_x
+        .checked_sub(fill_bounds.max_x)
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "invalid right shadow extent"))?;
+    let bottom = shadow_bounds
+        .max_y
+        .checked_sub(fill_bounds.max_y)
+        .ok_or_else(|| C6ProofError::new("pdf-filter-image", "invalid bottom shadow extent"))?;
+    ensure_near(left, contract.border_width_px, 2, "left border extent")?;
+    ensure_near(top, contract.border_width_px, 2, "top border extent")?;
     let directional_tolerance = contract.border_width_px.max(2) / 3 + 1;
-    assert_near(
+    ensure_near(
         right,
         contract.border_width_px + contract.shadow_offset_x_px,
         directional_tolerance,
         "right hard-shadow extent",
-    );
-    assert_near(
+    )?;
+    ensure_near(
         bottom,
         contract.border_width_px + contract.shadow_offset_y_px,
         directional_tolerance,
         "bottom hard-shadow extent",
+    )?;
+    c6_ensure!(
+        "pdf-filter-image",
+        right > left && bottom > top,
+        "directional hard-shadow extents must exceed the opposite border extents"
     );
-    assert!(right > left && bottom > top);
 
-    assert!(
+    c6_ensure!(
+        "pdf-filter-image",
         !pixel_is_effectively_opaque_color(
             &rgb,
             &alpha,
@@ -1326,71 +1464,99 @@ fn assert_filtered_state_image(
         .position(|x| {
             pixel_is_effectively_opaque_color(&rgb, &alpha, width, x, fill_bounds.min_y, fill)
         })
-        .expect("the rounded State top edge must contain the ordinal fill");
-    assert!(top_row_gap > 0);
-    assert!(top_row_gap <= contract.corner_radius_px.max(1) + 1);
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                "the rounded State top edge must contain the ordinal fill",
+            )
+        })?;
+    c6_ensure!(
+        "pdf-filter-image",
+        top_row_gap > 0 && top_row_gap <= contract.corner_radius_px.max(1) + 1,
+        "rounded State top-row inset must be between 1 and {} pixels, found {top_row_gap}",
+        contract.corner_radius_px.max(1) + 1
+    );
 
-    FilteredStateImage {
+    Ok(FilteredStateImage {
         fill,
         width,
         height,
         visible_bounds,
-    }
+    })
 }
 
-fn assert_image_dictionary(stream: &Stream, color_space: &[u8]) {
-    assert_eq!(
+fn validate_image_dictionary(stream: &Stream, color_space: &[u8]) -> C6ProofResult<()> {
+    let image_name = |key: &'static [u8]| {
         stream
             .dict
-            .get(b"Type")
+            .get(key)
             .and_then(Object::as_name)
-            .expect("PDF image XObject type"),
-        b"XObject"
+            .map_err(|error| {
+                C6ProofError::new(
+                    "pdf-filter-image",
+                    format!("PDF image dictionary key {key:?} must be a name: {error}"),
+                )
+            })
+    };
+    c6_ensure!(
+        "pdf-filter-image",
+        image_name(b"Type")? == b"XObject",
+        "PDF image Type must be XObject"
     );
-    assert_eq!(
-        stream
-            .dict
-            .get(b"Subtype")
-            .and_then(Object::as_name)
-            .expect("PDF image XObject subtype"),
-        b"Image"
+    c6_ensure!(
+        "pdf-filter-image",
+        image_name(b"Subtype")? == b"Image",
+        "PDF image Subtype must be Image"
     );
-    assert_eq!(
-        stream
-            .dict
-            .get(b"ColorSpace")
-            .and_then(Object::as_name)
-            .expect("PDF image color space"),
+    c6_ensure!(
+        "pdf-filter-image",
+        image_name(b"ColorSpace")? == color_space,
+        "PDF image ColorSpace must be {:?}",
         color_space
     );
-    assert_eq!(
-        stream
-            .dict
-            .get(b"BitsPerComponent")
-            .and_then(Object::as_i64)
-            .expect("PDF image bits per component"),
-        8
+    let bits = stream
+        .dict
+        .get(b"BitsPerComponent")
+        .and_then(Object::as_i64)
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("PDF image BitsPerComponent must be an integer: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-filter-image",
+        bits == 8,
+        "PDF image BitsPerComponent must be 8, found {bits}"
     );
-    assert_eq!(
-        stream
-            .dict
-            .get(b"Filter")
-            .and_then(Object::as_name)
-            .expect("PDF image stream filter"),
-        b"FlateDecode"
+    c6_ensure!(
+        "pdf-filter-image",
+        image_name(b"Filter")? == b"FlateDecode",
+        "PDF image Filter must be FlateDecode"
     );
+    Ok(())
 }
 
-fn positive_dimension(stream: &Stream, key: &[u8]) -> usize {
+fn positive_dimension(stream: &Stream, key: &[u8]) -> C6ProofResult<usize> {
     let value = stream
         .dict
         .get(key)
         .and_then(Object::as_i64)
-        .unwrap_or_else(|error| panic!("invalid PDF image dimension {key:?}: {error}"));
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("invalid PDF image dimension {key:?}: {error}"),
+            )
+        })?;
     usize::try_from(value)
         .ok()
         .filter(|value| *value > 0)
-        .expect("PDF image dimensions must be positive")
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "pdf-filter-image",
+                format!("PDF image dimension {key:?} must be positive, found {value}"),
+            )
+        })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1512,11 +1678,13 @@ fn rgb_from_slice(pixel: &[u8]) -> Rgb {
     }
 }
 
-fn assert_near(actual: usize, expected: usize, tolerance: usize, label: &str) {
-    assert!(
+fn ensure_near(actual: usize, expected: usize, tolerance: usize, label: &str) -> C6ProofResult<()> {
+    c6_ensure!(
+        "pdf-filter-image",
         actual.abs_diff(expected) <= tolerance,
         "{label} must be {expected}px +/- {tolerance}px, found {actual}px"
     );
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -2009,82 +2177,118 @@ fn collect_pdf_text_shows(
     Ok(shows)
 }
 
-fn assert_embedded_font(document: &Document, page_id: ObjectId, expected_family: &str) -> Vec<u8> {
-    let fonts = document
-        .get_page_fonts(page_id)
-        .expect("read the final C6 PDF page fonts");
-    assert_eq!(fonts.len(), 1, "the C6 PDF must use one admitted font face");
-    let (font_resource, font) = fonts.iter().next().expect("the C6 PDF font");
-    assert_eq!(
-        font.get(b"Subtype")
-            .and_then(Object::as_name)
-            .expect("the C6 PDF font subtype"),
-        b"Type0"
+fn prove_embedded_font(
+    document: &Document,
+    page_id: ObjectId,
+    expected_family: &str,
+) -> C6ProofResult<Vec<u8>> {
+    let fonts = document.get_page_fonts(page_id).map_err(|error| {
+        C6ProofError::new(
+            "pdf-font",
+            format!("read the final C6 PDF page fonts: {error}"),
+        )
+    })?;
+    c6_ensure!(
+        "pdf-font",
+        fonts.len() == 1,
+        "the C6 PDF must use one admitted font face, found {}",
+        fonts.len()
+    );
+    let (font_resource, font) = fonts
+        .iter()
+        .next()
+        .ok_or_else(|| C6ProofError::new("pdf-font", "the C6 PDF font is missing"))?;
+    let subtype = font
+        .get(b"Subtype")
+        .and_then(Object::as_name)
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("the C6 PDF font subtype must be a name: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-font",
+        subtype == b"Type0",
+        "the C6 PDF font subtype must be Type0, found {:?}",
+        subtype
     );
     let base_font = font
         .get(b"BaseFont")
         .and_then(Object::as_name)
-        .expect("the C6 PDF Type0 BaseFont");
-    assert!(
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("the C6 PDF Type0 BaseFont must be a name: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-font",
         String::from_utf8_lossy(base_font).contains(expected_family),
-        "the final PDF BaseFont must identify the admitted fixture family"
+        "the final PDF BaseFont {:?} must identify the admitted fixture family {expected_family}",
+        base_font
     );
 
     let descendants = font
         .get_deref(b"DescendantFonts", document)
         .and_then(Object::as_array)
-        .expect("the C6 PDF descendant font array");
-    assert_eq!(descendants.len(), 1);
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("read the C6 PDF descendant font array: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-font",
+        descendants.len() == 1,
+        "the C6 PDF must contain one descendant font, found {}",
+        descendants.len()
+    );
+    let descendant_reference = descendants
+        .first()
+        .ok_or_else(|| C6ProofError::new("pdf-font", "the C6 PDF descendant font is missing"))?;
     let (_, descendant) = document
-        .dereference(&descendants[0])
-        .expect("dereference the C6 PDF descendant font");
+        .dereference(descendant_reference)
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("dereference the C6 PDF descendant font: {error}"),
+            )
+        })?;
     let descriptor = descendant
         .as_dict()
         .and_then(|font| font.get_deref(b"FontDescriptor", document))
         .and_then(Object::as_dict)
-        .expect("read the C6 PDF font descriptor");
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("read the C6 PDF font descriptor: {error}"),
+            )
+        })?;
     let font_file = descriptor
         .get_deref(b"FontFile2", document)
         .and_then(Object::as_stream)
-        .expect("the final C6 PDF must embed its TrueType font subset");
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("the final C6 PDF must embed its TrueType font subset: {error}"),
+            )
+        })?;
     let embedded_font = font_file
         .decompressed_content_with_limit(MAX_FONT_BYTES)
-        .expect("decode the bounded C6 PDF font subset");
-    assert!(embedded_font.len() > 1024);
-    font_resource.clone()
-}
-
-fn applied_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-    BTreeMap::from([
-        (
-            ReferenceThemeMechanism::CanvasSolid,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::CssFilter,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::FontStack,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::NthChildSelector,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::RoundedCorners,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::StrokeStyling,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::ThemeVariables,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-    ])
+        .map_err(|error| {
+            C6ProofError::new(
+                "pdf-font",
+                format!("decode the bounded C6 PDF font subset: {error}"),
+            )
+        })?;
+    c6_ensure!(
+        "pdf-font",
+        embedded_font.len() > 1024,
+        "the embedded C6 PDF font subset must exceed 1024 bytes, found {}",
+        embedded_font.len()
+    );
+    Ok(font_resource.clone())
 }
 
 fn srgb_u8_linear_roundtrip(channel: u8) -> u8 {
@@ -2106,6 +2310,8 @@ fn srgb_u8_linear_roundtrip(channel: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::{Compression, write::ZlibEncoder};
+    use std::io::Write;
 
     const RED: Rgb = Rgb {
         red: 255,
@@ -2122,6 +2328,66 @@ mod tests {
         green: 0,
         blue: 0,
     };
+
+    fn flate_bomb(target: usize) -> Vec<u8> {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+        let zeros = [0u8; 4 * 1024];
+        let mut remaining = target;
+        while remaining > 0 {
+            let chunk = remaining.min(zeros.len());
+            encoder
+                .write_all(&zeros[..chunk])
+                .expect("compress bounded test payload");
+            remaining -= chunk;
+        }
+        encoder.finish().expect("finish bounded test payload")
+    }
+
+    fn xref_stream_bomb_pdf(bomb: &[u8]) -> Vec<u8> {
+        let mut pdf = Vec::new();
+        pdf.extend_from_slice(b"%PDF-1.5\n");
+        let object_offset = pdf.len();
+        pdf.extend_from_slice(b"1 0 obj\n");
+        pdf.extend_from_slice(
+            format!(
+                "<< /Type /XRef /Size 1 /W [1 1 1] /Root 1 0 R /Filter /FlateDecode /Length {} >>\n",
+                bomb.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(b"stream\n");
+        pdf.extend_from_slice(bomb);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+        pdf.extend_from_slice(format!("startxref\n{object_offset}\n%%EOF").as_bytes());
+        pdf
+    }
+
+    #[test]
+    fn pdf_loader_rejects_load_time_decompression_bombs() {
+        let pdf = xref_stream_bomb_pdf(&flate_bomb(16 * 1024));
+
+        let error = load_pdf_artifact_with_limit(&pdf, 1024)
+            .expect_err("load-time decompression must honor the configured bound");
+
+        assert_eq!(error.stage, "pdf-artifact");
+        assert!(
+            error.detail.contains("decompressed output exceeded")
+                && error.detail.contains("1024-byte limit"),
+            "unexpected decompression error: {error}"
+        );
+    }
+
+    #[test]
+    fn malformed_pdf_artifact_returns_structured_parse_error() {
+        let mut pdf = b"%PDF-1.7\n".to_vec();
+        pdf.resize(1030, b'x');
+        pdf.extend_from_slice(b"\nstartxref\n0\n%%EOF");
+
+        let error = load_pdf_artifact(&pdf).expect_err("a malformed PDF must fail closed");
+
+        assert_eq!(error.stage, "pdf-artifact");
+        assert!(!error.detail.is_empty());
+    }
 
     #[test]
     fn state_placement_binding_rejects_clip_that_crops_filter_shadow() {

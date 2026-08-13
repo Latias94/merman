@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::io::Cursor;
 
-use image::ImageFormat;
-use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
+use image::{ColorType, ImageDecoder, ImageFormat, ImageReader, Limits};
+use merman_export::{DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterPlan};
 
-use super::C6ObservedMechanismDisposition;
+use super::{BrutalistStateFixtureContract, C6ProofError, C6ProofResult};
 
 const STATE_IDS: [&str; 4] = ["Ready", "Review", "Done", "Archive"];
 const MIN_PNG_CANVAS_COVERAGE: f64 = 0.78;
@@ -24,85 +24,69 @@ const MAX_JPEG_P99_CHANNEL_DELTA: u8 = 48;
 const MIN_JPEG_MASK_PRECISION: f64 = 0.72;
 const MIN_JPEG_MASK_RECALL: f64 = 0.76;
 const MIN_JPEG_MASK_IOU: f64 = 0.62;
+const MAX_RASTER_ARTIFACT_OVERHEAD_BYTES: usize = 1024 * 1024;
 
 pub(crate) struct PngArtifactProof {
+    contract: BrutalistStateVisualContract,
     geometry: StateRasterGeometry,
     raster: RasterImage,
-    mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
 }
 
 impl PngArtifactProof {
     pub(crate) fn target_proof(&self, bytes: &[u8]) -> super::C6TargetProof {
-        super::C6TargetProof::brutalist_state_png(bytes, self.mechanisms.clone())
+        super::C6TargetProof::brutalist_state_png(
+            bytes,
+            super::brutalist_state_applied_mechanisms(),
+        )
     }
 }
 
 pub(crate) fn prove_brutalist_state_png(
-    input: &ReferenceThemeInput,
+    fixture: &BrutalistStateFixtureContract<'_>,
     sealed_svg: &str,
     bytes: &[u8],
-) -> PngArtifactProof {
-    let contract = BrutalistStateVisualContract::from_fixture(input);
-    let geometry = StateRasterGeometry::from_sealed_svg(sealed_svg);
-    let raster = RasterImage::decode_png(bytes);
-    assert_eq!(geometry.nodes.len(), contract.nodes.len());
-    assert_brutalist_state_raster(&contract, &geometry, &raster, 0);
+    raster_plan: RasterPlan,
+) -> C6ProofResult<PngArtifactProof> {
+    let contract = BrutalistStateVisualContract::from_fixture(fixture)?;
+    let geometry = StateRasterGeometry::from_sealed_svg(sealed_svg)?;
+    let raster = RasterImage::decode_png(bytes, raster_plan)?;
+    c6_ensure!(
+        "raster-geometry",
+        geometry.nodes.len() == contract.nodes.len(),
+        "State geometry node count must match the visual contract; geometry={}, contract={}",
+        geometry.nodes.len(),
+        contract.nodes.len()
+    );
+    prove_brutalist_state_raster(&contract, &geometry, &raster, 0)?;
 
-    PngArtifactProof {
+    Ok(PngArtifactProof {
+        contract,
         geometry,
         raster,
-        mechanisms: applied_mechanisms(),
-    }
+    })
 }
 
 pub(crate) fn prove_brutalist_state_jpeg(
-    input: &ReferenceThemeInput,
-    sealed_svg: &str,
     bytes: &[u8],
+    raster_plan: RasterPlan,
     png: &PngArtifactProof,
-) -> super::C6TargetProof {
-    let contract = BrutalistStateVisualContract::from_fixture(input);
-    let geometry = StateRasterGeometry::from_sealed_svg(sealed_svg);
-    assert_eq!(geometry, png.geometry);
-    let raster = RasterImage::decode_jpeg(bytes);
-    assert_eq!(raster.width, png.raster.width);
-    assert_eq!(raster.height, png.raster.height);
-    assert_brutalist_state_raster(&contract, &geometry, &raster, 18);
-    assert_jpeg_tracks_png(&raster, &png.raster, &contract, &geometry);
-    super::C6TargetProof::brutalist_state_jpeg(bytes, applied_mechanisms())
-}
-
-fn applied_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-    BTreeMap::from([
-        (
-            ReferenceThemeMechanism::CanvasSolid,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::CssFilter,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::FontStack,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::NthChildSelector,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::RoundedCorners,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::StrokeStyling,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-        (
-            ReferenceThemeMechanism::ThemeVariables,
-            C6ObservedMechanismDisposition::Applied,
-        ),
-    ])
+) -> C6ProofResult<super::C6TargetProof> {
+    let raster = RasterImage::decode_jpeg(bytes, raster_plan)?;
+    c6_ensure!(
+        "raster-geometry",
+        raster.width == png.raster.width && raster.height == png.raster.height,
+        "JPEG and PNG dimensions must match; jpeg={}x{}, png={}x{}",
+        raster.width,
+        raster.height,
+        png.raster.width,
+        png.raster.height
+    );
+    prove_brutalist_state_raster(&png.contract, &png.geometry, &raster, 18)?;
+    prove_jpeg_tracks_png(&raster, &png.raster, &png.contract, &png.geometry)?;
+    Ok(super::C6TargetProof::brutalist_state_jpeg(
+        bytes,
+        super::brutalist_state_applied_mechanisms(),
+    ))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,18 +103,48 @@ impl Rgb {
         blue: u8::MAX,
     };
 
-    fn parse_hex(value: &str) -> Self {
-        let hex = value
-            .strip_prefix('#')
-            .filter(|hex| hex.len() == 6)
-            .unwrap_or_else(|| {
-                panic!("the C6 raster proof requires a six-digit hex color, got {value}")
-            });
-        Self {
-            red: u8::from_str_radix(&hex[0..2], 16).expect("valid red channel"),
-            green: u8::from_str_radix(&hex[2..4], 16).expect("valid green channel"),
-            blue: u8::from_str_radix(&hex[4..6], 16).expect("valid blue channel"),
-        }
+    fn parse_hex(value: &str) -> C6ProofResult<Self> {
+        let Some(hex) = value.strip_prefix('#') else {
+            return Err(C6ProofError::new(
+                "raster-contract",
+                format!("expected a six-digit hex color, got {value}"),
+            ));
+        };
+        let bytes = hex.as_bytes();
+        let [
+            red_high,
+            red_low,
+            green_high,
+            green_low,
+            blue_high,
+            blue_low,
+        ] = bytes
+        else {
+            return Err(C6ProofError::new(
+                "raster-contract",
+                format!("expected a six-digit hex color, got {value}"),
+            ));
+        };
+        let parse_channel = |high: u8, low: u8, name| {
+            let digits = [high, low];
+            let digits = std::str::from_utf8(&digits).map_err(|error| {
+                C6ProofError::new(
+                    "raster-contract",
+                    format!("invalid {name} channel in {value}: {error}"),
+                )
+            })?;
+            u8::from_str_radix(digits, 16).map_err(|error| {
+                C6ProofError::new(
+                    "raster-contract",
+                    format!("invalid {name} channel in {value}: {error}"),
+                )
+            })
+        };
+        Ok(Self {
+            red: parse_channel(*red_high, *red_low, "red")?,
+            green: parse_channel(*green_high, *green_low, "green")?,
+            blue: parse_channel(*blue_high, *blue_low, "blue")?,
+        })
     }
 
     fn linear_rgb_roundtrip(self) -> Self {
@@ -164,28 +178,27 @@ struct BrutalistStateVisualContract {
 }
 
 impl BrutalistStateVisualContract {
-    fn from_fixture(input: &ReferenceThemeInput) -> Self {
-        let tokens = input.tokens().expect("Brutalist requires typed tokens");
-        let node_style = input
-            .node_style()
-            .expect("Brutalist requires a typed State node style");
-        let border = node_style
-            .border()
-            .expect("Brutalist requires a node border");
-        let shadow = node_style
-            .shadow()
-            .expect("Brutalist requires a hard shadow");
-        assert_eq!(shadow.blur_px(), 0);
-        assert_eq!(shadow.spread_px(), 0);
-        assert!(shadow.offset_x_px() > 0 && shadow.offset_y_px() > 0);
-        let palette = match input.semantic_rules() {
-            [ReferenceSemanticRule::OrdinalPalette { colors, .. }] => colors,
-            _ => panic!("the C6 raster proof requires one State ordinal palette"),
-        };
-        assert_eq!(palette.len(), 3);
-        let shadow = Rgb::parse_hex(shadow.color());
+    fn from_fixture(fixture: &BrutalistStateFixtureContract<'_>) -> C6ProofResult<Self> {
+        let tokens = fixture.tokens;
+        let border = fixture.border;
+        let shadow = fixture.shadow;
+        c6_ensure!(
+            "raster-contract",
+            shadow.offset_x_px() > 0 && shadow.offset_y_px() > 0,
+            "Brutalist raster proof requires positive hard-shadow offsets; x={}, y={}",
+            shadow.offset_x_px(),
+            shadow.offset_y_px()
+        );
+        let palette = fixture.palette_colors;
+        let shadow_offset_x = f64::from(shadow.offset_x_px());
+        let shadow_offset_y = f64::from(shadow.offset_y_px());
+        let shadow = Rgb::parse_hex(shadow.color())?;
         let quantized_shadow = shadow.linear_rgb_roundtrip();
-        assert_ne!(shadow, quantized_shadow);
+        c6_ensure!(
+            "raster-contract",
+            shadow != quantized_shadow,
+            "hard-shadow color must produce a distinct filtered quantization candidate"
+        );
         for other in [
             tokens.background(),
             tokens.surface(),
@@ -196,47 +209,31 @@ impl BrutalistStateVisualContract {
         .into_iter()
         .chain(palette.iter().map(String::as_str))
         {
-            assert_ne!(Rgb::parse_hex(other), quantized_shadow);
+            c6_ensure!(
+                "raster-contract",
+                Rgb::parse_hex(other)? != quantized_shadow,
+                "hard-shadow quantization candidate must not collide with {other}"
+            );
         }
 
-        Self {
-            canvas: Rgb::parse_hex(tokens.background()),
-            text: Rgb::parse_hex(tokens.text()),
-            border: Rgb::parse_hex(border.color()),
+        Ok(Self {
+            canvas: Rgb::parse_hex(tokens.background())?,
+            text: Rgb::parse_hex(tokens.text())?,
+            border: Rgb::parse_hex(border.color())?,
             border_width: f64::from(border.width_px()),
-            radius: f64::from(
-                node_style
-                    .corner_radius_px()
-                    .expect("Brutalist requires rounded State nodes"),
-            ),
+            radius: f64::from(fixture.radius_px),
             shadow,
             quantized_shadow,
-            shadow_offset_x: f64::from(shadow_offset_x(input)),
-            shadow_offset_y: f64::from(shadow_offset_y(input)),
+            shadow_offset_x,
+            shadow_offset_y,
             nodes: vec![
-                NodeVisualContract::new(STATE_IDS[0], &palette[0]),
-                NodeVisualContract::new(STATE_IDS[1], &palette[1]),
-                NodeVisualContract::new(STATE_IDS[2], &palette[2]),
-                NodeVisualContract::new(STATE_IDS[3], &palette[0]),
+                NodeVisualContract::new(STATE_IDS[0], &palette[0])?,
+                NodeVisualContract::new(STATE_IDS[1], &palette[1])?,
+                NodeVisualContract::new(STATE_IDS[2], &palette[2])?,
+                NodeVisualContract::new(STATE_IDS[3], &palette[0])?,
             ],
-        }
+        })
     }
-}
-
-fn shadow_offset_x(input: &ReferenceThemeInput) -> i16 {
-    input
-        .node_style()
-        .and_then(|style| style.shadow())
-        .expect("Brutalist hard shadow")
-        .offset_x_px()
-}
-
-fn shadow_offset_y(input: &ReferenceThemeInput) -> i16 {
-    input
-        .node_style()
-        .and_then(|style| style.shadow())
-        .expect("Brutalist hard shadow")
-        .offset_y_px()
 }
 
 #[derive(Debug)]
@@ -246,11 +243,11 @@ struct NodeVisualContract {
 }
 
 impl NodeVisualContract {
-    fn new(id: &'static str, fill: &str) -> Self {
-        Self {
+    fn new(id: &'static str, fill: &str) -> C6ProofResult<Self> {
+        Ok(Self {
             id,
-            fill: Rgb::parse_hex(fill),
-        }
+            fill: Rgb::parse_hex(fill)?,
+        })
     }
 }
 
@@ -288,14 +285,23 @@ impl Rect {
         }
     }
 
-    fn inset(self, amount: f64) -> Self {
-        assert!(self.width > amount * 2.0 && self.height > amount * 2.0);
-        Self {
+    fn inset(self, amount: f64) -> C6ProofResult<Self> {
+        c6_ensure!(
+            "raster-geometry",
+            amount.is_finite()
+                && amount >= 0.0
+                && self.width > amount * 2.0
+                && self.height > amount * 2.0,
+            "cannot inset rect {}x{} by {amount}",
+            self.width,
+            self.height
+        );
+        Ok(Self {
             left: self.left + amount,
             top: self.top + amount,
             width: self.width - amount * 2.0,
             height: self.height - amount * 2.0,
-        }
+        })
     }
 
     fn contains(self, x: f64, y: f64) -> bool {
@@ -310,11 +316,22 @@ struct StateRasterGeometry {
 }
 
 impl StateRasterGeometry {
-    fn from_sealed_svg(svg: &str) -> Self {
-        let document = roxmltree::Document::parse(svg).expect("parse the sealed C6 SVG geometry");
+    fn from_sealed_svg(svg: &str) -> C6ProofResult<Self> {
+        let document = roxmltree::Document::parse(svg).map_err(|error| {
+            C6ProofError::new(
+                "raster-geometry",
+                format!("failed to parse sealed C6 SVG geometry: {error}"),
+            )
+        })?;
         let root = document.root_element();
-        let view_box = parse_view_box(root.attribute("viewBox").expect("C6 SVG viewBox"));
-        assert_eq!(root.attribute("preserveAspectRatio"), None);
+        let view_box = parse_view_box(root.attribute("viewBox").ok_or_else(|| {
+            C6ProofError::new("raster-geometry", "sealed C6 SVG is missing viewBox")
+        })?)?;
+        c6_ensure!(
+            "raster-geometry",
+            root.attribute("preserveAspectRatio").is_none(),
+            "sealed C6 SVG must not declare preserveAspectRatio"
+        );
 
         let nodes = STATE_IDS
             .into_iter()
@@ -329,8 +346,19 @@ impl StateRasterGeometry {
                                 .is_some_and(|id| id.contains(&fragment))
                     })
                     .collect::<Vec<_>>();
-                assert_eq!(groups.len(), 1, "expected one State group for {state_id}");
-                let rects = groups[0]
+                c6_ensure!(
+                    "raster-geometry",
+                    groups.len() == 1,
+                    "expected one State group for {state_id}, found {}",
+                    groups.len()
+                );
+                let group = groups.into_iter().next().ok_or_else(|| {
+                    C6ProofError::new(
+                        "raster-geometry",
+                        format!("expected one State group for {state_id}"),
+                    )
+                })?;
+                let rects = group
                     .descendants()
                     .filter(|node| {
                         node.has_tag_name("rect")
@@ -344,14 +372,25 @@ impl StateRasterGeometry {
                             })
                     })
                     .collect::<Vec<_>>();
-                assert_eq!(rects.len(), 1, "expected one State rect for {state_id}");
-                NodeGeometry {
+                c6_ensure!(
+                    "raster-geometry",
+                    rects.len() == 1,
+                    "expected one State rect for {state_id}, found {}",
+                    rects.len()
+                );
+                let rect = rects.into_iter().next().ok_or_else(|| {
+                    C6ProofError::new(
+                        "raster-geometry",
+                        format!("expected one State rect for {state_id}"),
+                    )
+                })?;
+                Ok(NodeGeometry {
                     id: state_id,
-                    rect: transformed_rect(rects[0]),
-                }
+                    rect: transformed_rect(rect)?,
+                })
             })
-            .collect();
-        Self { view_box, nodes }
+            .collect::<C6ProofResult<Vec<_>>>()?;
+        Ok(Self { view_box, nodes })
     }
 }
 
@@ -411,12 +450,16 @@ impl AffineTransform {
     }
 }
 
-fn transformed_rect(node: roxmltree::Node<'_, '_>) -> Rect {
-    let x = number_attribute(node, "x");
-    let y = number_attribute(node, "y");
-    let width = number_attribute(node, "width");
-    let height = number_attribute(node, "height");
-    assert!(width > 0.0 && height > 0.0);
+fn transformed_rect(node: roxmltree::Node<'_, '_>) -> C6ProofResult<Rect> {
+    let x = number_attribute(node, "x")?;
+    let y = number_attribute(node, "y")?;
+    let width = number_attribute(node, "width")?;
+    let height = number_attribute(node, "height")?;
+    c6_ensure!(
+        "raster-geometry",
+        width > 0.0 && height > 0.0,
+        "State geometry rect dimensions must be positive; width={width}, height={height}"
+    );
 
     let mut transform = AffineTransform::IDENTITY;
     let ancestors = node
@@ -424,91 +467,248 @@ fn transformed_rect(node: roxmltree::Node<'_, '_>) -> Rect {
         .filter_map(|ancestor| ancestor.attribute("transform"))
         .collect::<Vec<_>>();
     for raw in ancestors.into_iter().rev() {
-        let parsed = raw
-            .parse::<svgtypes::Transform>()
-            .unwrap_or_else(|error| panic!("invalid C6 geometry transform {raw:?}: {error}"));
+        let parsed = raw.parse::<svgtypes::Transform>().map_err(|error| {
+            C6ProofError::new(
+                "raster-geometry",
+                format!("invalid C6 geometry transform {raw:?}: {error}"),
+            )
+        })?;
         transform = transform.multiply(AffineTransform::from_svg(parsed));
     }
-    assert!(transform.b.abs() <= 1e-9 && transform.c.abs() <= 1e-9);
-    assert!(transform.a > 0.0 && transform.d > 0.0);
+    c6_ensure!(
+        "raster-geometry",
+        transform.b.abs() <= 1e-9 && transform.c.abs() <= 1e-9,
+        "State geometry transform may not skew or rotate; b={}, c={}",
+        transform.b,
+        transform.c
+    );
+    c6_ensure!(
+        "raster-geometry",
+        transform.a > 0.0 && transform.d > 0.0,
+        "State geometry transform scale must be positive; a={}, d={}",
+        transform.a,
+        transform.d
+    );
     let (left, top) = transform.apply(x, y);
     let (right, bottom) = transform.apply(x + width, y + height);
-    Rect {
+    Ok(Rect {
         left,
         top,
         width: right - left,
         height: bottom - top,
-    }
+    })
 }
 
-fn parse_view_box(value: &str) -> Rect {
+fn parse_view_box(value: &str) -> C6ProofResult<Rect> {
     let values = value
         .split_ascii_whitespace()
-        .map(|part| part.parse::<f64>().expect("finite C6 viewBox number"))
-        .collect::<Vec<_>>();
-    assert_eq!(values.len(), 4);
-    assert!(values.iter().all(|value| value.is_finite()));
-    assert!(values[2] > 0.0 && values[3] > 0.0);
-    Rect {
-        left: values[0],
-        top: values[1],
-        width: values[2],
-        height: values[3],
-    }
+        .map(|part| {
+            part.parse::<f64>().map_err(|error| {
+                C6ProofError::new(
+                    "raster-geometry",
+                    format!("invalid C6 viewBox number {part:?}: {error}"),
+                )
+            })
+        })
+        .collect::<C6ProofResult<Vec<_>>>()?;
+    let [left, top, width, height] = values.as_slice() else {
+        return Err(C6ProofError::new(
+            "raster-geometry",
+            format!(
+                "C6 viewBox must contain four numbers, found {}",
+                values.len()
+            ),
+        ));
+    };
+    c6_ensure!(
+        "raster-geometry",
+        values.iter().all(|value| value.is_finite()),
+        "C6 viewBox numbers must be finite"
+    );
+    c6_ensure!(
+        "raster-geometry",
+        *width > 0.0 && *height > 0.0,
+        "C6 viewBox dimensions must be positive; width={}, height={}",
+        width,
+        height
+    );
+    Ok(Rect {
+        left: *left,
+        top: *top,
+        width: *width,
+        height: *height,
+    })
 }
 
-fn number_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> f64 {
-    node.attribute(name)
-        .unwrap_or_else(|| panic!("missing {name} on C6 geometry node"))
-        .parse()
-        .unwrap_or_else(|error| panic!("invalid {name} on C6 geometry node: {error}"))
+fn number_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<f64> {
+    let raw = node.attribute(name).ok_or_else(|| {
+        C6ProofError::new(
+            "raster-geometry",
+            format!("missing {name} on C6 geometry node"),
+        )
+    })?;
+    let value = raw.parse::<f64>().map_err(|error| {
+        C6ProofError::new(
+            "raster-geometry",
+            format!("invalid {name} on C6 geometry node: {error}"),
+        )
+    })?;
+    c6_ensure!(
+        "raster-geometry",
+        value.is_finite(),
+        "{name} on C6 geometry node must be finite"
+    );
+    Ok(value)
 }
 
-#[derive(Clone)]
-struct RasterImage {
+#[derive(Clone, Debug)]
+pub(super) struct RasterImage {
     width: u32,
     height: u32,
-    pixels: Vec<[u8; 4]>,
+    pixels: Vec<u8>,
 }
 
 impl RasterImage {
-    fn decode_png(bytes: &[u8]) -> Self {
-        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-        let mut reader = decoder.read_info().expect("decode C6 PNG header");
-        let mut buffer = vec![
-            0;
-            reader
-                .output_buffer_size()
-                .expect("bounded C6 PNG output buffer")
-        ];
-        let frame = reader.next_frame(&mut buffer).expect("decode C6 PNG frame");
-        assert_eq!(frame.color_type, png::ColorType::Rgba);
-        assert_eq!(frame.bit_depth, png::BitDepth::Eight);
-        let pixels = buffer[..frame.buffer_size()]
-            .chunks_exact(4)
-            .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
-            .collect();
-        Self {
+    pub(super) fn decode_png(bytes: &[u8], plan: RasterPlan) -> C6ProofResult<Self> {
+        let planned = PlannedRaster::new(plan, 4, "png-decode")?;
+        planned.require_bounded_artifact(bytes, "png-decode")?;
+        let decoder_limit = planned
+            .decoded_bytes
+            .checked_add(MAX_RASTER_ARTIFACT_OVERHEAD_BYTES)
+            .ok_or_else(|| C6ProofError::new("png-decode", "PNG decoder limit overflowed"))?;
+        let decoder = png::Decoder::new_with_limits(
+            Cursor::new(bytes),
+            png::Limits {
+                bytes: decoder_limit,
+            },
+        );
+        let mut reader = decoder.read_info().map_err(|error| {
+            C6ProofError::new(
+                "png-decode",
+                format!("failed to decode C6 PNG header: {error}"),
+            )
+        })?;
+        let header = reader.info();
+        planned.require_dimensions(header.width, header.height, "png-decode")?;
+        c6_ensure!(
+            "png-decode",
+            header.color_type == png::ColorType::Rgba && header.bit_depth == png::BitDepth::Eight,
+            "C6 PNG header must describe 8-bit RGBA, got {:?} {:?}",
+            header.color_type,
+            header.bit_depth
+        );
+        let output_buffer_size = reader.output_buffer_size().ok_or_else(|| {
+            C6ProofError::new("png-decode", "C6 PNG output buffer size is unbounded")
+        })?;
+        c6_ensure!(
+            "png-decode",
+            output_buffer_size == planned.decoded_bytes,
+            "C6 PNG output buffer does not match its frozen raster plan; decoded={output_buffer_size}, planned={}",
+            planned.decoded_bytes
+        );
+        let mut buffer = zeroed_bytes(planned.decoded_bytes, "png-decode")?;
+        let frame = reader.next_frame(&mut buffer).map_err(|error| {
+            C6ProofError::new(
+                "png-decode",
+                format!("failed to decode C6 PNG frame: {error}"),
+            )
+        })?;
+        planned.require_dimensions(frame.width, frame.height, "png-decode")?;
+        c6_ensure!(
+            "png-decode",
+            frame.color_type == png::ColorType::Rgba && frame.bit_depth == png::BitDepth::Eight,
+            "C6 PNG must decode as 8-bit RGBA, got {:?} {:?}",
+            frame.color_type,
+            frame.bit_depth
+        );
+        let frame_buffer_size = frame.buffer_size();
+        c6_ensure!(
+            "png-decode",
+            frame_buffer_size == planned.decoded_bytes,
+            "decoded C6 PNG frame does not match its frozen raster plan; frame={frame_buffer_size}, planned={}",
+            planned.decoded_bytes
+        );
+        Ok(Self {
             width: frame.width,
             height: frame.height,
-            pixels,
-        }
+            pixels: buffer,
+        })
     }
 
-    fn decode_jpeg(bytes: &[u8]) -> Self {
-        let image = image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
-            .expect("decode final C6 JPEG")
-            .to_rgb8();
-        let (width, height) = image.dimensions();
-        let pixels = image
-            .pixels()
-            .map(|pixel| [pixel[0], pixel[1], pixel[2], u8::MAX])
-            .collect();
-        Self {
+    pub(super) fn decode_jpeg(bytes: &[u8], plan: RasterPlan) -> C6ProofResult<Self> {
+        let planned_rgb = PlannedRaster::new(plan, 3, "jpeg-decode")?;
+        let planned_rgba = PlannedRaster::new(plan, 4, "jpeg-decode")?;
+        planned_rgba.require_bounded_artifact(bytes, "jpeg-decode")?;
+        c6_ensure!(
+            "jpeg-decode",
+            bytes.starts_with(&[0xff, 0xd8, 0xff]) && bytes.ends_with(&[0xff, 0xd9]),
+            "C6 JPEG must retain its SOI and EOI envelope"
+        );
+
+        let mut limits = Limits::default();
+        limits.max_image_width = Some(DEFAULT_MAX_RASTER_SIDE_LENGTH);
+        limits.max_image_height = Some(DEFAULT_MAX_RASTER_SIDE_LENGTH);
+        limits.max_alloc = Some(
+            u64::try_from(planned_rgba.decoded_bytes)
+                .map_err(|error| C6ProofError::new("jpeg-decode", error.to_string()))?,
+        );
+        let mut reader = ImageReader::with_format(Cursor::new(bytes), ImageFormat::Jpeg);
+        reader.limits(limits);
+        let decoder = reader.into_decoder().map_err(|error| {
+            C6ProofError::new(
+                "jpeg-decode",
+                format!("failed to decode C6 JPEG header: {error}"),
+            )
+        })?;
+        let (width, height) = decoder.dimensions();
+        planned_rgb.require_dimensions(width, height, "jpeg-decode")?;
+        c6_ensure!(
+            "jpeg-decode",
+            decoder.color_type() == ColorType::Rgb8,
+            "C6 JPEG must decode as 8-bit RGB, got {:?}",
+            decoder.color_type()
+        );
+        c6_ensure!(
+            "jpeg-decode",
+            decoder.total_bytes()
+                == u64::try_from(planned_rgb.decoded_bytes)
+                    .map_err(|error| C6ProofError::new("jpeg-decode", error.to_string()))?,
+            "C6 JPEG decoded byte count does not match its frozen raster plan"
+        );
+
+        let mut pixels = Vec::new();
+        pixels
+            .try_reserve_exact(planned_rgba.decoded_bytes)
+            .map_err(|error| {
+                C6ProofError::new(
+                    "jpeg-decode",
+                    format!("reserve the bounded C6 JPEG output buffer: {error}"),
+                )
+            })?;
+        pixels.resize(planned_rgb.decoded_bytes, 0);
+        decoder.read_image(&mut pixels).map_err(|error| {
+            C6ProofError::new(
+                "jpeg-decode",
+                format!("failed to decode final C6 JPEG: {error}"),
+            )
+        })?;
+        pixels.resize(planned_rgba.decoded_bytes, 0);
+        for pixel_index in (0..planned_rgb.pixel_count).rev() {
+            let source = pixel_index * 3;
+            let target = pixel_index * 4;
+            let red = pixels[source];
+            let green = pixels[source + 1];
+            let blue = pixels[source + 2];
+            pixels[target] = red;
+            pixels[target + 1] = green;
+            pixels[target + 2] = blue;
+            pixels[target + 3] = u8::MAX;
+        }
+        Ok(Self {
             width,
             height,
             pixels,
-        }
+        })
     }
 
     fn transform(&self, view_box: Rect) -> RasterTransform {
@@ -519,16 +719,14 @@ impl RasterImage {
         }
     }
 
-    fn pixel(&self, x: i32, y: i32) -> [u8; 4] {
-        assert!(x >= 0 && y >= 0);
-        let x = u32::try_from(x).expect("non-negative pixel x");
-        let y = u32::try_from(y).expect("non-negative pixel y");
-        assert!(x < self.width && y < self.height);
-        self.pixels[(y * self.width + x) as usize]
-    }
-
     fn rgb(&self, x: i32, y: i32) -> Option<Rgb> {
-        let pixel = self.pixel(x, y);
+        let x = u32::try_from(x).ok()?;
+        let y = u32::try_from(y).ok()?;
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        let index = usize::try_from(u64::from(y) * u64::from(self.width) + u64::from(x)).ok()?;
+        let pixel = self.rgba_pixel(index)?;
         (pixel[3] == u8::MAX).then_some(Rgb {
             red: pixel[0],
             green: pixel[1],
@@ -536,14 +734,97 @@ impl RasterImage {
         })
     }
 
-    #[cfg(test)]
-    fn set_rgb(&mut self, x: i32, y: i32, color: Rgb) {
-        assert!(x >= 0 && y >= 0);
-        let x = u32::try_from(x).expect("non-negative pixel x");
-        let y = u32::try_from(y).expect("non-negative pixel y");
-        assert!(x < self.width && y < self.height);
-        self.pixels[(y * self.width + x) as usize] = [color.red, color.green, color.blue, u8::MAX];
+    fn pixel_count(&self) -> usize {
+        self.pixels.len() / 4
     }
+
+    fn rgba_pixel(&self, index: usize) -> Option<[u8; 4]> {
+        let start = index.checked_mul(4)?;
+        let pixel = self.pixels.get(start..start.checked_add(4)?)?;
+        Some([pixel[0], pixel[1], pixel[2], pixel[3]])
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PlannedRaster {
+    width: u32,
+    height: u32,
+    pixel_count: usize,
+    decoded_bytes: usize,
+}
+
+impl PlannedRaster {
+    fn new(plan: RasterPlan, channels: usize, stage: &'static str) -> C6ProofResult<Self> {
+        c6_ensure!(
+            stage,
+            plan.width_px > 0 && plan.height_px > 0,
+            "the frozen raster plan must have non-zero dimensions"
+        );
+        c6_ensure!(
+            stage,
+            plan.width_px <= DEFAULT_MAX_RASTER_SIDE_LENGTH
+                && plan.height_px <= DEFAULT_MAX_RASTER_SIDE_LENGTH,
+            "the frozen raster plan exceeds the default side limit; plan={}x{}, max={DEFAULT_MAX_RASTER_SIDE_LENGTH}",
+            plan.width_px,
+            plan.height_px
+        );
+        let pixel_count = u64::from(plan.width_px)
+            .checked_mul(u64::from(plan.height_px))
+            .ok_or_else(|| C6ProofError::new(stage, "raster pixel count overflowed"))?;
+        c6_ensure!(
+            stage,
+            pixel_count <= DEFAULT_MAX_RASTER_PIXELS,
+            "the frozen raster plan exceeds the default pixel limit; plan={pixel_count}, max={DEFAULT_MAX_RASTER_PIXELS}"
+        );
+        let pixel_count = usize::try_from(pixel_count)
+            .map_err(|error| C6ProofError::new(stage, error.to_string()))?;
+        let decoded_bytes = pixel_count
+            .checked_mul(channels)
+            .ok_or_else(|| C6ProofError::new(stage, "decoded raster byte count overflowed"))?;
+        Ok(Self {
+            width: plan.width_px,
+            height: plan.height_px,
+            pixel_count,
+            decoded_bytes,
+        })
+    }
+
+    fn require_dimensions(self, width: u32, height: u32, stage: &'static str) -> C6ProofResult<()> {
+        c6_ensure!(
+            stage,
+            width == self.width && height == self.height,
+            "artifact dimensions do not match the frozen raster plan; artifact={width}x{height}, plan={}x{}",
+            self.width,
+            self.height
+        );
+        Ok(())
+    }
+
+    fn require_bounded_artifact(self, bytes: &[u8], stage: &'static str) -> C6ProofResult<()> {
+        let max_artifact_bytes = self
+            .decoded_bytes
+            .checked_add(MAX_RASTER_ARTIFACT_OVERHEAD_BYTES)
+            .ok_or_else(|| C6ProofError::new(stage, "raster artifact limit overflowed"))?;
+        c6_ensure!(
+            stage,
+            bytes.len() <= max_artifact_bytes,
+            "raster artifact exceeds the plan-bound byte limit; actual={}, max={max_artifact_bytes}",
+            bytes.len()
+        );
+        Ok(())
+    }
+}
+
+fn zeroed_bytes(len: usize, stage: &'static str) -> C6ProofResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(len).map_err(|error| {
+        C6ProofError::new(
+            stage,
+            format!("reserve the bounded raster output buffer: {error}"),
+        )
+    })?;
+    bytes.resize(len, 0);
+    Ok(bytes)
 }
 
 #[derive(Clone, Copy)]
@@ -600,41 +881,60 @@ struct PixelBounds {
     bottom: i32,
 }
 
-fn assert_brutalist_state_raster(
+fn prove_brutalist_state_raster(
     contract: &BrutalistStateVisualContract,
     geometry: &StateRasterGeometry,
     raster: &RasterImage,
     tolerance: u8,
-) {
+) -> C6ProofResult<()> {
     let transform = raster.transform(geometry.view_box);
-    assert!(transform.scale_x() >= 1.9 && transform.scale_y() >= 1.9);
-    assert!((transform.scale_x() - transform.scale_y()).abs() <= 0.02);
-    assert_canvas(contract, geometry, transform, raster, tolerance);
+    c6_ensure!(
+        "raster-geometry",
+        transform.scale_x() >= 1.9 && transform.scale_y() >= 1.9,
+        "C6 raster scale must be at least 1.9x; x={:.3}, y={:.3}",
+        transform.scale_x(),
+        transform.scale_y()
+    );
+    c6_ensure!(
+        "raster-geometry",
+        (transform.scale_x() - transform.scale_y()).abs() <= 0.02,
+        "C6 raster scale must remain uniform; x={:.3}, y={:.3}",
+        transform.scale_x(),
+        transform.scale_y()
+    );
+    prove_canvas(contract, geometry, transform, raster, tolerance)?;
 
     for (expected, actual) in contract.nodes.iter().zip(&geometry.nodes) {
-        assert_eq!(expected.id, actual.id);
-        assert_node_fill(
+        c6_ensure!(
+            "raster-geometry",
+            expected.id == actual.id,
+            "State node order must match the visual contract; expected={}, actual={}",
+            expected.id,
+            actual.id
+        );
+        prove_node_fill(
             contract,
             expected,
             actual.rect,
             transform,
             raster,
             tolerance,
-        );
-        assert_node_stroke(contract, actual.rect, transform, raster, tolerance);
-        assert_node_rounding(contract, actual.rect, transform, raster, tolerance);
-        assert_node_shadow(contract, actual.rect, transform, raster, tolerance);
-        assert_node_label_ink(contract, actual.rect, transform, raster, tolerance);
+        )?;
+        prove_node_stroke(contract, actual.rect, transform, raster, tolerance)?;
+        prove_node_rounding(contract, actual.rect, transform, raster, tolerance)?;
+        prove_node_shadow(contract, actual.rect, transform, raster, tolerance)?;
+        prove_node_label_ink(contract, actual.rect, transform, raster, tolerance)?;
     }
+    Ok(())
 }
 
-fn assert_canvas(
+fn prove_canvas(
     contract: &BrutalistStateVisualContract,
     geometry: &StateRasterGeometry,
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) {
+) -> C6ProofResult<()> {
     let exclusion =
         contract.border_width / 2.0 + contract.shadow_offset_x.max(contract.shadow_offset_y) + 1.0;
     let expanded_nodes = geometry
@@ -642,7 +942,8 @@ fn assert_canvas(
         .iter()
         .map(|node| node.rect.expanded(exclusion))
         .collect::<Vec<_>>();
-    assert_color_region_coverage(
+    prove_color_region_coverage(
+        "raster-canvas",
         raster,
         transform,
         geometry.view_box,
@@ -651,21 +952,22 @@ fn assert_canvas(
         tolerance,
         coverage_threshold(tolerance, MIN_PNG_CANVAS_COVERAGE, MIN_JPEG_CANVAS_COVERAGE),
         "canvas outside diagram nodes",
-    );
+    )
 }
 
-fn assert_node_fill(
+fn prove_node_fill(
     contract: &BrutalistStateVisualContract,
     expected: &NodeVisualContract,
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) {
+) -> C6ProofResult<()> {
     let inset = contract.border_width / 2.0 + 0.75 / transform.scale_x();
-    let interior = rect.inset(inset);
+    let interior = rect.inset(inset)?;
     let fill_candidates = filtered_color_candidates(expected.fill);
-    assert_color_region_coverage(
+    prove_color_region_coverage(
+        "raster-node-fill",
         raster,
         transform,
         interior,
@@ -677,24 +979,29 @@ fn assert_node_fill(
         tolerance,
         coverage_threshold(tolerance, MIN_PNG_FILL_COVERAGE, MIN_JPEG_FILL_COVERAGE),
         &format!("{} ordinal fill interior", expected.id),
-    );
+    )
 }
 
-fn assert_node_stroke(
+fn prove_node_stroke(
     contract: &BrutalistStateVisualContract,
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) {
+) -> C6ProofResult<()> {
     let clearance = contract.radius + contract.border_width + 1.0;
     let band_half_width = contract.border_width * 0.25;
     let horizontal_width = rect.width - clearance * 2.0;
     let vertical_height = rect.height - clearance * 2.0;
-    assert!(horizontal_width > 0.0 && vertical_height > 0.0);
+    c6_ensure!(
+        "raster-node-stroke",
+        horizontal_width > 0.0 && vertical_height > 0.0,
+        "State stroke regions must have positive spans; horizontal={horizontal_width}, vertical={vertical_height}"
+    );
     let border_candidates = filtered_color_candidates(contract.border);
     for (label, region) in stroke_regions(rect, clearance, band_half_width) {
-        assert_color_region_coverage(
+        prove_color_region_coverage(
+            "raster-node-stroke",
             raster,
             transform,
             region,
@@ -703,7 +1010,7 @@ fn assert_node_stroke(
             tolerance,
             coverage_threshold(tolerance, MIN_PNG_STROKE_COVERAGE, MIN_JPEG_STROKE_COVERAGE),
             label,
-        );
+        )?;
     }
 
     let expected_vertical_width = (contract.border_width * transform.scale_y()).round() as usize;
@@ -719,7 +1026,7 @@ fn assert_node_stroke(
                 expected_vertical_width + 4,
                 contract.border,
                 tolerance,
-            ),
+            )?,
             expected_vertical_width,
         ));
         let left = transform.point(rect.left, rect.top + rect.height * position);
@@ -731,26 +1038,28 @@ fn assert_node_stroke(
                 expected_horizontal_width + 4,
                 contract.border,
                 tolerance,
-            ),
+            )?,
             expected_horizontal_width,
         ));
     }
     let allowed_error = if tolerance == 0 { 2 } else { 3 };
     for (actual, expected) in runs {
-        assert!(
+        c6_ensure!(
+            "raster-node-stroke",
             actual.abs_diff(expected) <= allowed_error,
             "State stroke width must remain within {allowed_error}px of {expected}px, found {actual}px"
         );
     }
+    Ok(())
 }
 
-fn assert_node_rounding(
+fn prove_node_rounding(
     contract: &BrutalistStateVisualContract,
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) {
+) -> C6ProofResult<()> {
     let outer = rect.expanded(contract.border_width / 2.0);
     let outer_radius = contract.radius + contract.border_width / 2.0;
     let patch_size = outer_radius + 2.0;
@@ -786,20 +1095,23 @@ fn assert_node_rounding(
             contract.canvas,
             tolerance,
         );
-        assert!(
+        c6_ensure!(
+            "raster-node-rounding",
             coverage.inside_total >= 3 && coverage.outside_total >= 3,
             "{label} must retain enough classified pixels; inside={}, outside={}",
             coverage.inside_total,
             coverage.outside_total
         );
-        assert!(
+        c6_ensure!(
+            "raster-node-rounding",
             coverage.inside_ratio() >= threshold,
             "{label} must retain the expected occupied arc; coverage={:.3} ({}/{})",
             coverage.inside_ratio(),
             coverage.inside_matching,
             coverage.inside_total
         );
-        assert!(
+        c6_ensure!(
+            "raster-node-rounding",
             coverage.outside_ratio() >= threshold,
             "{label} must retain the expected canvas cutout; coverage={:.3} ({}/{})",
             coverage.outside_ratio(),
@@ -807,28 +1119,39 @@ fn assert_node_rounding(
             coverage.outside_total
         );
     }
+    Ok(())
 }
 
-fn assert_node_shadow(
+fn prove_node_shadow(
     contract: &BrutalistStateVisualContract,
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) {
+) -> C6ProofResult<()> {
     let accepted_shadow = [contract.shadow, contract.quantized_shadow];
     let guard = (1.25 / transform.scale_x()).max(0.6);
-    assert!(contract.shadow_offset_x > guard * 2.0);
-    assert!(contract.shadow_offset_y > guard * 2.0);
+    c6_ensure!(
+        "raster-node-shadow",
+        contract.shadow_offset_x > guard * 2.0 && contract.shadow_offset_y > guard * 2.0,
+        "hard-shadow offsets must exceed the sampling guard; x={}, y={}, guard={guard}",
+        contract.shadow_offset_x,
+        contract.shadow_offset_y
+    );
     let source = rect.expanded(contract.border_width / 2.0);
     let clearance = contract.radius + contract.border_width / 2.0 + guard;
     let vertical_span = source.height - clearance * 2.0;
     let horizontal_span = source.width - clearance * 2.0;
-    assert!(vertical_span > 0.0 && horizontal_span > 0.0);
+    c6_ensure!(
+        "raster-node-shadow",
+        vertical_span > 0.0 && horizontal_span > 0.0,
+        "hard-shadow bands must have positive spans; vertical={vertical_span}, horizontal={horizontal_span}"
+    );
     let [(right_label, right_band), (bottom_label, bottom_band)] =
         shadow_bands(contract, rect, transform);
     for (label, region) in [(right_label, right_band), (bottom_label, bottom_band)] {
-        assert_color_region_coverage(
+        prove_color_region_coverage(
+            "raster-node-shadow",
             raster,
             transform,
             region,
@@ -837,7 +1160,7 @@ fn assert_node_shadow(
             tolerance,
             coverage_threshold(tolerance, MIN_PNG_SHADOW_COVERAGE, MIN_JPEG_SHADOW_COVERAGE),
             label,
-        );
+        )?;
     }
 
     let controls = [
@@ -879,7 +1202,8 @@ fn assert_node_shadow(
         ),
     ];
     for (label, region) in controls {
-        assert_color_region_coverage(
+        prove_color_region_coverage(
+            "raster-node-shadow",
             raster,
             transform,
             region,
@@ -892,93 +1216,142 @@ fn assert_node_shadow(
                 MIN_JPEG_SHADOW_CONTROL_COVERAGE,
             ),
             label,
-        );
+        )?;
     }
+    Ok(())
 }
 
-fn assert_node_label_ink(
+fn prove_node_label_ink(
     contract: &BrutalistStateVisualContract,
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) {
-    let mask = label_ink_mask(contract, rect, transform, raster, tolerance);
+) -> C6ProofResult<()> {
+    let mask = label_ink_mask(contract, rect, transform, raster, tolerance)?;
     let ink_pixels = mask.true_count();
     let minimum_ink =
         ((MIN_LABEL_INK_PIXELS as f64 / 4.0) * transform.scale_x() * transform.scale_y()).round()
             as usize;
-    assert!(
+    c6_ensure!(
+        "raster-node-label",
         ink_pixels >= minimum_ink,
         "each final native artifact must retain structured embedded-font label ink; found {ink_pixels} pixels, expected at least {minimum_ink}"
     );
-    let bounds = mask.tight_bounds().expect("label ink bounds");
+    let bounds = mask
+        .tight_bounds()
+        .ok_or_else(|| C6ProofError::new("raster-node-label", "label ink mask is empty"))?;
     let minimum_width = (8.0 * transform.scale_x()).round() as usize;
     let minimum_height = (4.0 * transform.scale_y()).round() as usize;
-    assert!(
+    c6_ensure!(
+        "raster-node-label",
         bounds.width >= minimum_width && bounds.height >= minimum_height,
         "label ink must span at least {minimum_width}x{minimum_height}px; found {}x{}px",
         bounds.width,
         bounds.height,
     );
     let density = ink_pixels as f64 / (bounds.width * bounds.height) as f64;
-    assert!(
+    c6_ensure!(
+        "raster-node-label",
         (0.06..=0.78).contains(&density),
         "label ink density must remain glyph-like; density={density:.3}"
     );
-    assert!(
+    c6_ensure!(
+        "raster-node-label",
         mask.occupied_column_count(&bounds) >= (6.0 * transform.scale_x()).round() as usize,
         "label ink must span enough occupied columns"
     );
-    assert!(
+    c6_ensure!(
+        "raster-node-label",
         mask.occupied_row_count(&bounds) >= (3.0 * transform.scale_y()).round() as usize,
         "label ink must span enough occupied rows"
     );
+    Ok(())
 }
 
-fn assert_jpeg_tracks_png(
+fn prove_jpeg_tracks_png(
     jpeg: &RasterImage,
     png: &RasterImage,
     contract: &BrutalistStateVisualContract,
     geometry: &StateRasterGeometry,
-) {
+) -> C6ProofResult<()> {
+    c6_ensure!(
+        "jpeg-control",
+        jpeg.pixel_count() == png.pixel_count(),
+        "JPEG and PNG pixel counts must match; jpeg={}, png={}",
+        jpeg.pixel_count(),
+        png.pixel_count()
+    );
     let mut squared_error = 0.0;
     let mut delta_histogram = [0usize; 256];
-    for (jpeg_pixel, png_pixel) in jpeg.pixels.iter().zip(&png.pixels) {
-        let png_composited = composite_rgba_over(*png_pixel, Rgb::WHITE);
+    for pixel_index in 0..jpeg.pixel_count() {
+        let jpeg_pixel = jpeg
+            .rgba_pixel(pixel_index)
+            .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG pixel buffer is incomplete"))?;
+        let png_pixel = png
+            .rgba_pixel(pixel_index)
+            .ok_or_else(|| C6ProofError::new("jpeg-control", "PNG pixel buffer is incomplete"))?;
+        let png_composited = composite_rgba_over(png_pixel, Rgb::WHITE);
         for (&jpeg_channel, &png_channel) in jpeg_pixel[..3].iter().zip(&png_composited) {
             let delta = jpeg_channel.abs_diff(png_channel);
             delta_histogram[usize::from(delta)] += 1;
             squared_error += f64::from(delta) * f64::from(delta);
         }
     }
-    let channel_count = usize::try_from(jpeg.width)
-        .expect("bounded JPEG width")
-        .saturating_mul(usize::try_from(jpeg.height).expect("bounded JPEG height"))
-        .saturating_mul(3);
+    let width = usize::try_from(jpeg.width)
+        .map_err(|error| C6ProofError::new("jpeg-control", error.to_string()))?;
+    let height = usize::try_from(jpeg.height)
+        .map_err(|error| C6ProofError::new("jpeg-control", error.to_string()))?;
+    let pixels = width
+        .checked_mul(height)
+        .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG pixel count exceeds usize"))?;
+    c6_ensure!(
+        "jpeg-control",
+        pixels == jpeg.pixel_count(),
+        "JPEG dimensions must match decoded pixel count; dimensions={pixels}, decoded={}",
+        jpeg.pixel_count()
+    );
+    let channel_count = pixels
+        .checked_mul(3)
+        .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG channel count exceeds usize"))?;
+    c6_ensure!(
+        "jpeg-control",
+        channel_count > 0,
+        "JPEG control image must contain channels"
+    );
     let mean_squared_error = squared_error / channel_count as f64;
     let psnr = 10.0 * ((255.0 * 255.0) / mean_squared_error).log10();
-    assert!(
+    c6_ensure!(
+        "jpeg-control",
         psnr >= MIN_JPEG_PSNR_DB,
         "C6 JPEG must track the proved PNG; PSNR={psnr:.3}dB"
     );
-    let p99_target = (channel_count * 99).div_ceil(100);
+    let p99_target = channel_count
+        .checked_mul(99)
+        .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG p99 target exceeds usize"))?
+        .div_ceil(100);
     let mut cumulative = 0usize;
     let mut p99_delta = 0u8;
     for (delta, count) in delta_histogram.into_iter().enumerate() {
         cumulative += count;
         if cumulative >= p99_target {
-            p99_delta = u8::try_from(delta).expect("channel delta fits in u8");
+            p99_delta = u8::try_from(delta).map_err(|error| {
+                C6ProofError::new(
+                    "jpeg-control",
+                    format!("channel delta does not fit in u8: {error}"),
+                )
+            })?;
             break;
         }
     }
-    assert!(
+    c6_ensure!(
+        "jpeg-control",
         p99_delta <= MAX_JPEG_P99_CHANNEL_DELTA,
         "C6 JPEG p99 channel delta must remain bounded; p99={p99_delta}"
     );
 
     let transform = jpeg.transform(geometry.view_box);
-    assert_color_mask_tracks_png(
+    prove_color_mask_tracks_png(
         jpeg,
         png,
         transform,
@@ -987,23 +1360,23 @@ fn assert_jpeg_tracks_png(
         0,
         18,
         "canvas",
-    );
+    )?;
     for (expected, node) in contract.nodes.iter().zip(&geometry.nodes) {
         let fill = filtered_color_candidates(expected.fill);
-        assert_color_mask_tracks_png(
+        prove_color_mask_tracks_png(
             jpeg,
             png,
             transform,
-            node.rect.inset(1.0),
+            node.rect.inset(1.0)?,
             &fill,
             0,
             18,
             &format!("{} ordinal fill", node.id),
-        );
+        )?;
         let clearance = contract.radius + contract.border_width + 1.0;
         let band_half_width = contract.border_width * 0.32;
         for (label, region) in stroke_regions(node.rect, clearance, band_half_width) {
-            assert_color_mask_tracks_png(
+            prove_color_mask_tracks_png(
                 jpeg,
                 png,
                 transform,
@@ -1012,10 +1385,10 @@ fn assert_jpeg_tracks_png(
                 4,
                 18,
                 &format!("{} {label}", node.id),
-            );
+            )?;
         }
         for (label, region) in shadow_bands(contract, node.rect, transform) {
-            assert_color_mask_tracks_png(
+            prove_color_mask_tracks_png(
                 jpeg,
                 png,
                 transform,
@@ -1024,10 +1397,10 @@ fn assert_jpeg_tracks_png(
                 4,
                 18,
                 &format!("{} {label}", node.id),
-            );
+            )?;
         }
         let label_region = label_region(contract, node.rect);
-        assert_color_mask_tracks_png(
+        prove_color_mask_tracks_png(
             jpeg,
             png,
             transform,
@@ -1036,8 +1409,9 @@ fn assert_jpeg_tracks_png(
             8,
             26,
             &format!("{} label ink", node.id),
-        );
+        )?;
     }
+    Ok(())
 }
 
 fn composite_rgba_over(pixel: [u8; 4], matte: Rgb) -> [u8; 3] {
@@ -1147,7 +1521,7 @@ fn label_ink_mask(
     transform: RasterTransform,
     raster: &RasterImage,
     tolerance: u8,
-) -> BinaryMask {
+) -> C6ProofResult<BinaryMask> {
     color_mask(
         raster,
         transform,
@@ -1158,7 +1532,8 @@ fn label_ink_mask(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn assert_color_region_coverage(
+fn prove_color_region_coverage(
+    stage: &'static str,
     raster: &RasterImage,
     transform: RasterTransform,
     bounds: Rect,
@@ -1167,7 +1542,7 @@ fn assert_color_region_coverage(
     tolerance: u8,
     minimum_coverage: f64,
     label: &str,
-) {
+) -> C6ProofResult<()> {
     let mut matching = 0usize;
     let mut total = 0usize;
     let pixel_bounds = transform.pixel_bounds(bounds);
@@ -1183,15 +1558,17 @@ fn assert_color_region_coverage(
             }
         }
     }
-    assert!(total > 0, "{label} C6 region must contain pixels");
+    c6_ensure!(stage, total > 0, "{label} C6 region must contain pixels");
     let coverage = matching as f64 / total as f64;
-    assert!(
+    c6_ensure!(
+        stage,
         coverage >= minimum_coverage,
         "{label} must cover at least {:.0}% of its C6 region; coverage={coverage:.3}, matching={matching}, total={total}, raster={}x{}",
         minimum_coverage * 100.0,
         raster.width,
         raster.height,
     );
+    Ok(())
 }
 
 fn color_mask(
@@ -1200,24 +1577,39 @@ fn color_mask(
     bounds: Rect,
     expected: &[Rgb],
     tolerance: u8,
-) -> BinaryMask {
+) -> C6ProofResult<BinaryMask> {
     let pixel_bounds = transform.pixel_bounds(bounds);
-    let width =
-        usize::try_from(pixel_bounds.right - pixel_bounds.left).expect("positive mask width");
-    let height =
-        usize::try_from(pixel_bounds.bottom - pixel_bounds.top).expect("positive mask height");
-    assert!(width > 0 && height > 0);
-    let mut bits = Vec::with_capacity(width * height);
+    let width = usize::try_from(pixel_bounds.right - pixel_bounds.left).map_err(|error| {
+        C6ProofError::new(
+            "raster-node-label",
+            format!("label mask width is invalid: {error}"),
+        )
+    })?;
+    let height = usize::try_from(pixel_bounds.bottom - pixel_bounds.top).map_err(|error| {
+        C6ProofError::new(
+            "raster-node-label",
+            format!("label mask height is invalid: {error}"),
+        )
+    })?;
+    c6_ensure!(
+        "raster-node-label",
+        width > 0 && height > 0,
+        "label mask dimensions must be positive; width={width}, height={height}"
+    );
+    let capacity = width.checked_mul(height).ok_or_else(|| {
+        C6ProofError::new("raster-node-label", "label mask dimensions exceed usize")
+    })?;
+    let mut bits = Vec::with_capacity(capacity);
     for y in pixel_bounds.top..pixel_bounds.bottom {
         for x in pixel_bounds.left..pixel_bounds.right {
             bits.push(matches_any_color(raster.rgb(x, y), expected, tolerance));
         }
     }
-    BinaryMask {
+    Ok(BinaryMask {
         width,
         height,
         bits,
-    }
+    })
 }
 
 #[derive(Clone)]
@@ -1357,9 +1749,14 @@ fn contiguous_filtered_color_run(
     radius: usize,
     expected: Rgb,
     tolerance: u8,
-) -> usize {
+) -> C6ProofResult<usize> {
     let expected = filtered_color_candidates(expected);
-    let radius = i32::try_from(radius).expect("bounded stroke scan radius");
+    let radius = i32::try_from(radius).map_err(|error| {
+        C6ProofError::new(
+            "raster-node-stroke",
+            format!("stroke scan radius exceeds i32: {error}"),
+        )
+    })?;
     let color_at = |offset: i32| {
         let point = match axis {
             ScanAxis::Horizontal => (center.0 + offset, center.1),
@@ -1367,7 +1764,11 @@ fn contiguous_filtered_color_run(
         };
         matches_any_color(raster.rgb(point.0, point.1), &expected, tolerance)
     };
-    assert!(color_at(0));
+    c6_ensure!(
+        "raster-node-stroke",
+        color_at(0),
+        "State stroke scan center must match the expected border color"
+    );
     let mut first = 0;
     while first > -radius && color_at(first - 1) {
         first -= 1;
@@ -1376,11 +1777,16 @@ fn contiguous_filtered_color_run(
     while last < radius && color_at(last + 1) {
         last += 1;
     }
-    usize::try_from(last - first + 1).expect("positive color run")
+    usize::try_from(last - first + 1).map_err(|error| {
+        C6ProofError::new(
+            "raster-node-stroke",
+            format!("State stroke color run is invalid: {error}"),
+        )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
-fn assert_color_mask_tracks_png(
+fn prove_color_mask_tracks_png(
     jpeg: &RasterImage,
     png: &RasterImage,
     transform: RasterTransform,
@@ -1389,7 +1795,7 @@ fn assert_color_mask_tracks_png(
     png_tolerance: u8,
     jpeg_tolerance: u8,
     label: &str,
-) {
+) -> C6ProofResult<()> {
     let pixel_bounds = transform.pixel_bounds(bounds);
     let mut true_positive = 0usize;
     let mut false_positive = 0usize;
@@ -1408,7 +1814,8 @@ fn assert_color_mask_tracks_png(
             }
         }
     }
-    assert!(
+    c6_ensure!(
+        "jpeg-control",
         reference_positive > 0,
         "{label} PNG mask must contain evidence"
     );
@@ -1416,12 +1823,14 @@ fn assert_color_mask_tracks_png(
     let recall = true_positive as f64 / (true_positive + false_negative).max(1) as f64;
     let iou =
         true_positive as f64 / (true_positive + false_positive + false_negative).max(1) as f64;
-    assert!(
+    c6_ensure!(
+        "jpeg-control",
         precision >= MIN_JPEG_MASK_PRECISION
             && recall >= MIN_JPEG_MASK_RECALL
             && iou >= MIN_JPEG_MASK_IOU,
         "{label} JPEG mask must track PNG locally; precision={precision:.3}, recall={recall:.3}, iou={iou:.3}"
     );
+    Ok(())
 }
 
 fn matches_any_color(actual: Option<Rgb>, expected: &[Rgb], tolerance: u8) -> bool {
@@ -1456,19 +1865,39 @@ fn srgb_u8_linear_roundtrip(channel: u8) -> u8 {
 mod tests {
     use super::*;
 
+    impl RasterImage {
+        fn set_rgb(&mut self, x: i32, y: i32, color: Rgb) {
+            assert!(x >= 0 && y >= 0);
+            let x = u32::try_from(x).expect("non-negative pixel x");
+            let y = u32::try_from(y).expect("non-negative pixel y");
+            assert!(x < self.width && y < self.height);
+            let start = usize::try_from((y * self.width + x) * 4).expect("pixel offset");
+            self.pixels[start..start + 4].copy_from_slice(&[
+                color.red,
+                color.green,
+                color.blue,
+                u8::MAX,
+            ]);
+        }
+    }
+
+    fn solid_raster_pixels(color: Rgb, pixel_count: usize) -> Vec<u8> {
+        [color.red, color.green, color.blue, u8::MAX].repeat(pixel_count)
+    }
+
     fn contract() -> BrutalistStateVisualContract {
-        let shadow = Rgb::parse_hex("#111111");
+        let shadow = Rgb::parse_hex("#111111").expect("test color");
         BrutalistStateVisualContract {
-            canvas: Rgb::parse_hex("#f7f3e8"),
-            text: Rgb::parse_hex("#111111"),
-            border: Rgb::parse_hex("#111111"),
+            canvas: Rgb::parse_hex("#f7f3e8").expect("test color"),
+            text: Rgb::parse_hex("#111111").expect("test color"),
+            border: Rgb::parse_hex("#111111").expect("test color"),
             border_width: 3.0,
             radius: 2.0,
             shadow,
             quantized_shadow: shadow.linear_rgb_roundtrip(),
             shadow_offset_x: 6.0,
             shadow_offset_y: 6.0,
-            nodes: vec![NodeVisualContract::new("Ready", "#facc15")],
+            nodes: vec![NodeVisualContract::new("Ready", "#facc15").expect("test node")],
         }
     }
 
@@ -1497,15 +1926,7 @@ mod tests {
         RasterImage {
             width: 240,
             height: 180,
-            pixels: vec![
-                [
-                    contract.canvas.red,
-                    contract.canvas.green,
-                    contract.canvas.blue,
-                    u8::MAX,
-                ];
-                240 * 180
-            ],
+            pixels: solid_raster_pixels(contract.canvas, 240 * 180),
         }
     }
 
@@ -1530,17 +1951,19 @@ mod tests {
         }
     }
 
-    fn assert_rejected(expected_message: &str, action: impl FnOnce() + std::panic::UnwindSafe) {
-        let panic = std::panic::catch_unwind(action)
-            .expect_err("the raster proof accepted a deliberately incomplete mechanism");
-        let message = panic
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| panic.downcast_ref::<&str>().copied())
-            .unwrap_or("non-string panic payload");
+    fn assert_rejected(
+        expected_stage: &'static str,
+        expected_message: &str,
+        result: C6ProofResult<()>,
+    ) {
+        let error = result.expect_err("the raster proof accepted an incomplete mechanism");
         assert!(
-            message.contains(expected_message),
-            "expected rejection containing {expected_message:?}, got {message:?}"
+            error.to_string().starts_with(expected_stage),
+            "expected rejection stage {expected_stage:?}, got {error}"
+        );
+        assert!(
+            error.to_string().contains(expected_message),
+            "expected rejection containing {expected_message:?}, got {error}"
         );
     }
 
@@ -1551,7 +1974,7 @@ mod tests {
         let mut raster = RasterImage {
             width: 240,
             height: 180,
-            pixels: vec![[255, 255, 255, u8::MAX]; 240 * 180],
+            pixels: solid_raster_pixels(Rgb::WHITE, 240 * 180),
         };
         let margin = 4i32;
         for (x, y) in [
@@ -1566,15 +1989,17 @@ mod tests {
             raster.set_rgb(x, y, contract.canvas);
         }
 
-        assert_rejected("canvas outside diagram nodes", || {
-            assert_canvas(
+        assert_rejected(
+            "raster-canvas",
+            "canvas outside diagram nodes",
+            prove_canvas(
                 &contract,
                 &geometry,
                 raster.transform(geometry.view_box),
                 &raster,
                 0,
-            );
-        });
+            ),
+        );
     }
 
     #[test]
@@ -1593,9 +2018,11 @@ mod tests {
             );
         }
 
-        assert_rejected("ordinal fill interior", || {
-            assert_node_fill(&contract, &contract.nodes[0], rect, transform, &raster, 0);
-        });
+        assert_rejected(
+            "raster-node-fill",
+            "ordinal fill interior",
+            prove_node_fill(&contract, &contract.nodes[0], rect, transform, &raster, 0),
+        );
     }
 
     #[test]
@@ -1620,9 +2047,11 @@ mod tests {
             );
         }
 
-        assert_rejected("left border", || {
-            assert_node_stroke(&contract, rect, transform, &raster, 0);
-        });
+        assert_rejected(
+            "raster-node-stroke",
+            "left border",
+            prove_node_stroke(&contract, rect, transform, &raster, 0),
+        );
     }
 
     #[test]
@@ -1662,9 +2091,11 @@ mod tests {
         );
         raster.set_rgb(old_probe.0, old_probe.1, contract.canvas);
 
-        assert_rejected("top-left rounded corner", || {
-            assert_node_rounding(&contract, rect, transform, &raster, 0);
-        });
+        assert_rejected(
+            "raster-node-rounding",
+            "top-left rounded corner",
+            prove_node_rounding(&contract, rect, transform, &raster, 0),
+        );
     }
 
     #[test]
@@ -1685,9 +2116,11 @@ mod tests {
         paint_window(&mut raster, right, 2, contract.quantized_shadow);
         paint_window(&mut raster, bottom, 2, contract.quantized_shadow);
 
-        assert_rejected("right hard-shadow band", || {
-            assert_node_shadow(&contract, rect, transform, &raster, 0);
-        });
+        assert_rejected(
+            "raster-node-shadow",
+            "right hard-shadow band",
+            prove_node_shadow(&contract, rect, transform, &raster, 0),
+        );
     }
 
     #[test]
@@ -1702,9 +2135,11 @@ mod tests {
             raster.set_rgb(origin.0 + index, origin.1 + index % 2, contract.text);
         }
 
-        assert_rejected("structured embedded-font label ink", || {
-            assert_node_label_ink(&contract, rect, transform, &raster, 0);
-        });
+        assert_rejected(
+            "raster-node-label",
+            "structured embedded-font label ink",
+            prove_node_label_ink(&contract, rect, transform, &raster, 0),
+        );
     }
 
     #[test]
@@ -1735,8 +2170,10 @@ mod tests {
         }
         assert_eq!(painted, 120);
 
-        assert_rejected("JPEG mask must track PNG locally", || {
-            assert_color_mask_tracks_png(
+        assert_rejected(
+            "jpeg-control",
+            "JPEG mask must track PNG locally",
+            prove_color_mask_tracks_png(
                 &jpeg,
                 &png,
                 transform,
@@ -1745,7 +2182,7 @@ mod tests {
                 0,
                 0,
                 "synthetic label",
-            );
-        });
+            ),
+        );
     }
 }

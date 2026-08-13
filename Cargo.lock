@@ -2592,6 +2592,7 @@ dependencies = [
 name = "merman-theme-acceptance"
 version = "0.8.0-alpha.5"
 dependencies = [
+ "flate2",
  "image",
  "lopdf",
  "merman",
@@ -2602,6 +2603,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "svgtypes",
+ "tempfile",
  "thiserror 2.0.19",
 ]
 

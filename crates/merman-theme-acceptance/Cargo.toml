@@ -29,6 +29,10 @@ sha2.workspace = true
 svgtypes.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+flate2.workspace = true
+tempfile = "3.27.0"
+
 [[test]]
 name = "c6_runtime"
 required-features = ["png", "jpeg", "pdf"]

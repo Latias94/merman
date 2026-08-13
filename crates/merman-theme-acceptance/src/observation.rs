@@ -106,10 +106,13 @@ impl C6RenderGroupReceipt {
         )?;
         let source_sha256 = parse_hex_digest(fixture.source_sha256())
             .ok_or_else(|| group_evidence_mismatch(&key, "source-sha256"))?;
+        let source = catalog
+            .source_text(fixture.id())
+            .map_err(|error| group_proof_failed(&key, "source-fixture-seal", error.to_string()))?;
         require_group_evidence(
             &key,
             "source-sha256",
-            sha256(catalog.source_text(fixture.id())?.as_bytes()) == source_sha256,
+            sha256(source.as_bytes()) == source_sha256,
         )?;
         let theme_input_sha256 = parse_hex_digest(
             fixture
@@ -149,11 +152,14 @@ impl C6RenderGroupReceipt {
         let fixture = catalog
             .fixture(self.key.source_fixture_id())
             .ok_or_else(|| group_evidence_mismatch(&self.key, "source-fixture"))?;
+        let source = catalog.source_text(fixture.id()).map_err(|error| {
+            group_proof_failed(&self.key, "source-fixture-revalidate", error.to_string())
+        })?;
         require_group_evidence(
             &self.key,
             "source-sha256",
             parse_hex_digest(fixture.source_sha256()) == Some(self.source_sha256)
-                && sha256(catalog.source_text(fixture.id())?.as_bytes()) == self.source_sha256,
+                && sha256(source.as_bytes()) == self.source_sha256,
         )?;
         require_group_evidence(
             &self.key,
@@ -630,6 +636,22 @@ pub enum C6RuntimeError {
     AmbiguousRenderGroupAdapter { group: String },
     #[error("C6 render group `{group}` failed invariant `{field}`")]
     RenderGroupEvidenceMismatch { group: String, field: &'static str },
+    #[error("C6 render group `{group}` failed proof stage `{stage}`: {detail}")]
+    RenderGroupProofFailed {
+        group: String,
+        stage: &'static str,
+        detail: String,
+    },
+    #[error(
+        "C6 render group `{group}` failed proof stage `{stage}` for artifact target {artifact_target:?}, required by {required_by:?}: {detail}"
+    )]
+    RenderGroupTargetProofFailed {
+        group: String,
+        artifact_target: ExpectedOutputTarget,
+        required_by: Vec<ExpectedOutputTarget>,
+        stage: &'static str,
+        detail: String,
+    },
     #[error("C6 evidence for {key:?} failed invariant `{field}`")]
     EvidenceMismatch { key: C6CellKey, field: &'static str },
     #[error("the C6 runtime produced duplicate render group `{group}`")]
@@ -897,6 +919,18 @@ fn group_evidence_mismatch(key: &C6RenderGroupKey, field: &'static str) -> C6Run
     C6RuntimeError::RenderGroupEvidenceMismatch {
         group: key.label(),
         field,
+    }
+}
+
+fn group_proof_failed(
+    key: &C6RenderGroupKey,
+    stage: &'static str,
+    detail: impl Into<String>,
+) -> C6RuntimeError {
+    C6RuntimeError::RenderGroupProofFailed {
+        group: key.label(),
+        stage,
+        detail: detail.into(),
     }
 }
 
