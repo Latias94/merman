@@ -186,7 +186,7 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     ],
     limits: [
       "icons and rich browser node shapes are disclosed as text rather than styled",
-      "duplicate ids, parallel edges, and missing endpoints are rejected",
+      "duplicate internal or authored ids, missing authored ids, parallel edges, and missing endpoints are rejected",
     ],
   },
   packet: {
@@ -262,6 +262,8 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     limits: [
       "outline output does not claim two-dimensional diagram geometry",
       "browser icons and CSS classes are disclosed rather than styled",
+      "duplicate node ids are rejected",
+      "unknown node types are rejected",
     ],
   },
   xychart: {
@@ -280,6 +282,8 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
       "browser hover tooltips are replaced by deterministic terminal disclosure",
       "typed chart coordinates are independently quantized by the terminal plan",
       "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
+      "unknown direct-model orientations and band y-axes are rejected",
+      "accessibility title and description metadata are intentionally omitted from terminal output",
     ],
   },
 };

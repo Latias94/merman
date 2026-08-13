@@ -125,6 +125,27 @@ test("fallback projection fields derive the compatibility support level", () => 
   assert.ok(
     xychart.limits.every((limit) => !limit.includes("SVG-coordinate"))
   );
+  assert.ok(
+    xychart.limits.includes(
+      "unknown direct-model orientations and band y-axes are rejected"
+    )
+  );
+  assert.ok(
+    xychart.limits.includes(
+      "accessibility title and description metadata are intentionally omitted from terminal output"
+    )
+  );
+
+  const mindmap = byType.get("mindmap")!;
+  assert.ok(
+    mindmap.limits.includes(
+      "duplicate internal or authored ids, missing authored ids, parallel edges, and missing endpoints are rejected"
+    )
+  );
+
+  const treeView = byType.get("treeView")!;
+  assert.ok(treeView.limits.includes("duplicate node ids are rejected"));
+  assert.ok(treeView.limits.includes("unknown node types are rejected"));
 
   const classDiagram = byType.get("class")!;
   assert.ok(
