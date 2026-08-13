@@ -10,7 +10,7 @@ use crate::cmd::compare::{
     browser_measured_math_root_note, collect_label_metric_deltas,
     comparison_mode_for_browser_measured_math, finish_required_math_evidence,
     parse_label_delta_report_limit, parse_root_delta_report_limit, record_fixture_root_evidence,
-    render_semantic_svg, render_source_svg, run_svg_compare, sanitize_svg_id, source_requires_math,
+    render_semantic_svg, run_svg_compare, sanitize_svg_id, source_requires_math,
     svg_compare_engine_with_site_config, svg_request, write_compare_result_section,
     write_label_deltas_report, write_notes_section, write_root_deltas_report,
     write_verification_policy_metadata,

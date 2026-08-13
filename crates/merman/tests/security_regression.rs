@@ -87,7 +87,7 @@ impl TypedSvgRenderer {
         Ok(svg.map(|svg| svg.into_parts().0))
     }
 
-    #[cfg(feature = "png")]
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn render_png_result(
         &self,
         source: &str,
@@ -111,7 +111,7 @@ impl TypedSvgRenderer {
         Ok(output.map(|output| output.bytes))
     }
 
-    #[cfg(feature = "jpeg")]
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn render_jpeg_result(
         &self,
         source: &str,
@@ -135,7 +135,7 @@ impl TypedSvgRenderer {
         Ok(output.map(|output| output.bytes))
     }
 
-    #[cfg(feature = "pdf")]
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn render_pdf_result(&self, source: &str) -> Result<Option<Vec<u8>>, RenderError> {
         let output = self.renderer.render(
             RenderRequest::pdf(
