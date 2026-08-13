@@ -47,20 +47,21 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersion() == 4 else {
+guard merman.transportApiVersion() == 4 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
 let options = try resourceOptionsJson(profile: .constrained, overrides: [])
 let svg = try merman.renderSvg(source: source, optionsJson: options)
 
-let request = MermanOperationRequest(
-    operationId: "png",
+let request = MermanOperationRequestV4(
+    operationId: "ascii",
     source: source,
     uri: nil,
-    optionsJson: options
+    optionsJson: options,
+    control: nil
 )
-let png = try merman.execute(request: request).data
+let ascii = try merman.execute(request: request).data
 ```
 
 `Merman` owns discovery, metadata, and one-shot operations. Construct `MermanEngine` directly when
@@ -69,7 +70,7 @@ a group of operations shares baseline options or constructor services:
 ```swift
 let engine = try MermanEngine(optionsJson: options, services: nil)
 defer { try? engine.close() }
-let pdf = try engine.renderPdf(source: source, optionsJson: nil)
+let diagnostics = try engine.analyzeJson(source: source, optionsJson: nil)
 ```
 
 The generic `execute` operation is the authoritative dispatch path. Its stable `operationId`
@@ -79,12 +80,40 @@ methods over that path. One-shot request options may select `runtime_policy`; re
 options deeply merge over the construction baseline but cannot replace its constructor-owned
 runtime policy.
 
+Attach a `MermanOperationControl` to a generic request when the host needs a relative deadline or
+must stop stale work from another thread:
+
+```swift
+let control = MermanOperationControl(timeoutMs: 250)
+let request = MermanOperationRequestV4(
+    operationId: "svg",
+    source: source,
+    uri: nil,
+    optionsJson: options,
+    control: control
+)
+
+// Retain `control` and call this from the host's invalidation path.
+control.cancel()
+```
+
+Cancellation is cooperative. Parser, layout, SVG/ASCII emission, and export checkpoints observe
+the shared control, but an opaque callback or encoder call may return before the next checkpoint.
+Use worker or process isolation when the host requires hard preemption.
+
+The default XCFramework supports SVG, ASCII, semantic/layout operations, analysis, validation, and
+document analysis. It omits math and the PNG, JPEG, and PDF exporters. The generated export helpers
+remain valid for custom current-contract libraries; the default artifact returns
+`.missingCapability` with the required descriptor ID.
+
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
-and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID;
+optional `MermanResourceErrorDetails`, and optional `MermanCancelledDetails`. `.unknownOperation` has no capability ID;
 `.missingCapability` preserves the exact descriptor capability required by the valid request.
 Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase,
 actual value, effective maximum, and selected profile. Do not distinguish these cases by matching
-the human-readable message.
+the human-readable message. Cancellation remains a separate terminal class whose details expose
+`reason` (`requested` or `deadline_exceeded`) and the checkpoint `phase`; it is never projected as
+a resource limit and returns no partial output.
 
 ## Capabilities And Limits
 
@@ -134,6 +163,8 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
+- Move API 3 generated source and native libraries together to API 4. Add `control: nil` to generic
+  request construction until the host adopts `MermanOperationControl`.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
   required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
   optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.

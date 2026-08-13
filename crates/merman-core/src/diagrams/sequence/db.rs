@@ -1,4 +1,4 @@
-use crate::{ParseControl, ParseControlResult, ParseMetadata};
+use crate::{OperationControl, OperationControlResult, ParseMetadata};
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -353,8 +353,8 @@ impl SequenceDb {
     pub(super) fn apply_controlled(
         &mut self,
         action: Action,
-        control: &ParseControl,
-    ) -> ParseControlResult<std::result::Result<(), String>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<std::result::Result<(), String>> {
         control.checkpoint()?;
         let participant_meta = match &action {
             Action::AddParticipant { config, .. } => {
@@ -754,8 +754,8 @@ impl SequenceDb {
 
 fn parse_participant_meta_controlled(
     input: Option<&str>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<Option<Value>, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Option<Value>, String>> {
     let Some(input) = input else {
         return Ok(Ok(None));
     };
@@ -976,7 +976,7 @@ mod tests {
 
     #[test]
     fn duplicate_created_participant_wins_over_invalid_inline_config() {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         let mut db = SequenceDb::new(None);
         db.apply_controlled(
             Action::AddParticipant {

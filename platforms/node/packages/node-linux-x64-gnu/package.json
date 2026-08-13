@@ -1,12 +1,19 @@
 {
   "name": "@mermanjs/node-linux-x64-gnu",
-  "version": "0.8.0-alpha.6",
-  "private": true,
-  "description": "Private Merman Node native candidate for Linux x64 glibc.",
+  "version": "0.8.0-alpha.5",
+  "description": "Native Linux x64 glibc binary for @mermanjs/node.",
   "engines": {
     "node": ">=22.0.0"
   },
   "main": "./merman.node",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/node#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "merman.node",
     "LICENSE-APACHE",

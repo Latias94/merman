@@ -2,15 +2,17 @@
 
 //! WebAssembly bindings for browser integrations.
 //!
-//! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
-//! classification are delegated to `merman-bindings-core`.
+//! The crate intentionally stays thin: binding option parsing, rendering, and error classification
+//! are delegated to `merman-bindings-core`. It only extracts browser-transport fields such as the
+//! optional operation deadline before dispatch.
 
 use merman_bindings_core::{
     ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
-    CapabilityKey, ConstructorServiceKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure,
-    TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
+    CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey, RuntimeCatalog,
+    RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
 };
 use serde::Serialize;
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -21,10 +23,10 @@ mod editor_language;
 
 #[cfg(feature = "editor")]
 pub use editor_language::{
-    WasmEditorSession, editor_code_actions, editor_completions, editor_definition,
-    editor_diagnostics, editor_diagram_detection, editor_document_symbols, editor_hover,
-    editor_prepare_rename, editor_references, editor_rename, editor_search_document_symbols,
-    editor_semantic_token_descriptor, editor_semantic_tokens,
+    WasmEditorSession, editor_code_actions, editor_completion_trigger_characters,
+    editor_completions, editor_definition, editor_diagnostics, editor_diagram_detection,
+    editor_document_symbols, editor_hover, editor_prepare_rename, editor_references, editor_rename,
+    editor_search_document_symbols, editor_semantic_token_descriptor, editor_semantic_tokens,
 };
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -37,6 +39,7 @@ use serde::Deserialize;
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
 pub const WASM_TRANSPORT_API_VERSION: u32 = 4;
+const WASM_TIMEOUT_MS_MAX: u64 = u32::MAX as u64;
 const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisFactsJson,
@@ -139,10 +142,12 @@ pub fn render_svg_with_text_measurer(
     with_host_text_measure_callback(callback, || {
         let services = merman_bindings_core::BindingEngineServices::new()
             .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
-        let engine = wasm_artifact_contract()
-            .create_engine_with_services(options_bytes(options_json.as_deref()), services)
-            .map_err(binding_error_to_js)?;
-        string_result(engine.render_svg(source.as_bytes()))
+        string_result(execute_wasm_operation_with_services(
+            "svg",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            services,
+        ))
     })
 }
 
@@ -156,10 +161,12 @@ pub fn layout_json_with_text_measurer(
     with_host_text_measure_callback(callback, || {
         let services = merman_bindings_core::BindingEngineServices::new()
             .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
-        let engine = wasm_artifact_contract()
-            .create_engine_with_services(options_bytes(options_json.as_deref()), services)
-            .map_err(binding_error_to_js)?;
-        string_result(engine.layout_json(source.as_bytes()))
+        string_result(execute_wasm_operation_with_services(
+            "layout-json",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            services,
+        ))
     })
 }
 
@@ -314,18 +321,91 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
 }
 
+/// Extracts the WASM transport's optional relative deadline before shared option validation.
+///
+/// `timeout_ms` is intentionally transport-owned: removing it here keeps the shared binding
+/// options schema stable while allowing every one-shot operation to receive the same
+/// `OperationControl` deadline. Invalid JSON and invalid UTF-8 remain untouched so the binding
+/// layer preserves its established error classification and precedence.
+fn wasm_options(options_json: &[u8]) -> Result<(Vec<u8>, Option<Duration>), BindingError> {
+    if options_json.is_empty() {
+        return Ok((Vec::new(), None));
+    }
+
+    let Ok(text) = std::str::from_utf8(options_json) else {
+        return Ok((options_json.to_vec(), None));
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Ok((options_json.to_vec(), None));
+    };
+    let Some(object) = value.as_object_mut() else {
+        return Ok((options_json.to_vec(), None));
+    };
+    let Some(timeout_ms) = object.remove("timeout_ms") else {
+        return Ok((options_json.to_vec(), None));
+    };
+    let Some(timeout_ms) = timeout_ms.as_u64() else {
+        return Err(invalid_wasm_timeout());
+    };
+    if timeout_ms > WASM_TIMEOUT_MS_MAX {
+        return Err(invalid_wasm_timeout());
+    }
+    let normalized = serde_json::to_vec(&value).map_err(|error| {
+        BindingError::internal(format!(
+            "failed to normalize WASM transport options: {error}"
+        ))
+    })?;
+    Ok((normalized, Some(Duration::from_millis(timeout_ms))))
+}
+
+fn invalid_wasm_timeout() -> BindingError {
+    BindingError::invalid_options_json(format!(
+        "WASM timeout_ms must be an integer from 0 through {WASM_TIMEOUT_MS_MAX} milliseconds"
+    ))
+}
+
+fn wasm_operation_control(timeout: Option<Duration>) -> OperationControl {
+    timeout.map_or_else(OperationControl::new, |timeout| {
+        OperationControl::new().with_deadline(timeout)
+    })
+}
+
 fn execute_wasm_operation(
     operation_id: &'static str,
     source: &[u8],
     options_json: &[u8],
     uri: Option<&[u8]>,
 ) -> Result<Vec<u8>, BindingError> {
+    let (normalized_options, timeout) = wasm_options(options_json)?;
     wasm_artifact_contract()
         .execute_once(
             BindingOperationRequest::new(operation_id, source)
                 .with_optional_uri(uri)
-                .with_options_json(options_json),
+                .with_options_json(&normalized_options)
+                .with_control(wasm_operation_control(timeout)),
         )
+        .map(merman_bindings_core::BindingOperationResult::into_data)
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+fn execute_wasm_operation_with_services(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+    services: merman_bindings_core::BindingEngineServices,
+) -> Result<Vec<u8>, BindingError> {
+    let (normalized_options, timeout) = wasm_options(options_json)?;
+    let control = wasm_operation_control(timeout);
+    control
+        .checkpoint_at(merman_bindings_core::OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
+    let engine =
+        wasm_artifact_contract().create_engine_with_services(&normalized_options, services)?;
+    control
+        .checkpoint_at(merman_bindings_core::OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
+    engine
+        .execute(BindingOperationRequest::new(operation_id, source).with_control(control))
         .map(merman_bindings_core::BindingOperationResult::into_data)
 }
 
@@ -665,6 +745,67 @@ mod tests {
         assert!(zenuml["semantic_coverage"].is_null());
         assert_eq!(zenuml["primary_projection"], "none");
         assert_eq!(zenuml["support_level"], "unsupported");
+    }
+
+    #[test]
+    fn wasm_timeout_option_becomes_a_relative_deadline_and_is_removed_from_shared_options() {
+        let (options, timeout) = wasm_options(
+            br#"{"version":2,"timeout_ms":125,"resources":{"profile":"constrained"}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(timeout, Some(Duration::from_millis(125)));
+        let value: serde_json::Value = serde_json::from_slice(&options).unwrap();
+        assert_eq!(value["version"], 2);
+        assert_eq!(value["resources"]["profile"], "constrained");
+        assert!(value.get("timeout_ms").is_none());
+    }
+
+    #[test]
+    fn wasm_timeout_option_rejects_non_integer_values() {
+        for options in [
+            br#"{"timeout_ms":-1}"#.as_slice(),
+            br#"{"timeout_ms":1.5}"#.as_slice(),
+            br#"{"timeout_ms":"10"}"#.as_slice(),
+            br#"{"timeout_ms":true}"#.as_slice(),
+            br#"{"timeout_ms":4294967296}"#.as_slice(),
+        ] {
+            let error = wasm_options(options).expect_err("invalid timeout_ms must be rejected");
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            );
+            assert!(error.message().contains("timeout_ms"));
+        }
+    }
+
+    #[test]
+    fn wasm_zero_timeout_returns_structured_deadline_cancellation_at_admission() {
+        let error = execute_wasm_operation(
+            "semantic-json",
+            b"flowchart TD\nA --> B",
+            br#"{"timeout_ms":0}"#,
+            None,
+        )
+        .expect_err("a zero deadline must cancel before operation work starts");
+
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::Cancelled
+        );
+        let details = error
+            .cancellation_details()
+            .expect("cancelled errors carry structured details");
+        assert_eq!(details.reason, "deadline_exceeded");
+        assert_eq!(details.phase, "admission");
+
+        let payload = binding_error_payload_value(&error).unwrap();
+        assert_eq!(payload["code_name"], "MERMAN_CANCELLED");
+        assert_eq!(
+            payload["details"]["cancellation"]["reason"],
+            "deadline_exceeded"
+        );
+        assert_eq!(payload["details"]["cancellation"]["phase"], "admission");
     }
 
     #[cfg(feature = "svg")]

@@ -1,4 +1,5 @@
-use merman::svg::{HeadlessRenderer, SvgRenderOptions};
+use merman::svg::SvgRenderOptions;
+use merman::{OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -227,7 +228,7 @@ fn is_expected_source_corpus_rejection(report: &CapabilityReport) -> bool {
 }
 
 fn evaluate_fixture(
-    renderer: &HeadlessRenderer,
+    renderer: &Renderer,
     source_path: &str,
     fixture: &str,
     path: &Path,
@@ -243,7 +244,7 @@ fn evaluate_fixture(
     };
     report.pass(CapabilityStage::Source);
 
-    let metadata = match renderer.parse_metadata_sync(&source) {
+    let metadata = match renderer.engine().parse_metadata_sync(&source) {
         Ok(metadata) => metadata,
         Err(error) => {
             report.fail(CapabilityStage::Detected, error.to_string());
@@ -253,7 +254,7 @@ fn evaluate_fixture(
     report.diagram_type = Some(metadata.diagram_type.clone());
     report.pass(CapabilityStage::Detected);
 
-    let semantic = match renderer.prepare_semantic_sync(&source) {
+    let semantic = match renderer.prepare_semantic(&source, OperationControl::new()) {
         Ok(Some(semantic)) => semantic,
         Ok(None) => {
             report.fail(
@@ -281,28 +282,71 @@ fn evaluate_fixture(
     report.semantic_kind = Some(semantic.semantic_kind().to_string());
     report.pass(CapabilityStage::Semantic);
 
-    let prepared = match semantic.continue_layout() {
-        Ok(prepared) => prepared,
+    let layout = match renderer.render(
+        RenderRequest::layout_json(
+            &source,
+            OperationControl::new(),
+            SvgRequest {
+                options: SvgRenderOptions {
+                    diagram_id: Some(diagram_id.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .with_parse_options(ParseOptions::strict()),
+    ) {
+        Ok(RenderOutput::LayoutJson(Some(layout))) => layout,
+        Ok(RenderOutput::LayoutJson(None)) => {
+            report.fail(CapabilityStage::TypedLayout, "detector returned no layout");
+            return report;
+        }
+        Ok(_) => {
+            report.fail(CapabilityStage::TypedLayout, "unexpected target output");
+            return report;
+        }
         Err(error) => {
             report.fail(CapabilityStage::TypedLayout, error.to_string());
             return report;
         }
     };
-    report.layout_family = Some(format!("{:?}", prepared.family_kind()));
-    if let Err(error) = prepared.layout_json() {
+    report.layout_family = layout
+        .layout()
+        .get("layout")
+        .and_then(|value| value.as_object())
+        .and_then(|value| value.keys().next().cloned());
+    if layout.layout().get("layout").is_none() {
         report.fail(
             CapabilityStage::TypedLayout,
-            format!("layout compatibility projection failed: {error}"),
+            "layout compatibility projection did not contain a layout projection",
         );
         return report;
     }
     report.pass(CapabilityStage::TypedLayout);
 
-    let svg = match prepared.render_svg(&SvgRenderOptions {
-        diagram_id: Some(diagram_id.to_string()),
-        ..SvgRenderOptions::default()
-    }) {
-        Ok(svg) => svg,
+    let svg = match renderer.render(
+        RenderRequest::svg(
+            &source,
+            OperationControl::new(),
+            SvgRequest {
+                options: SvgRenderOptions {
+                    diagram_id: Some(diagram_id.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .with_parse_options(ParseOptions::strict()),
+    ) {
+        Ok(RenderOutput::Svg(Some(svg))) => svg.into_parts().0,
+        Ok(RenderOutput::Svg(None)) => {
+            report.fail(CapabilityStage::LocalSvg, "detector returned no SVG");
+            return report;
+        }
+        Ok(_) => {
+            report.fail(CapabilityStage::LocalSvg, "unexpected target output");
+            return report;
+        }
         Err(error) => {
             report.fail(CapabilityStage::LocalSvg, error.to_string());
             return report;
@@ -338,7 +382,7 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
         "every upstream path must have its own immutable source copy"
     );
 
-    let renderer = HeadlessRenderer::new().with_strict_parsing();
+    let renderer = Renderer::new().with_parse_options(ParseOptions::strict());
     let mut failures = Vec::new();
     let mut saw_expected_source_rejection = false;
     let mut detected_counts = BTreeMap::<String, usize>::new();
@@ -402,7 +446,7 @@ fn all_mermaid_11_16_added_mmds_reach_local_svg_with_explicit_evidence_boundarie
 #[test]
 fn capability_failures_block_later_local_stages_with_the_exact_owner() {
     let report = evaluate_fixture(
-        &HeadlessRenderer::new().with_strict_parsing(),
+        &Renderer::new().with_parse_options(ParseOptions::strict()),
         "missing/source.mmd",
         "_upstream/missing/source.mmd",
         &workspace_root().join("fixtures/_upstream/definitely-missing.mmd"),

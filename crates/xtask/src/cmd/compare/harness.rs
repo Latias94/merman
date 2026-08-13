@@ -14,7 +14,6 @@ pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
     ScopedDomEvidenceCatalog,
-    RootParityExact,
 }
 
 impl AcceptedResidualPolicy {
@@ -24,7 +23,6 @@ impl AcceptedResidualPolicy {
             Self::ScopedDomEvidenceCatalog => {
                 "source-backed family- and fixture-scoped DOM evidence catalog"
             }
-            Self::RootParityExact => "exact fail-closed root residual registry",
         }
     }
 }
@@ -120,8 +118,8 @@ pub(crate) struct DiagramVerificationFact {
 }
 
 impl DiagramVerificationFact {
-    pub(crate) const fn render_path(self) -> merman::svg::RenderExecutionPath {
-        merman::svg::RenderExecutionPath::HeadlessOperationTyped
+    pub(crate) const fn render_path(self) -> merman::OperationExecutionPath {
+        merman::OperationExecutionPath::Renderer
     }
 
     pub(crate) const fn supports_root_report(self) -> bool {
@@ -140,7 +138,6 @@ pub(crate) struct CompareRequest {
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
     pub(crate) flowchart_text_measurer: Option<String>,
     pub(crate) accepted_residual_policy: AcceptedResidualPolicy,
-    pub(crate) defer_root_residual_policy_to_caller: bool,
 }
 
 impl Default for CompareRequest {
@@ -155,20 +152,11 @@ impl Default for CompareRequest {
             root_report_limit: None,
             flowchart_text_measurer: None,
             accepted_residual_policy: AcceptedResidualPolicy::None,
-            defer_root_residual_policy_to_caller: false,
         }
     }
 }
 
 impl CompareRequest {
-    fn applies_direct_root_residual_policy(&self, dom_mode: &str, dom_decimals: u32) -> bool {
-        self.check_dom
-            && self.filter.is_none()
-            && svgdom::DomMode::parse(dom_mode) == svgdom::DomMode::ParityRoot
-            && dom_decimals == 3
-            && !self.defer_root_residual_policy_to_caller
-    }
-
     pub(crate) fn parse_for_fact(
         args: Vec<String>,
         fact: DiagramVerificationFact,
@@ -228,29 +216,24 @@ impl CompareRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderOperationContract {
-    render_path: merman::svg::RenderExecutionPath,
+    render_path: merman::OperationExecutionPath,
     measurement_routes: [merman::svg::TextMeasurementRoute; 4],
 }
 
 impl RenderOperationContract {
     pub(crate) fn from_environment(
-        environment: &merman::svg::RenderEnvironment,
+        environment: &merman::SvgEnvironment,
     ) -> Result<Self, XtaskError> {
-        let session = environment.begin_session().map_err(|error| {
-            XtaskError::SvgCompareFailed(format!(
-                "failed to freeze compare render operation contract: {error}"
-            ))
-        })?;
         Ok(Self {
-            render_path: merman::svg::RenderExecutionPath::HeadlessOperationTyped,
-            measurement_routes: session.report().measurement_routes().clone(),
+            render_path: merman::OperationExecutionPath::Renderer,
+            measurement_routes: environment.text_measurement_routes(),
         })
     }
 
-    fn from_report(report: &merman::svg::RenderOperationReport) -> Self {
+    fn from_evidence(evidence: &merman::RenderEvidence) -> Self {
         Self {
-            render_path: report.execution_path(),
-            measurement_routes: report.measurement_routes().clone(),
+            render_path: evidence.execution_path(),
+            measurement_routes: evidence.measurement_routes().clone(),
         }
     }
 }
@@ -263,7 +246,7 @@ pub(crate) struct ObservedRenderOperations {
 
 #[derive(Debug)]
 pub(crate) struct ObservedRenderEvidence {
-    execution_path: merman::svg::RenderExecutionPath,
+    execution_path: merman::OperationExecutionPath,
     measurement_routes: usize,
 }
 
@@ -275,7 +258,7 @@ impl ObservedRenderEvidence {
     #[cfg(test)]
     const fn test_only() -> Self {
         Self {
-            execution_path: merman::svg::RenderExecutionPath::HeadlessOperationTyped,
+            execution_path: merman::OperationExecutionPath::Renderer,
             measurement_routes: 4,
         }
     }
@@ -283,7 +266,7 @@ impl ObservedRenderEvidence {
 
 impl ObservedRenderOperations {
     pub(crate) fn from_environment(
-        environment: &merman::svg::RenderEnvironment,
+        environment: &merman::SvgEnvironment,
     ) -> Result<Self, XtaskError> {
         Ok(Self {
             expected: RenderOperationContract::from_environment(environment)?,
@@ -294,10 +277,10 @@ impl ObservedRenderOperations {
     pub(crate) fn observe(
         &mut self,
         fixture: &str,
-        report: &merman::svg::RenderOperationReport,
+        evidence: &merman::RenderEvidence,
     ) -> Result<ObservedRenderEvidence, String> {
-        let observed = RenderOperationContract::from_report(report);
-        validate_measurement_provenance(fixture, report)?;
+        let observed = RenderOperationContract::from_evidence(evidence);
+        validate_measurement_provenance(fixture, evidence)?;
         if observed != self.expected {
             return Err(format!(
                 "render operation contract diverged for {fixture}: expected {:?}, observed {observed:?}",
@@ -455,20 +438,83 @@ impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
     }
 }
 
-pub(crate) fn prepared_semantic_requires_math(
+pub(crate) fn source_requires_math(
     fixture_path: &Path,
-    semantic: &merman::svg::PreparedSemantic,
+    renderer: &merman::Renderer,
+    source: &str,
+    request: merman::SvgRequest,
 ) -> Result<bool, String> {
-    Ok(semantic
-        .render_plan()
+    let output = renderer
+        .render(merman::RenderRequest::svg_plan(
+            source,
+            merman::OperationControl::new(),
+            request,
+        ))
         .map_err(|error| {
             format!(
                 "capability planning failed for {}: {error}",
                 fixture_path.display()
             )
-        })?
+        })?;
+    let merman::RenderOutput::SvgPlan(Some(plan)) = output else {
+        return Err(format!(
+            "capability planning returned no plan for {}",
+            fixture_path.display()
+        ));
+    };
+    Ok(plan
         .required_capabilities()
         .contains(&merman::svg::RenderCapability::Math))
+}
+
+pub(crate) fn svg_request(
+    environment: merman::SvgEnvironment,
+    layout: merman::svg::LayoutOptions,
+    diagram_id: Option<String>,
+) -> merman::SvgRequest {
+    merman::SvgRequest {
+        environment,
+        layout,
+        options: merman::svg::SvgRenderOptions {
+            diagram_id,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn render_source_svg(
+    renderer: &merman::Renderer,
+    source: &str,
+    request: merman::SvgRequest,
+) -> Result<merman::SvgOutput, String> {
+    let output = renderer
+        .render(merman::RenderRequest::svg(
+            source,
+            merman::OperationControl::new(),
+            request,
+        ))
+        .map_err(|error| error.to_string())?;
+    match output {
+        merman::RenderOutput::Svg(Some(output)) => Ok(output),
+        merman::RenderOutput::Svg(None) => Err("render produced no SVG".to_string()),
+        _ => Err("typed SVG request returned an unexpected target".to_string()),
+    }
+}
+
+pub(crate) fn render_semantic_svg(
+    semantic: merman::SemanticArtifact,
+    request: merman::SvgRequest,
+) -> Result<merman::SvgOutput, String> {
+    let output = semantic
+        .render(merman::RenderTarget::Svg(request))
+        .map_err(|error| error.to_string())?;
+    match output {
+        merman::RenderOutput::Svg(Some(output)) => Ok(output),
+        merman::RenderOutput::Svg(None) => Err("render produced no SVG".to_string()),
+        _ => Err("typed SVG request returned an unexpected target".to_string()),
+    }
 }
 
 pub(crate) fn begin_required_math_evidence(
@@ -507,11 +553,11 @@ fn format_measurement_identity(identity: &merman::svg::TextMeasurementProfileIde
 
 fn validate_measurement_provenance(
     fixture: &str,
-    report: &merman::svg::RenderOperationReport,
+    evidence: &merman::RenderEvidence,
 ) -> Result<(), String> {
-    for summary in report.measurement().entries() {
+    for summary in evidence.measurement().entries() {
         let provenance = summary.provenance();
-        let Some(route) = report
+        let Some(route) = evidence
             .measurement_routes()
             .iter()
             .find(|route| route.phase == provenance.phase)
@@ -687,7 +733,7 @@ impl CompareEvidence {
     fn record_render(&mut self, evidence: ObservedRenderEvidence) {
         debug_assert_eq!(
             evidence.execution_path,
-            merman::svg::RenderExecutionPath::HeadlessOperationTyped
+            merman::OperationExecutionPath::Renderer
         );
         self.rendered_fixtures += evidence.render_count();
         self.observed_operation_reports += 1;
@@ -852,10 +898,7 @@ pub(crate) fn run_canonical_svg_compare(
     fact: DiagramVerificationFact,
     request: CompareRequest,
 ) -> CompareRunResult {
-    debug_assert_eq!(
-        fact.render_path(),
-        merman::svg::RenderExecutionPath::HeadlessOperationTyped
-    );
+    debug_assert_eq!(fact.render_path(), merman::OperationExecutionPath::Renderer);
 
     let engine = match fact.render_profile {
         RenderProfile::Standard | RenderProfile::SequenceMath => super::svg_compare_engine(),
@@ -894,17 +937,15 @@ pub(crate) fn run_canonical_svg_compare(
         .map(ObservedNodeMathRenderer::new);
 
     let layout_options = super::svg_compare_layout_opts();
-    let mut environment = merman::svg::RenderEnvironment::deterministic();
+    let mut environment = merman::SvgEnvironment::deterministic();
     if let Some(renderer) = observed_node_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
     let observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let renderer = merman::svg::HeadlessRenderer::new()
+    let renderer = merman::Renderer::new()
         .with_engine(engine.clone())
-        .with_parse_options(fact.parse_policy.options())
-        .with_layout_options(layout_options)
-        .with_environment(environment);
+        .with_parse_options(fact.parse_policy.options());
 
     let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
     let requested_dom_mode = svgdom::DomMode::parse(dom_mode);
@@ -920,19 +961,7 @@ pub(crate) fn run_canonical_svg_compare(
         observed_operations,
     };
 
-    let direct_root_residual_policy = if request
-        .applies_direct_root_residual_policy(dom_mode, dom_decimals)
-    {
-        Some(
-            super::RootParityResidualPolicy::verify(&[fact.diagram], dom_decimals).map_err(
-                |error| CompareRunFailure::without_evidence(XtaskError::SvgCompareFailed(error)),
-            )?,
-        )
-    } else {
-        None
-    };
-    let report_path = request.out_path.clone();
-    let result = run_svg_compare(
+    run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
             out_path: request.out_path.clone(),
@@ -984,11 +1013,13 @@ pub(crate) fn run_canonical_svg_compare(
         },
         |state, input| {
             let fixture_renderer = match input.site_config.clone() {
-                Some(site_config) => renderer.clone().with_site_config(site_config),
+                Some(site_config) => renderer
+                    .clone()
+                    .with_engine(engine.clone().with_site_config(site_config)),
                 None => renderer.clone(),
             };
             let semantic = fixture_renderer
-                .prepare_semantic_sync(input.text)
+                .prepare_semantic(input.text, merman::OperationControl::new())
                 .map_err(|error| {
                     format!("parse failed for {}: {error}", input.fixture_path.display())
                 })?
@@ -996,19 +1027,17 @@ pub(crate) fn run_canonical_svg_compare(
                     format!("no diagram detected in {}", input.fixture_path.display())
                 })?;
             let requires_math = fact.specialist == SpecialistHook::SequenceMath
-                && prepared_semantic_requires_math(input.fixture_path, &semantic)?;
+                && source_requires_math(
+                    input.fixture_path,
+                    &fixture_renderer,
+                    input.text,
+                    svg_request(environment.clone(), layout_options.clone(), None),
+                )?;
             let required_math_evidence_before = requires_math
                 .then(|| {
                     begin_required_math_evidence(input.stem, observed_node_math_renderer.as_deref())
                 })
                 .transpose()?;
-
-            let prepared = semantic.continue_layout().map_err(|error| {
-                format!(
-                    "layout failed for {}: {error}",
-                    input.fixture_path.display()
-                )
-            })?;
 
             let diagram_id = match fact.diagram_id_policy {
                 DiagramIdPolicy::SanitizedStem => super::sanitize_svg_id(input.stem),
@@ -1020,10 +1049,11 @@ pub(crate) fn run_canonical_svg_compare(
                     ));
                 }
             };
-            let svg_options = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(diagram_id),
-                ..Default::default()
-            };
+            let svg_request = svg_request(
+                environment.clone(),
+                layout_options.clone(),
+                Some(diagram_id),
+            );
 
             match fact.specialist {
                 SpecialistHook::None => {}
@@ -1038,7 +1068,7 @@ pub(crate) fn run_canonical_svg_compare(
                 }
             }
 
-            let rendered = prepared.render_svg_report(&svg_options).map_err(|error| {
+            let rendered = render_semantic_svg(semantic, svg_request).map_err(|error| {
                 format!(
                     "render failed for {}: {error}",
                     input.fixture_path.display()
@@ -1046,8 +1076,8 @@ pub(crate) fn run_canonical_svg_compare(
             })?;
             let render_evidence = state
                 .observed_operations
-                .observe(input.stem, rendered.report())?;
-            let local_svg = rendered.into_svg();
+                .observe(input.stem, rendered.evidence())?;
+            let local_svg = rendered.svg().to_owned();
             let mut fixture_notes = Vec::new();
             let browser_measured_math = if let Some(before) = required_math_evidence_before {
                 let observed = observed_node_math_renderer
@@ -1155,61 +1185,7 @@ pub(crate) fn run_canonical_svg_compare(
                 write_notes_section(report, notes);
             }
         },
-    );
-
-    match direct_root_residual_policy {
-        Some(policy) => {
-            apply_direct_root_residual_policy(fact.diagram, report_path.as_deref(), result, policy)
-        }
-        None => result,
-    }
-}
-
-fn apply_direct_root_residual_policy(
-    diagram: &str,
-    report_path: Option<&Path>,
-    result: CompareRunResult,
-    mut policy: super::RootParityResidualPolicy,
-) -> CompareRunResult {
-    let (evidence, error) = match result {
-        Ok(evidence) => (evidence, None),
-        Err(failure) => (failure.evidence(), Some(failure.into_error())),
-    };
-    let mut failures = Vec::new();
-
-    match error {
-        Some(XtaskError::SvgCompareFailed(message)) => {
-            if let Some(failure) =
-                policy.accept_or_summarize_failure(diagram, &message, report_path)
-            {
-                failures.push(failure);
-            }
-        }
-        Some(error) => return Err(CompareRunFailure::with_evidence(evidence, error)),
-        None => {}
-    }
-
-    match policy.finish() {
-        Ok(finish) => {
-            if !finish.accepted_summaries.is_empty() {
-                println!("\n== accepted root parity residuals ==");
-                for line in finish.accepted_summaries {
-                    println!("{line}");
-                }
-            }
-            failures.extend(finish.failures);
-        }
-        Err(error) => failures.push(error),
-    }
-
-    if failures.is_empty() {
-        Ok(evidence)
-    } else {
-        Err(CompareRunFailure::with_evidence(
-            evidence,
-            XtaskError::SvgCompareFailed(failures.join("\n")),
-        ))
-    }
+    )
 }
 
 pub(crate) fn write_verification_policy_metadata(
@@ -1230,9 +1206,11 @@ pub(crate) fn write_verification_policy_metadata(
             svgdom::DomMode::Structure => "svgdom/structure",
             svgdom::DomMode::Parity => "svgdom/parity",
             svgdom::DomMode::ParityRoot if browser_math_root_policy => {
-                "svgdom/parity-root; browser-measured math uses descendant parity plus a structural root gate"
+                "svgdom/parity descendants; browser-measured math uses a structural root contract"
             }
-            svgdom::DomMode::ParityRoot => "svgdom/parity-root",
+            svgdom::DomMode::ParityRoot => {
+                "svgdom/parity descendants plus the root viewport contract"
+            }
         }
     } else {
         "disabled (DOM check not requested)"
@@ -1241,9 +1219,9 @@ pub(crate) fn write_verification_policy_metadata(
         (false, _) => "disabled (DOM check not requested)",
         (true, svgdom::DomMode::Strict) => "checked (svgdom/strict root attributes)",
         (true, svgdom::DomMode::ParityRoot) if browser_math_root_policy => {
-            "fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)"
+            "contract-checked (browser-measured math dimensions remain diagnostic after structural validation)"
         }
-        (true, svgdom::DomMode::ParityRoot) => "checked (svgdom/parity-root viewport)",
+        (true, svgdom::DomMode::ParityRoot) => "checked (root viewport contract)",
         (true, svgdom::DomMode::Structure | svgdom::DomMode::Parity) => {
             "not-checked (selected DOM mode omits root viewport)"
         }
@@ -1258,17 +1236,10 @@ pub(crate) fn write_verification_policy_metadata(
     };
 
     let _ = writeln!(report, "- Normalization policy: `{normalization}`");
-    let accepted_residual_policy = if request
-        .applies_direct_root_residual_policy(dom_mode, request.dom_decimals.unwrap_or(3))
-    {
-        AcceptedResidualPolicy::RootParityExact
-    } else {
-        request.accepted_residual_policy
-    };
     let _ = writeln!(
         report,
         "- Accepted residual policy: `{}`",
-        accepted_residual_policy.label()
+        request.accepted_residual_policy.label()
     );
     let _ = writeln!(report, "- Root coverage: `{root_coverage}`");
     let _ = writeln!(report, "- Root-delta diagnostics: `{root_diagnostics}`");
@@ -1620,6 +1591,17 @@ fn write_rendered_fixture(
                 "DOM evidence for {diagram}/{stem}: accepted residual profile applied ({reason})"
             ));
         }
+        if profile.validates_root_contract()
+            && let Err(error) = super::validate_root_viewport_contract(
+                diagram,
+                stem,
+                input_text,
+                upstream_svg,
+                local_svg,
+            )
+        {
+            failures.push(error);
+        }
         if let Err(err) = compare_dom_signatures(
             stem,
             upstream_svg,
@@ -1678,7 +1660,7 @@ pub(crate) fn fixture_dom_profile(
             ) =>
         {
             profile = if requested == svgdom::DomMode::ParityRoot {
-                svgdom::DomComparisonProfile::with_root_viewport(svgdom::DomMode::Structure)
+                svgdom::DomComparisonProfile::with_root_contract(svgdom::DomMode::Structure)
             } else {
                 svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::Structure)
             };
@@ -1730,23 +1712,9 @@ fn compare_dom_signatures(
         .map_err(|err| format!("local dom parse failed for {stem}: {err}"))?;
 
     if upstream != local {
-        let detail = if profile.compares_root_viewport() {
-            let mismatch = svgdom::diagnose_root_viewport_mismatch(
-                upstream_svg,
-                local_svg,
-                &upstream,
-                &local,
-                profile,
-                dom_decimals,
-            )
-            .map_err(|err| format!("parity-root diagnosis failed for {stem}: {err}"))?
-            .ok_or_else(|| format!("parity-root diagnosis unexpectedly matched for {stem}"))?;
-            format!(" ({mismatch})")
-        } else {
-            svgdom::format_dom_diffs(&svgdom::dom_diffs(&upstream, &local))
-                .map(|d| format!(" ({d})"))
-                .unwrap_or_default()
-        };
+        let detail = svgdom::format_dom_diffs(&svgdom::dom_diffs(&upstream, &local))
+            .map(|d| format!(" ({d})"))
+            .unwrap_or_default();
         return Err(format!(
             "dom mismatch for {stem}: upstream={} local={}{}",
             upstream_path.display(),
@@ -1965,25 +1933,27 @@ mod tests {
     #[test]
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
         for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
-            let environment = merman::svg::RenderEnvironment::deterministic();
+            let environment = merman::SvgEnvironment::deterministic();
             let mut observed = ObservedRenderOperations::from_environment(&environment)
                 .expect("representative operation contract");
             let diagram_id = format!("computed-root-{}", fact.diagram);
-            let rendered = merman::svg::HeadlessRenderer::new()
+            let renderer = merman::Renderer::new()
                 .with_engine(super::super::svg_compare_engine())
-                .with_parse_options(fact.parse_policy.options())
-                .with_layout_options(super::super::svg_compare_layout_opts())
-                .with_environment(environment)
-                .with_diagram_id(&diagram_id)
-                .render_svg_report_sync(fact.representative_source)
-                .unwrap_or_else(|error| {
-                    panic!("{} representative render failed: {error}", fact.diagram)
-                })
-                .unwrap_or_else(|| {
-                    panic!("{} representative source was not detected", fact.diagram)
-                });
+                .with_parse_options(fact.parse_policy.options());
+            let rendered = render_source_svg(
+                &renderer,
+                fact.representative_source,
+                svg_request(
+                    environment,
+                    super::super::svg_compare_layout_opts(),
+                    Some(diagram_id.clone()),
+                ),
+            )
+            .unwrap_or_else(|error| {
+                panic!("{} representative render failed: {error}", fact.diagram)
+            });
             observed
-                .observe(fact.diagram, rendered.report())
+                .observe(fact.diagram, rendered.evidence())
                 .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
 
             let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
@@ -2017,7 +1987,6 @@ mod tests {
             .expect("Flowchart verification fact");
         let request = CompareRequest {
             check_dom: true,
-            accepted_residual_policy: AcceptedResidualPolicy::RootParityExact,
             ..CompareRequest::default()
         };
         let mut report = String::new();
@@ -2025,61 +1994,13 @@ mod tests {
         write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
 
         assert!(report.contains(
-            "Normalization policy: `svgdom/parity-root; browser-measured math uses descendant parity plus a structural root gate`"
+            "Normalization policy: `svgdom/parity descendants; browser-measured math uses a structural root contract`"
         ));
-        assert!(report.contains("exact fail-closed root residual registry"));
+        assert!(report.contains("Accepted residual policy: `none`"));
         assert!(report.contains(
-            "Root coverage: `fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)`"
+            "Root coverage: `contract-checked (browser-measured math dimensions remain diagnostic after structural validation)`"
         ));
         assert!(report.contains("Root-delta diagnostics: `reported`"));
-    }
-
-    #[test]
-    fn direct_root_residual_policy_requires_the_complete_deterministic_profile() {
-        let request = CompareRequest {
-            check_dom: true,
-            dom_mode: Some("parity-root".to_string()),
-            dom_decimals: Some(3),
-            ..CompareRequest::default()
-        };
-        assert!(request.applies_direct_root_residual_policy("parity-root", 3));
-
-        let filtered = CompareRequest {
-            filter: Some("basic".to_string()),
-            ..request.clone()
-        };
-        assert!(!filtered.applies_direct_root_residual_policy("parity-root", 3));
-
-        let delegated = CompareRequest {
-            defer_root_residual_policy_to_caller: true,
-            ..request.clone()
-        };
-        assert!(!delegated.applies_direct_root_residual_policy("parity-root", 3));
-        assert!(!request.applies_direct_root_residual_policy("parity", 3));
-        assert!(!request.applies_direct_root_residual_policy("parity-root", 6));
-
-        let disabled = CompareRequest {
-            check_dom: false,
-            ..request
-        };
-        assert!(!disabled.applies_direct_root_residual_policy("parity-root", 3));
-    }
-
-    #[test]
-    fn direct_root_policy_metadata_reports_the_effective_exact_registry() {
-        let fact = super::super::diagram_verification_fact("state")
-            .copied()
-            .expect("State verification fact");
-        let request = CompareRequest {
-            check_dom: true,
-            dom_decimals: Some(3),
-            ..CompareRequest::default()
-        };
-        let mut report = String::new();
-
-        write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
-
-        assert!(report.contains("exact fail-closed root residual registry"));
     }
 
     #[test]
@@ -2127,13 +2048,13 @@ mod tests {
             svgdom::DomMode::Parity,
         );
         assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
-        assert!(!profile.compares_root_viewport());
+        assert!(!profile.validates_root_contract());
         assert!(note.expect("rough residual note").contains("RoughJS"));
 
         let (profile, note) =
             fixture_dom_profile("ishikawa", "new_handdrawn_fixture", svgdom::DomMode::Parity);
         assert_eq!(profile.descendants(), svgdom::DomMode::Parity);
-        assert!(!profile.compares_root_viewport());
+        assert!(!profile.validates_root_contract());
         assert_eq!(note, None);
 
         let (profile, note) = fixture_dom_profile(
@@ -2142,7 +2063,7 @@ mod tests {
             svgdom::DomMode::ParityRoot,
         );
         assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
-        assert!(profile.compares_root_viewport());
+        assert!(profile.validates_root_contract());
         assert!(note.expect("rough residual note").contains("RoughJS"));
     }
 
@@ -2164,7 +2085,7 @@ mod tests {
             );
             assert!(profile.normalizes_browser_text_wrapping());
             assert_eq!(
-                profile.compares_root_viewport(),
+                profile.validates_root_contract(),
                 requested == svgdom::DomMode::ParityRoot
             );
             assert!(
@@ -2200,7 +2121,7 @@ mod tests {
             let (profile, note) = fixture_dom_profile("c4", "any_fixture", requested);
             assert!(profile.normalizes_browser_text_length());
             assert_eq!(
-                profile.compares_root_viewport(),
+                profile.validates_root_contract(),
                 requested == svgdom::DomMode::ParityRoot
             );
             assert!(
@@ -2239,11 +2160,11 @@ mod tests {
     }
 
     #[test]
-    fn parity_root_failure_marks_normalized_descendant_match() {
+    fn parity_root_treats_browser_owned_bbox_numbers_as_diagnostic() {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
         let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
 
-        let failure = compare_dom_signatures(
+        compare_dom_signatures(
             "root-only",
             upstream,
             local,
@@ -2252,17 +2173,11 @@ mod tests {
             svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::ParityRoot),
             3,
         )
-        .expect_err("root viewport mismatch should fail");
-
-        assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER));
-        assert!(failure.contains("svg: attr `style` mismatch"));
-        assert!(failure.contains(svgdom::ADDITIONAL_DOM_DIFFS_MARKER));
-        assert!(failure.contains("svg: attr `viewBox` mismatch"));
-        assert_eq!(failure.lines().count(), 1);
+        .expect("numeric root movement is governed by the root contract and browser diagnostics");
     }
 
     #[test]
-    fn parity_root_failure_prioritizes_hidden_parity_visible_mismatch() {
+    fn parity_root_still_rejects_parity_visible_descendant_mismatch() {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
         let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="scale(10,20)"/></svg>"#;
 
@@ -2277,8 +2192,6 @@ mod tests {
         )
         .expect_err("parity-visible subtree mismatch should fail");
 
-        assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER));
-        assert!(failure.contains("root-viewport-also-differs=true"));
         assert!(failure.contains("svg/g[0]: attr `transform` mismatch"));
         assert!(!failure.contains("max-width: 100px"));
         assert_eq!(failure.lines().count(), 1);
@@ -2318,14 +2231,17 @@ mod tests {
             .join(format!("{name}-{}-{nonce}", std::process::id()))
     }
 
-    fn render_info_for_evidence(stem: &str) -> merman::svg::RenderedSvg {
-        merman::svg::HeadlessRenderer::new()
-            .with_engine(super::super::svg_compare_engine())
-            .with_layout_options(super::super::svg_compare_layout_opts())
-            .with_diagram_id(stem)
-            .render_svg_report_sync("info")
-            .expect("Info render should succeed")
-            .expect("Info should be detected")
+    fn render_info_for_evidence(stem: &str) -> merman::SvgOutput {
+        render_source_svg(
+            &merman::Renderer::new().with_engine(super::super::svg_compare_engine()),
+            "info",
+            svg_request(
+                merman::SvgEnvironment::deterministic(),
+                super::super::svg_compare_layout_opts(),
+                Some(stem.to_string()),
+            ),
+        )
+        .expect("Info render should succeed")
     }
 
     #[test]
@@ -2614,7 +2530,7 @@ mod tests {
         let out_path = root.join("report.md");
         fs::create_dir_all(root.join("harness_probe").join("rendered.svg"))
             .expect("conflicting local SVG directory should be created");
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(
@@ -2635,10 +2551,10 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let render_evidence = observed.observe(input.stem, rendered.report())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
                     render_evidence,
-                    local_svg: rendered.into_svg(),
+                    local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
                     notes: Vec::new(),
@@ -2686,7 +2602,7 @@ mod tests {
 
         let out_path = root.join("report.md");
         fs::create_dir_all(&out_path).expect("conflicting report directory should be created");
-        let environment = merman::svg::RenderEnvironment::deterministic();
+        let environment = merman::SvgEnvironment::deterministic();
         let mut observed = ObservedRenderOperations::from_environment(&environment)
             .expect("render operation contract");
         let failure = run_svg_compare(
@@ -2707,10 +2623,10 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let render_evidence = observed.observe(input.stem, rendered.report())?;
+                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
                     render_evidence,
-                    local_svg: rendered.into_svg(),
+                    local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
                     notes: Vec::new(),

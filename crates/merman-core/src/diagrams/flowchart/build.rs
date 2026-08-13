@@ -1,6 +1,6 @@
 use super::{Edge, Node, Stmt, TitleKind, apply_shape_data_value_to_node};
 use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
-use crate::{ParseControl, ParseControlResult};
+use crate::{OperationControl, OperationControlResult};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -33,8 +33,8 @@ impl FlowchartBuildState {
         &mut self,
         statements: &[Stmt],
         shape_data_documents: &HashMap<String, std::result::Result<Value, String>>,
-        control: &ParseControl,
-    ) -> ParseControlResult<std::result::Result<(), String>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<std::result::Result<(), String>> {
         // Keep Mermaid's preorder statement handling without using the Rust call stack for
         // deeply nested subgraphs.
         let mut stack = vec![statements.iter()];
@@ -330,12 +330,12 @@ mod tests {
             edges: Vec::new(),
         }];
         let mut build = FlowchartBuildState::new(HashSet::new());
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
             build.add_statements(&statements, &HashMap::new(), &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
         assert!(build.nodes.len() < 256);
     }

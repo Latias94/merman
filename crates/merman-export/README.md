@@ -2,7 +2,10 @@
 
 `merman-export` is the bounded binary-export layer behind Merman's PNG, JPEG, and PDF output. It encodes SVG that has already passed Merman's terminal resvg-compatible finalizer; it does not parse Mermaid source or choose a layout engine.
 
-Most applications should depend on [`merman`](https://crates.io/crates/merman) and call its high-level `HeadlessRenderer` methods. Use this crate directly only when the application needs to retain a validated SVG artifact, inspect an allocation plan, or schedule encoding separately from Mermaid rendering.
+Most applications should depend on [`merman`](https://crates.io/crates/merman) and select its
+typed PNG, JPEG, or PDF target. Use this crate directly only when the application needs to retain a
+validated SVG artifact, inspect an allocation plan, or schedule encoding separately from Mermaid
+rendering.
 
 ## Choose A Feature
 
@@ -22,14 +25,12 @@ The `merman` facade owns the shortest source-to-output path. This dependency ena
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png"] }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
 ```
 
 ```rust
-use merman::svg::{
-    HeadlessRenderer,
-    export::{RasterFitBox, RasterOptions},
-};
+use merman::svg::export::{RasterFitBox, RasterOptions};
+use merman::{OperationControl, PngRequest, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = RasterOptions::default()
@@ -37,11 +38,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_scale(2.0)
         .with_background("white");
 
-    let png = HeadlessRenderer::new()
-        .render_png_sync("flowchart LR\n  Source --> PNG", &options)?
-        .ok_or("no Mermaid diagram detected")?;
+    let output = Renderer::new().render(RenderRequest::png(
+        "flowchart LR\n  Source --> PNG",
+        OperationControl::new(),
+        PngRequest {
+            svg: SvgRequest::default(),
+            options,
+        },
+    ))?;
+    let RenderOutput::Png(Some(png)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
 
-    std::fs::write("diagram.png", png)?;
+    std::fs::write("diagram.png", png.bytes)?;
     Ok(())
 }
 ```
@@ -50,27 +59,32 @@ Replace `png` with `jpeg` or `pdf` when only that format is required. JPEG uses 
 
 ## Direct Encoding
 
-A host that separates rendering from encoding can retain the terminally validated SVG and pass it to `merman-export` later:
+A host that already owns SVG can run the terminal finalizer and encoder under one caller-owned
+operation control:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"] }
-merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png"] }
+merman-core = { version = "=0.8.0-alpha.5", default-features = false }
+merman-render = { version = "=0.8.0-alpha.5", default-features = false }
+merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
 ```
 
 ```rust
-use merman::svg::{HeadlessRenderer, SvgPipeline};
-use merman_export::{RasterOptions, svg_to_png};
+use merman_core::OperationControl;
+use merman_export::{RasterOptions, svg_to_png_controlled};
+use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let svg = HeadlessRenderer::new()
-        .render_resvg_compatible_svg_with_pipeline_sync(
-            "flowchart LR\n  Render --> Encode",
-            &SvgPipeline::resvg_safe(),
-        )?
-        .ok_or("no Mermaid diagram detected")?;
-
-    let png = svg_to_png(&svg, &RasterOptions::default())?;
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())?;
+    let sealed = finalize_resvg_svg(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40">
+              <text x="8" y="24">Render then encode</text>
+            </svg>"#,
+        &session,
+    )?;
+    let png = svg_to_png_controlled(&sealed, &RasterOptions::default(), control)?;
     std::fs::write("diagram.png", png)?;
     Ok(())
 }

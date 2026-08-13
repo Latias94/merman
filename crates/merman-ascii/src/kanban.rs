@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::AsciiResourceLimitPhase;
 use crate::safe_text::{BudgetedTextDocument, push_wrapped_field};
@@ -8,9 +9,10 @@ use std::collections::{HashMap, HashSet};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_kanban_diagram(
+pub(super) fn render_kanban_diagram(
     model: &KanbanDiagramRenderModel,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
     let mut group_ids = HashSet::new();
@@ -23,6 +25,7 @@ pub fn render_kanban_diagram(
         .try_reserve(model.nodes.len())
         .map_err(|_| layout_allocation_error())?;
     for node in &model.nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         document.preflight_text_work(&node.id)?;
         if node.id.is_empty() {
             return Err(AsciiError::UnsupportedFeature {
@@ -41,6 +44,7 @@ pub fn render_kanban_diagram(
         .try_reserve(model.nodes.len())
         .map_err(|_| layout_allocation_error())?;
     for group in model.nodes.iter().filter(|node| node.is_group) {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         document.preflight_text_work(&group.id)?;
         if let Some(parent_id) = group.parent_id.as_deref() {
             document.preflight_text_work(parent_id)?;
@@ -55,6 +59,7 @@ pub fn render_kanban_diagram(
         .try_reserve(model.nodes.len())
         .map_err(|_| layout_allocation_error())?;
     for node in model.nodes.iter().filter(|node| !node.is_group) {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         document.resources_mut().charge_layout_work(1)?;
         if let Some(parent_id) = node.parent_id.as_deref() {
             document.preflight_text_work(parent_id)?;
@@ -70,12 +75,14 @@ pub fn render_kanban_diagram(
 
     let has_groups = !group_ids.is_empty();
     for group in model.nodes.iter().filter(|node| node.is_group) {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         document.resources_mut().charge_layout_work(1)?;
         document.push_wrapped_prefixed_line_with("", "", SUMMARY_WRAP_WIDTH, |line| {
             push_node_text(line, group, group.parent_id.as_deref())
         })?;
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 document.resources_mut().charge_layout_work(1)?;
                 document.push_wrapped_prefixed_line_with(
                     "  - ",
@@ -90,6 +97,7 @@ pub fn render_kanban_diagram(
     if has_groups {
         let mut emitted_unassigned_heading = false;
         for node in model.nodes.iter().filter(|node| !node.is_group) {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             let parent_id = node.parent_id.as_deref();
             if parent_id.is_some_and(|parent_id| group_ids.contains(parent_id)) {
                 continue;
@@ -108,6 +116,7 @@ pub fn render_kanban_diagram(
         }
     } else {
         for node in &model.nodes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             if !node.is_group {
                 document.resources_mut().charge_layout_work(1)?;
                 document.push_wrapped_prefixed_line_with(

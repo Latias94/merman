@@ -48,42 +48,43 @@ Do not run every matrix combination locally by habit. The central CI workflow ow
 workspace test; local work should prove the changed seam first and record any intentionally deferred
 lane. Completion criterion: baseline checks pass and deferred checks have a stated owner and reason.
 
-## Close Mermaid SVG provenance cascades
+## Validate Mermaid SVG provenance and root contracts
 
-When the branch changes tracked SVG bytes under `fixtures/upstream-svgs/`, treat the root residual
-catalog and its review document as downstream evidence. Run the reference verifier and the focused
-catalog contract before handoff:
+When tracked SVG bytes under `fixtures/upstream-svgs/` change, verify the selected upstream source:
 
 ```text
 cargo run --locked -p xtask -- verify-mermaid-reference
-cargo nextest run --locked -p xtask -E 'test(review_document_matches_catalog_statistics)' --cargo-quiet
 ```
 
-If the focused test reports an upstream SVG SHA-256 drift, generate the canonical full candidate:
+When a renderer implementation, renderer profile, comparator normalization, or tracked upstream SVG
+changes, run the first blocking Linux CI comparison exactly before handoff. A focused `--diagram`
+or `--filter` run is useful while iterating but does not replace this full structure gate:
 
 ```text
 cargo run --locked --release -p xtask -- compare-all-svgs \
-  --check-dom --dom-mode parity-root --dom-decimals 3 \
-  --flowchart-text-measurer vendored \
-  --write-root-residual-candidate
+  --check-dom --dom-mode structure --dom-decimals 3
 ```
 
-Review `target/root-parity-residuals.candidate.json` against
-`fixtures/_verification/root-parity-residuals.json`. Retain inherited evidence only when the input,
-root signatures, and descendant profile still agree. Classify every `unreviewed` entry against
-`docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md`, update that document when statistics, signatures,
-or evidence assignments change, then accept the reviewed candidate with its exact SHA-256:
+When comparator or root viewport behavior changes, also run the focused root-contract tests and the
+remaining blocking parity sweeps:
 
 ```text
-python3 -c 'import hashlib, pathlib; p = pathlib.Path("target/root-parity-residuals.candidate.json"); print(hashlib.sha256(p.read_bytes()).hexdigest())'
-cargo run --locked -p xtask -- accept-root-residual-candidate --sha256 <candidate-sha256>
+cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode parity --dom-decimals 3
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode parity-root --dom-decimals 3 \
+  --flowchart-text-measurer vendored --report-root
 ```
 
-Rerun the focused catalog contract after acceptance. Skip the full candidate when only provenance
-manifests or generated projections changed and no tracked upstream SVG byte changed.
+`parity-root` blocks descendant parity regressions, malformed viewports, strategy changes, and the
+deterministic root canaries. Browser-measured bbox numbers remain diagnostic. Pages CI owns the
+painted-content containment oracle; run the focused Playground desktop browser suite locally only
+when changing that oracle or its browser integration.
 
-Completion criterion: reference verification passes, the catalog contains no `unreviewed` entries,
-the review document matches catalog statistics, and the focused catalog test passes.
+Completion criterion: selected-source verification passes when applicable; the exact full structure
+gate passes for renderer, profile, normalization, or tracked-SVG changes; and the root-contract and
+parity gates required by the changed surface pass or have an explicit PR-workflow owner and reason.
 
 ## Refresh generated legal material in dependency order
 
@@ -148,12 +149,19 @@ consumer agree on the same feature/API contract.
 For `.github/workflows/**` or workflow-contract script changes, run the targeted contract suites:
 
 ```text
-python3 -m unittest scripts.test_release_workflow_security scripts.test_workflow_path_filters scripts.test_ci_workflow_android_emulator
+python3 -m unittest \
+  scripts.test_ci_plan \
+  scripts.test_release_workflow_security \
+  scripts.test_ci_workflow_android_emulator \
+  scripts.test_fuzz_config
 ```
 
-Run `actionlint` when it is installed; the targeted Python suites remain the repository-specific
-semantic check when it is not. Validate only the workflow files touched by the change and keep the
-workflow contract tests in the same commit as a changed gate condition.
+Run `actionlint` and `zizmor --min-severity high .` at the repository-pinned versions when they are
+installed; CI remains the exact-identity owner when they are unavailable locally. The Python suites
+cover only repository-specific behavior: owner selection and fail-closed aggregation, read-only PR
+closure, deployment separation, Android emulator ownership, and the deterministic-versus-randomized
+fuzz lifecycle. Validate only the workflow files touched by the change and keep those behavior
+contracts in the same commit as a changed gate condition.
 
 For `tools/bench/**` changes, run the Python performance contracts:
 

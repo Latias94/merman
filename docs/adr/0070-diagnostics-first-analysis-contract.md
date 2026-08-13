@@ -75,9 +75,9 @@ The contract has these rules:
      token span or insertion point. Analysis, not LSP or UI code, decides how to merge recovered
      parser facts and when a fallback or whole-source span is honest. LSP Problems use the string
      diagnostic rule id as `Diagnostic.code`; numeric status codes remain payload metadata.
-   - Internal analysis-projection failures also stay in this boundary. For example, if a parser
-     model can no longer be projected into flowchart rich facts, analysis emits an internal
-     diagnostic instead of silently dropping the facts.
+   - Internal analysis-projection failures stay in this boundary when a retained generic fact
+     producer cannot complete its typed contract. Flowchart-only rich-facts projection is not a
+     production operation or diagnostic after facts schema 2 removes that public sidecar.
 
 5. Source mapping is part of analysis, not each wrapper.
    - Plain `.mmd` input uses the whole document as diagram source.
@@ -120,8 +120,8 @@ ready generation, diagnostic, or cache entry. Rich cancellable capture consumes 
 `Arc<str>` through `Analyzer::analyze_generation_shared_cancellable`, so the operation never hides
 a full-source ownership promotion inside its cancellation boundary. Borrowed rich capture remains
 the non-cancellable convenience path. A parser-controlled path that returns outer cancellation to
-a non-cancellable facade violates that facade's parser contract and is represented by the existing
-`Error::ParseCancelled` compatibility error. Analysis projects that contract violation as the
+a non-cancellable facade violates that facade's parser contract and is represented by
+`Error::OperationCancelled`. Analysis projects that contract violation as the
 protected `merman.internal.parser_contract_violation` internal diagnostic instead of a Mermaid
 syntax error. Controlled facades preserve the same outer cancellation for the caller.
 

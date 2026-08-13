@@ -228,7 +228,7 @@ The output contains:
 The WinGet candidate models the cargo-dist ZIP as a nested portable installer and currently
 declares the x64 Microsoft Visual C++ runtime package dependency used by the MSVC target. Its
 installer hash is uppercase as expected by WinGet; the Scoop hash is lowercase. The templates under
-`packaging/cli-registry/` are one Scoop JSON template and three directly reviewable WinGet YAML
+`distribution/cli/registry-templates/` are one Scoop JSON template and three directly reviewable WinGet YAML
 templates. The generator replaces only the validated version, repository URLs, and archive digest;
 it does not implement a second WinGet schema validator.
 

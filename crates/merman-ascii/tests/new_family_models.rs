@@ -1,4 +1,6 @@
-use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+use merman_ascii::{
+    AsciiError, AsciiRenderOptions, AsciiResourcePolicy, render_model, render_model_with_operation,
+};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::gantt::{
     GanttDiagramRenderModel, GanttRenderTask, GanttRenderTaskEnd, GanttRenderTaskRaw,
@@ -34,6 +36,26 @@ fn render_parsed(input: &str) -> String {
         .unwrap()
         .unwrap();
     render_model(parsed.model(), &AsciiRenderOptions::ascii()).unwrap()
+}
+
+fn render_with_scheduled_cancellation(
+    model: RenderSemanticModel,
+    successful_checkpoints: usize,
+) -> AsciiError {
+    let engine = merman_core::Engine::new();
+    let context = engine
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+    let control = merman_core::OperationControl::new();
+    control.cancel_after_checkpoints(successful_checkpoints);
+    render_model_with_operation(
+        &model,
+        &AsciiRenderOptions::ascii(),
+        &control,
+        &context,
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("scheduled cancellation must prevent summary output")
 }
 
 fn tree_node(
@@ -1605,4 +1627,61 @@ fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
         render(RenderSemanticModel::GitGraph(split_identity)),
         "commit branch and id ownership must remain distinguishable"
     );
+}
+
+#[test]
+fn git_graph_summary_loop_observes_operation_cancellation() {
+    let model = GitGraphRenderModel {
+        diagram_type: "gitGraph".to_string(),
+        commits: (0..32)
+            .map(|seq| GitGraphCommitRenderModel {
+                id: format!("c{seq}"),
+                message: format!("commit {seq}"),
+                seq,
+                commit_type: 0,
+                tags: Vec::new(),
+                parents: Vec::new(),
+                branch: "main".to_string(),
+                custom_type: None,
+                custom_id: None,
+            })
+            .collect(),
+        branches: vec![GitGraphBranchRenderModel {
+            name: "main".to_string(),
+        }],
+        current_branch: "main".to_string(),
+        direction: "TB".to_string(),
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        warning_facts: Vec::new(),
+    };
+
+    let error = render_with_scheduled_cancellation(RenderSemanticModel::GitGraph(model), 4);
+    assert!(matches!(
+        error,
+        AsciiError::Cancelled(cancelled)
+            if cancelled.phase == merman_core::OperationPhase::Emit
+    ));
+}
+
+#[test]
+fn tree_view_recursive_emit_observes_operation_cancellation() {
+    let mut node = tree_node(32, 31, "leaf", Vec::new());
+    for depth in (0..32).rev() {
+        node = tree_node(depth, depth - 1, &format!("node-{depth}"), vec![node]);
+    }
+    let model = TreeViewDiagramRenderModel {
+        acc_title: None,
+        acc_descr: None,
+        title: None,
+        root: tree_node(100, -1, "/", vec![node]),
+    };
+
+    let error = render_with_scheduled_cancellation(RenderSemanticModel::TreeView(model), 5);
+    assert!(matches!(
+        error,
+        AsciiError::Cancelled(cancelled)
+            if cancelled.phase == merman_core::OperationPhase::Emit
+    ));
 }

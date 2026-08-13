@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
@@ -39,9 +40,10 @@ impl TreeViewChars {
     }
 }
 
-pub fn render_tree_view_diagram(
+pub(super) fn render_tree_view_diagram(
     model: &TreeViewDiagramRenderModel,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
     validate_tree_view_model(&model.root, document.resources_mut())?;
@@ -49,10 +51,12 @@ pub fn render_tree_view_diagram(
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
     push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     push_wrapped_node(&mut document, "", &model.root, options)?;
 
     let mut stack = Vec::new();
     for (index, child) in model.root.children.iter().enumerate().rev() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         push_frame(
             &mut stack,
             TreeFrame {
@@ -66,6 +70,7 @@ pub fn render_tree_view_diagram(
     }
 
     while let Some(frame) = stack.pop() {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         let TreeFrame {
             node,
             prefix,
@@ -104,6 +109,7 @@ pub fn render_tree_view_diagram(
         )?;
 
         for (index, child) in node.children.iter().enumerate().rev() {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             push_frame(
                 &mut stack,
                 TreeFrame {
@@ -294,9 +300,11 @@ mod tests {
 
     #[test]
     fn tree_view_accepts_exact_nesting_limit() {
+        let options = options_with_nesting_limit(DEEP_NESTING);
         let rendered = render_tree_view_diagram(
             &chain(DEEP_NESTING),
-            &options_with_nesting_limit(DEEP_NESTING),
+            &options,
+            AsciiExecution::standalone(&options.resources),
         )
         .expect("deep nesting equal to the limit should render iteratively");
 
@@ -305,9 +313,11 @@ mod tests {
 
     #[test]
     fn tree_view_rejects_limit_minus_one_before_descending() {
+        let options = options_with_nesting_limit(DEEP_NESTING - 1);
         let error = render_tree_view_diagram(
             &chain(DEEP_NESTING),
-            &options_with_nesting_limit(DEEP_NESTING - 1),
+            &options,
+            AsciiExecution::standalone(&options.resources),
         )
         .expect_err("deep nesting above the limit should fail before the final descent");
 
@@ -331,8 +341,13 @@ mod tests {
             ..Default::default()
         };
 
-        let error = render_tree_view_diagram(&model, &AsciiRenderOptions::ascii())
-            .expect_err("duplicate public node identities must not be rendered ambiguously");
+        let options = AsciiRenderOptions::ascii();
+        let error = render_tree_view_diagram(
+            &model,
+            &options,
+            AsciiExecution::standalone(&options.resources),
+        )
+        .expect_err("duplicate public node identities must not be rendered ambiguously");
 
         assert_eq!(
             error,

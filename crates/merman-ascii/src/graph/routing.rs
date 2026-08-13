@@ -13,6 +13,7 @@ use crate::canvas::Canvas as RawCanvas;
 use crate::canvas::CanvasColor;
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::cmp::Ordering;
 
@@ -175,6 +176,22 @@ impl RouteScene {
         Ok(())
     }
 
+    pub(super) fn paint_routes_with_execution(
+        &self,
+        drawing: &mut RouteDrawing<'_>,
+        execution: AsciiExecution<'_>,
+    ) -> Result<()> {
+        for route in &self.routes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            route.paint_body(drawing)?;
+        }
+        for route in &self.routes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            route.paint_markers(drawing)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn draw_labels(
         &self,
         canvas: &mut RawCanvas,
@@ -182,6 +199,28 @@ impl RouteScene {
     ) -> Result<()> {
         for route in &self.routes {
             for label in &route.plan.labels {
+                let text = self.labels.get(label.descriptor)?;
+                let label = transform.apply(EdgeLabel {
+                    text,
+                    placement: label.placement,
+                    color: label.paint.color,
+                });
+                draw_routed_label(canvas, &label)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn draw_labels_with_execution(
+        &self,
+        canvas: &mut RawCanvas,
+        transform: RouteLabelTransform,
+        execution: AsciiExecution<'_>,
+    ) -> Result<()> {
+        for route in &self.routes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            for label in &route.plan.labels {
+                execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 let text = self.labels.get(label.descriptor)?;
                 let label = transform.apply(EdgeLabel {
                     text,
@@ -237,6 +276,38 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<RouteScenePlan<'a>> {
+    prepare_route_scene_inner(graph, graph_layout, edges, charset, resources, None)
+}
+
+pub(super) fn prepare_route_scene_with_execution<'a>(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    edges: &'a [AsciiGraphEdge],
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<RouteScenePlan<'a>> {
+    prepare_route_scene_inner(
+        graph,
+        graph_layout,
+        edges,
+        charset,
+        resources,
+        Some(execution),
+    )
+}
+
+fn prepare_route_scene_inner<'a>(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    edges: &'a [AsciiGraphEdge],
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<RouteScenePlan<'a>> {
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     let topology = if graph.groups.is_empty() {
         None
     } else {
@@ -269,6 +340,9 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
         SceneOccupancy::try_new_for_routes(graph_layout, canonical_edges.len(), resources)?;
 
     for (edge_index, edge) in canonical_edges.iter().enumerate() {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        }
         if edge.stroke == super::model::GraphEdgeStroke::Invisible {
             continue;
         }
@@ -319,6 +393,9 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
         };
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
+            if let Some(execution) = execution {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            }
             let plan = plan
                 .with_marker_requests(edge.start_marker, edge.end_marker, graph.diagram_type())?
                 .with_style(edge.style);
@@ -351,6 +428,9 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
         routes.push(prepared);
     }
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     allocate_marker_berths(
         &mut routes,
         &mut occupancy,
@@ -358,12 +438,18 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
         resources,
         graph.diagram_type(),
     )?;
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     allocate_route_label_placements(&mut routes, &mut occupancy, resources, graph.diagram_type())?;
 
     let mut width = 0;
     let mut height = 0;
     let mut planned_cell_count = 0usize;
     for route in &routes {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        }
         planned_cell_count = planned_cell_count
             .checked_add(route.plan.active_cells().count())
             .ok_or_else(|| {
@@ -376,6 +462,9 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
         height = height.max(plan_height);
     }
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     Ok(RouteScenePlan {
         routes,
         extent: (width, height),

@@ -47,11 +47,25 @@ const repositoryRoot = path.resolve(
 );
 const tokenEquivalenceEvidence = JSON.parse(
   readFileSync(
-    path.join(repositoryRoot, "editor-language/token-equivalence-v1.json"),
+    path.join(repositoryRoot, "contracts/editor-language/token-equivalence-v1.json"),
     "utf8",
   ),
 ) as TokenEquivalenceEvidence;
 const familySemanticFixtures = tokenEquivalenceEvidence.family_cases;
+const editorCompletionTriggerCharacters = [
+  " ",
+  "\n",
+  "-",
+  ">",
+  "%",
+  "[",
+  "(",
+  "{",
+  "/",
+  "\\",
+  "@",
+  ":",
+] as const;
 
 test("Monaco and the Rust editor session start only local production workers", async ({
   page,
@@ -139,7 +153,6 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       recordWidth,
       tokenEquivalenceEvidence,
       tokenTypeNames,
-      transportApiVersion,
       workerUrl,
     }) => {
       interface ResponseMessage {
@@ -150,6 +163,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
         readonly message?: string;
         readonly transportApiVersion?: number;
         readonly editorSchema?: number;
+        readonly completionTriggerCharacters?: string[];
         readonly legendDigest?: string;
         readonly legend?: {
           readonly tokenTypes: string[];
@@ -207,7 +221,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       const ready = await request("initialize");
       if (
         ready.type !== "ready" ||
-        ready.transportApiVersion !== transportApiVersion ||
+        ready.transportApiVersion !== MERMAN_WEB_TRANSPORT_API_VERSION ||
         ready.editorSchema !== editorSchema ||
         ready.legendDigest !== digest
       ) {
@@ -462,6 +476,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       }
 
       return {
+        completionTriggerCharacters: ready.completionTriggerCharacters,
         legend: ready.legend,
         summaries,
         emptyDiagnostic,
@@ -476,11 +491,13 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       recordWidth: SEMANTIC_TOKEN_RECORD_WIDTH,
       tokenTypeNames: [...SEMANTIC_TOKEN_TYPE_LSP_NAMES],
       tokenEquivalenceEvidence,
-      transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
       workerUrl: languageWorkerUrl,
     },
   );
 
+  expect(result.completionTriggerCharacters).toEqual(
+    editorCompletionTriggerCharacters,
+  );
   expect(result.legend).toEqual({
     tokenTypes: [...SEMANTIC_TOKEN_TYPE_LSP_NAMES],
     tokenModifiers: [...SEMANTIC_TOKEN_MODIFIER_LSP_NAMES],

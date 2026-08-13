@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use super::MERMAID_DOM_ID_PREFIX;
 use crate::SourceSpan;
+use crate::diagrams::scan::consume_line_ending;
 use crate::editor::{
     EditorLexemeBatchResult, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifiers,
 };
@@ -27,6 +28,7 @@ pub(crate) enum Tok {
     LinkKw,
     CallbackKw,
     HrefKw,
+    CallKw,
 
     StructStart,
     StructStop,
@@ -162,7 +164,7 @@ impl<'input> Lexer<'input> {
 
     fn skip_ws(&mut self) {
         while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
+            if b == b' ' || b == b'\t' {
                 self.pos += 1;
                 continue;
             }
@@ -189,7 +191,7 @@ impl<'input> Lexer<'input> {
     fn read_to_newline(&mut self) -> String {
         let start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if matches!(b, b'\r' | b'\n') {
                 break;
             }
             self.pos += 1;
@@ -198,12 +200,10 @@ impl<'input> Lexer<'input> {
     }
 
     fn lex_newline(&mut self) -> Option<(usize, Tok, usize)> {
-        if self.peek()? != b'\n' {
-            return None;
-        }
         let start = self.pos;
-        while let Some(b'\n') = self.peek() {
-            self.pos += 1;
+        self.pos = consume_line_ending(self.input, self.pos)?;
+        while let Some(end) = consume_line_ending(self.input, self.pos) {
+            self.pos = end;
         }
         if self.mode == Mode::AfterClass {
             self.mode = Mode::Default;
@@ -389,7 +389,7 @@ impl<'input> Lexer<'input> {
             }
             return Some(Err(LexError::new("invalid class direction", selection)
                 .expecting(
-                    crate::EditorExpectedSyntaxKind::DirectionValue,
+                    crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
                     selection,
                 )));
         };
@@ -409,18 +409,17 @@ impl<'input> Lexer<'input> {
         None
     }
 
-    fn lex_click_call(&mut self) -> bool {
+    fn lex_click_call(&mut self) -> Option<(usize, Tok, usize)> {
         if self.mode != Mode::ClickAfterId {
-            return false;
+            return None;
         }
         if self.starts_with_word("call") {
             let start = self.pos;
             self.pos += "call".len();
-            self.push_lexeme(EditorLexemeKind::Keyword, start, self.pos);
             self.mode = Mode::ClickNeedCallbackName;
-            return true;
+            return Some((start, Tok::CallKw, self.pos));
         }
-        false
+        None
     }
 
     fn lex_callback_name(&mut self) -> Option<(usize, Tok, usize)> {
@@ -459,6 +458,10 @@ impl<'input> Lexer<'input> {
         let Some(end_rel) = self.input[self.pos..].find(')') else {
             return Some(Err(LexError::new(
                 "Unterminated callback arguments; missing ')'",
+                crate::SourceSpan::new(start, self.pos),
+            )
+            .expecting(
+                crate::EditorExpectedSyntaxKind::Payload,
                 crate::SourceSpan::new(start, self.pos),
             )));
         };
@@ -706,8 +709,8 @@ impl<'input> Lexer<'input> {
             )));
         }
         // Newlines inside a class body are ignored by Mermaid's lexer.
-        while self.peek() == Some(b'\n') {
-            self.pos += 1;
+        while let Some(end) = consume_line_ending(self.input, self.pos) {
+            self.pos = end;
             self.skip_ws();
         }
         let start = self.pos;
@@ -762,12 +765,14 @@ impl<'input> Iterator for Lexer<'input> {
                 return self.emit(tok);
             }
 
-            if self.lex_click_call() {
-                continue;
+            if let Some(tok) = self.lex_click_call() {
+                return self.emit(tok);
             }
 
-            if self.mode == Mode::ClassBody && self.peek() == Some(b'\n') {
-                self.pos += 1;
+            if self.mode == Mode::ClassBody
+                && let Some(end) = consume_line_ending(self.input, self.pos)
+            {
+                self.pos = end;
                 continue;
             }
 
@@ -857,7 +862,8 @@ fn record_class_token(
         | Tok::ClickKw
         | Tok::LinkKw
         | Tok::CallbackKw
-        | Tok::HrefKw => EditorLexemeKind::Keyword,
+        | Tok::HrefKw
+        | Tok::CallKw => EditorLexemeKind::Keyword,
         Tok::StructStart
         | Tok::StructStop
         | Tok::SquareStart

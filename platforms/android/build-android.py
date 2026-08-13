@@ -34,7 +34,7 @@ from native_symbol_contract import (
 
 ANDROID_ROOT = Path(__file__).resolve().parent
 ANDROID_JNI_LIBS = ANDROID_ROOT / "src" / "main" / "jniLibs"
-FLUTTER_JNI_LIBS = REPO_ROOT / "platforms" / "flutter" / "android" / "src" / "main" / "jniLibs"
+FLUTTER_JNI_LIBS = REPO_ROOT / "platforms" / "flutter" / "native" / "android"
 VERSION_CATALOG = ANDROID_ROOT / "gradle" / "libs.versions.toml"
 ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
 FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
@@ -47,37 +47,53 @@ ANDROID_ARTIFACT_PROFILE_IDS = (
 class AndroidArtifactPackaging(NamedTuple):
     package: str
     manifest: str
+    cargo_profile: str
     target_name: str
     target_contract: tuple[str, ...]
     output_root: Path
     symbol_contract: NativeSymbolContract
     obsolete_library_filenames: tuple[str, ...]
+    ndk_api: int
 
 
 ANDROID_ARTIFACT_PACKAGING = {
     ANDROID_NATIVE_RECIPE.profile_id: AndroidArtifactPackaging(
         package="merman-android-jni",
         manifest="crates/merman-android-jni/Cargo.toml",
+        cargo_profile="native-distribution",
         target_name="merman_android_jni",
         target_contract=("cdylib",),
         output_root=ANDROID_JNI_LIBS,
         symbol_contract=ANDROID_JNI_SYMBOL_CONTRACT,
         obsolete_library_filenames=("libmerman_ffi.so",),
+        ndk_api=23,
     ),
     FLUTTER_ANDROID_NATIVE_RECIPE.profile_id: AndroidArtifactPackaging(
         package="merman-ffi",
         manifest="crates/merman-ffi/Cargo.toml",
+        cargo_profile="native-distribution",
         target_name="merman_ffi",
         target_contract=("cdylib", "rlib", "staticlib"),
         output_root=FLUTTER_JNI_LIBS,
         symbol_contract=C_ABI_SYMBOL_CONTRACT,
         obsolete_library_filenames=("libmerman_android_jni.so",),
+        ndk_api=24,
     ),
 }
 TARGET_TO_ABI = {
+    "armv7-linux-androideabi": "armeabi-v7a",
     "aarch64-linux-android": "arm64-v8a",
     "x86_64-linux-android": "x86_64",
 }
+ANDROID_NATIVE_TARGETS = (
+    "aarch64-linux-android",
+    "x86_64-linux-android",
+)
+FLUTTER_ANDROID_NATIVE_TARGETS = (
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "x86_64-linux-android",
+)
 
 
 def validate_android_native_recipe(
@@ -89,7 +105,7 @@ def validate_android_native_recipe(
     if (
         recipe.package != packaging.package
         or recipe.manifest != packaging.manifest
-        or recipe.cargo_profile != "native-sdk"
+        or recipe.cargo_profile != packaging.cargo_profile
         or recipe.default_features
         or recipe.target_name != packaging.target_name
         or recipe.target_kinds != packaging.target_contract
@@ -97,11 +113,16 @@ def validate_android_native_recipe(
         or recipe.build_target_kind != "target-set"
     ):
         raise RuntimeError(
-            f"{recipe.profile_id} must remain its exact native-sdk transport recipe"
+            f"{recipe.profile_id} must remain its exact repository-owned transport recipe"
         )
-    if set(recipe.build_targets) != set(TARGET_TO_ABI):
+    expected_targets = (
+        FLUTTER_ANDROID_NATIVE_TARGETS
+        if recipe.profile_id == FLUTTER_ANDROID_NATIVE_RECIPE.profile_id
+        else ANDROID_NATIVE_TARGETS
+    )
+    if recipe.build_targets != expected_targets:
         raise RuntimeError(
-            f"{recipe.profile_id} target set must exactly match the published Android ABI mapping"
+            f"{recipe.profile_id} target set must exactly match its published Android ABI mapping"
         )
     manifest = REPO_ROOT / recipe.manifest
     if not manifest.is_file():
@@ -225,10 +246,11 @@ def ndk_host_tag() -> str:
     raise RuntimeError(f"unsupported host platform for Android NDK: {system}")
 
 
-def clang_name(target: str) -> str:
-    api = "23"
+def clang_name(target: str, api: int) -> str:
     if target == "aarch64-linux-android":
         base = f"aarch64-linux-android{api}-clang"
+    elif target == "armv7-linux-androideabi":
+        base = f"armv7a-linux-androideabi{api}-clang"
     elif target == "x86_64-linux-android":
         base = f"x86_64-linux-android{api}-clang"
     else:
@@ -419,8 +441,17 @@ def gradle_environment(java_home: Path) -> dict[str, str]:
     return env
 
 
-def clang_for_target(target: str, ndk: Path) -> Path:
-    clang = ndk / "toolchains" / "llvm" / "prebuilt" / ndk_host_tag() / "bin" / clang_name(target)
+def clang_for_target(target: str, ndk: Path, recipe: CargoArtifactRecipe) -> Path:
+    api = ANDROID_ARTIFACT_PACKAGING[recipe.profile_id].ndk_api
+    clang = (
+        ndk
+        / "toolchains"
+        / "llvm"
+        / "prebuilt"
+        / ndk_host_tag()
+        / "bin"
+        / clang_name(target, api)
+    )
     if not clang.exists():
         raise RuntimeError(f"Android clang not found: {clang}")
     return clang
@@ -457,7 +488,7 @@ def build_target(target: str, ndk: Path, recipe: CargoArtifactRecipe) -> None:
     if abi is None:
         raise RuntimeError(f"unsupported Android Rust target: {target}")
 
-    clang = clang_for_target(target, ndk)
+    clang = clang_for_target(target, ndk, recipe)
     env = cargo_env_with_linker(target, clang)
 
     print(f"==> Building {recipe.package} ({recipe.profile_id}) for {target} ({abi})")

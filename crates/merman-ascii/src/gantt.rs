@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
 use crate::safe_text::{
@@ -13,10 +14,11 @@ use std::collections::{HashMap, HashSet};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
-pub fn render_gantt_diagram(
+pub(super) fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
     let task_index = admit_then_materialize_gantt_structure(
@@ -90,7 +92,7 @@ pub fn render_gantt_diagram(
             }
             if let Some(tasks) = tasks_by_section.get(section.as_str()) {
                 for task in tasks {
-                    push_task(&mut document, task, local_time_zone)?;
+                    push_task(&mut document, task, local_time_zone, execution)?;
                 }
             }
         }
@@ -102,7 +104,7 @@ pub fn render_gantt_diagram(
                 push_section(&mut document, section)?;
                 if let Some(tasks) = tasks_by_section.get(section) {
                     for task in tasks {
-                        push_task(&mut document, task, local_time_zone)?;
+                        push_task(&mut document, task, local_time_zone, execution)?;
                     }
                 }
             }
@@ -114,7 +116,7 @@ pub fn render_gantt_diagram(
                 current_section = Some(task.section.as_str());
                 push_section(&mut document, &task.section)?;
             }
-            push_task(&mut document, task, local_time_zone)?;
+            push_task(&mut document, task, local_time_zone, execution)?;
         }
     }
 
@@ -254,7 +256,9 @@ fn push_task(
     document: &mut BudgetedTextDocument,
     task: &GanttRenderTask,
     local_time_zone: &merman_core::time::LocalTimeZone,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     document.resources_mut().charge_layout_work(1)?;
     let start = format_date(task.start_ms, local_time_zone);
     let end = format_date(task.end_ms, local_time_zone);

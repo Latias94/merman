@@ -1,31 +1,46 @@
 # @mermanjs/web-analysis
 
-Browser-only Merman semantic analysis, validation, and diagram detection without SVG rendering, ASCII rendering, or editor-session workflow implementations. Shared package-group catalogs and types remain available for integration code.
+Detect, validate, and analyze Mermaid source in a browser without shipping SVG rendering, ASCII
+output, or retained editor sessions.
 
-## Install
+This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
+matter.
 
-This package has shipped since Merman `0.8.0-alpha.5`. Install the current alpha:
+## Quick start
 
 ```sh
 npm install @mermanjs/web-analysis@alpha
 ```
 
-For local source development, build the package group and install this package from the checkout:
-
-```sh
-npm ci --prefix /path/to/merman/platforms/web
-npm run build --prefix /path/to/merman/platforms/web
-npm install /path/to/merman/platforms/web/packages/analysis
-```
-
 ```ts
-import { analyze, initMerman } from "@mermanjs/web-analysis";
+import { analyzeDocument, initMerman } from "@mermanjs/web-analysis";
 
 await initMerman();
-const result = analyze(`flowchart TD
-  A --> B`);
+
+const markdownSource =
+  "# Diagram\n\n```mermaid\nflowchart TD\n  A -->\n```\n";
+const result = analyzeDocument(
+  markdownSource,
+  "file:///workspace/README.md",
+  { lint: { profile: "recommended" } },
+);
+
+if (!result.valid) {
+  console.error(result.diagnostics);
+}
 ```
 
-Use this package for browser linting, detection, and metadata workflows. It intentionally cannot render SVG or ASCII and cannot create editor sessions. It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport.
+The URI extension selects standalone Mermaid, Markdown, or MDX modeling. Diagnostics and fixes use
+host-document coordinates.
 
-See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for resource policy and custom loading.
+## Scope
+
+Use this package for browser linting, detection, and metadata workflows. It intentionally cannot
+render SVG or ASCII and cannot create editor sessions. Load it only in a browser main thread or Web
+Worker. Node.js and SSR analysis integrations should use `merman-cli`; use `@mermanjs/node` only
+for in-process SVG rendering.
+
+See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
+for custom WASM loading, resource policy, package selection, and source-checkout development. See
+the [integration guide](https://github.com/Latias94/merman/blob/main/docs/integrations/README.md)
+for lint ownership and adapter boundaries.

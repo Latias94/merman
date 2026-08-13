@@ -7,7 +7,6 @@ import {
   SEMANTIC_TOKEN_DESCRIPTOR,
   SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
   SEMANTIC_TOKEN_RECORD_WIDTH,
-  SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
 } from "./generated/token-descriptor.js";
 import { assertSemanticTokenLegendProjection } from "./semantic-token-contract.js";
 
@@ -19,6 +18,7 @@ interface TokenEquivalenceCase {
   readonly family: string;
   readonly source: string;
   readonly packed_words: number[];
+  readonly vscode_packed_words: number[];
 }
 
 interface TokenEquivalenceEvidence {
@@ -32,7 +32,7 @@ interface TokenEquivalenceEvidence {
 
 const tokenEquivalenceEvidence = JSON.parse(
   fs.readFileSync(
-    path.resolve(__dirname, "..", "..", "..", "editor-language", "token-equivalence-v1.json"),
+    path.resolve(__dirname, "../../../contracts/editor-language", "token-equivalence-v1.json"),
     "utf8",
   ),
 ) as TokenEquivalenceEvidence;
@@ -211,7 +211,7 @@ export async function run(): Promise<void> {
     assertPackedTokens(actual.data, legend);
     assert.deepEqual(
       Array.from(actual.data),
-      projectPackedTokens(tokenCase.packed_words, legend),
+      tokenCase.vscode_packed_words,
       `${tokenCase.id} (${tokenCase.family}) VS Code semantic-token projection`,
     );
   }
@@ -226,7 +226,7 @@ export async function run(): Promise<void> {
   assertPackedTokens(recoveryTokens.data, legend);
   assert.deepEqual(
     Array.from(recoveryTokens.data),
-    projectPackedTokens(recovery.packed_words, legend),
+    recovery.vscode_packed_words,
     "recoverable Flowchart VS Code packed token sequence",
   );
   const recoveryDiagnostics = await eventually(
@@ -264,69 +264,6 @@ function assertPackedTokens(words: Uint32Array, legend: vscode.SemanticTokensLeg
     assert.ok(words[offset + 3]! < legend.tokenTypes.length);
     assert.equal(words[offset + 4]! & ~validModifierMask, 0);
   }
-}
-
-function projectPackedTokens(
-  canonicalWords: readonly number[],
-  legend: vscode.SemanticTokensLegend,
-): number[] {
-  assert.equal(canonicalWords.length % SEMANTIC_TOKEN_RECORD_WIDTH, 0);
-
-  const projectedWords: number[] = [];
-  let canonicalLine = 0;
-  let canonicalStart = 0;
-  let projectedPreviousLine = 0;
-  let projectedPreviousStart = 0;
-
-  for (let offset = 0; offset < canonicalWords.length; offset += SEMANTIC_TOKEN_RECORD_WIDTH) {
-    const deltaLine = canonicalWords[offset]!;
-    canonicalLine += deltaLine;
-    canonicalStart =
-      deltaLine === 0
-        ? canonicalStart + canonicalWords[offset + 1]!
-        : canonicalWords[offset + 1]!;
-    const length = canonicalWords[offset + 2]!;
-    const canonicalTypeCode = canonicalWords[offset + 3]!;
-    const canonicalModifierBits = canonicalWords[offset + 4]!;
-    assert.equal(canonicalModifierBits & ~SEMANTIC_TOKEN_VALID_MODIFIER_MASK, 0);
-
-    const descriptorType = SEMANTIC_TOKEN_DESCRIPTOR.tokenTypes.find(
-      ({ code }) => code === canonicalTypeCode,
-    );
-    assert.ok(descriptorType, `unknown descriptor token type code ${canonicalTypeCode}`);
-    const projectedType = legend.tokenTypes.indexOf(descriptorType.lspName);
-    if (projectedType === -1) {
-      continue;
-    }
-
-    let projectedModifierBits = 0;
-    for (const modifier of SEMANTIC_TOKEN_DESCRIPTOR.modifiers) {
-      if ((canonicalModifierBits & modifier.bit) === 0) {
-        continue;
-      }
-      const projectedModifier = legend.tokenModifiers.indexOf(modifier.lspName);
-      if (projectedModifier !== -1) {
-        projectedModifierBits |= 1 << projectedModifier;
-      }
-    }
-
-    const projectedDeltaLine = canonicalLine - projectedPreviousLine;
-    const projectedDeltaStart =
-      projectedDeltaLine === 0
-        ? canonicalStart - projectedPreviousStart
-        : canonicalStart;
-    projectedWords.push(
-      projectedDeltaLine,
-      projectedDeltaStart,
-      length,
-      projectedType,
-      projectedModifierBits,
-    );
-    projectedPreviousLine = canonicalLine;
-    projectedPreviousStart = canonicalStart;
-  }
-
-  return projectedWords;
 }
 
 function diagnosticCode(diagnostic: vscode.Diagnostic): string | number | undefined {

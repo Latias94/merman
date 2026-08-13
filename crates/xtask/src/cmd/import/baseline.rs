@@ -149,20 +149,6 @@ pub(crate) fn load_existing_imported_fixtures(
     )
 }
 
-pub(crate) fn record_imported_fixture_content(
-    index: &mut HashMap<String, PathBuf>,
-    body: String,
-    path: PathBuf,
-    identity_paths: &[&Path],
-) {
-    index.retain(|_, indexed_path| {
-        !identity_paths
-            .iter()
-            .any(|identity_path| indexed_path == identity_path)
-    });
-    index.insert(body, path);
-}
-
 pub(crate) fn should_revalidate_deferred_fixture(
     existing_path: &Path,
     deferred_candidate_path: &Path,
@@ -255,55 +241,6 @@ pub(crate) fn candidate_snapshot_failure(
             Ok(message)
         }
         error => Err(error),
-    }
-}
-
-pub(crate) fn candidate_svg_compare_failure(
-    error: XtaskError,
-    fixture_path: &Path,
-    stem: &str,
-) -> Result<String, XtaskError> {
-    let XtaskError::SvgCompareFailed(message) = error else {
-        return Err(error);
-    };
-
-    const INFRASTRUCTURE_MARKERS: &[&str] = &[
-        "provenance",
-        "manifest",
-        "family lock",
-        "timed out acquiring",
-        "missing upstream svg",
-        "failed to read ",
-        "failed to write ",
-        "failed to create ",
-        "no .mmd fixtures matched",
-    ];
-    if INFRASTRUCTURE_MARKERS
-        .iter()
-        .any(|marker| message.contains(marker))
-    {
-        return Err(XtaskError::SvgCompareFailed(message));
-    }
-
-    let fixture_path = fixture_path.display();
-    let candidate_markers = [
-        format!("dom mismatch for {stem}:"),
-        format!("svg mismatch for {stem}"),
-        format!("marker mismatch for {stem}:"),
-        format!("parse failed for {fixture_path}:"),
-        format!("layout failed for {fixture_path}:"),
-        format!("render failed for {fixture_path}:"),
-        format!("root parse failed for {stem}:"),
-        format!("root parse failed for local {stem}:"),
-        format!("label metric parse failed for {stem}:"),
-    ];
-    if candidate_markers
-        .iter()
-        .any(|marker| message.contains(marker))
-    {
-        Ok(message)
-    } else {
-        Err(XtaskError::SvgCompareFailed(message))
     }
 }
 
@@ -400,16 +337,14 @@ pub(crate) fn rollback_imported_fixture_snapshots<'a>(
 mod tests {
     use super::{
         acquire_imported_fixture_family_locks_in, acquire_imported_fixture_workspace_lock_in,
-        candidate_snapshot_failure, candidate_svg_compare_failure, candidate_upstream_svg_failure,
+        candidate_snapshot_failure, candidate_upstream_svg_failure,
         is_candidate_upstream_svg_failure, load_existing_imported_fixtures_from_dirs,
-        record_imported_fixture_content, rollback_imported_fixture_snapshots,
-        should_revalidate_deferred_fixture,
+        rollback_imported_fixture_snapshots, should_revalidate_deferred_fixture,
     };
     use crate::XtaskError;
     use crate::cmd::import::ImportedFixtureSnapshot;
-    use std::collections::HashMap;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc;
     use std::time::Duration;
@@ -457,30 +392,6 @@ mod tests {
         );
 
         fs::remove_dir_all(root).expect("remove dedup cache test root");
-    }
-
-    #[test]
-    fn recording_overwritten_content_removes_stale_body_mappings() {
-        let active = Path::new("fixtures/flowchart/example.mmd");
-        let deferred = Path::new("fixtures/_deferred/flowchart/example.mmd");
-        let unrelated = PathBuf::from("fixtures/flowchart/other.mmd");
-        let mut index = HashMap::from([
-            ("old".to_string(), active.to_path_buf()),
-            ("deferred-old".to_string(), deferred.to_path_buf()),
-            ("unrelated".to_string(), unrelated.clone()),
-        ]);
-
-        record_imported_fixture_content(
-            &mut index,
-            "new".to_string(),
-            active.to_path_buf(),
-            &[active, deferred],
-        );
-
-        assert_eq!(index.get("new"), Some(&active.to_path_buf()));
-        assert_eq!(index.get("unrelated"), Some(&unrelated));
-        assert!(!index.contains_key("old"));
-        assert!(!index.contains_key("deferred-old"));
     }
 
     #[test]
@@ -692,40 +603,6 @@ mod tests {
                     "layout failed for fixtures/flowchart/other.mmd: unsupported".to_string(),
                 ),
                 path,
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn compare_classification_rejects_provenance_and_lock_failures() {
-        let path = candidate_path();
-        assert!(candidate_svg_compare_failure(
-            XtaskError::SvgCompareFailed(
-                "flowchart: svg compare failed:\ndom mismatch for candidate: upstream=x local=y"
-                    .to_string(),
-            ),
-            path,
-            "candidate",
-        )
-        .is_ok());
-        assert!(
-            candidate_svg_compare_failure(
-                XtaskError::SvgCompareFailed(
-                    "flowchart: upstream SVG provenance manifest drifted".to_string(),
-                ),
-                path,
-                "candidate",
-            )
-            .is_err()
-        );
-        assert!(
-            candidate_svg_compare_failure(
-                XtaskError::UpstreamSvgFailed(
-                    "timed out acquiring upstream SVG family lock".to_string(),
-                ),
-                path,
-                "candidate",
             )
             .is_err()
         );

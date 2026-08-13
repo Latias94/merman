@@ -201,6 +201,7 @@ pub(crate) enum ResolvedOutput {
     Text {
         destination: ResolvedDestination,
         options: Box<merman::ascii::AsciiRenderOptions>,
+        resources: merman::ascii::AsciiResourcePolicy,
     },
     #[cfg(feature = "png")]
     Png {
@@ -1085,10 +1086,22 @@ fn resolved_native_output(
     match format {
         #[cfg(feature = "ascii")]
         RenderFormat::Ascii | RenderFormat::Unicode => {
+            let mut resources = merman::ascii::AsciiResourcePolicy::default();
+            if let Some(max_grid_cells) = options.text.ascii_max_grid_cells {
+                resources
+                    .apply_limit(
+                        merman::ascii::AsciiResourceLimitId::MaxGridCells,
+                        max_grid_cells,
+                    )
+                    .map_err(|error| {
+                        CliError::InvalidInput(format!("invalid ASCII resource limit: {error}"))
+                    })?;
+            }
             let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
             Ok(ResolvedOutput::Text {
                 destination,
                 options: Box::new(options),
+                resources,
             })
         }
         #[cfg(feature = "svg")]
@@ -1190,17 +1203,6 @@ fn resolve_text_output_options(
     }
     if let Some(width) = args.xychart_horizontal_plot_width {
         options.xychart_horizontal_plot_width = width;
-    }
-    if let Some(max_grid_cells) = args.ascii_max_grid_cells {
-        options
-            .resources
-            .apply_limit(
-                merman::ascii::AsciiResourceLimitId::MaxGridCells,
-                max_grid_cells,
-            )
-            .map_err(|error| {
-                CliError::InvalidInput(format!("invalid ASCII resource limit: {error}"))
-            })?;
     }
     options
         .validate()

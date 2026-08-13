@@ -1,10 +1,11 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiRgb, TerminalWidthProfile, render_model,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile, render_model,
+    render_model_with_operation,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
 
 fn parse_er_render_model(input: &str) -> RenderSemanticModel {
@@ -27,6 +28,30 @@ fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<
     let model = parse_er_render_model(input);
 
     render_model(&model, options)
+}
+
+fn render_er_model(
+    model: &ErDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> merman_ascii::Result<String> {
+    render_model(&RenderSemanticModel::Er(model.clone()), options)
+}
+
+fn render_er_with_grid_limit(
+    input: &str,
+    options: &AsciiRenderOptions,
+    max_grid_cells: usize,
+) -> merman_ascii::Result<String> {
+    let model = parse_er_render_model(input);
+    let control = OperationControl::new();
+    let context = Engine::new()
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, max_grid_cells)
+        .expect("valid operation grid limit");
+
+    render_model_with_operation(&model, options, &control, &context, resources)
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -94,7 +119,7 @@ fn line_and_column_containing(rendered: &str, needle: &str) -> (usize, usize) {
 }
 
 fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
-    let err = merman_ascii::render_er(model, &AsciiRenderOptions::ascii())
+    let err = render_er_model(model, &AsciiRenderOptions::ascii())
         .expect_err("ER model should be rejected as unsupported");
 
     assert_eq!(
@@ -111,7 +136,7 @@ fn er_local_semantic_fixture_covers_wide_attributes_and_relation_labels() {
     let input = read_local_semantic_fixture("er/wide_attributes_and_summary_labels.mmd");
     let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_er(&input, &options)
+    let rendered = render_er_with_grid_limit(&input, &options, 10_000)
         .expect("ER diagram with wide attributes and relation labels should render");
 
     for expected in [
@@ -132,6 +157,42 @@ fn er_local_semantic_fixture_covers_wide_attributes_and_relation_labels() {
         !rendered.contains("<br>"),
         "wide ER relations should not leak Mermaid break syntax:\n{rendered}"
     );
+}
+
+#[test]
+fn er_parser_final_relation_document_obeys_the_operation_grid_budget() {
+    let error = render_er_with_grid_limit(
+        "erDiagram\nCUSTOMER ||--o{ ORDER : places\nINVOICE ||--|| PAYMENT : captures",
+        &AsciiRenderOptions::ascii(),
+        1,
+    )
+    .expect_err("the final joined ER document must obey the operation grid budget");
+
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+}
+
+#[test]
+fn er_parser_relation_fallback_obeys_the_operation_grid_budget() {
+    let error = render_er_with_grid_limit(
+        "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : \"places<br>orders\"\nORDER ||--|| INVOICE : bills",
+        &AsciiRenderOptions::ascii(),
+        1,
+    )
+    .expect_err("an ER fallback that cannot fit the operation budget must be rejected");
+
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+}
+
+#[test]
+fn er_parser_diagnostic_fallback_preserves_the_operation_resource_error() {
+    let error = render_er_with_grid_limit(
+        "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : places\nORDER ||--|| INVOICE : bills",
+        &AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true),
+        1,
+    )
+    .expect_err("diagnostics must not bypass the operation grid budget");
+
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
 }
 
 #[test]
@@ -285,12 +346,12 @@ fn er_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
         .expect("entity A should exist")
         .alias = "👩‍💻·".to_string();
 
-    let unicode = merman_ascii::render_er(
+    let unicode = render_er_model(
         &model,
         &AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Unicode),
     )
     .expect("ER entity should render with Unicode terminal widths");
-    let cjk = merman_ascii::render_er(
+    let cjk = render_er_model(
         &model,
         &AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
     )
@@ -313,7 +374,7 @@ fn er_relationship_labels_preserve_complex_graphemes() {
         .expect("entity A should exist")
         .alias = "Client 👩‍💻".to_string();
     model.relationships[0].role_a = "owns 👩‍💻".to_string();
-    let rendered = merman_ascii::render_er(&model, &AsciiRenderOptions::ascii())
+    let rendered = render_er_model(&model, &AsciiRenderOptions::ascii())
         .expect("ER relationship should render");
 
     assert!(rendered.contains("Client 👩‍💻"), "{rendered}");

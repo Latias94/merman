@@ -2,8 +2,9 @@ use super::*;
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, ParseControl,
-    ParseControlResult, SourceSpan, editor::EditorLexemeJournal, family::CombinedSemanticFailure,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, OperationControl,
+    OperationControlResult, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 use serde_json::Map;
 #[cfg(test)]
@@ -80,7 +81,7 @@ fn parse_key_colon_value_spanned<'a>(
 fn parse_click_statement(
     line: &str,
     line_start: usize,
-) -> std::result::Result<Option<ClickStatementParts<'_>>, String> {
+) -> std::result::Result<Option<ClickStatementParts<'_>>, ClickStatementError> {
     let trimmed = line.trim_start();
     if !starts_with_click_keyword(trimmed, "click") {
         return Ok(None);
@@ -100,10 +101,13 @@ fn parse_click_statement(
         end: line_start + leading + rest_start + ids_len,
     };
     if ids.text.is_empty() {
-        return Err("invalid click statement: missing task id".to_string());
+        return Err(ClickStatementError::new(
+            "invalid click statement: missing task id",
+        ));
     }
 
     let mut tail_offset = rest_start + ids_len;
+    let action_separator_present = tail_offset < trimmed.len();
     tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
     let mut href = None;
     let mut href_keyword = None;
@@ -114,7 +118,9 @@ fn parse_click_statement(
         let tail = &trimmed[tail_offset..];
         if starts_with_click_keyword(tail, "href") {
             if href.is_some() {
-                return Err("invalid click statement: duplicate href".to_string());
+                return Err(ClickStatementError::new(
+                    "invalid click statement: duplicate href",
+                ));
             }
             let href_keyword_end = tail_offset + "href".len();
             href_keyword = Some(SourceSpan::new(
@@ -126,11 +132,15 @@ fn parse_click_statement(
             let quote_start = href_keyword_end + href_ws;
             let value_start = quote_start + '"'.len_utf8();
             if !trimmed[quote_start..].starts_with('"') {
-                return Err("invalid click statement: href requires a quoted URL".to_string());
+                return Err(ClickStatementError::new(
+                    "invalid click statement: href requires a quoted URL",
+                ));
             }
             let value_tail = &trimmed[value_start..];
             let Some(end) = value_tail.find('"') else {
-                return Err("invalid click statement: unterminated href URL".to_string());
+                return Err(ClickStatementError::new(
+                    "invalid click statement: unterminated href URL",
+                ));
             };
             let value_end = value_start + end;
             href = Some(SpannedText {
@@ -145,7 +155,9 @@ fn parse_click_statement(
 
         if starts_with_click_keyword(tail, "call") {
             if call.is_some() {
-                return Err("invalid click statement: duplicate callback".to_string());
+                return Err(ClickStatementError::new(
+                    "invalid click statement: duplicate callback",
+                ));
             }
             let call_keyword_end = tail_offset + "call".len();
             call_keyword = Some(SourceSpan::new(
@@ -156,7 +168,8 @@ fn parse_click_statement(
             let call_ws = leading_whitespace_len(after_call);
             let name_start = call_keyword_end + call_ws;
             let (parsed_call, next_offset) =
-                parse_callback_tail(trimmed, name_start, line_start + leading)?;
+                parse_callback_tail(trimmed, name_start, line_start + leading)
+                    .map_err(ClickStatementError::new)?;
             call = Some(parsed_call);
             tail_offset = next_offset;
             tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
@@ -164,25 +177,49 @@ fn parse_click_statement(
         }
 
         if tail.starts_with('"') {
-            tail_offset = skip_quoted_click_tail(trimmed, tail_offset)?;
+            tail_offset =
+                skip_quoted_click_tail(trimmed, tail_offset).map_err(ClickStatementError::new)?;
             tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
             continue;
         }
 
+        if ["href", "call"]
+            .iter()
+            .any(|keyword| starts_with_case_insensitive(keyword, tail))
+        {
+            return Err(ClickStatementError::with_expected_action(
+                "invalid click statement: incomplete action",
+                SourceSpan::new(
+                    line_start + leading + tail_offset,
+                    line_start + leading + trimmed.len(),
+                ),
+            ));
+        }
+
         if call.is_none() {
             let (parsed_call, next_offset) =
-                parse_callback_tail(trimmed, tail_offset, line_start + leading)?;
+                parse_callback_tail(trimmed, tail_offset, line_start + leading)
+                    .map_err(ClickStatementError::new)?;
             call = Some(parsed_call);
             tail_offset = next_offset;
             tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
             continue;
         }
 
-        return Err(format!("invalid click statement tail: {tail:?}"));
+        return Err(ClickStatementError::new(format!(
+            "invalid click statement tail: {tail:?}"
+        )));
     }
 
     if href.is_none() && call.is_none() {
-        return Err("invalid click statement: missing href or callback".to_string());
+        let expected_action = action_separator_present.then(|| {
+            let end = line_start + leading + trimmed.len();
+            SourceSpan::new(end, end)
+        });
+        return Err(ClickStatementError {
+            message: "invalid click statement: missing href or callback".to_string(),
+            expected_action,
+        });
     }
 
     Ok(Some(ClickStatementParts {
@@ -192,6 +229,28 @@ fn parse_click_statement(
         call,
         call_keyword,
     }))
+}
+
+#[derive(Debug)]
+struct ClickStatementError {
+    message: String,
+    expected_action: Option<SourceSpan>,
+}
+
+impl ClickStatementError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            expected_action: None,
+        }
+    }
+
+    fn with_expected_action(message: impl Into<String>, span: SourceSpan) -> Self {
+        Self {
+            message: message.into(),
+            expected_action: Some(span),
+        }
+    }
 }
 
 fn skip_quoted_click_tail(trimmed: &str, quote_start: usize) -> std::result::Result<usize, String> {
@@ -415,8 +474,8 @@ impl GanttAccDescrBlock {
     fn consume_remaining(
         mut self,
         cursor: &mut LineCursor<'_>,
-        control: &ParseControl,
-    ) -> ParseControlResult<Self> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Self> {
         while !self.complete {
             control.checkpoint()?;
             let Some((line, line_start)) = cursor.next_line() else {
@@ -511,9 +570,20 @@ fn collect_gantt_click_symbols(
             kind: EditorSemanticKind::Variable,
             expected_syntax: Some(EditorExpectedSyntaxKind::NodeIdentifier),
             statement_span,
+            role: GanttIdRole::Reference,
         },
         facts,
     );
+
+    for action in [click.href_keyword, click.call_keyword]
+        .into_iter()
+        .flatten()
+    {
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::InteractionAction,
+            action,
+        ));
+    }
 
     if let Some(href) = click.href {
         push_gantt_payload_symbol(
@@ -627,6 +697,7 @@ fn collect_gantt_task_field_symbols(
                 EditorSemanticKind::Variable,
                 Some(EditorExpectedSyntaxKind::NodeIdentifier),
                 statement_span,
+                GanttIdRole::Definition,
                 facts,
             );
             push_gantt_relative_ref_symbols(start_data, statement_span, facts);
@@ -658,6 +729,7 @@ fn push_gantt_relative_ref_symbols(
                 kind: EditorSemanticKind::Variable,
                 expected_syntax: Some(EditorExpectedSyntaxKind::NodeIdentifier),
                 statement_span,
+                role: GanttIdRole::Reference,
             },
             facts,
         );
@@ -672,6 +744,13 @@ struct GanttDelimitedIdSymbols<'a> {
     kind: EditorSemanticKind,
     expected_syntax: Option<EditorExpectedSyntaxKind>,
     statement_span: SourceSpan,
+    role: GanttIdRole,
+}
+
+#[derive(Clone, Copy)]
+enum GanttIdRole {
+    Definition,
+    Reference,
 }
 
 fn push_gantt_delimited_id_symbols(
@@ -686,6 +765,7 @@ fn push_gantt_delimited_id_symbols(
         kind,
         expected_syntax,
         statement_span,
+        role,
     } = request;
     let mut segment_start = 0usize;
     for (idx, ch) in text.char_indices() {
@@ -700,6 +780,7 @@ fn push_gantt_delimited_id_symbols(
                 kind,
                 expected_syntax,
                 statement_span,
+                role,
                 facts,
             );
             segment_start = idx + ch.len_utf8();
@@ -716,6 +797,7 @@ fn push_gantt_delimited_id_symbols(
         kind,
         expected_syntax,
         statement_span,
+        role,
         facts,
     );
 }
@@ -726,6 +808,7 @@ fn push_gantt_id_symbol(
     kind: EditorSemanticKind,
     expected_syntax: Option<EditorExpectedSyntaxKind>,
     statement_span: SourceSpan,
+    role: GanttIdRole,
     facts: &mut EditorSemanticFacts,
 ) {
     let Some(field) = field.trim() else {
@@ -734,13 +817,23 @@ fn push_gantt_id_symbol(
     if let Some(expected_syntax) = expected_syntax {
         facts.push_expected_syntax(EditorExpectedSyntax::new(expected_syntax, field.span()));
     }
-    facts.push_symbol(EditorSemanticSymbol::new(
-        field.text,
-        Some(detail.to_string()),
-        kind,
-        statement_span,
-        field.span(),
-    ));
+    let symbol = match role {
+        GanttIdRole::Definition => EditorSemanticSymbol::new(
+            field.text,
+            Some(detail.to_string()),
+            kind,
+            statement_span,
+            field.span(),
+        ),
+        GanttIdRole::Reference => EditorSemanticSymbol::reference(
+            field.text,
+            Some(detail.to_string()),
+            kind,
+            statement_span,
+            field.span(),
+        ),
+    };
+    facts.push_symbol(symbol);
 }
 
 fn split_gantt_fields(text: &str, text_start: usize) -> Vec<SpannedText<'_>> {
@@ -814,8 +907,8 @@ pub(crate) fn parse_gantt_model_for_render(
 pub(crate) fn parse_gantt_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = match construct_gantt_semantic_source_controlled(code, meta, control)? {
         Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
         Err(error) => Err(error),
@@ -836,8 +929,8 @@ impl GanttSemanticSource {
     fn into_combined_parts_controlled(
         self,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<(Result<Value>, EditorSemanticFacts)> {
+        control: &OperationControl,
+    ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         let Self { db, editor_facts } = self;
         let model = match db {
             Some(db) => match gantt_db_to_render_model_controlled(db, control)? {
@@ -859,15 +952,15 @@ fn construct_gantt_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<GanttSemanticSource, CombinedSemanticFailure> {
-    construct_gantt_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_gantt_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_gantt_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     GANTT_SYNTAX_CONSTRUCTION_COUNT.set(GANTT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -891,8 +984,8 @@ fn parse_gantt_semantic_source_with_lexemes(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<GanttSemanticSource, CombinedSemanticFailure>> {
     control.checkpoint()?;
     let mut db = GanttDb::default();
     db.clear();
@@ -1009,16 +1102,16 @@ pub(crate) fn render_model_to_compat_json(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     render_model_to_compat_json_controlled(model, meta, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
-pub(super) fn render_model_to_compat_json_controlled(
+pub(crate) fn render_model_to_compat_json_controlled(
     model: &GanttDiagramRenderModel,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(Ok(json!({})));
@@ -1072,8 +1165,8 @@ pub(super) fn render_model_to_compat_json_controlled(
 
 fn strings_to_json_controlled(
     strings: &[String],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Value>> {
     let mut values = Vec::with_capacity(strings.len());
     for (index, value) in strings.iter().enumerate() {
         if index % 128 == 0 {
@@ -1086,8 +1179,8 @@ fn strings_to_json_controlled(
 
 fn serialize_gantt_tasks_controlled(
     tasks: &[GanttRenderTask],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Value>> {
     let mut values = Vec::with_capacity(tasks.len());
     for (index, task) in tasks.iter().enumerate() {
         if index % 128 == 0 {
@@ -1105,8 +1198,8 @@ fn serialize_gantt_tasks_controlled(
 
 fn string_map_to_json_controlled(
     values: &HashMap<String, String>,
-    control: &ParseControl,
-) -> ParseControlResult<Map<String, Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Map<String, Value>> {
     let mut out = Map::with_capacity(values.len());
     for (index, (key, value)) in values.iter().enumerate() {
         if index % 128 == 0 {
@@ -1119,8 +1212,8 @@ fn string_map_to_json_controlled(
 
 fn serialize_map_to_json_controlled<T: serde::Serialize>(
     values: &HashMap<String, T>,
-    control: &ParseControl,
-) -> ParseControlResult<Map<String, Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Map<String, Value>> {
     let mut out = Map::with_capacity(values.len());
     for (index, (key, value)) in values.iter().enumerate() {
         if index % 128 == 0 {
@@ -1132,15 +1225,15 @@ fn serialize_map_to_json_controlled<T: serde::Serialize>(
 }
 
 fn gantt_db_to_render_model(db: GanttDb) -> Result<GanttDiagramRenderModel> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     gantt_db_to_render_model_controlled(db, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn gantt_db_to_render_model_controlled(
     mut db: GanttDb,
-    control: &ParseControl,
-) -> ParseControlResult<Result<GanttDiagramRenderModel>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
     control.checkpoint()?;
     let raw_tasks = db.take_tasks();
     let mut tasks = Vec::with_capacity(raw_tasks.len());
@@ -1524,8 +1617,8 @@ fn parse_gantt_statement(
     cursor: &mut LineCursor<'_>,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<Result<()>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<()>> {
     control.checkpoint()?;
     let stripped = strip_inline_comment(line);
     let t = stripped.trim();
@@ -1846,12 +1939,18 @@ fn parse_gantt_statement(
             return Ok(Ok(()));
         }
         Ok(None) => {}
-        Err(message) => {
+        Err(error) => {
             facts.push_directive_prefix("click");
             record_gantt_keyword(lexemes, stripped, line_start, "click");
+            if let Some(expected_action) = error.expected_action {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::InteractionAction,
+                    expected_action,
+                ));
+            }
             return Ok(Err(Error::diagram_parse_exact(
                 "gantt".to_string(),
-                message,
+                error.message,
                 gantt_statement_span(stripped, line_start),
             )));
         }

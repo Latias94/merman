@@ -953,6 +953,7 @@ fn local_semantic_fixture_readme_documents_admission_policy() {
         "routed-grid fixtures",
         "structured relation-summary fixtures",
         "Resource limits are",
+        "`AsciiResourcePolicy` grid budget",
     ] {
         assert!(
             readme.contains(expected),

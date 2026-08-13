@@ -56,3 +56,9 @@ tests, but the public product boundary is Mermaid semantic compatibility plus st
 - Do not claim Mermaid CLI visual parity for text output.
 - Do not ship copied upstream fixtures or derived source without tracked MIT license notice and
   source commit provenance.
+ASCII remains an independent model-to-grid adapter rather than a projection of SVG geometry. It
+receives the same operation control, runtime context, and operation-owned resource policy as the
+SVG target, while keeping its own graph, routing, canvas, character-width, and output rules.
+`max_grid_cells` is a structured ASCII resource quota; cancellation/deadline is a separate
+operation outcome. The public seam is one model-level backend entry, not per-family source
+render helpers.

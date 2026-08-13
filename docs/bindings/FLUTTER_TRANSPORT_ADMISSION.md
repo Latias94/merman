@@ -17,6 +17,13 @@ package and CI path. Keeping it beside ABI 3 would create two Flutter transport
 contracts to maintain. Replacing ABI 3 would discard the shared compatibility
 anchor without a sufficient user-facing benefit.
 
+This document records the U15 candidate evaluation at repository base
+`cc39fdcd0f0ea6242ddb68c3093859c456c38844`. Its statements that the incumbent renderer lacked a
+cooperative polling seam describe that historical baseline, not the current ABI 3 contract. The
+current transport appends operation-control slots `7`-`9`, exposes cooperative cancellation and
+relative deadlines, and returns status `17` with structured cancellation details. It still does
+not claim preemptive interruption of arbitrary synchronous code.
+
 No FRB crate, Dart dependency, generated bridge, package hook, feature, or
 release contract remains in the production tree after this decision.
 
@@ -60,7 +67,7 @@ dependencies to 2.12.0 and exposed only:
 | Engine lifecycle | Idempotent `dispose`, use-after-dispose rejection, callback-time disposal rejection | Opaque object generated `dispose`; global `RustLib.dispose` also required | Basic disposal passed, but a rejected post-dispose async call left the Dart process alive past a 5 s bound |
 | UI-isolate responsiveness | Calls are synchronous unless the application owns a worker isolate | Default Dart API schedules synchronous Rust work on FRB's native thread pool | Candidate advantage, but implementable above ABI 3 without another Rust transport |
 | Queue saturation | No hidden transport queue; synchronous callers own scheduling | Default FRB thread pool uses an unbounded channel; candidate engine serialization adds mutex contention behind it | Candidate fails the bounded-queue gate |
-| Cancellation | No false claim of interrupting executing renders | FRB cancellation is user-supplied; the renderer has no cooperative polling seam | No candidate advantage; preemptive cancellation is unsupported |
+| Cancellation | At the measured U15 base, no executing-render cancellation seam; current ABI 3 later added explicit cooperative controls | FRB cancellation was user-supplied; the measured renderer had no cooperative polling seam | No candidate advantage in the measured comparison; neither design demonstrated preemptive termination |
 | Text measurement and reentry | Synchronous `NativeCallable.isolateLocal` callback with explicit same-engine reentry rejection | FRB Rust-to-Dart callbacks are async `DartFnFuture`; no synchronous adapter was implemented | Candidate fails a material ABI behavior gate |
 | Large output | Owned output copy, or 64 KiB sink callbacks; core currently materializes the complete output first | The exact default 2.12.0 candidate used SSE: generated Rust encoded every byte into a second buffer and Dart copied it with `Uint8List.fromList` | No low-copy advantage was demonstrated; neither path is true incremental rendering |
 | Sink abort/backpressure | Sink can abort while Dart receives bounded chunks | No equivalent bounded sink was implemented | Candidate fails the streamed-output gate |
@@ -165,12 +172,12 @@ already fails callback, streaming, package, and target-CI requirements.
 | --- | --- | --- |
 | Android arm64/x86_64 | Gradle plugin plus packaged `libmerman_ffi.so` slices | Not integrated or tested |
 | iOS device/simulator | CocoaPods metadata plus `MermanFFI.xcframework` | Not integrated or tested |
-| macOS arm64/x86_64 | CocoaPods metadata plus dylib/XCFramework artifacts | Host dylib only; no package integration |
+| macOS arm64/x86_64 | One XCFramework shared by CocoaPods and SwiftPM | Host dylib only; no package integration |
 | Linux x86_64/arm64 | CMake metadata plus packaged `.so` artifacts | Not integrated or tested |
 | Windows x86_64 | CMake metadata plus packaged `.dll` artifact | Not integrated or tested |
 
 The baseline release workflow installs the Rust targets, builds and injects
-every artifact, runs Flutter analysis and a dry-run publish, then tests the
+every artifact, runs Flutter analysis and a size-gated dry-run publish, then tests the
 packed package. The Flutter owner has distinct `flutter-android-native`,
 `flutter-ios-native`, and `flutter-desktop-native` target-set recipes. The Android recipe remains
 on the `merman-ffi` C ABI transport; the Kotlin AAR's JNI implementation is structurally isolated
@@ -237,15 +244,18 @@ restore the explicit bound required by the product contract.
 
 ## Baseline Hardening
 
-The useful FRB observation should be applied without introducing a second Rust
-transport:
+The useful FRB observation should be applied without introducing a second Rust transport. Items
+below are retained as the historical U15 follow-up list; item 2 is now implemented by the current
+ABI 3 operation-control contract:
 
 1. Add an optional persistent Dart worker-isolate actor above the ABI 3 facade.
    The worker owns the dynamic library and engine, exposes `Future` methods, and
    uses a bounded request queue with explicit shutdown.
-2. Keep cancellation honest. Queued work may be removed; executing work finishes
-   and its result may be discarded until bindings-core and renderers gain a
-   cooperative cancellation seam.
+2. Keep cancellation honest. **Implemented after this evaluation:** the ABI now creates opaque
+   controls with optional monotonic deadlines, attaches them to requests, accepts cancellation from
+   another execution context, and returns `MERMAN_NATIVE_STATUS_CANCELLED` (`17`) with
+   `details.cancellation = {reason, phase}`. Cancellation remains cooperative: opaque synchronous
+   backends and host callbacks return before the next checkpoint observes it.
 3. Keep synchronous host text measurement on the engine's isolate. UI-derived
    measurements should be prepared or cached before rendering rather than
    introducing an async callback into a synchronous layout algorithm.

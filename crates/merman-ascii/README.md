@@ -23,25 +23,11 @@ This model renderer does not own a runtime-policy constructor, so it does not fo
 
 ## Quick Start
 
-Most applications should use the `merman` facade so parsing and text rendering stay in one operation:
+Most applications should use the `merman` facade so parsing and text rendering stay in one operation. The facade owns source parsing, operation control, and target selection; this crate exposes only the typed-model backend seam.
 
 ```toml
 [dependencies]
 merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["ascii"] }
-```
-
-```rust
-use merman::ascii::HeadlessAsciiRenderer;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let renderer = HeadlessAsciiRenderer::new().with_strict_parsing();
-    let output = renderer
-        .render_ascii_sync("flowchart LR\n  Source --> Terminal")?
-        .expect("diagram detected");
-
-    println!("{output}");
-    Ok(())
-}
 ```
 
 Depend on `merman-ascii` directly only when the application already owns a typed `merman-core::RenderSemanticModel`.

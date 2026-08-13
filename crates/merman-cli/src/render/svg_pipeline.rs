@@ -50,7 +50,7 @@ fn decode_basic_xml_entities(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman::svg::RenderEnvironment;
+    use merman_render::environment::RenderEnvironment;
 
     const SVG_WITH_BROWSER_ONLY_CONTENT: &str = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 

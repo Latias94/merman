@@ -1,8 +1,12 @@
-use crate::canvas::finish_styled_line_iter_with_deferred_resources;
 #[cfg(test)]
 use crate::canvas::{
     finish_styled_line_iter_with_deferred_probe, finish_styled_line_iter_with_resources,
 };
+use crate::canvas::{
+    finish_styled_line_iter_with_deferred_resources,
+    finish_styled_line_iter_with_deferred_resources_with_execution,
+};
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -119,6 +123,25 @@ pub(crate) fn render_stacked_boxes_with_deferred_options(
     render_lines_with_deferred_options(&lines, options, resources, deferred)
 }
 
+pub(crate) fn render_stacked_boxes_with_deferred_options_with_execution(
+    boxes: &[RelationGraphBox],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let lines = stacked_box_lines_ordered_impl(
+        boxes,
+        options.terminal_width_profile,
+        false,
+        resources,
+        Some(execution),
+    )?;
+    render_lines_with_deferred_options_with_execution(
+        &lines, options, resources, deferred, execution,
+    )
+}
+
 #[cfg(test)]
 pub(crate) fn render_stacked_boxes_with_section(
     boxes: &[RelationGraphBox],
@@ -191,6 +214,16 @@ pub(crate) fn stacked_box_lines_ordered(
     reverse: bool,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
+    stacked_box_lines_ordered_impl(boxes, width_profile, reverse, resources, None)
+}
+
+fn stacked_box_lines_ordered_impl(
+    boxes: &[RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    reverse: bool,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<Vec<RelationGraphLine>> {
     let extent = stacked_box_extent(boxes, resources)?;
     resources.charge_layout_work(extent.cells())?;
     let mut lines = Vec::new();
@@ -206,6 +239,7 @@ pub(crate) fn stacked_box_lines_ordered(
         &boxes[ordered_index]
     });
     for (index, relation_box) in ordered.enumerate() {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         if index > 0 {
             lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
         }
@@ -272,6 +306,7 @@ fn build_layered_edges<'text, R, A>(
     relations: &[R],
     adapter: &A,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<LayeredRelationEdge>>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -281,11 +316,10 @@ where
     edges
         .try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
-    edges.extend(
-        relations
-            .iter()
-            .map(|relation| adapter.build_edges(relation)),
-    );
+    for relation in relations {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        edges.push(adapter.build_edges(relation));
+    }
     Ok(edges)
 }
 
@@ -307,6 +341,29 @@ where
     }
 }
 
+pub(crate) fn render_relation_components_with_deferred_with_execution<'text, R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
+    execution: AsciiExecution<'_>,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<'text, R>,
+{
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    match render_relation_component_lines_with_execution(
+        boxes, relations, options, resources, adapter, deferred, execution,
+    )? {
+        Some(lines) => render_lines_with_deferred_options_with_execution(
+            &lines, options, resources, deferred, execution,
+        ),
+        None => Ok(String::new()),
+    }
+}
+
 pub(crate) fn render_relation_component_lines<'plan, 'text, R, A>(
     boxes: &'plan [RelationGraphBox],
     relations: &'plan [R],
@@ -318,7 +375,27 @@ pub(crate) fn render_relation_component_lines<'plan, 'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
 {
-    let edges = build_layered_edges(relations, adapter, resources)?;
+    render_relation_component_lines_impl(
+        boxes, relations, options, resources, adapter, deferred, None,
+    )
+}
+
+fn render_relation_component_lines_impl<'plan, 'text, R, A>(
+    boxes: &'plan [RelationGraphBox],
+    relations: &'plan [R],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &'plan A,
+    deferred: &mut DeferredTextRegistry<'text>,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<Option<Vec<RelationGraphLine>>>
+where
+    A: RelationComponentAdapter<'text, R> + 'plan,
+{
+    let edges = build_layered_edges(relations, adapter, resources, execution)?;
+    for _ in boxes {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+    }
     let layered_error = |error| adapter.layered_error(error);
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(layered_error))?;
@@ -332,9 +409,10 @@ where
         .try_reserve_exact(components.len())
         .map_err(|_| layout_allocation_failed())?;
     for component in components {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         let has_relations = !component.edge_indices().is_empty();
         let region = plan_relation_component_region(
-            component, relations, options, resources, adapter, deferred,
+            component, relations, options, resources, adapter, deferred, execution,
         )?;
         if has_relations {
             relation_regions.push(region);
@@ -363,7 +441,35 @@ where
     }
     regions.extend(standalone_regions);
     let plan = RelationRenderPlan::try_new(regions, resources)?;
-    Ok(Some(plan.materialize(options, resources)?))
+    checkpoint(execution, merman_core::OperationPhase::Emit)?;
+    let lines = plan.materialize(options, resources)?;
+    for _ in &lines {
+        checkpoint(execution, merman_core::OperationPhase::Emit)?;
+    }
+    Ok(Some(lines))
+}
+
+pub(crate) fn render_relation_component_lines_with_execution<'plan, 'text, R, A>(
+    boxes: &'plan [RelationGraphBox],
+    relations: &'plan [R],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &'plan A,
+    deferred: &mut DeferredTextRegistry<'text>,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<Vec<RelationGraphLine>>>
+where
+    A: RelationComponentAdapter<'text, R> + 'plan,
+{
+    render_relation_component_lines_impl(
+        boxes,
+        relations,
+        options,
+        resources,
+        adapter,
+        deferred,
+        Some(execution),
+    )
 }
 
 fn plan_relation_component_region<'plan, 'text, R, A>(
@@ -373,6 +479,7 @@ fn plan_relation_component_region<'plan, 'text, R, A>(
     resources: &mut ResourceContext,
     adapter: &'plan A,
     deferred: &mut DeferredTextRegistry<'text>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<RelationRegionPlan<'plan>>
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
@@ -383,6 +490,7 @@ where
         .try_reserve_exact(edge_indices.len())
         .map_err(|_| layout_allocation_failed())?;
     for edge_index in edge_indices {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         selected.push(
             relations
                 .get(edge_index)
@@ -396,12 +504,16 @@ where
         )?));
     }
 
-    let has_self = selected
-        .iter()
-        .any(|relation| adapter.is_self_relation(*relation));
-    let has_non_self = selected
-        .iter()
-        .any(|relation| !adapter.is_self_relation(*relation));
+    let mut has_self = false;
+    let mut has_non_self = false;
+    for relation in &selected {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        if adapter.is_self_relation(*relation) {
+            has_self = true;
+        } else {
+            has_non_self = true;
+        }
+    }
     if has_self && has_non_self {
         return plan_relation_summary_region(
             component_boxes,
@@ -416,10 +528,17 @@ where
 
     if has_self {
         let first_edge = adapter.build_edges(selected[0]);
-        let same_endpoint = selected.iter().all(|relation| {
+        let mut same_endpoint = true;
+        for relation in &selected {
+            checkpoint(execution, merman_core::OperationPhase::Layout)?;
             let edge = adapter.build_edges(*relation);
-            edge.source_id() == first_edge.source_id() && edge.target_id() == first_edge.target_id()
-        });
+            if edge.source_id() != first_edge.source_id()
+                || edge.target_id() != first_edge.target_id()
+            {
+                same_endpoint = false;
+                break;
+            }
+        }
         if same_endpoint {
             let relation_box = find_box_ref(&component_boxes, first_edge.source_id())
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
@@ -427,7 +546,7 @@ where
         }
     }
 
-    if selected.len() > 1 && same_directed_endpoints(&selected, adapter) {
+    if selected.len() > 1 && same_directed_endpoints(&selected, adapter, execution)? {
         return adapter.plan_parallel_region(
             component_boxes,
             selected,
@@ -447,6 +566,7 @@ where
         adapter.layered_horizontal_gap(),
         resources,
         adapter,
+        execution,
     )? {
         Ok(plan) => Ok(RelationRegionPlan::Layered(plan)),
         Err(reason) => plan_relation_summary_region(
@@ -461,18 +581,26 @@ where
     }
 }
 
-fn same_directed_endpoints<'text, R, A>(relations: &[&R], adapter: &A) -> bool
+fn same_directed_endpoints<'text, R, A>(
+    relations: &[&R],
+    adapter: &A,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<bool>
 where
     A: RelationComponentAdapter<'text, R>,
 {
     let Some(first) = relations.first() else {
-        return false;
+        return Ok(false);
     };
     let first = adapter.build_edges(first);
-    relations.iter().skip(1).all(|relation| {
+    for relation in relations.iter().skip(1) {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         let edge = adapter.build_edges(*relation);
-        edge.source_id() == first.source_id() && edge.target_id() == first.target_id()
-    })
+        if edge.source_id() != first.source_id() || edge.target_id() != first.target_id() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn plan_relation_self_loop_region<'plan, 'text, R, A>(
@@ -673,6 +801,7 @@ where
         horizontal_gap,
         resources,
         adapter,
+        None,
     )
 }
 
@@ -701,18 +830,22 @@ fn plan_layered_relation_component_ref_result<'boxes, 'text, R, A>(
     horizontal_gap: usize,
     resources: &mut ResourceContext,
     adapter: &A,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<std::result::Result<LayeredRelationPaintPlan<'boxes>, LayeredRelationSummaryReason>>
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    let has_self_relation = relations
-        .iter()
-        .any(|relation| adapter.is_self_relation(*relation));
-    if has_self_relation
-        && relations
-            .iter()
-            .any(|relation| !adapter.is_self_relation(*relation))
-    {
+    let mut has_self_relation = false;
+    let mut has_non_self_relation = false;
+    for relation in relations {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        if adapter.is_self_relation(*relation) {
+            has_self_relation = true;
+        } else {
+            has_non_self_relation = true;
+        }
+    }
+    if has_self_relation && has_non_self_relation {
         return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
     }
     resources.charge_layout_work(relations.len().max(1))?;
@@ -720,11 +853,10 @@ where
     edges
         .try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
-    edges.extend(
-        relations
-            .iter()
-            .map(|relation| adapter.build_edges(*relation)),
-    );
+    for relation in relations {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        edges.push(adapter.build_edges(*relation));
+    }
     let scene = match plan_layered_relation_scene(
         boxes,
         edges,
@@ -741,7 +873,7 @@ where
     };
 
     let (route_plans, extent) =
-        match plan_layered_route_batch(&scene, relations, resources, adapter) {
+        match plan_layered_route_batch_impl(&scene, relations, resources, adapter, execution) {
             Ok(plan) => plan,
             Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
             Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
@@ -754,6 +886,7 @@ where
     }))
 }
 
+#[cfg(test)]
 fn plan_layered_route_batch<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
@@ -769,14 +902,71 @@ fn plan_layered_route_batch<'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    plan_layered_route_batch_with_probes(scene, relations, resources, adapter, || {}, || {})
+    plan_layered_route_batch_impl(scene, relations, resources, adapter, None)
 }
 
+fn plan_layered_route_batch_impl<'text, R, A>(
+    scene: &LayeredRelationScene<'_>,
+    relations: &[&R],
+    resources: &ResourceContext,
+    adapter: &A,
+    execution: Option<AsciiExecution<'_>>,
+) -> std::result::Result<
+    (
+        Vec<LayeredRelationRoutePlan>,
+        crate::resource::LogicalExtent,
+    ),
+    LayeredRouteBatchError,
+>
+where
+    A: RelationComponentAdapter<'text, R>,
+{
+    plan_layered_route_batch_with_probes_and_execution(
+        scene,
+        relations,
+        resources,
+        adapter,
+        execution,
+        || {},
+        || {},
+    )
+}
+
+#[cfg(test)]
 fn plan_layered_route_batch_with_probes<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
+    before_geometry_collision_scan: impl FnOnce(),
+    before_materialized_collision_scan: impl FnOnce(),
+) -> std::result::Result<
+    (
+        Vec<LayeredRelationRoutePlan>,
+        crate::resource::LogicalExtent,
+    ),
+    LayeredRouteBatchError,
+>
+where
+    A: RelationComponentAdapter<'text, R>,
+{
+    plan_layered_route_batch_with_probes_and_execution(
+        scene,
+        relations,
+        resources,
+        adapter,
+        None,
+        before_geometry_collision_scan,
+        before_materialized_collision_scan,
+    )
+}
+
+fn plan_layered_route_batch_with_probes_and_execution<'text, R, A>(
+    scene: &LayeredRelationScene<'_>,
+    relations: &[&R],
+    resources: &ResourceContext,
+    adapter: &A,
+    execution: Option<AsciiExecution<'_>>,
     before_geometry_collision_scan: impl FnOnce(),
     before_materialized_collision_scan: impl FnOnce(),
 ) -> std::result::Result<
@@ -804,6 +994,7 @@ where
                 relations,
                 resources,
                 adapter,
+                execution,
                 before_geometry_collision_scan,
                 before_materialized_collision_scan,
             )
@@ -826,6 +1017,7 @@ fn plan_layered_route_batch_in_transaction<'text, R, A>(
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
+    execution: Option<AsciiExecution<'_>>,
     before_geometry_collision_scan: impl FnOnce(),
     before_materialized_collision_scan: impl FnOnce(),
 ) -> std::result::Result<
@@ -844,6 +1036,7 @@ where
         .try_reserve_exact(scene.draw_order().len())
         .map_err(|_| layout_allocation_failed())?;
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         let Some(relation) = relations.get(edge_index).copied() else {
             return Err(LayeredRouteBatchError::Semantic(
                 LayeredRelationSummaryReason::RouteCollision,
@@ -875,6 +1068,7 @@ where
         scene,
         &planned,
         resources,
+        execution,
         before_geometry_collision_scan,
     )?;
 
@@ -883,6 +1077,7 @@ where
         .try_reserve_exact(planned.len())
         .map_err(|_| layout_allocation_failed())?;
     for route in planned {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         let Some(relation) = relations.get(route.edge_index).copied() else {
             return Err(LayeredRouteBatchError::Semantic(
                 LayeredRelationSummaryReason::RouteCollision,
@@ -900,6 +1095,7 @@ where
         scene,
         &route_plans,
         resources,
+        execution,
         before_materialized_collision_scan,
     )?;
     let extent = resources.grid_extent(scene.width(), scene.height())?;
@@ -952,6 +1148,7 @@ fn validate_layered_route_geometries_with_probe(
     scene: &LayeredRelationScene<'_>,
     routes: &[PlannedLayeredRoute],
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
     before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
     resources.charge_layout_work(routes.len().max(1))?;
@@ -981,23 +1178,24 @@ fn validate_layered_route_geometries_with_probe(
     }
     if scene.is_planar_k2_2() {
         for (index, route) in routes.iter().enumerate() {
-            if routes[index + 1..]
-                .iter()
-                .any(|other| route.geometry.overlaps(&other.geometry))
-            {
-                return Err(LayeredRouteBatchError::Semantic(
-                    LayeredRelationSummaryReason::RouteCollision,
-                ));
+            checkpoint(execution, merman_core::OperationPhase::Layout)?;
+            for other in &routes[index + 1..] {
+                checkpoint(execution, merman_core::OperationPhase::Layout)?;
+                if route.geometry.overlaps(&other.geometry) {
+                    return Err(LayeredRouteBatchError::Semantic(
+                        LayeredRelationSummaryReason::RouteCollision,
+                    ));
+                }
             }
         }
     }
-    if routes
-        .iter()
-        .any(|route| scene.route_geometry_overlaps_box(&route.geometry))
-    {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::RouteCollision,
-        ));
+    for route in routes {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        if scene.route_geometry_overlaps_box(&route.geometry) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        }
     }
     Ok(())
 }
@@ -1006,6 +1204,7 @@ fn validate_layered_route_batch_with_probe(
     scene: &LayeredRelationScene<'_>,
     route_plans: &[LayeredRelationRoutePlan],
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
     before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
     resources.charge_layout_work(route_plans.len().max(1))?;
@@ -1044,51 +1243,57 @@ fn validate_layered_route_batch_with_probe(
         ));
     }
     for (index, route_plan) in route_plans.iter().enumerate() {
-        if route_plans[index + 1..]
-            .iter()
-            .any(|other| route_plan.overlays_overlap(other))
-        {
-            return Err(LayeredRouteBatchError::Semantic(
-                LayeredRelationSummaryReason::OverlayCollision,
-            ));
-        }
-    }
-    if scene.is_planar_k2_2() {
-        for (index, route_plan) in route_plans.iter().enumerate() {
-            if route_plans[index + 1..]
-                .iter()
-                .any(|other| route_plan.route_overlaps(other))
-            {
-                return Err(LayeredRouteBatchError::Semantic(
-                    LayeredRelationSummaryReason::RouteCollision,
-                ));
-            }
-            if route_plans[index + 1..].iter().any(|other| {
-                route_plan.overlays_overlap_route(other) || other.overlays_overlap_route(route_plan)
-            }) {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        for other in &route_plans[index + 1..] {
+            checkpoint(execution, merman_core::OperationPhase::Layout)?;
+            if route_plan.overlays_overlap(other) {
                 return Err(LayeredRouteBatchError::Semantic(
                     LayeredRelationSummaryReason::OverlayCollision,
                 ));
             }
         }
     }
-    if route_plans
-        .iter()
-        .any(|route_plan| scene.route_overlaps_box(route_plan))
-    {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::RouteCollision,
-        ));
+    if scene.is_planar_k2_2() {
+        for (index, route_plan) in route_plans.iter().enumerate() {
+            checkpoint(execution, merman_core::OperationPhase::Layout)?;
+            for other in &route_plans[index + 1..] {
+                checkpoint(execution, merman_core::OperationPhase::Layout)?;
+                if route_plan.route_overlaps(other) {
+                    return Err(LayeredRouteBatchError::Semantic(
+                        LayeredRelationSummaryReason::RouteCollision,
+                    ));
+                }
+                if route_plan.overlays_overlap_route(other)
+                    || other.overlays_overlap_route(route_plan)
+                {
+                    return Err(LayeredRouteBatchError::Semantic(
+                        LayeredRelationSummaryReason::OverlayCollision,
+                    ));
+                }
+            }
+        }
     }
-    if route_plans
-        .iter()
-        .any(|route_plan| scene.overlays_overlap_box(route_plan))
-    {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::OverlayCollision,
-        ));
+    for route_plan in route_plans {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        if scene.route_overlaps_box(route_plan) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        }
+        if scene.overlays_overlap_box(route_plan) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::OverlayCollision,
+            ));
+        }
     }
     Ok(())
+}
+
+fn checkpoint(
+    execution: Option<AsciiExecution<'_>>,
+    phase: merman_core::OperationPhase,
+) -> Result<()> {
+    execution.map_or(Ok(()), |execution| execution.checkpoint(phase))
 }
 
 fn grid_overflow(resources: &ResourceContext) -> AsciiError {
@@ -1250,6 +1455,33 @@ pub(crate) fn render_lines_with_deferred_options(
         true,
         resources,
         deferred,
+    )
+}
+
+pub(crate) fn render_lines_with_deferred_options_with_execution(
+    lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    if lines.is_empty() {
+        return Ok(String::new());
+    }
+
+    debug_assert!(
+        lines
+            .iter()
+            .all(|line| line.width_profile() == options.terminal_width_profile)
+    );
+
+    finish_styled_line_iter_with_deferred_resources_with_execution(
+        lines.iter().map(RelationGraphLine::styled),
+        options,
+        true,
+        resources,
+        deferred,
+        execution,
     )
 }
 

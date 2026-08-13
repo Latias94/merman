@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
@@ -41,29 +42,47 @@ impl MindmapChars {
     }
 }
 
-pub fn render_mindmap_diagram(
+pub(super) fn render_mindmap_diagram(
     model: &MindmapDiagramRenderModel,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    render_mindmap_with_resources(model, options, ResourceContext::new(options.resources))
+    render_mindmap_with_resources(
+        model,
+        options,
+        ResourceContext::new(options.resources),
+        execution,
+    )
 }
 
 fn render_mindmap_with_resources(
     model: &MindmapDiagramRenderModel,
     options: &AsciiRenderOptions,
     resources: ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::from_resources(resources, options);
     let chars = MindmapChars::from_options(options);
-    let nodes_by_id = index_nodes(&model.nodes, document.resources_mut())?;
-    let children_by_id = build_children_map(&model.edges, &nodes_by_id, document.resources_mut())?;
-    let mut roots = root_ids(&model.nodes, &model.edges, document.resources_mut())?;
+    let nodes_by_id = index_nodes(&model.nodes, document.resources_mut(), execution)?;
+    let children_by_id = build_children_map(
+        &model.edges,
+        &nodes_by_id,
+        document.resources_mut(),
+        execution,
+    )?;
+    let mut roots = root_ids(
+        &model.nodes,
+        &model.edges,
+        document.resources_mut(),
+        execution,
+    )?;
     append_disconnected_component_roots(
         &model.nodes,
         &nodes_by_id,
         &children_by_id,
         &mut roots,
         document.resources_mut(),
+        execution,
     )?;
 
     // Reuse traversal storage across roots. Each traversal removes its own entries on the
@@ -106,6 +125,7 @@ fn render_mindmap_with_resources(
                     visiting.remove(node_id);
                 }
                 MindmapFrame::Enter(frame) => {
+                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
                     let MindmapEnterFrame {
                         node,
                         prefix,
@@ -146,6 +166,7 @@ fn render_mindmap_with_resources(
                     };
 
                     for (child_index, child_id) in children.iter().enumerate().rev() {
+                        execution.checkpoint(merman_core::OperationPhase::Emit)?;
                         let Some(child) = nodes_by_id.get(*child_id) else {
                             continue;
                         };
@@ -175,6 +196,7 @@ fn render_mindmap_with_resources(
 fn index_nodes<'a>(
     nodes: &'a [MindmapDiagramRenderNode],
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashMap<&'a str, &'a MindmapDiagramRenderNode>> {
     resources.charge_layout_work(nodes.len())?;
     let mut out = HashMap::new();
@@ -184,6 +206,7 @@ fn index_nodes<'a>(
         .try_reserve(nodes.len())
         .map_err(|_| layout_allocation_error())?;
     for node in nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         charge_text_layout(resources, &node.id)?;
         charge_text_layout(resources, &node.node_id)?;
         if out.insert(node.id.as_str(), node).is_some() {
@@ -212,6 +235,7 @@ fn build_children_map<'a>(
     edges: &'a [MindmapDiagramRenderEdge],
     nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashMap<&'a str, Vec<&'a str>>> {
     resources.charge_layout_work(edges.len())?;
     let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -225,6 +249,7 @@ fn build_children_map<'a>(
         .try_reserve(edges.len())
         .map_err(|_| layout_allocation_error())?;
     for edge in edges {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         charge_text_layout(resources, &edge.start)?;
         charge_text_layout(resources, &edge.end)?;
         if !nodes_by_id.contains_key(edge.start.as_str()) {
@@ -286,6 +311,7 @@ fn root_ids<'a>(
     nodes: &'a [MindmapDiagramRenderNode],
     edges: &'a [MindmapDiagramRenderEdge],
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<&'a str>> {
     resources.charge_layout_work(edges.len())?;
     let mut incoming = HashSet::new();
@@ -293,12 +319,14 @@ fn root_ids<'a>(
         .try_reserve(edges.len())
         .map_err(|_| layout_allocation_error())?;
     for edge in edges {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         charge_text_layout(resources, &edge.end)?;
         incoming.insert(edge.end.as_str());
     }
 
     let mut roots = Vec::new();
     for node in nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, &node.id)?;
         if !incoming.contains(node.id.as_str()) {
@@ -327,6 +355,7 @@ fn append_disconnected_component_roots<'a>(
     children_by_id: &HashMap<&'a str, Vec<&'a str>>,
     roots: &mut Vec<&'a str>,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let mut reachable = HashSet::new();
     reachable
@@ -346,10 +375,12 @@ fn append_disconnected_component_roots<'a>(
             &mut reachable,
             &mut stack,
             resources,
+            execution,
         )?;
     }
 
     for node in nodes {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         if reachable.contains(node.id.as_str()) {
             continue;
@@ -365,6 +396,7 @@ fn append_disconnected_component_roots<'a>(
             &mut reachable,
             &mut stack,
             resources,
+            execution,
         )?;
     }
 
@@ -378,6 +410,7 @@ fn mark_reachable_component<'a>(
     reachable: &mut HashSet<&'a str>,
     stack: &mut Vec<&'a str>,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     if !nodes_by_id.contains_key(root_id) || !reachable.insert(root_id) {
         return Ok(());
@@ -386,11 +419,13 @@ fn mark_reachable_component<'a>(
     stack.push(root_id);
 
     while let Some(node_id) = stack.pop() {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         let Some(children) = children_by_id.get(node_id) else {
             continue;
         };
         for child_id in children.iter().rev().copied() {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             if nodes_by_id.contains_key(child_id) && reachable.insert(child_id) {
                 stack.push(child_id);
@@ -619,9 +654,10 @@ mod tests {
     fn children_map_work(model: &MindmapDiagramRenderModel) -> usize {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
-        let nodes_by_id =
-            index_nodes(&model.nodes, &mut resources).expect("node indexing should pass");
-        build_children_map(&model.edges, &nodes_by_id, &mut resources)
+        let execution = AsciiExecution::standalone(&policy);
+        let nodes_by_id = index_nodes(&model.nodes, &mut resources, execution)
+            .expect("node indexing should pass");
+        build_children_map(&model.edges, &nodes_by_id, &mut resources, execution)
             .expect("child indexing should pass");
         resources.layout_work_used()
     }
@@ -630,16 +666,23 @@ mod tests {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let options = AsciiRenderOptions::ascii().with_resource_policy(policy);
         let resources = ResourceContext::new(policy);
-        render_mindmap_with_resources(model, &options, resources.clone())
-            .expect("unbounded mindmap render should succeed");
+        render_mindmap_with_resources(
+            model,
+            &options,
+            resources.clone(),
+            AsciiExecution::standalone(&policy),
+        )
+        .expect("unbounded mindmap render should succeed");
         resources.layout_work_used()
     }
 
     #[test]
     fn mindmap_accepts_exact_nesting_limit() {
+        let options = options_with_nesting_limit(DEEP_NESTING);
         let rendered = render_mindmap_diagram(
             &chain(DEEP_NESTING),
-            &options_with_nesting_limit(DEEP_NESTING),
+            &options,
+            AsciiExecution::standalone(&options.resources),
         )
         .expect("deep nesting equal to the limit should render iteratively");
 
@@ -648,9 +691,11 @@ mod tests {
 
     #[test]
     fn mindmap_rejects_limit_minus_one_before_descending() {
+        let options = options_with_nesting_limit(DEEP_NESTING - 1);
         let error = render_mindmap_diagram(
             &chain(DEEP_NESTING),
-            &options_with_nesting_limit(DEEP_NESTING - 1),
+            &options,
+            AsciiExecution::standalone(&options.resources),
         )
         .expect_err("deep nesting above the limit should fail before the final descent");
 

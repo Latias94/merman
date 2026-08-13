@@ -1,0 +1,512 @@
+{
+  "schema_version": 1,
+  "protocol_id": "merman-native",
+  "abi_version": 3,
+  "result_schema_version": 1,
+  "minimum_prefix": {
+    "status_code_count": 17,
+    "operation_code_count": 14,
+    "error_kind_count": 5,
+    "callback_count": 1,
+    "function_slot_count": 7,
+    "record_count": 11
+  },
+  "minimum_semantics": [
+    {
+      "id": "written-results-own-nonzero-allocation-tokens",
+      "description": "Any producing call that writes Merman-owned result bytes writes a process-lifetime monotonic nonzero allocation_token; token exhaustion returns internal-error and leaves a caller-valid zero-initialized result unchanged."
+    },
+    {
+      "id": "result-free-authorizes-by-token-and-clears-the-record",
+      "description": "result_free authorizes release solely by a live allocation_token, never by buffer pointers; zero, unknown, stale, or random non-live tokens release nothing, and every call clears the complete supplied result record before releasing the token allocation."
+    },
+    {
+      "id": "engine-try-close-is-nonblocking-and-success-is-quiescent",
+      "description": "engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success closes admission, retires the token, and guarantees callback and user_data quiescence."
+    },
+    {
+      "id": "host-callback-nonlocal-exits-are-forbidden",
+      "description": "Host callbacks are synchronous and MUST NOT unwind, throw, propagate SEH, call longjmp, or otherwise perform a non-local exit across the ABI boundary; Merman converts only returned status values and cannot catch foreign exceptions."
+    },
+    {
+      "id": "engine-new-inputs-and-outputs-do-not-overlap",
+      "description": "For engine_new, the config record, its options_json storage, out_engine storage, and out_result storage MUST be pairwise non-overlapping, and out_engine must be initialized to zero."
+    },
+    {
+      "id": "error-kind-vocabulary-is-closed",
+      "description": "The ABI 3 error-kind vocabulary is exactly generic, unknown-operation, missing-capability, reentrant-call, and busy; adding, removing, or renaming an error kind requires a new ABI version."
+    },
+    {
+      "id": "api-table-capacity-returns-complete-prefix",
+      "description": "Discovery treats MermanNativeApi.struct_size as input capacity and returns only the largest complete producer prefix safely initialized within that capacity; it never exposes a partial appended slot, and the returned size is safe to reuse as capacity for another discovery call."
+    },
+    {
+      "id": "moved-result-record-transfers-token-ownership",
+      "description": "Moving the complete MermanNativeResult record transfers its live allocation_token ownership; result_free clears the supplied record before releasing the token allocation, so the moved record may reside inside Merman-owned result storage."
+    },
+    {
+      "id": "input-and-callback-slices-are-borrowed",
+      "description": "Input, media-type, and callback slices are borrowed; hosts MUST NOT retain their pointers after the enclosing call or callback returns."
+    },
+    {
+      "id": "callback-state-is-constructor-owned-until-quiescent-close",
+      "description": "Callback and user_data are immutable constructor-owned engine state, remain valid until successful quiescent engine_try_close, and may be released only after that close succeeds."
+    }
+  ],
+  "opaque_scalars": [
+    {
+      "id": "engine_token",
+      "c_name": "MermanNativeEngineToken",
+      "rust_name": "MermanNativeEngineToken",
+      "c_type": "uint64_t",
+      "rust_type": "u64",
+      "invalid_value": 0,
+      "domain": {
+        "tag": 1,
+        "mask": 3,
+        "counter_shift": 2,
+        "maximum_counter": 2305843009213693951,
+        "maximum_value": 9223372036854775805
+      },
+      "description": "An opaque process-lifetime monotonic engine identity. The low-bit domain tag rejects accidental cross-kind use, every issued value remains positive when projected through a signed 64-bit host integer, and the token is not an authorization boundary."
+    },
+    {
+      "id": "result_allocation_token",
+      "c_name": null,
+      "rust_name": null,
+      "c_type": "uint64_t",
+      "rust_type": "u64",
+      "invalid_value": 0,
+      "domain": {
+        "tag": 2,
+        "mask": 3,
+        "counter_shift": 2,
+        "maximum_counter": 2305843009213693951,
+        "maximum_value": 9223372036854775806
+      },
+      "description": "An opaque process-lifetime monotonic result-allocation ownership identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects accidental engine-token use, every issued value remains positive when projected through a signed 64-bit host integer, and the token is not an authorization boundary."
+    },
+    {
+      "id": "operation_control_token",
+      "c_name": "MermanNativeOperationControlToken",
+      "rust_name": "MermanNativeOperationControlToken",
+      "c_type": "uint64_t",
+      "rust_type": "u64",
+      "invalid_value": 0,
+      "domain": {
+        "tag": 3,
+        "mask": 3,
+        "counter_shift": 2,
+        "maximum_counter": 2305843009213693951,
+        "maximum_value": 9223372036854775807
+      },
+      "description": "An opaque process-lifetime monotonic operation-control identity. A control token may be passed to execute_collect_controlled, cancelled from another execution context, and released independently; execution clones the control before synchronous binding work and never holds the registry lock while running."
+    }
+  ],
+  "caller_memory_rules": [
+    {
+      "id": "record_pointer_alignment",
+      "description": "Every caller-supplied native record pointer must be naturally aligned for its declared C record type. Status-returning entry points reject safely allocated misaligned records before typed access; the void result_free operation treats a misaligned record as invalid and releases nothing."
+    },
+    {
+      "id": "caller_memory_validity",
+      "description": "For the complete duration of a call, every caller record and every storage range reachable through it must be readable, live, and immutable except for declared writable outputs, which must remain writable and live. Runtime validation detects only representable shape, size, alignment, range, and documented overlap errors; dangling, unreadable, concurrently mutated, or otherwise invalid memory remains a caller contract violation and is not promised a typed status."
+    },
+    {
+      "id": "engine_services_constructor_memory",
+      "description": "For engine_new_with_services, out_engine and out_result must be disjoint from each other and from the outer config, the pack record array, embedded options, JSON bytes, and registration-name bytes. Structural record storage must not overlap any nested byte slice it describes. Read-only options, JSON, and registration-name slices may overlap each other, including multiple logical packs reusing the same bytes; each logical pack is still charged independently. out_engine must be initialized to zero and remains zero on every failure. In artifacts exposing the icon-registry constructor service, the implementation validates icon_pack_count against the fixed pack ceiling before checked multiplication or array access and rejects nonzero count with a null or misaligned array. Artifacts without the svg capability may return missing-capability for any nonzero icon_pack_count without dereferencing or validating the pack array or nested pack slices. The code-6 constructor requires text_measure_user_data to be null when text_measure is null without changing the code-1 engine_new contract."
+    }
+  ],
+  "error_kinds": [
+    { "id": "generic", "c_name": "MERMAN_NATIVE_ERROR_KIND_GENERIC", "json_name": "generic", "description": "A failure without a more specific machine-readable binding classification." },
+    { "id": "unknown_operation", "c_name": "MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION", "json_name": "unknown-operation", "description": "The requested operation identifier or numeric code is not part of the ABI operation vocabulary." },
+    { "id": "missing_capability", "c_name": "MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY", "json_name": "missing-capability", "description": "The request is valid but the artifact lacks the named descriptor capability." },
+    { "id": "reentrant_call", "c_name": "MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL", "json_name": "reentrant-call", "description": "The same reusable engine was called or retired while one of its host callbacks was active." },
+    { "id": "busy", "c_name": "MERMAN_NATIVE_ERROR_KIND_BUSY", "json_name": "busy", "description": "The reusable engine cannot admit the requested operation or close while another operation is active." }
+  ],
+  "entry_point": {
+    "c_name": "merman_get_native_api",
+    "rust_name": "merman_get_native_api",
+    "calling_convention": "C",
+    "return_c_type": "MermanNativeStatus",
+    "return_rust_type": "MermanNativeStatus",
+    "parameters": [
+      { "name": "request", "c_type": "const MermanNativeApiRequest *", "rust_type": "*const MermanNativeApiRequest" },
+      { "name": "out_api", "c_type": "MermanNativeApi *", "rust_type": "*mut MermanNativeApi" }
+    ],
+    "description": "The only exported native ABI symbol. It validates the requested ABI and minimum-prefix layout digest before returning the common prefix of a size-tagged function table."
+  },
+  "status_codes": [
+    { "id": "ok", "c_name": "MERMAN_NATIVE_STATUS_OK", "code": 0, "error_kinds": [], "description": "The operation completed successfully." },
+    { "id": "invalid_argument", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ARGUMENT", "code": 1, "error_kinds": ["generic"], "description": "A pointer, length, struct size, or option value is invalid." },
+    { "id": "utf8_error", "c_name": "MERMAN_NATIVE_STATUS_UTF8_ERROR", "code": 2, "error_kinds": ["generic"], "description": "A UTF-8 input slice is invalid." },
+    { "id": "options_json_error", "c_name": "MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR", "code": 3, "error_kinds": ["generic"], "description": "Engine or request options JSON is invalid." },
+    { "id": "no_diagram", "c_name": "MERMAN_NATIVE_STATUS_NO_DIAGRAM", "code": 4, "error_kinds": ["generic"], "description": "No Mermaid diagram was detected." },
+    { "id": "parse_error", "c_name": "MERMAN_NATIVE_STATUS_PARSE_ERROR", "code": 5, "error_kinds": ["generic"], "description": "Mermaid parsing failed." },
+    { "id": "render_error", "c_name": "MERMAN_NATIVE_STATUS_RENDER_ERROR", "code": 6, "error_kinds": ["generic"], "description": "Layout, render, or export failed." },
+    { "id": "unsupported_operation", "c_name": "MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION", "code": 7, "error_kinds": ["generic", "unknown_operation", "missing_capability"], "description": "The requested operation is unknown or one of its required capabilities is not compiled into this artifact." },
+    { "id": "panic", "c_name": "MERMAN_NATIVE_STATUS_PANIC", "code": 8, "error_kinds": ["generic"], "description": "A Rust panic was caught at the native boundary." },
+    { "id": "internal_error", "c_name": "MERMAN_NATIVE_STATUS_INTERNAL_ERROR", "code": 9, "error_kinds": ["generic"], "description": "An unexpected internal error occurred." },
+    { "id": "resource_limit_exceeded", "c_name": "MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED", "code": 10, "error_kinds": ["generic"], "description": "A configured resource limit was exceeded." },
+    { "id": "abi_mismatch", "c_name": "MERMAN_NATIVE_STATUS_ABI_MISMATCH", "code": 11, "error_kinds": ["generic"], "description": "The host requested a different native ABI version." },
+    { "id": "abi_layout_mismatch", "c_name": "MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH", "code": 12, "error_kinds": ["generic"], "description": "The host requested a different ABI descriptor layout digest." },
+    { "id": "callback_error", "c_name": "MERMAN_NATIVE_STATUS_CALLBACK_ERROR", "code": 13, "error_kinds": ["generic"], "description": "A host callback could not produce a result. Rendering may continue through a source-backed fallback." },
+    { "id": "reentrant_call", "c_name": "MERMAN_NATIVE_STATUS_REENTRANT_CALL", "code": 14, "error_kinds": ["reentrant_call"], "description": "A callback re-entered or retired the same engine." },
+    { "id": "invalid_engine", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ENGINE", "code": 15, "error_kinds": ["generic"], "description": "The supplied engine token is unknown or has already been released." },
+    { "id": "busy", "c_name": "MERMAN_NATIVE_STATUS_BUSY", "code": 16, "error_kinds": ["busy"], "description": "The reusable engine has an active operation and cannot be closed or concurrently entered under its callback policy." },
+    { "id": "cancelled", "c_name": "MERMAN_NATIVE_STATUS_CANCELLED", "code": 17, "error_kinds": ["generic"], "description": "The operation cooperatively stopped before producing a complete payload; failure JSON carries structured cancellation reason and phase details." }
+  ],
+  "operation_codes": [
+    {
+      "id": "none",
+      "c_name": "MERMAN_NATIVE_OPERATION_NONE",
+      "code": 0,
+      "executable": false,
+      "non_executable_failure": {
+        "status_id": "invalid_argument",
+        "error_kind_id": "generic"
+      }
+    },
+    { "id": "svg", "c_name": "MERMAN_NATIVE_OPERATION_SVG", "code": 1, "executable": true },
+    { "id": "png", "c_name": "MERMAN_NATIVE_OPERATION_PNG", "code": 2, "executable": true },
+    { "id": "jpeg", "c_name": "MERMAN_NATIVE_OPERATION_JPEG", "code": 3, "executable": true },
+    { "id": "pdf", "c_name": "MERMAN_NATIVE_OPERATION_PDF", "code": 4, "executable": true },
+    { "id": "ascii", "c_name": "MERMAN_NATIVE_OPERATION_ASCII", "code": 5, "executable": true },
+    { "id": "semantic_json", "c_name": "MERMAN_NATIVE_OPERATION_SEMANTIC_JSON", "code": 6, "executable": true },
+    { "id": "layout_json", "c_name": "MERMAN_NATIVE_OPERATION_LAYOUT_JSON", "code": 7, "executable": true },
+    { "id": "analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_JSON", "code": 8, "executable": true },
+    { "id": "analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON", "code": 9, "executable": true },
+    { "id": "validation_json", "c_name": "MERMAN_NATIVE_OPERATION_VALIDATION_JSON", "code": 10, "executable": true },
+    { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11, "executable": true },
+    { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12, "executable": true },
+    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true }
+  ],
+  "callbacks": [
+    {
+      "id": "text_measure",
+      "c_name": "MermanNativeTextMeasureCallback",
+      "rust_name": "MermanNativeTextMeasureCallback",
+      "code": 0,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "request", "c_type": "const MermanNativeTextMeasureRequest *", "rust_type": "*const MermanNativeTextMeasureRequest" },
+        { "name": "out_result", "c_type": "MermanNativeTextMeasureResult *", "rust_type": "*mut MermanNativeTextMeasureResult" },
+        { "name": "user_data", "c_type": "void *", "rust_type": "*mut std::ffi::c_void" }
+      ],
+      "description": "A synchronous host text-measurement callback on the invoking operation thread. It receives borrowed pointer records valid only for the callback duration. Any thread that attempts to re-enter or retire the same engine while this callback is active receives reentrant-call. The callback and user_data remain host-owned and must stay valid until the engine is retired and every operation that acquired it before retirement has returned."
+    }
+  ],
+  "function_slots": [
+    {
+      "id": "runtime_catalog",
+      "c_name": "MermanNativeRuntimeCatalogFn",
+      "rust_name": "MermanNativeRuntimeCatalogFn",
+      "code": 0,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Return the flat bindings-core runtime catalog JSON for this artifact."
+    },
+    {
+      "id": "engine_new",
+      "c_name": "MermanNativeEngineNewFn",
+      "rust_name": "MermanNativeEngineNewFn",
+      "code": 1,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "config", "c_type": "const MermanNativeEngineConfig *", "rust_type": "*const MermanNativeEngineConfig" },
+        { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create a reusable engine from size-tagged configuration. The caller initializes out_engine to zero. The config record, its options_json storage, out_engine, and out_result must not overlap."
+    },
+    {
+      "id": "engine_try_close",
+      "c_name": "MermanNativeEngineTryCloseFn",
+      "rust_name": "MermanNativeEngineTryCloseFn",
+      "code": 2,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "engine", "c_type": "MermanNativeEngineToken", "rust_type": "MermanNativeEngineToken" }
+      ],
+      "description": "Attempt to close a reusable engine without waiting. A callback-active engine returns reentrant-call; another active operation returns busy and keeps the token valid; quiescent success retires the token and is a callback-context quiescence barrier."
+    },
+    {
+      "id": "execute_collect",
+      "c_name": "MermanNativeExecuteCollectFn",
+      "rust_name": "MermanNativeExecuteCollectFn",
+      "code": 3,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "engine", "c_type": "MermanNativeEngineToken", "rust_type": "MermanNativeEngineToken" },
+        { "name": "request", "c_type": "const MermanNativeOperationRequest *", "rust_type": "*const MermanNativeOperationRequest" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Execute one generic operation request and return owned bytes in the result."
+    },
+    {
+      "id": "result_free",
+      "c_name": "MermanNativeResultFreeFn",
+      "rust_name": "MermanNativeResultFreeFn",
+      "code": 4,
+      "return_c_type": "void",
+      "return_rust_type": "()",
+      "parameters": [
+        { "name": "result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Release the allocation identified by allocation_token and clear the complete record. Moving the complete record transfers ownership. Zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. The token is an ownership identity, not an authorization boundary against hostile same-process memory access."
+    },
+    {
+      "id": "metadata_collect",
+      "c_name": "MermanNativeMetadataCollectFn",
+      "rust_name": "MermanNativeMetadataCollectFn",
+      "code": 5,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "metadata_id", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Collect one named binding metadata document. The UTF-8 metadata_id is borrowed for the call. Success writes JSON to metadata_or_error_json with operation none; every written success or failure result owns a nonzero allocation token and must be released with result_free."
+    },
+    {
+      "id": "engine_new_with_services",
+      "c_name": "MermanNativeEngineNewWithServicesFn",
+      "rust_name": "MermanNativeEngineNewWithServicesFn",
+      "code": 6,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "config", "c_type": "const MermanNativeEngineServicesConfig *", "rust_type": "*const MermanNativeEngineServicesConfig" },
+        { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create a reusable engine from one size-tagged service configuration. The embedded engine_config preserves the code-1 configuration record, icon pack records and nested slices are borrowed only until return, and successful construction retains only the immutable registry plus any host callback state. The caller initializes out_engine to zero. All structural inputs and nested slices must be disjoint from writable outputs; read-only payload slices may overlap each other."
+    },
+    {
+      "id": "operation_control_new",
+      "c_name": "MermanNativeOperationControlNewFn",
+      "rust_name": "MermanNativeOperationControlNewFn",
+      "code": 7,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "timeout_ms", "c_type": "uint64_t", "rust_type": "u64" },
+        { "name": "has_timeout_ms", "c_type": "uint8_t", "rust_type": "u8" },
+        { "name": "out_control", "c_type": "MermanNativeOperationControlToken *", "rust_type": "*mut MermanNativeOperationControlToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create an opaque operation-control token. Set has_timeout_ms to zero for no deadline or one for a relative timeout in milliseconds; timeout zero is an immediate deadline. The caller initializes out_control to zero and out_result with MERMAN_NATIVE_RESULT_INIT. A failed call publishes neither a token nor a partial result."
+    },
+    {
+      "id": "operation_control_cancel",
+      "c_name": "MermanNativeOperationControlCancelFn",
+      "rust_name": "MermanNativeOperationControlCancelFn",
+      "code": 8,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" }
+      ],
+      "description": "Request cooperative cancellation for a live operation-control token. The registry lock is held only while cloning the control; cancellation itself is atomic and never runs under the registry lock."
+    },
+    {
+      "id": "operation_control_release",
+      "c_name": "MermanNativeOperationControlReleaseFn",
+      "rust_name": "MermanNativeOperationControlReleaseFn",
+      "code": 9,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" }
+      ],
+      "description": "Release a live operation-control token from the process registry. An execution that cloned the control before release may continue to observe cancellation and deadline state; release never invalidates that in-flight clone."
+    },
+    {
+      "id": "execute_collect_controlled",
+      "c_name": "MermanNativeExecuteCollectControlledFn",
+      "rust_name": "MermanNativeExecuteCollectControlledFn",
+      "code": 10,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "engine", "c_type": "MermanNativeEngineToken", "rust_type": "MermanNativeEngineToken" },
+        { "name": "control", "c_type": "MermanNativeOperationControlToken", "rust_type": "MermanNativeOperationControlToken" },
+        { "name": "request", "c_type": "const MermanNativeOperationRequest *", "rust_type": "*const MermanNativeOperationRequest" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Execute one generic operation with a live caller-owned control token. The request record remains byte-for-byte compatible with the original ABI 3 layout; zero selects the ordinary uncontrolled execution semantics."
+    }
+  ],
+  "records": [
+    {
+      "id": "slice",
+      "c_name": "MermanNativeSlice",
+      "rust_name": "MermanNativeSlice",
+      "description": "A size-tagged borrowed byte slice. Null data is valid only with zero length.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeSlice)" },
+        { "name": "data", "c_type": "const uint8_t *", "rust_type": "*const u8", "ownership": "borrowed" },
+        { "name": "len", "c_type": "size_t", "rust_type": "usize", "ownership": "borrowed length" }
+      ]
+    },
+    {
+      "id": "buffer",
+      "c_name": "MermanNativeBuffer",
+      "rust_name": "MermanNativeBuffer",
+      "description": "A size-tagged owned byte buffer returned only inside MermanNativeResult.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "Merman initializes this field" },
+        { "name": "data", "c_type": "uint8_t *", "rust_type": "*mut u8", "ownership": "owned by Merman until result_free" },
+        { "name": "len", "c_type": "size_t", "rust_type": "usize", "ownership": "owned length" }
+      ]
+    },
+    {
+      "id": "text_measure_request",
+      "c_name": "MermanNativeTextMeasureRequest",
+      "rust_name": "MermanNativeTextMeasureRequest",
+      "description": "A size-tagged host text-measurement request. All slices are borrowed for the callback duration.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "Merman initializes this field" },
+        { "name": "text_measurement_protocol_version", "c_type": "uint32_t", "rust_type": "u32", "ownership": "must match the independent text measurement protocol" },
+        { "name": "text", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed" },
+        { "name": "font_family", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed" },
+        { "name": "font_size", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "font_weight", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed" },
+        { "name": "font_style", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed" },
+        { "name": "max_width", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "line_height", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "letter_spacing", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "word_spacing", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "wrap_mode", "c_type": "int32_t", "rust_type": "i32", "ownership": "value" },
+        { "name": "direction", "c_type": "int32_t", "rust_type": "i32", "ownership": "value" },
+        { "name": "white_space", "c_type": "int32_t", "rust_type": "i32", "ownership": "value" },
+        { "name": "has_max_width", "c_type": "uint8_t", "rust_type": "u8", "ownership": "boolean" },
+        { "name": "phase", "c_type": "int32_t", "rust_type": "i32", "ownership": "text measurement protocol phase" },
+        { "name": "operation", "c_type": "int32_t", "rust_type": "i32", "ownership": "text measurement protocol operation" }
+      ]
+    },
+    {
+      "id": "text_measure_result",
+      "c_name": "MermanNativeTextMeasureResult",
+      "rust_name": "MermanNativeTextMeasureResult",
+      "description": "A size-tagged host text-measurement result written by the callback.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "host initializes to sizeof(MermanNativeTextMeasureResult)" },
+        { "name": "handled", "c_type": "uint8_t", "rust_type": "u8", "ownership": "boolean" },
+        { "name": "has_raw_width", "c_type": "uint8_t", "rust_type": "u8", "ownership": "boolean" },
+        { "name": "result_kind", "c_type": "int32_t", "rust_type": "i32", "ownership": "text measurement protocol result kind" },
+        { "name": "width", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "height", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "length", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "bbox_left", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "bbox_right", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "raw_width", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "line_count", "c_type": "size_t", "rust_type": "usize", "ownership": "value" }
+      ]
+    },
+    {
+      "id": "engine_config",
+      "c_name": "MermanNativeEngineConfig",
+      "rust_name": "MermanNativeEngineConfig",
+      "description": "A size-tagged reusable-engine configuration.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineConfig)" },
+        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call" },
+        { "name": "text_measure", "c_type": "MermanNativeTextMeasureCallback", "rust_type": "Option<MermanNativeTextMeasureCallback>", "ownership": "host-owned callback retained until the engine is retired and every operation acquired before retirement has returned" },
+        { "name": "text_measure_user_data", "c_type": "void *", "rust_type": "*mut std::ffi::c_void", "ownership": "host-owned opaque pointer with the same lifetime as text_measure" }
+      ]
+    },
+    {
+      "id": "operation_request",
+      "c_name": "MermanNativeOperationRequest",
+      "rust_name": "MermanNativeOperationRequest",
+      "description": "A size-tagged generic operation request. URI is required only for document-analysis operations. Request options are deeply merged over the reusable engine configuration for this operation.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeOperationRequest)" },
+        { "name": "operation", "c_type": "MermanNativeOperationCode", "rust_type": "MermanNativeOperationCode", "ownership": "stable operation code" },
+        { "name": "source", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call" },
+        { "name": "uri", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; empty when not applicable" },
+        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call; recursively overrides engine options except runtime_policy, which is constructor-owned" }
+      ]
+    },
+    {
+      "id": "result",
+      "c_name": "MermanNativeResult",
+      "rust_name": "MermanNativeResult",
+      "description": "A zero-initialized size-tagged operation result with an opaque process-lifetime allocation token, borrowed static media type, and two Merman-owned buffers. Every result written by Merman receives a nonzero token, including empty success and failure payloads. Moving the complete record transfers ownership. Failure JSON follows result schema v1 and carries kind plus a nullable capability_id.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller zero-initializes the complete record and sets this field to sizeof(MermanNativeResult)" },
+        { "name": "allocation_token", "c_type": "uint64_t", "rust_type": "u64", "ownership": "opaque Merman-owned allocation identity; zero before output, nonzero after every written result, never reused during the process lifetime" },
+        { "name": "status", "c_type": "MermanNativeStatus", "rust_type": "MermanNativeStatus", "ownership": "stable status code" },
+        { "name": "operation", "c_type": "MermanNativeOperationCode", "rust_type": "MermanNativeOperationCode", "ownership": "stable operation code" },
+        { "name": "media_type", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static UTF-8 bytes" },
+        { "name": "data", "c_type": "MermanNativeBuffer", "rust_type": "MermanNativeBuffer", "ownership": "owned by Merman through allocation_token until result_free" },
+        { "name": "metadata_or_error_json", "c_type": "MermanNativeBuffer", "rust_type": "MermanNativeBuffer", "ownership": "owned by Merman through allocation_token until result_free; failure JSON schema v1 always includes kind and capability_id, which is non-null only for missing-capability" }
+      ]
+    },
+    {
+      "id": "api_request",
+      "c_name": "MermanNativeApiRequest",
+      "rust_name": "MermanNativeApiRequest",
+      "description": "A size-tagged native API discovery request.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeApiRequest)" },
+        { "name": "expected_abi_version", "c_type": "uint32_t", "rust_type": "u32", "ownership": "host ABI discriminator" },
+        { "name": "expected_minimum_prefix_layout_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed expected minimum-prefix layout compatibility digest" }
+      ]
+    },
+    {
+      "id": "api",
+      "c_name": "MermanNativeApi",
+      "rust_name": "MermanNativeApi",
+      "description": "A size-tagged ABI function table. The caller supplies buffer capacity in struct_size; Merman writes the largest complete common prefix that fits and reports that safely initialized prefix size in struct_size. Function slots append in stable code order.",
+      "appends_function_slots": true,
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to buffer capacity; Merman reports the largest complete producer prefix safely initialized within that capacity" },
+        { "name": "abi_version", "c_type": "uint32_t", "rust_type": "u32", "ownership": "native ABI discriminator" },
+        { "name": "minimum_prefix_layout_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static minimum-prefix compatibility digest bytes" },
+        { "name": "full_descriptor_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static full descriptor provenance digest bytes" },
+        { "name": "capability_catalog_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static capability catalog provenance digest" },
+        { "name": "package_version", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static package version bytes" }
+      ]
+    },
+    {
+      "id": "icon_pack",
+      "c_name": "MermanNativeIconPack",
+      "rust_name": "MermanNativeIconPack",
+      "description": "One size-tagged borrowed IconifyJSON collection for transactional engine construction. A zero-length registration_name means no override; a non-empty UTF-8 registration name replaces the JSON prefix for this logical pack.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeIconPack)" },
+        { "name": "json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed only until engine_new_with_services returns" },
+        { "name": "registration_name", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "optional UTF-8 override borrowed only until engine_new_with_services returns; zero length means absent" }
+      ]
+    },
+    {
+      "id": "engine_services_config",
+      "c_name": "MermanNativeEngineServicesConfig",
+      "rust_name": "MermanNativeEngineServicesConfig",
+      "description": "A size-tagged reusable-engine configuration that embeds the published engine configuration and optionally borrows a contiguous array of Iconify packs for one transactional immutable registry build.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineServicesConfig)" },
+        { "name": "engine_config", "c_type": "MermanNativeEngineConfig", "rust_type": "MermanNativeEngineConfig", "ownership": "embedded published engine configuration; options are borrowed for the call and callback state is retained only by a successfully published engine" },
+        { "name": "icon_packs", "c_type": "const MermanNativeIconPack *", "rust_type": "*const MermanNativeIconPack", "ownership": "borrowed contiguous record array for the call; null only when icon_pack_count is zero" },
+        { "name": "icon_pack_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of logical pack records; zero installs no icon-registry service" }
+      ]
+    }
+  ],
+  "ownership_rules": [
+    { "id": "result_buffers", "description": "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free clears the supplied record before trusting its token to release the backing allocation, so a moved record may reside inside Merman-owned result storage. Zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator." },
+    { "id": "borrowed_slices", "description": "Input, media-type, and callback slices are borrowed. Hosts must not retain their pointers after the enclosing call or callback returns." },
+    { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
+    { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },
+    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." },
+    { "id": "engine_services", "description": "engine_new_with_services borrows the outer configuration, embedded options, pack records, IconifyJSON bytes, and registration names only until return and never invokes the host callback during construction. A successful engine owns the fully validated immutable registry without retaining pack pointers; callback and user_data follow the existing quiescent-close lifetime. Any validation, registry, service-conflict, engine, token, result-allocation, or panic failure publishes no caller-visible engine. If publication must be rolled back, the token is retired under lock and the complete engine and service graph are destroyed only after all registry and admission locks are released." }
+  ]
+}

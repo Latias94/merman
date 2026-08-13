@@ -977,19 +977,6 @@ fn host_artifact_profiles(descriptor: ArtifactProfileDescriptor) -> Vec<HostArti
         .collect()
 }
 
-/// Loads one validated exact WASM artifact recipe by descriptor ID.
-///
-/// Consumers use this instead of reconstructing Cargo package, target, and
-/// feature arguments in workflow or release documentation.
-pub(crate) fn load_exact_wasm_artifact_profile(
-    profile_id: &str,
-) -> Result<WasmArtifactProfile, String> {
-    load_wasm_size_artifact_profiles()?
-        .into_iter()
-        .find(|profile| profile.id == profile_id)
-        .ok_or_else(|| format!("unknown exact WASM artifact profile `{profile_id}`"))
-}
-
 fn wasm_artifact_profiles(
     descriptor: &ArtifactProfileDescriptor,
 ) -> Result<Vec<WasmArtifactProfile>, String> {

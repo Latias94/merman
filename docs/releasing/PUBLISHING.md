@@ -1,7 +1,7 @@
 # Publishing (crates.io)
 
 This repository is a Cargo workspace containing multiple publishable crates. Publishing is gated by
-ADR-0050 (`docs/adr/0050-release-quality-gates.md`) and requires publishing workspace crates in a
+ADR-0081 (`docs/adr/0081-release-quality-gates.md`) and requires publishing workspace crates in a
 dependency-safe order.
 
 ## Release gates (must pass)
@@ -18,7 +18,7 @@ dependency-safe order.
 Notes:
 
 - `--dom-mode strict` is intentionally not a release gate. It is treated as a parity KPI / debugging
-  tool (see ADR-0050).
+  tool (see ADR-0081).
 - A higher-precision viewport stress check exists but is non-blocking:
   - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --flowchart-text-measurer vendored`
 
@@ -27,35 +27,23 @@ Notes:
 When running `cargo publish`, Cargo resolves workspace `path` dependencies as registry dependencies,
 so dependency crates must be published first.
 
-Recommended order:
+Cargo metadata owns that graph. Print the current topological order with:
 
-1. `dugong-graphlib`
-2. `manatee`
-3. `merman-core`
-4. `merman-elk-layered`
-5. `roughr-merman`
-6. `dugong`
-7. `merman-analysis`
-8. `merman-ascii`
-9. `merman-layout-elk`
-10. `merman-editor-core`
-11. `merman-render`
-12. `merman-export`
-13. `merman`
-14. `merman-lsp`
-15. `merman-bindings-core`
-16. `merman-cli`
-17. `merman-rustdoc`
-18. `merman-ffi`
-19. `merman-typst-plugin`
-20. `merman-uniffi`
-21. `merman-wasm`
+```bash
+python3 tools/publish.py --list-crates-io-packages
+```
+
+The release workflow and local publish helper consume the same derived batches. Independent crates
+are ordered lexically only within a batch; this document does not restate the list.
 
 ## Dry runs
 
-- `cargo publish -p <crate> --dry-run`
+- `cargo publish -p <crate> --locked --dry-run --registry crates-io`
 - If your working tree is not clean, add:
   - `--allow-dirty`
 
 Important: dry runs for crates that depend on unpublished workspace crates will fail until those
-dependencies exist on crates.io. Use the publish order above for end-to-end dry-run verification.
+dependencies exist on crates.io. Use the derived batches for local verification. The credentialed
+release workflow additionally records each prepared `.crate` checksum and reconciles the complete
+batch against crates.io before any dependent batch starts; local dry runs are not publication
+evidence.

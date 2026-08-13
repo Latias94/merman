@@ -14,6 +14,7 @@ use crate::canvas::finish_styled_lines_with_resources;
 use crate::color::AsciiColorMode;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
 use crate::text::display_width_with_profile;
@@ -327,11 +328,56 @@ impl SequenceRowPlan {
         resources: &mut ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> Result<Self> {
+        Self::build_controlled(
+            diagram,
+            layout,
+            chars,
+            mirror_actors,
+            resources,
+            None,
+            before_materialize,
+        )
+    }
+
+    pub(super) fn build_with_execution(
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        Self::build_controlled(
+            diagram,
+            layout,
+            chars,
+            mirror_actors,
+            resources,
+            Some(execution),
+            || {},
+        )
+    }
+
+    fn build_controlled(
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
+        before_materialize: impl FnOnce(),
+    ) -> Result<Self> {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        }
         let mut planner = SequenceRowPlanner::new(diagram, resources)?;
         let mut prepared =
             SequencePreparedBody::new(diagram, layout, planner.visible_actors(), resources)?;
 
         diagram.body.try_visit(resources, |visit, resources| {
+            if let Some(execution) = execution {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            }
             match visit {
                 SequenceVisit::Event(event) => {
                     if let Some(step) = planner.advance(diagram, event, resources)? {
@@ -397,9 +443,15 @@ impl SequenceRowPlan {
             None => prepared.materialization_work_units(resources)?,
         };
         resources.charge_layout_work(materialization_work)?;
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+        }
         before_materialize();
         let mut lines = prepared.materialize(diagram, layout, chars, resources)?;
         if let Some(control) = prepared_controls {
+            if let Some(execution) = execution {
+                execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            }
             lines = control.materialize(lines, layout, chars, resources)?;
         }
 
@@ -422,6 +474,27 @@ impl SequenceRowPlan {
             prepend_title_line(&mut lines, title, resources)?;
         }
         finish_sequence_lines(lines, options, resources)
+    }
+
+    pub(super) fn render_with_execution(
+        self,
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<String> {
+        let mut lines = self.lines;
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        if !diagram.boxes.is_empty() {
+            lines = render_sequence_boxes(lines, diagram, layout, chars, resources)?;
+        }
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        if let Some(title) = diagram.title.as_deref() {
+            prepend_title_line(&mut lines, title, resources)?;
+        }
+        finish_sequence_lines_with_execution(lines, options, resources, execution)
     }
 }
 
@@ -452,6 +525,21 @@ fn finish_sequence_lines(
     }
 
     finish_styled_lines_with_resources(&lines, options, true, resources)
+}
+
+fn finish_sequence_lines_with_execution(
+    lines: Vec<SequenceLine>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    let grid_cells = width.saturating_mul(lines.len());
+    execution.admit_grid(grid_cells)?;
+    for _ in &lines {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
+    finish_sequence_lines(lines, options, resources)
 }
 
 fn prepend_title_line(

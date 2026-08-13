@@ -5,8 +5,8 @@ use crate::diagnostics::{
     analysis_payload_to_diagnostics, analysis_payload_to_diagnostics_with_profile,
 };
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticRelated,
-    DiagnosticSeverity, SourceDescriptor, SourceMap,
+    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisPayload, Analyzer, DiagnosticCategory,
+    DiagnosticRelated, DiagnosticSeverity, SourceDescriptor, SourceMap,
 };
 use tower_lsp_server::ls_types::{ClientCapabilities, DiagnosticTag, NumberOrString, Uri};
 
@@ -25,6 +25,7 @@ fn diagnostics_projection_omits_unnegotiated_extension_fields() {
             DiagnosticCategory::Config,
             "deprecated option",
         )
+        .with_tag(AnalysisDiagnosticTag::Deprecated)
         .with_span(span)
     };
     let payload = AnalysisPayload::new(SourceDescriptor::diagram(), vec![diagnostic]);
@@ -191,15 +192,35 @@ fn diagnostics_projection_exposes_identity_without_rule_metadata() {
 fn deprecated_diagnostics_project_lsp_tag() {
     let payload = AnalysisPayload::new(
         SourceDescriptor::diagram(),
-        vec![AnalysisDiagnostic::new(
-            "merman.compatibility.config.deprecated_flowchart_html_labels",
-            DiagnosticSeverity::Warning,
-            DiagnosticCategory::Config,
-            "deprecated option",
-        )],
+        vec![
+            AnalysisDiagnostic::new(
+                "merman.test.rule",
+                DiagnosticSeverity::Warning,
+                DiagnosticCategory::Config,
+                "neutral message",
+            )
+            .with_tag(AnalysisDiagnosticTag::Deprecated),
+        ],
     );
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
     assert_eq!(diagnostics[0].tags, Some(vec![DiagnosticTag::DEPRECATED]));
+}
+
+#[test]
+fn deprecated_words_without_metadata_do_not_project_a_tag() {
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![AnalysisDiagnostic::new(
+            "merman.test.deprecated_name",
+            DiagnosticSeverity::Warning,
+            DiagnosticCategory::Config,
+            "deprecated message",
+        )],
+    );
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+    assert_eq!(diagnostics[0].tags, None);
 }

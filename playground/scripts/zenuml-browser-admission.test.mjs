@@ -1,70 +1,68 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { loadVerifiedBrowserAdmissionEvidence } from "./zenuml-browser-admission.mjs";
+import {
+  validateContract,
+  validateEvidence,
+} from "./zenuml-browser-admission.mjs";
 
-test("browser admission verifies observations without pinning implementation bytes", async () => {
-  const { evidence, summaries } = await loadVerifiedBrowserAdmissionEvidence();
+const contractPath = path.resolve(
+  import.meta.dirname,
+  "../../tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json"
+);
 
-  assert.equal(evidence.schemaVersion, 2);
-  assert.equal(Object.hasOwn(evidence, "sourceFiles"), false);
-  assert.equal(summaries.security.passedObservationCount, summaries.security.observationCount);
-  assert.equal(
-    summaries["execution-isolation"].passedObservationCount,
-    summaries["execution-isolation"].observationCount,
-  );
+function passingEvidence(contract) {
+  const evidence = {
+    schemaVersion: 1,
+    artifactKind: "zenuml-browser-admission-report",
+    generatedBy: "playground/scripts/zenuml-browser-admission.mjs",
+    probeContract: {
+      path: "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json",
+      sha256: "placeholder",
+    },
+    projects: contract.projects,
+  };
+  for (const [category, probes] of Object.entries(contract.categories)) {
+    const field = category.replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase());
+    const observations = probes.map(({ id, description }) => ({
+      id,
+      description,
+      observations: contract.projects.map((project) => ({
+        project,
+        testTitle: `${category} ${id}`,
+        expected: true,
+        observed: true,
+        passed: true,
+      })),
+    }));
+    evidence[field] = {
+      projectCount: contract.projects.length,
+      probeCount: probes.length,
+      observationCount: probes.length * contract.projects.length,
+      passedObservationCount: probes.length * contract.projects.length,
+      probes: observations,
+    };
+  }
+  return evidence;
+}
+
+test("browser admission keeps a non-empty exact probe contract", async () => {
+  const contract = JSON.parse(await readFile(contractPath, "utf8"));
+  validateContract(contract);
 });
 
-test("browser admission ignores source drift but keeps contract and observation binding", async () => {
-  const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-  const temporaryRoot = await mkdtemp(
-    path.join(tmpdir(), "merman-zenuml-admission-")
-  );
-  const contractPath = "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json";
-  const evidencePath = "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json";
-  try {
-    for (const relativePath of [contractPath, evidencePath]) {
-      const target = path.join(temporaryRoot, relativePath);
-      await mkdir(path.dirname(target), { recursive: true });
-      await writeFile(
-        target,
-        await readFile(path.join(repositoryRoot, relativePath), "utf8")
-      );
-    }
-
-    const historicalSource = path.join(
-      temporaryRoot,
-      "playground/src/runtime/merman-core.ts"
-    );
-    await mkdir(path.dirname(historicalSource), { recursive: true });
-    await writeFile(historicalSource, "implementation bytes intentionally changed\n");
-    await loadVerifiedBrowserAdmissionEvidence(temporaryRoot);
-
-    const evidenceTarget = path.join(temporaryRoot, evidencePath);
-    const evidence = JSON.parse(await readFile(evidenceTarget, "utf8"));
-    evidence.security.probes[0].observations[0].passed = false;
-    await writeFile(evidenceTarget, `${JSON.stringify(evidence, null, 2)}\n`);
-    await assert.rejects(
-      loadVerifiedBrowserAdmissionEvidence(temporaryRoot),
-      /false !== true/u
-    );
-
-    await writeFile(
-      evidenceTarget,
-      await readFile(path.join(repositoryRoot, evidencePath), "utf8")
-    );
-    const contractTarget = path.join(temporaryRoot, contractPath);
-    const contract = JSON.parse(await readFile(contractTarget, "utf8"));
-    contract.categories.security[0].description += " changed";
-    await writeFile(contractTarget, `${JSON.stringify(contract, null, 2)}\n`);
-    await assert.rejects(
-      loadVerifiedBrowserAdmissionEvidence(temporaryRoot),
-      /actual.*expected|Expected values to be strictly equal/u
-    );
-  } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
-  }
+test("browser admission rejects a failed observation", async () => {
+  const contract = JSON.parse(await readFile(contractPath, "utf8"));
+  const evidence = passingEvidence(contract);
+  const crypto = await import("node:crypto");
+  evidence.probeContract.sha256 = crypto
+    .createHash("sha256")
+    .update(`${JSON.stringify(contract, null, 2)}\n`)
+    .digest("hex");
+  const category = Object.keys(contract.categories)[0];
+  const field = category.replace(/-([a-z])/gu, (_, letter) => letter.toUpperCase());
+  evidence[field].probes[0].observations[0].passed = false;
+  assert.throws(() => validateEvidence(evidence, contract), /false !== true/u);
 });

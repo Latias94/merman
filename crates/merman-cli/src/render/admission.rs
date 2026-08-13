@@ -1,6 +1,8 @@
 use crate::error::CliError;
 use crate::resources::{CheckedSchedulingWeight, ResolvedResourcePolicy, ResourceLedgerError};
 use std::sync::{Arc, Condvar, Mutex};
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use std::time::Duration;
 
 const MIB: u64 = 1024 * 1024;
 #[cfg(feature = "svg")]
@@ -47,28 +49,25 @@ impl BackendAdmission {
     #[cfg(feature = "ascii")]
     pub(super) fn for_text(
         resources: &ResolvedResourcePolicy,
-        options: &merman::ascii::AsciiRenderOptions,
+        ascii_resources: merman::ascii::AsciiResourcePolicy,
     ) -> Result<Self, CliError> {
         let Some(_) = resources.batch().scheduling_weight_bytes else {
             return Self::unbounded(resources);
         };
-        let Some(grid_cells) = options
-            .resources
-            .value(merman::ascii::AsciiResourceLimitId::MaxGridCells)
+        let Some(grid_cells) =
+            ascii_resources.value(merman::ascii::AsciiResourceLimitId::MaxGridCells)
         else {
-            return Self::unbounded(resources);
+            return Self::exclusive_unmeasured(resources);
         };
-        let Some(document_cells) = options
-            .resources
-            .value(merman::ascii::AsciiResourceLimitId::MaxDocumentCells)
+        let Some(document_cells) =
+            ascii_resources.value(merman::ascii::AsciiResourceLimitId::MaxDocumentCells)
         else {
-            return Self::unbounded(resources);
+            return Self::exclusive_unmeasured(resources);
         };
-        let Some(output_bytes) = options
-            .resources
-            .value(merman::ascii::AsciiResourceLimitId::MaxOutputBytes)
+        let Some(output_bytes) =
+            ascii_resources.value(merman::ascii::AsciiResourceLimitId::MaxOutputBytes)
         else {
-            return Self::unbounded(resources);
+            return Self::exclusive_unmeasured(resources);
         };
         let surface_cells = u64::try_from(grid_cells.max(document_cells)).map_err(|_| {
             CliError::InvalidInput("ASCII surface admission weight does not fit u64".to_string())
@@ -197,6 +196,23 @@ impl BackendAdmission {
         Ok(admission)
     }
 
+    #[cfg(feature = "ascii")]
+    fn exclusive_unmeasured(resources: &ResolvedResourcePolicy) -> Result<Self, CliError> {
+        let ledger = resources.checked_scheduling_weight();
+        let weight = ledger.max().ok_or_else(|| {
+            CliError::InvalidInput(
+                "exclusive backend admission requires a finite scheduling budget".to_string(),
+            )
+        })?;
+        Ok(Self {
+            budget: Arc::new(BackendAdmissionBudget::new(ledger)),
+            weight,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            actual_prefix_weight: 0,
+            enforce_actual_bound: false,
+        })
+    }
+
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn exclusive(
         resources: &ResolvedResourcePolicy,
@@ -223,8 +239,22 @@ impl BackendAdmission {
         })
     }
 
-    pub(super) fn acquire(&self) -> Result<BackendPermit, ResourceLedgerError> {
-        self.budget.acquire(self.weight)
+    /// Admits one backend operation while observing its cooperative control at the blocking
+    /// boundary. The short timed waits keep cancellation and deadlines responsive without
+    /// introducing an asynchronous executor into the synchronous CLI path.
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    pub(super) fn acquire_controlled(
+        &self,
+        control: &merman::OperationControl,
+    ) -> Result<BackendPermit, CliError> {
+        self.budget
+            .acquire_controlled(self.weight, control)
+            .map_err(|error| match error {
+                ControlledAcquireError::Cancelled(error) => {
+                    CliError::Render(merman::RenderError::Cancelled(error))
+                }
+                ControlledAcquireError::Resource(error) => CliError::Resource(error),
+            })
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -284,6 +314,12 @@ struct BackendAdmissionBudget {
     capacity_changed: Condvar,
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
+enum ControlledAcquireError {
+    Cancelled(merman::OperationCancelled),
+    Resource(ResourceLedgerError),
+}
+
 impl BackendAdmissionBudget {
     fn new(in_flight: CheckedSchedulingWeight) -> Self {
         Self {
@@ -308,25 +344,36 @@ impl BackendAdmissionBudget {
             .check_single(requested)
     }
 
-    fn acquire(self: &Arc<Self>, requested: u64) -> Result<BackendPermit, ResourceLedgerError> {
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    fn acquire_controlled(
+        self: &Arc<Self>,
+        requested: u64,
+        control: &merman::OperationControl,
+    ) -> Result<BackendPermit, ControlledAcquireError> {
         let mut in_flight = self
             .in_flight
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        in_flight.check_single(requested)?;
+        in_flight
+            .check_single(requested)
+            .map_err(ControlledAcquireError::Resource)?;
         loop {
+            control
+                .checkpoint_at(merman::OperationPhase::Admission)
+                .map_err(ControlledAcquireError::Cancelled)?;
             match in_flight.try_acquire(requested) {
                 Ok(()) => break,
                 Err(
                     ResourceLedgerError::LimitExceeded { .. }
                     | ResourceLedgerError::ArithmeticOverflow { .. },
                 ) if in_flight.max().is_some() => {
-                    in_flight = self
+                    let (next, _) = self
                         .capacity_changed
-                        .wait(in_flight)
+                        .wait_timeout(in_flight, Duration::from_millis(25))
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    in_flight = next;
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(ControlledAcquireError::Resource(error)),
             }
         }
         Ok(BackendPermit {
@@ -459,13 +506,17 @@ mod tests {
             .apply_override("max_scheduling_weight_bytes", 10)
             .unwrap();
         let admission = BackendAdmission::bounded(&policy, 6).unwrap();
-        let first = admission.acquire().unwrap();
+        let first = admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .unwrap();
         let worker_admission = admission.clone();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (acquired_tx, acquired_rx) = mpsc::channel();
         let worker = std::thread::spawn(move || {
             ready_tx.send(()).unwrap();
-            let _second = worker_admission.acquire().unwrap();
+            let _second = worker_admission
+                .acquire_controlled(&merman::OperationControl::new())
+                .unwrap();
             acquired_tx.send(()).unwrap();
         });
         ready_rx.recv().unwrap();
@@ -585,7 +636,9 @@ mod tests {
             .apply_override("max_scheduling_weight_bytes", u64::MAX)
             .unwrap();
         let admission = BackendAdmission::bounded(&policy, u64::MAX).unwrap();
-        let first = admission.acquire().unwrap();
+        let first = admission
+            .acquire_controlled(&merman::OperationControl::new())
+            .unwrap();
         let worker_admission = BackendAdmission::bounded(&policy, 1).unwrap();
         let shared_budget = Arc::clone(&admission.budget);
         let worker_admission = BackendAdmission {
@@ -596,7 +649,9 @@ mod tests {
         let (acquired_tx, acquired_rx) = mpsc::channel();
         let worker = std::thread::spawn(move || {
             ready_tx.send(()).unwrap();
-            let _second = worker_admission.acquire().unwrap();
+            let _second = worker_admission
+                .acquire_controlled(&merman::OperationControl::new())
+                .unwrap();
             acquired_tx.send(()).unwrap();
         });
         ready_rx.recv().unwrap();

@@ -123,18 +123,13 @@ cargo run -p xtask -- debug-svg-data-points --svg fixtures/upstream-svgs/state/<
 If the points differ, the root cause is upstream dagre parity (dugong ordering/numerics or graph
 construction).
 
-### D) Validate Dagre parity for a nested cluster (JS vs Rust)
+### D) Isolate nested-cluster layout from root viewport behavior
 
-If you suspect the drift is caused by the recursive cluster extraction pass (not Dagre itself),
-compare the Rust layout output with a JS Dagre run for the same extracted cluster graph:
-
-```sh
-cargo run -p xtask -- compare-dagre-layout --diagram state --fixture <fixture_name> --cluster <cluster_id>
-```
-
-If JS and Rust match (max deltas ~0), then the remaining root viewport mismatch is almost always
-driven by **input graph construction** (node/edge sizes, label measurement, insertion order) rather
-than the layout solver.
+Use focused Dugong compound-graph tests to validate insertion order, parent assignment, and routed
+geometry, then inspect the family result with `compare-all-svgs` and `debug-svg-data-points`.
+Historical same-input comparison against pinned `dagre-d3-es` established that matching nested
+cluster geometry points to **input graph construction** (node/edge sizes, label measurement, and
+insertion order), rather than the layout solver, as the likely source of root viewport drift.
 
 ## Current failing fixtures (parity-root)
 

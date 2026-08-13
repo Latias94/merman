@@ -1,10 +1,11 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiRgb, TerminalWidthProfile, render_model,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile, render_model,
+    render_model_with_operation,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
 
 fn parse_class_render_model(input: &str) -> RenderSemanticModel {
@@ -29,8 +30,32 @@ fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
     render_model(&model, options)
 }
 
+fn render_class_model(
+    model: &ClassDiagram,
+    options: &AsciiRenderOptions,
+) -> merman_ascii::Result<String> {
+    render_model(&RenderSemanticModel::Class(model.clone()), options)
+}
+
+fn render_class_with_grid_limit(
+    input: &str,
+    options: &AsciiRenderOptions,
+    max_grid_cells: usize,
+) -> merman_ascii::Result<String> {
+    let model = parse_class_render_model(input);
+    let control = OperationControl::new();
+    let context = Engine::new()
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, max_grid_cells)
+        .expect("valid operation grid limit");
+
+    render_model_with_operation(&model, options, &control, &context, resources)
+}
+
 fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
-    let error = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
+    let error = render_class_model(model, &AsciiRenderOptions::ascii())
         .expect_err("class model should be rejected as unsupported");
 
     assert_eq!(
@@ -374,12 +399,12 @@ fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width(
         .expect("class A should exist")
         .text = "👩‍💻·".to_string();
 
-    let unicode = merman_ascii::render_class(
+    let unicode = render_class_model(
         &model,
         &AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Unicode),
     )
     .expect("class should render with Unicode terminal widths");
-    let cjk = merman_ascii::render_class(
+    let cjk = render_class_model(
         &model,
         &AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
     )
@@ -402,7 +427,7 @@ fn class_relationship_labels_preserve_complex_graphemes() {
         .expect("class A should exist")
         .text = "Client 👩‍💻".to_string();
     model.relations[0].title = "owns 👩‍💻".to_string();
-    let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
+    let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("class relationship should render");
 
     assert!(rendered.contains("Client 👩‍💻"), "{rendered}");
@@ -459,7 +484,7 @@ fn class_render_model_reconstructs_members_when_display_text_is_empty() {
     method.classifier = "*".to_string();
     method.display_text.clear();
 
-    let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
+    let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("typed member fields should reconstruct a terminal display");
 
     assert!(rendered.contains("+items List<T>$"), "{rendered}");
@@ -1891,7 +1916,7 @@ fn class_local_semantic_fixture_covers_wide_members_and_relation_labels() {
     let input = read_local_semantic_fixture("class/wide_members_and_summary_labels.mmd");
     let options = AsciiRenderOptions::ascii();
 
-    let rendered = render_class(&input, &options)
+    let rendered = render_class_with_grid_limit(&input, &options, 10_000)
         .expect("class diagram with wide member and relation labels should render");
 
     for expected in [
@@ -1912,6 +1937,42 @@ fn class_local_semantic_fixture_covers_wide_members_and_relation_labels() {
         !rendered.contains("<br>"),
         "wide class relations should not leak Mermaid break syntax:\n{rendered}"
     );
+}
+
+#[test]
+fn class_parser_final_relation_document_obeys_the_operation_grid_budget() {
+    let error = render_class_with_grid_limit(
+        "classDiagram\nclass A\nclass B\nclass C\nclass D\nA --> B : ab\nC --> D : cd",
+        &AsciiRenderOptions::ascii(),
+        1,
+    )
+    .expect_err("the final joined class document must obey the operation grid budget");
+
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+}
+
+#[test]
+fn class_parser_relation_fallback_obeys_the_operation_grid_budget() {
+    let error = render_class_with_grid_limit(
+        "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes<br>through\nService --> Repo : stores",
+        &AsciiRenderOptions::ascii(),
+        1,
+    )
+    .expect_err("a class fallback that cannot fit the operation budget must be rejected");
+
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+}
+
+#[test]
+fn class_parser_diagnostic_fallback_preserves_the_operation_resource_error() {
+    let error = render_class_with_grid_limit(
+        "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
+        &AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true),
+        1,
+    )
+    .expect_err("diagnostics must not bypass the operation grid budget");
+
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
 }
 
 #[test]
@@ -2038,7 +2099,7 @@ fn class_render_model_preserves_independent_relationship_markers() {
     relation.relation.type1 = aggregation;
     relation.relation.type2 = composition;
 
-    let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
+    let rendered = render_class_model(&model, &AsciiRenderOptions::ascii())
         .expect("independent class relationship markers should render");
 
     assert!(

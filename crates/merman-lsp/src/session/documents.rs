@@ -1,32 +1,29 @@
 use super::LanguageSession;
-use crate::session::analysis::AnalysisJobGeneration;
+use crate::session::analysis::acquisition::{AcquiredSnapshot, ProjectionDecision};
 use crate::session::analysis::executor::{
     AnalysisExecutionLease, AnalysisExecutor, DiagnosticReprojectionLease,
 };
 #[cfg(test)]
 use crate::session::analysis::request::TestAnalysisGate;
 use crate::session::analysis::request::{
-    AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionKey,
-    DiagnosticReprojectionRequest,
+    AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionRequest,
 };
 use crate::session::analysis_cache::{AnalysisCache, AnalysisCacheAuthority, AnalysisCacheStamp};
-#[cfg(test)]
-use crate::session::cache::WeightedCacheStatistics;
 use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
     SnapshotContext, SnapshotGeneration,
 };
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnosticPolicy, AnalysisOptions,
-    AnalysisRejection, AnalysisResourceLimit, AnalysisResourceLimits, Analyzer, DiagnosticSpan,
-    SourceDescriptor, source_descriptor_for_kind,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisConfigChange, AnalysisConfigContract,
+    AnalysisDiagnosticPolicy, AnalysisOptions, AnalysisRejection, AnalysisResourceLimit,
+    AnalysisResourceLimits, Analyzer, DiagnosticSpan, SourceDescriptor, source_descriptor_for_kind,
 };
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::{
-    Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
+    Diagnostic, Position, Range, TextDocumentContentChangeEvent, Uri,
 };
 
 mod analysis_state;
@@ -77,78 +74,6 @@ pub(super) struct SessionState {
     analysis_test_gate: Option<Arc<TestAnalysisGate>>,
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct SnapshotLease {
-    pub(super) snapshot: Arc<DocumentSnapshot>,
-    context: Option<Arc<DocumentAnalysisContext>>,
-    snapshot_generation: SnapshotGeneration,
-    document_epoch: DocumentEpoch,
-    analysis_job_generation: AnalysisJobGeneration,
-    cache_authority: Option<AnalysisCacheAuthority>,
-}
-
-impl SnapshotLease {
-    fn new(
-        snapshot: Arc<DocumentSnapshot>,
-        context: Option<Arc<DocumentAnalysisContext>>,
-        snapshot_generation: SnapshotGeneration,
-        document_epoch: DocumentEpoch,
-        analysis_job_generation: AnalysisJobGeneration,
-        cache_authority: Option<AnalysisCacheAuthority>,
-    ) -> Self {
-        Self {
-            snapshot,
-            context,
-            snapshot_generation,
-            document_epoch,
-            analysis_job_generation,
-            cache_authority,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct DiagnosticProjectionTicket {
-    request: DiagnosticReprojectionRequest,
-    cache_authority: Option<AnalysisCacheAuthority>,
-}
-
-impl DiagnosticProjectionTicket {
-    fn new(
-        request: DiagnosticReprojectionRequest,
-        cache_authority: Option<AnalysisCacheAuthority>,
-    ) -> Self {
-        Self {
-            request,
-            cache_authority,
-        }
-    }
-
-    pub(super) fn request(&self) -> &DiagnosticReprojectionRequest {
-        &self.request
-    }
-
-    pub(super) fn uri(&self) -> &Uri {
-        self.request.uri()
-    }
-
-    #[cfg(test)]
-    pub(in crate::session::documents) fn snapshot(&self) -> &Arc<DocumentSnapshot> {
-        self.request.snapshot()
-    }
-}
-
-pub(super) enum DiagnosticProjectionPreparation {
-    Ready(SnapshotContext),
-    Project(DiagnosticProjectionTicket),
-}
-
-pub(super) enum AnalysisPreparation {
-    Ready(SnapshotContext),
-    Project(DiagnosticProjectionTicket),
-    Build(Box<AnalysisBuildRequest>),
-}
-
 #[derive(Debug)]
 struct SnapshotConfigurationPlan {
     cancellation: AnalysisCancellationToken,
@@ -179,7 +104,7 @@ struct SnapshotConfigurationBatch {
 
 #[derive(Debug)]
 enum AnalyzerOptionsPreparation {
-    Applied(AnalyzerConfigurationChange),
+    Applied(AnalysisConfigChange),
     RequiresSnapshotPreparation(Box<SnapshotConfigurationPlan>),
 }
 
@@ -207,15 +132,17 @@ enum DocumentSource {
         text: Arc<str>,
         rejection: AnalysisRejection,
     },
-    ResourceLimited(DocumentResourceLimit),
-    Discarded(DocumentDiscardedSource),
-    SyncError(DocumentSyncError),
+    ResourceLimited(SourceLimitEvidence),
+    Discarded(SourceLimitEvidence),
+    SyncError,
 }
 
-#[derive(Debug)]
-struct PreparedDocumentText {
-    text: String,
-    rejection: Option<AnalysisRejection>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SourceLimitEvidence {
+    source_len: usize,
+    last_max_source_bytes: usize,
+    span: DiagnosticSpan,
+    incremental_sync_lost: bool,
 }
 
 #[derive(Debug)]
@@ -294,44 +221,20 @@ impl OpenDocumentTracker {
     }
 }
 
-impl PreparedDocumentText {
-    pub(crate) fn new_cancellable(
-        text: String,
-        resource_limits: AnalysisResourceLimits,
-        source: &SourceDescriptor,
-        cancellation: &AnalysisCancellationToken,
-    ) -> Result<Self, AnalysisCancelled> {
-        cancellation.checkpoint()?;
-        let rejection =
-            resource_limits.preflight_document_cancellable(&text, source, cancellation)?;
-        Ok(Self { text, rejection })
-    }
-}
-
-fn document_source_from_rejection(text: Arc<str>, rejection: AnalysisRejection) -> DocumentSource {
-    match rejection.resource_limit() {
-        AnalysisResourceLimit::SourceBytes {
-            source_len,
-            max_source_bytes,
-        } => {
-            let span = rejection
-                .payload()
-                .diagnostics
-                .first()
-                .and_then(|diagnostic| diagnostic.span)
-                .expect("source-byte rejection must carry its canonical diagnostic span");
-            DocumentSource::ResourceLimited(DocumentResourceLimit {
-                source_len,
-                max_source_bytes,
-                span,
-            })
-        }
-        _ => DocumentSource::AnalysisRejected { text, rejection },
-    }
+fn prepare_document_source_cancellable(
+    text: String,
+    resource_limits: AnalysisResourceLimits,
+    source: &SourceDescriptor,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<DocumentSource, AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let rejection = resource_limits.preflight_document_cancellable(&text, source, cancellation)?;
+    cancellation.checkpoint()?;
+    Ok(DocumentSource::from_preflight(text, rejection))
 }
 
 impl TextChangePlan {
-    fn prepare(self) -> Result<PreparedTextChanges, AnalysisCancelled> {
+    fn prepare(self) -> Result<PreparedDocumentChange, AnalysisCancelled> {
         let Self {
             uri,
             version,
@@ -344,43 +247,40 @@ impl TextChangePlan {
             cancellation,
         } = self;
         cancellation.checkpoint()?;
-        let prepared_text = match source {
-            CapturedDocumentSource::Available(current_text) => {
-                apply_available_text_changes(&current_text, changes, &cancellation)?
-            }
-            CapturedDocumentSource::Unavailable(unavailable_source) => {
-                let Some(recovery_start) =
-                    changes.iter().rposition(|change| change.range.is_none())
-                else {
-                    return Ok(PreparedTextChanges {
-                        uri,
-                        version,
-                        kind,
-                        expected_epoch,
-                        expected_configuration_revision,
-                        mutation: full_sync_mutation(unavailable_source),
-                    });
-                };
-                apply_changes_from_full_replacement(changes, recovery_start, &cancellation)?
-            }
+        let prepared_text = if let Some(current_text) = source.retained_text() {
+            apply_available_text_changes(current_text, changes, &cancellation)?
+        } else if let Some(recovery_start) =
+            changes.iter().rposition(|change| change.range.is_none())
+        {
+            apply_changes_from_full_replacement(changes, recovery_start, &cancellation)?
+        } else {
+            cancellation.checkpoint()?;
+            return Ok(PreparedDocumentChange {
+                uri,
+                version,
+                kind,
+                expected_epoch,
+                expected_configuration_revision,
+                source: source.with_incremental_sync_lost(),
+            });
         };
-        let mutation = match prepared_text {
-            Ok(text) => PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
+        let source = match prepared_text {
+            Ok(text) => prepare_document_source_cancellable(
                 text,
                 resource_limits,
                 &document_source_descriptor(&uri, kind),
                 &cancellation,
-            )?),
-            Err(()) => invalid_range_mutation(),
+            )?,
+            Err(()) => DocumentSource::SyncError,
         };
         cancellation.checkpoint()?;
-        Ok(PreparedTextChanges {
+        Ok(PreparedDocumentChange {
             uri,
             version,
             kind,
             expected_epoch,
             expected_configuration_revision,
-            mutation,
+            source,
         })
     }
 }
@@ -445,41 +345,6 @@ fn apply_text_content_changes(
     Ok(Ok(()))
 }
 
-fn invalid_range_mutation() -> PreparedTextMutation {
-    PreparedTextMutation::SyncError {
-        error: DocumentSyncError::InvalidIncrementalRange,
-        update: TextDocumentUpdate::InvalidRange,
-    }
-}
-
-fn full_sync_mutation(unavailable_source: UnavailableSourceState) -> PreparedTextMutation {
-    let error = match unavailable_source {
-        UnavailableSourceState::ResourceLimited(resource_limit) => {
-            DocumentSyncError::FullReplacementRequired {
-                source_len: resource_limit.source_len,
-                last_max_source_bytes: resource_limit.max_source_bytes,
-            }
-        }
-        UnavailableSourceState::Discarded(discarded_source) => {
-            DocumentSyncError::FullReplacementRequired {
-                source_len: discarded_source.source_len,
-                last_max_source_bytes: discarded_source.previous_max_source_bytes,
-            }
-        }
-        UnavailableSourceState::SyncError(sync_error) => sync_error,
-    };
-    PreparedTextMutation::SyncError {
-        error,
-        update: TextDocumentUpdate::NeedsFullSync,
-    }
-}
-
-#[derive(Debug)]
-enum TextChangePreparation {
-    Immediate(TextDocumentUpdate),
-    Prepare(Box<TextChangePlan>),
-}
-
 #[derive(Debug)]
 struct TextChangePlan {
     uri: Uri,
@@ -488,244 +353,206 @@ struct TextChangePlan {
     expected_epoch: DocumentEpoch,
     expected_configuration_revision: ConfigurationRevision,
     resource_limits: AnalysisResourceLimits,
-    source: CapturedDocumentSource,
+    source: DocumentSource,
     changes: Vec<TextDocumentContentChangeEvent>,
     cancellation: AnalysisCancellationToken,
 }
 
 #[derive(Debug)]
-enum CapturedDocumentSource {
-    Available(Arc<str>),
-    Unavailable(UnavailableSourceState),
-}
-
-#[derive(Debug)]
-struct PreparedTextChanges {
+struct PreparedDocumentChange {
     uri: Uri,
     version: i32,
     kind: DocumentKind,
     expected_epoch: DocumentEpoch,
     expected_configuration_revision: ConfigurationRevision,
-    mutation: PreparedTextMutation,
-}
-
-#[derive(Debug)]
-enum PreparedTextMutation {
-    Text(PreparedDocumentText),
-    SyncError {
-        error: DocumentSyncError,
-        update: TextDocumentUpdate,
-    },
+    source: DocumentSource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DocumentResourceLimit {
-    pub source_len: usize,
-    pub max_source_bytes: usize,
-    pub span: DiagnosticSpan,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DocumentDiscardedSource {
-    pub source_len: usize,
-    pub previous_max_source_bytes: usize,
-    pub span: DiagnosticSpan,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DocumentSyncError {
+pub(crate) enum DocumentSyncLoss {
     InvalidIncrementalRange,
-    FullReplacementRequired {
+    SourceUnavailable {
         source_len: usize,
         last_max_source_bytes: usize,
     },
 }
 
-#[derive(Debug, Clone, Copy)]
-enum UnavailableSourceState {
-    ResourceLimited(DocumentResourceLimit),
-    Discarded(DocumentDiscardedSource),
-    SyncError(DocumentSyncError),
+pub(crate) enum DocumentUnavailableDiagnostic<'a> {
+    AnalysisRejected(&'a AnalysisRejection),
+    ResourceLimited {
+        source_len: usize,
+        max_source_bytes: usize,
+        span: DiagnosticSpan,
+    },
+    Discarded {
+        source_len: usize,
+        previous_max_source_bytes: usize,
+        span: DiagnosticSpan,
+    },
+    SyncLost(DocumentSyncLoss),
 }
 
-impl StoredDocument {
-    pub(crate) fn available(
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        text: impl Into<Arc<str>>,
-    ) -> Self {
-        Self {
-            uri,
-            version,
-            kind,
-            source: DocumentSource::Available(text.into()),
+impl DocumentSource {
+    fn from_preflight(text: String, rejection: Option<AnalysisRejection>) -> Self {
+        match rejection {
+            None => Self::Available(Arc::from(text)),
+            Some(rejection) => Self::source_limit_evidence(&rejection).map_or_else(
+                || Self::AnalysisRejected {
+                    text: Arc::from(text),
+                    rejection,
+                },
+                Self::ResourceLimited,
+            ),
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn resource_limited(
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        limit: DocumentResourceLimit,
-    ) -> Self {
-        Self {
-            uri,
-            version,
-            kind,
-            source: DocumentSource::ResourceLimited(limit),
-        }
+    fn from_rejection(text: Arc<str>, rejection: AnalysisRejection) -> Self {
+        Self::source_limit_evidence(&rejection).map_or_else(
+            || Self::AnalysisRejected { text, rejection },
+            Self::ResourceLimited,
+        )
     }
 
-    #[cfg(test)]
-    pub(crate) fn analysis_rejected(
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        text: Arc<str>,
-        rejection: AnalysisRejection,
-    ) -> Self {
-        Self {
-            uri,
-            version,
-            kind,
-            source: DocumentSource::AnalysisRejected { text, rejection },
-        }
+    fn source_limit_evidence(rejection: &AnalysisRejection) -> Option<SourceLimitEvidence> {
+        let AnalysisResourceLimit::SourceBytes {
+            source_len,
+            max_source_bytes,
+        } = rejection.resource_limit()
+        else {
+            return None;
+        };
+        let span = rejection
+            .payload()
+            .diagnostics
+            .first()
+            .and_then(|diagnostic| diagnostic.span)
+            .expect("source-byte rejection must carry its canonical diagnostic span");
+        Some(SourceLimitEvidence {
+            source_len,
+            last_max_source_bytes: max_source_bytes,
+            span,
+            incremental_sync_lost: false,
+        })
     }
 
-    #[cfg(test)]
-    pub(crate) fn discarded(
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        discarded: DocumentDiscardedSource,
-    ) -> Self {
-        Self {
-            uri,
-            version,
-            kind,
-            source: DocumentSource::Discarded(discarded),
+    fn retained_text(&self) -> Option<&Arc<str>> {
+        match self {
+            Self::Available(text) | Self::AnalysisRejected { text, .. } => Some(text),
+            Self::ResourceLimited(_) | Self::Discarded(_) | Self::SyncError => None,
         }
-    }
-
-    pub(crate) fn sync_error(
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        error: DocumentSyncError,
-    ) -> Self {
-        Self {
-            uri,
-            version,
-            kind,
-            source: DocumentSource::SyncError(error),
-        }
-    }
-
-    pub(crate) fn retained_text(&self) -> Option<&Arc<str>> {
-        match &self.source {
-            DocumentSource::Available(text) | DocumentSource::AnalysisRejected { text, .. } => {
-                Some(text)
-            }
-            _ => None,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn text(&self) -> Option<&Arc<str>> {
-        self.retained_text()
     }
 
     fn analysis_text(&self) -> Option<&Arc<str>> {
-        match &self.source {
-            DocumentSource::Available(text) => Some(text),
-            _ => None,
+        match self {
+            Self::Available(text) => Some(text),
+            Self::AnalysisRejected { .. }
+            | Self::ResourceLimited(_)
+            | Self::Discarded(_)
+            | Self::SyncError => None,
         }
     }
 
-    pub(crate) fn analysis_rejection(&self) -> Option<&AnalysisRejection> {
-        match &self.source {
-            DocumentSource::AnalysisRejected { rejection, .. } => Some(rejection),
-            _ => None,
+    fn with_incremental_sync_lost(mut self) -> Self {
+        match &mut self {
+            Self::ResourceLimited(evidence) | Self::Discarded(evidence) => {
+                evidence.incremental_sync_lost = true;
+            }
+            Self::SyncError => {}
+            Self::Available(_) | Self::AnalysisRejected { .. } => {
+                debug_assert!(false, "retained sources apply ranged edits directly");
+            }
+        }
+        self
+    }
+
+    fn unavailable_diagnostic(&self) -> Option<DocumentUnavailableDiagnostic<'_>> {
+        match self {
+            Self::Available(_) => None,
+            Self::AnalysisRejected { rejection, .. } => {
+                Some(DocumentUnavailableDiagnostic::AnalysisRejected(rejection))
+            }
+            Self::ResourceLimited(evidence) if evidence.incremental_sync_lost => Some(
+                DocumentUnavailableDiagnostic::SyncLost(DocumentSyncLoss::SourceUnavailable {
+                    source_len: evidence.source_len,
+                    last_max_source_bytes: evidence.last_max_source_bytes,
+                }),
+            ),
+            Self::ResourceLimited(evidence) => {
+                Some(DocumentUnavailableDiagnostic::ResourceLimited {
+                    source_len: evidence.source_len,
+                    max_source_bytes: evidence.last_max_source_bytes,
+                    span: evidence.span,
+                })
+            }
+            Self::Discarded(evidence) if evidence.incremental_sync_lost => Some(
+                DocumentUnavailableDiagnostic::SyncLost(DocumentSyncLoss::SourceUnavailable {
+                    source_len: evidence.source_len,
+                    last_max_source_bytes: evidence.last_max_source_bytes,
+                }),
+            ),
+            Self::Discarded(evidence) => Some(DocumentUnavailableDiagnostic::Discarded {
+                source_len: evidence.source_len,
+                previous_max_source_bytes: evidence.last_max_source_bytes,
+                span: evidence.span,
+            }),
+            Self::SyncError => Some(DocumentUnavailableDiagnostic::SyncLost(
+                DocumentSyncLoss::InvalidIncrementalRange,
+            )),
         }
     }
 
-    pub(crate) fn resource_limit(&self) -> Option<DocumentResourceLimit> {
-        match &self.source {
-            DocumentSource::ResourceLimited(limit) => Some(*limit),
-            _ => None,
+    fn reclassify(
+        &self,
+        max_source_bytes: Option<usize>,
+        retained_rejection: Option<&AnalysisRejection>,
+    ) -> Self {
+        match self {
+            Self::Available(text) | Self::AnalysisRejected { text, .. } => retained_rejection
+                .map_or_else(
+                    || Self::Available(Arc::clone(text)),
+                    |rejection| Self::from_rejection(Arc::clone(text), rejection.clone()),
+                ),
+            Self::ResourceLimited(evidence) | Self::Discarded(evidence) => match max_source_bytes {
+                Some(limit) if evidence.source_len > limit => {
+                    Self::ResourceLimited(SourceLimitEvidence {
+                        last_max_source_bytes: limit,
+                        ..*evidence
+                    })
+                }
+                _ => Self::Discarded(*evidence),
+            },
+            Self::SyncError => Self::SyncError,
         }
     }
+}
 
-    pub(crate) fn discarded_source(&self) -> Option<DocumentDiscardedSource> {
-        match &self.source {
-            DocumentSource::Discarded(discarded) => Some(*discarded),
-            _ => None,
-        }
+impl StoredDocument {
+    pub(crate) fn retained_text(&self) -> Option<&Arc<str>> {
+        self.source.retained_text()
     }
 
-    pub(crate) fn sync_error_state(&self) -> Option<DocumentSyncError> {
-        match &self.source {
-            DocumentSource::SyncError(error) => Some(*error),
-            _ => None,
-        }
+    fn analysis_text(&self) -> Option<&Arc<str>> {
+        self.source.analysis_text()
+    }
+
+    pub(crate) fn unavailable_diagnostic(&self) -> Option<DocumentUnavailableDiagnostic<'_>> {
+        self.source.unavailable_diagnostic()
     }
 
     pub fn is_analysis_unavailable(&self) -> bool {
         !matches!(&self.source, DocumentSource::Available(_))
     }
-
-    fn captured_source(&self) -> CapturedDocumentSource {
-        match &self.source {
-            DocumentSource::Available(text) | DocumentSource::AnalysisRejected { text, .. } => {
-                CapturedDocumentSource::Available(Arc::clone(text))
-            }
-            DocumentSource::ResourceLimited(limit) => {
-                CapturedDocumentSource::Unavailable(UnavailableSourceState::ResourceLimited(*limit))
-            }
-            DocumentSource::Discarded(discarded) => {
-                CapturedDocumentSource::Unavailable(UnavailableSourceState::Discarded(*discarded))
-            }
-            DocumentSource::SyncError(error) => {
-                CapturedDocumentSource::Unavailable(UnavailableSourceState::SyncError(*error))
-            }
-        }
-    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TextDocumentUpdate {
-    Applied,
-    NeedsFullSync,
-    MissingDocument,
-    EmptyChangeSet,
-    InvalidRange,
-    StaleVersion {
-        current_version: i32,
-        attempted_version: i32,
-    },
-    Superseded,
-}
-
-impl TextDocumentUpdate {
-    pub fn affects_document_state(self) -> bool {
-        matches!(
-            self,
-            Self::Applied | Self::NeedsFullSync | Self::InvalidRange
-        )
-    }
-}
-
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct SemanticTokensState {
-    pub result_id: Option<String>,
-    pub tokens: Vec<SemanticToken>,
+    pub result_id: String,
+    pub packed: Vec<u32>,
 }
 
 impl SemanticTokensState {
-    pub fn new(result_id: Option<String>, tokens: Vec<SemanticToken>) -> Self {
-        Self { result_id, tokens }
+    pub fn new(result_id: String, packed: Vec<u32>) -> Self {
+        Self { result_id, packed }
     }
 }
 
@@ -804,7 +631,7 @@ impl SessionState {
         &mut self,
         ticket: OpenDocumentTicket,
         version: i32,
-        prepared: PreparedDocumentText,
+        source: DocumentSource,
         kind: DocumentKind,
     ) -> bool {
         if self.configuration_revision != ticket.expected_configuration_revision
@@ -816,38 +643,23 @@ impl SessionState {
         {
             return false;
         }
-        self.open_prepared_text(ticket.uri.clone(), version, prepared, kind);
+        self.open_document_source(ticket.uri.clone(), version, source, kind);
         true
     }
 
-    fn open_prepared_text(
+    fn open_document_source(
         &mut self,
         uri: Uri,
         version: i32,
-        prepared: PreparedDocumentText,
+        source: DocumentSource,
         kind: DocumentKind,
     ) -> StoredDocument {
-        let text = Arc::<str>::from(prepared.text);
-        let document = match prepared.rejection {
-            Some(rejection) => StoredDocument {
-                uri: uri.clone(),
-                version,
-                kind,
-                source: document_source_from_rejection(text, rejection),
-            },
-            None => StoredDocument::available(uri.clone(), version, kind, text),
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version,
+            kind,
+            source,
         };
-        self.upsert_document(uri, document)
-    }
-
-    fn upsert_sync_error(
-        &mut self,
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        sync_error: DocumentSyncError,
-    ) -> StoredDocument {
-        let document = StoredDocument::sync_error(uri.clone(), version, kind, sync_error);
         self.upsert_document(uri, document)
     }
 
@@ -881,58 +693,47 @@ impl SessionState {
         uri: Uri,
         version: i32,
         changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
-    ) -> TextChangePreparation {
-        let Some(record) = self.documents.get(&uri) else {
-            return TextChangePreparation::Immediate(TextDocumentUpdate::MissingDocument);
-        };
+    ) -> Option<Box<TextChangePlan>> {
+        let record = self.documents.get(&uri)?;
         let current = &record.document;
         if version <= current.version {
-            return TextChangePreparation::Immediate(TextDocumentUpdate::StaleVersion {
-                current_version: current.version,
-                attempted_version: version,
-            });
+            return None;
         }
         let changes = changes.into_iter().collect::<Vec<_>>();
         if changes.is_empty() {
-            return TextChangePreparation::Immediate(TextDocumentUpdate::EmptyChangeSet);
+            return None;
         }
 
-        TextChangePreparation::Prepare(Box::new(TextChangePlan {
+        Some(Box::new(TextChangePlan {
             uri,
             version,
             kind: current.kind,
             expected_epoch: record.epoch,
             expected_configuration_revision: self.configuration_revision,
             resource_limits: self.analyzer.options().resource_limits(),
-            source: current.captured_source(),
+            source: current.source.clone(),
             changes,
             cancellation: self.session_cancellation.child(),
         }))
     }
 
-    fn commit_prepared_text_changes(
-        &mut self,
-        prepared: PreparedTextChanges,
-    ) -> TextDocumentUpdate {
+    fn commit_prepared_document_change(&mut self, prepared: PreparedDocumentChange) -> bool {
         let Some(record) = self.documents.get(&prepared.uri) else {
-            return TextDocumentUpdate::MissingDocument;
+            return false;
         };
         if record.epoch != prepared.expected_epoch
             || self.configuration_revision != prepared.expected_configuration_revision
         {
-            return TextDocumentUpdate::Superseded;
+            return false;
         }
 
-        match prepared.mutation {
-            PreparedTextMutation::Text(text) => {
-                self.open_prepared_text(prepared.uri, prepared.version, text, prepared.kind);
-                TextDocumentUpdate::Applied
-            }
-            PreparedTextMutation::SyncError { error, update } => {
-                self.upsert_sync_error(prepared.uri, prepared.version, prepared.kind, error);
-                update
-            }
-        }
+        self.open_document_source(
+            prepared.uri,
+            prepared.version,
+            prepared.source,
+            prepared.kind,
+        );
+        true
     }
 
     pub(super) fn get(&self, uri: &Uri) -> Option<&StoredDocument> {
@@ -941,8 +742,8 @@ impl SessionState {
 
     pub(super) fn remove(&mut self, uri: &Uri) {
         self.analysis_executor.forget(uri);
+        self.open_document_tracker.advance(uri);
         if self.documents.remove(uri).is_some() {
-            self.open_document_tracker.advance(uri);
             self.advance_documents_revision();
         }
         self.analysis_cache.remove(uri);
@@ -995,38 +796,29 @@ impl DiagnosticContext {
             document_epoch,
         }
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnalyzerConfigurationChange {
-    Unchanged,
-    DiagnosticsOnly,
-    SnapshotAffecting,
-}
-
-impl AnalyzerConfigurationChange {
-    pub(crate) fn affects_diagnostics(self) -> bool {
-        !matches!(self, Self::Unchanged)
+    pub(crate) const fn diagnostic_generation(&self) -> DiagnosticGeneration {
+        self.generation
     }
 
-    pub(crate) fn affects_snapshots(self) -> bool {
-        matches!(self, Self::SnapshotAffecting)
+    pub(crate) const fn document_epoch(&self) -> DocumentEpoch {
+        self.document_epoch
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigurationUpdateOutcome {
     Unchanged,
-    Applied(AnalyzerConfigurationChange),
+    Applied(AnalysisConfigChange),
     Superseded,
     Cancelled,
     Failed,
 }
 
 impl ConfigurationUpdateOutcome {
-    fn applied(change: AnalyzerConfigurationChange) -> Self {
+    fn applied(change: AnalysisConfigChange) -> Self {
         match change {
-            AnalyzerConfigurationChange::Unchanged => Self::Unchanged,
+            AnalysisConfigChange::Unchanged => Self::Unchanged,
             change => Self::Applied(change),
         }
     }
@@ -1045,19 +837,6 @@ impl ConfigurationUpdateOutcome {
 
     pub(crate) fn accepted(self) -> bool {
         matches!(self, Self::Unchanged | Self::Applied(_))
-    }
-}
-
-pub(crate) fn analyzer_configuration_change(
-    current: &AnalysisOptions,
-    next: &AnalysisOptions,
-) -> AnalyzerConfigurationChange {
-    if current == next {
-        AnalyzerConfigurationChange::Unchanged
-    } else if current.snapshot_policy() == next.snapshot_policy() {
-        AnalyzerConfigurationChange::DiagnosticsOnly
-    } else {
-        AnalyzerConfigurationChange::SnapshotAffecting
     }
 }
 
@@ -1144,7 +923,7 @@ impl LanguageSession {
         let source = document_source_descriptor(&uri, kind);
         let cancellation = self.inner.cancellation.child();
         let prepared = match tokio::task::spawn_blocking(move || {
-            PreparedDocumentText::new_cancellable(text, resource_limits, &source, &cancellation)
+            prepare_document_source_cancellable(text, resource_limits, &source, &cancellation)
         })
         .await
         {
@@ -1167,34 +946,32 @@ impl LanguageSession {
         uri: Uri,
         version: i32,
         changes: Vec<TextDocumentContentChangeEvent>,
-    ) -> Option<TextDocumentUpdate> {
+    ) -> Option<bool> {
         let preparation = {
             let mut state = self.inner.state.lock().await;
             self.commit_state_if_active(&mut state, |state| {
                 state.capture_text_changes(uri.clone(), version, changes)
             })?
         };
-        match preparation {
-            TextChangePreparation::Immediate(update) => Some(update),
-            TextChangePreparation::Prepare(plan) => {
-                let prepared = match tokio::task::spawn_blocking(move || plan.prepare()).await {
-                    Ok(Ok(prepared)) => prepared,
-                    Ok(Err(_)) => return None,
-                    Err(error) => {
-                        tracing::error!(
-                            %error,
-                            uri = %uri.as_str(),
-                            "document change preparation worker failed"
-                        );
-                        return None;
-                    }
-                };
-                let mut state = self.inner.state.lock().await;
-                self.commit_state_if_active(&mut state, |state| {
-                    state.commit_prepared_text_changes(prepared)
-                })
+        let Some(plan) = preparation else {
+            return Some(false);
+        };
+        let prepared = match tokio::task::spawn_blocking(move || plan.prepare()).await {
+            Ok(Ok(prepared)) => prepared,
+            Ok(Err(_)) => return None,
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    uri = %uri.as_str(),
+                    "document change preparation worker failed"
+                );
+                return None;
             }
-        }
+        };
+        let mut state = self.inner.state.lock().await;
+        self.commit_state_if_active(&mut state, |state| {
+            state.commit_prepared_document_change(prepared)
+        })
     }
 
     pub(crate) async fn close_document(&self, uri: &Uri) {

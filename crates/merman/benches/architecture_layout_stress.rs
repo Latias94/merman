@@ -1,7 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::svg::RenderEnvironment;
 use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, family};
+use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
 use std::hint::black_box;
 
 const ARCH_REASONABLE_HEIGHT: &str =

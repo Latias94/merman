@@ -450,7 +450,7 @@ Results:
   and the current dependency/lockfile/Worker-import topology without recomputing historical content
   digests. Routine implementation drift uses ordinary build, provenance, semantic, and contract
   tests rather than a browser-measurement gate. The complete receipt is checked in at
-  [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
+  [`playground/editor-artifact-receipt-v2.json`](../../../playground/editor-artifact-receipt-v2.json).
 
 ### 2026-08-06 - Behavior-Owned Evidence Boundaries
 
@@ -495,7 +495,7 @@ npx --yes node@24.18.0 --test playground/scripts/editor-artifact-measurement/con
 npm run verify:zenuml-candidate --prefix playground
 npm run verify:zenuml-browser-admission --prefix playground
 cargo run --locked -p xtask -- verify-mermaid-reference
-npm run measure:editor-artifacts --prefix playground -- --out docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json
+npm run measure:editor-artifacts --prefix playground -- --out playground/editor-artifact-receipt-v2.json
 npm run verify:editor-artifact-authority --prefix playground
 ```
 

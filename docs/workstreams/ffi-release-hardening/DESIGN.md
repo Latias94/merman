@@ -13,7 +13,7 @@ consumer smoke test, and a clear documentation entry point.
 
 - ADRs:
   - `docs/adr/0066-ffi-binding-strategy.md`
-  - `docs/adr/0050-release-quality-gates.md`
+  - `docs/adr/0081-release-quality-gates.md`
 - Existing docs:
   - `docs/bindings/FFI_PROTOCOL.md`
   - `README.md`

@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
 use crate::safe_text::{
@@ -8,9 +9,10 @@ use crate::safe_text::{
 };
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
 
-pub fn render_git_graph_diagram(
+pub(super) fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
     options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let resources = ResourceContext::new(options.resources);
     resources.charge_layout_work(model.commits.len())?;
@@ -34,6 +36,9 @@ pub fn render_git_graph_diagram(
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
     push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
     if !model.branches.is_empty() {
+        for _ in &model.branches {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         document.push_line_with(|line| {
             push_line_list(
                 line,
@@ -45,6 +50,7 @@ pub fn render_git_graph_diagram(
     }
 
     for commit in &model.commits {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
         document.resources_mut().charge_layout_work(1)?;
         document.push_line_with(|line| {
             line.push_str("  - ")?;
@@ -55,6 +61,7 @@ pub fn render_git_graph_diagram(
     if !model.warning_facts.is_empty() {
         document.push_line("warnings:")?;
         for warning in &model.warning_facts {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
             document.resources_mut().charge_layout_work(1)?;
             document.push_line_with(|line| {
                 push_line_field(line, "  - ", "message", &warning.message)
@@ -160,6 +167,7 @@ mod tests {
             render_git_graph_diagram(
                 &model,
                 &AsciiRenderOptions::ascii().with_resource_policy(exact),
+                AsciiExecution::standalone(&exact),
             )
             .expect_err("exact validation work should reach the unknown-type boundary"),
             AsciiError::UnsupportedFeature {
@@ -174,6 +182,7 @@ mod tests {
         let error = render_git_graph_diagram(
             &model,
             &AsciiRenderOptions::ascii().with_resource_policy(below),
+            AsciiExecution::standalone(&below),
         )
         .expect_err("N-1 validation work should reject before scanning commit types");
         assert!(matches!(
@@ -207,8 +216,12 @@ mod tests {
             warning_facts: Vec::new(),
         };
 
-        let error = render_git_graph_diagram(&model, &options)
-            .expect_err("the branch row must fail at its first document cell");
+        let error = render_git_graph_diagram(
+            &model,
+            &options,
+            AsciiExecution::standalone(&options.resources),
+        )
+        .expect_err("the branch row must fail at its first document cell");
 
         assert!(matches!(
             error,

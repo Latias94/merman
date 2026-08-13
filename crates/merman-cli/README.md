@@ -17,7 +17,7 @@ The command line has three explicit workflows:
 This README describes the current source revision. For a published release, prefer the complete prebuilt binary, with a source-build fallback when no official archive is available for the current target:
 
 ```sh
-cargo binstall merman-cli
+cargo binstall merman-cli@0.8.0-alpha.5
 ```
 
 Starting with `0.8.0-alpha.5`, Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Published binary channels can trail this development branch; check `merman-cli --version` first, then use `merman-cli capabilities --json` on `0.8.0-alpha.5` and later. Pin a source revision when you need the exact contract documented here.
@@ -50,7 +50,7 @@ The standard commands above and project release artifacts select the complete `c
 
 | Channel | Binary source | Completion and man pages | Availability |
 | --- | --- | --- | --- |
-| `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: project release archive, with source fallback | Not installed | Registry-selected version; its own metadata governs |
+| `cargo binstall merman-cli@VERSION` | `0.8.0-alpha.5` and later: project release archive, with source fallback | Not installed | Selected registry version; its own metadata governs |
 | GitHub shell or PowerShell installer | Project release archive | Not installed | `0.8.0-alpha.5` and later |
 | Direct GitHub archive | Project release archive | Bundled under `completions/` and `man/` | `0.8.0-alpha.5` and later |
 | Homebrew formula | Formula source build or Homebrew bottle | `0.8.0` and later: Bash, Zsh, Fish, PowerShell, and man pages installed | External stable channel; selected formula version governs |

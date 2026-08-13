@@ -3909,7 +3909,9 @@ fn layout_flowchart_with_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{
+        CancelReason, Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
+    };
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -4209,6 +4211,27 @@ mod tests {
         };
 
         assert_eq!(sticky, mapped);
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn dagre_kernel_interruption_preserves_operation_cancellation() {
+        let control = OperationControl::new();
+        control.cancel();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        ));
+        let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+
+        let interrupted = dugong::WorkControl::charge(&mut work_control, 1)
+            .expect_err("the cancelled operation must interrupt the kernel");
+        let Error::Cancelled(cancelled) = work_control.map_dugong_error(interrupted) else {
+            panic!("expected structured operation cancellation");
+        };
+
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(cancelled.reason, CancelReason::Requested);
         assert_eq!(meter.used(), 0);
     }
 

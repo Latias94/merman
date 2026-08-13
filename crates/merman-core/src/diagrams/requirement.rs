@@ -1,10 +1,9 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
-    editor::EditorLexemeJournal, family::CombinedSemanticFailure,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
+    SourceSpan, editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -15,16 +14,6 @@ use std::collections::{BTreeMap, HashMap};
 thread_local! {
     static REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
-
-const REQUIREMENT_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const REQUIREMENT_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
-    EditorCompletionVocabulary::new(&[], REQUIREMENT_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 pub(crate) fn reset_requirement_syntax_construction_count() {
@@ -224,6 +213,16 @@ impl RequirementDb {
         });
     }
 
+    fn editor_entity_kind(&self, name: &str) -> Option<EditorSemanticKind> {
+        if self.requirements.contains_key(name) {
+            Some(EditorSemanticKind::Struct)
+        } else if self.elements.contains_key(name) {
+            Some(EditorSemanticKind::Object)
+        } else {
+            None
+        }
+    }
+
     fn set_css_style(&mut self, ids: &[String], styles: &[String]) {
         for id in ids {
             let node_req = self.requirements.get_mut(id);
@@ -368,8 +367,8 @@ pub(crate) fn parse_requirement_model_for_render(
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_requirement_semantic_source_controlled(code, meta, control)?;
     Ok(crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -504,30 +503,14 @@ fn emit_parsed_requirement_ids(
     role: EditorSemanticRole,
 ) {
     for id in &ids.items {
-        let symbol = match role {
-            EditorSemanticRole::Entity => EditorSemanticSymbol::new(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-            EditorSemanticRole::Outline => EditorSemanticSymbol::outline(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-            EditorSemanticRole::Payload => EditorSemanticSymbol::payload(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-        };
-        facts.push_symbol(symbol);
+        facts.push_symbol(EditorSemanticSymbol::with_role(
+            id.value.clone(),
+            Some(detail.to_string()),
+            kind,
+            role,
+            statement_span,
+            id.selection,
+        ));
     }
 }
 
@@ -578,15 +561,16 @@ fn construct_requirement_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
-    construct_requirement_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_requirement_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_requirement_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>>
+{
     control.checkpoint()?;
     #[cfg(test)]
     REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.set(REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -610,14 +594,14 @@ fn parse_requirement_semantic_source_once(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>>
+{
     control.checkpoint()?;
     let mut db = RequirementDb::new();
     let mut acc_title: Option<String> = None;
     let mut acc_descr: Option<String> = None;
-    let mut editor_facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(REQUIREMENT_COMPLETION_VOCABULARY);
+    let mut editor_facts = EditorSemanticFacts::new();
     let mut lines = LineCursor::new(code);
     let mut saw_header = false;
     let mut first_error = None;
@@ -936,6 +920,8 @@ fn parse_requirement_semantic_source_once(
         ));
     }
 
+    resolve_requirement_reference_kinds(&mut editor_facts, &db);
+
     if let Some(error) = first_error {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
             "requirement",
@@ -997,8 +983,8 @@ fn parse_requirement_acc_descr(
     line_start: usize,
     cursor: &mut LineCursor<'_>,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<Option<RequirementAccDescr>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<RequirementAccDescr>> {
     control.checkpoint()?;
     let Some((rest, rest_start)) = parse_keyword_rest_ci(line, "accDescr") else {
         return Ok(None);
@@ -1183,10 +1169,10 @@ fn emit_requirement_shorthand_class(
     statement: &ParsedRequirementClassShorthand,
     statement_span: SourceSpan,
 ) {
-    facts.push_symbol(EditorSemanticSymbol::outline(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         statement.target.value.clone(),
         Some("requirement class target".to_string()),
-        EditorSemanticKind::Namespace,
+        EditorSemanticKind::Struct,
         statement_span,
         statement.target.selection,
     ));
@@ -1210,8 +1196,8 @@ fn emit_requirement_style(
         &statement.ids,
         statement_span,
         "requirement style target",
-        EditorSemanticKind::Property,
-        EditorSemanticRole::Payload,
+        EditorSemanticKind::Struct,
+        EditorSemanticRole::Reference,
     );
     emit_parsed_requirement_styles(facts, &statement.styles, "requirement style");
 }
@@ -1227,7 +1213,7 @@ fn emit_requirement_class_def(
         statement_span,
         "requirement class definition",
         EditorSemanticKind::Property,
-        EditorSemanticRole::Outline,
+        EditorSemanticRole::ClassDefinition,
     );
     emit_parsed_requirement_styles(facts, &statement.styles, "requirement class style");
 }
@@ -1250,8 +1236,8 @@ fn emit_requirement_class(
         &statement.targets,
         statement_span,
         "requirement class target",
-        EditorSemanticKind::Namespace,
-        EditorSemanticRole::Entity,
+        EditorSemanticKind::Struct,
+        EditorSemanticRole::Reference,
     );
 }
 
@@ -1267,20 +1253,30 @@ fn emit_requirement_relationship(
         statement_span,
         relationship.kind_span,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         relationship.source.value.clone(),
         Some("requirement relationship source".to_string()),
         EditorSemanticKind::Struct,
         statement_span,
         relationship.source.selection,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         relationship.target.value.clone(),
         Some("requirement relationship target".to_string()),
         EditorSemanticKind::Struct,
         statement_span,
         relationship.target.selection,
     ));
+}
+
+fn resolve_requirement_reference_kinds(facts: &mut EditorSemanticFacts, db: &RequirementDb) {
+    for symbol in &mut facts.symbols {
+        if symbol.role == EditorSemanticRole::Reference
+            && let Some(kind) = db.editor_entity_kind(&symbol.name)
+        {
+            symbol.kind = kind;
+        }
+    }
 }
 
 fn split_requirement_line(line: &str, line_start: usize) -> RequirementLine<'_> {
@@ -1347,7 +1343,7 @@ impl ParsedRequirementDirection {
 
     fn emit_editor_fact(&self, facts: &mut EditorSemanticFacts, statement_span: SourceSpan) {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::DirectionValue,
+            EditorExpectedSyntaxKind::CardinalDirectionValue,
             self.selection,
         ));
         if let Some(value) = self.value {
@@ -1614,8 +1610,8 @@ fn parse_requirement_body(
     meta: &ParseMetadata,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<RequirementBodyParse<RequirementBuilder>> {
+    control: &OperationControl,
+) -> OperationControlResult<RequirementBodyParse<RequirementBuilder>> {
     control.checkpoint()?;
     let mut b = RequirementBuilder::new();
     let mut error = None;
@@ -1746,8 +1742,8 @@ fn parse_element_body(
     meta: &ParseMetadata,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<RequirementBodyParse<ElementBuilder>> {
+    control: &OperationControl,
+) -> OperationControlResult<RequirementBodyParse<ElementBuilder>> {
     control.checkpoint()?;
     let mut b = ElementBuilder::new();
     let mut error = None;
@@ -2764,6 +2760,82 @@ mod tests {
     }
 
     #[test]
+    fn requirement_targets_use_reference_roles_and_resolve_forward_definition_kinds() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "future - verifies -> later\n",
+            "style future,later fill:#fff\n",
+            "class future,later important\n",
+            "future:::important\n",
+            "element future {\n",
+            "}\n",
+            "requirement later {\n",
+            "}\n",
+            "classDef important fill:#fff\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_requirement_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
+        let symbols_for = |name: &str| {
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .collect::<Vec<_>>()
+        };
+
+        let future = symbols_for("future");
+        assert_eq!(future.len(), 5);
+        assert!(
+            future[..4]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert!(
+            future
+                .iter()
+                .all(|symbol| symbol.kind == EditorSemanticKind::Object)
+        );
+        assert_eq!(future[4].role, EditorSemanticRole::Entity);
+
+        let later = symbols_for("later");
+        assert_eq!(later.len(), 4);
+        assert!(
+            later[..3]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert!(
+            later
+                .iter()
+                .all(|symbol| symbol.kind == EditorSemanticKind::Struct)
+        );
+        assert_eq!(later[3].role, EditorSemanticRole::Entity);
+    }
+
+    #[test]
+    fn requirement_reference_kind_resolution_does_not_inspect_display_detail() {
+        let mut db = RequirementDb::new();
+        db.add_element("node", ElementBuilder::new());
+        let span = SourceSpan::new(0, "node".len());
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::reference(
+            "node",
+            Some("definition-looking display text".to_string()),
+            EditorSemanticKind::Struct,
+            span,
+            span,
+        ));
+
+        resolve_requirement_reference_kinds(&mut facts, &db);
+
+        assert_eq!(facts.symbols[0].role, EditorSemanticRole::Reference);
+        assert_eq!(facts.symbols[0].kind, EditorSemanticKind::Object);
+    }
+
+    #[test]
     fn requirement_parser_emits_exact_crlf_unicode_lexemes() {
         let source = concat!(
             "requirementDiagram\r\n",
@@ -2942,7 +3014,7 @@ mod tests {
         let standalone_json = parse_requirement(text, &meta).unwrap();
         reset_requirement_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_requirement_json_and_editor_facts(text, &meta, &ParseControl::new()),
+            parse_requirement_json_and_editor_facts(text, &meta, &OperationControl::new()),
         )
         .unwrap();
 

@@ -65,6 +65,10 @@ fn uses_seeded_upstream_svg_renderer(diagram: &str) -> bool {
     matches!(diagram, "architecture" | "gitgraph" | "sequence")
 }
 
+fn uses_fixed_clock_upstream_svg_renderer(diagram: &str) -> bool {
+    diagram == "gantt"
+}
+
 fn captures_parse_error_svg(diagram: &str) -> bool {
     diagram == "error"
 }
@@ -78,7 +82,25 @@ fn scripted_renderer_background_color(diagram: &str) -> &'static str {
 }
 
 fn uses_scripted_upstream_svg_renderer(diagram: &str) -> bool {
-    uses_seeded_upstream_svg_renderer(diagram) || captures_parse_error_svg(diagram)
+    uses_seeded_upstream_svg_renderer(diagram)
+        || uses_fixed_clock_upstream_svg_renderer(diagram)
+        || captures_parse_error_svg(diagram)
+}
+
+fn scripted_renderer_page_viewport_width(diagram: &str) -> u32 {
+    if diagram == "gantt" {
+        crate::cmd::GANTT_UPSTREAM_PAGE_VIEWPORT_WIDTH_PX
+    } else {
+        800
+    }
+}
+
+fn scripted_renderer_container_width(diagram: &str) -> u32 {
+    if diagram == "gantt" {
+        crate::cmd::GANTT_UPSTREAM_CONTAINER_WIDTH_PX
+    } else {
+        scripted_renderer_page_viewport_width(diagram)
+    }
 }
 
 fn upstream_svg_supported_diagrams_message() -> String {
@@ -1457,10 +1479,10 @@ fn gen_upstream_svgs_impl(
             let status = if use_scripted_renderer {
                 use std::process::Stdio;
 
-                // Architecture and GitGraph need deterministic randomness. Sequence also uses this
-                // wrapper so deferred participant MathML is complete before SVG serialization.
-                // Error uses it to retain Mermaid's rendered fallback SVG when render() rethrows the
-                // originating parse error.
+                // Architecture and GitGraph need deterministic randomness. Gantt needs a fixed wall
+                // clock for its today marker. Sequence also uses this wrapper so deferred participant
+                // MathML is complete before SVG serialization. Error uses it to retain Mermaid's
+                // rendered fallback SVG when render() rethrows the originating parse error.
                 let seed: u64 = 1;
                 let output_abs = if temp_out_path.is_absolute() {
                     temp_out_path.clone()
@@ -1475,8 +1497,10 @@ fn gen_upstream_svgs_impl(
                     "theme": "default",
                     "svg_id": svg_id,
                     "seed": seed,
-                    "width": 800,
+                    "page_viewport_width": scripted_renderer_page_viewport_width(diagram),
+                    "container_width": scripted_renderer_container_width(diagram),
                     "height": 600,
+                    "fixed_wall_clock_ms": crate::cmd::UPSTREAM_SVG_FIXED_WALL_CLOCK_MS,
                     "background_color": scripted_renderer_background_color(diagram),
                     "browser_executable": render_probe.browser_executable.display().to_string(),
                     "capture_parse_error_svg": captures_parse_error_svg(diagram),
@@ -2394,8 +2418,9 @@ const configPath = String(input.config_path || '');
 const theme = String(input.theme || 'default');
 const svgId = String(input.svg_id || 'diagram');
 const seedStr = String((input.seed ?? 1));
-const fixedWallClockMs = 1704067200000;
-const width = Number(input.width || 800);
+const fixedWallClockMs = Number(input.fixed_wall_clock_ms);
+const pageViewportWidth = Number(input.page_viewport_width || 800);
+const containerWidth = Number(input.container_width || pageViewportWidth);
 const height = Number(input.height || 600);
 const backgroundColor = input.background_color === undefined
   ? 'white'
@@ -2459,8 +2484,21 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     }
 
     Math.random = nextF64;
-    // Iconify derives SVG IDs from the wall clock during Mermaid bundle initialization.
-    Date.now = () => fixedWallClockMs;
+    // Mermaid Gantt calls `new Date()` directly, while Iconify calls `Date.now()` during bundle
+    // initialization. Freeze both entry points without changing explicit date construction.
+    const NativeDate = globalThis.Date;
+    globalThis.Date = new Proxy(NativeDate, {
+      apply() {
+        return new NativeDate(fixedWallClockMs).toString();
+      },
+      construct(target, args) {
+        return Reflect.construct(target, args.length === 0 ? [fixedWallClockMs] : args, target);
+      },
+      get(target, property, receiver) {
+        if (property === 'now') return () => fixedWallClockMs;
+        return Reflect.get(target, property, receiver);
+      },
+    });
 
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
       const orig = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
@@ -2483,14 +2521,18 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     }
   }, { seedStr, fixedWallClockMs });
 
-  await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
+  await page.setViewport({
+    width: Math.max(1, pageViewportWidth),
+    height: Math.max(1, height),
+    deviceScaleFactor: 1,
+  });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
   await Promise.all([
     page.addScriptTag({ path: mermaidIifePath }),
     page.addScriptTag({ path: zenumlIifePath }),
   ]);
 
-  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, captureParseErrorSvg, debug }) => {
+  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, containerWidth, captureParseErrorSvg, debug }) => {
     const mermaid = globalThis.mermaid;
     if (!mermaid) throw new Error('global mermaid instance not found (mermaid.js)');
 
@@ -2512,7 +2554,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
 
     const container = document.getElementById('container') || document.body;
     container.innerHTML = '';
-    container.style.width = `${Math.max(1, Number(width) || 1)}px`;
+    container.style.width = `${Math.max(1, Number(containerWidth) || 1)}px`;
 
     // Surface parse errors early; some Mermaid failures otherwise only manifest as a missing `svg`.
     if (!captureParseErrorSvg && typeof mermaid.parse === 'function') {
@@ -2718,7 +2760,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       return { ok: true, stage: 'ok', svgTextLen: svgText.length, serializedLen: xml.length };
     }
     return xml;
-  }, { code, cfg, theme, svgId, width, captureParseErrorSvg, debug });
+  }, { code, cfg, theme, svgId, containerWidth, captureParseErrorSvg, debug });
 
   if (debug) {
     if (typeof svg !== 'string') {
@@ -2865,7 +2907,7 @@ fn render_family_fixture_svg(
         .map_err(|err| format!("parse failed for {}: {err}", mmd_path.display()))?
         .ok_or_else(|| format!("no diagram detected in {}", mmd_path.display()))?;
 
-    let session = merman::svg::RenderEnvironment::deterministic()
+    let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .map_err(|err| format!("render session failed: {err}"))?;
     let artifact =
@@ -2890,57 +2932,71 @@ fn render_family_fixture_svg(
         .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
 }
 
-pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DebugSvgFamily {
+    fixture_dir: &'static str,
+    family: merman_render::family::RenderFamilyKind,
+    suppress_errors: bool,
+    seeded_site_config: bool,
+    deterministic_diagram_id: bool,
+}
 
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("er");
-    let out_dir = out_root.join("er");
-
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-                merman_render::family::RenderFamilyKind::Er,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
+fn debug_svg_family(diagram: &str) -> Option<DebugSvgFamily> {
+    let standard = |fixture_dir, family| DebugSvgFamily {
+        fixture_dir,
+        family,
+        suppress_errors: false,
+        seeded_site_config: false,
+        deterministic_diagram_id: true,
+    };
+    match diagram {
+        "flowchart" | "flowchart-v2" | "flowchartV2" => Some(standard(
+            "flowchart",
+            merman_render::family::RenderFamilyKind::Flowchart,
+        )),
+        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => Some(standard(
+            "state",
+            merman_render::family::RenderFamilyKind::State,
+        )),
+        "class" | "classDiagram" => Some(standard(
+            "class",
+            merman_render::family::RenderFamilyKind::Class,
+        )),
+        "er" | "erDiagram" => Some(DebugSvgFamily {
+            fixture_dir: "er",
+            family: merman_render::family::RenderFamilyKind::Er,
+            suppress_errors: true,
+            seeded_site_config: true,
+            deterministic_diagram_id: true,
+        }),
+        "c4" => Some(DebugSvgFamily {
+            fixture_dir: "c4",
+            family: merman_render::family::RenderFamilyKind::C4,
+            suppress_errors: true,
+            seeded_site_config: false,
+            deterministic_diagram_id: true,
+        }),
+        "sequence" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard(
+                "sequence",
+                merman_render::family::RenderFamilyKind::Sequence,
             )
-        },
-    )
+        }),
+        "info" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard("info", merman_render::family::RenderFamilyKind::Info)
+        }),
+        "pie" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard("pie", merman_render::family::RenderFamilyKind::Pie)
+        }),
+        "packet" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard("packet", merman_render::family::RenderFamilyKind::Packet)
+        }),
+        _ => None,
+    }
 }
 
 pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -2972,64 +3028,36 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("debug-svgs"));
 
     fn gen_one(out_root: &Path, diagram: &str, filter: Option<&str>) -> Result<(), XtaskError> {
-        let (fixtures_dir, out_dir, expected_family) = match diagram {
-            "flowchart" | "flowchart-v2" | "flowchartV2" => (
-                crate::cmd::fixtures_root().join("flowchart"),
-                out_root.join("flowchart"),
-                merman_render::family::RenderFamilyKind::Flowchart,
-            ),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => (
-                crate::cmd::fixtures_root().join("state"),
-                out_root.join("state"),
-                merman_render::family::RenderFamilyKind::State,
-            ),
-            "class" | "classDiagram" => (
-                crate::cmd::fixtures_root().join("class"),
-                out_root.join("class"),
-                merman_render::family::RenderFamilyKind::Class,
-            ),
-            "er" | "erDiagram" => (
-                crate::cmd::fixtures_root().join("er"),
-                out_root.join("er"),
-                merman_render::family::RenderFamilyKind::Er,
-            ),
-            "sequence" => (
-                crate::cmd::fixtures_root().join("sequence"),
-                out_root.join("sequence"),
-                merman_render::family::RenderFamilyKind::Sequence,
-            ),
-            "info" => (
-                crate::cmd::fixtures_root().join("info"),
-                out_root.join("info"),
-                merman_render::family::RenderFamilyKind::Info,
-            ),
-            "pie" => (
-                crate::cmd::fixtures_root().join("pie"),
-                out_root.join("pie"),
-                merman_render::family::RenderFamilyKind::Pie,
-            ),
-            "packet" => (
-                crate::cmd::fixtures_root().join("packet"),
-                out_root.join("packet"),
-                merman_render::family::RenderFamilyKind::Packet,
-            ),
-            other => {
-                return Err(XtaskError::DebugSvgFailed(format!(
-                    "unsupported diagram for debug svg export: {other} (supported: flowchart, state, class, er, sequence, info, pie, packet)"
-                )));
-            }
+        let profile = debug_svg_family(diagram).ok_or_else(|| {
+            XtaskError::DebugSvgFailed(format!(
+                "unsupported diagram for debug svg export: {diagram} (supported: flowchart, state, class, er, c4, sequence, info, pie, packet)"
+            ))
+        })?;
+        let fixtures_dir = crate::cmd::fixtures_root().join(profile.fixture_dir);
+        let out_dir = out_root.join(profile.fixture_dir);
+        let engine = if profile.seeded_site_config {
+            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+                serde_json::json!({ "handDrawnSeed": 1 }),
+            ))
+        } else {
+            merman::Engine::new()
+        };
+        let parse_options = merman::ParseOptions {
+            suppress_errors: profile.suppress_errors,
         };
 
-        let engine = merman::Engine::new();
-
-        export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, _stem, text| {
+        export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, stem, text| {
+            let svg_options = merman_render::svg::SvgRenderOptions {
+                diagram_id: profile.deterministic_diagram_id.then(|| stem.to_string()),
+                ..Default::default()
+            };
             render_family_fixture_svg(
                 &engine,
                 mmd_path,
                 text,
-                merman::ParseOptions::default(),
-                expected_family,
-                &merman_render::svg::SvgRenderOptions::default(),
+                parse_options,
+                profile.family,
+                &svg_options,
                 &merman_render::svg::SvgDebugOptions::default(),
             )
         })
@@ -3037,7 +3065,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     let filter = filter.as_deref();
     let diagrams: Vec<&str> = match diagram.as_str() {
-        "all" => vec!["flowchart", "state", "class", "er"],
+        "all" => vec!["flowchart", "state", "class", "er", "c4"],
         other => vec![other],
     };
 
@@ -3211,226 +3239,28 @@ where
     set.into_iter().collect()
 }
 
-pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("flowchart");
-    let out_dir = out_root.join("flowchart");
-
-    let engine = merman::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions::default(),
-                merman_render::family::RenderFamilyKind::Flowchart,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
-pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("state");
-    let out_dir = out_root.join("state");
-
-    let engine = merman::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions::default(),
-                merman_render::family::RenderFamilyKind::State,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
-pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("class");
-    let out_dir = out_root.join("class");
-
-    let engine = merman::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions::default(),
-                merman_render::family::RenderFamilyKind::Class,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
-pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("c4");
-    let out_dir = out_root.join("c4");
-
-    // Keep this aligned with `crates/merman-render/tests/layout_snapshots_test.rs` so the
-    // `update-layout-snapshots` output matches the test's computed layouts.
-    let engine = merman_core::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman_core::ParseOptions {
-                    suppress_errors: true,
-                },
-                merman_render::family::RenderFamilyKind::C4,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
         PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS,
         UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots, absolutize_workspace_path,
-        captures_parse_error_svg, create_upstream_svg_check_output_root,
+        captures_parse_error_svg, create_upstream_svg_check_output_root, debug_svg_family,
         ensure_content_addressed_js_script, ensure_fresh_upstream_svg_output_is_empty,
         ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
         parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
         promote_upstream_svg_batch, render_dompurify_defaults_rs, render_family_fixture_svg,
-        scripted_renderer_background_color, select_upstream_svg_diagrams,
+        scripted_renderer_background_color, scripted_renderer_container_width,
+        scripted_renderer_page_viewport_width, select_upstream_svg_diagrams,
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
         upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_mermaid_config_value, upstream_svg_package_tree_sha256,
-        use_or_acquire_upstream_svg_family_lock, uses_scripted_upstream_svg_renderer,
-        uses_seeded_upstream_svg_renderer, validate_and_promote_upstream_svg_temp,
-        validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
-        validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
+        use_or_acquire_upstream_svg_family_lock, uses_fixed_clock_upstream_svg_renderer,
+        uses_scripted_upstream_svg_renderer, uses_seeded_upstream_svg_renderer,
+        validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
+        validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
+        validate_upstream_svg_render_probe,
     };
     use crate::XtaskError;
     use crate::cmd::{
@@ -3649,6 +3479,28 @@ mod tests {
     #[test]
     fn upstream_svg_all_commands_use_the_same_diagram_set() {
         assert!(UPSTREAM_SVG_DIAGRAMS.contains(&"xychart"));
+    }
+
+    #[test]
+    fn debug_svg_family_profiles_replace_family_specific_wrappers() {
+        let flowchart = debug_svg_family("flowchart-v2").expect("flowchart alias");
+        assert_eq!(flowchart.fixture_dir, "flowchart");
+        assert!(flowchart.deterministic_diagram_id);
+        assert!(!flowchart.suppress_errors);
+
+        let er = debug_svg_family("erDiagram").expect("ER alias");
+        assert_eq!(er.fixture_dir, "er");
+        assert!(er.seeded_site_config);
+        assert!(er.suppress_errors);
+
+        let c4 = debug_svg_family("c4").expect("C4 family");
+        assert_eq!(c4.fixture_dir, "c4");
+        assert!(c4.deterministic_diagram_id);
+        assert!(c4.suppress_errors);
+
+        let info = debug_svg_family("info").expect("general debug family");
+        assert!(!info.deterministic_diagram_id);
+        assert!(debug_svg_family("unsupported").is_none());
     }
 
     #[test]
@@ -3998,7 +3850,7 @@ mod tests {
             .find("await page.evaluateOnNewDocument")
             .expect("find deterministic page-realm injection");
         let fixed_clock = script
-            .find("Date.now = () => fixedWallClockMs")
+            .find("globalThis.Date = new Proxy")
             .expect("find fixed page wall clock");
         let navigation = script
             .find("await page.goto")
@@ -4010,7 +3862,9 @@ mod tests {
         assert!(injection < fixed_clock);
         assert!(fixed_clock < navigation);
         assert!(fixed_clock < mermaid_load);
-        assert!(script.contains("const fixedWallClockMs = 1704067200000;"));
+        assert!(script.contains("const fixedWallClockMs = Number(input.fixed_wall_clock_ms);"));
+        assert!(script.contains("args.length === 0 ? [fixedWallClockMs] : args"));
+        assert!(script.contains("if (property === 'now') return () => fixedWallClockMs"));
         assert!(
             !script.contains("performance.now ="),
             "monotonic timing must remain live while the wall clock is deterministic"
@@ -4023,6 +3877,17 @@ mod tests {
         assert!(uses_seeded_upstream_svg_renderer("architecture"));
         assert!(uses_seeded_upstream_svg_renderer("gitgraph"));
         assert!(!uses_seeded_upstream_svg_renderer("flowchart"));
+    }
+
+    #[test]
+    fn gantt_uses_the_fixed_clock_renderer_at_the_mmdc_page_and_container_widths() {
+        assert!(uses_fixed_clock_upstream_svg_renderer("gantt"));
+        assert!(uses_scripted_upstream_svg_renderer("gantt"));
+        assert_eq!(scripted_renderer_page_viewport_width("gantt"), 1_200);
+        assert_eq!(scripted_renderer_container_width("gantt"), 1_184);
+        assert!(!uses_fixed_clock_upstream_svg_renderer("timeline"));
+        assert_eq!(scripted_renderer_page_viewport_width("timeline"), 800);
+        assert_eq!(scripted_renderer_container_width("timeline"), 800);
     }
 
     #[test]

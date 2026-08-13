@@ -4,7 +4,10 @@
 
 `merman-render` is the low-level layout and SVG crate behind [merman](https://crates.io/crates/merman). It consumes typed `merman-core` family semantics and produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
 
-> **Implementation crate:** this crate is published to support Merman's Cargo dependency chain, not as the normal product entry point. Applications should depend on [`merman`](https://crates.io/crates/merman) and use `merman::svg::HeadlessRenderer`.
+> **Implementation crate:** this crate is published to support Merman's Cargo dependency chain,
+> not as the normal product entry point. Applications should depend on
+> [`merman`](https://crates.io/crates/merman) and use its operation-scoped `Renderer` with a typed
+> target request.
 
 Direct use is reserved for Merman maintainers and advanced integrations that deliberately own the typed core model, render session, text measurement, layout, and SVG postprocessing lifecycle.
 
@@ -34,7 +37,14 @@ Omitting an optional layout or math backend preserves parsing and semantic suppo
 
 ## Render Environment
 
-`RenderEnvironment` owns adapters and policy for one operation: named text-measurement routes, math rendering, icons, time, randomness, and resource limits. Call `begin_session()` once before layout and retain that `RenderSession` through SVG and any raster postprocessing so those phases observe the same snapshot and provenance. The higher-level `HeadlessRenderer` also applies the frozen session date and timezone to date-sensitive parsing; direct low-level callers are responsible for configuring the core `Engine` consistently.
+`RenderEnvironment` owns SVG-specific adapters and policy for one operation: named
+text-measurement routes, math rendering, icons, time, randomness, and resource limits. Low-level
+callers bind a caller-owned `OperationContext` and `OperationControl` with
+`begin_session_in_context()` before layout and retain that `RenderSession` through SVG
+postprocessing so every phase observes the same snapshot and provenance. The higher-level
+`Renderer` captures that context once and also applies its frozen date and timezone to
+date-sensitive parsing; direct low-level callers are responsible for configuring the core
+`Engine` consistently.
 
 `TextMeasurer` keeps browser DOM primitives distinct. In particular, `measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while `measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former. The vendored profile's pinned middle-baseline shift is a deterministic fallback, not a general system-font formula; an authoritative host measurement bypasses it.
 
@@ -43,7 +53,7 @@ This is a breaking replacement for independently configured layout and SVG servi
 ## Low-Level Pipeline Example
 
 ```rust
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions};
 use merman_render::{
     environment::RenderEnvironment, family, LayoutOptions,
 };
@@ -61,7 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let session = RenderEnvironment::deterministic().begin_session()?;
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic().begin_session_with_control(control)?;
     let artifact = family::prepare(parsed, &layout_options, session)?;
 
     // Compatibility layout JSON projects from this exact typed family artifact.
@@ -102,4 +113,8 @@ See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](https://github.com/Latias94/merman
 
 ## Relationship To merman
 
-`merman` re-exports the common render APIs behind its `svg` feature and adds `HeadlessRenderer`, consuming `prepare_render_sync` stages, SVG id sanitization helpers, and optional raster helpers. Direct `merman-render` users call `family::prepare` and retain its `RenderSession`; the old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG helpers, and per-family pass-through wrappers are not retained as compatibility paths.
+`merman` re-exports the target-local SVG vocabulary behind its `svg` feature and owns the
+source-to-output `Renderer`, typed target requests, `SemanticArtifact`, SVG id sanitization, and
+optional binary targets. Direct `merman-render` users call `family::prepare` and retain its
+`RenderSession`; the old public raw model/layout SVG helpers and per-family pass-through wrappers
+are not retained as compatibility paths.

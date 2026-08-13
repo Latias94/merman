@@ -12,37 +12,47 @@ available `repo-ref` checkouts, and whether the task includes implementation, co
 delivery. Do not publish, push, or move release tags as an implied part of alignment.
 
 Read the repository skill, its admission checklist, `tools/upstreams/README.md`,
-`tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`, `tools/upstreams/REPOS.lock.json`, relevant ADRs,
-and package-surface documentation before changing the graph.
+`tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`, `tools/upstreams/MERMAID_SELECTION_DECISION.json`,
+`tools/upstreams/REPOS.lock.json`, relevant ADRs, and package-surface documentation before changing
+the graph.
 
-## 2. Resolve Oracle, Candidate, And Latest Stable
+## 2. Discover Candidates Through Manual Admission
 
-For Mermaid and every external diagram or layout dependency, record:
+The standing bundle names exactly one selected package/source/runtime graph. It does not retain an
+oracle, candidate, deferred-major, browser-result, or supply-chain-attestation graph. Ordinary CI,
+Pages, and release verification must remain valid when no candidate files exist.
 
-- **oracle**: the exact package and source selected by the Mermaid workspace lock;
+During a deliberate upgrade admission, evaluate these temporary identities for Mermaid and each
+external diagram or layout dependency:
+
+- **selected baseline**: the exact package and source already selected by the bundle;
 - **latest-compatible candidate**: the highest stable version satisfying the host package's
   published range;
 - **latest-stable delta**: a newer stable version outside that range.
 
-A compatible range establishes candidacy, not behavioral compatibility. Select the candidate only
-after its named parser, renderer, security, resource, corpus, and host-integration matrix passes
-without unexplained deltas. Retain the oracle if it does not. Treat an outside-range major as
-separate behavior-port work rather than silently selecting it because it is newer.
+A compatible range establishes candidacy, not behavioral compatibility. Use the read-only manual
+Mermaid upgrade admission workflow to materialize the selected and candidate packages in temporary
+directories, run the exact official command
+`npm audit signatures --json --include-attestations --registry=https://registry.npmjs.org/`, and
+compare the named parser, renderer, security, resource, corpus, host-integration, and browser probe
+contracts. The admission code may reject a nonzero npm result, but it must not implement its own
+DSSE, SLSA, certificate, or signature verifier.
 
-An outside-range release still needs an independently validated deferred-admission artifact. Bind
-its exact package integrity, source commit, host ranges, selected-graph impact, and a complete owned
-behavior-work inventory. A deferred artifact must make no parser, renderer, editor/LSP, Playground,
-feature, or release claim; changing any of those flags is a new admission workflow.
+Select a candidate only when every explained result passes. Retain the selected baseline when it
+does not. Treat an outside-range major as separately scoped behavior-port work rather than silently
+selecting it because it is newer. Admission reports and raw official-tool output remain workflow
+artifacts; completed or rejected candidate/deferred graphs are not committed as standing inputs.
 
 ## 3. Generate And Materialize One Reference Graph
 
 Move the source graph and all reference workspaces together. Before running the generator:
 
-1. Update `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json` with exact package versions, integrity,
-   tarball and attestation URLs, source tags, commits, the ordered built-in diagram/default-layout
+1. Update `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json` with exact selected package versions,
+   integrity, tarball URLs, source tags, commits, the ordered built-in diagram/default-layout
    registry inventory and source hashes, runtime registration hashes, selected companions, and the
-   expected Playground/reference-CLI lock hashes. Re-extract the inventory from the pinned Mermaid
-   checkout; do not infer it from Merman's local catalog or admission records.
+   expected Playground/reference-CLI lock hashes. The bundle stores only the selection receipt path
+   and SHA-256; it does not embed admission evidence. Re-extract the inventory from the pinned
+   Mermaid checkout; do not infer it from Merman's local catalog or temporary admission reports.
 2. Update every selected source checkout and commit in `tools/upstreams/REPOS.lock.json`. A bundle
    source with a `checkoutPath` must have the same repository and commit in the lock; the lock must
    not retain the previous Mermaid tag as an active source.
@@ -53,7 +63,16 @@ Move the source graph and all reference workspaces together. Before running the 
 4. Recompute the descriptor's workspace hashes from those reviewed manifests, locks, and reference
    config. Record `installedContentSha256` for every package that can participate in reference
    execution: Mermaid, the parser, the sanitizer, the reference CLI, every external diagram and
-   layout module, and each selected behavior package. Do not copy old hashes forward.
+   layout module, each selected behavior package, and the complete browser-driver toolchain loaded
+   by the renderer. Do not copy old hashes forward.
+
+When the selected identity changes, write a new `MERMAID_SELECTION_DECISION.json` from the reviewed
+admission outputs. Its previous/current identity digests, exact changed fields, npm version and
+official command, verified package/version/integrity records, behavior result, and raw-output digest
+must describe the transition from the trusted base. Do not include the receipt itself in the
+selection identity. A bootstrap receipt is reserved for migrating an already-reviewed historical
+selection: it must identify the historical Git object and aggregate digest and must not claim that
+unarchived official npm stdout was reconstructed.
 
 Then generate the owned projections:
 
@@ -72,12 +91,20 @@ Verify the clean-clone graph:
 
 ```bash
 cargo run -p xtask -- verify-mermaid-reference
+cargo run -p xtask -- verify-mermaid-reference --base <trusted-base-sha>
 ```
 
+The base-aware form reads the trusted bundle through `git show`. A selected identity change must
+match the receipt's previous/current identities and exact changes. An unchanged identity may not
+replace its receipt, except for the one explicitly bound bootstrap migration. The bootstrap's
+historical evidence commit must be an ancestor of the trusted base, and its Git object digest must
+still match.
+
 Materialize behavior-owning sources under ignored `repo-ref/` paths at descriptor-pinned commits.
-Verify registry identity, archive integrity, publish provenance, and source commit before extraction
-or execution. Install package graphs with lifecycle scripts disabled. Any necessary lifecycle action
-requires source review and an explicit audited allowlist.
+Verify registry identity, archive integrity, source commit, and installed bytes before execution.
+Official npm signature verification belongs to manual admission, not to the Rust standing verifier.
+Install package graphs with lifecycle scripts disabled. Any necessary lifecycle action requires
+source review and an explicit audited allowlist.
 
 After source checkouts and scriptless installs exist, verify the executable graph as well. This
 extracts the built-in diagram and default-layout registrations from the pinned Mermaid source and
@@ -98,7 +125,7 @@ cargo nextest run -p merman-core baseline
 ```
 
 Only after reviewed browser/reference evidence demonstrates that the new graph produced the intended
-baselines may provenance be re-attested:
+baselines may the primary SVG provenance be regenerated:
 
 ```bash
 cargo run -p xtask -- gen-mermaid-reference --refresh-provenance
@@ -108,9 +135,9 @@ cargo run -p xtask -- verify-mermaid-reference --materialized
 The refresh command performs a fresh render of every primary family. Each family is protected by
 the canonical cross-process family lock and committed through the same-directory atomic SVG and
 manifest transaction. It cannot relabel an existing SVG corpus with newer source metadata. The
-generated attestation records Chromium's resolved locale and timezone in addition to its exact
-browser, runtime, operating-system, and font identities. A missing primary-family manifest or an
-unhashed materialized companion fails verification closed.
+generated provenance manifest records Chromium's resolved locale and timezone in addition to its
+exact browser, runtime, operating-system, and font identities. A missing primary-family manifest or
+an unhashed materialized companion fails verification closed.
 
 If the release changes a companion selected through an override, the override and its lock entry are
 part of the behavior graph. Removing or changing the override without regenerating and materially
@@ -143,14 +170,12 @@ reused registration, isolated execution, a source-observed closed artifact type,
 validation, failure recovery, and a family-owned Rust semantic/headless path. A validator failure
 may not guess a second output format.
 
-Isolation and security claims require machine-recorded browser observations for the mandatory
-desktop evidence project. Bind the probe contract, expected and observed values, pass state,
-derived counts, and canonical evidence artifact into the candidate evidence. Static tests or a
-prose matrix are not substitutes. Do not bind implementation-file hashes to the historical browser
-observation: ordinary source edits belong to unit, integration, and focused browser tests, while a
-new candidate, probe contract, or claimed observation requires an explicit on-demand re-recording.
-Mobile interaction emulation remains an on-demand product check; it does not duplicate the release
-evidence matrix.
+Isolation and security claims require machine-recorded browser observations from the manual
+admission workflow. Commit the stable probe contract, while the expected/observed values, pass state,
+and derived counts remain in the workflow report. Static tests or a prose matrix are not substitutes.
+Ordinary source edits belong to unit, integration, and focused browser tests; a new candidate, probe
+contract, or claimed observation requires an explicit manual rerun. Mobile interaction emulation
+remains an on-demand product check; it does not duplicate the admission matrix.
 
 A layout module needs typed selection, config propagation, deterministic fallback, shared resource
 enforcement, browser registration, and layout evidence. Removed syntax must update recovery and
@@ -182,7 +207,7 @@ repository gates:
 
 ```bash
 cargo run -p xtask -- verify-mermaid-reference --materialized
-cargo run -p xtask -- verify-editor-token-descriptor
+cargo run -p xtask -- verify-editor-language-contract
 cargo run -p xtask -- verify-playground-example-catalog
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment
@@ -206,6 +231,8 @@ the change. A stale generated or WASM artifact must fail before the UI starts.
 ## 8. Hand Off Without Hidden Residuals
 
 Update the relevant ADRs, family/editor alignment records, package surfaces, Playground design,
-generated status, and provenance. Report selected and rejected companions, admitted and removed
-capabilities, feature evidence, artifact residuals, commands and results, and environment-only
-skips. Keep external delivery as a separate explicitly authorized action.
+generated status, and provenance. Report selected and rejected companions from the manual workflow,
+admitted and removed capabilities, feature evidence, artifact residuals, commands and results, and
+environment-only skips. Retain only the reviewed selection receipt in the standing graph; do not
+promote rejected or completed candidate reports into live verification inputs. Keep external delivery
+as a separate explicitly authorized action.

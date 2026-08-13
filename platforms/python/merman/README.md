@@ -28,7 +28,7 @@ svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. `MermanOperationRequest` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequest.options_json`; `execute()` has no separate options argument.
+The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. API 4 requests also carry an optional `MermanOperationControl` for cooperative cancellation and relative deadlines.
 
 ## Reuse An Engine
 
@@ -50,7 +50,7 @@ engine.close()
 
 `options_json` is optional and follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants. Reusable request options deeply merge over the construction baseline for one operation without mutating it. They cannot change the constructor-owned `runtime_policy`. `MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the latter carries a non-null, descriptor-owned `capability_id`.
 
-Omitting `runtime_policy` always selects deterministic runtime state, even though release wheels are built with the atomic `native-runtime` feature. Use `{"runtime_policy":"native"}` only when an operation should consult the host clock, time-zone rules, and random source. Runtime discovery continues to report the concrete `system-clock`, `system-timezone`, and `system-random` adapter IDs. A custom build without `native-runtime` raises the generated unsupported-operation error when native policy is requested.
+Release wheels use deterministic runtime state and do not bundle native clock, time-zone, or random adapters. A custom source build may enable the atomic `native-runtime` feature and then select `{"runtime_policy":"native"}`. The default wheel raises the generated unsupported-operation error when native policy is requested, and runtime discovery reports concrete adapter IDs only when they are present.
 
 Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated builder:
 
@@ -71,7 +71,13 @@ Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is
 
 Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `4` and is independent from native C ABI and the text-measurement protocol version.
 
-Diagnostics and parser facts both use their final schema `1`, independently of UniFFI binding API `4`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
+Diagnostics use schema `1` and parser facts use schema `2`, independently of UniFFI binding API `4`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies.
+
+For generic operations, construct `MermanOperationControl(timeout_ms=...)`, retain it in the host,
+and put it in `MermanOperationRequestV4.control`. Calling `cancel()` from another thread requests
+cooperative termination. `MermanError.Binding.cancellation` reports the reason and observed phase;
+resource failures continue to use the separate `resource` field. Opaque callbacks may complete
+before the next checkpoint, so hard preemption requires a worker or process boundary.
 
 ## Text Measurement
 
@@ -92,9 +98,9 @@ The generated callback is `measure(self, request)`, not `measure_text`. One-shot
 
 Query `diagram_family_capabilities()` and `ascii_capabilities()` at runtime instead of assuming that every build profile or output format supports every family.
 
-Result metadata exposes `MermanOutputPlan` as an open record. Switch on `kind`, inspect `raster` or
-`pdf_filter_images` for known plans, and retain `raw_json` so a newer native library can report a
-future plan without forcing Python into a closed enum.
+Custom artifacts with binary exports expose `MermanOutputPlan` as an open record. Switch on `kind`,
+inspect `raster` or `pdf_filter_images` for known plans, and retain `raw_json` so a newer native
+library can report a future plan without forcing Python into a closed enum.
 
 ## Local Development
 

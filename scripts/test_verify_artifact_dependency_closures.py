@@ -22,25 +22,25 @@ from artifact_profile_recipe import (  # noqa: E402
     load_artifact_profiles,
 )
 from verify_artifact_dependency_closures import (  # noqa: E402
-    FEATURE_MARKER,
     HOST_CLOSURE_REFERENCE_TARGET,
     LINUX_REFERENCE_SCOPE,
     NATIVE_BINDING_FORBIDDEN_PACKAGES,
     NATIVE_BINDING_PROFILE_IDS,
-    PACKAGE_MARKER,
     PROFILE_TARGET_SCOPE,
     SEMANTIC_CLAIMS,
     ClosureClaim,
     ClosureVerificationError,
     PackageFeatureExclusion,
     VerificationCase,
+    _lockfile_external_identities,
     _select_cases,
-    cargo_tree_command,
+    cargo_metadata_command,
     check_case,
     load_verification_cases,
-    parse_cargo_tree,
+    parse_cargo_metadata,
     select_representative_cases,
     verify_cases,
+    write_metadata_probe,
 )
 
 
@@ -98,21 +98,86 @@ def case(
     )
 
 
-def tree_line(
-    package: str,
-    features: tuple[str, ...] = (),
-    *,
-    version: str = "1.2.3",
-    source: str | None = None,
-    proc_macro: bool = False,
-) -> str:
-    annotation = f" ({source})" if source is not None else ""
-    if proc_macro:
-        annotation += " (proc-macro)"
-    return (
-        f"__MERMAN_CLOSURE_PACKAGE__{package} v{version}{annotation}"
-        f"\t__MERMAN_CLOSURE_FEATURES__{','.join(features)}"
+def write_test_metadata_probe(
+    current: VerificationCase,
+    probe_dir: Path,
+) -> Path:
+    manifest = write_metadata_probe(
+        current,
+        probe_dir,
+        package_metadata={
+            "id": "fixture",
+            "name": current.recipe.package,
+            "version": "1.2.3",
+            "edition": "2024",
+            "features": {
+                feature: [] for feature in current.recipe.features
+            },
+            "dependencies": [],
+            "manifest_path": str(
+                SCRIPT_DIR.parent / current.recipe.manifest
+            ),
+        },
     )
+    (probe_dir / "Cargo.lock").write_text(
+        'version = 4\n\n[[package]]\nname = "fixture"\nversion = "1.2.3"\n',
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def metadata_document(
+    root_package: str,
+    package_features: dict[str, tuple[str, ...]],
+    *,
+    edges: dict[str, tuple[str, ...]] | None = None,
+    proc_macros: tuple[str, ...] = (),
+) -> dict[str, object]:
+    package_ids = {
+        package: f"registry+https://github.com/rust-lang/crates.io-index#{package}@1.2.3"
+        for package in package_features
+    }
+    graph = edges or {
+        root_package: tuple(
+            package for package in package_features if package != root_package
+        )
+    }
+    packages: list[dict[str, object]] = []
+    nodes: list[dict[str, object]] = []
+    for package, features in package_features.items():
+        package_id = package_ids[package]
+        dependencies = graph.get(package, ())
+        packages.append(
+            {
+                "id": package_id,
+                "name": package,
+                "version": "1.2.3",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "manifest_path": f"/registry/{package}/Cargo.toml",
+                "targets": [
+                    {"kind": ["proc-macro" if package in proc_macros else "lib"]}
+                ],
+            }
+        )
+        nodes.append(
+            {
+                "id": package_id,
+                "dependencies": [package_ids[dependency] for dependency in dependencies],
+                "deps": [
+                    {
+                        "name": dependency.replace("-", "_"),
+                        "pkg": package_ids[dependency],
+                        "dep_kinds": [{"kind": None, "target": None}],
+                    }
+                    for dependency in dependencies
+                ],
+                "features": list(features),
+            }
+        )
+    return {
+        "packages": packages,
+        "resolve": {"root": package_ids[root_package], "nodes": nodes},
+    }
 
 
 def write_descriptor(
@@ -292,8 +357,8 @@ class DescriptorTests(unittest.TestCase):
                 self.assertFalse(loaded.default_features)
                 self.assertEqual((loaded.package, loaded.features), (package, features))
 
-class CargoTreeCommandTests(unittest.TestCase):
-    def test_command_uses_exact_recipe_target_and_runtime_edges(self) -> None:
+class CargoMetadataCommandTests(unittest.TestCase):
+    def test_command_uses_exact_recipe_target_and_feature_recipe(self) -> None:
         loaded = recipe(
             "cli-analysis",
             package="merman-cli",
@@ -301,27 +366,136 @@ class CargoTreeCommandTests(unittest.TestCase):
             build_target_kind="target-set",
             build_targets=("x86_64-unknown-linux-gnu",),
         )
-        command = cargo_tree_command(
+        probe_manifest = Path("/tmp/merman-closure-probe/Cargo.toml")
+        command = cargo_metadata_command(
             case(
                 "cli-analysis",
                 loaded_recipe=loaded,
                 target="x86_64-unknown-linux-gnu",
-            )
+            ),
+            probe_manifest=probe_manifest,
         )
 
-        self.assertEqual(command[:2], ["cargo", "tree"])
-        self.assertEqual(command[command.index("--color") + 1], "never")
-        self.assertIn("--locked", command)
+        self.assertEqual(command[:2], ["cargo", "metadata"])
+        self.assertIn("--format-version", command)
+        self.assertIn("1", command)
+        self.assertIn("--frozen", command)
         self.assertIn("--no-default-features", command)
-        self.assertEqual(command[command.index("--package") + 1], "merman-cli")
+        self.assertNotIn("--package", command)
         self.assertEqual(command[command.index("--features") + 1], "analysis")
         self.assertEqual(
-            command[command.index("--target") + 1],
+            command[command.index("--filter-platform") + 1],
             "x86_64-unknown-linux-gnu",
         )
         self.assertEqual(
-            command[command.index("--edges") + 1],
-            "normal,no-proc-macro",
+            command[command.index("--manifest-path") + 1],
+            str(probe_manifest),
+        )
+
+    def test_probe_projects_features_and_normal_dependency_semantics(self) -> None:
+        loaded = recipe(
+            "cli-analysis",
+            package="merman-cli",
+            features=("analysis",),
+        )
+        package_metadata = {
+            "id": "merman-cli-id",
+            "name": "merman-cli",
+            "version": "1.2.3",
+            "edition": "2024",
+            "manifest_path": str(SCRIPT_DIR.parent / loaded.manifest),
+            "features": {"analysis": ["dep:renamed-core"]},
+            "dependencies": [
+                {
+                    "name": "merman-core",
+                    "source": None,
+                    "req": "^1.2.3",
+                    "kind": None,
+                    "rename": "renamed-core",
+                    "optional": True,
+                    "uses_default_features": False,
+                    "features": ["svg"],
+                    "target": "cfg(unix)",
+                    "registry": None,
+                    "path": str(SCRIPT_DIR.parent / "crates/merman-core"),
+                },
+                {
+                    "name": "ignored-build-tool",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "req": "^1",
+                    "kind": "build",
+                    "rename": None,
+                    "optional": False,
+                    "uses_default_features": True,
+                    "features": [],
+                    "target": None,
+                    "registry": None,
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest = write_metadata_probe(
+                case("cli-analysis", loaded_recipe=loaded),
+                Path(temporary_directory),
+                package_metadata=package_metadata,
+            )
+            text = manifest.read_text(encoding="utf-8")
+
+        self.assertIn('resolver = "2"', text)
+        self.assertIn('"analysis" = ["dep:renamed-core"]', text)
+        self.assertIn('[target."cfg(unix)".dependencies]', text)
+        self.assertIn('"renamed-core" = {', text)
+        self.assertIn('package = "merman-core"', text)
+        self.assertIn('optional = true', text)
+        self.assertIn('default-features = false', text)
+        self.assertIn('features = ["svg"]', text)
+        self.assertNotIn("ignored-build-tool", text)
+
+    def test_probe_rejects_an_empty_explicit_package_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with self.assertRaisesRegex(
+                ClosureVerificationError,
+                "does not match recipe root",
+            ):
+                write_metadata_probe(
+                    case(),
+                    Path(temporary_directory),
+                    package_metadata={},
+                )
+
+    def test_lockfile_external_identities_ignore_workspace_packages(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            lockfile = Path(temporary_directory) / "Cargo.lock"
+            lockfile.write_text(
+                """\
+version = 4
+
+[[package]]
+name = "workspace-root"
+version = "1.0.0"
+
+[[package]]
+name = "registry-dependency"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+""",
+                encoding="utf-8",
+            )
+
+            identities = _lockfile_external_identities(lockfile)
+
+        self.assertEqual(
+            identities,
+            frozenset(
+                {
+                    (
+                        "registry-dependency",
+                        "2.0.0",
+                        "registry+https://github.com/rust-lang/crates.io-index",
+                    )
+                }
+            ),
         )
 
     def test_host_requires_the_linux_reference_target(self) -> None:
@@ -329,7 +503,10 @@ class CargoTreeCommandTests(unittest.TestCase):
             ClosureVerificationError,
             "Linux reference target",
         ):
-            cargo_tree_command(case(target="aarch64-apple-darwin"))
+            cargo_metadata_command(
+                case(target="aarch64-apple-darwin"),
+                probe_manifest=Path("/tmp/probe/Cargo.toml"),
+            )
 
     def test_target_set_rejects_an_undeclared_target(self) -> None:
         loaded = recipe(
@@ -338,113 +515,36 @@ class CargoTreeCommandTests(unittest.TestCase):
             build_targets=("target-one",),
         )
         with self.assertRaisesRegex(ClosureVerificationError, "does not declare target"):
-            cargo_tree_command(
+            cargo_metadata_command(
                 case(
                     "cross",
                     loaded_recipe=loaded,
                     target="target-two",
-                )
+                ),
+                probe_manifest=Path("/tmp/probe/Cargo.toml"),
             )
 
     def test_command_rejects_default_features(self) -> None:
         with self.assertRaisesRegex(ClosureVerificationError, "default_features=false"):
-            cargo_tree_command(
-                case(loaded_recipe=recipe("fixture", default_features=True))
+            cargo_metadata_command(
+                case(loaded_recipe=recipe("fixture", default_features=True)),
+                probe_manifest=Path("/tmp/probe/Cargo.toml"),
             )
 
 
-class CargoTreeParserTests(unittest.TestCase):
-    def test_parser_unions_duplicate_package_features(self) -> None:
-        closure = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("root", ("one",)),
-                    tree_line("root", ("two",)) + " (*)",
-                )
-            )
-        )
-        self.assertEqual(closure.packages, frozenset({"root"}))
-        self.assertEqual(closure.features_by_package["root"], {"one", "two"})
-
-    def test_parser_normalizes_workspace_registry_git_and_proc_macro_sources(self) -> None:
-        workspace_path = SCRIPT_DIR.parent / "crates/merman"
-        closure = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("workspace", source=str(workspace_path)),
-                    tree_line("registry"),
-                    tree_line(
-                        "git-package",
-                        source="https://example.com/repo?rev=main#01234567",
-                    ),
-                    tree_line("macro", proc_macro=True),
-                    tree_line(
-                        "workspace-macro",
-                        source=str(workspace_path),
-                        proc_macro=True,
-                    ),
-                    (
-                        f"{PACKAGE_MARKER}workspace-macro-first v1.2.3 "
-                        f"(proc-macro) ({workspace_path})\t{FEATURE_MARKER}svg"
-                    ),
-                )
-            )
-        )
-        identities = set(closure.features_by_package_identity)
-        self.assertIn(
-            ("workspace", "1.2.3", "path+workspace://crates/merman"),
-            identities,
-        )
-        self.assertIn(
-            (
-                "registry",
-                "1.2.3",
-                "registry+https://github.com/rust-lang/crates.io-index",
+class CargoMetadataParserTests(unittest.TestCase):
+    def test_parser_traverses_normal_dependencies_and_unions_features(self) -> None:
+        closure = parse_cargo_metadata(
+            metadata_document(
+                "app",
+                {"app": ("one", "two"), "dep": ("dep-feature",), "proc": ()},
+                edges={"app": ("dep", "proc")},
+                proc_macros=("proc",),
             ),
-            identities,
+            root_package="app",
         )
-        self.assertTrue(
-            any(
-                name == "git-package" and source.startswith("git+https://")
-                for name, _version, source in identities
-            )
-        )
-        self.assertIn(
-            (
-                "macro",
-                "1.2.3",
-                "registry+https://github.com/rust-lang/crates.io-index",
-            ),
-            identities,
-        )
-        for package in ("workspace-macro", "workspace-macro-first"):
-            self.assertIn(
-                (
-                    package,
-                    "1.2.3",
-                    "path+workspace://crates/merman",
-                ),
-                identities,
-            )
-
-    def test_parser_rejects_unmarked_or_empty_output(self) -> None:
-        for output in ("", "root v1.2.3"):
-            with self.subTest(output=output), self.assertRaises(
-                ClosureVerificationError
-            ):
-                parse_cargo_tree(output)
-
-    def test_parser_rejects_ambiguous_proc_macro_annotations(self) -> None:
-        output = (
-            f"{PACKAGE_MARKER}root v1.2.3 (proc-macro) (proc-macro)"
-            f"\t{FEATURE_MARKER}"
-        )
-
-        with self.assertRaisesRegex(
-            ClosureVerificationError,
-            "invalid Cargo proc-macro annotations",
-        ):
-            parse_cargo_tree(output)
+        self.assertEqual(closure.packages, frozenset({"app", "dep"}))
+        self.assertEqual(closure.features_by_package["app"], {"one", "two"})
 
 class ClaimTests(unittest.TestCase):
     def test_native_binding_claim_rejects_tooling_and_application_dependencies(
@@ -455,16 +555,18 @@ class ClaimTests(unittest.TestCase):
             for current in load_verification_cases()
             if current.recipe.profile_id == "c-abi-native"
         )
-        closure = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("merman-ffi"),
-                    tree_line("merman-cli"),
-                    tree_line("reqwest"),
-                    tree_line("tokio"),
-                    tree_line("uniffi_bindgen"),
-                )
-            )
+        closure = parse_cargo_metadata(
+            metadata_document(
+                "merman-ffi",
+                {
+                    "merman-ffi": (),
+                    "merman-cli": (),
+                    "reqwest": (),
+                    "tokio": (),
+                    "uniffi_bindgen": (),
+                },
+            ),
+            root_package="merman-ffi",
         )
 
         failures, _ = check_case(
@@ -485,13 +587,12 @@ class ClaimTests(unittest.TestCase):
                 PackageFeatureExclusion("root", ("bad-feature",)),
             ),
         )
-        closure = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("root", ("bad-feature",)),
-                    tree_line("forbidden"),
-                )
-            )
+        closure = parse_cargo_metadata(
+            metadata_document(
+                "root",
+                {"root": ("bad-feature",), "forbidden": ()},
+            ),
+            root_package="root",
         )
         failures, _ = check_case(case(loaded_claim=loaded_claim), closure)
         self.assertTrue(any("required packages missing: missing" in x for x in failures))
@@ -499,13 +600,9 @@ class ClaimTests(unittest.TestCase):
         self.assertTrue(any("enables forbidden features" in x for x in failures))
 
     def test_observation_keeps_readable_package_count(self) -> None:
-        closure = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("fixture", version="1.0.0"),
-                    tree_line("dependency", version="2.0.0"),
-                )
-            )
+        closure = parse_cargo_metadata(
+            metadata_document("fixture", {"fixture": (), "dependency": ()}),
+            root_package="fixture",
         )
 
         failures, observation = check_case(case(), closure)
@@ -519,16 +616,18 @@ class ClaimTests(unittest.TestCase):
             for current in SEMANTIC_CLAIMS
             if current.profile_id == "rust-svg-basic"
         )
-        closure = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("merman", ("layout-elk", "svg")),
-                    tree_line("merman-core", ("system-timezone",)),
-                    tree_line("merman-render", ("math",)),
-                    tree_line("merman-analysis"),
-                    tree_line("merman-layout-elk"),
-                )
-            )
+        closure = parse_cargo_metadata(
+            metadata_document(
+                "merman",
+                {
+                    "merman": ("layout-elk", "svg"),
+                    "merman-core": ("system-timezone",),
+                    "merman-render": ("math",),
+                    "merman-analysis": (),
+                    "merman-layout-elk": (),
+                },
+            ),
+            root_package="merman",
         )
         failures, _ = check_case(
             case("rust-svg-basic", loaded_claim=loaded_claim),
@@ -549,7 +648,7 @@ class VerificationTests(unittest.TestCase):
             build_target_kind="target-set",
             build_targets=targets,
         )
-        output = tree_line("root")
+        output = json.dumps(metadata_document("root", {"root": ()}))
         cases = tuple(
             case(
                 "cross",
@@ -565,12 +664,21 @@ class VerificationTests(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_cases(cases, runner=runner)
+        observations = verify_cases(
+            cases,
+            runner=runner,
+            probe_preparer=write_test_metadata_probe,
+        )
 
         self.assertEqual(
-            tuple(command[command.index("--target") + 1] for command in commands),
+            tuple(
+                command[command.index("--filter-platform") + 1]
+                for command in commands
+            ),
             targets,
         )
+        self.assertTrue(all("--offline" in command for command in commands))
+        self.assertTrue(all("--frozen" not in command for command in commands))
         self.assertEqual(
             tuple(observation.closure_target for observation in observations),
             targets,
@@ -580,9 +688,9 @@ class VerificationTests(unittest.TestCase):
             {PROFILE_TARGET_SCOPE},
         )
 
-    def test_identical_cargo_tree_commands_are_reused_across_claims(self) -> None:
+    def test_identical_cargo_metadata_commands_are_reused_across_claims(self) -> None:
         loaded = recipe("shared", package="root")
-        output = tree_line("root")
+        output = json.dumps(metadata_document("root", {"root": ()}))
         cases = tuple(
             case(
                 "shared",
@@ -597,13 +705,16 @@ class VerificationTests(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_cases(cases, runner=runner)
+        observations = verify_cases(
+            cases,
+            runner=runner,
+            probe_preparer=write_test_metadata_probe,
+        )
 
         self.assertEqual(len(commands), 1)
         self.assertEqual(len(observations), 2)
 
     def test_semantic_claims_are_enforced_for_host_cases(self) -> None:
-        output = tree_line("fixture")
         semantic_case = case(
             loaded_claim=claim("fixture", forbidden=("forbidden",)),
         )
@@ -616,9 +727,15 @@ class VerificationTests(unittest.TestCase):
                 runner=lambda command: subprocess.CompletedProcess(
                     command,
                     0,
-                    stdout="\n".join((output, tree_line("forbidden"))),
+                    stdout=json.dumps(
+                        metadata_document(
+                            "fixture",
+                            {"fixture": (), "forbidden": ()},
+                        )
+                    ),
                     stderr="",
                 ),
+                probe_preparer=write_test_metadata_probe,
             )
 
     def test_failures_are_aggregated_across_profiles(self) -> None:
@@ -635,17 +752,30 @@ class VerificationTests(unittest.TestCase):
             for profile_id in ("one", "two")
         )
 
+        outputs = iter(
+            json.dumps(
+                metadata_document(
+                    profile_id,
+                    {profile_id: (), f"bad-{profile_id}": ()},
+                )
+            )
+            for profile_id in ("one", "two")
+        )
+
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-            package = command[command.index("--package") + 1]
             return subprocess.CompletedProcess(
                 command,
                 0,
-                stdout=tree_line(f"bad-{package}"),
+                stdout=next(outputs),
                 stderr="",
             )
 
         with self.assertRaises(ClosureVerificationError) as raised:
-            verify_cases(cases, runner=runner)
+            verify_cases(
+                cases,
+                runner=runner,
+                probe_preparer=write_test_metadata_probe,
+            )
 
         message = str(raised.exception)
         self.assertIn("one-claim (one", message)
@@ -654,7 +784,10 @@ class VerificationTests(unittest.TestCase):
         self.assertIn("forbidden packages present", message)
 
     def test_runner_failure_is_fail_closed(self) -> None:
+        commands: list[Sequence[str]] = []
+
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
             return subprocess.CompletedProcess(
                 command,
                 101,
@@ -666,7 +799,13 @@ class VerificationTests(unittest.TestCase):
             ClosureVerificationError,
             "dependency resolution failed",
         ):
-            verify_cases((case(),), runner=runner)
+            verify_cases(
+                (case(), case()),
+                runner=runner,
+                probe_preparer=write_test_metadata_probe,
+            )
+
+        self.assertEqual(len(commands), 1)
 
     def test_unknown_profile_selection_is_rejected(self) -> None:
         with self.assertRaisesRegex(

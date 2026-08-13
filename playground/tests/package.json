@@ -10,7 +10,9 @@
   },
   "scripts": {
     "benchmark:corpus": "node --experimental-strip-types run-benchmark-corpus.mjs",
+    "install:browser:chromium": "playwright install --with-deps chromium",
     "install:browsers": "playwright install --with-deps chromium firefox webkit",
+    "oracle:root-viewport": "node --experimental-strip-types run-root-viewport-oracle.mjs",
     "test": "playwright test --project=chromium-desktop",
     "test:desktop": "playwright test --project=chromium-desktop",
     "test:mobile": "playwright test --project=chromium-mobile-interactions",

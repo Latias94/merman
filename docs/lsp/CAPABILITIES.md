@@ -19,7 +19,7 @@ symbols, navigation, rename, folding, and semantic-token facts. LSP owns request
 capability advertising, URI/range conversion, token delta encoding, and client cache state.
 
 Semantic-token codes, modifier bits, legend indices, and the five-word relative UTF-16 record are
-owned by `editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
+owned by `contracts/editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
 extension. LSP initialization publishes the descriptor digest and packed encoding under
 `capabilities.experimental.merman.editorLanguage`; the extension fails closed when that identity or
 the standard LSP legend differs. The same capability publishes the descriptor-owned rename-policy
@@ -29,7 +29,7 @@ theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-hi
 standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
 the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
 description change cannot create a false LSP/WASM incompatibility.
-`editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
+`contracts/editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
 baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
 generated evidence artifact without transport-local sorting or token name lookup.
 
@@ -57,7 +57,7 @@ policy.
 
 LSP language behavior is projected from typed `DocumentSnapshot` / `FenceTextIndex` data built
 directly from `AnalysisGeneration`; the server does not round-trip serialized facts JSON. The separately
-exposed `AnalysisFactsPayload` version 1 is the equivalent parser-only wire contract for binding
+exposed `AnalysisFactsPayload` version 2 is the equivalent parser-only wire contract for binding
 consumers:
 
 - `fact_source: "text_scan"` is removed;
@@ -67,8 +67,8 @@ consumers:
   original-source spans. The compatibility field `source_mapped_spans` is `true` for those facts
   and `false` only when the body fact source is unavailable.
 
-The TextScan-capable prerelease shape is deleted rather than retained behind a decoder, executor, alias,
-or dual projection path. The final parser facts contract is schema 1 and rejects every other
+The TextScan-capable prerelease shape and Flowchart-only rich graph are deleted rather than retained behind a decoder, executor, alias,
+or dual projection path. The final parser facts contract is schema 2 and rejects every other
 version discriminator at the boundary. The diagnostics-only `AnalysisPayload` is a separate
 contract and independently remains version 1.
 
@@ -235,11 +235,12 @@ Remaining fallback ledger:
 - Completion resolve: completion items carry Merman-owned `data`, and `completionItem/resolve`
   fills Markdown documentation without changing `insertText`, `textEdit`, filtering, or sorting
   fields.
-- Definition / References / Rename: entity-only semantic item queries keyed by typed reference
-  groups. Payload and outline-only items are excluded unless a future role explicitly allows
-  projection, and same-name entities with different semantic kinds do not collide. Rename
-  validation uses the parser-owned policy carried by each entity, including qualified names and
-  Event Modeling frame ids; the LSP adapter does not impose a second identifier grammar.
+- Definition / References / Rename: `entity` declarations and `reference` occurrences are queried
+  through typed reference groups. `class_definition`, `outline`, and `payload` items are excluded,
+  and same-name entities with different semantic kinds do not collide. A reference resolves to the
+  matching entity declaration; references never become declarations themselves. Rename validation
+  uses the parser-owned policy carried by every occurrence in the group, including qualified names
+  and Event Modeling frame ids; the LSP adapter does not impose a second identifier grammar.
 - Code actions: quickfix provider is wired; only diagnostics with `DiagnosticFix` metadata are
   eligible, and diagnostics without explicit safe fixes produce no action. Recommended-profile
   authoring rules include `merman.authoring.config.prefer_init_directive`,
@@ -266,10 +267,12 @@ Remaining fallback ledger:
   remain source-backed compatibility warnings.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
-- Semantic tokens: the full-document, range, and delta providers are wired from parser-backed
-  entity/outline/payload semantic items. Token types derive from `EditorSymbolKind`; token
-  modifiers preserve role categories. The LSP semantic-token legend is derived from the editor-core
-  legend so token ordering stays tied to the protocol-neutral semantic contract. Snapshot-affecting
+- Semantic tokens: the full-document, range, and delta providers are wired from all five
+  parser-backed semantic roles: `entity`, `class_definition`, `reference`, `outline`, and
+  `payload`. Token types derive from `EditorSymbolKind`; token modifiers preserve the role category
+  (`class_definition` shares the structural outline modifier while `reference` has its own
+  modifier). The LSP semantic-token legend is derived from the editor-core legend so token ordering
+  stays tied to the protocol-neutral semantic contract. Snapshot-affecting
   configuration changes ask the client to refresh semantic tokens when refresh support is
   advertised and clear cached token state. Diagnostic-only lint configuration changes refresh
   diagnostics without invalidating semantic-token state. Delta requests reuse cached previous token

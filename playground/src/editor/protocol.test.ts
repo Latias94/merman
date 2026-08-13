@@ -15,6 +15,7 @@ import {
 } from "./protocol.ts";
 
 const position = { line: 1, character: 2 };
+const completionTriggerCharacters = [" ", "\n", "-", ":"];
 const range = { start: position, end: { line: 1, character: 5 } };
 const factSource = "parser_complete";
 const location = { uri: "inmemory://model/1", factSource, range };
@@ -28,6 +29,7 @@ const diagnostic = {
   severity: "warning",
   code: "rule-id",
   source: "merman",
+  tags: ["deprecated"],
   message: "A diagnostic",
   related: [{ message: "Related", range }],
   data: {
@@ -417,24 +419,41 @@ test("response projection binds positive request IDs and null synchronization ac
     protocol: EDITOR_WORKER_PROTOCOL,
     requestId: 1,
     type: "ready",
+    completionTriggerCharacters,
     transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: "legend-digest",
     legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
   });
   assert.equal(ready.type, "ready");
+  assert.deepEqual(ready.completionTriggerCharacters, completionTriggerCharacters);
   assert.throws(
     () =>
       projectEditorWorkerResponse({
         protocol: EDITOR_WORKER_PROTOCOL,
         requestId: 1,
         type: "ready",
+        completionTriggerCharacters,
         transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION + 1,
         editorSchema: EDITOR_SCHEMA_VERSION,
         legendDigest: "legend-digest",
         legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
       }),
     /transport API version is incompatible/u,
+  );
+  assert.throws(
+    () =>
+      projectEditorWorkerResponse({
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId: 1,
+        type: "ready",
+        completionTriggerCharacters: ["too long"],
+        transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
+        editorSchema: EDITOR_SCHEMA_VERSION,
+        legendDigest: "legend-digest",
+        legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
+      }),
+    /must contain one character each/u,
   );
 
   assert.deepEqual(

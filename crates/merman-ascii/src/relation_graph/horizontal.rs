@@ -296,7 +296,7 @@ where
             .materialize(options, resources);
     }
 
-    let edges = build_layered_edges(relations, adapter, resources)?;
+    let edges = build_layered_edges(relations, adapter, resources, None)?;
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?;
     let mut regions = Vec::new();

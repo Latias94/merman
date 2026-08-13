@@ -66,10 +66,10 @@ supersede older status notes for the migration it governs:
 | ARCH-009 | Closed | `RenderEnvironment` owns production services and deterministic policy; `SvgRenderOptions` contains request values and `SvgDebugOptions` contains diagnostics. The operation freezes one `RenderSession`. |
 | ARCH-010 | Closed | Every built-in root is planned and emitted through the Root Viewport module. Family renderers provide content bounds and root mode but do not own sizing, fixture lookup, or root attribute emission. |
 | ARCH-017 | Closed | Runtime root pins, complete-label text/SVG tables, budget reports, stale-key audits, and their generators were deleted. Generalized measurement facts and explicit verification residuals are the only remaining browser boundary. |
-| ARCH-020 | Closed | Per-family compare commands delegate canonical rendering to the shared compare harness and typed `HeadlessRenderer` operation. Family hooks are limited to proven diagnostics such as Flowchart, ER, and Gantt. |
+| ARCH-020 | Closed | Per-family compare commands delegate canonical rendering to the shared compare harness and typed `Renderer` operation. Family hooks are limited to proven diagnostics such as Flowchart, ER, and Gantt. |
 | ARCH-023 | Closed | Facade, CLI, bindings, parity tooling, and raster paths delegate to the operation-owned typed render pipeline instead of rebuilding parse-layout-render stages. |
 | ARCH-034 | Still open as documentation hygiene | ADR-0073 and the root README provide current ownership, but chronological alignment notes remain historical evidence. Current gate claims must continue to come from the latest dated status section and verification output. |
-| ARCH-035 | Closed | The canonical facade is `HeadlessRenderer` plus consuming prepared-render stages. Old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG helpers, and pass-through family wrappers are removed rather than retained as transition APIs. |
+| ARCH-035 | Closed | The canonical facade is `Renderer` plus consuming `SemanticArtifact` and typed target requests. Old public layout/model pairing, Headless facades, and pass-through family wrappers are removed rather than retained as transition APIs. |
 
 The remaining issues are not implicitly closed by ADR-0073. In particular, large algorithm modules,
 binding contract generation, ASCII ownership, benchmark inventory, and historical documentation
@@ -89,7 +89,7 @@ detection are evidence of the superseded implementation, not current architectur
 | Live render publication | Closed | A separate Render Coordinator freezes request inputs, publishes latest-wins coherent batches, records the actual source's presentation boundary, and keeps request failures outside runtime lifecycle state. Product SVG warmup is removed. |
 | Mermaid Compare isolation | Closed | The main document does not import Mermaid. An authenticated same-origin iframe and failure-resilient operation queue own local import, external registration, initialization, recovery, render, and SVG validation. |
 | Browser benchmark validity | Closed for the Playground product | Equivalent per-engine Window realms emit protocol/trace schema 1 phase events; the controller owns derivation, deterministic balanced AB/BA order, equal real-source warmups, failure retention, visibility invalidation, and fail-closed ratios. This does not close ARCH-021's native Criterion scenario-inventory finding. |
-| Browser editor intelligence | Closed | Local Monaco uses a dedicated `@mermanjs/web-editor` module Worker backed by the `web-editor` artifact profile, the 35-family Rust catalog, native ABI 3, diagnostics schema 1, and facts schema 1. TypeScript syntax heuristics are not a fallback path. |
+| Browser editor intelligence | Closed | Local Monaco uses a dedicated `@mermanjs/web-editor` module Worker backed by the `web-editor` artifact profile, the 35-family Rust catalog, native ABI 3, diagnostics schema 1, and facts schema 2. TypeScript syntax heuristics are not a fallback path. |
 | Examples and live type detection | Closed | One fixture manifest generates a 70-example Playground teaching catalog across the exact 35-family set, with at least one example per family. Rust/WASM parser facts provide family, syntax, and effective layout; `xtask` proves provenance, detection, baseline, and freshness. |
 | Web release surface | Closed for current packages | One structured Web descriptor owns artifact features/capabilities and public package-directory/runtime-profile mappings. Build/surface generation and the Python release verifier consume it without source regexes; `SURFACES.json`, package smoke, ABI checks, and WASM size budgets include `@mermanjs/web-editor` / `web-editor`. This does not close ARCH-027's broader cross-adapter contract-matrix finding. |
 
@@ -508,7 +508,7 @@ report projections, and renderer lookup adapters.
 
 Related decisions:
 
-- ADR-0050 release quality gates / SVG viewBox parity
+- ADR-0081 release quality gates / ADR-0050 SVG viewBox parity
 - ADR-0057 headless SVG text bbox
 - ADR-0062 fixture-derived overrides
 
@@ -1072,10 +1072,10 @@ normalization, JS invocation, Rust/JS diff, and optional golden output.
 
 HPD-050 status:
 
-An initial adapter extraction has landed in
-`crates/xtask/src/cmd/debug/dagre_reference.rs`. `compare-dagre-layout` remains a
-State-only graph producer for now; non-State producers should be added only when a
-source-backed Dagre residual audit needs them.
+The temporary Dagre reference adapter and State/Class differential command completed the intended
+source-backed residual audit. They were retired after the resulting ordering and geometry evidence
+was encoded in focused Dugong tests and signed family canaries; future residual audits should use a
+purpose-built temporary probe rather than restoring a standing JS adapter.
 
 Related decisions:
 

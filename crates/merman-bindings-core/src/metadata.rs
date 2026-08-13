@@ -229,7 +229,7 @@ pub struct BindingAsciiCapabilityEvidence {
     pub note: &'static str,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct RuleCatalogEntry {
     pub id: &'static str,
@@ -237,6 +237,7 @@ pub struct RuleCatalogEntry {
     pub evidence: &'static [&'static str],
     pub default_severity: &'static str,
     pub category: &'static str,
+    pub tags: Vec<&'static str>,
     pub default_enabled: bool,
     pub default_profile: &'static str,
     pub origin: &'static str,
@@ -915,6 +916,7 @@ fn rule_catalog_entry(rule: merman_analysis::RuleCatalogEntry) -> RuleCatalogEnt
         evidence: rule.evidence,
         default_severity: rule.default_severity.as_str(),
         category: rule.category.as_str(),
+        tags: rule.tags.iter().map(|tag| tag.as_str()).collect(),
         default_enabled: rule.default_enabled,
         default_profile: rule.default_profile.as_str(),
         origin: rule.origin.as_str(),
@@ -1841,6 +1843,15 @@ mod tests {
                         .unwrap()
                         .iter()
                         .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+            }));
+            assert!(lint_rules.iter().any(|rule| {
+                rule["id"] == "merman.compatibility.config.deprecated_flowchart_html_labels"
+                    && rule["tags"] == serde_json::json!(["deprecated"])
+            }));
+            let typed_lint_rules = lint_rule_catalog().unwrap();
+            assert!(typed_lint_rules.iter().any(|rule| {
+                rule.id == "merman.compatibility.config.deprecated_flowchart_html_labels"
+                    && rule.tags == vec!["deprecated"]
             }));
             assert_eq!(configurable_lint_rules["version"], 1);
             assert!(

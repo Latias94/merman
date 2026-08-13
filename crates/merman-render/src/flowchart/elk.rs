@@ -4,7 +4,7 @@ use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
-use crate::resources::OperationWorkMeter;
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::{MermaidConfig, ParsedDiagramRender, RenderSemanticModel};
@@ -585,10 +585,12 @@ fn checked_adapter_add(
             .as_deref()
             .map(|work_control| work_control.arithmetic_overflow())
             .unwrap_or_else(|| {
-                OperationWorkMeter::new(
-                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                OperationWorkError::ResourceLimitExceeded(
+                    OperationWorkMeter::new(
+                        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                    )
+                    .arithmetic_overflow(),
                 )
-                .arithmetic_overflow()
             })
             .into()
     })
@@ -604,10 +606,12 @@ fn checked_adapter_mul(
             .as_deref()
             .map(|work_control| work_control.arithmetic_overflow())
             .unwrap_or_else(|| {
-                OperationWorkMeter::new(
-                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                OperationWorkError::ResourceLimitExceeded(
+                    OperationWorkMeter::new(
+                        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                    )
+                    .arithmetic_overflow(),
                 )
-                .arithmetic_overflow()
             })
             .into()
     })

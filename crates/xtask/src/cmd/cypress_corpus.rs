@@ -4,20 +4,17 @@ use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::cmd::{MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_VERSION};
+use crate::XtaskError;
+use crate::cmd::{
+    CypressCollectionEvidence, MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_VERSION,
+    RawCypressCollection, RawRenderCall, ValidationArgument,
+};
 use crate::util::{is_canonical_sha256, sha256_hex};
 
 pub(crate) const MANIFEST_RELATIVE_PATH: &str = "fixtures/_upstream/cypress-11.16.1/_manifest.json";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
+const SCOPE_ID: &str = "new-family";
 const SCOPE_DESCRIPTION: &str = "Mermaid 11.16 new-family Cypress render calls";
-const PINNED_SOURCE_SPECS: &[(&str, usize)] = &[
-    (
-        "cypress/integration/rendering/treeView/treeView.spec.ts",
-        15,
-    ),
-    ("cypress/integration/rendering/cynefin/cynefin.spec.js", 12),
-    ("cypress/integration/rendering/railroad/railroad.spec.ts", 9),
-];
 const MANAGED_FIXTURE_PREFIXES: &[&str] = &[
     "upstream_cypress_treeview_spec_",
     "upstream_cypress_cynefin_spec_",
@@ -29,7 +26,7 @@ const MANAGED_FIXTURE_PREFIXES: &[&str] = &[
 pub(crate) struct SafeRelativePath(String);
 
 impl SafeRelativePath {
-    fn parse(value: String) -> Result<Self, String> {
+    pub(crate) fn parse(value: String) -> Result<Self, String> {
         if value.is_empty() {
             return Err("relative path must not be empty".to_string());
         }
@@ -133,41 +130,47 @@ impl fmt::Display for SafePathComponent {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CypressCorpusManifest {
     pub(crate) schema_version: u32,
     pub(crate) mermaid_version: String,
     pub(crate) mermaid_source_commit: String,
+    pub(crate) collection: CypressCollectionEvidence,
     pub(crate) scope: CypressCorpusScope,
     pub(crate) entries: Vec<CypressCorpusEntry>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CypressCorpusScope {
     pub(crate) description: String,
     pub(crate) source_specs: Vec<CypressCorpusSourceSpec>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CypressCorpusSourceSpec {
     pub(crate) path: SafeRelativePath,
     pub(crate) expected_calls: usize,
+    pub(crate) sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CypressCorpusEntry {
     pub(crate) source_spec: SafeRelativePath,
     pub(crate) call_ordinal: usize,
+    pub(crate) registration: String,
+    pub(crate) helper_ordinal: usize,
     pub(crate) call: String,
+    pub(crate) validation: ValidationArgument,
     pub(crate) test_name: String,
     pub(crate) family: SafePathComponent,
     pub(crate) route: CypressCorpusRoute,
     pub(crate) fixture: SafeRelativePath,
     pub(crate) mmd_sha256: String,
+    pub(crate) raw_sha256: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -175,16 +178,6 @@ pub(crate) struct CypressCorpusEntry {
 pub(crate) enum CypressCorpusRoute {
     Active,
     Deferred,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct CypressSourceObservation {
-    pub(crate) source_spec: String,
-    pub(crate) call_ordinal: usize,
-    pub(crate) call: String,
-    pub(crate) test_name: String,
-    pub(crate) family: String,
-    pub(crate) mmd_sha256: String,
 }
 
 struct CorpusArtifactPaths {
@@ -399,40 +392,6 @@ fn expected_managed_path(workspace_root: &Path, path: &Path) -> Option<PathBuf> 
         .map(Path::to_path_buf)
 }
 
-pub(crate) fn resolve_cypress_source_spec_path(
-    mermaid_root: &Path,
-    source_spec: &SafeRelativePath,
-) -> Result<PathBuf, String> {
-    let canonical_root = fs::canonicalize(mermaid_root).map_err(|error| {
-        format!(
-            "canonicalize pinned Mermaid checkout {}: {error}",
-            mermaid_root.display()
-        )
-    })?;
-    let candidate = mermaid_root.join(source_spec.as_path());
-    if !candidate.is_file() {
-        return Err(format!(
-            "pinned Cypress source spec is not a file: {}",
-            candidate.display()
-        ));
-    }
-    let canonical = fs::canonicalize(&candidate).map_err(|error| {
-        format!(
-            "canonicalize pinned Cypress source spec {}: {error}",
-            candidate.display()
-        )
-    })?;
-    if !canonical.starts_with(&canonical_root) {
-        return Err(format!(
-            "pinned Cypress source spec {} escapes Mermaid checkout {} via {}",
-            candidate.display(),
-            mermaid_root.display(),
-            canonical.display()
-        ));
-    }
-    Ok(candidate)
-}
-
 pub(crate) fn load_committed_cypress_corpus_manifest(
     workspace_root: &Path,
 ) -> Result<CypressCorpusManifest, String> {
@@ -489,16 +448,108 @@ fn validate_pinned_manifest_contract(
             "Cypress corpus manifest scope must be `{SCOPE_DESCRIPTION}`"
         ));
     }
-    let actual_specs: Vec<(&str, usize)> = manifest
+    let collection = &manifest.collection;
+    failures.extend(crate::cmd::committed_collection_evidence_failures(
+        workspace_root,
+        collection,
+        SCOPE_ID,
+        SCOPE_DESCRIPTION,
+    ));
+    if collection.expected_active_calls != manifest.entries.len() {
+        failures.push(format!(
+            "Cypress corpus collection expected {} active calls, found {} entries",
+            collection.expected_active_calls,
+            manifest.entries.len()
+        ));
+    }
+    if !collection.source.supplemental_fixtures.is_empty() {
+        failures
+            .push("new-family Cypress corpus must not declare supplemental fixtures".to_string());
+    }
+    if collection
+        .registrations
+        .iter()
+        .any(|registration| !registration.skipped)
+    {
+        failures.push(
+            "new-family Cypress corpus must retain only skipped registration evidence".to_string(),
+        );
+    }
+    let actual_specs: Vec<(&str, &str)> = manifest
         .scope
         .source_specs
         .iter()
-        .map(|spec| (spec.path.as_str(), spec.expected_calls))
+        .map(|spec| (spec.path.as_str(), spec.sha256.as_str()))
         .collect();
-    if actual_specs != PINNED_SOURCE_SPECS {
+    let collected_specs = collection
+        .source
+        .specs
+        .iter()
+        .map(|spec| (spec.path.as_str(), spec.sha256.as_str()))
+        .collect::<Vec<_>>();
+    if actual_specs != collected_specs {
         failures.push(format!(
-            "Cypress corpus manifest must cover exactly the three pinned 11.16 source specs and 36 calls; found {actual_specs:?}"
+            "Cypress corpus source_specs disagree with collector evidence: expected {collected_specs:?}, found {actual_specs:?}"
         ));
+    }
+    for spec in &manifest.scope.source_specs {
+        if !is_canonical_sha256(&spec.sha256) {
+            failures.push(format!(
+                "Cypress corpus source spec {} has a non-canonical SHA-256",
+                spec.path
+            ));
+        }
+        let actual_calls = manifest
+            .entries
+            .iter()
+            .filter(|entry| entry.source_spec == spec.path)
+            .count();
+        if actual_calls != spec.expected_calls {
+            failures.push(format!(
+                "Cypress corpus source spec {} expected {} calls, found {actual_calls}",
+                spec.path, spec.expected_calls
+            ));
+        }
+    }
+
+    let mut registrations = BTreeMap::new();
+    let mut helper_ordinals = BTreeMap::<&str, usize>::new();
+    for entry in &manifest.entries {
+        if let Some(previous) = registrations.insert(
+            entry.registration.as_str(),
+            (entry.source_spec.as_str(), entry.test_name.as_str()),
+        ) && previous != (entry.source_spec.as_str(), entry.test_name.as_str())
+        {
+            failures.push(format!(
+                "Cypress corpus registration {} has inconsistent source or title evidence",
+                entry.registration
+            ));
+        }
+        let expected_helper_ordinal = helper_ordinals.entry(&entry.registration).or_insert(1);
+        if entry.helper_ordinal != *expected_helper_ordinal {
+            failures.push(format!(
+                "Cypress corpus helper ordinal drift for {}: expected {}, found {}",
+                entry.registration, *expected_helper_ordinal, entry.helper_ordinal
+            ));
+        }
+        *expected_helper_ordinal += 1;
+        if entry.call != "imgSnapshotTest" {
+            failures.push(format!(
+                "new-family Cypress corpus entry {}#{} uses unsupported helper {:?}",
+                entry.source_spec, entry.call_ordinal, entry.call
+            ));
+        }
+    }
+    for effect in &collection.runtime_effects {
+        if registrations
+            .get(effect.registration.as_str())
+            .is_none_or(|(source_spec, _)| *source_spec != effect.source_spec)
+        {
+            failures.push(format!(
+                "Cypress corpus runtime effect {} references an unknown active call registration",
+                effect.operation
+            ));
+        }
     }
 
     let lock_path = workspace_root.join("tools/upstreams/REPOS.lock.json");
@@ -579,6 +630,18 @@ pub(crate) fn validate_cypress_corpus_manifest(
         if !is_canonical_sha256(&entry.mmd_sha256) {
             failures.push(format!(
                 "Cypress corpus manifest entry {}#{} has a non-canonical MMD SHA-256",
+                entry.source_spec, entry.call_ordinal
+            ));
+        }
+        if entry.registration.is_empty() || entry.helper_ordinal == 0 {
+            failures.push(format!(
+                "Cypress corpus manifest entry {}#{} has invalid registration evidence",
+                entry.source_spec, entry.call_ordinal
+            ));
+        }
+        if !is_canonical_sha256(&entry.raw_sha256) {
+            failures.push(format!(
+                "Cypress corpus manifest entry {}#{} has a non-canonical raw SHA-256",
                 entry.source_spec, entry.call_ordinal
             ));
         }
@@ -743,110 +806,251 @@ pub(crate) fn validate_cypress_corpus_manifest(
     failures
 }
 
-pub(crate) fn validate_cypress_source_observations(
-    manifest: &CypressCorpusManifest,
-    observations: &[CypressSourceObservation],
-) -> Vec<String> {
-    let mut failures = Vec::new();
-    let expected_identities: Vec<(&str, usize)> = manifest
-        .entries
-        .iter()
-        .map(|entry| (entry.source_spec.as_str(), entry.call_ordinal))
-        .collect();
-    let actual_identities: Vec<(&str, usize)> = observations
-        .iter()
-        .map(|entry| (entry.source_spec.as_str(), entry.call_ordinal))
-        .collect();
-    if expected_identities != actual_identities {
-        failures.push("Cypress source call order drifted from the committed manifest".to_string());
+fn detector_input(source: &str) -> &str {
+    let source = source.trim_start_matches(char::is_whitespace);
+    let mut pieces = source.split_inclusive('\n');
+    let Some(first) = pieces.next() else {
+        return source;
+    };
+    if first.trim_end_matches(['\n', '\r']).trim_end() != "---" {
+        return source;
     }
-
-    let mut observed_identities = BTreeSet::new();
-    for observation in observations {
-        let identity = (observation.source_spec.as_str(), observation.call_ordinal);
-        if !observed_identities.insert(identity) {
-            failures.push(format!(
-                "Cypress source scanner produced duplicate call identity {}#{}",
-                observation.source_spec, observation.call_ordinal
-            ));
+    let mut consumed = first.len();
+    for piece in pieces {
+        consumed += piece.len();
+        if piece.trim_end_matches(['\n', '\r']).trim_end() == "---" {
+            return source.get(consumed..).unwrap_or("");
         }
     }
-
-    for expected in &manifest.entries {
-        let observation = observations.iter().find(|observation| {
-            observation.source_spec == expected.source_spec.as_str()
-                && observation.call_ordinal == expected.call_ordinal
-        });
-        let Some(observation) = observation else {
-            failures.push(format!(
-                "Cypress manifest entry is missing source call {}#{}",
-                expected.source_spec, expected.call_ordinal
-            ));
-            continue;
-        };
-        for (field, expected_value, actual_value) in [
-            ("call", expected.call.as_str(), observation.call.as_str()),
-            (
-                "test_name",
-                expected.test_name.as_str(),
-                observation.test_name.as_str(),
-            ),
-            (
-                "family",
-                expected.family.as_str(),
-                observation.family.as_str(),
-            ),
-        ] {
-            if actual_value != expected_value {
-                failures.push(format!(
-                    "Cypress source {field} drift for {}#{}: expected {expected_value:?}, found {actual_value:?}",
-                    expected.source_spec, expected.call_ordinal
-                ));
-            }
-        }
-        if observation.mmd_sha256 != expected.mmd_sha256 {
-            failures.push(format!(
-                "Cypress source content drift for {}#{}: expected {}, found {}",
-                expected.source_spec,
-                expected.call_ordinal,
-                expected.mmd_sha256,
-                observation.mmd_sha256
-            ));
-        }
-    }
-    for observation in observations {
-        if !manifest.entries.iter().any(|expected| {
-            expected.source_spec.as_str() == observation.source_spec
-                && expected.call_ordinal == observation.call_ordinal
-        }) {
-            failures.push(format!(
-                "Cypress source has an unexpected call {}#{}",
-                observation.source_spec, observation.call_ordinal
-            ));
-        }
-    }
-    failures
+    source
 }
 
-pub(crate) fn refreshed_cypress_corpus_manifest(
-    manifest: &CypressCorpusManifest,
-    observations: &[CypressSourceObservation],
-) -> Result<CypressCorpusManifest, Vec<String>> {
-    let mut refreshed = manifest.clone();
-    for entry in &mut refreshed.entries {
-        if let Some(observation) = observations.iter().find(|observation| {
-            observation.source_spec == entry.source_spec.as_str()
-                && observation.call_ordinal == entry.call_ordinal
-        }) {
-            entry.mmd_sha256.clone_from(&observation.mmd_sha256);
+fn collected_new_family_fixture(
+    collection: &RawCypressCollection,
+    call: &RawRenderCall,
+) -> Result<(String, String, String), XtaskError> {
+    if call.api {
+        return Err(XtaskError::AlignmentCheckFailed(format!(
+            "collected Cypress call {} uses the API/XSS path and cannot become a fixture",
+            call.ordinal
+        )));
+    }
+    let helper = crate::cmd::raw_collection_helper(call)?;
+    let fixture =
+        crate::cmd::materialize_cypress_fixture_source(&call.diagram, helper, &call.options)
+            .map_err(|reason| {
+                XtaskError::AlignmentCheckFailed(format!(
+                    "failed to materialize collected Cypress call {}: {reason}",
+                    call.ordinal
+                ))
+            })?;
+    let mut config = merman::MermaidConfig::default();
+    let detected = merman::detect::DetectorRegistry::pinned_mermaid_baseline()
+        .detect_type(detector_input(&fixture), &mut config)
+        .map_err(|error| {
+            XtaskError::AlignmentCheckFailed(format!(
+                "failed to detect collected Cypress call {}: {error}",
+                call.ordinal
+            ))
+        })?;
+    let family = merman_core::diagram_type_metadata_id(detected)
+        .ok_or_else(|| {
+            XtaskError::AlignmentCheckFailed(format!(
+                "collected Cypress call {} detected unsupported family {detected:?}",
+                call.ordinal
+            ))
+        })?
+        .to_string();
+    let title = crate::cmd::collected_registration_title(collection, call)?.to_string();
+    Ok((fixture, family, title))
+}
+
+fn write_collection_replacements(replacements: &[(PathBuf, Vec<u8>)]) -> Result<(), XtaskError> {
+    let originals = replacements
+        .iter()
+        .map(|(path, _)| {
+            fs::read(path)
+                .map(|bytes| (path.clone(), bytes))
+                .map_err(|source| XtaskError::ReadFile {
+                    path: path.display().to_string(),
+                    source,
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for (path, bytes) in replacements {
+        if let Err(source) = fs::write(path, bytes) {
+            let mut rollback_failures = Vec::new();
+            for (original_path, original_bytes) in &originals {
+                if let Err(error) = fs::write(original_path, original_bytes) {
+                    rollback_failures.push(format!("{}: {error}", original_path.display()));
+                }
+            }
+            return Err(XtaskError::WriteFile {
+                path: if rollback_failures.is_empty() {
+                    path.display().to_string()
+                } else {
+                    format!(
+                        "{} (rollback failures: {})",
+                        path.display(),
+                        rollback_failures.join(", ")
+                    )
+                },
+                source,
+            });
         }
     }
+    Ok(())
+}
 
-    let failures = validate_cypress_source_observations(&refreshed, observations);
+pub(crate) fn project_new_family_cypress_collection(
+    collection: &RawCypressCollection,
+    refresh: bool,
+) -> Result<(), XtaskError> {
+    let workspace_root = crate::cmd::workspace_root();
+    let evidence = crate::cmd::collection_evidence(collection);
+    let evidence_failures = crate::cmd::committed_collection_evidence_failures(
+        &workspace_root,
+        &evidence,
+        SCOPE_ID,
+        SCOPE_DESCRIPTION,
+    );
+    if !evidence_failures.is_empty() {
+        return Err(XtaskError::AlignmentCheckFailed(
+            evidence_failures.join("\n"),
+        ));
+    }
+    let committed = load_committed_cypress_corpus_manifest(&workspace_root)
+        .map_err(XtaskError::AlignmentCheckFailed)?;
+    let collected_source_paths = collection
+        .source
+        .specs
+        .iter()
+        .map(|spec| spec.path.as_str())
+        .collect::<Vec<_>>();
+    let committed_source_paths = committed
+        .scope
+        .source_specs
+        .iter()
+        .map(|spec| spec.path.as_str())
+        .collect::<Vec<_>>();
+    if collection.scope.expected_active_calls != committed.entries.len()
+        || collection.scope.expected_skipped_registrations != 0
+        || !collection.scope.reviewed_skipped_registrations.is_empty()
+        || !collection.scope.reviewed_removals.is_empty()
+        || !collection.source.supplemental_fixtures.is_empty()
+        || collected_source_paths != committed_source_paths
+    {
+        return Err(XtaskError::AlignmentCheckFailed(
+            "new-family Cypress collection scope drift requires an explicit corpus review"
+                .to_string(),
+        ));
+    }
+    let mut entries = Vec::with_capacity(collection.calls.len());
+    let mut replacements = Vec::with_capacity(collection.calls.len() + 1);
+    for call in &collection.calls {
+        let existing = committed
+            .entries
+            .iter()
+            .find(|entry| {
+                entry.source_spec.as_str() == call.source_spec
+                    && entry.call_ordinal == call.source_ordinal
+            })
+            .ok_or_else(|| {
+                XtaskError::AlignmentCheckFailed(format!(
+                    "collected Cypress call {}#{} has no reviewed corpus route",
+                    call.source_spec, call.source_ordinal
+                ))
+            })?;
+        let (fixture, family, title) = collected_new_family_fixture(collection, call)?;
+        if existing.call != call.helper
+            || existing.test_name != title
+            || existing.family.as_str() != family
+        {
+            return Err(XtaskError::AlignmentCheckFailed(format!(
+                "collected Cypress identity drift for {}#{} requires an explicit corpus review",
+                call.source_spec, call.source_ordinal
+            )));
+        }
+        let mut entry = existing.clone();
+        entry.registration.clone_from(&call.registration);
+        entry.helper_ordinal = call.helper_ordinal;
+        entry.validation = call.validation;
+        entry.mmd_sha256 = sha256_hex(fixture.as_bytes());
+        entry.raw_sha256.clone_from(&call.raw_sha256);
+        replacements.push((
+            workspace_root.join(entry.fixture.as_path()),
+            fixture.into_bytes(),
+        ));
+        entries.push(entry);
+    }
+    if entries.len() != committed.entries.len() {
+        return Err(XtaskError::AlignmentCheckFailed(format!(
+            "collected Cypress corpus has {} calls but the reviewed manifest has {} entries; declare reviewed removals or routes before refresh",
+            entries.len(),
+            committed.entries.len()
+        )));
+    }
+    let source_specs = collection
+        .source
+        .specs
+        .iter()
+        .map(|spec| {
+            let expected_calls = collection
+                .calls
+                .iter()
+                .filter(|call| call.source_spec == spec.path)
+                .count();
+            Ok(CypressCorpusSourceSpec {
+                path: SafeRelativePath::parse(spec.path.clone())
+                    .map_err(XtaskError::AlignmentCheckFailed)?,
+                expected_calls,
+                sha256: spec.sha256.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, XtaskError>>()?;
+    let projected = CypressCorpusManifest {
+        schema_version: SCHEMA_VERSION,
+        mermaid_version: PINNED_MERMAID_VERSION.to_string(),
+        mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
+        collection: evidence,
+        scope: CypressCorpusScope {
+            description: SCOPE_DESCRIPTION.to_string(),
+            source_specs,
+        },
+        entries,
+    };
+
+    if !refresh {
+        if projected != committed {
+            return Err(XtaskError::AlignmentCheckFailed(
+                "committed Cypress corpus manifest differs from the pinned executable collection; rerun project-upstream-cypress-collection --scope new-family --input <collection.json> --refresh after review".to_string(),
+            ));
+        }
+        let failures = validate_pinned_manifest_contract(&workspace_root, &projected)
+            .into_iter()
+            .chain(validate_cypress_corpus_manifest(
+                &workspace_root,
+                &projected,
+            ))
+            .collect::<Vec<_>>();
+        return if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(XtaskError::AlignmentCheckFailed(failures.join("\n")))
+        };
+    }
+
+    let manifest_json = serde_json::to_string_pretty(&projected)?;
+    replacements.push((
+        workspace_root.join(MANIFEST_RELATIVE_PATH),
+        format!("{manifest_json}\n").into_bytes(),
+    ));
+    write_collection_replacements(&replacements)?;
+    let failures = committed_cypress_corpus_alignment_failures(&workspace_root);
     if failures.is_empty() {
-        Ok(refreshed)
+        Ok(())
     } else {
-        Err(failures)
+        Err(XtaskError::AlignmentCheckFailed(failures.join("\n")))
     }
 }
 
@@ -901,25 +1105,77 @@ mod tests {
         CypressCorpusEntry {
             source_spec: safe_relative("cypress/integration/rendering/treeView/treeView.spec.ts"),
             call_ordinal: ordinal,
+            registration: format!("TreeView Diagram > case {ordinal}"),
+            helper_ordinal: 1,
             call: "imgSnapshotTest".to_string(),
+            validation: ValidationArgument::Absent,
             test_name: format!("case {ordinal}"),
             family: safe_component("treeView"),
             route: CypressCorpusRoute::Active,
             fixture: safe_relative(fixture),
             mmd_sha256: sha256_hex(&fixture_bytes(ordinal)),
+            raw_sha256: "a".repeat(64),
+        }
+    }
+
+    fn collection_evidence(expected_active_calls: usize) -> CypressCollectionEvidence {
+        let source_spec = "cypress/integration/rendering/treeView/treeView.spec.ts";
+        CypressCollectionEvidence {
+            scope_id: "test-corpus".to_string(),
+            description: "test corpus".to_string(),
+            expected_active_calls,
+            expected_skipped_registrations: 0,
+            reviewed_skipped_registrations: Vec::new(),
+            reviewed_removals: Vec::new(),
+            source: crate::cmd::CypressCollectionSourceEvidence {
+                package: "mermaid".to_string(),
+                version: PINNED_MERMAID_VERSION.to_string(),
+                tag: MERMAID_SOURCE_TAG.to_string(),
+                commit: MERMAID_SOURCE_COMMIT.to_string(),
+                test_config: crate::cmd::TestConfigEvidence {
+                    path: "cypress.config.ts".to_string(),
+                    sha256: "a".repeat(64),
+                    spec_pattern: "cypress/integration/**/*.{js,ts}".to_string(),
+                },
+                render_helper: crate::cmd::DigestPath {
+                    path: "cypress/helpers/util.ts".to_string(),
+                    sha256: "b".repeat(64),
+                },
+                specs: vec![crate::cmd::DigestPath {
+                    path: source_spec.to_string(),
+                    sha256: "c".repeat(64),
+                }],
+                supplemental_fixtures: Vec::new(),
+            },
+            collector: crate::cmd::CypressCollectorEvidence {
+                files: Vec::new(),
+                scope_catalog_sha256: "d".repeat(64),
+                node_version: "22.14.0".to_string(),
+                pnpm_version: "10.30.3".to_string(),
+                esbuild_version: "0.25.12".to_string(),
+                upstream_lock: crate::cmd::DigestPath {
+                    path: "pnpm-lock.yaml".to_string(),
+                    sha256: "e".repeat(64),
+                },
+            },
+            registrations: Vec::new(),
+            runtime_effects: Vec::new(),
         }
     }
 
     fn manifest(entries: Vec<CypressCorpusEntry>) -> CypressCorpusManifest {
+        let expected_active_calls = entries.len();
         CypressCorpusManifest {
-            schema_version: 1,
-            mermaid_version: "11.16.0".to_string(),
-            mermaid_source_commit: "7c0cafcf42e76bfaf79d0cbbd12edb986612f014".to_string(),
+            schema_version: SCHEMA_VERSION,
+            mermaid_version: PINNED_MERMAID_VERSION.to_string(),
+            mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
+            collection: collection_evidence(expected_active_calls),
             scope: CypressCorpusScope {
                 description: "test corpus".to_string(),
                 source_specs: vec![CypressCorpusSourceSpec {
                     path: safe_relative("cypress/integration/rendering/treeView/treeView.spec.ts"),
-                    expected_calls: entries.len(),
+                    expected_calls: expected_active_calls,
+                    sha256: "b".repeat(64),
                 }],
             },
             entries,
@@ -942,17 +1198,6 @@ mod tests {
             ));
         fs::create_dir_all(svg.parent().expect("svg parent")).expect("svg dir");
         fs::write(svg, b"<svg/>\n").expect("svg");
-    }
-
-    fn observation(entry: &CypressCorpusEntry) -> CypressSourceObservation {
-        CypressSourceObservation {
-            source_spec: entry.source_spec.to_string(),
-            call_ordinal: entry.call_ordinal,
-            call: entry.call.clone(),
-            test_name: entry.test_name.clone(),
-            family: entry.family.to_string(),
-            mmd_sha256: entry.mmd_sha256.clone(),
-        }
     }
 
     #[test]
@@ -1090,67 +1335,6 @@ mod tests {
     }
 
     #[test]
-    fn source_check_rejects_missing_and_drifted_calls() {
-        let first = entry(1);
-        let second = entry(2);
-        let manifest = manifest(vec![first.clone(), second]);
-        let mut drifted = observation(&first);
-        drifted.mmd_sha256 = "f".repeat(64);
-
-        let failures = validate_cypress_source_observations(&manifest, &[drifted]);
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("source content drift")),
-            "{failures:#?}"
-        );
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("missing source call")),
-            "{failures:#?}"
-        );
-    }
-
-    #[test]
-    fn source_refresh_updates_only_content_hashes_after_contract_validation() {
-        let first = entry(1);
-        let second = entry(2);
-        let manifest = manifest(vec![first.clone(), second.clone()]);
-        let mut first_observation = observation(&first);
-        first_observation.mmd_sha256 = "a".repeat(64);
-        let mut second_observation = observation(&second);
-        second_observation.mmd_sha256 = "b".repeat(64);
-
-        let refreshed =
-            refreshed_cypress_corpus_manifest(&manifest, &[first_observation, second_observation])
-                .expect("matching source metadata should permit a content refresh");
-
-        assert_eq!(refreshed.entries[0].mmd_sha256, "a".repeat(64));
-        assert_eq!(refreshed.entries[1].mmd_sha256, "b".repeat(64));
-        assert_eq!(refreshed.entries[0].fixture, first.fixture);
-        assert_eq!(refreshed.entries[1].fixture, second.fixture);
-    }
-
-    #[test]
-    fn source_refresh_rejects_metadata_drift() {
-        let expected = entry(1);
-        let mut drifted = observation(&expected);
-        drifted.call = "renderSnapshot".to_string();
-
-        let failures = refreshed_cypress_corpus_manifest(&manifest(vec![expected]), &[drifted])
-            .expect_err("metadata drift must not be absorbed into a content refresh");
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("source call drift")),
-            "{failures:#?}"
-        );
-    }
-
-    #[test]
     fn manifest_schema_rejects_unknown_fields_at_every_object_layer() {
         for pointer in ["", "/scope", "/scope/source_specs/0", "/entries/0"] {
             let mut value = serde_json::to_value(manifest(vec![entry(1)])).unwrap();
@@ -1275,48 +1459,6 @@ mod tests {
                 .any(|failure| failure.contains("escapes workspace")),
             "{failures:#?}"
         );
-    }
-
-    #[test]
-    fn source_check_reports_call_test_name_and_family_drift_separately() {
-        let expected = entry(1);
-        let manifest = manifest(vec![expected.clone()]);
-        let mut drifted = observation(&expected);
-        drifted.call = "renderSnapshot".to_string();
-        drifted.test_name = "renamed test".to_string();
-        drifted.family = "cynefin".to_string();
-
-        let failures = validate_cypress_source_observations(&manifest, &[drifted]);
-
-        for field in ["call", "test_name", "family"] {
-            assert!(
-                failures.iter().any(|failure| {
-                    failure.contains(field)
-                        && failure.contains("expected")
-                        && failure.contains("found")
-                }),
-                "missing {field} diagnostic: {failures:#?}"
-            );
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn source_spec_resolution_rejects_symlink_escape() {
-        use std::os::unix::fs::symlink;
-
-        let mermaid = TempWorkspace::new();
-        let outside = TempWorkspace::new();
-        let source = safe_relative("cypress/integration/rendering/treeView/treeView.spec.ts");
-        let source_path = mermaid.path().join(source.as_path());
-        fs::create_dir_all(source_path.parent().unwrap()).expect("source parent");
-        let outside_source = outside.path().join("treeView.spec.ts");
-        fs::write(&outside_source, b"describe('outside', () => {});\n").expect("outside source");
-        symlink(&outside_source, &source_path).expect("source symlink");
-
-        let error = resolve_cypress_source_spec_path(mermaid.path(), &source).unwrap_err();
-
-        assert!(error.contains("escapes Mermaid checkout"), "{error}");
     }
 
     #[test]

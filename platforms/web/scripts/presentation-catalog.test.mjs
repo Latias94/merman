@@ -52,6 +52,7 @@ test("presentation catalog accepts future IDs, caches per surface, and returns d
   let analysisCalls = 0;
   const full = presentationRuntime(async () => ({
     default: async () => {},
+    transportApiVersion: () => 4,
     presentationCatalog() {
       fullCalls += 1;
       return presentationCatalogFixture();
@@ -59,6 +60,7 @@ test("presentation catalog accepts future IDs, caches per surface, and returns d
   }));
   const analysis = presentationRuntime(async () => ({
     default: async () => {},
+    transportApiVersion: () => 4,
     presentationCatalog() {
       analysisCalls += 1;
       return presentationCatalogFixture({ themePresets: [], profiles: [] });
@@ -82,6 +84,7 @@ test("presentation catalog accepts future IDs, caches per surface, and returns d
 test("presentation catalog rejects unsupported schemas", async () => {
   const runtime = presentationRuntime(async () => ({
     default: async () => {},
+    transportApiVersion: () => 4,
     presentationCatalog: () => ({ schema_version: 2, theme_presets: [], profiles: [] }),
   }));
   await runtime.initMerman();

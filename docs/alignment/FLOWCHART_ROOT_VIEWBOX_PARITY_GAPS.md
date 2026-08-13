@@ -8,7 +8,7 @@ This note describes the current Flowchart root viewport contract and the focused
 
 Flowchart owns the content geometry used to derive its bounds. The shared Root Viewport module owns
 responsive or fixed sizing, accessibility attributes, root attribute ordering, and final SVG
-emission. The canonical `HeadlessRenderer` operation supplies the render environment and selected
+emission. The canonical typed `Renderer` operation supplies the render environment and selected
 text-measurement operations.
 
 Production rendering has no fixture-id lookup, complete-label answer table, root override policy,
@@ -44,20 +44,18 @@ cargo run --release -p xtask -- compare-all-svgs \
 
 ## Root Transform Debugging
 
-When a recursive cluster changes the root bounds, inspect the emitted root transforms and geometry
-for one fixture:
+When a recursive cluster changes the root bounds, regenerate one fixture and inspect the emitted
+bounds for the local and upstream SVGs:
 
 ```sh
-cargo run -p xtask -- debug-flowchart-svg-roots --fixture <fixture-stem>
-cargo run -p xtask -- debug-flowchart-svg-diff \
-  --fixture <fixture-stem> \
-  --min-abs-delta 0.5 \
-  --max 80
+cargo run -p xtask -- compare-flowchart-svgs --filter <fixture-stem> --check-dom --dom-mode parity-root
+cargo run -p xtask -- debug-svg-bbox --svg <local.svg>
+cargo run -p xtask -- debug-svg-bbox --svg <upstream.svg>
 ```
 
-These commands report the root `viewBox` and sizing attributes, nested `<g class="root">`
-transforms, and cluster geometry. They are diagnostic views only and do not provide an alternate
-render path.
+The compare report records root `viewBox` and sizing differences; `debug-svg-bbox` identifies the
+elements that contribute each emitted bound. These are diagnostic views only and do not provide an
+alternate render path.
 
 ## Investigation Order
 

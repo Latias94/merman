@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "3a48a4e7490b6350a823d5b9b38fd38f9a9f4df9f2c7fe92b947607dc4b14c27",
+    "cargo_lock_sha256": "e481a7d5eece6a1282526ceaad258a35378537e6b9a57851417229a06c2322d9",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -3010,16 +3010,6 @@
           "repository": "https://github.com/toml-rs/toml"
         },
         {
-          "name": "streaming-iterator",
-          "version": "0.1.9",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Steven Fackler <sfackler@gmail.com>"
-          ],
-          "repository": "https://github.com/sfackler/streaming-iterator"
-        },
-        {
           "name": "toml",
           "version": "1.1.4+spec-1.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -4734,17 +4724,6 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/erweixin/RaTeX"
-        },
-        {
-          "name": "tree-sitter-typescript",
-          "version": "0.23.2",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [
-            "Amaan Qureshi <amaanq12@gmail.com>",
-            "Max Brunsfeld <maxbrunsfeld@gmail.com>"
-          ],
-          "repository": "https://github.com/tree-sitter/tree-sitter-typescript"
         }
       ]
     },
@@ -4840,36 +4819,6 @@
             "Raph Levien <raph.levien@gmail.com>"
           ],
           "repository": "https://github.com/raphlinus/pulldown-cmark"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
-      "text_sha256": "c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78",
-      "text": "The MIT License (MIT)\n\nCopyright (c) 2018 Max Brunsfeld\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
-      "packages": [
-        {
-          "name": "tree-sitter",
-          "version": "0.26.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [
-            "Amaan Qureshi <amaanq12@gmail.com>",
-            "Max Brunsfeld <maxbrunsfeld@gmail.com>"
-          ],
-          "repository": "https://github.com/tree-sitter/tree-sitter"
-        },
-        {
-          "name": "tree-sitter-language",
-          "version": "0.1.7",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [
-            "Amaan Qureshi <amaanq12@gmail.com>",
-            "Max Brunsfeld <maxbrunsfeld@gmail.com>"
-          ],
-          "repository": "https://github.com/tree-sitter/tree-sitter"
         }
       ]
     },

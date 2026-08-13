@@ -37,7 +37,7 @@ except ModuleNotFoundError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_ROOT = ROOT / "packaging" / "cli-registry"
+TEMPLATE_ROOT = ROOT / "distribution" / "cli" / "registry-templates"
 WINDOWS_TARGET = "x86_64-pc-windows-msvc"
 PACKAGE_IDENTIFIER = "Latias94.MermanCLI"
 SCOOP_OUTPUT = Path("scoop/merman-cli.json")

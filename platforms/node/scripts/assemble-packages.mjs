@@ -19,9 +19,19 @@ const descriptor = JSON.parse(readFileSync(path.join(nodeRoot, "package-surfaces
 
 if (isMainModule()) {
   try {
-    const target = valueAfter(process.argv.slice(2), "--target");
-    if (!target) throw new Error("usage: node scripts/assemble-packages.mjs --target <target-id>");
-    assembleNativePackages(target);
+    const args = process.argv.slice(2);
+    const outputRoot = valueAfter(args, "--output-root") ?? path.join(nodeRoot, "dist-packages");
+    if (args.includes("--loader-only")) {
+      assembleLoaderOnly(outputRoot);
+    } else {
+      const target = valueAfter(args, "--target");
+      if (!target) {
+        throw new Error(
+          "usage: node scripts/assemble-packages.mjs (--loader-only | --target <target-id>) [--output-root <path>]",
+        );
+      }
+      assembleNativePackages(target, outputRoot);
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
@@ -55,12 +65,27 @@ export function assembleNativePackages(
   }
 }
 
+export function assembleLoaderOnly(outputRoot = path.join(nodeRoot, "dist-packages")) {
+  assertAssemblyPackageManifest(descriptor.root);
+  const stage = `${outputRoot}.stage-${process.pid}`;
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+  try {
+    assembleLoaderPackage(path.join(stage, "node"));
+    replaceDirectory(stage, outputRoot);
+  } catch (error) {
+    rmSync(stage, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function assembleLoaderPackage(output) {
   const source = path.join(nodeRoot, descriptor.root.directory);
   mkdirSync(path.join(output, "dist", "candidates"), { recursive: true });
   mkdirSync(path.join(output, "dist", "generated"), { recursive: true });
   cpSync(path.join(source, "package.json"), path.join(output, "package.json"));
   cpSync(path.join(source, "README.md"), path.join(output, "README.md"));
+  cpSync(path.join(nodeRoot, "CHANGELOG.md"), path.join(output, "CHANGELOG.md"));
   for (const name of [
     "index.mjs",
     "engine.mjs",
@@ -102,7 +127,7 @@ function assemblePlatformPackage(targetDescriptor, binary, output) {
   cpSync(binary, path.join(output, targetDescriptor.node_artifact));
   writeFileSync(
     path.join(output, "README.md"),
-    `# ${targetDescriptor.name}\n\nPrivate U14 native candidate for ${targetDescriptor.target}.\n`,
+    `# ${targetDescriptor.name}\n\nNative runtime package for \`@mermanjs/node\` on ${targetDescriptor.target}. Install \`@mermanjs/node\` instead of depending on this package directly.\n`,
   );
   projectLegalMaterial(output);
 }
@@ -131,11 +156,12 @@ function assertAssemblyPackageManifest(packageDescriptor) {
   if (
     manifest?.name !== packageDescriptor.name ||
     manifest.version !== descriptor.version ||
-    manifest.private !== true ||
+    manifest.private === true ||
+    manifest.publishConfig?.access !== "public" ||
     manifest.engines?.node !== descriptor.node_engine
   ) {
     throw new Error(
-      `${packageDescriptor.name} manifest must be the private ${descriptor.version} candidate package with Node ${descriptor.node_engine}.`,
+      `${packageDescriptor.name} manifest must be the public ${descriptor.version} alpha package with Node ${descriptor.node_engine}.`,
     );
   }
 }

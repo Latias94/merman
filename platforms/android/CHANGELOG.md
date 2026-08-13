@@ -4,18 +4,16 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.6] - Unreleased
+## [Unreleased]
 
 ### Breaking changes
 
-- Expanded ASCII capability records with independent semantic coverage and projection kind, and
-  renamed `summaryFallback` to `structuredTextFallback`. Upgrade the Kotlin package and native
-  slices together.
-
-### Changed
-
-- Updated structured ASCII resource diagnostics and the common-family terminal projections to the
-  alpha.6 runtime contract.
+- The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.
+- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose independent semantic coverage and primary projection fields,
+  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
+  diagnostic payloads also follow the expanded six-phase renderer contract; upgrade Kotlin and
+  native slices together.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

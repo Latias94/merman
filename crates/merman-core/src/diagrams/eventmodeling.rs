@@ -78,8 +78,8 @@ pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Va
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
     let construction =
         match construct_eventmodeling_semantic_source_controlled(code, meta, control)? {
@@ -279,8 +279,8 @@ impl EventModelingSyntaxFacts {
     fn editor_facts_controlled(
         &self,
         source: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<EditorSemanticFacts> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<EditorSemanticFacts> {
         control.checkpoint()?;
         let mut facts = EditorSemanticFacts::new();
         if let Some(header) = &self.header {
@@ -348,15 +348,15 @@ impl EventModelingSemanticSource {
     }
 
     fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramRenderModel {
-        self.into_render_model_controlled(meta, &crate::ParseControl::new())
+        self.into_render_model_controlled(meta, &crate::OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
     fn into_render_model_controlled(
         self,
         meta: &ParseMetadata,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<EventModelingDiagramRenderModel> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<EventModelingDiagramRenderModel> {
         control.checkpoint()?;
         let common = LangiumCommonDbFields::from_facts(&self.syntax.common);
         let mut frames = Vec::with_capacity(self.syntax.frames.len());
@@ -420,8 +420,8 @@ impl EventModelingSemanticSource {
     fn into_compat_json_controlled(
         self,
         meta: &ParseMetadata,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<Value>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<Value>> {
         let model = self.into_render_model_controlled(meta, control)?;
         control.checkpoint()?;
         Ok(render_model_to_compat_json(&model, meta))
@@ -446,15 +446,15 @@ fn construct_eventmodeling_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<EventModelingSemanticSource, EventModelingParseFailure> {
-    construct_eventmodeling_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_eventmodeling_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_eventmodeling_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<EventModelingSemanticSource, EventModelingParseFailure>,
 > {
     control.checkpoint()?;
@@ -604,13 +604,13 @@ const EVENTMODELING_DATA_TYPES: &[&str] = &[
 
 struct EventModelingCursor<'a> {
     source: &'a str,
-    control: &'a crate::ParseControl,
+    control: &'a crate::OperationControl,
     offset: usize,
     lexemes: EventModelingLexemeTrace,
 }
 
 impl<'a> EventModelingCursor<'a> {
-    fn new(source: &'a str, control: &'a crate::ParseControl) -> Self {
+    fn new(source: &'a str, control: &'a crate::OperationControl) -> Self {
         Self {
             source,
             control,
@@ -865,7 +865,7 @@ impl<'a> EventModelingCursor<'a> {
 fn eventmodeling_yaml_end(
     source: &str,
     start: usize,
-    control: &crate::ParseControl,
+    control: &crate::OperationControl,
 ) -> Option<usize> {
     let rest = source.get(start..)?;
     let opening_newline = rest.find('\n')?;
@@ -902,8 +902,8 @@ fn eventmodeling_failure_controlled(
     syntax: EventModelingSyntaxFacts,
     fallback: SourceSpan,
     source: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<EventModelingParseFailure> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<EventModelingParseFailure> {
     let span = eventmodeling_error_span(&error, fallback);
     let editor_facts = syntax.editor_facts_controlled(source, control)?;
     Ok(EventModelingParseFailure {
@@ -1643,8 +1643,8 @@ fn parse_eventmodeling_gwt_cursor(
 
 fn validate_eventmodeling_semantics(
     syntax: &mut EventModelingSyntaxFacts,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<()> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<()> {
     let mut frame_types = HashMap::with_capacity(syntax.frames.len());
     for frame in &syntax.frames {
         control.checkpoint()?;
@@ -1750,8 +1750,8 @@ fn eventmodeling_allowed_source_types(
 fn push_eventmodeling_frame_facts(
     facts: &mut EditorSemanticFacts,
     frame: &EventModelingFrameFacts,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<()> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<()> {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
         frame.name_span,
@@ -1783,7 +1783,7 @@ fn push_eventmodeling_frame_facts(
     for source in &frame.source_frames {
         control.checkpoint()?;
         facts.push_symbol(
-            EditorSemanticSymbol::new(
+            EditorSemanticSymbol::reference(
                 source.text.clone(),
                 Some("eventmodeling source frame".to_string()),
                 EditorSemanticKind::Namespace,
@@ -1793,33 +1793,34 @@ fn push_eventmodeling_frame_facts(
             .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
         );
     }
+    if let Some(reference) = &frame.data_reference {
+        control.checkpoint()?;
+        facts.push_symbol(
+            EditorSemanticSymbol::reference(
+                reference.text.clone(),
+                Some("eventmodeling data reference".to_string()),
+                EditorSemanticKind::Namespace,
+                reference.span,
+                reference.span,
+            )
+            .with_rename_policy(EditorRenamePolicy::EventModelingId),
+        );
+    }
     for (field, detail) in [
-        (&frame.data_reference, "eventmodeling data reference"),
         (&frame.data_type, "eventmodeling data type"),
         (&frame.data_inline_value, "eventmodeling inline data"),
     ] {
         control.checkpoint()?;
-        if let Some(field) = field {
-            let symbol = if detail == "eventmodeling data reference" {
-                EditorSemanticSymbol::new(
-                    field.text.clone(),
-                    Some(detail.to_string()),
-                    EditorSemanticKind::Namespace,
-                    field.span,
-                    field.span,
-                )
-                .with_rename_policy(EditorRenamePolicy::EventModelingId)
-            } else {
-                EditorSemanticSymbol::payload(
-                    field.text.clone(),
-                    Some(detail.to_string()),
-                    EditorSemanticKind::String,
-                    field.span,
-                    field.span,
-                )
-            };
-            facts.push_symbol(symbol);
-        }
+        let Some(field) = field else {
+            continue;
+        };
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            field.text.clone(),
+            Some(detail.to_string()),
+            EditorSemanticKind::String,
+            field.span,
+            field.span,
+        ));
     }
     Ok(())
 }
@@ -1865,7 +1866,7 @@ fn push_eventmodeling_data_facts(
 fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventModelingNoteFacts) {
     if !note.source_frame.text.is_empty() {
         facts.push_symbol(
-            EditorSemanticSymbol::new(
+            EditorSemanticSymbol::reference(
                 note.source_frame.text.clone(),
                 Some("eventmodeling note source frame".to_string()),
                 EditorSemanticKind::Namespace,
@@ -1900,10 +1901,10 @@ fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventMo
 fn push_eventmodeling_gwt_facts(
     facts: &mut EditorSemanticFacts,
     gwt: &EventModelingGwtFacts,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<()> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<()> {
     facts.push_symbol(
-        EditorSemanticSymbol::new(
+        EditorSemanticSymbol::reference(
             gwt.source_frame.text.clone(),
             Some("eventmodeling gwt source frame".to_string()),
             EditorSemanticKind::Namespace,
@@ -1922,7 +1923,7 @@ fn push_eventmodeling_gwt_facts(
             statement.model_entity_type.span,
         ));
         facts.push_symbol(
-            EditorSemanticSymbol::new(
+            EditorSemanticSymbol::reference(
                 statement.entity_reference.text.clone(),
                 Some("eventmodeling gwt entity reference".to_string()),
                 EditorSemanticKind::Object,
@@ -1939,8 +1940,8 @@ fn push_eventmodeling_gwt_facts(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseMetadata,
+        EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticRole, Engine,
+        MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
     };
 
     fn meta() -> ParseMetadata {
@@ -1959,12 +1960,12 @@ mod tests {
             text.push_str(&format!("evt Entity{index} "));
         }
         text.push_str("then evt Entity0\n");
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(40);
 
         assert!(matches!(
             construct_eventmodeling_semantic_source_controlled(&text, &meta(), &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -1976,12 +1977,12 @@ mod tests {
         }
         let source = construct_eventmodeling_semantic_source(&text, &meta())
             .unwrap_or_else(|_| panic!("large eventmodeling source"));
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
 
         assert!(matches!(
             source.into_render_model_controlled(&meta(), &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -2015,12 +2016,12 @@ mod tests {
             "late eventmodeling syntax error",
             invalid_span,
         );
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
 
         assert!(matches!(
             eventmodeling_failure_controlled(error, syntax, invalid_span, &source, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -2162,10 +2163,13 @@ data ItemAddedData {
         let expected_model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
 
         reset_eventmodeling_syntax_construction_count();
-        let (json, facts) = crate::family::test_support::into_result(
-            parse_eventmodeling_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
-        )
-        .unwrap();
+        let (json, facts) =
+            crate::family::test_support::into_result(parse_eventmodeling_json_and_editor_facts(
+                text,
+                &meta(),
+                &crate::OperationControl::new(),
+            ))
+            .unwrap();
 
         assert_eq!(eventmodeling_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
@@ -2205,7 +2209,7 @@ data ItemAddedData {
                 parse_eventmodeling_json_and_editor_facts(
                     &text,
                     &meta(),
-                    &crate::ParseControl::new(),
+                    &crate::OperationControl::new(),
                 ),
             )
             .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
@@ -2307,6 +2311,71 @@ data ItemAddedData {
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(frame_start, frame_start + "01".len())
         }));
+    }
+
+    #[test]
+    fn editor_facts_assign_entity_reference_and_payload_roles_explicitly() {
+        let text = concat!(
+            "eventmodeling\n",
+            "entity CartUpdated\n",
+            "tf 001 cmd UpdateCart\n",
+            "tf 002 evt Cart.Updated ->> 001 [[CartData]] `json`{ \"ok\": true }\n",
+            "data CartData `json` {\n",
+            "  { \"ok\": true }\n",
+            "}\n",
+            "note 002 `md` {\n",
+            "  Cart changed\n",
+            "}\n",
+            "gwt 002\n",
+            "  given\n",
+            "    evt CartUpdated\n",
+            "  then\n",
+            "    evt CartUpdated\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        for (name, detail) in [
+            ("CartUpdated", "eventmodeling model entity"),
+            ("001", "eventmodeling frame"),
+            ("002", "eventmodeling frame"),
+            ("CartData", "eventmodeling data entity"),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == EditorSemanticRole::Entity
+            }));
+        }
+        for (name, detail) in [
+            ("001", "eventmodeling source frame"),
+            ("CartData", "eventmodeling data reference"),
+            ("002", "eventmodeling note source frame"),
+            ("002", "eventmodeling gwt source frame"),
+            ("CartUpdated", "eventmodeling gwt entity reference"),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == EditorSemanticRole::Reference
+            }));
+        }
+        for detail in [
+            "eventmodeling entity type",
+            "eventmodeling entity identifier",
+            "eventmodeling data type",
+            "eventmodeling inline data",
+            "eventmodeling data block",
+            "eventmodeling note block",
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == EditorSemanticRole::Payload
+            }));
+        }
     }
 
     #[test]

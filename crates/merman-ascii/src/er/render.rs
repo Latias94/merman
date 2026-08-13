@@ -1,4 +1,5 @@
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
@@ -160,6 +161,31 @@ pub(crate) fn render_er_diagram(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
+    render_er_diagram_impl(model, options, None)
+}
+
+pub(crate) fn render_er_diagram_with_execution(
+    model: &ErDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    render_er_diagram_impl(model, options, Some(execution))
+}
+
+fn render_er_diagram_impl(
+    model: &ErDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
+    let options_with_operation_resources;
+    let options = match execution {
+        Some(execution) => {
+            options_with_operation_resources = options.with_resource_policy(*execution.resources());
+            &options_with_operation_resources
+        }
+        None => options,
+    };
     if model.entities.is_empty() {
         if !model.relationships.is_empty() {
             return Err(AsciiError::UnsupportedFeature {
@@ -171,6 +197,7 @@ pub(crate) fn render_er_diagram(
     }
 
     let mut resources = ResourceContext::new(options.resources);
+    checkpoint(execution, merman_core::OperationPhase::Semantic)?;
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
     validate_unique_er_entity_ids(model, &mut resources)?;
@@ -182,6 +209,7 @@ pub(crate) fn render_er_diagram(
         .try_reserve_exact(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
     for entity in model.entities.values() {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         boxes.push(render_entity_box(
             entity,
             options,
@@ -199,7 +227,13 @@ pub(crate) fn render_er_diagram(
                 options.terminal_width_profile,
                 &resources,
             )?;
-            return render_er_document_lines(lines, options, &mut resources, &deferred_text);
+            return render_er_document_lines_with_execution(
+                lines,
+                options,
+                &mut resources,
+                &deferred_text,
+                execution,
+            );
         }
         if direction.is_reversed() {
             let lines = relation_graph::stacked_box_lines_ordered(
@@ -208,14 +242,31 @@ pub(crate) fn render_er_diagram(
                 true,
                 &mut resources,
             )?;
-            return render_er_document_lines(lines, options, &mut resources, &deferred_text);
+            return render_er_document_lines_with_execution(
+                lines,
+                options,
+                &mut resources,
+                &deferred_text,
+                execution,
+            );
         }
-        return relation_graph::render_stacked_boxes_with_deferred_options(
-            &boxes,
-            options,
-            &mut resources,
-            &deferred_text,
-        );
+        return match execution {
+            Some(execution) => {
+                relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
+                    &boxes,
+                    options,
+                    &mut resources,
+                    &deferred_text,
+                    execution,
+                )
+            }
+            None => relation_graph::render_stacked_boxes_with_deferred_options(
+                &boxes,
+                options,
+                &mut resources,
+                &deferred_text,
+            ),
+        };
     }
 
     let mut entity_labels = HashMap::new();
@@ -235,13 +286,23 @@ pub(crate) fn render_er_diagram(
         direction,
         entity_labels: &entity_labels,
     };
-    render_er_components(
+    let rendered = render_er_components(
         &boxes,
         &model.relationships,
         &context,
         &mut resources,
         &mut deferred_text,
-    )
+        execution,
+    )?;
+    checkpoint(execution, merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
+}
+
+fn checkpoint(
+    execution: Option<AsciiExecution<'_>>,
+    phase: merman_core::OperationPhase,
+) -> Result<()> {
+    execution.map_or(Ok(()), |execution| execution.checkpoint(phase))
 }
 
 fn validate_unique_er_entity_ids(
@@ -269,12 +330,14 @@ fn render_er_components<'model>(
     context: &ErRenderContext<'_, 'model>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'model>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<String> {
     let mut layouts = Vec::new();
     layouts
         .try_reserve_exact(relationships.len())
         .map_err(|_| layout_allocation_failed())?;
     for relationship in relationships {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         let mut layout = ErRelationLayout {
             relationship,
             top_id: relationship.entity_a.as_str(),
@@ -307,16 +370,33 @@ fn render_er_components<'model>(
             resources,
             deferred_text,
         )?;
-        return render_er_document_lines(lines, context.options, resources, deferred_text);
+        return render_er_document_lines_with_execution(
+            lines,
+            context.options,
+            resources,
+            deferred_text,
+            execution,
+        );
     }
-    relation_graph::render_relation_components_with_deferred(
-        boxes,
-        &layouts,
-        context.options,
-        resources,
-        &adapter,
-        deferred_text,
-    )
+    match execution {
+        Some(execution) => relation_graph::render_relation_components_with_deferred_with_execution(
+            boxes,
+            &layouts,
+            context.options,
+            resources,
+            &adapter,
+            deferred_text,
+            execution,
+        ),
+        None => relation_graph::render_relation_components_with_deferred(
+            boxes,
+            &layouts,
+            context.options,
+            resources,
+            &adapter,
+            deferred_text,
+        ),
+    }
 }
 
 fn render_entity_box<'a>(
@@ -489,6 +569,25 @@ fn render_er_document_lines(
     deferred_text: &DeferredTextRegistry<'_>,
 ) -> Result<String> {
     relation_graph::render_lines_with_deferred_options(&lines, options, resources, deferred_text)
+}
+
+fn render_er_document_lines_with_execution(
+    lines: Vec<RelationGraphLine>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred_text: &DeferredTextRegistry<'_>,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
+    match execution {
+        Some(execution) => relation_graph::render_lines_with_deferred_options_with_execution(
+            &lines,
+            options,
+            resources,
+            deferred_text,
+            execution,
+        ),
+        None => render_er_document_lines(lines, options, resources, deferred_text),
+    }
 }
 
 fn render_horizontal_er_component_lines<'adapter, 'model>(

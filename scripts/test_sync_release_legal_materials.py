@@ -51,13 +51,13 @@ class ReleaseLegalMaterialTests(unittest.TestCase):
             )
             self.assertNotIn(
                 root
-                / "packages/typst/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+                / "distribution/typst/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
                 expected,
             )
             self.assertFalse(
                 (
                     root
-                    / "packages/typst/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+                    / "distribution/typst/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
                 ).exists()
             )
             self.assertIn(

@@ -9,8 +9,8 @@ use crate::diagram::{
     RenderSemanticParseOutput,
 };
 use crate::{
-    EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
-    Result,
+    DiagramWarningFact, EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind, Error,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -19,16 +19,44 @@ use std::sync::OnceLock;
 pub(crate) type CombinedSemanticParser = fn(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<CombinedSemanticParse>;
+    control: &OperationControl,
+) -> OperationControlResult<CombinedSemanticParse>;
+
+pub(crate) type WarningSemanticParser =
+    fn(code: &str, meta: &ParseMetadata) -> Result<WarningSemanticParse>;
+
+/// Built-in compatibility JSON paired with the typed warnings that produced its warning field.
+pub(crate) struct WarningSemanticParse {
+    model: Value,
+    warning_facts: Vec<DiagramWarningFact>,
+}
+
+impl WarningSemanticParse {
+    pub(crate) fn new(model: Value, warning_facts: Vec<DiagramWarningFact>) -> Self {
+        Self {
+            model,
+            warning_facts,
+        }
+    }
+
+    pub(crate) fn into_model(self) -> Value {
+        self.model
+    }
+
+    pub(crate) fn into_parts(self) -> (Value, Vec<DiagramWarningFact>) {
+        (self.model, self.warning_facts)
+    }
+}
 
 /// Closed result of one family semantic construction.
 ///
-/// A failed construction still owns the parser-derived editor facts produced before the error.
-/// This prevents callers from invoking a second recovery parser over the same source.
+/// A successful construction hands typed warnings directly to the operation snapshot. A failed
+/// construction still owns the parser-derived editor facts produced before the error. This
+/// prevents callers from invoking a second recovery parser over the same source.
 pub(crate) struct CombinedSemanticParse {
     model: Result<Value>,
     editor_facts: EditorSemanticFacts,
+    warning_facts: Vec<DiagramWarningFact>,
 }
 
 /// Closed failure handoff produced after a family has retained its recovery journal.
@@ -135,6 +163,7 @@ impl CombinedSemanticParse {
                 Self {
                     model,
                     editor_facts,
+                    warning_facts: Vec::new(),
                 }
             }
             Err(parse_failure) => {
@@ -142,26 +171,56 @@ impl CombinedSemanticParse {
                 Self {
                     model: Err(error),
                     editor_facts,
+                    warning_facts: Vec::new(),
                 }
             }
         }
     }
 
-    pub(crate) fn into_parts(self) -> (Result<Value>, EditorSemanticFacts) {
-        (self.model, self.editor_facts)
+    pub(crate) fn from_construction_with_warning_facts<S, F>(
+        construction: std::result::Result<S, F>,
+        success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>),
+        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
+    ) -> Self {
+        match construction {
+            Ok(source) => {
+                let (model, editor_facts, warning_facts) = success(source);
+                Self {
+                    model,
+                    editor_facts,
+                    warning_facts,
+                }
+            }
+            Err(parse_failure) => {
+                let (error, editor_facts) = failure(parse_failure);
+                Self {
+                    model: Err(error),
+                    editor_facts,
+                    warning_facts: Vec::new(),
+                }
+            }
+        }
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>) {
+        (self.model, self.editor_facts, self.warning_facts)
     }
 }
 
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::{CombinedSemanticParse, CombinedSemanticParser};
-    use crate::{EditorSemanticFacts, Error, ParseControl, ParseControlResult, ParseMetadata};
+    use crate::{
+        EditorSemanticFacts, Error, OperationControl, OperationControlResult, ParseMetadata,
+    };
     use serde_json::Value;
 
     pub(crate) fn into_result(
-        parsed: ParseControlResult<CombinedSemanticParse>,
+        parsed: OperationControlResult<CombinedSemanticParse>,
     ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
-        let (model, editor_facts) = parsed
+        let (model, editor_facts, _) = parsed
             .expect("a private parse control cannot be cancelled")
             .into_parts();
         model.map(|model| (model, editor_facts))
@@ -172,7 +231,7 @@ pub(crate) mod test_support {
         code: &str,
         meta: &ParseMetadata,
     ) -> EditorSemanticFacts {
-        parser(code, meta, &ParseControl::new())
+        parser(code, meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
             .into_parts()
             .1
@@ -263,6 +322,9 @@ pub struct BuiltInTypedRenderFamily {
 pub struct DiagramFamilyId(&'static str);
 
 impl DiagramFamilyId {
+    /// Logical identity shared by all admitted Flowchart parser variants.
+    pub const FLOWCHART: Self = Self("flowchart");
+
     pub fn as_str(self) -> &'static str {
         self.0
     }
@@ -441,6 +503,10 @@ pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticPars
         .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
 }
 
+pub(crate) fn warning_semantic_parser(diagram_type: &str) -> Option<WarningSemanticParser> {
+    find_variant(diagram_type).and_then(|(_, variant)| variant.warning_semantic)
+}
+
 pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
     family_catalog_projection()
         .supported_diagram_metadata_ids
@@ -484,8 +550,12 @@ pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
     find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
 }
 
-pub(crate) fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
+pub fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
     find_variant(diagram_type).map(|(family, _)| DiagramFamilyId(family.logical_kind))
+}
+
+pub(crate) fn diagram_type_editor_semantics(diagram_type: &str) -> Option<EditorFamilySemantics> {
+    find_variant(diagram_type).map(|(family, _)| family.editor_semantics)
 }
 
 pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {
@@ -523,10 +593,17 @@ pub(crate) fn apply_diagram_type_config_effects(
 
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
-        fn $fn_name(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
-            $parser(code, meta)
+        fn $fn_name(
+            code: &str,
+            meta: &ParseMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+            control.checkpoint()?;
+            let result = $parser(code, meta)
                 .map($variant)
-                .map(RenderSemanticParseOutput::new)
+                .map(RenderSemanticParseOutput::new);
+            control.checkpoint()?;
+            Ok(result)
         }
     };
 }
@@ -556,10 +633,16 @@ render_parser!(
     crate::diagrams::sequence::parse_sequence_model_for_render,
     RenderSemanticModel::Sequence
 );
-fn render_flowchart(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
-    let (model, label_sources) =
-        crate::diagrams::flowchart::parse_flowchart_model_with_render_context(code, meta)?;
-    Ok(RenderSemanticParseOutput::flowchart(model, label_sources))
+fn render_flowchart(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
+    let result = crate::diagrams::flowchart::parse_flowchart_model_with_render_context_controlled(
+        code, meta, control,
+    )?;
+    Ok(result
+        .map(|(model, label_sources)| RenderSemanticParseOutput::flowchart(model, label_sources)))
 }
 render_parser!(
     render_class,
@@ -761,6 +844,7 @@ struct FamilyVariantDefinition {
     catalog_order: u16,
     detector: Option<Ordered<DetectorFn>>,
     semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
+    warning_semantic: Option<WarningSemanticParser>,
     combined: Option<Ordered<CombinedSemanticParser>>,
     typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
     render_model_kind: Option<&'static str>,
@@ -780,9 +864,31 @@ struct FamilyConfigDefinition {
 #[derive(Clone, Copy)]
 struct DiagramFamilyDefinition {
     logical_kind: &'static str,
+    editor_semantics: EditorFamilySemantics,
     config: Option<FamilyConfigDefinition>,
     variants: &'static [FamilyVariantDefinition],
 }
+
+const GENERIC_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Variable);
+const FLOWCHART_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Module);
+const SWIMLANE_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Variable);
+const MINDMAP_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Namespace);
+const SEQUENCE_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Event);
+const CLASS_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Class);
+const ER_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Struct);
+const CARDINAL_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Variable);
+const STATE_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Class);
+const BLOCK_EDITOR_SEMANTICS: EditorFamilySemantics =
+    EditorFamilySemantics::new(EditorSemanticKind::Object);
 
 macro_rules! variant {
     (
@@ -790,6 +896,7 @@ macro_rules! variant {
         catalog_order: $catalog_order:literal,
         detector: $detector:expr,
         semantic: $semantic:expr,
+        $(warning_semantic: $warning_semantic:expr,)?
         combined: $combined:expr,
         typed: $typed:expr,
         render_kind: $render_kind:expr,
@@ -804,6 +911,7 @@ macro_rules! variant {
             catalog_order: $catalog_order,
             detector: $detector,
             semantic: $semantic,
+            warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
             combined: $combined,
             typed_render: $typed,
             render_model_kind: $render_kind,
@@ -813,6 +921,12 @@ macro_rules! variant {
             known_type_effect: $known_effect,
             default_effect: $default_effect,
         }
+    };
+    (@warning_semantic) => {
+        None
+    };
+    (@warning_semantic $warning_semantic:expr) => {
+        Some($warning_semantic)
     };
 }
 
@@ -990,6 +1104,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         catalog_order: 2,
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
         semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
+        warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(7, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -1004,6 +1119,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         catalog_order: 17,
         detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
         semantic: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart)),
+        warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(5, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -1018,6 +1134,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         catalog_order: 18,
         detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
         semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
+        warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(6, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -1034,6 +1151,7 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 16,
     detector: Some(ordered(16, crate::detect::detector_swimlane)),
     semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
+    warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
     combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
     typed: Some(ordered(39, render_flowchart)),
     render_kind: Some("flowchart"),
@@ -1276,6 +1394,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 20,
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
     semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
+    warning_semantic: crate::diagrams::git_graph::parse_git_graph_with_warning_facts,
     combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
     typed: Some(ordered(33, render_git_graph)),
     render_kind: Some("gitGraph"),
@@ -1397,6 +1516,7 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 28,
     detector: Some(ordered(28, crate::detect::detector_block)),
     semantic: Some(ordered(28, crate::diagrams::block::parse_block)),
+    warning_semantic: crate::diagrams::block::parse_block_with_warning_facts,
     combined: Some(ordered(37, crate::diagrams::block::parse_block_json_and_editor_facts)),
     typed: Some(ordered(28, render_block)),
     render_kind: Some("block"),
@@ -1589,11 +1709,13 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
 const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     DiagramFamilyDefinition {
         logical_kind: "error",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: None,
         variants: ERROR_VARIANTS,
     },
     DiagramFamilyDefinition {
         logical_kind: "flowchart",
+        editor_semantics: FLOWCHART_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "flowchart",
             frontmatter_order: 7,
@@ -1602,6 +1724,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "swimlane",
+        editor_semantics: SWIMLANE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "swimlane",
             frontmatter_order: 23,
@@ -1610,6 +1733,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "mindmap",
+        editor_semantics: MINDMAP_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "mindmap",
             frontmatter_order: 13,
@@ -1618,6 +1742,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "architecture",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "architecture",
             frontmatter_order: 0,
@@ -1626,6 +1751,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "zenuml",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "zenuml",
             frontmatter_order: 30,
@@ -1634,6 +1760,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "sequence",
+        editor_semantics: SEQUENCE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "sequence",
             frontmatter_order: 21,
@@ -1642,6 +1769,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "c4",
+        editor_semantics: CARDINAL_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "c4",
             frontmatter_order: 2,
@@ -1650,6 +1778,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "kanban",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "kanban",
             frontmatter_order: 12,
@@ -1658,6 +1787,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "class",
+        editor_semantics: CLASS_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "class",
             frontmatter_order: 3,
@@ -1666,6 +1796,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "er",
+        editor_semantics: ER_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "er",
             frontmatter_order: 5,
@@ -1674,6 +1805,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "gantt",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "gantt",
             frontmatter_order: 8,
@@ -1682,11 +1814,13 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "info",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: None,
         variants: INFO_VARIANTS,
     },
     DiagramFamilyDefinition {
         logical_kind: "pie",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "pie",
             frontmatter_order: 15,
@@ -1695,6 +1829,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "requirement",
+        editor_semantics: CARDINAL_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "requirement",
             frontmatter_order: 19,
@@ -1703,6 +1838,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "timeline",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "timeline",
             frontmatter_order: 24,
@@ -1711,6 +1847,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "gitGraph",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "gitGraph",
             frontmatter_order: 9,
@@ -1719,6 +1856,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "state",
+        editor_semantics: STATE_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "state",
             frontmatter_order: 22,
@@ -1727,6 +1865,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "journey",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "journey",
             frontmatter_order: 11,
@@ -1735,6 +1874,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "quadrantChart",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "quadrantChart",
             frontmatter_order: 16,
@@ -1743,6 +1883,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "sankey",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "sankey",
             frontmatter_order: 20,
@@ -1751,6 +1892,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "packet",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "packet",
             frontmatter_order: 14,
@@ -1759,6 +1901,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "xychart",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "xyChart",
             frontmatter_order: 29,
@@ -1767,6 +1910,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "block",
+        editor_semantics: BLOCK_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "block",
             frontmatter_order: 1,
@@ -1775,6 +1919,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "eventmodeling",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "eventmodeling",
             frontmatter_order: 6,
@@ -1783,6 +1928,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "treeView",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "treeView",
             frontmatter_order: 25,
@@ -1791,6 +1937,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "radar",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "radar",
             frontmatter_order: 17,
@@ -1799,6 +1946,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "ishikawa",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "ishikawa",
             frontmatter_order: 10,
@@ -1807,6 +1955,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "treemap",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "treemap",
             frontmatter_order: 26,
@@ -1815,6 +1964,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "railroad",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "railroad",
             frontmatter_order: 18,
@@ -1823,6 +1973,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "venn",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "venn",
             frontmatter_order: 27,
@@ -1831,6 +1982,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "wardley",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "wardley-beta",
             frontmatter_order: 28,
@@ -1839,6 +1991,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "cynefin",
+        editor_semantics: GENERIC_EDITOR_SEMANTICS,
         config: Some(FamilyConfigDefinition {
             namespace: "cynefin",
             frontmatter_order: 4,
@@ -1861,6 +2014,32 @@ mod catalog_tests {
             Some("quadrantchart")
         );
         assert_eq!(diagram_type_metadata_id("treeView"), Some("treeView"));
+    }
+
+    #[test]
+    fn editor_semantics_follow_family_identity_across_variant_ids() {
+        for variant in ["flowchart-v2", "flowchart-elk", "flowchart"] {
+            assert_eq!(
+                diagram_type_family_id(variant),
+                Some(DiagramFamilyId::FLOWCHART),
+                "{variant} must retain typed Flowchart family identity"
+            );
+        }
+
+        let flowchart = diagram_type_editor_semantics("flowchart-v2")
+            .expect("flowchart-v2 has editor family semantics");
+        for variant in ["flowchart-elk", "flowchart"] {
+            assert_eq!(
+                diagram_type_editor_semantics(variant),
+                Some(flowchart),
+                "{variant} must inherit flowchart family semantics"
+            );
+        }
+
+        let class = diagram_type_editor_semantics("classDiagram")
+            .expect("classDiagram has editor family semantics");
+        assert_eq!(diagram_type_editor_semantics("class"), Some(class));
+        assert_ne!(flowchart, class);
     }
 
     #[test]

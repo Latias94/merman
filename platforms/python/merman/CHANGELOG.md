@@ -4,21 +4,17 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0a6] - Unreleased
-
-Corresponds to the prepared merman workspace `0.8.0-alpha.6` candidate.
+## [Unreleased]
 
 ### Breaking changes
 
-- Advanced UniFFI binding API from `3` to `4`. ASCII capability records now expose
-  `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to
-  `structured_text_fallback`.
-- Updated structured ASCII resource diagnostics. Upgrade the generated Python package and native
-  library together; alpha.5 and alpha.6 artifacts are not compatible.
-
-### Changed
-
-- Updated common-family ASCII projections and support metadata to the alpha.6 contract.
+- Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. `MermanError.Binding.cancellation` reports the observed reason and phase independently from resource-limit details.
+- Advanced the direct UniFFI binding API to `4` because lint rule catalog records now include required `tags`. API 4 replaces `binding_api_version()` with `transport_api_version()` and removes the old native method symbol, so an API 3 generated package rejects the new library before decoding the changed record. Regenerate and deploy the Python package and native library together.
+- Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
+- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- ASCII capability records now expose `semantic_coverage` and `primary_projection`, and rename
+  `summary_fallback` to `structured_text_fallback`. Structured ASCII resource and diagnostic
+  payloads follow the expanded six-phase renderer contract.
 
 ## [0.8.0a5] - 2026-08-09
 

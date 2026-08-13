@@ -1,24 +1,6 @@
 name: Fuzz
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - Cargo.lock
-      - Cargo.toml
-      - "crates/**"
-      - fuzz/Cargo.lock
-      - "fuzz/**"
-      - ".github/workflows/fuzz.yml"
-  pull_request:
-    paths:
-      - Cargo.lock
-      - Cargo.toml
-      - "crates/**"
-      - fuzz/Cargo.lock
-      - "fuzz/**"
-      - ".github/workflows/fuzz.yml"
   schedule:
     - cron: "41 3 * * 2"
   workflow_dispatch:
@@ -43,15 +25,16 @@ on:
           - smoke
           - extended
           - long
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  # PR and push smoke runs supersede older runs for the same PR/ref. Scheduled and manual
-  # discovery runs get a unique group so a main push cannot discard their coverage budget.
-  group: fuzz-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'push' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  # Same-run PR calls supersede older calls for the same PR. Scheduled and manual discovery
+  # runs get a unique group so routine source activity cannot discard their coverage budget.
+  group: fuzz-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 env:
   CARGO_FUZZ_VERSION: "0.13.2"
@@ -76,9 +59,9 @@ jobs:
           DISPATCH_PRESET: ${{ inputs.preset }}
         run: |
           case "$FUZZ_EVENT_NAME" in
-            pull_request|push)
+            pull_request|push|merge_group|workflow_call)
               selected_targets=all
-              profile=smoke
+              profile=regression
               ;;
             schedule)
               selected_targets=all
@@ -158,18 +141,18 @@ jobs:
       matrix: ${{ fromJSON(needs.resolve-fuzz-plan.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 1.97.1 patch release
+        uses: dtolnay/rust-toolchain@1.97.1
         with:
           toolchain: ${{ env.FUZZ_NIGHTLY }}
           components: rust-src
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
           workspaces: |
@@ -182,32 +165,64 @@ jobs:
       - name: Check fuzz workspace lockfile
         run: cargo +"$FUZZ_NIGHTLY" check --manifest-path fuzz/Cargo.toml --locked
 
-      - name: Resolve libFuzzer budget
-        id: fuzz-budget
+      - name: Build libFuzzer harness
+        run: |
+          cargo +"$FUZZ_NIGHTLY" fuzz build \
+            --fuzz-dir fuzz \
+            --sanitizer address \
+            "${{ matrix.target }}"
+
+      - name: Run committed regression inputs
         shell: bash
         env:
-          FUZZ_PROFILE: ${{ needs.resolve-fuzz-plan.outputs.profile }}
+          FUZZ_MAX_LEN: ${{ matrix.max_len }}
+          FUZZ_TARGET: ${{ matrix.target }}
         run: |
-          case "$FUZZ_PROFILE" in
-            smoke|scheduled|extended|long) ;;
+          set -euo pipefail
+          case "$FUZZ_MAX_LEN" in
+            16384|32768|262144) ;;
             *)
-              echo "unsupported resolved fuzz profile" >&2
+              echo "unsupported matrix max_len" >&2
               exit 1
               ;;
           esac
-          printf 'profile=%s\n' "$FUZZ_PROFILE" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare corpus directory
-        run: mkdir -p "fuzz/corpus/${{ matrix.target }}" fuzz/logs
+          inputs=()
+          while IFS= read -r -d '' input; do
+            inputs+=("$input")
+          done < <(
+            find \
+              "fuzz/corpus/$FUZZ_TARGET" \
+              "${{ matrix.seed }}" \
+              "fuzz/artifacts/$FUZZ_TARGET" \
+              -type f -print0 2>/dev/null | sort -z
+          )
+          if [[ ${#inputs[@]} -eq 0 ]]; then
+            echo "no committed regression inputs for $FUZZ_TARGET" >&2
+            exit 1
+          fi
 
-      - name: Run libFuzzer with AddressSanitizer enabled
+          cargo +"$FUZZ_NIGHTLY" fuzz run \
+            --fuzz-dir fuzz \
+            --sanitizer address \
+            --jobs 1 \
+            "$FUZZ_TARGET" \
+            "${inputs[@]}" \
+            -- \
+            "-dict=${{ matrix.dictionary }}" \
+            -timeout=10 \
+            "-max_len=$FUZZ_MAX_LEN"
+
+      - name: Run bounded randomized libFuzzer discovery
         id: fuzz-run
+        if: needs.resolve-fuzz-plan.outputs.profile != 'regression'
         continue-on-error: true
         shell: bash
         env:
-          FUZZ_PROFILE: ${{ steps.fuzz-budget.outputs.profile }}
+          FUZZ_PROFILE: ${{ needs.resolve-fuzz-plan.outputs.profile }}
           FUZZ_MAX_LEN: ${{ matrix.max_len }}
         run: |
+          mkdir -p fuzz/logs "fuzz/corpus/${{ matrix.target }}"
           case "$FUZZ_MAX_LEN" in
             16384|32768|262144) ;;
             *)
@@ -244,11 +259,11 @@ jobs:
             "${fuzz_args[@]}" 2>&1 | tee "fuzz/logs/${{ matrix.target }}.log"
 
       - name: Classify fuzz result
-        if: always()
+        if: always() && needs.resolve-fuzz-plan.outputs.profile != 'regression'
         shell: bash
         env:
           FUZZ_OUTCOME: ${{ steps.fuzz-run.outcome }}
-          FUZZ_PROFILE: ${{ steps.fuzz-budget.outputs.profile }}
+          FUZZ_PROFILE: ${{ needs.resolve-fuzz-plan.outputs.profile }}
           FUZZ_TARGET: ${{ matrix.target }}
         run: |
           log="fuzz/logs/$FUZZ_TARGET.log"
@@ -274,7 +289,7 @@ jobs:
 
       - name: Upload fuzz artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: |

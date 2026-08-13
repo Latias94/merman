@@ -17,6 +17,7 @@ mod graph;
 mod journey;
 mod kanban;
 mod mindmap;
+mod operation;
 mod options;
 mod packet;
 mod relation_graph;
@@ -66,6 +67,7 @@ use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
+use merman_core::runtime::OperationContext;
 
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRenderer {
@@ -85,62 +87,256 @@ impl AsciiRenderer {
     pub fn render_model(&self, model: &RenderSemanticModel) -> Result<String> {
         render_model(model, &self.options)
     }
+
+    /// Renders a typed model using caller-owned operation control and runtime context.
+    pub fn render_model_with_operation(
+        &self,
+        model: &RenderSemanticModel,
+        control: &merman_core::OperationControl,
+        context: &OperationContext,
+        resources: AsciiResourcePolicy,
+    ) -> Result<String> {
+        render_model_with_operation(model, &self.options, control, context, resources)
+    }
 }
 
 pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
     render_model_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
 }
 
-/// Renders a typed model with one explicitly captured local-time resolver.
+/// Renders a typed model through the shared operation projection.
 ///
-/// Most families are timezone independent. Gantt uses this resolver for user-visible dates so a
-/// caller can keep parse and render semantics on the same operation context without thread-local
-/// ambient state.
+/// This is the model-level backend seam used by the canonical facade. It never creates a new
+/// control, runtime context, or engine operation; callers retain ownership of all three.
+pub fn render_model_with_operation(
+    model: &RenderSemanticModel,
+    options: &AsciiRenderOptions,
+    control: &merman_core::OperationControl,
+    context: &OperationContext,
+    resources: AsciiResourcePolicy,
+) -> Result<String> {
+    let execution = operation::AsciiExecution::new(control, &resources);
+    match model {
+        RenderSemanticModel::Flowchart(model) => {
+            return render_flowchart_operation(model, options, execution);
+        }
+        RenderSemanticModel::State(model) => {
+            return render_state_operation(model, options, execution);
+        }
+        _ => {}
+    }
+    render_model_with_execution(model, options, execution, context.local_time_zone())
+}
+
+fn render_flowchart_operation(
+    model: &FlowchartModel,
+    options: &AsciiRenderOptions,
+    execution: operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Admission)?;
+    options.validate()?;
+    let rendered = render_flowchart_model(model, options, &execution)?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
+}
+
+fn render_state_operation(
+    model: &StateDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Admission)?;
+    options.validate()?;
+    let rendered = render_state_model(model, options, &execution)?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
+}
+
+fn render_model_with_execution(
+    model: &RenderSemanticModel,
+    options: &AsciiRenderOptions,
+    execution: operation::AsciiExecution<'_>,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Admission)?;
+    let target_options = (*options).with_resource_policy(*execution.resources());
+    target_options.validate()?;
+    let options = &target_options;
+
+    let rendered = match model {
+        RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
+        RenderSemanticModel::Er(model) => render_er_model(model, options, &execution),
+        RenderSemanticModel::Flowchart(model) => render_flowchart_model(model, options, &execution),
+        RenderSemanticModel::Gantt(model) => {
+            render_gantt_model(model, options, local_time_zone, &execution)
+        }
+        RenderSemanticModel::GitGraph(model) => render_git_graph_model(model, options, &execution),
+        RenderSemanticModel::Journey(model) => render_journey_model(model, options, &execution),
+        RenderSemanticModel::Kanban(model) => render_kanban_model(model, options, &execution),
+        RenderSemanticModel::Mindmap(model) => render_mindmap_model(model, options, &execution),
+        RenderSemanticModel::Packet(model) => render_packet_model(model, options, &execution),
+        RenderSemanticModel::Sequence(model) => render_sequence_model(model, options, &execution),
+        RenderSemanticModel::State(model) => render_state_model(model, options, &execution),
+        RenderSemanticModel::Timeline(model) => render_timeline_model(model, options, &execution),
+        RenderSemanticModel::XyChart(model) => render_xychart_model(model, options, &execution),
+        RenderSemanticModel::TreeView(model) => render_tree_view_model(model, options, &execution),
+        other => Err(AsciiError::UnsupportedDiagram {
+            diagram_type: other.kind().to_string(),
+        }),
+    }?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(rendered)
+}
+
+fn render_class_model(
+    model: &ClassDiagram,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    class::render_class_diagram_with_execution(model, options, *execution)
+}
+
+fn render_er_model(
+    model: &ErDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    er::render_er_diagram_with_execution(model, options, *execution)
+}
+
+fn render_flowchart_model(
+    model: &FlowchartModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    let mut resources = resource::ResourceContext::new(*execution.resources());
+    let graph = graph::from_flowchart_model(model, options, &mut resources)?;
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    graph::render_graph_with_resources_and_execution(&graph, options, &mut resources, *execution)
+}
+
+fn render_gantt_model(
+    model: &GanttDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    gantt::render_gantt_diagram(model, options, local_time_zone, *execution)
+}
+
+fn render_git_graph_model(
+    model: &GitGraphRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    git_graph::render_git_graph_diagram(model, options, *execution)
+}
+
+fn render_journey_model(
+    model: &JourneyDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    journey::render_journey_diagram(model, options, *execution)
+}
+
+fn render_kanban_model(
+    model: &KanbanDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    kanban::render_kanban_diagram(model, options, *execution)
+}
+
+fn render_mindmap_model(
+    model: &MindmapDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    mindmap::render_mindmap_diagram(model, options, *execution)
+}
+
+fn render_packet_model(
+    model: &PacketDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    packet::render_packet_diagram(model, options, *execution)
+}
+
+fn render_sequence_model(
+    model: &SequenceDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    let mut resources = resource::ResourceContext::new(*execution.resources());
+    let diagram =
+        sequence::from_sequence_model(model, options.terminal_width_profile, &mut resources)?;
+    sequence::render_sequence_diagram_with_execution(&diagram, options, &mut resources, *execution)
+}
+
+fn render_state_model(
+    model: &StateDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    let mut resources = resource::ResourceContext::new(*execution.resources());
+    let graph = state::from_state_model_with_context(model, &mut resources)?;
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    graph::render_graph_with_resources_and_execution(&graph, options, &mut resources, *execution)
+}
+
+fn render_timeline_model(
+    model: &TimelineDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    timeline::render_timeline_diagram(model, options, *execution)
+}
+
+fn render_xychart_model(
+    model: &XyChartDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    xychart::render_xychart_diagram_with_execution(model, options, *execution)
+}
+
+fn render_tree_view_model(
+    model: &TreeViewDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: &operation::AsciiExecution<'_>,
+) -> Result<String> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    tree_view::render_tree_view_diagram(model, options, *execution)
+}
+
+/// Renders a typed model with an explicitly captured local-time resolver.
+///
+/// The resolver is used by Gantt output. This convenience entrypoint owns no operation state;
+/// callers that need cancellation or deadlines should use [`render_model_with_operation`].
 pub fn render_model_with_local_time_zone(
     model: &RenderSemanticModel,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
-    options.validate()?;
-    match model {
-        RenderSemanticModel::Class(model) => render_class(model, options),
-        RenderSemanticModel::Er(model) => render_er(model, options),
-        RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
-        RenderSemanticModel::Gantt(model) => {
-            render_gantt_with_local_time_zone(model, options, local_time_zone)
-        }
-        RenderSemanticModel::GitGraph(model) => render_git_graph(model, options),
-        RenderSemanticModel::Journey(model) => render_journey(model, options),
-        RenderSemanticModel::Kanban(model) => render_kanban(model, options),
-        RenderSemanticModel::Mindmap(model) => render_mindmap(model, options),
-        RenderSemanticModel::Packet(model) => render_packet(model, options),
-        RenderSemanticModel::Sequence(model) => render_sequence(model, options),
-        RenderSemanticModel::State(model) => render_state(model, options),
-        RenderSemanticModel::Timeline(model) => render_timeline(model, options),
-        RenderSemanticModel::XyChart(model) => render_xychart(model, options),
-        RenderSemanticModel::TreeView(model) => render_tree_view(model, options),
-        unsupported @ (RenderSemanticModel::Error(_)
-        | RenderSemanticModel::CustomJson(_)
-        | RenderSemanticModel::Zenuml(_)
-        | RenderSemanticModel::Architecture(_)
-        | RenderSemanticModel::C4(_)
-        | RenderSemanticModel::Cynefin(_)
-        | RenderSemanticModel::Railroad(_)
-        | RenderSemanticModel::Pie(_)
-        | RenderSemanticModel::Requirement(_)
-        | RenderSemanticModel::Sankey(_)
-        | RenderSemanticModel::Radar(_)
-        | RenderSemanticModel::Info(_)
-        | RenderSemanticModel::Treemap(_)
-        | RenderSemanticModel::Block(_)
-        | RenderSemanticModel::QuadrantChart(_)
-        | RenderSemanticModel::Ishikawa(_)
-        | RenderSemanticModel::EventModeling(_)
-        | RenderSemanticModel::Venn(_)
-        | RenderSemanticModel::Wardley(_)) => Err(AsciiError::UnsupportedDiagram {
-            diagram_type: unsupported.kind().to_string(),
-        }),
-    }
+    render_model_with_execution(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+        local_time_zone,
+    )
 }
 
 pub fn render_class(model: &ClassDiagram, options: &AsciiRenderOptions) -> Result<String> {
@@ -165,7 +361,11 @@ pub fn render_mindmap(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    mindmap::render_mindmap_diagram(model, options)
+    mindmap::render_mindmap_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_gantt(
@@ -181,7 +381,12 @@ pub fn render_gantt_with_local_time_zone(
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
     options.validate()?;
-    gantt::render_gantt_diagram(model, options, local_time_zone)
+    gantt::render_gantt_diagram(
+        model,
+        options,
+        local_time_zone,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_git_graph(
@@ -189,7 +394,11 @@ pub fn render_git_graph(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    git_graph::render_git_graph_diagram(model, options)
+    git_graph::render_git_graph_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_journey(
@@ -197,7 +406,11 @@ pub fn render_journey(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    journey::render_journey_diagram(model, options)
+    journey::render_journey_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_kanban(
@@ -205,7 +418,11 @@ pub fn render_kanban(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    kanban::render_kanban_diagram(model, options)
+    kanban::render_kanban_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_packet(
@@ -213,7 +430,11 @@ pub fn render_packet(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    packet::render_packet_diagram(model, options)
+    packet::render_packet_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_sequence(
@@ -242,7 +463,11 @@ pub fn render_timeline(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    timeline::render_timeline_diagram(model, options)
+    timeline::render_timeline_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_xychart(
@@ -250,7 +475,11 @@ pub fn render_xychart(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    xychart::render_xychart_diagram(model, options)
+    xychart::render_xychart_diagram_with_execution(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 pub fn render_tree_view(
@@ -258,7 +487,11 @@ pub fn render_tree_view(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    tree_view::render_tree_view_diagram(model, options)
+    tree_view::render_tree_view_diagram(
+        model,
+        options,
+        operation::AsciiExecution::standalone(&options.resources),
+    )
 }
 
 #[cfg(test)]

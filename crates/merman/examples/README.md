@@ -12,9 +12,9 @@ cargo run -p merman --example render_svg > diagram.svg
 
 | Your task | Start with | Why |
 | --- | --- | --- |
-| Render one source string to SVG | [`render_svg.rs`](render_svg.rs) | Uses the root `merman::render_svg` convenience API and turns "no diagram" into a typed error. |
-| Embed several SVGs in one HTML document | [`embed_multiple_svgs.rs`](embed_multiple_svgs.rs) | Uses `render_svg_with_id` with caller-owned IDs that remain unique after normalization. |
-| Render many independent files with one policy | [`render_many.rs`](render_many.rs) | Reuses one configured `HeadlessRenderer` across operations. |
+| Render one source string to SVG | [`render_svg.rs`](render_svg.rs) | Uses `Renderer` with a typed `SvgRequest` and keeps the operation boundary explicit. |
+| Embed several SVGs in one HTML document | [`embed_multiple_svgs.rs`](embed_multiple_svgs.rs) | Uses typed SVG requests with caller-owned IDs that remain unique after normalization. |
+| Render many independent files with one policy | [`render_many.rs`](render_many.rs) | Reuses one configured `Renderer` across operations. |
 | Export a bounded PNG | [`render_png.rs`](render_png.rs) | Selects a fit box, scale, background, and allocation limits before rasterization. |
 | Render for terminals or logs | [`render_terminal.rs`](render_terminal.rs) | Selects Unicode or ASCII-only output explicitly. |
 | Inspect the parsed semantic model | [`inspect_semantics.rs`](inspect_semantics.rs) | Uses `Engine` without requiring SVG rendering. |
@@ -25,7 +25,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Map an application's own theme tokens | [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | Builds a `HostTheme` from semantic roles instead of family-specific CSS. |
 | Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
-Use the one-shot root functions for ordinary SVG calls. `render_svg_with_id` normalizes IDs with `merman::svg::sanitize_svg_id`, so dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. Reach for `HeadlessRenderer` only when an application needs reusable configuration, another output type, layout data, presentation policy, resource policy, or an SVG pipeline.
+Use `Renderer` with a typed `RenderRequest` for every source-to-target operation. SVG request IDs can be normalized with `merman::svg::sanitize_svg_id`; dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. The same request seam also carries layout, presentation, resource, pipeline, and cancellation policy.
 
 ## Run By Task
 

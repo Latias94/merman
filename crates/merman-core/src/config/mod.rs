@@ -1,4 +1,4 @@
-use crate::{ParseControl, ParseControlResult};
+use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::mem::size_of;
@@ -59,8 +59,8 @@ impl MermaidConfig {
         &self,
         max_retained_bytes: usize,
         max_nesting_depth: usize,
-        control: &ParseControl,
-    ) -> ParseControlResult<Option<Value>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<Value>> {
         clone_value_nonrecursive_controlled(
             self.as_value(),
             max_retained_bytes,
@@ -75,6 +75,11 @@ impl MermaidConfig {
 
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        estimated_value_owned_heap_bytes(self.as_value())
     }
 
     pub fn as_value_mut(&mut self) -> &mut Value {
@@ -389,18 +394,25 @@ pub(crate) fn replace_value_nonrecursive(slot: &mut Value, value: Value) {
 }
 
 pub(crate) fn clone_value_nonrecursive(value: &Value) -> Value {
-    let control = ParseControl::new();
-    clone_value_nonrecursive_controlled(value, usize::MAX, usize::MAX, &control)
-        .expect("a private parse control cannot be cancelled")
-        .expect("unbounded config cloning cannot exceed its budget")
+    let control = OperationControl::new();
+    clone_value_nonrecursive_with_control(value, &control)
+        .expect("a private operation control cannot be cancelled")
+}
+
+pub(crate) fn clone_value_nonrecursive_with_control(
+    value: &Value,
+    control: &OperationControl,
+) -> OperationControlResult<Value> {
+    clone_value_nonrecursive_controlled(value, usize::MAX, usize::MAX, control)
+        .map(|value| value.expect("unbounded config cloning cannot exceed its budget"))
 }
 
 fn clone_value_nonrecursive_controlled(
     value: &Value,
     max_retained_bytes: usize,
     max_nesting_depth: usize,
-    control: &ParseControl,
-) -> ParseControlResult<Option<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<Value>> {
     let mut cloned: HashMap<*const Value, Value> = HashMap::new();
     let mut stack = vec![(value, false, 0usize)];
     let mut retained_bytes = 0usize;
@@ -521,6 +533,23 @@ fn value_clone_weight(value: &Value) -> usize {
         Value::String(value) => value.len(),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => 0,
     })
+}
+
+#[cfg(test)]
+fn estimated_value_owned_heap_bytes(value: &Value) -> usize {
+    let mut retained_bytes = 0usize;
+    let mut stack = vec![value];
+    while let Some(current) = stack.pop() {
+        retained_bytes = retained_bytes
+            .saturating_add(value_structural_weight(current))
+            .saturating_add(value_clone_weight(current));
+        match current {
+            Value::Array(items) => stack.extend(items),
+            Value::Object(entries) => stack.extend(entries.values()),
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+    retained_bytes
 }
 
 fn drop_cloned_values(cloned: HashMap<*const Value, Value>) {
@@ -791,7 +820,7 @@ mod tests {
             "theme": "dark",
             "flowchart": { "htmlLabels": false },
         }));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
 
         let cloned = config
             .clone_value_bounded_controlled(64 * 1024, 16, &control)
@@ -805,7 +834,7 @@ mod tests {
     fn bounded_controlled_config_clone_rejects_weight_and_depth_before_cloning() {
         let oversized = MermaidConfig::from_value(json!({ "payload": "x".repeat(4 * 1024) }));
         let deep = MermaidConfig::from_value(deep_config_value(8));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
 
         assert!(
             oversized
@@ -823,12 +852,12 @@ mod tests {
     #[test]
     fn bounded_controlled_config_clone_observes_cancellation() {
         let config = MermaidConfig::from_value(json!({ "theme": "dark" }));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel();
 
         assert!(matches!(
             config.clone_value_bounded_controlled(64 * 1024, 16, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

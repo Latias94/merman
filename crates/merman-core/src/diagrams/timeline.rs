@@ -1,8 +1,8 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl,
-    ParseControlResult, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, OperationControl,
+    OperationControlResult, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
 };
 use serde_json::{Value, json};
 #[cfg(test)]
@@ -410,8 +410,8 @@ fn parse_section<'source>(line: TimelineSource<'source>) -> Option<ParsedSection
 fn parse_acc_descr_block(
     cursor: &mut LineCursor<'_>,
     first_line: TimelineSource<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<Option<ParsedAccDescrBlock>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<ParsedAccDescrBlock>> {
     control.checkpoint()?;
     let line = first_line.trim_start();
     let Some((keyword, after_keyword)) = parse_keyword_prefix(line, "accDescr") else {
@@ -732,8 +732,8 @@ pub(crate) fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> 
 pub(crate) fn parse_timeline_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     Ok(construct_timeline_semantic_source_controlled(code, meta, control)?.into_combined(meta))
 }
 
@@ -779,15 +779,15 @@ pub(crate) fn parse_timeline_model_for_render(
 }
 
 fn construct_timeline_semantic_source(code: &str, meta: &ParseMetadata) -> TimelineParseOutcome {
-    construct_timeline_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_timeline_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_timeline_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<TimelineParseOutcome> {
+    control: &OperationControl,
+) -> OperationControlResult<TimelineParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     TIMELINE_SYNTAX_CONSTRUCTION_COUNT.set(TIMELINE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -805,8 +805,8 @@ fn parse_timeline_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<TimelineParseOutcome> {
+    control: &OperationControl,
+) -> OperationControlResult<TimelineParseOutcome> {
     control.checkpoint()?;
     let mut db = TimelineDb::default();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -1487,7 +1487,7 @@ task2: event2: event3\n";
 
         reset_timeline_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_timeline_json_and_editor_facts(text, &parsed.meta, &ParseControl::new()),
+            parse_timeline_json_and_editor_facts(text, &parsed.meta, &OperationControl::new()),
         )
         .expect("Timeline combined projection succeeds");
         assert_eq!(timeline_syntax_construction_count(), 1);

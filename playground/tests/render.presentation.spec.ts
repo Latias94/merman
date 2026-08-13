@@ -58,6 +58,13 @@ if (!C4_DYNAMIC_EXAMPLE) {
   throw new Error("Missing the C4 dynamic Playground example.");
 }
 
+const ZENUML_INTERACTION_EXAMPLE = GENERATED_EXAMPLES.find(
+  (example) => example.id === "zenuml-interaction"
+);
+if (!ZENUML_INTERACTION_EXAMPLE) {
+  throw new Error("Missing the ZenUML interaction Playground example.");
+}
+
 test("SVG mount failures stay inside the preview pane", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
@@ -136,6 +143,45 @@ test("Event Model keeps Mermaid HTML labels readable in a dark Playground", asyn
   await expect(
     page.getByRole("button", { name: "Examples", exact: true }),
   ).toBeVisible();
+  errors.assertNone();
+});
+
+test("ZenUML Mermaid comparison remains self-contained", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const zenUmlFontRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (url.includes("MS%20Sans%20Serif.ttf") || url.includes("MS Sans Serif.ttf")) {
+      zenUmlFontRequests.push(request.url());
+    }
+  });
+
+  await openPlayground(page);
+  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Example Gallery" });
+  await dialog
+    .getByRole("searchbox", { name: "Search examples" })
+    .fill(ZENUML_INTERACTION_EXAMPLE.title);
+  const exampleCard = dialog.getByRole("button", {
+    name: /^ZenUML Interaction/u,
+  });
+  await expect(exampleCard).toHaveCount(1);
+  await exampleCard.click();
+  await waitForPreviewSvg(page);
+  await expect.poll(() => previewSvgText(page)).toContain("Alice");
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+  const mermaidHost = page.locator(
+    '[data-merman-compare-engine="mermaid"] .preview-container > div'
+  );
+  await expect
+    .poll(() =>
+      mermaidHost.evaluate((host) =>
+        Boolean(host.shadowRoot?.querySelector("svg"))
+      )
+    )
+    .toBe(true);
+  expect(zenUmlFontRequests).toEqual([]);
   errors.assertNone();
 });
 

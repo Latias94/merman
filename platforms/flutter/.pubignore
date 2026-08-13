@@ -1,4 +1,4 @@
-# Control the pub.dev package surface. Pub merges this with .gitignore files.
+# Control the pub.dev package surface independently from .gitignore.
 
 # Dart / Pub
 .dart_tool/
@@ -16,18 +16,9 @@ doc/
 __pycache__/
 *.pyc
 
-# CI builds these native artifacts before publishing; keep them out of git but
-# include them in the pub package.
-/ios/Merman.xcframework/
-/ios/Merman.xcframework/**
-!android/src/main/jniLibs/
-!android/src/main/jniLibs/**
-!ios/MermanFFI.xcframework/
-!ios/MermanFFI.xcframework/**
-!macos/MermanFFI.xcframework/
-!macos/MermanFFI.xcframework/**
-!macos/Libraries/
-!macos/Libraries/**
-!windows/merman_ffi.dll
-!linux/lib/
-!linux/lib/**
+# Repository-only release tooling.
+/build-native.py
+/ffigen.yaml
+
+# CI creates `native/` before publishing. It is intentionally included because
+# this file, rather than .gitignore, controls the pub package.

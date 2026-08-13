@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { statSync } from "node:fs";
 import path from "node:path";
@@ -8,18 +7,30 @@ import {
   inspectPackageManifests,
   verifyPackedFileOwnership,
 } from "./package-contract.mjs";
+import {
+  assertSuccessfulNpmSpawn,
+  spawnNpmSync,
+} from "../../../scripts/npm-command.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-try {
-  const descriptor = JSON.parse(await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"));
-  await inspectPackageManifests(nodeRoot, descriptor);
-  const packedRoot = valueAfter(process.argv.slice(2), "--packed-root");
-  if (packedRoot) verifyPackedRoot(path.resolve(packedRoot), descriptor);
-  console.log("[merman-node] candidate package contracts verified");
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+if (isMainModule()) {
+  await main();
+}
+
+async function main() {
+  try {
+    const descriptor = JSON.parse(
+      await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
+    );
+    await inspectPackageManifests(nodeRoot, descriptor);
+    const packedRoot = valueAfter(process.argv.slice(2), "--packed-root");
+    if (packedRoot) verifyPackedRoot(path.resolve(packedRoot), descriptor);
+    console.log("[merman-node] candidate package contracts verified");
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
 
 function verifyPackedRoot(root, descriptor) {
@@ -31,13 +42,11 @@ function verifyPackedRoot(root, descriptor) {
 }
 
 function verifyPackage(packageRoot, packageName, role) {
-  const result = spawnSync("npm", ["pack", "--json", "--dry-run"], {
+  const result = spawnNpmSync(["pack", "--json", "--dry-run"], {
     cwd: packageRoot,
     encoding: "utf8",
   });
-  if (result.error || result.status !== 0) {
-    throw new Error(`npm pack failed for ${packageName}: ${result.error?.message ?? result.stderr}`);
-  }
+  assertSuccessfulNpmSpawn(result, `npm pack for ${packageName}`);
   const output = JSON.parse(result.stdout);
   verifyPackedFileOwnership({ packageName, role, files: output[0]?.files ?? [] });
 }
@@ -53,4 +62,8 @@ function existsForTarget(root, target) {
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
   return index === -1 ? null : args[index + 1] ?? null;
+}
+
+function isMainModule() {
+  return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }

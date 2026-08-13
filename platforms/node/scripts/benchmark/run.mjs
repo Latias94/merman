@@ -29,6 +29,10 @@ import {
 } from "./svg-signature.mjs";
 import { summarize } from "./stats.mjs";
 import { digestJson } from "../stable-json.mjs";
+import {
+  assertSuccessfulNpmSpawn,
+  spawnNpmSync,
+} from "../../../../scripts/npm-command.mjs";
 
 const benchmarkRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const repositoryRoot = path.resolve(benchmarkRoot, "..", "..");
@@ -218,7 +222,7 @@ export function runComparison(options) {
                 `${workloadDrift.join(", ")} fixed SVG workload evidence differs in geometry or raw bytes across Node transports; the report records each comparison explicitly.`,
               ]
             : []),
-          "This host contributes one target result only; U14 admission requires runtime CI evidence for every shipped target.",
+          "This host contributes one target result only; stable admission requires runtime CI evidence for every shipped target.",
         ],
       },
     };
@@ -467,7 +471,7 @@ function provenance(harnessDigest) {
     },
     tools: {
       node: process.version,
-      npm: runCapture("npm", ["--version"]),
+      npm: runNpmCapture(["--version"]),
       rustc: runCapture("rustc", ["--version"]),
       cargo: runCapture("cargo", ["--version"]),
       napi: recipes.candidates.napi.versions.napi,
@@ -530,6 +534,15 @@ function runCapture(command, args) {
   if (result.error || result.status !== 0) {
     throw new Error(`${command} failed: ${result.error?.message ?? result.stderr}`);
   }
+  return result.stdout.trim();
+}
+
+function runNpmCapture(args) {
+  const result = spawnNpmSync(args, { cwd: repositoryRoot, encoding: "utf8" });
+  assertSuccessfulNpmSpawn(
+    result,
+    `npm ${args[0] ?? "command"} for benchmark provenance`,
+  );
   return result.stdout.trim();
 }
 

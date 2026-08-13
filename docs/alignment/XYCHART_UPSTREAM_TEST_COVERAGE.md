@@ -26,9 +26,9 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/parser/xychart.j
 - error cases (invalid ranges/brackets/numbers): `crates/merman-core/src/diagrams/xychart.rs:1233`
 
 No-plot Jison parser snippets are not SVG backlog items. The upstream renderer requires at least
-one `line` or `bar` plot and fails those snippets before producing a usable chart; `xtask
-import-upstream-pkg-tests --with-baselines` skips them for XYChart, and coverage stays in semantic
-fixtures or Rust parser tests.
+one `line` or `bar` plot and fails those snippets before producing a usable chart. The retired
+package-test importer is not a standing fixture source; coverage stays in semantic fixtures or Rust
+parser tests.
 
 Non-upstream (DB behavior lock-in):
 
@@ -54,7 +54,7 @@ Coverage in `merman`:
 - typed-model compatibility test: `crates/merman-core/src/tests/misc.rs`
   (`parse_xychart_render_model_uses_typed_variant_without_changing_json_parse`)
 - render smoke test: `crates/merman/tests/xychart_typed_render.rs`
-  (`xychart_render_svg_sync_renders_line_labels_and_axis_rotation`)
+  (`xychart_renderer_renders_line_labels_and_axis_rotation`)
 
 ## Cypress rendering fixtures
 

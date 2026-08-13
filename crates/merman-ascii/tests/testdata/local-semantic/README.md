@@ -45,7 +45,9 @@ shared hard errors and never select a summary.
   chains, stars, same-endpoint lanes, bidirectional same-pair lanes, simple spanning lanes, and
   cycle-closing lanes.
 - Use structured relation-summary fixtures when a relation graph is too dense for a readable
-  deterministic layered layout or when a routed route/overlay would collide with a box.
+  deterministic layered layout or when a routed route/overlay would collide with a box. Resource
+  limits, including the operation's `AsciiResourcePolicy` grid budget, remain hard errors and do
+  not select a summary.
 - Summary fixtures must keep every endpoint, connector, and label line visible; multiline Mermaid
   labels should become continuation rows rather than slash-joined text or leaked `<br>` markup.
 

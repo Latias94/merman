@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.95"
 publish = false
 license = "MIT OR Apache-2.0"
-description = "Private Node/SSG transport candidates for Merman admission testing."
+description = "Native transport implementation and comparison harnesses for @mermanjs/node."
 
 [lib]
 name = "merman_node"
@@ -16,7 +16,6 @@ default = []
 svg = ["merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
-math = ["svg", "merman-bindings-core/math"]
 transport-napi = ["dep:napi", "dep:napi-build", "dep:napi-derive"]
 transport-wasm = ["dep:wasm-bindgen"]
 

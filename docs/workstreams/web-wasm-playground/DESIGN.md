@@ -45,7 +45,17 @@ The package boundary is deliberately narrower than the application boundary:
 - `merman-wasm` is wasm-bindgen browser transport. `merman-typst-plugin` remains the separate
   wasm-minimal-protocol transport.
 
-The Web transport API is version `3`. Editor diagnostics and analysis/facts payloads remain schema `1`.
+The Web transport API is version `4`. Editor diagnostics and `AnalysisPayload` remain schema `1`;
+`AnalysisFactsPayload` uses schema `2`. These contracts remain independently versioned.
+
+Transport-dispatched one-shot operation options may include a top-level `timeout_ms`. The WASM
+transport converts it to a relative monotonic `OperationControl` deadline and returns structured
+`MERMAN_CANCELLED` details with `reason = "deadline_exceeded"` and the checkpoint phase when it
+expires. This is cooperative cancellation, not a wall-clock preemption guarantee.
+
+Synchronous WASM execution cannot observe a same-realm `AbortSignal` after entry. The host may
+cancel before invoking a call or ignore its result after return; hard termination requires a
+parent-owned Worker or process boundary.
 
 ## Document Runtime
 
@@ -160,8 +170,10 @@ read that same snapshot. One generated descriptor supplies Monaco's legend; WASM
 already validated packed token sequence.
 Stale results are discarded and protocol, version, descriptor-digest, or result-shape mismatch
 fails closed. Cancelling a client wait does not claim to interrupt a synchronous WASM call: the
-Worker finishes that call and its versioned result is ignored. TypeScript syntax heuristics are not
-a fallback language service.
+Worker finishes that call and its versioned result is ignored. The one-shot transport's
+`timeout_ms` is not an editor RPC `AbortSignal`; only terminating and recreating the Worker can
+hard-stop a running editor call, at the cost of its Worker-owned session. TypeScript syntax
+heuristics are not a fallback language service.
 
 This is VS Code-like language analysis over the shared Rust editor core, not a browser-hosted LSP
 process. LSP transport concerns remain in `merman-lsp`; editor behavior is shared below both

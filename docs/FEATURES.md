@@ -1,9 +1,8 @@
 # Choosing Merman capabilities
 
-This page documents the current repository source. The published `0.8.0-alpha.3` packages predate
-this capability vocabulary; their release-specific feature names remain documented on that tag.
-The Rust snippets below therefore use workspace path dependencies and cannot be mistaken for
-features already available from crates.io.
+This page documents the current development source. Registry channels publish independently, so
+verify the exact package version and provenance before copying an install command; workspace path
+snippets are for source-tree development.
 
 Choose Merman by the operation you need, not by Mermaid diagram family or implementation
 dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
@@ -82,8 +81,10 @@ select their own direct leaf set instead.
 | Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
 | Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
-Node/SSG transport remains a private admission candidate, so there is no public
-`@mermanjs/node` package to select yet. Browser WASM is not a supported Node transport.
+Node/SSG users can select the experimental `@mermanjs/node` alpha package. It installs a small
+loader plus one exact-version N-API platform package and uses the deterministic static-SVG recipe:
+SVG and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not
+a supported Node transport or fallback.
 
 ## Rust examples
 
@@ -95,11 +96,18 @@ merman = { path = "crates/merman", default-features = false, features = ["comple
 ```
 
 ```rust
-use merman::render_svg;
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let svg = render_svg("flowchart TD\n  A[Start] --> B[Done]")?;
-    std::fs::write("diagram.svg", svg)?;
+    let output = Renderer::new().render(RenderRequest::svg(
+        "flowchart TD\n  A[Start] --> B[Done]",
+        OperationControl::new(),
+        SvgRequest::default(),
+    ))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    std::fs::write("diagram.svg", svg.svg())?;
     Ok(())
 }
 ```
@@ -109,7 +117,11 @@ aggregate.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
 
-Use `render_svg_with_id` when several SVGs share one HTML document. Use `merman::svg::HeadlessRenderer` for reusable configuration, layout inspection, binary export, presentation, resource policy, or an explicit SVG pipeline. The complete set of copyable task examples lives in [`crates/merman/examples`](../crates/merman/examples/README.md).
+When several SVGs share one HTML document, assign a unique
+`SvgRequest.options.diagram_id` to every operation. Use `Renderer` plus typed targets for reusable
+configuration, semantic/layout inspection, binary export, presentation, resource policy, or an
+explicit SVG pipeline. The complete set of copyable task examples lives in
+[`crates/merman/examples`](../crates/merman/examples/README.md).
 
 ### Basic SVG without optional engines
 
@@ -259,7 +271,7 @@ await initMerman();
 const svg = renderSvg("flowchart TD\n  A --> B");
 ```
 
-For a native registry install, Python provides the shortest complete SDK path:
+For a native registry install, Python provides the shortest default SDK path:
 
 ```sh
 python -m pip install --pre merman
@@ -272,6 +284,12 @@ engine = merman.MermanEngine(None, None)
 svg = engine.render_svg("flowchart TD\n  A --> B", None)
 ```
 
+The default Android, Apple, Python, and Flutter native packages include SVG, both supported layout
+engines, ASCII, analysis, validation, and document analysis. They omit math, PNG, JPEG, PDF, and
+native runtime adapters to reduce distributed binary size. Their generated APIs keep those
+operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
+missing-capability errors before exposing optional output choices.
+
 Flutter uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
@@ -281,10 +299,10 @@ artifact profile. The [Flutter](../platforms/flutter/README.md),
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; there is no interchangeable generic native binary SDK.
 
-Typst users install one package:
+Typst Universe currently publishes `0.1.0`:
 
 ```typst
-#import "@preview/merman:0.2.0": mermaid
+#import "@preview/merman:0.1.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
@@ -292,10 +310,12 @@ flowchart TD
 ```)
 ```
 
-The published Typst profile has SVG, analysis, Cytoscape, and ELK. Math is not advertised until
-its pure-WASM font, license, import, and parity admission is complete. Typst always enforces its
-constrained resource policy; caller options may tighten it but cannot replace it with an
-unbounded profile.
+The current source tree stages an unreleased `0.2.0` wrapper with SVG, analysis, Cytoscape, and ELK.
+Build it locally and use Typst's `--package-path` until that version is published. Math is not
+advertised until its pure-WASM font, license, import, and parity admission is complete. The source
+package always enforces its constrained resource policy; caller options may tighten it but cannot
+replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md)
+for the published/source version boundary.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported

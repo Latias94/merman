@@ -38,8 +38,6 @@ const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
 ];
 
 // Keep feature selection in the transport owner. Dependency features may be unified by Cargo.
@@ -1242,6 +1240,7 @@ mod tests {
             capabilities["capability_ids"],
             serde_json::json!(&expected.capability_ids)
         );
+        assert!(!expected.capability_ids.iter().any(|id| id == "math"));
         assert_eq!(
             capabilities["output_ids"],
             serde_json::json!(&expected.output_ids)

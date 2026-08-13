@@ -68,7 +68,7 @@ fn capability_matrix() -> String {
 
 fn token_equivalence_evidence() -> TokenEquivalenceEvidence {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../editor-language/token-equivalence-v1.json");
+        .join("../../contracts/editor-language/token-equivalence-v1.json");
     let contents =
         fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
     serde_json::from_str(&contents).unwrap_or_else(|err| {
@@ -78,7 +78,6 @@ fn token_equivalence_evidence() -> TokenEquivalenceEvidence {
         )
     })
 }
-
 fn section<'a>(contents: &'a str, start: &str, end: &str) -> &'a str {
     let start_offset = contents
         .find(start)

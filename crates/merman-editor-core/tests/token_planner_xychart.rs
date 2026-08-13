@@ -1,7 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentWorkspace, PlannedToken, PlannedTokenKind,
-    PlannedTokenModifier, SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
+    DocumentKind, DocumentSnapshot, PlannedToken, PlannedTokenKind, PlannedTokenModifier,
+    SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn xychart_parser_tokens_plan_across_crlf_unicode_repeated_values_and_overlay() {
@@ -112,9 +115,9 @@ fn xychart_eof_recovery_plan_keeps_partial_string() {
 }
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             format!("file:///tmp/xychart-{suffix}.mmd"),
             1,
             source.to_string(),

@@ -197,16 +197,21 @@ fn run_layout(args: ResolvedLayout, context: &mut ExecutionContext) -> Result<()
         context.stdin.as_mut(),
         &context.stderr,
     )?;
-    let renderer = renderer_for(
+    let configured = renderer_for(
         &args.parse,
         &args.render.into_render_args(),
         None,
         &args.resources,
     )?;
-    let Some(layout_json) = renderer.layout_json_sync(&text)? else {
+    let output = configured.renderer.render(configured.request(
+        &text,
+        merman::RenderTarget::LayoutJson(configured.svg.clone()),
+        merman::OperationControl::new(),
+    ))?;
+    let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };
-    print_json(&layout_json, args.pretty, &context.stdout)
+    print_json(layout_json.layout(), args.pretty, &context.stdout)
 }
 
 #[cfg(feature = "analysis")]

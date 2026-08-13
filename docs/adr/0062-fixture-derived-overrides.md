@@ -6,7 +6,7 @@ Accepted
 
 ## Updated
 
-2026-07-15 for Mermaid `@11.16.0`
+2026-08-11 for Mermaid `@11.16.1`
 
 ## Context
 
@@ -53,8 +53,9 @@ or configuration default and apply independently of fixture identity and label t
 
 ### Verification owns residuals
 
-Comparator normalization remains narrow and non-semantic. Accepted browser residuals are explicit
-verification policy describing a bounded mismatch set; they do not alter production output.
+Comparator normalization remains narrow and non-semantic. Browser-owned numeric movement is emitted
+as an attributable diagnostic; it is not a fixture-specific acceptance policy and does not alter
+production output.
 
 Architecture and generation gates enforce the boundary:
 
@@ -62,7 +63,10 @@ Architecture and generation gates enforce the boundary:
 - generated measurement facts contain no complete fixture strings;
 - browser-probe generators are deterministic and validate against an independent fixture corpus;
 - host-measurement tests prove that a successful host result bypasses the vendored fallback; and
-- structural, normal, and root parity continue to reject new or changed mismatches.
+- structural and normal parity continue to reject new or changed mismatches. Root parity uses the
+  blocking root viewport contract and deterministic exact fixture set described by ADR-0050;
+  browser-owned bbox numerics are emitted only as attributable diagnostics and never as production
+  fixture data.
 
 ## Consequences
 
@@ -94,6 +98,6 @@ dependency. Host measurement is the correct authority when exact system-font beh
 
 - ADR-0014: Upstream Parity Policy
 - ADR-0049: Vendored Font Metrics for Headless Parity
-- ADR-0050: Release Quality Gates
+- ADR-0081: Release Quality Gates
 - ADR-0057: Headless SVG Text `getBBox()` Approximation
 - ADR-0073: Family-Owned Diagram Architecture

@@ -32,7 +32,6 @@ fn from_flowchart_model_impl(
     resources: &mut ResourceContext,
     before_edge_label_allocation: impl FnOnce(),
 ) -> Result<AsciiGraph> {
-    debug_assert_eq!(resources.policy(), options.resources);
     resources.transaction(|resources| {
         from_flowchart_model_transactional(model, options, resources, before_edge_label_allocation)
     })

@@ -7,12 +7,13 @@ import hashlib
 import json
 import os
 import re
-import stat
+import shutil
+import subprocess
 import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 try:
     from scripts.release_version import ReleaseVersion, parse_release_version
@@ -24,8 +25,14 @@ try:
 except ModuleNotFoundError:
     import web_package_group
 
+try:
+    from scripts import release_version_owners
+except ModuleNotFoundError:
+    import release_version_owners
+
 ROOT_MANIFEST = Path("Cargo.toml")
 ROOT_LOCK = Path("Cargo.lock")
+RUST_TOOLCHAIN = Path("rust-toolchain.toml")
 FUZZ_MANIFEST = Path("fuzz/Cargo.toml")
 FUZZ_LOCK = Path("fuzz/Cargo.lock")
 WEB_WORKSPACE_PACKAGE = Path("platforms/web/package.json")
@@ -44,16 +51,11 @@ PLAYGROUND_LOCK = Path("playground/package-lock.json")
 PLAYGROUND_LICENSE_REPORT = Path(
     "playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt"
 )
-PYTHON_MANIFEST = Path("platforms/python/merman/pyproject.toml")
-ANDROID_MANIFEST = Path("platforms/android/build.gradle.kts")
-FLUTTER_MANIFEST = Path("platforms/flutter/pubspec.yaml")
-FLUTTER_ANDROID_MANIFEST = Path("platforms/flutter/android/build.gradle")
-FLUTTER_IOS_PODSPEC = Path("platforms/flutter/ios/merman.podspec")
-FLUTTER_MACOS_PODSPEC = Path("platforms/flutter/macos/merman.podspec")
-FLUTTER_IOS_BUILD = Path("platforms/flutter/build-ios.sh")
-FLUTTER_PACKAGE_VERSION = Path(
-    "platforms/flutter/lib/src/generated/package_version.dart"
-)
+PYTHON_MANIFEST = release_version_owners.PYTHON_MANIFEST
+ANDROID_MANIFEST = release_version_owners.ANDROID_MANIFEST
+FLUTTER_MANIFEST = release_version_owners.FLUTTER_MANIFEST
+FLUTTER_PACKAGE_VERSION = release_version_owners.FLUTTER_PACKAGE_VERSION
+NPM_REGISTRY = "https://registry.npmjs.org/"
 
 
 class ReleaseProjectionError(ValueError):
@@ -90,6 +92,12 @@ class WorkspaceCatalog:
     independent_packages: Mapping[str, tuple[Path, str]]
     member_manifests: tuple[Path, ...]
     root_data: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class _ReleasePreimage:
+    head: str
+    index_digest: str
 
 
 @dataclass(frozen=True)
@@ -195,7 +203,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _mapping(value: Any, label: str) -> Mapping[str, Any]:
+def _mapping(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ReleaseProjectionError(f"{label} must be a table/object")
     return value
@@ -716,6 +724,9 @@ def _collect_node_candidate_projection(
     canonical = catalog.authority.canonical
     node_catalog = _node_package_catalog(view)
 
+    def observe(label: str, path: Path, actual: Any) -> None:
+        _observe(observations, label, path, canonical, actual)
+
     cargo_manifest = view.toml(NODE_CARGO_MANIFEST)
     cargo_package = _mapping(
         cargo_manifest.get("package"),
@@ -734,13 +745,7 @@ def _collect_node_candidate_projection(
             f"{NODE_CARGO_MANIFEST} must remain a detached private workspace "
             "until Node admission"
         )
-    _observe(
-        observations,
-        "Node candidate Cargo package",
-        NODE_CARGO_MANIFEST,
-        canonical,
-        cargo_package.get("version"),
-    )
+    observe("Node candidate Cargo package", NODE_CARGO_MANIFEST, cargo_package.get("version"))
 
     dependencies = _mapping(
         cargo_manifest.get("dependencies"),
@@ -788,13 +793,7 @@ def _collect_node_candidate_projection(
         errors,
         label="Node candidate Cargo.lock",
     )
-    _observe(
-        observations,
-        "Node candidate package surface",
-        NODE_DESCRIPTOR,
-        canonical,
-        node_catalog.version,
-    )
+    observe("Node candidate package surface", NODE_DESCRIPTOR, node_catalog.version)
 
     workspace_manifest = view.json(NODE_WORKSPACE_PACKAGE)
     if (
@@ -804,13 +803,7 @@ def _collect_node_candidate_projection(
         raise ReleaseProjectionError(
             f"{NODE_WORKSPACE_PACKAGE} must remain the private Node candidate workspace"
         )
-    _observe(
-        observations,
-        "Node candidate workspace",
-        NODE_WORKSPACE_PACKAGE,
-        canonical,
-        workspace_manifest.get("version"),
-    )
+    observe("Node candidate workspace", NODE_WORKSPACE_PACKAGE, workspace_manifest.get("version"))
 
     workspace_lock = view.json(NODE_WORKSPACE_LOCK)
     lock_packages = _mapping(
@@ -829,86 +822,16 @@ def _collect_node_candidate_projection(
             f"{NODE_WORKSPACE_LOCK} root package must match "
             f"{NODE_WORKSPACE_PACKAGE}"
         )
-    _observe(
-        observations,
-        "Node candidate workspace lock",
-        NODE_WORKSPACE_LOCK,
-        canonical,
-        workspace_lock.get("version"),
-    )
-    _observe(
-        observations,
+    observe("Node candidate workspace lock", NODE_WORKSPACE_LOCK, workspace_lock.get("version"))
+    observe(
         "Node candidate workspace lock package",
         NODE_WORKSPACE_LOCK,
-        canonical,
         lock_root.get("version"),
     )
 
     for entry in node_catalog.entries:
         manifest = view.json(entry.manifest_path)
-        _observe(
-            observations,
-            f"Node candidate package {entry.name}",
-            entry.manifest_path,
-            canonical,
-            manifest.get("version"),
-        )
-
-
-def _plan_node_candidate_projection(
-    view: RepositoryView,
-    catalog: WorkspaceCatalog,
-    release: ReleaseVersion,
-) -> dict[Path, str]:
-    node_catalog = _node_package_catalog(view)
-    updates = {
-        NODE_CARGO_MANIFEST: _replace_toml_section_string(
-            view.text(NODE_CARGO_MANIFEST),
-            "package",
-            "version",
-            release.canonical,
-        ),
-        NODE_DESCRIPTOR: _replace_json_paths(
-            view.text(NODE_DESCRIPTOR),
-            {("version",): release.canonical},
-        ),
-        NODE_WORKSPACE_PACKAGE: _replace_json_paths(
-            view.text(NODE_WORKSPACE_PACKAGE),
-            {("version",): release.canonical},
-        ),
-        NODE_WORKSPACE_LOCK: _replace_json_paths(
-            view.text(NODE_WORKSPACE_LOCK),
-            {
-                ("version",): release.canonical,
-                ("packages", "", "version"): release.canonical,
-            },
-        ),
-    }
-    node_lock_packages = _local_coupled_lock_packages(
-        view,
-        catalog,
-        NODE_CARGO_LOCK,
-    ) | {NODE_CARGO_PACKAGE, NODE_BINDINGS_PACKAGE}
-    updates[NODE_CARGO_LOCK] = _replace_lock_workspace_versions(
-        view.text(NODE_CARGO_LOCK),
-        node_lock_packages,
-        release.canonical,
-        lock_path=NODE_CARGO_LOCK,
-    )
-    for entry in node_catalog.entries:
-        replacements = {("version",): release.canonical}
-        if entry == node_catalog.root:
-            replacements.update(
-                {
-                    ("optionalDependencies", target.name): release.canonical
-                    for target in node_catalog.targets
-                }
-            )
-        updates[entry.manifest_path] = _replace_json_paths(
-            view.text(entry.manifest_path),
-            replacements,
-        )
-    return updates
+        observe(f"Node candidate package {entry.name}", entry.manifest_path, manifest.get("version"))
 
 
 def _playground_web_dependencies(
@@ -952,72 +875,38 @@ def _collect_platform_versions(
 ) -> None:
     canonical = release.canonical
     pep440 = release.to_pep440()
-    base = release.base
+
+    def observe(label: str, path: Path, actual: Any, expected: str = canonical) -> None:
+        _observe(observations, label, path, expected, actual)
 
     web_workspace = view.json(WEB_WORKSPACE_PACKAGE)
     if web_workspace.get("private") is not True:
         raise ReleaseProjectionError("platforms/web/package.json must be a private workspace owner")
-    _observe(
-        observations,
-        "Web workspace",
-        WEB_WORKSPACE_PACKAGE,
-        canonical,
-        web_workspace.get("version"),
-    )
+    observe("Web workspace", WEB_WORKSPACE_PACKAGE, web_workspace.get("version"))
     web_entries = _web_package_entries(view)
     for entry, package_dir in web_entries:
         manifest_path = package_dir / "package.json"
         manifest = view.json(manifest_path)
-        _observe(
-            observations,
-            f"Web package {entry['name']}",
-            manifest_path,
-            canonical,
-            manifest.get("version"),
-        )
+        observe(f"Web package {entry['name']}", manifest_path, manifest.get("version"))
     web_lock = view.json(WEB_LOCK)
     web_lock_packages = _mapping(web_lock.get("packages"), "Web lock packages")
     web_lock_workspace = _mapping(
         web_lock_packages.get(""), "Web lock workspace package"
     )
-    _observe(
-        observations,
-        "Web workspace lock",
-        WEB_LOCK,
-        canonical,
-        web_lock.get("version"),
-    )
-    _observe(
-        observations,
-        "Web workspace lock package",
-        WEB_LOCK,
-        canonical,
-        web_lock_workspace.get("version"),
-    )
+    observe("Web workspace lock", WEB_LOCK, web_lock.get("version"))
+    observe("Web workspace lock package", WEB_LOCK, web_lock_workspace.get("version"))
     for entry, package_dir in web_entries:
         lock_key = package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix()
         local_package = _mapping(
             web_lock_packages.get(lock_key),
             f"Web lock package {lock_key}",
         )
-        _observe(
-            observations,
-            f"Web lock package {entry['name']}",
-            WEB_LOCK,
-            canonical,
-            local_package.get("version"),
-        )
+        observe(f"Web lock package {entry['name']}", WEB_LOCK, local_package.get("version"))
 
     playground = view.json(PLAYGROUND_PACKAGE)
     if playground.get("private") is not True:
         raise ReleaseProjectionError("playground/package.json must be private")
-    _observe(
-        observations,
-        "Playground application",
-        PLAYGROUND_PACKAGE,
-        canonical,
-        playground.get("version"),
-    )
+    observe("Playground application", PLAYGROUND_PACKAGE, playground.get("version"))
     playground_web_packages = _playground_web_dependencies(view, web_entries)
     playground_lock = view.json(PLAYGROUND_LOCK)
     playground_packages = _mapping(
@@ -1026,29 +915,19 @@ def _collect_platform_versions(
     playground_lock_package = _mapping(
         playground_packages.get(""), "Playground lock root package"
     )
-    _observe(
-        observations,
-        "Playground application lock",
-        PLAYGROUND_LOCK,
-        canonical,
-        playground_lock.get("version"),
-    )
-    _observe(
-        observations,
+    observe("Playground application lock", PLAYGROUND_LOCK, playground_lock.get("version"))
+    observe(
         "Playground application lock package",
         PLAYGROUND_LOCK,
-        canonical,
         playground_lock_package.get("version"),
     )
     playground_web_workspace = _mapping(
         playground_packages.get("../platforms/web"),
         "Playground lock local Web workspace",
     )
-    _observe(
-        observations,
+    observe(
         "Playground local Web workspace lock",
         PLAYGROUND_LOCK,
-        canonical,
         playground_web_workspace.get("version"),
     )
     for entry, package_dir in playground_web_packages:
@@ -1057,11 +936,9 @@ def _collect_platform_versions(
             playground_packages.get(lock_key),
             f"Playground lock local {entry['name']} package",
         )
-        _observe(
-            observations,
+        observe(
             f"Playground local Web lock {entry['name']}",
             PLAYGROUND_LOCK,
-            canonical,
             local_package.get("version"),
         )
     license_report = view.text(PLAYGROUND_LICENSE_REPORT)
@@ -1082,81 +959,23 @@ def _collect_platform_versions(
         r"^ - @mermanjs/web@([^\s]+)$",
         canonical,
     )
-    python = view.toml(PYTHON_MANIFEST)
-    python_project = _mapping(python.get("project"), "Python [project]")
-    _observe(
-        observations,
+    observe(
         "Python package",
         PYTHON_MANIFEST,
+        _mapping(view.toml(PYTHON_MANIFEST).get("project"), "Python [project]").get("version"),
         pep440,
-        python_project.get("version"),
     )
-    _observe_assignment(
-        view,
-        observations,
-        "Android package",
-        ANDROID_MANIFEST,
-        r'^version\s*=\s*"([^"]+)"\s*$',
-        canonical,
+    assignments = (
+        ("Android package", ANDROID_MANIFEST, r'^version\s*=\s*"([^"]+)"\s*$'),
+        ("Flutter package", FLUTTER_MANIFEST, r"^version:\s*([^\s#]+)\s*$"),
+        (
+            "Flutter bundled native package version",
+            FLUTTER_PACKAGE_VERSION,
+            r"^const String mermanPackageVersion = '([^']+)';\s*$",
+        ),
     )
-    _observe_assignment(
-        view,
-        observations,
-        "Flutter package",
-        FLUTTER_MANIFEST,
-        r"^version:\s*([^\s#]+)\s*$",
-        canonical,
-    )
-    _observe_assignment(
-        view,
-        observations,
-        "Flutter bundled native package version",
-        FLUTTER_PACKAGE_VERSION,
-        r"^const String mermanPackageVersion = '([^']+)';\s*$",
-        canonical,
-    )
-    _observe_assignment(
-        view,
-        observations,
-        "Flutter Android package",
-        FLUTTER_ANDROID_MANIFEST,
-        r"^version\s*=\s*'([^']+)'\s*$",
-        canonical,
-    )
-    _observe_assignment(
-        view,
-        observations,
-        "Flutter iOS Podspec",
-        FLUTTER_IOS_PODSPEC,
-        r"^\s*s\.version\s*=\s*'([^']+)'\s*$",
-        canonical,
-    )
-    _observe_assignment(
-        view,
-        observations,
-        "Flutter macOS Podspec",
-        FLUTTER_MACOS_PODSPEC,
-        r"^\s*s\.version\s*=\s*'([^']+)'\s*$",
-        canonical,
-    )
-
-    build_text = view.text(FLUTTER_IOS_BUILD)
-    short_version = _plist_value(build_text, "CFBundleShortVersionString")
-    bundle_version = _plist_value(build_text, "CFBundleVersion")
-    _observe(
-        observations,
-        "Flutter iOS framework short version",
-        FLUTTER_IOS_BUILD,
-        base,
-        short_version,
-    )
-    _observe(
-        observations,
-        "Flutter iOS framework bundle version",
-        FLUTTER_IOS_BUILD,
-        base,
-        bundle_version,
-    )
+    for label, path, pattern in assignments:
+        _observe_assignment(view, observations, label, path, pattern, canonical)
 
 
 def _observe(
@@ -1208,56 +1027,269 @@ def _observe_text_match(
     _observe(observations, label, path, expected, matches[0])
 
 
-def _plist_value(text: str, key: str) -> str:
-    pattern = rf"<key>{re.escape(key)}</key>\s*<string>([^<]+)</string>"
-    matches = re.findall(pattern, text)
-    if len(matches) != 1:
-        raise ReleaseProjectionError(
-            f"{FLUTTER_IOS_BUILD} must contain exactly one {key}; found {len(matches)}"
-        )
-    return matches[0]
-
-
-def plan_version_update(
-    root: Path,
-    version: str,
-    *,
-    overrides: Mapping[Path | str, str] | None = None,
-) -> dict[Path, str]:
-    updates, _originals = _plan_version_update(
-        root,
-        version,
-        overrides=overrides,
-    )
-    return updates
-
-
-def _plan_version_update(
-    root: Path,
-    version: str,
-    *,
-    overrides: Mapping[Path | str, str] | None = None,
-) -> tuple[dict[Path, str], dict[Path, str]]:
+def apply_version_update(root: Path, version: str) -> tuple[Path, ...]:
     release = parse_release_version(version, allow_v_prefix=False)
-    view = RepositoryView(root, overrides)
-    catalog = load_workspace_catalog(view)
-    updates: dict[Path, str] = {}
+    root = root.resolve()
+    preimage = _capture_release_preimage(root)
+    changed_paths, patch = _prepare_release_patch(root, release, preimage)
+    if patch:
+        _apply_release_patch(root, patch, preimage)
+    return changed_paths
 
-    root_text = view.text(ROOT_MANIFEST)
-    root_text = _replace_toml_section_string(
-        root_text, "workspace.package", "version", release.canonical
+
+def _run_command(
+    args: Sequence[str],
+    *,
+    cwd: Path,
+    input_bytes: bytes | None = None,
+) -> bytes:
+    command = [str(item) for item in args]
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            input=input_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.decode("utf-8", errors="replace").strip()
+        raise ReleaseProjectionError(
+            f"release owner command failed ({exc.returncode}): "
+            f"{' '.join(command)}{': ' + detail if detail else ''}"
+        ) from exc
+    except OSError as exc:
+        raise ReleaseProjectionError(
+            f"cannot run release owner command {command[0]}: {exc}"
+        ) from exc
+
+
+def _run_git(root: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
+    return _run_command(
+        ["git", "-C", str(root), *args], cwd=root, input_bytes=input_bytes
     )
-    workspace_dependencies = _mapping(
+
+
+def _capture_release_preimage(root: Path) -> _ReleasePreimage:
+    root = root.resolve()
+    metadata = os.fsdecode(_run_git(
+        root,
+        "rev-parse",
+        "--show-toplevel",
+        "--path-format=absolute",
+        "--git-dir",
+        "--git-common-dir",
+        "HEAD",
+    )).splitlines()
+    if len(metadata) != 4:
+        raise ReleaseProjectionError("Git did not report the release worktree preimage")
+    top_level, git_directory, common_directory, head = metadata
+    top_level = Path(top_level).resolve()
+    if top_level != root:
+        raise ReleaseProjectionError(
+            f"release version set must run at the Git worktree root: {top_level}"
+        )
+    if Path(git_directory).resolve() == Path(common_directory).resolve():
+        raise ReleaseProjectionError(
+            "release version set requires a linked release worktree, not the primary checkout"
+        )
+
+    if _run_git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all"):
+        raise ReleaseProjectionError(
+            "release version set requires a clean release worktree, including no untracked files"
+        )
+
+    index = _run_git(root, "ls-files", "--stage", "-z")
+    index_digest = hashlib.sha256(head.encode("ascii") + b"\0" + index).hexdigest()
+    return _ReleasePreimage(head=head, index_digest=index_digest)
+
+
+def _prepare_release_patch(
+    root: Path,
+    release: ReleaseVersion,
+    preimage: _ReleasePreimage,
+) -> tuple[tuple[Path, ...], bytes]:
+    with tempfile.TemporaryDirectory(prefix="merman-release-version-") as temp_dir:
+        prepared_root = Path(temp_dir) / "worktree"
+        _run_git(
+            root,
+            "worktree",
+            "add",
+            "--detach",
+            "--quiet",
+            str(prepared_root),
+            preimage.head,
+        )
+        try:
+            _prepare_cargo_versions(prepared_root, release)
+            _prepare_npm_versions(prepared_root, release)
+            try:
+                release_version_owners.prepare_python_version(prepared_root, release)
+                release_version_owners.prepare_android_version(prepared_root, release)
+                release_version_owners.prepare_flutter_version(prepared_root, release)
+            except release_version_owners.ReleaseOwnerError as exc:
+                raise ReleaseProjectionError(str(exc)) from exc
+
+            verification = verify_repository(
+                prepared_root,
+                expected_version=release.canonical,
+            )
+            if not verification.ok:
+                raise ReleaseProjectionError(
+                    "prepared release projection did not verify:\n"
+                    + "\n".join(format_verification_failures(verification))
+                )
+
+            status = [
+                os.fsdecode(item)
+                for item in _run_git(
+                    prepared_root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
+                ).split(b"\0")
+                if item
+            ]
+            if any(item.startswith("?? ") for item in status):
+                raise ReleaseProjectionError("release owners created untracked files")
+            if any(item[:1] in {"R", "C"} or item[1:2] in {"R", "C"} for item in status):
+                raise ReleaseProjectionError("release owners must not rename projection files")
+            changed_paths = tuple(sorted(Path(item[3:]) for item in status))
+            expected_paths = frozenset(item.path for item in verification.observations)
+            unrelated = set(changed_paths) - expected_paths
+            if unrelated:
+                raise ReleaseProjectionError(
+                    "release owners changed paths outside their projection: "
+                    + ", ".join(str(path) for path in sorted(unrelated))
+                )
+
+            patch = _run_git(
+                prepared_root,
+                "diff",
+                "--binary",
+                "--full-index",
+                "HEAD",
+                "--",
+            )
+            return changed_paths, patch
+        finally:
+            _run_git(root, "worktree", "remove", "--force", str(prepared_root))
+
+
+def _apply_release_patch(
+    root: Path,
+    patch: bytes,
+    preimage: _ReleasePreimage,
+) -> None:
+    for check in (True, False):
+        try:
+            actual_preimage = _capture_release_preimage(root)
+        except ReleaseProjectionError as exc:
+            raise ReleaseProjectionError(
+                "release source preimage changed while preparing the patch; no patch was applied"
+            ) from exc
+        if actual_preimage != preimage:
+            raise ReleaseProjectionError(
+                "release source preimage changed while preparing the patch; no patch was applied"
+            )
+        args = ["apply"]
+        if check:
+            args.append("--check")
+        args.extend(["--binary", "--whitespace=nowarn", "-"])
+        try:
+            _run_git(root, *args, input_bytes=patch)
+        except ReleaseProjectionError as exc:
+            action = "validate" if check else "apply"
+            raise ReleaseProjectionError(
+                f"cannot {action} release patch: {exc}"
+            ) from exc
+
+
+def _require_exact_tool_version(
+    tool: str,
+    expected: str,
+    *,
+    cwd: Path | None = None,
+) -> str:
+    executable = shutil.which(tool)
+    if executable is None:
+        raise ReleaseProjectionError(f"required pinned tool {tool} {expected} is not installed")
+    output = _run_command([executable, "--version"], cwd=cwd or Path.cwd()).decode(
+        "utf-8", errors="replace"
+    ).strip()
+    match = re.match(r"^cargo\s+([^\s]+)", output) if tool == "cargo" else None
+    actual = match.group(1) if match else output.splitlines()[0] if output else ""
+    if actual != expected:
+        raise ReleaseProjectionError(
+            f"required pinned tool {tool} {expected}, found {actual or '<unknown>'}"
+        )
+    return executable
+
+
+def _write_relative(root: Path, path: Path, content: str) -> None:
+    target = root / path
+    if target.read_text(encoding="utf-8") != content:
+        target.write_text(content, encoding="utf-8")
+
+
+def _assert_cargo_lock_dependency_state(
+    lock_path: Path,
+    before: str,
+    after: str,
+    local_packages: frozenset[str],
+) -> None:
+    def normalized(text: str) -> Mapping[str, Any]:
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            raise ReleaseProjectionError(f"invalid {lock_path}: {exc}") from exc
+        packages = data.get("package")
+        if not isinstance(packages, list):
+            raise ReleaseProjectionError(f"{lock_path} package must be an array")
+        for package in packages:
+            if not isinstance(package, dict):
+                continue
+            if package.get("name") in local_packages and "source" not in package:
+                package["version"] = "<workspace-release>"
+        return data
+
+    if normalized(before) != normalized(after):
+        raise ReleaseProjectionError(
+            f"{lock_path} has unrelated dependency drift after Cargo version preparation"
+        )
+
+
+def _prepare_cargo_versions(root: Path, release: ReleaseVersion) -> None:
+    view = RepositoryView(root)
+    catalog = load_workspace_catalog(view)
+    toolchain = _mapping(view.toml(RUST_TOOLCHAIN).get("toolchain"), "Rust toolchain")
+    cargo = _require_exact_tool_version(
+        "cargo", _string(toolchain.get("channel"), "Rust toolchain channel"), cwd=root
+    )
+
+    coupled = frozenset(catalog.coupled_packages)
+    lock_owners = {
+        ROOT_LOCK: coupled,
+        FUZZ_LOCK: coupled,
+        NODE_CARGO_LOCK: coupled | {NODE_CARGO_PACKAGE},
+    }
+    before_locks = {path: view.text(path) for path in lock_owners}
+
+    root_text = _replace_toml_section_string(
+        view.text(ROOT_MANIFEST),
+        "workspace.package",
+        "version",
+        release.canonical,
+    )
+    dependencies = _mapping(
         _mapping(catalog.root_data["workspace"], "Cargo.toml [workspace]").get(
             "dependencies"
         ),
         "Cargo.toml [workspace.dependencies]",
     )
     coupled_dirs = _coupled_package_dirs(view, catalog)
-    for dependency_key, spec in workspace_dependencies.items():
+    for dependency_key, spec in dependencies.items():
         if not isinstance(spec, dict) or not isinstance(spec.get("path"), str):
             continue
-        if (view.root / spec["path"]).resolve() in coupled_dirs:
+        if (root / spec["path"]).resolve() in coupled_dirs:
             root_text = _replace_toml_inline_string(
                 root_text,
                 "workspace.dependencies",
@@ -1265,172 +1297,198 @@ def _plan_version_update(
                 "version",
                 release.canonical,
             )
-    updates[ROOT_MANIFEST] = root_text
-    updates[ROOT_LOCK] = _replace_lock_workspace_versions(
-        view.text(ROOT_LOCK),
-        set(catalog.coupled_packages),
-        release.canonical,
-        lock_path=ROOT_LOCK,
-    )
-    fuzz_lock_packages = _local_coupled_lock_packages(view, catalog, FUZZ_LOCK)
-    if not fuzz_lock_packages:
-        raise ReleaseProjectionError(
-            "fuzz/Cargo.lock does not contain any workspace-coupled package entries"
-        )
-    updates[FUZZ_LOCK] = _replace_lock_workspace_versions(
-        view.text(FUZZ_LOCK),
-        fuzz_lock_packages,
-        release.canonical,
-        lock_path=FUZZ_LOCK,
+    _write_relative(root, ROOT_MANIFEST, root_text)
+    _write_relative(
+        root,
+        NODE_CARGO_MANIFEST,
+        _replace_toml_section_string(
+            view.text(NODE_CARGO_MANIFEST),
+            "package",
+            "version",
+            release.canonical,
+        ),
     )
 
-    updates.update(_plan_node_candidate_projection(view, catalog, release))
+    for manifest in (ROOT_MANIFEST, FUZZ_MANIFEST, NODE_CARGO_MANIFEST):
+        _run_command(
+            [
+                cargo,
+                "update",
+                "--offline",
+                "--workspace",
+                "--manifest-path",
+                str(root / manifest),
+            ],
+            cwd=root,
+        )
+
+    for lock_path, local_packages in lock_owners.items():
+        _assert_cargo_lock_dependency_state(
+            lock_path,
+            before_locks[lock_path],
+            (root / lock_path).read_text(encoding="utf-8"),
+            local_packages,
+        )
+
+
+def _load_json_object(text: str, label: str) -> dict[str, Any]:
+    try:
+        data = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+    except json.JSONDecodeError as exc:
+        raise ReleaseProjectionError(f"invalid JSON in {label}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ReleaseProjectionError(f"{label} must contain a JSON object")
+    return data
+
+
+def _assert_npm_lock_dependency_state(
+    path: Path,
+    before: str,
+    after: str,
+    *,
+    local_package_keys: set[str] | frozenset[str],
+) -> None:
+    keys = frozenset(local_package_keys)
+
+    def normalized(text: str) -> Mapping[str, Any]:
+        data = _load_json_object(text, str(path))
+        data["version"] = "<workspace-release>"
+        packages = _mapping(data.get("packages"), f"{path}.packages")
+        for package_key in keys:
+            package = _mapping(packages.get(package_key), f"{path}:{package_key}")
+            if "version" in package:
+                package["version"] = "<workspace-release>"
+        return data
+
+    if normalized(before) != normalized(after):
+        raise ReleaseProjectionError(
+            f"{path} has unrelated dependency drift after npm version preparation"
+        )
+
+
+def _prepare_npm_versions(root: Path, release: ReleaseVersion) -> None:
+    view = RepositoryView(root)
+    package_manager = view.json(PLAYGROUND_PACKAGE).get("packageManager")
+    npm_version_match = (
+        re.fullmatch(r"npm@([0-9]+\.[0-9]+\.[0-9]+)", package_manager)
+        if isinstance(package_manager, str)
+        else None
+    )
+    if npm_version_match is None:
+        raise ReleaseProjectionError(
+            f"{PLAYGROUND_PACKAGE} packageManager must pin npm as npm@x.y.z"
+        )
+    npm = _require_exact_tool_version("npm", npm_version_match.group(1), cwd=root)
+
+    def run(package_root: Path, *args: str) -> None:
+        _run_command([npm, *args], cwd=root / package_root)
+
+    def write_json(path: Path, data: Mapping[str, Any]) -> None:
+        _write_relative(root, path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
     web_entries = _web_package_entries(view)
-    updates[WEB_WORKSPACE_PACKAGE] = _replace_json_paths(
-        view.text(WEB_WORKSPACE_PACKAGE), {("version",): release.canonical}
-    )
-    for _entry, package_dir in web_entries:
-        manifest_path = package_dir / "package.json"
-        updates[manifest_path] = _replace_json_paths(
-            view.text(manifest_path), {("version",): release.canonical}
-        )
-    web_lock_updates = {
-        ("packages", package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix(), "version"): release.canonical
-        for _entry, package_dir in web_entries
-    }
-    web_lock_updates.update(
-        {
-            ("version",): release.canonical,
-            ("packages", "", "version"): release.canonical,
-        }
-    )
-    updates[WEB_LOCK] = _replace_json_paths(
-        view.text(WEB_LOCK),
-        web_lock_updates,
-    )
-    updates[PLAYGROUND_PACKAGE] = _replace_json_paths(
-        view.text(PLAYGROUND_PACKAGE), {("version",): release.canonical}
-    )
+    node_catalog = _node_package_catalog(view)
     playground_web_packages = _playground_web_dependencies(view, web_entries)
-    playground_lock_updates = {
-        (
-            "packages",
-            f"../{package_dir.as_posix()}",
-            "version",
-        ): release.canonical
-        for _entry, package_dir in playground_web_packages
+    before_locks = {
+        path: view.text(path) for path in (WEB_LOCK, NODE_WORKSPACE_LOCK, PLAYGROUND_LOCK)
     }
-    playground_lock_updates[("packages", "../platforms/web", "version")] = (
-        release.canonical
+
+    version_args = (
+        "version",
+        release.canonical,
+        "--allow-same-version",
+        "--no-git-tag-version",
+        "--ignore-scripts",
     )
-    playground_lock_updates.update(
-        {
-            ("version",): release.canonical,
-            ("packages", "", "version"): release.canonical,
-        }
+    workspace_args = (*version_args, "--workspaces", "--include-workspace-root")
+    run(WEB_DESCRIPTOR.parent, *workspace_args)
+    run(NODE_ROOT, *version_args)
+    for entry in node_catalog.entries:
+        run(NODE_ROOT / entry.directory, *version_args)
+    descriptor = _load_json_object(view.text(NODE_DESCRIPTOR), str(NODE_DESCRIPTOR))
+    descriptor["version"] = release.canonical
+    write_json(NODE_DESCRIPTOR, descriptor)
+    loader_path = node_catalog.root.manifest_path
+    loader = _load_json_object((root / loader_path).read_text(encoding="utf-8"), str(loader_path))
+    optional_dependencies = _mapping(
+        loader.get("optionalDependencies"), f"{loader_path}.optionalDependencies"
     )
-    playground_lock = _replace_json_paths(
-        view.text(PLAYGROUND_LOCK),
-        playground_lock_updates,
+    for target in node_catalog.targets:
+        if target.name not in optional_dependencies:
+            raise ReleaseProjectionError(f"{loader_path} is missing {target.name}")
+        optional_dependencies[target.name] = release.canonical
+    write_json(loader_path, loader)
+    run(PLAYGROUND_PACKAGE.parent, *version_args)
+    lock_args = (
+        "install",
+        "--package-lock-only",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        f"--registry={NPM_REGISTRY}",
     )
-    updates[PLAYGROUND_LOCK] = playground_lock
+    for package_root in (
+        WEB_DESCRIPTOR.parent,
+        NODE_ROOT,
+        PLAYGROUND_PACKAGE.parent,
+    ):
+        run(package_root, *lock_args)
+
+    playground_local_keys = {
+        "../platforms/web",
+        *(f"../{package_dir.as_posix()}" for _entry, package_dir in playground_web_packages),
+    }
+    playground_lock = _load_json_object(
+        (root / PLAYGROUND_LOCK).read_text(encoding="utf-8"), str(PLAYGROUND_LOCK)
+    )
+    playground_packages = _mapping(playground_lock.get("packages"), "Playground lock packages")
+    for key in playground_local_keys:
+        _mapping(playground_packages.get(key), f"Playground lock package {key}")["version"] = release.canonical
+    playground_lock_text = json.dumps(
+        playground_lock, ensure_ascii=False, indent=2
+    ) + "\n"
+    _write_relative(root, PLAYGROUND_LOCK, playground_lock_text)
+
+    lock_owners = (
+        (
+            WEB_LOCK,
+            {""}
+            | {
+                package_dir.relative_to(WEB_DESCRIPTOR.parent).as_posix()
+                for _entry, package_dir in web_entries
+            },
+        ),
+        (NODE_WORKSPACE_LOCK, {""}),
+        (PLAYGROUND_LOCK, {""} | playground_local_keys),
+    )
+    for lock_path, local_keys in lock_owners:
+        _assert_npm_lock_dependency_state(
+            lock_path,
+            before_locks[lock_path],
+            playground_lock_text
+            if lock_path == PLAYGROUND_LOCK
+            else (root / lock_path).read_text(encoding="utf-8"),
+            local_package_keys=local_keys,
+        )
+
     playground_license_report = _replace_one(
-        view.text(PLAYGROUND_LICENSE_REPORT),
+        (root / PLAYGROUND_LICENSE_REPORT).read_text(encoding="utf-8"),
         r"^( - @mermanjs/web@)[^\s]+$",
         rf"\g<1>{release.canonical}",
         PLAYGROUND_LICENSE_REPORT,
         "local Web package version",
     )
-    playground_license_report = _replace_one(
-        playground_license_report,
-        r"^(package-lock\.json SHA-256: )[0-9a-f]{64}$",
-        rf"\g<1>{hashlib.sha256(playground_lock.encode('utf-8')).hexdigest()}",
-        PLAYGROUND_LICENSE_REPORT,
-        "package-lock.json digest",
-    )
-    updates[PLAYGROUND_LICENSE_REPORT] = playground_license_report
-    updates[PYTHON_MANIFEST] = _replace_toml_section_string(
-        view.text(PYTHON_MANIFEST), "project", "version", release.to_pep440()
-    )
-    updates[ANDROID_MANIFEST] = _replace_one(
-        view.text(ANDROID_MANIFEST),
-        r'^(version\s*=\s*")[^"]+("\s*)$',
-        rf"\g<1>{release.canonical}\g<2>",
-        ANDROID_MANIFEST,
-        "Android version",
-    )
-    updates[FLUTTER_MANIFEST] = _replace_one(
-        view.text(FLUTTER_MANIFEST),
-        r"^(version:\s*)[^\s#]+(\s*)$",
-        rf"\g<1>{release.canonical}\g<2>",
-        FLUTTER_MANIFEST,
-        "Flutter version",
-    )
-    updates[FLUTTER_PACKAGE_VERSION] = _replace_one(
-        view.text(FLUTTER_PACKAGE_VERSION),
-        r"^(const String mermanPackageVersion = ')[^']+(';\s*)$",
-        rf"\g<1>{release.canonical}\g<2>",
-        FLUTTER_PACKAGE_VERSION,
-        "Flutter bundled native package version",
-    )
-    updates[FLUTTER_ANDROID_MANIFEST] = _replace_one(
-        view.text(FLUTTER_ANDROID_MANIFEST),
-        r"^(version\s*=\s*')[^']+('\s*)$",
-        rf"\g<1>{release.canonical}\g<2>",
-        FLUTTER_ANDROID_MANIFEST,
-        "Flutter Android version",
-    )
-    for podspec in (FLUTTER_IOS_PODSPEC, FLUTTER_MACOS_PODSPEC):
-        updates[podspec] = _replace_one(
-            view.text(podspec),
-            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
-            rf"\g<1>{release.canonical}\g<2>",
-            podspec,
-            "Podspec version",
-        )
-    build_text = view.text(FLUTTER_IOS_BUILD)
-    for plist_key in ("CFBundleShortVersionString", "CFBundleVersion"):
-        build_text = _replace_one(
-            build_text,
-            rf"(<key>{plist_key}</key>\s*<string>)[^<]+(</string>)",
-            rf"\g<1>{release.base}\g<2>",
-            FLUTTER_IOS_BUILD,
-            plist_key,
-            flags=0,
-        )
-    updates[FLUTTER_IOS_BUILD] = build_text
-    result = verify_repository(
+    _write_relative(
         root,
-        expected_version=release.canonical,
-        overrides={**view.overrides, **updates},
+        PLAYGROUND_LICENSE_REPORT,
+        _replace_one(
+            playground_license_report,
+            r"^(package-lock\.json SHA-256: )[0-9a-f]{64}$",
+            rf"\g<1>{hashlib.sha256(playground_lock_text.encode('utf-8')).hexdigest()}",
+            PLAYGROUND_LICENSE_REPORT,
+            "package-lock.json digest",
+        ),
     )
-    if not result.ok:
-        detail = "\n".join(format_verification_failures(result))
-        raise ReleaseProjectionError(
-            f"planned release version projection did not verify:\n{detail}"
-        )
-    changed = {
-        path: content
-        for path, content in updates.items()
-        if content != view.text(path)
-    }
-    originals = {path: view.text(path) for path in changed}
-    return changed, originals
-
-
-def apply_version_update(root: Path, version: str) -> tuple[Path, ...]:
-    updates, originals = _plan_version_update(root, version)
-    _replace_projection_files(root.resolve(), updates, expected=originals)
-    result = verify_repository(root, expected_version=version)
-    if not result.ok:
-        raise ReleaseProjectionError(
-            "release version projection changed on disk but did not verify; "
-            "keep the worktree, resolve any concurrent edit, and rerun the same "
-            "command: "
-            + "; ".join(format_verification_failures(result))
-        )
-    return tuple(sorted(updates))
 
 
 def _replace_toml_section_string(
@@ -1515,84 +1573,6 @@ def _replace_toml_inline_string(
     return candidate
 
 
-def _replace_lock_workspace_versions(
-    text: str,
-    package_names: set[str],
-    version: str,
-    *,
-    lock_path: Path = ROOT_LOCK,
-) -> str:
-    marker = "[[package]]"
-    prefix, *raw_blocks = text.split(marker)
-    seen: set[str] = set()
-    blocks: list[str] = []
-    for raw_block in raw_blocks:
-        document = f"{marker}{raw_block}"
-        try:
-            parsed = tomllib.loads(document)["package"][0]
-        except (KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
-            raise ReleaseProjectionError(f"invalid Cargo.lock package block: {exc}") from exc
-        name = parsed.get("name")
-        if name in package_names and "source" not in parsed:
-            document = _replace_one(
-                document,
-                r'^(version\s*=\s*")[^"]+("\s*)$',
-                rf"\g<1>{version}\g<2>",
-                lock_path,
-                f"local package {name} version",
-            )
-            seen.add(name)
-        blocks.append(document)
-    missing = package_names - seen
-    if missing:
-        raise ReleaseProjectionError(
-            f"{lock_path} is missing local workspace packages: "
-            + ", ".join(sorted(missing))
-        )
-    return prefix + "".join(blocks)
-
-
-def _local_coupled_lock_packages(
-    view: RepositoryView,
-    catalog: WorkspaceCatalog,
-    lock_path: Path,
-) -> set[str]:
-    lock = view.toml(lock_path)
-    packages = lock.get("package")
-    if not isinstance(packages, list):
-        raise ReleaseProjectionError(f"{lock_path} package must be an array of tables")
-    return {
-        package["name"]
-        for package in packages
-        if isinstance(package, dict)
-        and package.get("name") in catalog.coupled_packages
-        and "source" not in package
-    }
-
-
-def _replace_json_paths(
-    text: str,
-    replacements: Mapping[tuple[str, ...], str],
-) -> str:
-    try:
-        data = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
-    except json.JSONDecodeError as exc:
-        raise ReleaseProjectionError(f"cannot update invalid JSON: {exc}") from exc
-    changed = False
-    for path, value in replacements.items():
-        target = data
-        for component in path[:-1]:
-            target = _mapping(target.get(component), f"JSON path {'.'.join(path)}")
-        if path[-1] not in target:
-            raise ReleaseProjectionError(f"missing JSON path {'.'.join(path)}")
-        if target[path[-1]] != value:
-            changed = True
-        target[path[-1]] = value
-    if not changed:
-        return text
-    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
-
-
 def _replace_one(
     text: str,
     pattern: str,
@@ -1608,79 +1588,6 @@ def _replace_one(
             f"{path} must contain exactly one {label}; found {count}"
         )
     return candidate
-
-
-def _replace_projection_files(
-    root: Path,
-    updates: Mapping[Path, str],
-    *,
-    expected: Mapping[Path, str],
-) -> None:
-    """Install a validated version plan in an exclusive Git worktree."""
-    root = root.resolve()
-    planned: list[tuple[Path, Path, str]] = []
-    for relative, content in sorted(
-        updates.items(),
-        key=lambda item: (item[0] == ROOT_MANIFEST, str(item[0])),
-    ):
-        normalized, target = _projection_target(root, relative)
-        try:
-            expected_text = expected[relative]
-        except KeyError as exc:
-            raise ReleaseProjectionError(
-                f"missing expected pre-update content for {relative}"
-            ) from exc
-        try:
-            current = target.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise ReleaseProjectionError(
-                f"cannot read release projection {normalized}: {exc}"
-            ) from exc
-        if current != expected_text:
-            raise ReleaseProjectionError(
-                f"{normalized} changed while planning the release update; "
-                "no files were written"
-            )
-        planned.append((normalized, target, content))
-
-    for relative, target, content in planned:
-        try:
-            _replace_projection_file(target, content)
-        except OSError as exc:
-            raise ReleaseProjectionError(
-                f"cannot update release projection {relative}: {exc}"
-            ) from exc
-
-
-def _projection_target(root: Path, relative: Path) -> tuple[Path, Path]:
-    normalized = Path(os.path.normpath(relative))
-    if (
-        relative.is_absolute()
-        or normalized.is_absolute()
-        or normalized == Path(".")
-        or ".." in normalized.parts
-    ):
-        raise ReleaseProjectionError(
-            f"release projection path escapes repository root: {relative}"
-        )
-
-    return normalized, root / normalized
-
-
-def _replace_projection_file(target: Path, content: str) -> None:
-    mode = stat.S_IMODE(target.stat().st_mode)
-    descriptor, raw_path = tempfile.mkstemp(
-        prefix=f".{target.name}.release-version-",
-        dir=target.parent,
-    )
-    temp_path = Path(raw_path)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content.encode("utf-8"))
-            os.chmod(temp_path, mode)
-        os.replace(temp_path, target)
-    finally:
-        temp_path.unlink(missing_ok=True)
 
 
 def format_verification_failures(result: VerificationResult) -> list[str]:

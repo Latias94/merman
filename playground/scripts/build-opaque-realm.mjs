@@ -12,6 +12,7 @@ import {
 } from "./opaque-realm-artifact-plan.mjs";
 import { renderOpaqueRealmBrowserProjections } from "./opaque-realm-browser-projection.mjs";
 import { assertNoRuntimeModuleRequests } from "./runtime-module-request-policy.mjs";
+import { applyOpaqueRealmSourcePolicy } from "./opaque-realm-source-policy.mjs";
 
 const playgroundRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -38,6 +39,7 @@ for (const engine of plan.engines) {
     outputBase: engine.outputBase,
     format: "es",
     expectedExports: engine.exports,
+    resourcePolicy: engine.resourcePolicy,
   });
   if (built.manifest.bytes > engine.maxBytes) {
     throw new Error(
@@ -146,7 +148,7 @@ async function buildArtifact(artifact, engineManifest = null) {
   }
   const [script] = scripts;
   assertChunkContract(artifact, script);
-  const source = script.code;
+  const source = applyOpaqueRealmSourcePolicy(artifact, script.code);
   if (!source.trim()) throw new Error(`${artifact.id} script is empty.`);
   if (artifact.format === "es") {
     assertNoRuntimeModuleRequests(source, `${artifact.outputBase}.js`);

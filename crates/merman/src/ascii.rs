@@ -1,19 +1,26 @@
+//! ASCII target-local types, compatibility helpers, and the model-level backend interface.
+//!
+//! New source-to-text operations should use [`crate::Renderer`] so parsing, resource policy, and
+//! cancellation share one operation owner. Existing callers may continue to use the compatibility
+//! helpers in this module. Hosts that already own a typed
+//! [`merman_core::diagram::RenderSemanticModel`] may use [`render_model`] directly.
+
 pub use merman_ascii::{
     ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability,
-    AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorTheme, AsciiDirection,
-    AsciiError, AsciiEvidenceKind, AsciiPrimaryProjection, AsciiRenderOptions, AsciiRenderer,
-    AsciiResourceLimitCause, AsciiResourceLimitDescriptor, AsciiResourceLimitExceeded,
-    AsciiResourceLimitId, AsciiResourceLimitOverrideError, AsciiResourceLimitPhase,
-    AsciiResourcePolicy, AsciiRgb, AsciiSemanticCoverage, AsciiSupportLevel, AsciiTerminalPalette,
-    MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID,
-    MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID,
-    MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID, MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID,
-    TerminalWidthProfile, ascii_capabilities, ascii_diagrammatic_diagram_types,
-    ascii_resource_profile_value, ascii_supported_diagram_types, render_class, render_er,
-    render_flowchart, render_gantt, render_gantt_with_local_time_zone, render_git_graph,
-    render_journey, render_kanban, render_mindmap, render_model, render_model_with_local_time_zone,
-    render_packet, render_sequence, render_state, render_timeline, render_tree_view,
-    render_xychart,
+    AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorRole, AsciiColorTheme,
+    AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiPrimaryProjection, AsciiRenderOptions,
+    AsciiRenderer, AsciiResourceLimitCause, AsciiResourceLimitDescriptor,
+    AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourceLimitOverrideError,
+    AsciiResourceLimitPhase, AsciiResourcePolicy, AsciiRgb, AsciiSemanticCoverage,
+    AsciiSupportLevel, AsciiTerminalPalette, MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID,
+    MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, TerminalWidthProfile, ascii_capabilities,
+    ascii_diagrammatic_diagram_types, ascii_resource_profile_value, ascii_supported_diagram_types,
+    render_class, render_er, render_flowchart, render_gantt, render_gantt_with_local_time_zone,
+    render_git_graph, render_journey, render_kanban, render_mindmap, render_model,
+    render_model_with_local_time_zone, render_model_with_operation, render_packet, render_sequence,
+    render_state, render_timeline, render_tree_view, render_xychart,
 };
 pub use merman_ascii::{normalize_terminal_diagnostic, normalize_terminal_text};
 
@@ -112,7 +119,7 @@ impl From<merman_core::resources::InputResourceLimitExceeded> for HeadlessAsciiE
 
 fn safe_parse_error(error: &merman_core::Error) -> String {
     match error {
-        merman_core::Error::ParseCancelled(_) => "parse operation cancelled".to_string(),
+        merman_core::Error::OperationCancelled(_) => "parse operation cancelled".to_string(),
         merman_core::Error::ThemeColor(error) => match error {
             merman_core::theme_color::ColorError::UnsupportedFormat { input } => {
                 bounded_message("Unsupported color format: \"", input, "\"")
@@ -156,7 +163,7 @@ fn safe_parse_details(error: &merman_core::Error) -> HeadlessAsciiDiagnosticDeta
         diagram_type: None,
     };
     match error {
-        merman_core::Error::ParseCancelled(_) => {
+        merman_core::Error::OperationCancelled(_) => {
             details.code = "merman.ascii.parse.cancelled".to_string();
         }
         merman_core::Error::ThemeColor(_) => {

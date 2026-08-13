@@ -53,9 +53,9 @@ The governance rules are:
 10. External lint rule ids remain in their owning tools. Merman configuration rejects ids that are
     not present in the public `merman.*` rule catalog instead of treating markdownlint, remark,
     textlint, `mermaid-lint`, or project-specific style policy as Merman-governed policy.
-11. Internal diagnostics such as `merman.internal.flowchart_facts_projection` are rule-catalog
-    entries for observability, but they are not public lint policy knobs and must stay out of the
-    configurable rule catalog.
+11. Internal diagnostics are explicit rule-catalog entries only when a live production operation
+    can emit them. Removed compatibility/projection paths must not leave source-less rule IDs in
+    the catalog; the facts schema 2 break deleted the former Flowchart-only projection rule.
 
 The first breaking rule-id migrations are:
 

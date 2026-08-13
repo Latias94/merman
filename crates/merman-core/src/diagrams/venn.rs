@@ -477,8 +477,8 @@ pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let VennParseOutcome {
         source,
         first_error,
@@ -531,15 +531,15 @@ fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSe
 }
 
 fn construct_venn_parse_outcome(code: &str, meta: &ParseMetadata) -> VennParseOutcome {
-    construct_venn_parse_outcome_controlled(code, meta, &crate::ParseControl::new())
+    construct_venn_parse_outcome_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_venn_parse_outcome_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<VennParseOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<VennParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("venn");
@@ -913,7 +913,7 @@ fn parse_venn_union_statement_facts(
             list_span,
         ));
     for identifier in &identifiers {
-        push_venn_entity_fact(
+        push_venn_reference_fact(
             &mut state.editor_facts,
             identifier,
             "venn union set",
@@ -989,7 +989,7 @@ fn parse_venn_text_statement_facts(
                 list_span,
             ));
         for set in &sets {
-            push_venn_entity_fact(
+            push_venn_reference_fact(
                 &mut state.editor_facts,
                 set,
                 "venn text set",
@@ -1076,7 +1076,7 @@ fn parse_venn_style_statement_facts(
             list_span,
         ));
     for target in &targets {
-        push_venn_entity_fact(
+        push_venn_reference_fact(
             &mut state.editor_facts,
             target,
             "venn style target",
@@ -1136,6 +1136,24 @@ fn push_venn_entity_fact(
         return;
     }
     facts.push_symbol(EditorSemanticSymbol::new(
+        field.text.clone(),
+        Some(detail.to_string()),
+        kind,
+        field.span,
+        field.selection,
+    ));
+}
+
+fn push_venn_reference_fact(
+    facts: &mut EditorSemanticFacts,
+    field: &VennFieldSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    if field.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::reference(
         field.text.clone(),
         Some(detail.to_string()),
         kind,
@@ -1693,8 +1711,13 @@ style A,B fill:#00ffcc, color:#003333
 
         let union_a_start = text.find("union A,B").unwrap() + "union ".len();
         let union_a = symbol_at("A", "venn union set", union_a_start);
-        assert_eq!(union_a.role, EditorSemanticRole::Entity);
+        assert_eq!(union_a.role, EditorSemanticRole::Reference);
         assert_eq!(union_a.kind, EditorSemanticKind::Namespace);
+
+        let text_set_start = text.find("text A alpha").unwrap() + "text ".len();
+        let text_set = symbol_at("A", "venn text set", text_set_start);
+        assert_eq!(text_set.role, EditorSemanticRole::Reference);
+        assert_eq!(text_set.kind, EditorSemanticKind::Namespace);
 
         let text_id_start = text.find("alpha").unwrap();
         let text_id = symbol_at("alpha", "venn text node", text_id_start);
@@ -1708,7 +1731,7 @@ style A,B fill:#00ffcc, color:#003333
 
         let style_target_start = text.find("style A fill").unwrap() + "style ".len();
         let style_target = symbol_at("A", "venn style target", style_target_start);
-        assert_eq!(style_target.role, EditorSemanticRole::Entity);
+        assert_eq!(style_target.role, EditorSemanticRole::Reference);
         assert_eq!(style_target.kind, EditorSemanticKind::Namespace);
 
         let fill_start = text.find("#ff6b6b").unwrap();
@@ -1734,6 +1757,56 @@ style A,B fill:#00ffcc, color:#003333
     }
 
     #[test]
+    fn venn_reference_roles_do_not_promote_occurrences_to_set_definitions() {
+        let text = concat!(
+            "venn-beta\n",
+            "style Future fill:blue\n",
+            "set Future\n",
+            "set A\n",
+            "set B\n",
+            "union A,B\n",
+            "text A note[\"Note\"]\n",
+            "style A fill:red\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_venn_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        let a_roles: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "A")
+            .map(|symbol| symbol.role)
+            .collect();
+        assert_eq!(
+            a_roles,
+            [
+                EditorSemanticRole::Entity,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+            ]
+        );
+        assert!(
+            facts.symbols.iter().any(|symbol| {
+                symbol.name == "note" && symbol.role == EditorSemanticRole::Entity
+            })
+        );
+        let future_roles: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Future")
+            .map(|symbol| symbol.role)
+            .collect();
+        assert_eq!(
+            future_roles,
+            [EditorSemanticRole::Reference, EditorSemanticRole::Entity]
+        );
+    }
+
+    #[test]
     fn venn_combined_parse_constructs_once_and_preserves_projections() {
         let text = r##"venn-beta
 title "Product overlap"
@@ -1747,7 +1820,7 @@ style "Frontend Team",Backend fill:rgba(255, 0, 128, 0.5), color:#101010
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("venn");
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_venn_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
+            parse_venn_json_and_editor_facts(text, &meta, &crate::OperationControl::new()),
         )
         .unwrap();
         assert_eq!(

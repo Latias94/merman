@@ -1,7 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, Position, Range, TokenPlanError,
+    DocumentKind, PlannedTokenKind, Position, Range, TokenPlanError,
     plan_semantic_tokens_for_snapshot, plan_semantic_tokens_for_snapshot_range,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn planner_emits_sorted_non_overlapping_utf16_tokens_and_packed_words() {
@@ -13,9 +16,9 @@ fn planner_emits_sorted_non_overlapping_utf16_tokens_and_packed_words() {
         "alpha[\"Emoji 🤓\"] --> beta\n",
         "%% trailing comment\n",
     );
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/unicode.mmd",
             1,
             source.to_string(),
@@ -46,9 +49,9 @@ fn planner_emits_sorted_non_overlapping_utf16_tokens_and_packed_words() {
 
 #[test]
 fn markdown_fences_are_preprocessor_owned_delimiter_tokens() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.md",
             1,
             "before\n```mermaid\nflowchart TD\nA --> B\n```\nafter\n".to_string(),
@@ -69,9 +72,9 @@ fn markdown_fences_are_preprocessor_owned_delimiter_tokens() {
 
 #[test]
 fn range_planner_visits_only_overlapping_markdown_fences() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/range.md",
             1,
             concat!(
@@ -105,14 +108,14 @@ fn range_planner_visits_only_overlapping_markdown_fences() {
 
 #[test]
 fn range_planner_prunes_candidates_inside_one_large_fence() {
-    let mut workspace = DocumentWorkspace::new();
+    let harness = SnapshotHarness::new();
     let mut source = String::from("```mermaid\nflowchart TD\n");
     for index in 0..128 {
         source.push_str(&format!("node{index} --> node{}\n", index + 1));
     }
     source.push_str("```\n");
-    let snapshot = workspace
-        .upsert(
+    let snapshot = harness
+        .analyze(
             "file:///tmp/large-range.md",
             1,
             source,
@@ -130,9 +133,9 @@ fn range_planner_prunes_candidates_inside_one_large_fence() {
 
 #[test]
 fn range_planner_distinguishes_empty_ranges_from_invalid_ranges() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/range-validation.mmd",
             1,
             "flowchart TD\nA[🤓] --> B\nC --> D\n".to_string(),
@@ -178,9 +181,9 @@ fn range_planner_distinguishes_empty_ranges_from_invalid_ranges() {
 
 #[test]
 fn range_planner_validates_utf16_columns_without_clamping() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/range-utf16.mmd",
             1,
             "flowchart TD\nA[🤓] --> B\nC --> D\n".to_string(),
@@ -233,9 +236,9 @@ fn range_planner_validates_utf16_columns_without_clamping() {
 
 #[test]
 fn planner_uses_exact_structured_marker_spans_for_all_fence_forms() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/fences.md",
             1,
             concat!(
@@ -268,9 +271,9 @@ fn planner_uses_exact_structured_marker_spans_for_all_fence_forms() {
 
 #[test]
 fn zenuml_recovery_does_not_emit_overlapping_tokens() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/recovered.mmd",
             1,
             concat!(
@@ -374,9 +377,9 @@ fn lexer_backed_family_plans_merge_grammar_lexemes_with_semantic_overlays() {
     ];
 
     for (name, source, expected_kinds) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}.mmd"),
                 1,
                 source.to_string(),
@@ -430,9 +433,9 @@ fn lexer_backed_family_recovery_plans_cover_tokens_before_and_after_the_error() 
     ];
 
     for (name, source) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}-recovery.mmd"),
                 1,
                 source.to_string(),

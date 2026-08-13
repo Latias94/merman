@@ -1,6 +1,6 @@
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
-    SourceDescriptor, SourceMap,
+    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisPayload, DiagnosticCategory, DiagnosticFix,
+    DiagnosticFixEdit, SourceDescriptor, SourceMap,
 };
 use merman_editor_core::{analysis_diagnostic_to_editor, analysis_payload_to_diagnostics};
 
@@ -13,6 +13,7 @@ fn diagnostics_projection_preserves_message_and_fix_metadata() {
         DiagnosticCategory::Semantic,
         "test diagnostic",
     )
+    .with_tag(AnalysisDiagnosticTag::Deprecated)
     .with_fix(
         DiagnosticFix::new(
             "Replace invalid text",
@@ -23,6 +24,7 @@ fn diagnostics_projection_preserves_message_and_fix_metadata() {
     let projected = analysis_diagnostic_to_editor(&diagnostic);
 
     assert_eq!(projected.message, "test diagnostic");
+    assert_eq!(projected.tags, vec![AnalysisDiagnosticTag::Deprecated]);
     let data = projected.data.expect("diagnostic data");
     assert_eq!(data.id, "merman.test.fix");
     assert_eq!(data.category, DiagnosticCategory::Semantic);

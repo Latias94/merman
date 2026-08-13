@@ -1,24 +1,71 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
-use super::layout::{GroupLayout, NodeLayout, graph_canvas_extent, layout_graph_with_resources};
+use super::layout::{
+    GraphLayout, GroupLayout, NodeLayout, graph_canvas_extent, layout_graph_with_resources,
+};
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::routing;
 use super::surface::{GraphSurface, OutputTransform, TransformedSurface};
 use crate::canvas::Canvas as RawCanvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
 type Canvas<'surface> = dyn GraphSurface + 'surface;
 
+struct PreparedGraphRender {
+    charset: GraphCharset,
+    graph_layout: GraphLayout,
+    route_scene: routing::RouteScene,
+    width: usize,
+    height: usize,
+    output_transform: OutputTransform,
+}
+
 #[cfg(test)]
 pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Result<String> {
     let mut resources = ResourceContext::new(options.resources);
-    render_graph_with_resources(graph, options, &mut resources)
+    render_graph_uncontrolled(graph, options, &mut resources)
 }
 
 pub(crate) fn render_graph_with_resources(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    debug_assert_eq!(resources.policy(), options.resources);
+    render_graph_uncontrolled(graph, options, resources)
+}
+
+#[cfg(test)]
+pub(crate) fn render_graph_with_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let mut resources = ResourceContext::new(*execution.resources());
+    render_graph_with_resources_and_execution(graph, options, &mut resources, execution)
+}
+
+pub(crate) fn render_graph_with_resources_and_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    debug_assert_eq!(resources.policy(), *execution.resources());
+    options.validate()?;
+    if graph.nodes.is_empty() && graph.groups.is_empty() {
+        return Ok(String::new());
+    }
+
+    let prepared = prepare_graph_render_controlled(graph, options, resources, execution)?;
+    paint_graph_render_controlled(prepared, options, resources, execution)
+}
+
+fn render_graph_uncontrolled(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
@@ -28,7 +75,6 @@ pub(crate) fn render_graph_with_resources(
         return Ok(String::new());
     }
 
-    debug_assert_eq!(resources.policy(), options.resources);
     let charset = GraphCharset::for_options(options);
     let graph_layout = layout_graph_with_resources(graph, options, resources)?;
     graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
@@ -122,6 +168,147 @@ pub(crate) fn render_graph_with_resources(
     }
 
     canvas.finish_with_options(options)
+}
+
+fn prepare_graph_render_controlled(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<PreparedGraphRender> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    let charset = GraphCharset::for_options(options);
+    let graph_layout = layout_graph_with_resources(graph, options, resources)?;
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
+    let route_scene_plan = routing::prepare_route_scene_with_execution(
+        graph,
+        &graph_layout,
+        &graph.edges,
+        &charset,
+        resources,
+        execution,
+    )?;
+    let (edge_width, edge_height) = route_scene_plan.canvas_extent();
+    let extent = graph_canvas_extent(
+        &graph_layout.nodes,
+        &graph_layout.groups,
+        edge_width,
+        edge_height,
+        resources,
+    )?;
+    let width = extent.width();
+    let height = extent.height();
+    execution.admit_grid(extent.cells())?;
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    let output_transform = OutputTransform::for_direction(graph.direction);
+    if !output_transform.is_identity() {
+        resources.charge_layout_work(extent.cells())?;
+    }
+    let route_scene = route_scene_plan.materialize(resources)?;
+
+    Ok(PreparedGraphRender {
+        charset,
+        graph_layout,
+        route_scene,
+        width,
+        height,
+        output_transform,
+    })
+}
+
+fn paint_graph_render_controlled(
+    prepared: PreparedGraphRender,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let PreparedGraphRender {
+        charset,
+        graph_layout,
+        route_scene,
+        width,
+        height,
+        output_transform,
+    } = prepared;
+
+    let mut canvas =
+        RawCanvas::try_with_resources(width, height, options.terminal_width_profile, resources)?;
+    let mut route_cells = routing::RouteCells::new();
+    route_cells
+        .try_reserve(route_scene.planned_cell_count())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    {
+        let mut surface = TransformedSurface::new(
+            &mut canvas,
+            output_transform,
+            width,
+            height,
+            options.terminal_width_profile,
+        );
+        for group in &graph_layout.groups {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            draw_group(&mut surface, group, &charset)?;
+        }
+        for layout in &graph_layout.nodes {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            draw_node(&mut surface, layout, &charset, options)?;
+        }
+    }
+
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    redraw_transformed_node_compartments(
+        &mut canvas,
+        &graph_layout.nodes,
+        &charset,
+        output_transform,
+        width,
+        height,
+    )?;
+
+    {
+        let mut surface = TransformedSurface::new(
+            &mut canvas,
+            output_transform,
+            width,
+            height,
+            options.terminal_width_profile,
+        );
+        let mut route_drawing = routing::RouteDrawing::new(&mut surface, &mut route_cells);
+        route_scene.paint_routes_with_execution(&mut route_drawing, execution)?;
+    }
+
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    redraw_transformed_node_labels(
+        &mut canvas,
+        &graph_layout.nodes,
+        output_transform,
+        width,
+        height,
+    )?;
+    route_scene.draw_labels_with_execution(
+        &mut canvas,
+        output_transform.route_label_transform(width, height),
+        execution,
+    )?;
+    if output_transform.is_identity() {
+        for group in &graph_layout.groups {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            draw_group_title(&mut canvas, group)?;
+        }
+    } else {
+        for group in &graph_layout.groups {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            draw_transformed_group_title(&mut canvas, group, output_transform, width, height)?;
+        }
+    }
+
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    let target_options = (*options).with_resource_policy(*execution.resources());
+    canvas.finish_with_options_with_execution(&target_options, execution)
 }
 
 impl OutputTransform {

@@ -1,14 +1,20 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-09
+Last updated: 2026-08-11
 
 ## Version Decision
 
 Published workspace prerelease baseline: `0.8.0-alpha.5`.
 
-Prepared workspace release candidate: `0.8.0-alpha.6`. This is a local prepare-state decision; it
-does not authorize a tag, workflow dispatch, registry publication, or GitHub Release mutation.
+The prepared workspace candidate is `0.8.0-alpha.6`. This local source state does not authorize a
+tag, workflow dispatch, registry publication, or GitHub Release mutation. The browser and
+Node package groups were published as an authorized alpha-channel test at `0.8.0-alpha.5` from
+reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace
+`v0.8.0-alpha.5` tag. Their verified package-group manifests and workflow artifacts identify that
+commit. Because the first publication was a manual bootstrap, those npm registry artifacts do not
+expose npm provenance attestations; documentation must not imply either an attestation or
+cross-channel byte identity.
 
 Rationale:
 
@@ -20,41 +26,25 @@ Rationale:
   `0.1.x` version track and records the bundled workspace runtime separately.
 
 Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.6` candidate. Python package
-metadata uses the PEP 440 spelling `0.8.0a6`. The independently versioned VS Code extension, Typst
-wrapper, and `roughr-merman` remain on their own release axes.
+metadata uses the PEP 440 spelling `0.8.0a6`, but manifest alignment does not prove that a surface reached its
+registry or that separately published alpha.5 channels share one source snapshot. The
+independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
+release axes.
 
 ## Publish Order
 
-Publish crates in dependency order:
+Cargo metadata is the publish-order authority. Inspect the current dependency-safe projection with:
 
-1. `dugong-graphlib`
-2. `manatee`
-3. `merman-core`
-4. `merman-elk-layered`
-5. `roughr-merman`
-6. `dugong`
-7. `merman-analysis`
-8. `merman-ascii`
-9. `merman-layout-elk`
-10. `merman-editor-core`
-11. `merman-render`
-12. `merman-export`
-13. `merman`
-14. `merman-lsp`
-15. `merman-bindings-core`
-16. `merman-cli`
-17. `merman-rustdoc`
-18. `merman-ffi`
-19. `merman-typst-plugin`
-20. `merman-uniffi`
-21. `merman-wasm`
+```bash
+python3 tools/publish.py --list-crates-io-packages
+```
 
-This list is intentionally identical to `.github/workflows/release-crates.yml`,
-`tools/publish.py`, `docs/releasing/CRATES_IO.md`, and `docs/releasing/PUBLISHING.md`.
-Run `python3 scripts/verify-release-crate-order.py` after changing any publishable crate, release
-workflow, or release-order document. The guard checks duplicate entries, cross-file sync, the
-publishable workspace crate set, and Cargo metadata dependency topology, so a crate must appear
-after every publishable workspace dependency it needs for a crates.io publish.
+The helper selects crates.io-publishable `workspace_members`, follows every non-dev workspace path
+dependency (including optional, target-specific, renamed, and build dependencies), rejects a
+publishable crate that depends on a private workspace member, and topologically sorts the graph.
+Only crates within the same independent batch use lexical ordering. The local publish flow,
+release preflight, and release workflow consume this same projection; Markdown is not parsed as a
+release-order database.
 
 `roughr-merman` is versioned separately as `0.12.2`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
@@ -87,24 +77,53 @@ transport with the released binding core, renderer, ASCII, and editor-capable cr
 The npm browser SDK is not a single Cargo publication and is intentionally outside the crates.io
 topological order. After the selected source revision has passed release preflight, run
 `release-web.yml` for the admitted package group: `@mermanjs/web`, `@mermanjs/web-analysis`,
-`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow publishes
-missing exact versions to a staging tag, verifies every member, then promotes the requested public
-tag as a recoverable group operation.
+`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow preflights
+all existing versions and tags, then publishes missing exact versions directly under the requested
+final tag in manifest order, with `@mermanjs/web` last. A retry skips matching published members.
+
+The first version of a new split Web package cannot use npm Trusted Publishing before the package
+exists. Run `release-web.yml` without publication, download the verified package-group artifact,
+publish only the missing exact tarballs directly under the requested final tag with a maintainer's
+2FA-protected npm credential, configure Trusted Publishing for those package names, then rerun the
+workflow with publication enabled. Do not keep the bootstrap credential in GitHub Actions.
+
+## Node Native Package Group
+
+The experimental Node package is also a lockstep npm group, but it is native rather than browser
+WASM: `@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
+`@mermanjs/node-linux-x64-gnu`, `@mermanjs/node-linux-x64-musl`, and
+`@mermanjs/node-win32-x64-msvc`. Run `release-node.yml` against a reviewed immutable source commit
+after the matching preflight succeeds. It builds and installs every native target, preflights
+existing registry integrity and tags, then publishes missing exact versions directly under the
+requested final tag in platform-first order, with the root loader last.
+
+The first version of each npm package cannot use npm Trusted Publishing before the package exists.
+For that one bootstrap, download the verified group artifact from a non-publishing run, publish the
+five platform tarballs and then the loader directly under the requested final tag with a
+maintainer's 2FA-protected npm credential, configure Trusted Publishing for all six package names,
+and rerun `release-node.yml` with publishing enabled. Thereafter the workflow owns idempotent
+publishing and provenance; do not keep an npm token in GitHub Actions.
+
+The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
+changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
+documentation-only bootstrap defect: the source changelog is corrected, and the correction will
+first appear in a later immutable package version.
 
 ## Pre-Publish Gates
 
 Before publishing, run focused checks:
 
 ```bash
-python3 scripts/verify-release-crate-order.py
+python3 tools/publish.py --list-crates-io-packages
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
 cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
 ```
 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
-release workflow runs this gate automatically for every unpublished crate immediately before the
-real publish, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
+release workflow packages every member of a topological batch first and records the exact `.crate`
+digest. It then requires all missing members in that batch to pass this gate before the first real
+publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
 
 ```bash
 cargo publish -p merman-render --locked --dry-run --registry crates-io
@@ -116,6 +135,16 @@ cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
 
 Before upstream crates for the same release are visible in crates.io, keep using `cargo package
 --list` only as a file-list check. It does not replace publish dry-run verification.
+
+The credentialed workflow writes `batch-NNN-prepared.json` before each batch and
+`batch-NNN-result.json` after registry reconciliation. Both conform to
+`distribution/crates-io/receipt-schema-v1.json` and bind the source commit/tree, Cargo and Rust
+toolchains, publish graph, manifest bytes, `.crate` bytes, and observed registry checksum. A batch
+result of `pending_recovery` or `mismatch` blocks every dependent batch. Recovery re-packages the
+same source and skips only exact checksum matches. A rerun consumes the prior attempt artifact; a
+new manual recovery supplies its prior workflow id through `recovery_run_id`. Source, tree,
+toolchain, publish plan, manifest, and `.crate` identity must all agree before recovery continues,
+and the publisher never yanks automatically.
 
 ## Pre-Alpha.3 Package Evidence Snapshot
 
@@ -149,4 +178,6 @@ the owning artifact release directly for current availability; do not infer it f
 ## Publish Guardrail
 
 Do not run `cargo publish` as part of an implementation lane unless the release operator explicitly
-requests it. This document prepares the order and gates; it is not itself a publish command.
+requests it. `tools/publish.py` computes the current order, and `release-crates.yml` is the normal
+caller of `scripts/crates_io_release.py publish-receipted`. Do not invoke that command locally merely
+to test it; focused unit tests own response-loss, checksum-mismatch, and partial-recovery behavior.

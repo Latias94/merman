@@ -1,23 +1,21 @@
 use crate::analyzer::{AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, Analyzer};
 use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
-use crate::editor::FenceExpectedSyntax;
 use crate::payload::DiagnosticRetainedWeight;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
     AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
-    FenceDelimiterSpans, FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem,
-    FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
+    FenceDelimiterSpans, FenceMarker, FenceTextIndex, FenceTextIndexSource, SharedTextSlice,
+    SourceDescriptor, SourceMap, Summary,
 };
-use serde::de::DeserializeOwned;
+use merman_core::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::mem::size_of;
 
-use crate::retained_weight::{
-    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
-};
+use crate::retained_weight::{ARC_ALLOCATION_OVERHEAD, RetainedWeight};
 
 /// One sealed rich capture bound to an exact parser environment and snapshot policy.
 #[derive(Debug)]
@@ -306,8 +304,19 @@ impl AnalysisGeneration {
         &self,
         policy: &AnalysisDiagnosticPolicy,
     ) -> AnalysisFactsPayload {
-        let payload = self.project(policy);
-        AnalysisFactsPayload::from_generation(self, &payload)
+        let cancellation = AnalysisCancellationToken::new();
+        self.to_facts_payload_cancellable(policy, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    /// Projects the serializable facts contract without reparsing this generation.
+    pub fn to_facts_payload_cancellable(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisFactsPayload, AnalysisCancelled> {
+        let payload = self.project_cancellable(policy, cancellation)?;
+        AnalysisFactsPayload::from_generation_cancellable(self, &payload, cancellation)
     }
 }
 
@@ -430,7 +439,6 @@ pub struct AnalysisSyntaxFacts {
     pub diagram_type: Option<String>,
     pub effective_layout: Option<String>,
     pub text_index: FenceTextIndex,
-    pub flowchart: Option<AnalysisFlowchartFacts>,
 }
 
 impl AnalysisSyntaxFacts {
@@ -439,7 +447,6 @@ impl AnalysisSyntaxFacts {
             diagram_type,
             effective_layout: None,
             text_index,
-            flowchart: None,
         }
     }
 
@@ -448,17 +455,11 @@ impl AnalysisSyntaxFacts {
             text_index: FenceTextIndex::default(),
             diagram_type,
             effective_layout: None,
-            flowchart: None,
         }
     }
 
     pub fn source(&self) -> FenceTextIndexSource {
         self.text_index.source()
-    }
-
-    pub fn with_flowchart(mut self, flowchart: Option<AnalysisFlowchartFacts>) -> Self {
-        self.flowchart = flowchart;
-        self
     }
 
     pub fn with_effective_layout(mut self, effective_layout: Option<String>) -> Self {
@@ -471,9 +472,6 @@ impl AnalysisSyntaxFacts {
         weight.add_optional_string(&self.diagram_type);
         weight.add_optional_string(&self.effective_layout);
         weight.add(self.text_index.estimated_owned_heap_bytes());
-        if let Some(flowchart) = &self.flowchart {
-            weight.add(flowchart.estimated_owned_heap_bytes());
-        }
         weight.finish()
     }
 }
@@ -532,22 +530,30 @@ impl<'de> Deserialize<'de> for AnalysisFactsPayload {
 }
 
 impl AnalysisFactsPayload {
-    pub(crate) fn from_generation(
+    fn from_generation_cancellable(
         generation: &AnalysisGeneration,
         payload: &AnalysisPayload,
-    ) -> Self {
-        Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let mut diagrams = Vec::with_capacity(generation.diagrams().len());
+        for diagram in generation.diagrams() {
+            cancellation.checkpoint()?;
+            diagrams.push(AnalysisDiagramFacts::from_diagram_cancellable(
+                diagram,
+                generation.source_map(),
+                cancellation,
+            )?);
+        }
+        cancellation.checkpoint()?;
+        Ok(Self {
             version: ANALYSIS_FACTS_PAYLOAD_VERSION,
             valid: payload.valid,
             summary: payload.summary,
             source: payload.source.clone(),
             diagnostics: payload.diagnostics.clone(),
-            diagrams: generation
-                .diagrams()
-                .iter()
-                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, generation.source_map()))
-                .collect(),
-        }
+            diagrams,
+        })
     }
 
     pub fn from_rejection(rejection: &AnalysisRejection) -> Self {
@@ -587,25 +593,38 @@ pub struct AnalysisDiagramFacts {
 }
 
 impl AnalysisDiagramFacts {
-    fn from_diagram(diagram: &AnalyzedDiagram, source_map: &SourceMap) -> Self {
-        Self {
+    fn from_diagram_cancellable(
+        diagram: &AnalyzedDiagram,
+        source_map: &SourceMap,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let span = source_map
+            .span_cancellable(diagram.start, diagram.end, cancellation)?
+            .ok();
+        let body_span = source_map
+            .span_cancellable(diagram.body_start, diagram.body_end, cancellation)?
+            .ok();
+        let syntax = AnalysisDiagramSyntaxFacts::from_syntax_cancellable(
+            &diagram.syntax,
+            source_map,
+            diagram.body_start,
+            cancellation,
+        )?;
+        Ok(Self {
             source_id: diagram.source_id.clone(),
             index: diagram.index,
             kind: diagram_kind_name(diagram.kind).to_string(),
             source: diagram.source.clone(),
-            span: source_map.span(diagram.start, diagram.end).ok(),
-            body_span: source_map.span(diagram.body_start, diagram.body_end).ok(),
+            span,
+            body_span,
             text_len: diagram.text.len(),
             fence_delimiter: diagram
                 .fence_delimiter
                 .map(AnalysisFenceDelimiterFacts::from),
             parse_disposition: diagram.parse_disposition(),
-            syntax: AnalysisDiagramSyntaxFacts::from_syntax(
-                &diagram.syntax,
-                source_map,
-                diagram.body_start,
-            ),
-        }
+            syntax,
+        })
     }
 }
 
@@ -633,8 +652,6 @@ pub struct AnalysisDiagramSyntaxFacts {
     pub parser_backed: bool,
     pub recovered: bool,
     pub source_mapped_spans: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flowchart: Option<AnalysisFlowchartFacts>,
     pub node_ids: Vec<String>,
     pub class_names: Vec<String>,
     pub directive_prefixes: Vec<String>,
@@ -645,493 +662,220 @@ pub struct AnalysisDiagramSyntaxFacts {
 }
 
 impl AnalysisDiagramSyntaxFacts {
-    fn from_syntax(
+    fn from_syntax_cancellable(
         syntax: &AnalysisSyntaxFacts,
         source_map: &SourceMap,
         body_start: usize,
-    ) -> Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
         let text_index = &syntax.text_index;
         let fact_source = text_index.source();
-
-        Self {
+        cancellation.checkpoint()?;
+        let mut node_ids = Vec::new();
+        for node_id in text_index.node_ids() {
+            cancellation.checkpoint()?;
+            node_ids.push(node_id.clone());
+        }
+        let mut class_names = Vec::new();
+        for class_name in text_index.class_names() {
+            cancellation.checkpoint()?;
+            class_names.push(class_name.clone());
+        }
+        let mut directive_prefixes = Vec::new();
+        for directive_prefix in text_index.directive_prefixes() {
+            cancellation.checkpoint()?;
+            directive_prefixes.push(directive_prefix.clone());
+        }
+        let mut references = Vec::new();
+        for (group, spans) in text_index.reference_groups() {
+            cancellation.checkpoint()?;
+            references.push(AnalysisReferenceFacts::from_reference_cancellable(
+                group.name,
+                group.kind,
+                spans,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        let mut outline_items = Vec::new();
+        for item in text_index
+            .semantic_items()
+            .iter()
+            .filter(|item| item.role.contributes_outline())
+        {
+            cancellation.checkpoint()?;
+            outline_items.push(AnalysisLineItemFacts::from_item_cancellable(
+                item,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        let mut semantic_items = Vec::new();
+        for item in text_index.semantic_items() {
+            cancellation.checkpoint()?;
+            semantic_items.push(AnalysisSemanticItemFacts::from_item_cancellable(
+                item,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        let mut expected_syntax = Vec::new();
+        for expected in text_index.expected_syntax() {
+            cancellation.checkpoint()?;
+            expected_syntax.push(AnalysisExpectedSyntaxFacts::from_expected_cancellable(
+                expected,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
+        }
+        cancellation.checkpoint()?;
+        Ok(Self {
             diagram_type: syntax.diagram_type.clone(),
             effective_layout: syntax.effective_layout.clone(),
             fact_source,
             parser_backed: fact_source.is_parser_backed(),
             recovered: fact_source.is_recovered(),
             source_mapped_spans: fact_source.has_source_mapped_spans(),
-            flowchart: syntax.flowchart.clone(),
-            node_ids: text_index.node_ids().cloned().collect(),
-            class_names: text_index.class_names().cloned().collect(),
-            directive_prefixes: text_index.directive_prefixes().cloned().collect(),
-            references: text_index
-                .references()
-                .map(|(group, spans)| {
-                    AnalysisReferenceFacts::from_reference(group, spans, source_map, body_start)
-                })
-                .collect(),
-            outline_items: text_index
-                .outline_items()
-                .iter()
-                .map(|item| AnalysisLineItemFacts::from_item(item, source_map, body_start))
-                .collect(),
-            semantic_items: text_index
-                .semantic_items()
-                .iter()
-                .map(|item| AnalysisSemanticItemFacts::from_item(item, source_map, body_start))
-                .collect(),
-            expected_syntax: text_index
-                .expected_syntax()
-                .iter()
-                .map(|expected| {
-                    AnalysisExpectedSyntaxFacts::from_expected(expected, source_map, body_start)
-                })
-                .collect(),
+            node_ids,
+            class_names,
+            directive_prefixes,
+            references,
+            outline_items,
+            semantic_items,
+            expected_syntax,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisEditorSymbolKind {
+    Class,
+    Event,
+    Function,
+    Module,
+    Namespace,
+    Object,
+    Package,
+    Property,
+    String,
+    Struct,
+    Variable,
+}
+
+impl From<EditorSemanticKind> for AnalysisEditorSymbolKind {
+    fn from(kind: EditorSemanticKind) -> Self {
+        match kind {
+            EditorSemanticKind::Class => Self::Class,
+            EditorSemanticKind::Event => Self::Event,
+            EditorSemanticKind::Function => Self::Function,
+            EditorSemanticKind::Module => Self::Module,
+            EditorSemanticKind::Namespace => Self::Namespace,
+            EditorSemanticKind::Object => Self::Object,
+            EditorSemanticKind::Package => Self::Package,
+            EditorSemanticKind::Property => Self::Property,
+            EditorSemanticKind::String => Self::String,
+            EditorSemanticKind::Struct => Self::Struct,
+            EditorSemanticKind::Variable => Self::Variable,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartFacts {
-    #[serde(default)]
-    pub direction: Option<String>,
-    #[serde(default, rename = "classDefs")]
-    pub class_defs: BTreeMap<String, Vec<String>>,
-    #[serde(default, rename = "edgeDefaults")]
-    pub edge_defaults: Option<AnalysisFlowchartEdgeDefaults>,
-    #[serde(default, rename = "vertexCalls")]
-    pub vertex_calls: Vec<String>,
-    #[serde(default)]
-    pub nodes: Vec<AnalysisFlowchartNodeFacts>,
-    #[serde(default)]
-    pub edges: Vec<AnalysisFlowchartEdgeFacts>,
-    #[serde(default)]
-    pub subgraphs: Vec<AnalysisFlowchartSubgraphFacts>,
-    #[serde(default)]
-    pub tooltips: BTreeMap<String, String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisSemanticRole {
+    Entity,
+    ClassDefinition,
+    Reference,
+    Outline,
+    Payload,
 }
 
-impl AnalysisFlowchartFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_optional_string(&self.direction);
-        weight.add(
-            self.class_defs
-                .len()
-                .saturating_mul(conservative_btree_entry_bytes::<String, Vec<String>>()),
-        );
-        for (name, classes) in &self.class_defs {
-            weight.add_string(name);
-            add_string_vec_weight(&mut weight, classes);
-        }
-        if let Some(defaults) = &self.edge_defaults {
-            weight.add_optional_string(&defaults.interpolate);
-            add_string_vec_weight(&mut weight, &defaults.style);
-        }
-        add_string_vec_weight(&mut weight, &self.vertex_calls);
-        weight.add_array::<AnalysisFlowchartNodeFacts>(self.nodes.capacity());
-        for node in &self.nodes {
-            weight.add(node.estimated_owned_heap_bytes());
-        }
-        weight.add_array::<AnalysisFlowchartEdgeFacts>(self.edges.capacity());
-        for edge in &self.edges {
-            weight.add(edge.estimated_owned_heap_bytes());
-        }
-        weight.add_array::<AnalysisFlowchartSubgraphFacts>(self.subgraphs.capacity());
-        for subgraph in &self.subgraphs {
-            weight.add(subgraph.estimated_owned_heap_bytes());
-        }
-        weight.add(
-            self.tooltips
-                .len()
-                .saturating_mul(conservative_btree_entry_bytes::<String, String>()),
-        );
-        for (name, tooltip) in &self.tooltips {
-            weight.add_string(name);
-            weight.add_string(tooltip);
-        }
-        weight.finish()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn try_from_model(
-        model: &Value,
-    ) -> Result<Option<Self>, AnalysisFlowchartFactsProjectionError> {
-        let cancellation = crate::AnalysisCancellationToken::new();
-        Self::try_from_model_cancellable(model, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled")
-    }
-
-    pub(crate) fn try_from_model_cancellable(
-        model: &Value,
-        cancellation: &crate::AnalysisCancellationToken,
-    ) -> Result<Result<Option<Self>, AnalysisFlowchartFactsProjectionError>, crate::AnalysisCancelled>
-    {
-        cancellation.checkpoint()?;
-        let diagram_type = model.get("type").and_then(Value::as_str);
-        if !matches!(
-            diagram_type,
-            Some("flowchart" | "flowchart-v2" | "flowchart-elk")
-        ) {
-            return Ok(Ok(None));
-        }
-
-        let facts: Result<Self, CancellableFlowchartProjectionError> = (|| {
-            Ok(Self {
-                direction: deserialize_optional_model_field_cancellable(
-                    model,
-                    "direction",
-                    cancellation,
-                )?,
-                class_defs: deserialize_model_map_cancellable(model, "classDefs", cancellation)?,
-                edge_defaults: deserialize_optional_model_field_cancellable(
-                    model,
-                    "edgeDefaults",
-                    cancellation,
-                )?,
-                vertex_calls: deserialize_model_array_cancellable(
-                    model,
-                    "vertexCalls",
-                    cancellation,
-                )?,
-                nodes: deserialize_model_array_cancellable(model, "nodes", cancellation)?,
-                edges: deserialize_model_array_cancellable(model, "edges", cancellation)?,
-                subgraphs: deserialize_model_array_cancellable(model, "subgraphs", cancellation)?,
-                tooltips: deserialize_model_map_cancellable(model, "tooltips", cancellation)?,
-            })
-        })();
-        match facts {
-            Ok(facts) => {
-                cancellation.checkpoint()?;
-                Ok(Ok(Some(facts)))
-            }
-            Err(CancellableFlowchartProjectionError::Cancelled) => Err(crate::AnalysisCancelled),
-            Err(CancellableFlowchartProjectionError::Invalid(error)) => {
-                cancellation.checkpoint()?;
-                Ok(Err(error))
-            }
+impl From<EditorSemanticRole> for AnalysisSemanticRole {
+    fn from(role: EditorSemanticRole) -> Self {
+        match role {
+            EditorSemanticRole::Entity => Self::Entity,
+            EditorSemanticRole::ClassDefinition => Self::ClassDefinition,
+            EditorSemanticRole::Reference => Self::Reference,
+            EditorSemanticRole::Outline => Self::Outline,
+            EditorSemanticRole::Payload => Self::Payload,
         }
     }
 }
 
-fn add_string_vec_weight(weight: &mut RetainedWeight, values: &Vec<String>) {
-    weight.add_array::<String>(values.capacity());
-    for value in values {
-        weight.add_string(value);
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisExpectedSyntaxKind {
+    Directive,
+    Frontmatter,
+    IdList,
+    NodeIdentifier,
+    ClassName,
+    Operator,
+    Shape,
+    ShapeTrigger,
+    Direction,
+    StyleValue,
+    InteractionAction,
+    Payload,
 }
 
-fn deserialize_optional_model_field_cancellable<T>(
-    model: &Value,
-    field: &'static str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Option<T>, CancellableFlowchartProjectionError>
-where
-    T: DeserializeOwned,
-{
-    match model.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => {
-            checkpoint_model_value(value, cancellation)?;
-            T::deserialize(value)
-                .map(Some)
-                .map_err(AnalysisFlowchartFactsProjectionError::from)
-                .map_err(CancellableFlowchartProjectionError::Invalid)
+impl From<EditorExpectedSyntaxKind> for AnalysisExpectedSyntaxKind {
+    fn from(kind: EditorExpectedSyntaxKind) -> Self {
+        match kind {
+            EditorExpectedSyntaxKind::Directive => Self::Directive,
+            EditorExpectedSyntaxKind::Frontmatter => Self::Frontmatter,
+            EditorExpectedSyntaxKind::IdList => Self::IdList,
+            EditorExpectedSyntaxKind::NodeIdentifier => Self::NodeIdentifier,
+            EditorExpectedSyntaxKind::ClassName => Self::ClassName,
+            EditorExpectedSyntaxKind::FlowchartOperator => Self::Operator,
+            EditorExpectedSyntaxKind::ShapeValue => Self::Shape,
+            EditorExpectedSyntaxKind::ShapeTrigger => Self::ShapeTrigger,
+            EditorExpectedSyntaxKind::FlowchartDirectionValue
+            | EditorExpectedSyntaxKind::CardinalDirectionValue
+            | EditorExpectedSyntaxKind::BlockDirectionValue => Self::Direction,
+            EditorExpectedSyntaxKind::StyleValue => Self::StyleValue,
+            EditorExpectedSyntaxKind::InteractionAction => Self::InteractionAction,
+            EditorExpectedSyntaxKind::Payload => Self::Payload,
         }
-    }
-}
-
-fn deserialize_model_array_cancellable<T>(
-    model: &Value,
-    field: &'static str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Vec<T>, CancellableFlowchartProjectionError>
-where
-    T: DeserializeOwned,
-{
-    let Some(value) = model.get(field) else {
-        return Ok(Vec::new());
-    };
-    let Some(values) = value.as_array() else {
-        return Err(CancellableFlowchartProjectionError::Invalid(
-            AnalysisFlowchartFactsProjectionError::invalid_field(field, "an array"),
-        ));
-    };
-
-    let mut projected = Vec::with_capacity(values.len());
-    for value in values {
-        cancellation.checkpoint()?;
-        checkpoint_model_value(value, cancellation)?;
-        projected.push(
-            T::deserialize(value)
-                .map_err(AnalysisFlowchartFactsProjectionError::from)
-                .map_err(CancellableFlowchartProjectionError::Invalid)?,
-        );
-    }
-    Ok(projected)
-}
-
-fn deserialize_model_map_cancellable<T>(
-    model: &Value,
-    field: &'static str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<BTreeMap<String, T>, CancellableFlowchartProjectionError>
-where
-    T: DeserializeOwned,
-{
-    let Some(value) = model.get(field) else {
-        return Ok(BTreeMap::new());
-    };
-    let Some(values) = value.as_object() else {
-        return Err(CancellableFlowchartProjectionError::Invalid(
-            AnalysisFlowchartFactsProjectionError::invalid_field(field, "an object"),
-        ));
-    };
-
-    let mut projected = BTreeMap::new();
-    for (key, value) in values {
-        cancellation.checkpoint()?;
-        checkpoint_model_value(value, cancellation)?;
-        projected.insert(
-            key.clone(),
-            T::deserialize(value)
-                .map_err(AnalysisFlowchartFactsProjectionError::from)
-                .map_err(CancellableFlowchartProjectionError::Invalid)?,
-        );
-    }
-    Ok(projected)
-}
-
-fn checkpoint_model_value(
-    root: &Value,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<(), CancellableFlowchartProjectionError> {
-    let mut stack = vec![root];
-    let mut visited = 0usize;
-    while let Some(value) = stack.pop() {
-        if visited.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
-        visited += 1;
-        match value {
-            Value::Array(values) => stack.extend(values.iter().rev()),
-            Value::Object(values) => stack.extend(values.values()),
-            _ => {}
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(())
-}
-
-enum CancellableFlowchartProjectionError {
-    Cancelled,
-    Invalid(AnalysisFlowchartFactsProjectionError),
-}
-
-impl From<crate::AnalysisCancelled> for CancellableFlowchartProjectionError {
-    fn from(_: crate::AnalysisCancelled) -> Self {
-        Self::Cancelled
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AnalysisFlowchartFactsProjectionError {
-    message: String,
-}
-
-impl fmt::Display for AnalysisFlowchartFactsProjectionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for AnalysisFlowchartFactsProjectionError {}
-
-impl AnalysisFlowchartFactsProjectionError {
-    fn invalid_field(field: &str, expected: &str) -> Self {
-        Self {
-            message: format!("flowchart model field `{field}` must be {expected}"),
-        }
-    }
-}
-
-impl From<serde_json::Error> for AnalysisFlowchartFactsProjectionError {
-    fn from(error: serde_json::Error) -> Self {
-        Self {
-            message: error.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartEdgeDefaults {
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartNodeFacts {
-    pub id: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default, rename = "layoutShape")]
-    pub layout_shape: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub form: Option<String>,
-    #[serde(default)]
-    pub pos: Option<String>,
-    #[serde(default)]
-    pub img: Option<String>,
-    #[serde(default)]
-    pub constraint: Option<String>,
-    #[serde(default, rename = "assetWidth")]
-    pub asset_width: Option<f64>,
-    #[serde(default, rename = "assetHeight")]
-    pub asset_height: Option<f64>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub link: Option<String>,
-    #[serde(default, rename = "linkTarget")]
-    pub link_target: Option<String>,
-    #[serde(default, rename = "haveCallback")]
-    pub have_callback: bool,
-}
-
-impl AnalysisFlowchartNodeFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        for value in [
-            &self.label,
-            &self.label_type,
-            &self.layout_shape,
-            &self.icon,
-            &self.form,
-            &self.pos,
-            &self.img,
-            &self.constraint,
-            &self.link,
-            &self.link_target,
-        ] {
-            weight.add_optional_string(value);
-        }
-        add_string_vec_weight(&mut weight, &self.classes);
-        add_string_vec_weight(&mut weight, &self.styles);
-        weight.finish()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartEdgeFacts {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default, rename = "type")]
-    pub edge_type: Option<String>,
-    #[serde(default)]
-    pub stroke: Option<String>,
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-    #[serde(default)]
-    pub animate: Option<bool>,
-    #[serde(default)]
-    pub animation: Option<String>,
-    #[serde(default)]
-    pub length: usize,
-}
-
-impl AnalysisFlowchartEdgeFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        weight.add_string(&self.from);
-        weight.add_string(&self.to);
-        for value in [
-            &self.label,
-            &self.label_type,
-            &self.edge_type,
-            &self.stroke,
-            &self.interpolate,
-            &self.animation,
-        ] {
-            weight.add_optional_string(value);
-        }
-        add_string_vec_weight(&mut weight, &self.classes);
-        add_string_vec_weight(&mut weight, &self.style);
-        weight.finish()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartSubgraphFacts {
-    pub id: String,
-    pub title: String,
-    #[serde(default)]
-    pub dir: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub nodes: Vec<String>,
-}
-
-impl AnalysisFlowchartSubgraphFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        weight.add_string(&self.title);
-        weight.add_optional_string(&self.dir);
-        weight.add_optional_string(&self.label_type);
-        add_string_vec_weight(&mut weight, &self.classes);
-        add_string_vec_weight(&mut weight, &self.styles);
-        add_string_vec_weight(&mut weight, &self.nodes);
-        weight.finish()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisReferenceFacts {
     pub name: String,
-    pub kind: crate::EditorSymbolKind,
+    pub kind: AnalysisEditorSymbolKind,
     pub spans: Vec<AnalysisFactSpan>,
 }
 
 impl AnalysisReferenceFacts {
-    fn from_reference(
-        group: &FenceReferenceGroup,
-        spans: &[crate::ByteSpan],
+    fn from_reference_cancellable(
+        name: String,
+        kind: EditorSemanticKind,
+        spans: Vec<crate::ByteSpan>,
         source_map: &SourceMap,
         body_start: usize,
-    ) -> Self {
-        Self {
-            name: group.name.clone(),
-            kind: group.kind,
-            spans: spans
-                .iter()
-                .copied()
-                .map(|span| AnalysisFactSpan::from_local(span, source_map, body_start))
-                .collect(),
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let mut projected_spans = Vec::with_capacity(spans.len());
+        for span in spans {
+            cancellation.checkpoint()?;
+            projected_spans.push(AnalysisFactSpan::from_local_cancellable(
+                span,
+                source_map,
+                body_start,
+                cancellation,
+            )?);
         }
+        Ok(Self {
+            name,
+            kind: kind.into(),
+            spans: projected_spans,
+        })
     }
 }
 
@@ -1139,20 +883,35 @@ impl AnalysisReferenceFacts {
 pub struct AnalysisLineItemFacts {
     pub name: String,
     pub detail: Option<String>,
-    pub kind: crate::EditorSymbolKind,
+    pub kind: AnalysisEditorSymbolKind,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
 }
 
 impl AnalysisLineItemFacts {
-    fn from_item(item: &FenceLineItem, source_map: &SourceMap, body_start: usize) -> Self {
-        Self {
+    fn from_item_cancellable(
+        item: &EditorSemanticSymbol,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Ok(Self {
             name: item.name.clone(),
             detail: item.detail.clone(),
-            kind: item.kind,
-            span: AnalysisFactSpan::from_local(item.span, source_map, body_start),
-            selection: AnalysisFactSpan::from_local(item.selection, source_map, body_start),
-        }
+            kind: item.kind.into(),
+            span: AnalysisFactSpan::from_source_cancellable(
+                item.span,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+            selection: AnalysisFactSpan::from_source_cancellable(
+                item.selection,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+        })
     }
 }
 
@@ -1160,48 +919,69 @@ impl AnalysisLineItemFacts {
 pub struct AnalysisSemanticItemFacts {
     pub name: String,
     pub detail: Option<String>,
-    pub kind: crate::EditorSymbolKind,
-    pub role: crate::FenceSemanticRole,
+    pub kind: AnalysisEditorSymbolKind,
+    pub role: AnalysisSemanticRole,
     #[serde(default = "missing_rename_policy")]
-    pub rename_policy: crate::FenceRenamePolicy,
+    pub rename_policy: EditorRenamePolicy,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
 }
 
-fn missing_rename_policy() -> crate::FenceRenamePolicy {
-    crate::FenceRenamePolicy::None
+fn missing_rename_policy() -> EditorRenamePolicy {
+    EditorRenamePolicy::None
 }
 
 impl AnalysisSemanticItemFacts {
-    fn from_item(item: &FenceSemanticItem, source_map: &SourceMap, body_start: usize) -> Self {
-        Self {
+    fn from_item_cancellable(
+        item: &EditorSemanticSymbol,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Ok(Self {
             name: item.name.clone(),
             detail: item.detail.clone(),
-            kind: item.kind,
-            role: item.role,
+            kind: item.kind.into(),
+            role: item.role.into(),
             rename_policy: item.rename_policy,
-            span: AnalysisFactSpan::from_local(item.span, source_map, body_start),
-            selection: AnalysisFactSpan::from_local(item.selection, source_map, body_start),
-        }
+            span: AnalysisFactSpan::from_source_cancellable(
+                item.span,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+            selection: AnalysisFactSpan::from_source_cancellable(
+                item.selection,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+        })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisExpectedSyntaxFacts {
-    pub kind: crate::FenceExpectedSyntaxKind,
+    pub kind: AnalysisExpectedSyntaxKind,
     pub span: AnalysisFactSpan,
 }
 
 impl AnalysisExpectedSyntaxFacts {
-    fn from_expected(
-        expected: &FenceExpectedSyntax,
+    fn from_expected_cancellable(
+        expected: &EditorExpectedSyntax,
         source_map: &SourceMap,
         body_start: usize,
-    ) -> Self {
-        Self {
-            kind: expected.kind,
-            span: AnalysisFactSpan::from_local(expected.span, source_map, body_start),
-        }
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Ok(Self {
+            kind: expected.kind.into(),
+            span: AnalysisFactSpan::from_source_cancellable(
+                expected.span,
+                source_map,
+                body_start,
+                cancellation,
+            )?,
+        })
     }
 }
 
@@ -1212,13 +992,37 @@ pub struct AnalysisFactSpan {
 }
 
 impl AnalysisFactSpan {
-    fn from_local(local: crate::ByteSpan, source_map: &SourceMap, body_start: usize) -> Self {
+    fn from_source_cancellable(
+        local: SourceSpan,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        Self::from_local_cancellable(
+            crate::ByteSpan {
+                start: local.start,
+                end: local.end,
+            },
+            source_map,
+            body_start,
+            cancellation,
+        )
+    }
+
+    fn from_local_cancellable(
+        local: crate::ByteSpan,
+        source_map: &SourceMap,
+        body_start: usize,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
         let document_start = body_start.saturating_add(local.start);
         let document_end = body_start.saturating_add(local.end);
-        Self {
+        Ok(Self {
             local,
-            document: source_map.span(document_start, document_end).ok(),
-        }
+            document: source_map
+                .span_cancellable(document_start, document_end, cancellation)?
+                .ok(),
+        })
     }
 }
 
@@ -1258,45 +1062,5 @@ mod tests {
                 disposition
             );
         }
-    }
-
-    #[test]
-    fn flowchart_facts_accept_legacy_flowchart_models() {
-        let model = json!({
-            "type": "flowchart",
-            "direction": "LR",
-            "nodes": [
-                {
-                    "id": "A",
-                    "label": "Alpha"
-                }
-            ],
-            "edges": [
-                {
-                    "id": "L_A_B_0",
-                    "from": "A",
-                    "to": "B",
-                    "length": 1
-                }
-            ]
-        });
-
-        let facts = AnalysisFlowchartFacts::try_from_model(&model)
-            .expect("legacy flowchart model should deserialize")
-            .expect("legacy flowchart model should produce facts");
-
-        assert_eq!(facts.direction.as_deref(), Some("LR"));
-        assert!(
-            facts
-                .nodes
-                .iter()
-                .any(|node| node.id == "A" && node.label.as_deref() == Some("Alpha"))
-        );
-        assert!(
-            facts
-                .edges
-                .iter()
-                .any(|edge| edge.from == "A" && edge.to == "B")
-        );
     }
 }

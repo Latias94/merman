@@ -2,7 +2,11 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, RenderResourcePolicy, RuntimePolicy};
+use merman::svg::{RenderResourcePolicy, SvgRenderOptions};
+use merman::{
+    Engine, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest, runtime::RuntimePolicy,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -243,33 +247,53 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     validate_request(&request)?;
     let executable_sha256 = executable_sha256()?;
     let source = build_flowchart(request.scale, request.seed)?;
-    let renderer = HeadlessRenderer::new()
-        .with_strict_parsing()
-        // This fresh-process probe renders repository-generated trusted input under an outer
-        // timeout. Disable configurable policy budgets so the full scale curve measures allocator
-        // behavior without coupling its largest fixture to a product resource-profile ceiling;
-        // hard backend capabilities remain enforced by this profile.
-        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
-        .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed))
-        .with_diagram_id("native-memory-flowchart");
+    // This fresh-process probe renders repository-generated trusted input under an outer timeout.
+    // Disable configurable policy budgets so the full scale curve measures allocator behavior
+    // without coupling its largest fixture to a product resource-profile ceiling; hard backend
+    // capabilities remain enforced by this profile.
+    let render_policy = RenderResourcePolicy::unbounded_for_trusted_input();
+    let renderer = Renderer::new()
+        .with_engine(
+            Engine::new()
+                .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed)),
+        )
+        .with_parse_options(ParseOptions::strict())
+        .with_resource_policy(render_policy.input_policy().clone());
     let input_nodes = NODES_PER_SCALE * u64::from(request.scale);
     let input_edges = EDGES_PER_SCALE * u64::from(request.scale);
 
     let snapshot_live_bytes = ALLOCATOR.begin_measurement();
     let render_result = match request.mode {
-        Mode::Operation => Some(renderer.render_svg_sync(&source)),
+        Mode::Operation => {
+            let output = renderer
+                .render(
+                    RenderRequest::svg(
+                        &source,
+                        OperationControl::new(),
+                        SvgRequest {
+                            environment: SvgEnvironment::deterministic()
+                                .with_resource_policy(render_policy),
+                            options: SvgRenderOptions {
+                                diagram_id: Some("native-memory-flowchart".to_string()),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        },
+                    )
+                    .with_parse_options(ParseOptions::strict())
+                    .with_resource_policy(render_policy.input_policy().clone()),
+                )
+                .map_err(|error| ProbeError::new(format!("flowchart render failed: {error}")))?;
+            let RenderOutput::Svg(Some(svg)) = output else {
+                return Err(ProbeError::new("flowchart render returned no diagram"));
+            };
+            Some(svg.into_parts().0)
+        }
         Mode::Zero => None,
     };
     let metrics = ALLOCATOR.finish_measurement(snapshot_live_bytes);
 
-    let svg = match render_result {
-        Some(Ok(Some(svg))) => Some(svg),
-        Some(Ok(None)) => return Err(ProbeError::new("flowchart render returned no diagram")),
-        Some(Err(error)) => {
-            return Err(ProbeError::new(format!("flowchart render failed: {error}")));
-        }
-        None => None,
-    };
+    let svg = render_result;
     let (output_sha256, output_width, output_height) = match svg.as_deref() {
         Some(svg) => {
             let dimensions = svg_dimensions(svg)?;

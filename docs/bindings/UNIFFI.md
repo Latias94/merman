@@ -9,9 +9,9 @@ The current direct binding API is `4`. Its runtime contract is schema `1`; the C
 text-measurement protocol have separate version ownership.
 
 API 4 changes `MermanAsciiCapability`: replace `summary_fallback` with
-`structured_text_fallback`, add nullable `semantic_coverage` and `primary_projection`, and treat
-`support_level` as a derived compatibility view. Regenerate Swift/Python sources and deploy them
-with the matching native library; API 3 generated records are not layout-compatible.
+`structured_text_fallback`, consume nullable `semantic_coverage` and `primary_projection`, and
+treat `support_level` as a derived compatibility view. Regenerate Swift and Python projections
+with the matching native library.
 
 ## Public Model
 
@@ -21,22 +21,37 @@ The generated API exposes:
 - `MermanEngine` for reusable operations with immutable constructor options and services;
 - `MermanEngineServices`, `MermanIconPack`, and `MermanIconRegistry` for constructor-owned host
   services;
-- `MermanOperationRequest` and `MermanOperationResult` for generic descriptor-owned dispatch;
+- `MermanOperationRequestV4` and `MermanOperationResult` for generic descriptor-owned dispatch;
+- `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, message }` failures, where `resource` is optional typed limit evidence.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, cancellation, message }` failures, where resource, diagnostic, and cancellation evidence remain separate optional records.
 
-`Merman::binding_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
+`Merman::transport_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
 
-Every operation is available through `execute(request)`, and `MermanOperationRequest.options_json`
+API `4` adds the required `tags` field to `MermanLintRuleCatalogEntry` and replaces the API `3`
+`binding_api_version()` probe with `transport_api_version()`. The native library no longer exports
+the API `3` method symbol, so an API `3` generated binding fails during symbol resolution or UniFFI
+initialization before it can decode the changed record layout. Regenerate the whole language
+projection and deploy it with the matching native library; changing only the library is not
+supported.
+
+Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
 `render_svg`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
+
+Set `MermanOperationRequestV4.control` when a host needs to cancel or deadline one synchronous
+operation. Retain another reference and call `cancel()` from a different thread or callback. The
+request clones the shared control before execution and reports `MermanCancelledDetails` with the
+observed reason and phase; cancellation is not projected as a resource limit. Opaque host callbacks
+and single-call encoders can only be checked before and after invocation, so hard interruption
+still requires worker or process isolation.
 
 The generated resource helper takes an optional profile. Leave it unset when a reusable request
 must inherit its constructor ceiling; only generated override IDs can be serialized into
@@ -52,6 +67,9 @@ merge rules.
 the effective policy maximum was exceeded, while `arithmetic_overflow` means safe work accounting
 could not represent the required amount. Consumers should branch on this field rather than parse
 the display message.
+
+`MermanCancelledDetails.reason` is `requested` or `deadline_exceeded`; `phase` identifies the
+checkpoint that observed the terminal state. A cancelled operation returns no partial output.
 
 `MermanErrorKind::UnknownOperation` identifies an operation outside the descriptor vocabulary and has no
 capability ID. `MermanErrorKind::MissingCapability` identifies a valid request whose artifact lacks
@@ -74,20 +92,18 @@ reference cycle.
 
 ## Build Profiles
 
-`merman-uniffi` has no default features. The complete native language SDK artifact lists analysis,
-ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, RaTeX math, and the binding-owned
-`native-runtime` aggregate. That aggregate atomically compiles the native clock, time-zone, and
-random adapters. Timing is not part of the UniFFI artifact contract.
-`binding-generation` is only for foreign-language
+`merman-uniffi` has no default features. The default Python and Apple prebuilt SKU selects
+analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF, RaTeX math, and
+the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 ```
 
-Small artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
-`layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when the
-complete native runtime policy is required; UniFFI does not expose partial adapter feature sets.
+Custom artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
+`layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when native
+clock, time-zone, and random behavior is required; UniFFI does not expose partial adapter feature sets.
 `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
 Runtime discovery still reports `system-clock`, `system-timezone`, and `system-random` as concrete
 adapter IDs rather than exposing the Cargo aggregate as a capability.
@@ -98,10 +114,10 @@ The repository ships a Python package layout. Generate it from the exact cdylib 
 packaged:
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features --features binding-generation \
   --example generate_python_package -- \
-  --cdylib target/release/libmerman_uniffi.dylib \
+  --cdylib target/native-distribution/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
 
@@ -161,6 +177,9 @@ contract.
   on `kind`, use the optional known payload, and preserve `raw_json` for future kinds.
 - Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
   open discovery values. Closed request-input vocabularies remain generated enums/value sets.
+- Move generated API 3 wrappers and libraries together to API 4 before using operation controls or
+  structured cancellation details. Do not pair source generated for one API version with a library
+  whose runtime catalog reports another.
 
 ## Verification
 

@@ -39,6 +39,7 @@ These fixtures are extracted from Cypress browser rendering specs (`renderGraph`
 parity-gated against upstream SVG baselines:
 
 - Imported fixtures: `fixtures/journey/upstream_cypress_*.mmd` (9 fixtures)
-- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram journey --with-baselines --complex`
+- Import provenance: these fixtures predate the retired broad Cypress importer. A future refresh
+  must first add an explicit executable collector scope and reviewed manifest.
 - Baselines: `fixtures/upstream-svgs/journey/upstream_cypress_*.svg`
 - SVG DOM compare: `cargo run --release -p xtask -- compare-journey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

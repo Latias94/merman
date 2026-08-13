@@ -218,7 +218,7 @@ fn execute_version_only(
     let request =
         BindingOperationRequest::new(OPERATION_ID, SOURCE).with_options_json(VERSION_ONLY_OPTIONS);
     for call in 0..calls {
-        let result = engine.execute(request).map_err(|error| {
+        let result = engine.execute(request.clone()).map_err(|error| {
             ProbeError::new(format!("binding operation failed: {}", error.message()))
         })?;
         validate_result(&result)?;

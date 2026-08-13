@@ -1,7 +1,8 @@
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemeAppearance, Presentation,
-    SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
+    CssOverridePolicy, HostTheme, HostThemeAppearance, Presentation, SvgOutputPolicy,
+    SvgPipelinePreset, ThemeRole,
 };
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const SOURCE: &str = r#"sequenceDiagram
     participant Host
@@ -30,15 +31,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         root_background_color: Some("#0f172a".to_string()),
         ..SvgOutputPolicy::default()
     };
-    let renderer = HeadlessRenderer::new()
-        .with_presentation(Presentation::new().with_theme(theme))
-        .with_svg_pipeline(output.pipeline())
-        .with_vendored_text_measurer()
-        .with_diagram_id("custom-presentation-theme-example");
-    let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
+    let resolved = Presentation::new().with_theme(theme).resolve();
+    let renderer = Renderer::new().with_engine(resolved.materialize_engine(merman::Engine::new()));
+    let request = SvgRequest {
+        pipeline: Some(output.pipeline()),
+        presentation: resolved.render_policy(),
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some("custom-presentation-theme-example".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = renderer.render(RenderRequest::svg(SOURCE, OperationControl::new(), request))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
 
-    print!("{svg}");
+    print!("{}", svg.svg());
     Ok(())
 }

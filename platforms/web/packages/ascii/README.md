@@ -1,31 +1,34 @@
 # @mermanjs/web-ascii
 
-Browser-only Merman SDK for supported ASCII diagram output.
+Render supported Mermaid diagram families as ASCII or Unicode text in a browser.
 
-## Install
+This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
+matter.
 
-This package has shipped since Merman `0.8.0-alpha.5`. Install the current alpha:
+## Quick start
 
 ```sh
 npm install @mermanjs/web-ascii@alpha
-```
-
-For local source development, build the package group and install this package from the checkout:
-
-```sh
-npm ci --prefix /path/to/merman/platforms/web
-npm run build --prefix /path/to/merman/platforms/web
-npm install /path/to/merman/platforms/web/packages/ascii
 ```
 
 ```ts
 import { initMerman, renderAscii } from "@mermanjs/web-ascii";
 
 await initMerman();
+
 const output = renderAscii(`flowchart TD
   A[Start] --> B[Done]`);
+console.log(output);
 ```
 
-This package intentionally exposes no callable SVG-rendering, semantic-analysis, or editor-session workflow. Shared package-group catalogs and types remain available for integration code. It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport.
+## Scope
 
-See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for capability and resource-policy details.
+This package exposes no callable SVG rendering, semantic analysis, or editor sessions. Load it only
+in a browser main thread or Web Worker; Node.js and SSR integrations should use a native surface.
+
+ASCII and Unicode coverage is explicit by diagram family. Check the [ASCII support
+matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md)
+before choosing this package for a required diagram set.
+
+See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
+for package selection, runtime lifecycle, resource policy, and source-checkout development.

@@ -1,8 +1,7 @@
 {
   "name": "@mermanjs/node",
-  "version": "0.8.0-alpha.6",
-  "private": true,
-  "description": "Private Merman Node/SSG candidate loader pending U14 evidence admission.",
+  "version": "0.8.0-alpha.5",
+  "description": "Experimental native Node.js and static-site rendering bindings for Merman.",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
@@ -15,7 +14,24 @@
       "import": "./dist/index.mjs"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/node#readme",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "svg",
+    "node",
+    "ssg",
+    "napi"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
+    "CHANGELOG.md",
     "dist",
     "LICENSE-APACHE",
     "LICENSE-MIT",
@@ -25,10 +41,10 @@
   ],
   "license": "MIT OR Apache-2.0",
   "optionalDependencies": {
-    "@mermanjs/node-darwin-arm64": "0.8.0-alpha.6",
-    "@mermanjs/node-darwin-x64": "0.8.0-alpha.6",
-    "@mermanjs/node-linux-x64-gnu": "0.8.0-alpha.6",
-    "@mermanjs/node-linux-x64-musl": "0.8.0-alpha.6",
-    "@mermanjs/node-win32-x64-msvc": "0.8.0-alpha.6"
+    "@mermanjs/node-darwin-arm64": "0.8.0-alpha.5",
+    "@mermanjs/node-darwin-x64": "0.8.0-alpha.5",
+    "@mermanjs/node-linux-x64-gnu": "0.8.0-alpha.5",
+    "@mermanjs/node-linux-x64-musl": "0.8.0-alpha.5",
+    "@mermanjs/node-win32-x64-msvc": "0.8.0-alpha.5"
   }
 }

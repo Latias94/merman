@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
-    MermaidConfig, ParseControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
+    MermaidConfig, OperationControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
     SourceSpan,
 };
 use futures::executor::block_on;
@@ -123,7 +123,7 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     let standalone_json = parse_gantt(text, &meta).unwrap();
     reset_gantt_syntax_construction_count();
     let (combined_json, combined_editor) = crate::family::test_support::into_result(
-        parse_gantt_json_and_editor_facts(text, &meta, &ParseControl::new()),
+        parse_gantt_json_and_editor_facts(text, &meta, &OperationControl::new()),
     )
     .unwrap();
 
@@ -135,7 +135,7 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
 #[test]
 fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
     let mut db = large_gantt_db(512);
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(db.finalize_tasks_controlled(&control).is_err());
@@ -144,10 +144,10 @@ fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
 #[test]
 fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
     let mut db = large_gantt_db(512);
-    db.finalize_tasks_controlled(&ParseControl::new())
+    db.finalize_tasks_controlled(&OperationControl::new())
         .unwrap()
         .unwrap();
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(super::parse::gantt_db_to_render_model_controlled(db, &control).is_err());
@@ -159,7 +159,7 @@ fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
         tasks: vec![GanttRenderTask::default(); 512],
         ..GanttDiagramRenderModel::default()
     };
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(
@@ -578,6 +578,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id1_def_start = text.find("id1,2014").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id1"
+            && symbol.role == EditorSemanticRole::Entity
             && symbol.detail.as_deref() == Some("gantt task")
             && symbol.selection.start == id1_def_start
             && symbol.selection.end == id1_def_start + "id1".len()
@@ -586,6 +587,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id1_after_start = text.find("after id1").unwrap() + "after ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id1"
+            && symbol.role == EditorSemanticRole::Reference
             && symbol.detail.as_deref() == Some("gantt dependency")
             && symbol.selection.start == id1_after_start
             && symbol.selection.end == id1_after_start + "id1".len()
@@ -594,6 +596,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id1_until_start = text.find("until id1").unwrap() + "until ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id1"
+            && symbol.role == EditorSemanticRole::Reference
             && symbol.detail.as_deref() == Some("gantt dependency")
             && symbol.selection.start == id1_until_start
             && symbol.selection.end == id1_until_start + "id1".len()
@@ -602,6 +605,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id2_def_start = text.find("id2,after").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id2"
+            && symbol.role == EditorSemanticRole::Entity
             && symbol.detail.as_deref() == Some("gantt task")
             && symbol.selection.start == id2_def_start
             && symbol.selection.end == id2_def_start + "id2".len()
@@ -610,6 +614,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id2_click_start = text.find("click id2").unwrap() + "click ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id2"
+            && symbol.role == EditorSemanticRole::Reference
             && symbol.detail.as_deref() == Some("gantt click target")
             && symbol.selection.start == id2_click_start
             && symbol.selection.end == id2_click_start + "id2".len()
@@ -676,6 +681,35 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             "missing gantt payload expected syntax for {payload:?}"
         );
     }
+}
+
+#[test]
+fn gantt_forward_dependency_is_a_reference_before_its_task_definition() {
+    let source = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "Forward: early,after later,1d\n",
+        "Later: later,2026-01-01,1d\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", source)
+        .unwrap()
+        .expect("gantt editor facts");
+    let later: Vec<_> = facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "later")
+        .collect();
+
+    assert_eq!(later.len(), 2);
+    assert_eq!(later[0].role, EditorSemanticRole::Reference);
+    assert_eq!(later[1].role, EditorSemanticRole::Entity);
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| { symbol.name == "early" && symbol.role == EditorSemanticRole::Entity })
+    );
 }
 
 #[test]

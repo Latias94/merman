@@ -6,7 +6,7 @@
 ADR-0076 supersedes any implication that an FFI descriptor or binding-specific boolean catalog
 owns capability or output semantic IDs. The separate unsafe FFI crate, safe facade, ownership,
 panic-containment, and C-plus-UniFFI layering decisions remain accepted. Native ABI 3 is now the
-implemented contract: it is generated from `abi/merman-v3.json`, discovered through one
+implemented contract: it is generated from `contracts/abi/merman-v3.json`, discovered through one
 size-tagged API table, and routes every output through the shared binding operation model. ABI 2
 has been retired rather than retained as a compatibility layer.
 
@@ -20,7 +20,7 @@ The public Rust API is intentionally safe and modular:
 
 - `merman-core` parses Mermaid into metadata, semantic JSON, and typed render models.
 - `merman-render` lays out diagrams and emits Mermaid-parity SVG.
-- `merman` exposes convenience wrappers such as `HeadlessRenderer`.
+- `merman` exposes the operation-scoped `Renderer` and typed target requests.
 
 Those crates currently forbid unsafe code. FFI will require unsafe boundary handling, memory
 ownership rules, panic containment, and ABI compatibility commitments. That work should not leak

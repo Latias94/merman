@@ -1,7 +1,7 @@
 # Zed Mermaid Issue Audit
 
 Date: 2026-05-28
-Updated: 2026-07-27
+Updated: 2026-08-13
 
 This audit maps Mermaid-related Zed issues and PRs to merman behavior. It focuses on the Zed
 migration from `mermaid-rs-renderer` to `merman` in zed-industries/zed#57644, plus the issue shapes
@@ -14,10 +14,11 @@ Older audited Zed trees did not vendor `merman` source. They had an internal
 Zed-specific theme/accent/resvg post-processing. Later PR zed-industries/zed#57967 updated that
 dependency to `0.6` and adopted `SvgPipeline::resvg_safe()`.
 
-The current `repo-ref/zed` checkout is `09c5c2747443f646e2f33963295fd4b1ac797eaa`.
+The current `repo-ref/zed` checkout is `4aad57fd1f002f9feeea2b7fb6229ccbcd576cb1`.
 Its `Cargo.lock` pins `merman`, `merman-core`, `merman-render`, and `roughr-merman` to
 `git+https://github.com/zed-industries/merman?tag=v0.6.2-with-patches#9acc3960f04a7deeb08079d60fa8183f15e8bde1`.
-The wrapper currently calls this public API shape:
+The audited Zed snapshot currently calls the Merman `0.6.2` public API shape below. This is
+historical integration evidence, not the API new hosts should copy from the current Merman source:
 
 - `merman::MermaidConfig::from_value(...)` for host theme variables,
 - `merman::render::HeadlessRenderer::new().with_site_config(...).with_vendored_text_measurer().with_diagram_id(...)`,
@@ -37,8 +38,9 @@ into GPUI. On upgrade, Zed should:
 - keep only product-specific accent assignment and palette generation in Zed,
 - register those remaining transformations as `SvgPostprocessor` passes before the terminal preset,
 - use `ScopedCssPostprocessor` for selector scoping and CSS insertion, and
-- consume `HeadlessRenderer::render_resvg_compatible_svg_with_pipeline_sync(...)` so the final
-  artifact remains sealed.
+- migrate the wrapper to `Renderer + RenderRequest::svg(...)`, attach a caller-owned
+  `OperationControl`, and select the final SVG pipeline through `SvgRequest`; the public
+  Headless facade and synchronous method matrix no longer exist in the current Merman source.
 
 Current Merman additionally closes non-navigation rendering resources in the resvg-safe terminal
 stage, which prevents Flowchart image paths from reaching GPUI. Zed should still use a
@@ -62,6 +64,7 @@ font database, or direct GPUI raster path.
 
 | Date | Zed issue / PR | Current boundary | Merman evidence or required action |
 | --- | --- | --- | --- |
+| 2026-08-07 | [zed#62330](https://github.com/zed-industries/zed/issues/62330) (open issue at audit time) | Host lifecycle plus renderer cancellation boundary | The report shows an obsolete synchronous render can continue consuming CPU after its Markdown/ACP content is no longer useful. Merman now carries one caller-owned `OperationControl` through controlled parsing, SVG/ASCII layout and emission, postprocessing, and export. Zed should retain the control beside each cached diagram, cancel it on cache eviction/content replacement/archive, and reject stale completion with a generation ID. `max_layout_work_units` remains a deterministic resource ceiling; it does not replace cancellation or a deadline. |
 | 2026-07-26 | [zed#61678](https://github.com/zed-industries/zed/pull/61678) (open PR) | Incomplete host-side fix | It handles YAML frontmatter only and deliberately leaves the reported leading `%%{init}%%` case unresolved. Prefer detector delegation in zed#61644 so Zed cannot drift from Merman's preprocessor. |
 | 2026-07-25 | [zed#61644](https://github.com/zed-industries/zed/pull/61644) (open PR) | Correct host detector fix | Delegating type detection to Merman covers frontmatter, directives, and leading comments with the same preprocessing path used by rendering. This is preferable to copying another preamble parser into Zed. |
 | 2026-07-25 | [zed#61617](https://github.com/zed-industries/zed/issues/61617) (open issue) | Fixed in Merman; Zed pin is stale | Merman PR #29 replaced unsafe byte-offset Gantt date slicing and added Japanese/full-width regressions. Zed's `v0.6.2-with-patches` pin predates the fix and must be updated. |
@@ -98,6 +101,10 @@ patched `0.6.2` fork and keep product admission separate from parser detection. 
 Zed issues are mostly integration surface:
 
 - detection should delegate to Merman before Zed applies its supported-family allowlist,
+- each cached render should own an `OperationControl`; content replacement, eviction, archive, or
+  close should cancel the previous control before starting a replacement,
+- a monotonic deadline should bound one synchronous render, while a generation ID prevents a
+  completion that raced with cancellation from replacing newer output,
 - C4 and other deliberately blocked families need Zed theme/admission work rather than another
   Merman parser,
 - theme selection must be wired from the host preview theme,
@@ -111,3 +118,7 @@ The regression suite added in `crates/merman/tests/zed_mermaid_issue_fixtures.rs
 not a screenshot-golden suite. It verifies the properties a Rust host needs first: parsing does not
 panic, headless render returns SVG, resvg-safe output removes known raster hazards, and human labels
 survive without relying on `<foreignObject>`.
+
+Cancellation is cooperative rather than a safe thread kill. Merman checkpoints CPU work it owns,
+but an opaque host callback or monolithic third-party encoder may return before the next checkpoint.
+Hosts that require hard preemption must isolate that work in a worker or process they can terminate.

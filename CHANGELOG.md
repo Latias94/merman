@@ -4,42 +4,45 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.8.0-alpha.6] - Unreleased
+## [Unreleased]
 
-Alpha.6 is a deliberately breaking ASCII-rendering prerelease. It deepens terminal-native
-semantics for the common diagram families, separates diagrammatic projections from structured-text
-summaries, and makes resource admission and capability discovery explicit across Rust and binding
-surfaces. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
+The next workspace release remains in development. This section records only completed user-visible outcomes since alpha.5; its final version and release scope have not been selected.
 
 ### Breaking changes
 
-- Replaced the single ASCII grid limit with a typed six-phase resource policy, changed ASCII error
-  and diagnostic records, and added an explicit terminal-width profile.
-- Expanded public Flowchart edge semantics, added typed Gantt start/end constraints and
-  Timeline/Journey section ownership, and changed ER render-model collections to preserve
-  declaration order.
-- Advanced UniFFI binding API and browser WASM transport API from `3` to `4`. ASCII capability
-  records now expose semantic coverage and primary projection independently, and rename the old
-  summary fallback field to `structured_text_fallback`.
-- Refreshed ASCII output for Flowchart, Sequence, State, Class, ER, and XYChart. Consumers that
-  compare terminal output byte-for-byte must regenerate snapshots.
+- Replaced `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` helpers, public SVG prepared stages, and CPU-bound render `async fn` wrappers with one operation-scoped `Renderer`, typed `RenderRequest` / `RenderTarget`, and format-neutral `SemanticArtifact`. Hosts retain a cloneable `OperationControl` to cancel stale synchronous work or set a monotonic deadline; cancellation is reported separately from resource exhaustion and returns no partial output.
+- Renamed parser-only `ParseControl`, `ParseCancelled`, and `ParseControlResult` to the operation-neutral `OperationControl`, `OperationCancelled`, and `OperationControlResult`. Analysis cancellation tokens now delegate to the same shared operation state instead of maintaining a second atomic flag.
+- Advanced the direct Apple/Python UniFFI binding API to `4` because lint rule catalog records now include required `tags`. API 4 replaces the generated `binding_api_version` probe with `transport_api_version` and removes the old native method symbol, so API 3 generated bindings reject the new library before decoding the changed record; regenerate and deploy each language projection with its matching native artifact.
+- Renamed the generic UniFFI request to `MermanOperationRequestV4` and added optional `MermanOperationControl` ownership with structured cancellation reason/phase details. Web transport API `4` accepts transport-owned `timeout_ms`; synchronous same-realm WASM remains cooperatively cancellable, while hard interruption requires terminating a Worker or process.
+- Default Android, Apple, Python, and Flutter native artifacts now bundle SVG, Cytoscape and ELK layouts, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters. Generated wrapper methods remain stable and report typed missing-capability or unsupported-operation errors; consumers that need an omitted operation must build a current-contract custom native library.
+- `DiagramParseOutcome::Parsed(Value)` is now `DiagramParseOutcome::Parsed { model, warning_facts }`. Rust editor integrations should match the struct variant and consume the parser-owned typed warning facts instead of decoding the compatibility model's `warningFacts` field.
+- Broke the prerelease analysis facts wire contract to schema `2`: the generic parser/editor facts remain available, but the Flowchart-only rich graph field and its Rust/TypeScript/FFI projections are removed. Semantic roles are now the explicit `entity`, `class_definition`, `reference`, `outline`, and `payload` set, so exhaustive consumers must handle the two added declaration/reference roles. Facts consumers must regenerate against schema `2`; diagnostics payload schema `1` is unchanged. No schema-1 facts decoder or deprecated alias remains.
+- Removed the public `FenceCursorCompletionKind`, `FenceCursorContext`, and `CompletionContext` policy wrappers. Rust hosts should call `completion_for_snapshot` over typed snapshots; transport adapters should use the editor-owned `COMPLETION_TRIGGER_CHARACTERS` list instead of maintaining their own activation table. The Web transport advances to API `4` because editor-capable artifacts now expose that trigger descriptor as a required export.
+- Removed the public core `EditorCompletionCandidate` / `EditorCompletionVocabulary` surface and `EditorSemanticFacts::completion_vocabulary`; editor-core now owns completion labels, details, and snippets, while core publishes `EditorFamilySemantics` plus typed expected-syntax slots. `EditorExpectedSyntaxKind::Operator` becomes `FlowchartOperator`; `DirectionValue` splits into `FlowchartDirectionValue`, `CardinalDirectionValue`, and `BlockDirectionValue`, with new `Directive`, `Frontmatter`, `ClassName`, `StyleValue`, and `InteractionAction` slots.
+- Tightened prerelease analysis configuration JSON around one analysis-owned contract. Profile and severity values now require their documented lowercase spelling (`core`, `recommended`, `strict`; `error`, `warning`, `info`, `hint`), so case-folded/whitespace-padded values and the former `warn` alias must be replaced. `merman` and `analysis` wrappers must contain objects and are mutually exclusive with each other and with direct analysis fields. JSON resource limits accept mathematical integers from their owner minimum through `4294967295`; larger values must be reduced or omitted to use the host default.
+- Advanced the prerelease LSP `merman/configSchema` response to version `2` because the typed `constraints` projection is now mandatory. Clients must negotiate version `2` instead of partially decoding the former response shape.
+- Removed the stateful Rust `DocumentWorkspace` map and `DocumentAnalysisOutcome` wrapper. Editor hosts now call `analyze_document_snapshot_with_shared_text` or `analyze_document_context_with_shared_text` and own URI/version storage themselves. The cancellable context function preserves cooperative cancellation as the outer result and resource rejection as the inner result; no deprecated alias or compatibility cache remains. See the [unreleased upgrade guide](docs/release/UNRELEASED_UPGRADE_GUIDE.md).
+- The Flutter/Dart package now uses `package_ffi` and Native Assets with Dart 3.10 / Flutter 3.38 minimums. Legacy Flutter plugin registrars and platform-specific CocoaPods, SwiftPM, Gradle, CMake, and desktop wrapper glue are removed; `Merman.open()` remains the default API and `openMermanLibrary()` is removed.
+- Replaced ASCII's single grid ceiling with a typed six-phase resource policy, added an explicit terminal-width profile, and expanded ASCII errors and diagnostics with stable resource details. Flowchart edge semantics, Gantt constraints, Timeline/Journey ownership, ER declaration order, and the terminal output of the common diagram families have consequently changed; consumers that compare ASCII bytes should refresh their snapshots.
 
 ### Added
 
-- Added typed terminal plans, grapheme-aware cell ownership, checked resource descriptors, and
-  parser-backed semantic evidence for the six diagrammatic ASCII families.
-- Added explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet,
-  Timeline, and TreeView, with documented field disposition and direct-model validation boundaries.
-- Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the
-  Issue #53 regression fixture and binding JSON snake/camel aliases.
+- Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
+- Added grapheme-aware terminal plans, checked six-phase ASCII resource descriptors, parser-backed semantic evidence for the diagrammatic families, and explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, and TreeView.
+- Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the Issue #53 regression fixture and binding JSON snake/camel aliases.
+
+### Changed
+
+- Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, replaces Flutter's duplicated platform packaging with one Native Assets matrix, and adds an explicit compressed-package budget before pub.dev publication.
+- Flutter pub.dev releases use package-specific `flutter-v<version>` tags so an unpublished package version can be built from a reviewed commit without moving an existing workspace tag.
+- Web and Node npm publishing now preflight existing registry integrity and tags, publish missing exact versions directly under the requested final tag, and place the default Web package or Node loader last; retries skip members that already match the verified manifest.
 
 ### Fixed
 
-- Fixed direction, compound ownership, parallel/self-loop routing, marker, note, control-frame,
-  linear-axis, label, and declaration-order semantics across the common ASCII families.
-- Made public capability metadata, the Playground, Web catalogs, support documentation, and
-  reference evidence agree on which families are diagrammatic, structured text, partial, or
-  unsupported.
+- Playground Mermaid.js comparison realms now preserve SVG label colors without letting page CSS override Mermaid output, and ZenUML's injected `MS Sans Serif` font remains isolated to the affected comparison instead of changing other examples.
+- Native Assets eliminates Flutter's legacy Linux Windows-wrapper linkage and SwiftPM symlink packaging paths, while Apple dylibs use normalized install names and refreshed signatures before Flutter's final assembly. #55 #56 #57
+- Fixed ASCII direction, compound ownership, parallel and self-loop routing, markers, notes, Sequence control frames, XYChart axes and disclosure, labels, and declaration-order semantics across the common families.
+- Aligned ASCII capability metadata, Playground discovery, Web catalogs, support documentation, and executable reference evidence on which families are diagrammatic, structured text, partial, or unsupported.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 
@@ -62,22 +65,6 @@ surfaces. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPH
 0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; users upgrading from alpha.3 can use the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) because alpha.5 does not change these runtime contracts.
 
 The published alpha.4 surfaces are the Rust crates and official CLI/LSP GitHub binaries. The source tree also prepared the lockstep browser and native wrapper contracts, but alpha.4 packages were not published to npm, pub.dev, PyPI, or the Android and Apple artifact channels; their package-local alpha.5 changelogs remain the release notes for those surfaces.
-
-### Highlights
-
-- Completed parser, editor, typed layout, and SVG support for all 35 Mermaid 11.16 diagram families, including Cynefin, Railroad, Swimlane, and Wardley. #21 #22 #23 #24
-- Reworked `merman-cli` around explicit native `render` and `batch` workflows plus a pinned `mmdc@11.16.0` compatibility path, with recoverable transactional output, bounded resource acquisition, generated completions, and recursive man pages.
-- Made `merman-lsp` more reliable during rapid edits and request saturation by sharing versioned analysis, suppressing stale results, bounding retained work, and keeping valid small cancellation and exit controls reachable while input integrity is preserved. #26
-- Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, and rebuilt the Playground around isolated runtime, editor, compare, and benchmark lifecycles.
-- Replaced the C and Flutter ABI 2 path with generated ABI 3 contracts, moved Android to direct JNI transport API 1, and aligned Apple and Python UniFFI API 3 packages with the same runtime capability model.
-- Reduced the dependency closure of analysis-only products and removed repeated work from Requirement, Mindmap, Kanban, Class, and layered-layout hot paths.
-
-### Performance and footprint
-
-- A historical same-host checkpoint reduced the measured lint/analysis CLI binary from 25,477,648 to 8,166,352 bytes (67.95% smaller) and its resolved normal dependencies from 333 to 123 (63.06% fewer) compared with alpha.3; final release measurements must be refreshed against the tagged commit before treating those figures as final.
-- Removed repeated effective-config cloning and reused operation-scoped label preparation in Requirement, Mindmap, Kanban, and Class paths; the Dagre-compatible layered layout now retains indexed ordering, conflict, and positioning work instead of rebuilding equivalent intermediate state.
-- Complete products now cover a broader Mermaid 11.16 capability set and are not uniformly smaller or faster than alpha.3. See the [refactoring evidence report](docs/release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md) and [performance plan](docs/performance/PERF_PLAN.md) for scoped measurements, rejected hypotheses, and remaining release refresh work.
-- Closed the final native, browser-WASM, CLI, and editor/analysis hardening attribution with one late owner-local Browser-WASM structural improvement: handled callback results now avoid a disposition-only Serde decode without changing the protocol, and the optimized render artifact is 388 bytes smaller. The rejected custom visitor, compact CLI journal, and deeper diagnostics capture remain absent; see the [final attribution receipt](docs/performance/headless_performance_final_attribution_2026-08-08.md).
 
 ### Breaking changes
 

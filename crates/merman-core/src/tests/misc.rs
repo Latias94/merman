@@ -1156,6 +1156,61 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
 }
 
 #[test]
+fn controlled_render_model_parse_returns_structured_cancellation_before_work() {
+    let operation = OperationControl::new();
+    operation.cancel();
+
+    let error = Engine::new()
+        .parse_diagram_for_render_model_controlled_sync(
+            "flowchart TD\nA-->B\n",
+            ParseOptions::strict(),
+            &operation,
+        )
+        .expect_err("cancelled operation must stop before parsing");
+
+    assert_eq!(error.phase, OperationPhase::Admission);
+    assert_eq!(error.reason, CancelReason::Requested);
+}
+
+#[test]
+fn controlled_render_model_parse_stops_inside_family_parser() {
+    let mut source = String::from("flowchart TD\n");
+    for index in 0..4_096 {
+        source.push_str(&format!("n{index}-->n{}\n", index + 1));
+    }
+    let operation = OperationControl::new();
+    operation.cancel_after_checkpoints(128);
+
+    let error = Engine::new()
+        .parse_diagram_for_render_model_controlled_sync(&source, ParseOptions::strict(), &operation)
+        .expect_err("scheduled cancellation must stop family parsing");
+
+    assert_eq!(error.reason, CancelReason::Requested);
+    assert!(matches!(
+        error.phase,
+        OperationPhase::Parse | OperationPhase::Semantic
+    ));
+}
+
+#[test]
+fn controlled_known_type_render_model_parse_skips_detection_but_observes_control() {
+    let operation = OperationControl::new();
+    operation.cancel();
+
+    let error = Engine::new()
+        .parse_diagram_for_render_model_with_type_controlled_sync(
+            "flowchart-v2",
+            "flowchart TD\nA-->B\n",
+            ParseOptions::strict(),
+            &operation,
+        )
+        .expect_err("known-type operation must still observe cancellation");
+
+    assert_eq!(error.reason, CancelReason::Requested);
+    assert_eq!(error.phase, OperationPhase::Admission);
+}
+
+#[test]
 fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync("error", ParseOptions::strict())
@@ -1294,6 +1349,127 @@ fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
     assert_eq!(
         model.value()["warningFacts"][0]["span"],
         json!({ "start": payload_start, "end": payload_start + "payload".len() })
+    );
+}
+
+#[test]
+fn combined_custom_warning_adapter_remaps_valid_json_into_typed_facts() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("customDiagram", custom_json_parser);
+    let source = "%%{init: { 'securityLevel': 'strict' }}%%\ncustomDiagram\npayload";
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("customDiagram", source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Parsed {
+        model,
+        warning_facts,
+    } = snapshot.outcome()
+    else {
+        panic!("custom warning fixture must parse");
+    };
+    let payload_start = source.find("payload").unwrap();
+
+    assert_eq!(warning_facts.len(), 1);
+    assert_eq!(
+        warning_facts[0].span,
+        Some(SourceSpan::new(
+            payload_start,
+            payload_start + "payload".len()
+        ))
+    );
+    assert_eq!(model["warningFacts"], json!(warning_facts));
+}
+
+#[test]
+fn combined_custom_warning_adapter_keeps_malformed_arrays_all_or_nothing() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("customDiagram", malformed_custom_warning_json_parser);
+    let source = "%%{init: { 'securityLevel': 'strict' }}%%\ncustomDiagram\npayload";
+    let snapshot = engine
+        .parse_diagram_snapshot_with_type_sync("customDiagram", source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Parsed {
+        model,
+        warning_facts,
+    } = snapshot.outcome()
+    else {
+        panic!("malformed custom warning fixture must retain its semantic model");
+    };
+
+    assert!(warning_facts.is_empty());
+    assert_eq!(
+        model["warningFacts"],
+        json!([
+            {
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                "message": "custom warning",
+                "span": { "start": 0, "end": 1 }
+            },
+            null
+        ])
+    );
+}
+
+#[test]
+fn combined_builtin_warning_facts_stay_typed_and_sync_compatibility_json() {
+    let cases = [
+        (
+            "---\ntitle: Demo\n---\nflowchart\nA-->B",
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+        ),
+        (
+            "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+            BLOCK_WIDTH_WARNING_RULE_ID,
+        ),
+        (
+            "gitGraph\ncommit id:\"duplicate\"\ncommit id:\"duplicate\"\n",
+            GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+        ),
+    ];
+
+    for (source, expected_rule_id) in cases {
+        let snapshot = Engine::new()
+            .parse_diagram_snapshot_sync(source)
+            .unwrap()
+            .unwrap();
+        let DiagramParseOutcome::Parsed {
+            model,
+            warning_facts,
+        } = snapshot.outcome()
+        else {
+            panic!("built-in warning fixture must parse: {source}");
+        };
+
+        assert!(
+            warning_facts
+                .iter()
+                .any(|fact| fact.rule_id == expected_rule_id),
+            "missing typed warning {expected_rule_id} for {source}"
+        );
+        assert_eq!(model["warningFacts"], json!(warning_facts));
+    }
+
+    let flowchart_source = cases[0].0;
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_sync(flowchart_source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Parsed { warning_facts, .. } = snapshot.outcome() else {
+        unreachable!("flowchart warning fixture parsed above");
+    };
+    let flowchart_start = flowchart_source.find("flowchart").unwrap();
+    assert_eq!(
+        warning_facts[0].span,
+        Some(SourceSpan::new(
+            flowchart_start,
+            flowchart_start + "flowchart".len()
+        ))
     );
 }
 
@@ -1554,8 +1730,8 @@ fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
 fn custom_json_parser(
     code: &str,
     _meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<serde_json::Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
     let payload_start = code.find("payload").unwrap();
     Ok(Ok(json!({
@@ -1572,11 +1748,29 @@ fn custom_json_parser(
     })))
 }
 
+fn malformed_custom_warning_json_parser(
+    _code: &str,
+    _meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
+    control.checkpoint()?;
+    Ok(Ok(json!({
+        "warningFacts": [
+            {
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                "message": "custom warning",
+                "span": { "start": 0, "end": 1 }
+            },
+            null
+        ]
+    })))
+}
+
 fn custom_overlay_json_parser(
     _code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<serde_json::Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Ok(json!({
         "owner": "custom-semantic",
@@ -1587,14 +1781,19 @@ fn custom_overlay_json_parser(
 fn panicking_custom_parser(
     _code: &str,
     _meta: &ParseMetadata,
-    _control: &ParseControl,
-) -> ParseControlResult<Result<serde_json::Value>> {
+    _control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
     panic!("custom parser fixture panic")
 }
 
-fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
+fn custom_overlay_render_parser(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<CustomJsonRenderModel>> {
+    control.checkpoint()?;
     let edge_start = code.find("A-->B").unwrap();
-    Ok(CustomJsonRenderModel::new(
+    Ok(Ok(CustomJsonRenderModel::new(
         "custom-flowchart-model",
         json!({
             "owner": "custom-render",
@@ -1609,7 +1808,7 @@ fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<Cust
                 },
             }],
         }),
-    ))
+    )))
 }
 
 fn expected_custom_title_after_sanitization() -> &'static str {
@@ -2212,6 +2411,44 @@ Point A:::class1: [0.9, 0.0]
         expected.kind == EditorExpectedSyntaxKind::Payload
             && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
     }));
+    let class_use_start = text.find("Point A:::class1").unwrap() + "Point A:::".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(class_use_start, class_use_start + "class1".len())
+    }));
+}
+
+#[test]
+fn parse_quadrant_chart_class_selectors_expose_partial_and_empty_slots() {
+    let engine = Engine::new();
+    let text = concat!(
+        "quadrantChart\n",
+        "classDef priority color: #109060\n",
+        "Complete:::priority: [0.2, 0.8]\n",
+        "Partial:::pri: [0.3, 0.7]\n",
+        "Empty:::: [0.4, 0.6]\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
+        .unwrap()
+        .unwrap();
+
+    for (line, selector) in [("Complete", "priority"), ("Partial", "pri")] {
+        let start = text.find(&format!("{line}:::{selector}")).unwrap() + line.len() + 3;
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::ClassName
+                    && expected.span == SourceSpan::new(start, start + selector.len())
+            }),
+            "missing ClassName evidence for {selector} at {start}: {:?}",
+            facts.expected_syntax
+        );
+    }
+    let empty = text.find("Empty:::").unwrap() + "Empty:::".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(empty, empty)
+    }));
 }
 
 #[test]
@@ -2314,7 +2551,7 @@ style req,elem fill:#ffa,stroke:#000
             first_class_def_start,
         )
         .role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
     assert_eq!(
         symbol_at(
@@ -2323,7 +2560,7 @@ style req,elem fill:#ffa,stroke:#000
             second_class_def_start,
         )
         .role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
 
     let class_stmt_start = text.find("class req,elem").unwrap();
@@ -2331,11 +2568,11 @@ style req,elem fill:#ffa,stroke:#000
     let elem_class_target_start = req_class_target_start + "req,".len();
     assert_eq!(
         symbol_at("req", "requirement class target", req_class_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
     assert_eq!(
         symbol_at("elem", "requirement class target", elem_class_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
 
     let first_class_ref_start = class_stmt_start + "class req,elem ".len();
@@ -2354,11 +2591,11 @@ style req,elem fill:#ffa,stroke:#000
     let elem_style_target_start = req_style_target_start + "req,".len();
     assert_eq!(
         symbol_at("req", "requirement style target", req_style_target_start).role,
-        EditorSemanticRole::Payload
+        EditorSemanticRole::Reference
     );
     assert_eq!(
         symbol_at("elem", "requirement style target", elem_style_target_start).role,
-        EditorSemanticRole::Payload
+        EditorSemanticRole::Reference
     );
 }
 

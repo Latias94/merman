@@ -116,10 +116,32 @@ class AndroidToolchainTests(unittest.TestCase):
         build_android.validate_android_native_recipe(recipe)
         self.assertEqual(
             recipe.build_targets,
-            build_android.ANDROID_NATIVE_RECIPE.build_targets,
+            (
+                "aarch64-linux-android",
+                "armv7-linux-androideabi",
+                "x86_64-linux-android",
+            ),
         )
         self.assertEqual(recipe.package, "merman-ffi")
         self.assertEqual(recipe.target_name, "merman_ffi")
+        self.assertEqual(recipe.cargo_profile, "native-distribution")
+        self.assertIn("analysis", recipe.features)
+        self.assertIn("ascii", recipe.features)
+        self.assertNotIn("jpeg", recipe.features)
+        self.assertNotIn("math", recipe.features)
+        self.assertNotIn("native-runtime", recipe.features)
+        self.assertNotIn("pdf", recipe.features)
+        self.assertNotIn("png", recipe.features)
+        self.assertEqual(
+            build_android.ANDROID_ARTIFACT_PACKAGING[recipe.profile_id].ndk_api,
+            24,
+        )
+        self.assertEqual(
+            build_android.ANDROID_ARTIFACT_PACKAGING[
+                build_android.ANDROID_NATIVE_RECIPE.profile_id
+            ].ndk_api,
+            23,
+        )
 
     def test_android_and_flutter_recipes_have_separate_library_destinations(self) -> None:
         self.assertEqual(
@@ -202,11 +224,14 @@ class AndroidToolchainTests(unittest.TestCase):
                 (destination / "arm64-v8a" / "libmerman_android_jni.so").exists()
             )
 
-    def test_native_sdk_build_arguments_are_fully_recipe_owned(self) -> None:
+    def test_native_build_arguments_are_fully_recipe_owned(self) -> None:
         target = "aarch64-linux-android"
         args = build_android.cargo_build_args(target)
 
-        self.assertEqual(args[:4], ["cargo", "build", "--profile", "native-sdk"])
+        self.assertEqual(
+            args[:4],
+            ["cargo", "build", "--profile", "native-distribution"],
+        )
         self.assertIn("--package", args)
         self.assertEqual(
             args[args.index("--package") + 1], build_android.ANDROID_NATIVE_RECIPE.package
@@ -228,7 +253,7 @@ class AndroidToolchainTests(unittest.TestCase):
 
     def test_android_build_rejects_a_target_outside_the_recipe(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not declare target"):
-            build_android.cargo_build_args("armv7-linux-androideabi")
+            build_android.cargo_build_args("i686-linux-android")
 
     def test_android_build_rejects_a_recipe_with_the_wrong_transport_package(self) -> None:
         recipe = replace(

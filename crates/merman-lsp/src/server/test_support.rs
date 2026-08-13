@@ -18,7 +18,7 @@ pub(crate) fn service() -> TestService {
     let session = LanguageSession::with_refresh_client(refresh_client);
     let (raw_service, client_socket) = MermanLanguageServer::protocol_service(session.clone());
     let backend = raw_service.inner().clone();
-    let client = backend.client.clone();
+    let client = backend.client_effects.client();
     let service = MermanLspService::new(raw_service, session.clone());
     let socket = MermanClientSocket::new(
         client_socket,

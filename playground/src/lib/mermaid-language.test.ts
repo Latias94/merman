@@ -25,6 +25,20 @@ import {
 } from "./mermaid-language.ts";
 
 const IDENTITY: EditorLanguageIdentity = Object.freeze({
+  completionTriggerCharacters: Object.freeze([
+    " ",
+    "\n",
+    "-",
+    ">",
+    "%",
+    "[",
+    "(",
+    "{",
+    "/",
+    "\\",
+    "@",
+    ":",
+  ]),
   legend: Object.freeze({
     tokenTypes: Object.freeze(["string", "namespace"]),
     tokenModifiers: Object.freeze(["payload", "entity"]),
@@ -52,6 +66,10 @@ test("Monaco publishes planner-packed tokens without rereading source", async ()
   const readsAfterOpen = model.getValueCalls();
 
   assert.equal(readsAfterOpen, 1);
+  assert.deepEqual(
+    providers.completions?.triggerCharacters,
+    IDENTITY.completionTriggerCharacters,
+  );
   assert.deepEqual(providers.semantic?.getLegend(), IDENTITY.legend);
   const result = await providers.semantic?.provideDocumentSemanticTokens(
     model.model,
@@ -514,6 +532,7 @@ function fakeMonaco(capture: ProviderCapture) {
         this.endColumn = endColumn;
       }
     },
+    MarkerTag: { Deprecated: 2, Unnecessary: 1 },
     MarkerSeverity: { Error: 8, Hint: 1, Info: 2, Warning: 4 },
     editor: { setModelMarkers() {} },
     languages,

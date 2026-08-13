@@ -4,19 +4,21 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.6] - Unreleased
+## [Unreleased]
 
 ### Breaking changes
 
-- Advanced UniFFI binding API from `3` to `4`. ASCII capability records now expose independent
-  semantic coverage and projection kind, and rename `summaryFallback` to
-  `structuredTextFallback`.
-- Updated structured ASCII resource diagnostics. Upgrade generated Swift sources and every native
-  XCFramework slice together; alpha.5 wrappers are not compatible with alpha.6 libraries.
+- Renamed generic dispatch records to `MermanOperationRequestV4` and added optional `MermanOperationControl` values for cooperative cancellation and relative deadlines. Cancellation is a distinct generated error detail with its observed reason and phase; it is not a resource-limit failure.
+- Advanced the direct UniFFI binding API to `4` because lint rule catalog records now include required `tags`. API 4 replaces `bindingApiVersion()` with `transportApiVersion()` and removes the old native method symbol, so API 3 generated Swift rejects the new library before decoding the changed record. Regenerate Swift and replace the XCFramework together.
+- The default XCFramework now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. Generated helpers remain available for custom artifacts; the bundled library reports typed capability absence instead of carrying every optional backend.
+- Analysis facts now use schema `2` and no longer include the Flowchart-only rich graph. Regenerate facts consumers for schema `2`; diagnostics remain on schema `1`.
+- ASCII capability records now expose independent semantic coverage and primary projection fields,
+  and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and
+  diagnostic payloads follow the expanded six-phase renderer contract.
 
 ### Changed
 
-- Updated common-family ASCII projections and support metadata to the alpha.6 contract.
+- Kept Apple static-library slices on the `native-sdk` profile after a same-source link comparison showed the size-oriented dynamic-library profile produced a larger final Swift executable.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 
@@ -25,26 +27,17 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Replaced the hand-written Swift C binding with direct generated UniFFI bindings. `Merman` now owns discovery and one-shot calls, while reusable work uses the single throwing `MermanEngine(optionsJson:services:)` constructor. The obsolete `MermanReusableEngine` name and facade factories are removed.
 - Removed all public C ABI structs, raw callback pointers, manual engine close methods, struct-size checks, and hand-maintained Swift capability/resource projections. Swift hosts now use generated UniFFI records, objects, and callback protocols only.
 - Replaced native ABI version checks with UniFFI binding API `3` and introduced runtime-contract schema `1`. Structured resource failures include a stable `cause` field; the generated binding rejects a mismatched native library through its contract and API checksum checks.
-- Replaced the C callback text-measurement API with generated `MermanTextMeasurer`. Return `nil` for an unhandled operation rather than populating a raw result buffer.
-- Made `MermanTextMeasurer` immutable after reusable-engine construction and removed generated callback mutation methods. Callback-free engines admit concurrent operations; callback engines report typed `.busy` or `.reentrantCall` errors without waiting.
-- Changed `lintRuleCatalog()` and `configurableLintRuleCatalog()` to throwing generated methods so feature-slim artifacts report a typed `analysis` missing-capability error instead of an empty catalog.
-- Added `optionsJson` to reusable convenience methods. Pass `nil` to inherit the engine baseline, or pass request-local options to deeply merge them for one operation; request options cannot change the constructor-owned runtime policy.
-- Replaced raw generic-result metadata JSON with `MermanOperationMetadata` and an open `MermanOutputPlan` record. Switch on `kind`, use optional typed raster/PDF payloads, and retain `rawJson` for future plans.
-- Added immutable `MermanIconPack`, transactional reusable `MermanIconRegistry.fromPacks`, and a zero-argument persistent `MermanEngineServices` builder for constructor-owned icon registries and optional text measurement. Reusable engines now expose retryable, idempotent `close()`.
+- Replaced raw C text-measurement callbacks and mutable callback installation with generated `MermanTextMeasurer` services supplied at reusable-engine construction. Return `nil` for an unhandled operation; callback-enabled engines report typed `.busy` or `.reentrantCall` errors without waiting.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. The generated `resourceOptionsJson(profile:overrides:)` API now accepts a `nil` profile for request overlays that inherit their constructor ceiling, and its override records use `MermanResourceOverrideId`.
 - Removed the prerelease `supportedHostThemePresets()` method. Decode `presentationCatalogJson()` for open-ended, artifact-aware theme preset and presentation profile discovery.
 
 ### Added
 
-- Added checked-in `Merman.swift`, `MermanFFI.h`, and `MermanFFI.modulemap` generation from the
-  exact `merman-uniffi` static library included in the XCFramework.
-- Added generic operation requests/results and direct SVG, PNG, JPEG, and PDF smoke coverage.
+- Added checked-in `Merman.swift`, `MermanFFI.h`, and `MermanFFI.modulemap` generated from the exact `merman-uniffi` static library included in the XCFramework.
 - Added atomic `runtimeCatalogJson()` discovery for package identity, capabilities, operations, outputs, resources, and text-measurement providers.
 - Added generic operation requests/results plus named SVG, PNG, JPEG, and PDF helpers. Results expose typed `MermanOperationMetadata` and open `MermanOutputPlan` records while retaining `rawJson` for future plan kinds.
 - Added immutable `MermanIconPack`, transactional `MermanIconRegistry.fromPacks(...)`, and persistent `MermanEngineServices` for constructor-owned icon registries and optional text measurement. Reusable engines expose retryable, idempotent `close()`.
-- Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
-  `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
-  duplicating limit tables.
+- Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without duplicating limit tables.
 - Added generated `presentationCatalogJson()` without changing the UniFFI API 3 version.
 
 ### Changed

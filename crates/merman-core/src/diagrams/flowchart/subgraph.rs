@@ -2,7 +2,7 @@ use super::{
     FlowSubGraph, Stmt, SubgraphBlock, TitleKind, is_ecmascript_trim_char,
     strip_wrapping_backticks, trim_flowdb_label_text, unquote,
 };
-use crate::{ParseControl, ParseControlResult};
+use crate::{OperationControl, OperationControlResult};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -38,8 +38,8 @@ impl SubgraphBuilder {
     pub(super) fn visit_statements(
         &mut self,
         statements: &[Stmt],
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let _ = self.eval_statements(statements, control)?;
         Ok(())
     }
@@ -47,8 +47,8 @@ impl SubgraphBuilder {
     fn eval_statements(
         &mut self,
         statements: &[Stmt],
-        control: &ParseControl,
-    ) -> ParseControlResult<Vec<StatementItem>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Vec<StatementItem>> {
         enum EvalStep<'a> {
             Statement(&'a Stmt),
             Finish,
@@ -119,8 +119,8 @@ impl SubgraphBuilder {
         &mut self,
         sg: &SubgraphBlock,
         items: Vec<StatementItem>,
-        control: &ParseControl,
-    ) -> ParseControlResult<String> {
+        control: &OperationControl,
+    ) -> OperationControlResult<String> {
         let mut seen: HashSet<String> = HashSet::new();
         let mut members: Vec<String> = Vec::new();
         let mut dir: Option<String> = None;
@@ -233,8 +233,8 @@ impl SubgraphBuilder {
 fn push_statement_items(
     out: &mut Vec<StatementItem>,
     stmt: &Stmt,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     match stmt {
         Stmt::Chain { nodes, edges } => {
             // Mermaid FlowDB's subgraph membership list is based on the Jison

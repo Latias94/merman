@@ -58,7 +58,13 @@ Applications that already own a transport can depend on `merman-lsp` with defaul
 
 `MermanLanguageServer::service()` returns an ordered `MermanLspService` plus its client socket. Embedded transports must drive `MermanLspService` through `tower::Service<Request>` so each message is admitted in input order. The underlying `LanguageServer` is intentionally not exposed: calling it directly would bypass document and configuration ordering.
 
-The session refactor removes the direct `MermanLanguageServer::rule_catalog()` and `MermanLanguageServer::config_schema()` helpers. Embedded clients should send `RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service. Rust callers that only need the static payloads can use `RuleCatalogResponse::current()` and `ConfigSchemaResponse::current()`.
+The session refactor removes the direct `MermanLanguageServer::rule_catalog()` and
+`MermanLanguageServer::config_schema()` helpers. Embedded clients should send
+`RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service. Rust callers that
+only need the static payloads can use `RuleCatalogResponse::current()` and
+`ConfigSchemaResponse::current()`. The configuration response is a protocol projection of
+`merman_analysis::AnalysisConfigContract`; LSP contributes only its source and document-fence
+defaults, not an independent accepted-shape definition.
 
 ```toml
 [dependencies]
@@ -120,7 +126,7 @@ Dropping the service, the unsplit socket, or either split half terminates the wh
 
 LSP analysis uses deterministic runtime state. Initialization and workspace settings can provide `fixed_today` and `fixed_local_offset_minutes`. `fixed_today` uses the canonical `CivilDate` spelling: years `0000` through `9999` use `YYYY-MM-DD`, later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The server does not expose a native runtime selector or forward `system-*` Cargo features.
 
-The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and keeps reusable snapshot-only or complete analysis under one weighted budget; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `1`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
+The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and keeps reusable snapshot-only or complete analysis under one weighted budget; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `2`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
 
 When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates remain available from the static family catalog.
 

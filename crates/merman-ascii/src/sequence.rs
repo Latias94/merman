@@ -13,6 +13,7 @@ mod tree;
 mod validate;
 
 pub(crate) use model::from_sequence_model;
+pub(crate) use render::render_sequence_diagram_with_execution;
 pub(crate) use render::render_sequence_diagram_with_resources;
 
 const BOX_PADDING_LEFT_RIGHT: usize = 2;

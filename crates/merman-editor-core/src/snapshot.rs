@@ -67,7 +67,7 @@ pub struct FenceSnapshot {
 impl DocumentSnapshot {
     /// Builds an editor snapshot whose URI and kind come from the generation's source descriptor.
     ///
-    /// A document path is required because editor snapshots participate in URI-keyed workspaces.
+    /// A document path is required to preserve document identity for host and protocol adapters.
     pub fn try_from_analysis_generation(
         version: i32,
         generation: Arc<AnalysisGeneration>,

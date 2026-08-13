@@ -100,8 +100,8 @@ pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> 
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_ishikawa_semantic_source_controlled(code, meta, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -185,15 +185,16 @@ fn construct_ishikawa_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<IshikawaSemanticSource, IshikawaParseFailure> {
-    construct_ishikawa_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_ishikawa_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_ishikawa_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<IshikawaSemanticSource, IshikawaParseFailure>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<IshikawaSemanticSource, IshikawaParseFailure>>
+{
     control.checkpoint()?;
     #[cfg(test)]
     ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.set(ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -558,7 +559,7 @@ mod tests {
 
     #[test]
     fn controlled_parse_can_cancel_between_ishikawa_lines() {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
@@ -567,7 +568,7 @@ mod tests {
                 &meta(),
                 &control,
             ),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 
@@ -633,7 +634,7 @@ Cause B
 
         reset_ishikawa_syntax_construction_count();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_ishikawa_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
+            parse_ishikawa_json_and_editor_facts(text, &meta(), &crate::OperationControl::new()),
         )
         .unwrap();
 

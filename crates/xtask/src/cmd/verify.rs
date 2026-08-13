@@ -76,7 +76,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         );
         println!("  --root-parity   run full SVG root parity after normal DOM parity");
         println!("  --strict        run every optional gate plus materialized release, generated,");
-        println!("                  Web, Playground browser, VS Code, and skill evidence");
+        println!("                  Web, Playground browser, and VS Code evidence");
         println!("                  and cargo test --workspace --doc");
     }
 
@@ -104,8 +104,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     run_checked("cargo fmt --check", &mut fmt_cmd)?;
 
     if !options.strict {
-        println!("\n== editor token descriptor ==");
-        cmd::verify_editor_token_descriptor(Vec::new())?;
+        println!("\n== editor language contract ==");
+        cmd::verify_editor_language_contract(Vec::new())?;
     }
 
     if options.all_features {
@@ -169,13 +169,6 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("\n== alignment evidence ==");
         cmd::check_alignment(Vec::new())?;
 
-        println!("\n== Mermaid alignment skill ==");
-        let mut skill_cmd = Command::new("python3");
-        skill_cmd
-            .arg(".agents/skills/align-mermaid-release/scripts/validate_workflow.py")
-            .current_dir(&workspace_root);
-        run_checked("align-mermaid-release workflow validator", &mut skill_cmd)?;
-
         println!("\n== open-source release materials ==");
         for (what, script, argument) in [
             (
@@ -224,13 +217,6 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
                 &mut run_checked,
             )?;
         }
-
-        println!("\n== ZenUML candidate matrix ==");
-        let mut npm_cmd = Command::new("npm");
-        npm_cmd
-            .args(["run", "verify:zenuml-candidate"])
-            .current_dir(workspace_root.join("playground"));
-        run_checked("npm run verify:zenuml-candidate", &mut npm_cmd)?;
     }
 
     println!("\n== cargo nextest ==");

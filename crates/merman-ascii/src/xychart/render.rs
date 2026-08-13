@@ -9,6 +9,7 @@ use super::plot::{
 use crate::canvas::finish_styled_lines_with_resources;
 use crate::color::AsciiColorRole;
 use crate::error::AsciiError;
+use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
@@ -116,29 +117,72 @@ impl ChartOrientation {
     }
 }
 
+pub(crate) fn render_xychart_diagram_with_execution(
+    model: &XyChartDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    render_xychart_diagram_controlled(model, options, Some(execution), || {})
+}
+
+#[cfg(test)]
 pub(crate) fn render_xychart_diagram(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
-    render_xychart_diagram_with_materializer(model, options, || {})
+    render_xychart_diagram_controlled(model, options, None, || {})
 }
 
+#[cfg(test)]
 fn render_xychart_diagram_with_materializer(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
     before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
+    render_xychart_diagram_controlled(model, options, None, before_document_materialize)
+}
+
+fn render_xychart_diagram_controlled(
+    model: &XyChartDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    execution: Option<AsciiExecution<'_>>,
+    before_document_materialize: impl FnOnce(),
+) -> Result<String> {
+    let options_with_operation_resources;
+    let options = match execution {
+        Some(execution) => {
+            options_with_operation_resources = options.with_resource_policy(*execution.resources());
+            &options_with_operation_resources
+        }
+        None => options,
+    };
     options.validate()?;
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     let orientation = validate_xychart_model(model)?;
     let mut resources = ResourceContext::new(options.resources);
     if model.plots.is_empty() {
-        return empty::render(model, orientation, options, resources);
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
+        let rendered = empty::render(model, orientation, options, resources)?;
+        checkpoint_emitted_lines(&rendered, execution)?;
+        return Ok(rendered);
     }
     let cardinality = TerminalChartPlan::measure_cardinality(model, &mut resources)?;
     if cardinality.is_empty() {
-        return empty::render(model, orientation, options, resources);
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
+        let rendered = empty::render(model, orientation, options, resources)?;
+        checkpoint_emitted_lines(&rendered, execution)?;
+        return Ok(rendered);
     }
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
     let plan = TerminalChartPlan::build(model, cardinality, &mut resources)?;
 
     let chars = ChartChars::from_options(options);
@@ -149,6 +193,10 @@ fn render_xychart_diagram_with_materializer(
     } else {
         plot_area.vertical_plot_extent(plan.slot_count, &resources)?
     };
+    let plot_cells = plot_extent.width().saturating_mul(plot_extent.height());
+    if let Some(execution) = execution {
+        execution.admit_grid(plot_cells)?;
+    }
     let context = ChartRenderContext {
         y_range: plan.y_range,
         chars,
@@ -163,6 +211,7 @@ fn render_xychart_diagram_with_materializer(
             &plan,
             context,
             &mut resources,
+            execution,
             before_document_materialize,
         );
     }
@@ -172,6 +221,7 @@ fn render_xychart_diagram_with_materializer(
         &plan,
         context,
         &mut resources,
+        execution,
         before_document_materialize,
     )
 }
@@ -195,7 +245,6 @@ fn validate_xychart_model(model: &XyChartDiagramRenderModel) -> Result<ChartOrie
             feature: "band y-axis",
         });
     }
-
     Ok(orientation)
 }
 
@@ -204,6 +253,7 @@ fn render_vertical(
     plan: &TerminalChartPlan,
     context: ChartRenderContext<'_>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
     before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     let ChartRenderContext {
@@ -259,6 +309,10 @@ fn render_vertical(
         options,
         resources,
     )?;
+    if let Some(execution) = execution {
+        execution.admit_grid(document_plan.width.saturating_mul(document_plan.height))?;
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
     let out = document_plan.materialize(resources, before_document_materialize, |resources| {
         let mut plot_resources = resources.scoped();
         let mut plot =
@@ -361,7 +415,7 @@ fn render_vertical(
         Ok(out)
     })?;
 
-    finish_chart_lines(out, options, resources)
+    finish_chart_lines_controlled(out, options, resources, execution)
 }
 
 fn render_horizontal(
@@ -369,6 +423,7 @@ fn render_horizontal(
     plan: &TerminalChartPlan,
     context: ChartRenderContext<'_>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
     before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     let ChartRenderContext {
@@ -415,6 +470,10 @@ fn render_horizontal(
         options,
         resources,
     )?;
+    if let Some(execution) = execution {
+        execution.admit_grid(document_plan.width.saturating_mul(document_plan.height))?;
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
     let out = document_plan.materialize(resources, before_document_materialize, |resources| {
         let mut plot_resources = resources.scoped();
         let plot_rows =
@@ -531,7 +590,7 @@ fn render_horizontal(
         Ok(out)
     })?;
 
-    finish_chart_lines(out, options, resources)
+    finish_chart_lines_controlled(out, options, resources, execution)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1326,6 +1385,31 @@ fn finish_chart_lines(
 
 fn new_chart_line(options: &AsciiRenderOptions, resources: &ResourceContext) -> ChartLine {
     ChartLine::with_resources(options.terminal_width_profile, resources)
+}
+
+fn finish_chart_lines_controlled(
+    document: ChartDocument,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<String> {
+    if let Some(execution) = execution {
+        let cells = document.width.saturating_mul(document.lines.len());
+        execution.admit_grid(cells)?;
+        for _ in &document.lines {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
+    }
+    finish_chart_lines(document, options, resources)
+}
+
+fn checkpoint_emitted_lines(rendered: &str, execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        for _ in rendered.lines() {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
+    }
+    Ok(())
 }
 
 fn allocation_failed(phase: AsciiResourceLimitPhase) -> AsciiError {

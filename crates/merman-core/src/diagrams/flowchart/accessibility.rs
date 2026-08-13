@@ -1,7 +1,7 @@
 #[cfg(test)]
 use std::cell::Cell;
 
-use crate::{EditorLexemeKind, ParseControl, ParseControlResult, SourceSpan};
+use crate::{EditorLexemeKind, OperationControl, OperationControlResult, SourceSpan};
 
 #[cfg(test)]
 thread_local! {
@@ -58,15 +58,15 @@ pub(super) struct FlowchartAccessibilityScan {
 }
 
 pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibilityScan {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     scan_flowchart_accessibility_controlled(code, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn scan_flowchart_accessibility_controlled(
     code: &str,
-    control: &ParseControl,
-) -> ParseControlResult<FlowchartAccessibilityScan> {
+    control: &OperationControl,
+) -> OperationControlResult<FlowchartAccessibilityScan> {
     #[cfg(test)]
     FLOWCHART_ACCESSIBILITY_SCAN_COUNT
         .set(FLOWCHART_ACCESSIBILITY_SCAN_COUNT.get().saturating_add(1));
@@ -234,8 +234,8 @@ fn trimmed_nonempty_span(code: &str, start: usize, end: usize) -> Option<SourceS
 fn next_line_end_controlled(
     code: &str,
     start: usize,
-    control: &ParseControl,
-) -> ParseControlResult<usize> {
+    control: &OperationControl,
+) -> OperationControlResult<usize> {
     Ok(find_byte_controlled(code, start, b'\n', control)?
         .map_or(code.len(), |position| position + 1))
 }
@@ -244,8 +244,8 @@ fn find_byte_controlled(
     code: &str,
     start: usize,
     needle: u8,
-    control: &ParseControl,
-) -> ParseControlResult<Option<usize>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<usize>> {
     for (chunk_index, chunk) in code.as_bytes()[start..].chunks(4096).enumerate() {
         control.checkpoint()?;
         if let Some(relative) = chunk.iter().position(|byte| *byte == needle) {
@@ -260,8 +260,8 @@ fn mask_range_preserving_newlines(
     bytes: &mut [u8],
     start: usize,
     end: usize,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     for chunk in bytes[start..end].chunks_mut(4096) {
         control.checkpoint()?;
         for byte in chunk {
@@ -337,12 +337,12 @@ mod tests {
     #[test]
     fn scan_observes_cancellation_inside_long_accessibility_payloads() {
         let source = format!("flowchart TD\naccDescr {{\n{}", "x".repeat(32 * 1024));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(5);
 
         assert!(matches!(
             scan_flowchart_accessibility_controlled(&source, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
     }

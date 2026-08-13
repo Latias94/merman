@@ -635,8 +635,6 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersion()  -> UInt32
-
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
     func diagramFamilyCapabilities()  -> [MermanDiagramFamilyCapability]
@@ -644,7 +642,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
     /**
      * Executes a descriptor-owned output operation with a fresh engine configuration.
      */
-    func execute(request: MermanOperationRequest) throws  -> MermanOperationResult
+    func execute(request: MermanOperationRequestV4) throws  -> MermanOperationResult
 
     func layoutJson(source: String, optionsJson: String?) throws  -> String
 
@@ -694,6 +692,8 @@ public protocol MermanProtocol: AnyObject, Sendable {
     func supportedThemes()  -> [String]
 
     func svgPlanJson(source: String, optionsJson: String?) throws  -> String
+
+    func transportApiVersion()  -> UInt32
 
     func validate(source: String, optionsJson: String?) throws  -> MermanValidationResult
 
@@ -814,15 +814,6 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
 })
 }
 
-open func bindingApiVersion() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-
 open func configurableLintRuleCatalog()throws  -> [MermanLintRuleCatalogEntry]  {
     return try  FfiConverterSequenceTypeMermanLintRuleCatalogEntry.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -844,12 +835,12 @@ open func diagramFamilyCapabilities() -> [MermanDiagramFamilyCapability]  {
     /**
      * Executes a descriptor-owned output operation with a fresh engine configuration.
      */
-open func execute(request: MermanOperationRequest)throws  -> MermanOperationResult  {
+open func execute(request: MermanOperationRequestV4)throws  -> MermanOperationResult  {
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_execute(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMermanOperationRequest_lower(request),uniffiCallStatus
+        FfiConverterTypeMermanOperationRequestV4_lower(request),uniffiCallStatus
     )
 })
 }
@@ -1052,6 +1043,15 @@ open func svgPlanJson(source: String, optionsJson: String?)throws  -> String  {
 })
 }
 
+open func transportApiVersion() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_merman_transport_api_version(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
 open func validate(source: String, optionsJson: String?)throws  -> MermanValidationResult  {
     return try  FfiConverterTypeMermanValidationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -1142,7 +1142,7 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
     /**
      * Executes an operation using the reusable baseline plus request-local option overrides.
      */
-    func execute(request: MermanOperationRequest) throws  -> MermanOperationResult
+    func execute(request: MermanOperationRequestV4) throws  -> MermanOperationResult
 
     func layoutJson(source: String, optionsJson: String?) throws  -> String
 
@@ -1303,12 +1303,12 @@ open func close()throws   {try rustCallWithError(FfiConverterTypeMermanError_lif
     /**
      * Executes an operation using the reusable baseline plus request-local option overrides.
      */
-open func execute(request: MermanOperationRequest)throws  -> MermanOperationResult  {
+open func execute(request: MermanOperationRequestV4)throws  -> MermanOperationResult  {
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_execute(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMermanOperationRequest_lower(request),uniffiCallStatus
+        FfiConverterTypeMermanOperationRequestV4_lower(request),uniffiCallStatus
     )
 })
 }
@@ -1924,6 +1924,173 @@ public func FfiConverterTypeMermanIconRegistry_lower(_ value: MermanIconRegistry
 
 
 /**
+ * Cloneable operation-scoped cancellation and relative-deadline control.
+ *
+ * Passing the same object to a request and retaining another foreign-language reference shares
+ * one atomic control state. Cancellation is cooperative: opaque host callbacks are observed only
+ * when they return to a renderer checkpoint.
+ */
+public protocol MermanOperationControlProtocol: AnyObject, Sendable {
+
+    /**
+     * Requests cooperative cancellation. This method is safe to call from another thread while
+     * a request is executing.
+     */
+    func cancel()
+
+    /**
+     * Reports whether cancellation was requested on this shared control.
+     */
+    func isCancelled()  -> Bool
+
+}
+/**
+ * Cloneable operation-scoped cancellation and relative-deadline control.
+ *
+ * Passing the same object to a request and retaining another foreign-language reference shares
+ * one atomic control state. Cancellation is cooperative: opaque host callbacks are observed only
+ * when they return to a renderer checkpoint.
+ */
+open class MermanOperationControl: MermanOperationControlProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_merman_uniffi_fn_clone_mermanoperationcontrol(self.handle, $0) }
+    }
+    /**
+     * Creates a control with an optional relative timeout in milliseconds.
+     */
+public convenience init(timeoutMs: UInt64?) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_constructor_mermanoperationcontrol_new(
+        FfiConverterOptionUInt64.lower(timeoutMs),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_merman_uniffi_fn_free_mermanoperationcontrol(handle, $0) }
+    }
+
+
+
+
+    /**
+     * Requests cooperative cancellation. This method is safe to call from another thread while
+     * a request is executing.
+     */
+open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanoperationcontrol_cancel(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+
+    /**
+     * Reports whether cancellation was requested on this shared control.
+     */
+open func isCancelled() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanoperationcontrol_is_cancelled(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
+
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanOperationControl: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = MermanOperationControl
+
+    public static func lift(_ handle: UInt64) throws -> MermanOperationControl {
+        return MermanOperationControl(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: MermanOperationControl) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOperationControl {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: MermanOperationControl, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanOperationControl_lift(_ handle: UInt64) throws -> MermanOperationControl {
+    return try FfiConverterTypeMermanOperationControl.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanOperationControl_lower(_ value: MermanOperationControl) -> UInt64 {
+    return FfiConverterTypeMermanOperationControl.lower(value)
+}
+
+
+
+
+
+
+/**
  * Synchronous host text measurement supplied when a reusable engine is constructed.
  *
  * Foreign implementations return ordinary errors through UniFFI's generated trampoline. They
@@ -2149,29 +2316,19 @@ public func FfiConverterTypeMermanTextMeasurer_lower(_ value: MermanTextMeasurer
 public struct MermanAsciiCapability: Equatable, Hashable {
     public var diagramType: String
     public var displayName: String
-    public var semanticCoverage: String?
-    public var primaryProjection: String
-    public var structuredTextFallback: Bool
-    /**
-     * Compatibility view derived from semantic coverage and the primary projection.
-     */
     public var supportLevel: String
+    public var summaryFallback: Bool
     public var supportedSemantics: [String]
     public var limits: [String]
     public var evidence: [MermanAsciiCapabilityEvidence]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(diagramType: String, displayName: String, semanticCoverage: String?, primaryProjection: String, structuredTextFallback: Bool,
-        /**
-         * Compatibility view derived from semantic coverage and the primary projection.
-         */supportLevel: String, supportedSemantics: [String], limits: [String], evidence: [MermanAsciiCapabilityEvidence]) {
+    public init(diagramType: String, displayName: String, supportLevel: String, summaryFallback: Bool, supportedSemantics: [String], limits: [String], evidence: [MermanAsciiCapabilityEvidence]) {
         self.diagramType = diagramType
         self.displayName = displayName
-        self.semanticCoverage = semanticCoverage
-        self.primaryProjection = primaryProjection
-        self.structuredTextFallback = structuredTextFallback
         self.supportLevel = supportLevel
+        self.summaryFallback = summaryFallback
         self.supportedSemantics = supportedSemantics
         self.limits = limits
         self.evidence = evidence
@@ -2195,10 +2352,8 @@ public struct FfiConverterTypeMermanAsciiCapability: FfiConverterRustBuffer {
             try MermanAsciiCapability(
                 diagramType: FfiConverterString.read(from: &buf),
                 displayName: FfiConverterString.read(from: &buf),
-                semanticCoverage: FfiConverterOptionString.read(from: &buf),
-                primaryProjection: FfiConverterString.read(from: &buf),
-                structuredTextFallback: FfiConverterBool.read(from: &buf),
                 supportLevel: FfiConverterString.read(from: &buf),
+                summaryFallback: FfiConverterBool.read(from: &buf),
                 supportedSemantics: FfiConverterSequenceString.read(from: &buf),
                 limits: FfiConverterSequenceString.read(from: &buf),
                 evidence: FfiConverterSequenceTypeMermanAsciiCapabilityEvidence.read(from: &buf)
@@ -2208,10 +2363,8 @@ public struct FfiConverterTypeMermanAsciiCapability: FfiConverterRustBuffer {
     public static func write(_ value: MermanAsciiCapability, into buf: inout [UInt8]) {
         FfiConverterString.write(value.diagramType, into: &buf)
         FfiConverterString.write(value.displayName, into: &buf)
-        FfiConverterOptionString.write(value.semanticCoverage, into: &buf)
-        FfiConverterString.write(value.primaryProjection, into: &buf)
-        FfiConverterBool.write(value.structuredTextFallback, into: &buf)
         FfiConverterString.write(value.supportLevel, into: &buf)
+        FfiConverterBool.write(value.summaryFallback, into: &buf)
         FfiConverterSequenceString.write(value.supportedSemantics, into: &buf)
         FfiConverterSequenceString.write(value.limits, into: &buf)
         FfiConverterSequenceTypeMermanAsciiCapabilityEvidence.write(value.evidence, into: &buf)
@@ -2292,19 +2445,18 @@ public func FfiConverterTypeMermanAsciiCapabilityEvidence_lower(_ value: MermanA
 }
 
 
-public struct MermanDiagnosticErrorDetails: Equatable, Hashable {
-    public var code: String
-    public var span: MermanDiagnosticSpan?
-    public var field: String?
-    public var diagramType: String?
+/**
+ * Structured cancellation details preserved across the generated binding boundary.
+ */
+public struct MermanCancelledDetails: Equatable, Hashable {
+    public var reason: String
+    public var phase: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(code: String, span: MermanDiagnosticSpan?, field: String?, diagramType: String?) {
-        self.code = code
-        self.span = span
-        self.field = field
-        self.diagramType = diagramType
+    public init(reason: String, phase: String) {
+        self.reason = reason
+        self.phase = phase
     }
 
 
@@ -2313,28 +2465,24 @@ public struct MermanDiagnosticErrorDetails: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension MermanDiagnosticErrorDetails: Sendable {}
+extension MermanCancelledDetails: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMermanDiagnosticErrorDetails: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanDiagnosticErrorDetails {
+public struct FfiConverterTypeMermanCancelledDetails: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanCancelledDetails {
         return
-            try MermanDiagnosticErrorDetails(
-                code: FfiConverterString.read(from: &buf),
-                span: FfiConverterOptionTypeMermanDiagnosticSpan.read(from: &buf),
-                field: FfiConverterOptionString.read(from: &buf),
-                diagramType: FfiConverterOptionString.read(from: &buf)
+            try MermanCancelledDetails(
+                reason: FfiConverterString.read(from: &buf),
+                phase: FfiConverterString.read(from: &buf)
         )
     }
 
-    public static func write(_ value: MermanDiagnosticErrorDetails, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.code, into: &buf)
-        FfiConverterOptionTypeMermanDiagnosticSpan.write(value.span, into: &buf)
-        FfiConverterOptionString.write(value.field, into: &buf)
-        FfiConverterOptionString.write(value.diagramType, into: &buf)
+    public static func write(_ value: MermanCancelledDetails, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterString.write(value.phase, into: &buf)
     }
 }
 
@@ -2342,73 +2490,15 @@ public struct FfiConverterTypeMermanDiagnosticErrorDetails: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanDiagnosticErrorDetails_lift(_ buf: RustBuffer) throws -> MermanDiagnosticErrorDetails {
-    return try FfiConverterTypeMermanDiagnosticErrorDetails.lift(buf)
+public func FfiConverterTypeMermanCancelledDetails_lift(_ buf: RustBuffer) throws -> MermanCancelledDetails {
+    return try FfiConverterTypeMermanCancelledDetails.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanDiagnosticErrorDetails_lower(_ value: MermanDiagnosticErrorDetails) -> RustBuffer {
-    return FfiConverterTypeMermanDiagnosticErrorDetails.lower(value)
-}
-
-
-public struct MermanDiagnosticSpan: Equatable, Hashable {
-    public var start: UInt64
-    public var end: UInt64
-    public var kind: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(start: UInt64, end: UInt64, kind: String) {
-        self.start = start
-        self.end = end
-        self.kind = kind
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension MermanDiagnosticSpan: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeMermanDiagnosticSpan: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanDiagnosticSpan {
-        return
-            try MermanDiagnosticSpan(
-                start: FfiConverterUInt64.read(from: &buf),
-                end: FfiConverterUInt64.read(from: &buf),
-                kind: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: MermanDiagnosticSpan, into buf: inout [UInt8]) {
-        FfiConverterUInt64.write(value.start, into: &buf)
-        FfiConverterUInt64.write(value.end, into: &buf)
-        FfiConverterString.write(value.kind, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMermanDiagnosticSpan_lift(_ buf: RustBuffer) throws -> MermanDiagnosticSpan {
-    return try FfiConverterTypeMermanDiagnosticSpan.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMermanDiagnosticSpan_lower(_ value: MermanDiagnosticSpan) -> RustBuffer {
-    return FfiConverterTypeMermanDiagnosticSpan.lower(value)
+public func FfiConverterTypeMermanCancelledDetails_lower(_ value: MermanCancelledDetails) -> RustBuffer {
+    return FfiConverterTypeMermanCancelledDetails.lower(value)
 }
 
 
@@ -2566,6 +2656,7 @@ public struct MermanLintRuleCatalogEntry: Equatable, Hashable {
     public var evidence: [String]
     public var defaultSeverity: String
     public var category: String
+    public var tags: [String]
     public var defaultEnabled: Bool
     public var defaultProfile: String
     public var origin: String
@@ -2574,12 +2665,13 @@ public struct MermanLintRuleCatalogEntry: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, description: String, evidence: [String], defaultSeverity: String, category: String, defaultEnabled: Bool, defaultProfile: String, origin: String, configurable: Bool, fixable: Bool) {
+    public init(id: String, description: String, evidence: [String], defaultSeverity: String, category: String, tags: [String], defaultEnabled: Bool, defaultProfile: String, origin: String, configurable: Bool, fixable: Bool) {
         self.id = id
         self.description = description
         self.evidence = evidence
         self.defaultSeverity = defaultSeverity
         self.category = category
+        self.tags = tags
         self.defaultEnabled = defaultEnabled
         self.defaultProfile = defaultProfile
         self.origin = origin
@@ -2608,6 +2700,7 @@ public struct FfiConverterTypeMermanLintRuleCatalogEntry: FfiConverterRustBuffer
                 evidence: FfiConverterSequenceString.read(from: &buf),
                 defaultSeverity: FfiConverterString.read(from: &buf),
                 category: FfiConverterString.read(from: &buf),
+                tags: FfiConverterSequenceString.read(from: &buf),
                 defaultEnabled: FfiConverterBool.read(from: &buf),
                 defaultProfile: FfiConverterString.read(from: &buf),
                 origin: FfiConverterString.read(from: &buf),
@@ -2622,6 +2715,7 @@ public struct FfiConverterTypeMermanLintRuleCatalogEntry: FfiConverterRustBuffer
         FfiConverterSequenceString.write(value.evidence, into: &buf)
         FfiConverterString.write(value.defaultSeverity, into: &buf)
         FfiConverterString.write(value.category, into: &buf)
+        FfiConverterSequenceString.write(value.tags, into: &buf)
         FfiConverterBool.write(value.defaultEnabled, into: &buf)
         FfiConverterString.write(value.defaultProfile, into: &buf)
         FfiConverterString.write(value.origin, into: &buf)
@@ -2725,21 +2819,24 @@ public func FfiConverterTypeMermanOperationMetadata_lower(_ value: MermanOperati
  *
  * `operation_id` is validated by the canonical binding-operation catalog. `uri` is required only by
  * document operations. `options_json` configures a one-shot engine or overrides a reusable
- * engine's baseline for this operation.
+ * engine's baseline for this operation. `control` optionally supplies a shared cancellation and
+ * deadline context; execution clones it before entering the synchronous binding path.
  */
-public struct MermanOperationRequest: Equatable, Hashable {
+public struct MermanOperationRequestV4 {
     public var operationId: String
     public var source: String
     public var uri: String?
     public var optionsJson: String?
+    public var control: MermanOperationControl?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(operationId: String, source: String, uri: String?, optionsJson: String?) {
+    public init(operationId: String, source: String, uri: String?, optionsJson: String?, control: MermanOperationControl?) {
         self.operationId = operationId
         self.source = source
         self.uri = uri
         self.optionsJson = optionsJson
+        self.control = control
     }
 
 
@@ -2748,28 +2845,30 @@ public struct MermanOperationRequest: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension MermanOperationRequest: Sendable {}
+extension MermanOperationRequestV4: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMermanOperationRequest: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOperationRequest {
+public struct FfiConverterTypeMermanOperationRequestV4: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOperationRequestV4 {
         return
-            try MermanOperationRequest(
+            try MermanOperationRequestV4(
                 operationId: FfiConverterString.read(from: &buf),
                 source: FfiConverterString.read(from: &buf),
                 uri: FfiConverterOptionString.read(from: &buf),
-                optionsJson: FfiConverterOptionString.read(from: &buf)
+                optionsJson: FfiConverterOptionString.read(from: &buf),
+                control: FfiConverterOptionTypeMermanOperationControl.read(from: &buf)
         )
     }
 
-    public static func write(_ value: MermanOperationRequest, into buf: inout [UInt8]) {
+    public static func write(_ value: MermanOperationRequestV4, into buf: inout [UInt8]) {
         FfiConverterString.write(value.operationId, into: &buf)
         FfiConverterString.write(value.source, into: &buf)
         FfiConverterOptionString.write(value.uri, into: &buf)
         FfiConverterOptionString.write(value.optionsJson, into: &buf)
+        FfiConverterOptionTypeMermanOperationControl.write(value.control, into: &buf)
     }
 }
 
@@ -2777,15 +2876,15 @@ public struct FfiConverterTypeMermanOperationRequest: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanOperationRequest_lift(_ buf: RustBuffer) throws -> MermanOperationRequest {
-    return try FfiConverterTypeMermanOperationRequest.lift(buf)
+public func FfiConverterTypeMermanOperationRequestV4_lift(_ buf: RustBuffer) throws -> MermanOperationRequestV4 {
+    return try FfiConverterTypeMermanOperationRequestV4.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanOperationRequest_lower(_ value: MermanOperationRequest) -> RustBuffer {
-    return FfiConverterTypeMermanOperationRequest.lower(value)
+public func FfiConverterTypeMermanOperationRequestV4_lower(_ value: MermanOperationRequestV4) -> RustBuffer {
+    return FfiConverterTypeMermanOperationRequestV4.lower(value)
 }
 
 
@@ -3437,7 +3536,7 @@ enum MermanError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
 
 
-    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, diagnostic: MermanDiagnosticErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, message: String
+    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, cancellation: MermanCancelledDetails?, message: String
     )
 
 
@@ -3474,8 +3573,8 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             kind: try FfiConverterTypeMermanErrorKind.read(from: &buf),
             capabilityId: try FfiConverterOptionString.read(from: &buf),
             resource: try FfiConverterOptionTypeMermanResourceErrorDetails.read(from: &buf),
-            diagnostic: try FfiConverterOptionTypeMermanDiagnosticErrorDetails.read(from: &buf),
             iconRegistry: try FfiConverterOptionTypeMermanIconRegistryErrorDetails.read(from: &buf),
+            cancellation: try FfiConverterOptionTypeMermanCancelledDetails.read(from: &buf),
             message: try FfiConverterString.read(from: &buf)
             )
 
@@ -3490,15 +3589,15 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
 
 
 
-        case let .Binding(code,codeName,kind,capabilityId,resource,diagnostic,iconRegistry,message):
+        case let .Binding(code,codeName,kind,capabilityId,resource,iconRegistry,cancellation,message):
             writeInt(&buf, Int32(1))
             FfiConverterInt32.write(code, into: &buf)
             FfiConverterString.write(codeName, into: &buf)
             FfiConverterTypeMermanErrorKind.write(kind, into: &buf)
             FfiConverterOptionString.write(capabilityId, into: &buf)
             FfiConverterOptionTypeMermanResourceErrorDetails.write(resource, into: &buf)
-            FfiConverterOptionTypeMermanDiagnosticErrorDetails.write(diagnostic, into: &buf)
             FfiConverterOptionTypeMermanIconRegistryErrorDetails.write(iconRegistry, into: &buf)
+            FfiConverterOptionTypeMermanCancelledDetails.write(cancellation, into: &buf)
             FfiConverterString.write(message, into: &buf)
 
         }
@@ -4507,8 +4606,8 @@ fileprivate struct FfiConverterOptionTypeMermanEngineServices: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeMermanDiagnosticErrorDetails: FfiConverterRustBuffer {
-    typealias SwiftType = MermanDiagnosticErrorDetails?
+fileprivate struct FfiConverterOptionTypeMermanOperationControl: FfiConverterRustBuffer {
+    typealias SwiftType = MermanOperationControl?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         guard let value = value else {
@@ -4516,13 +4615,13 @@ fileprivate struct FfiConverterOptionTypeMermanDiagnosticErrorDetails: FfiConver
             return
         }
         writeInt(&buf, Int8(1))
-        FfiConverterTypeMermanDiagnosticErrorDetails.write(value, into: &buf)
+        FfiConverterTypeMermanOperationControl.write(value, into: &buf)
     }
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
-        case 1: return try FfiConverterTypeMermanDiagnosticErrorDetails.read(from: &buf)
+        case 1: return try FfiConverterTypeMermanOperationControl.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4531,8 +4630,8 @@ fileprivate struct FfiConverterOptionTypeMermanDiagnosticErrorDetails: FfiConver
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeMermanDiagnosticSpan: FfiConverterRustBuffer {
-    typealias SwiftType = MermanDiagnosticSpan?
+fileprivate struct FfiConverterOptionTypeMermanCancelledDetails: FfiConverterRustBuffer {
+    typealias SwiftType = MermanCancelledDetails?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         guard let value = value else {
@@ -4540,13 +4639,13 @@ fileprivate struct FfiConverterOptionTypeMermanDiagnosticSpan: FfiConverterRustB
             return
         }
         writeInt(&buf, Int8(1))
-        FfiConverterTypeMermanDiagnosticSpan.write(value, into: &buf)
+        FfiConverterTypeMermanCancelledDetails.write(value, into: &buf)
     }
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
-        case 1: return try FfiConverterTypeMermanDiagnosticSpan.read(from: &buf)
+        case 1: return try FfiConverterTypeMermanCancelledDetails.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4937,16 +5036,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version() != 18722) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_diagram_family_capabilities() != 24556) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_execute() != 6359) {
+    if (uniffi_merman_uniffi_checksum_method_merman_execute() != 18404) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_layout_json() != 63419) {
@@ -5003,6 +5099,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_svg_plan_json() != 24509) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_merman_transport_api_version() != 40640) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_merman_validate() != 18871) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5021,7 +5120,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanengine_close() != 63246) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 35616) {
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_execute() != 12806) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_layout_json() != 2168) {
@@ -5078,6 +5177,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermaniconregistry_len() != 23294) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_mermanoperationcontrol_cancel() != 60594) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_mermanoperationcontrol_is_cancelled() != 45728) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_mermantextmeasurer_measure() != 28264) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5094,6 +5199,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_constructor_mermaniconregistry_from_packs() != 17255) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_constructor_mermanoperationcontrol_new() != 47064) {
         return InitializationResult.apiChecksumMismatch
     }
 

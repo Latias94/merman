@@ -122,8 +122,8 @@ pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_packet_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construct_packet_semantic_source_controlled(code, meta, control)?,
@@ -165,15 +165,15 @@ fn construct_packet_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure> {
-    construct_packet_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_packet_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_packet_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
@@ -331,8 +331,8 @@ fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &Packet
 fn populate_packet_controlled(
     blocks: Vec<PacketBlock>,
     bits_per_row: i64,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<Vec<PacketWord>>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Vec<PacketWord>>> {
     let mut packet: Vec<PacketWord> = Vec::new();
     let mut last_bit: i64 = -1;
     let mut word: PacketWord = Vec::new();
@@ -720,8 +720,8 @@ struct PacketBodyStart {
 
 fn packet_body_start_controlled(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<Option<PacketBodyStart>>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Option<PacketBodyStart>>> {
     let mut offset = 0usize;
     while offset < code.len() {
         control.checkpoint()?;
@@ -818,7 +818,7 @@ mod tests {
         for index in 0..512 {
             text.push_str(&format!("{index}: \"bit-{index}\"\n"));
         }
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(4);
         let meta = ParseMetadata {
             diagram_type: "packet".to_string(),
@@ -829,7 +829,7 @@ mod tests {
 
         assert!(matches!(
             construct_packet_semantic_source_controlled(&text, &meta, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

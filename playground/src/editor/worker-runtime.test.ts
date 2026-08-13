@@ -20,6 +20,20 @@ import {
 
 const URI = "file:///merman/runtime-test.mmd";
 const LEGEND_DIGEST = "sha256:runtime-test";
+const COMPLETION_TRIGGER_CHARACTERS = [
+  " ",
+  "\n",
+  "-",
+  ">",
+  "%",
+  "[",
+  "(",
+  "{",
+  "/",
+  "\\",
+  "@",
+  ":",
+];
 
 class RuntimePort implements EditorWorkerRuntimePort {
   closeCalls = 0;
@@ -56,6 +70,7 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     protocol: EDITOR_WORKER_PROTOCOL,
     type: "ready",
     requestId: 1,
+    completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
     transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: LEGEND_DIGEST,
@@ -290,6 +305,9 @@ function bindings(
       calls.push("init");
     },
     editorSemanticTokenDescriptor: () => semanticTokenDescriptor(),
+    editorCompletionTriggerCharacters: () => [
+      ...COMPLETION_TRIGGER_CHARACTERS,
+    ],
     legendDigest: LEGEND_DIGEST,
     runtimeCatalog: () =>
       ({

@@ -22,7 +22,10 @@ pub use model::{
 #[cfg(test)]
 pub(crate) use parse::{gantt_syntax_construction_count, reset_gantt_syntax_construction_count};
 pub(crate) use parse::{parse_gantt, parse_gantt_model_for_render};
-pub(crate) use parse::{parse_gantt_json_and_editor_facts, render_model_to_compat_json};
+pub(crate) use parse::{
+    parse_gantt_json_and_editor_facts, render_model_to_compat_json,
+    render_model_to_compat_json_controlled,
+};
 
 const ALL_WEEKDAYS_MASK: u8 = 0b0111_1111;
 const MAX_CONSECUTIVE_EXCLUDED_DAYS: usize = 366;

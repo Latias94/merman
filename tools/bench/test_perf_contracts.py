@@ -4935,21 +4935,42 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         self.assertIn("--evidence-mode", workflow)
         self.assertIn("--absolute-threshold-ns", workflow)
 
-    def test_regression_workflow_captures_then_enforces_comparison_exit(self) -> None:
+    def test_measurement_workflow_enforces_comparison_and_receipt_results(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
             encoding="utf-8"
         )
 
-        self.assertRegex(
-            workflow,
-            r"(?s)set \+e\s+python3 tools/bench/compare_self\.py.*?comparison_exit=\$\?\s+set -e",
-        )
-        self.assertIn("comparison_exit", workflow)
+        self.assertIn("comparison_exit=$?", workflow)
+        self.assertIn("render_exit=$?", workflow)
         self.assertIn("--process-exit-code", workflow)
-        self.assertIn("comment_render_exit", workflow)
-        self.assertRegex(workflow, r"(?i)name: enforce .*performance.*result")
-        self.assertRegex(workflow, r'exit "\$[A-Z_]*COMPARISON_EXIT"')
-        self.assertRegex(workflow, r'if \[ "\$[A-Z_]*COMMENT_RENDER_EXIT" -ne 0 \]')
+        self.assertIn("name: Enforce measurement result", workflow)
+        self.assertIn('if [[ "$RENDER_EXIT" -ne 0 ]]', workflow)
+        self.assertIn('case "$COMPARISON_EXIT" in', workflow)
+
+    def test_perf_label_runs_compiled_contracts_without_repeating_python_contracts(
+        self,
+    ) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')",
+            workflow,
+        )
+        self.assertEqual(workflow.count("if: github.event_name != 'pull_request'\n"), 2)
+        self.assertIn("Verify compiled pipeline benchmark list", workflow)
+        self.assertIn("Build native memory probe contract", workflow)
+
+    def test_manual_regression_uses_the_requested_corpus_suite(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || matrix.suite }}",
+            workflow,
+        )
 
 
 if __name__ == "__main__":

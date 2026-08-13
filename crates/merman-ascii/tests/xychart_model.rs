@@ -1,12 +1,12 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiRgb, render_model, render_xychart as render_typed_xychart,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, render_model, render_model_with_operation,
 };
 use merman_core::diagrams::xychart::{
     XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
     XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, OperationControl, ParseOptions, RenderSemanticModel};
 use std::path::Path;
 
 fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -16,6 +16,33 @@ fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Re
         .expect("xychart should be detected");
 
     render_model(parsed.model(), options)
+}
+
+fn render_typed_xychart(
+    model: &XyChartDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> merman_ascii::Result<String> {
+    render_model(&RenderSemanticModel::XyChart(model.clone()), options)
+}
+
+fn render_xychart_with_grid_limit(
+    input: &str,
+    options: &AsciiRenderOptions,
+    max_grid_cells: usize,
+) -> merman_ascii::Result<String> {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("xychart should parse")
+        .expect("xychart should be detected");
+    let control = OperationControl::new();
+    let context = Engine::new()
+        .begin_operation()
+        .expect("deterministic operation context should be available");
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, max_grid_cells)
+        .expect("valid grid limit");
+
+    render_model_with_operation(parsed.model(), options, &control, &context, resources)
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {
@@ -629,18 +656,17 @@ bar [4, 8]
 }
 
 #[test]
-fn xychart_plot_area_respects_typed_grid_limit() {
-    let options = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 3)
-        .expect("valid grid limit");
+fn xychart_plot_area_respects_resource_limits() {
+    let options = AsciiRenderOptions::ascii();
 
-    let err = render_xychart(
+    let err = render_xychart_with_grid_limit(
         r#"xychart
 x-axis [A, B]
 y-axis 0 --> 10
 bar [4, 8]
 "#,
         &options,
+        3,
     )
     .expect_err("xychart plot area should respect max_ascii_grid_cells");
 
