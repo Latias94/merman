@@ -1,11 +1,11 @@
 use crate::color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-#[cfg(test)]
-use crate::resource::AsciiResourcePolicy;
-use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, LogicalExtent, ResourceContext};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, CheckedOutput,
+    LogicalExtent, ResourceContext,
+};
 use crate::safe_text::{
-    push_html_escaped_text as push_html_escaped_str, terminal_char_display_width,
-    visit_safe_line_graphemes,
+    terminal_char_display_width, visit_html_escaped_text, visit_safe_line_graphemes,
 };
 pub(crate) use crate::terminal::CanvasColor;
 use crate::terminal::{
@@ -22,6 +22,89 @@ pub(crate) struct Canvas {
     arena: GlyphArena,
     width_profile: TerminalWidthProfile,
     resources: ResourceContext,
+}
+
+trait TerminalOutputSink {
+    fn push_str(&mut self, value: &str) -> crate::Result<()>;
+
+    fn push_char(&mut self, value: char) -> crate::Result<()> {
+        let mut encoded = [0u8; 4];
+        self.push_str(value.encode_utf8(&mut encoded))
+    }
+
+    fn write_fmt(&mut self, arguments: std::fmt::Arguments<'_>) -> crate::Result<()>
+    where
+        Self: Sized,
+    {
+        struct Adapter<'a, S> {
+            sink: &'a mut S,
+            error: Option<crate::AsciiError>,
+        }
+
+        impl<S: TerminalOutputSink> std::fmt::Write for Adapter<'_, S> {
+            fn write_str(&mut self, value: &str) -> std::fmt::Result {
+                match self.sink.push_str(value) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        self.error = Some(error);
+                        Err(std::fmt::Error)
+                    }
+                }
+            }
+        }
+
+        let mut adapter = Adapter {
+            sink: self,
+            error: None,
+        };
+        if std::fmt::write(&mut adapter, arguments).is_err() {
+            return Err(adapter.error.unwrap_or(crate::AsciiError::InvalidOption {
+                field: "output",
+                message: "formatting failed",
+            }));
+        }
+        Ok(())
+    }
+}
+
+impl TerminalOutputSink for CheckedOutput {
+    fn push_str(&mut self, value: &str) -> crate::Result<()> {
+        CheckedOutput::push_str(self, value)
+    }
+
+    fn push_char(&mut self, value: char) -> crate::Result<()> {
+        CheckedOutput::push_char(self, value)
+    }
+
+    fn write_fmt(&mut self, arguments: std::fmt::Arguments<'_>) -> crate::Result<()> {
+        CheckedOutput::write_fmt(self, arguments)
+    }
+}
+
+#[derive(Debug)]
+struct CountingTerminalOutput {
+    policy: AsciiResourcePolicy,
+    bytes: usize,
+}
+
+impl CountingTerminalOutput {
+    const fn new(policy: AsciiResourcePolicy) -> Self {
+        Self { policy, bytes: 0 }
+    }
+
+    const fn bytes(&self) -> usize {
+        self.bytes
+    }
+}
+
+impl TerminalOutputSink for CountingTerminalOutput {
+    fn push_str(&mut self, value: &str) -> crate::Result<()> {
+        self.bytes = self
+            .bytes
+            .checked_add(value.len())
+            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        Ok(())
+    }
 }
 
 impl Canvas {
@@ -467,55 +550,77 @@ impl Canvas {
     }
 
     #[cfg(test)]
-    fn finish_plain(mut self, trim: bool) -> crate::Result<String> {
+    fn finish_plain(self, trim: bool) -> crate::Result<String> {
+        let resources = self.resources.clone();
+        resources.transaction(|_| {
+            self.finish_encoded(
+                AsciiColorMode::Plain,
+                AsciiColorTheme::default(),
+                trim,
+                || {},
+            )
+        })
+    }
+
+    fn finish_with_options_internal(
+        self,
+        options: &AsciiRenderOptions,
+        trim: bool,
+    ) -> crate::Result<String> {
+        self.finish_with_options_internal_and_probe(options, trim, || {})
+    }
+
+    fn finish_with_options_internal_and_probe(
+        self,
+        options: &AsciiRenderOptions,
+        trim: bool,
+        before_materialize: impl FnOnce(),
+    ) -> crate::Result<String> {
+        let resources = self.resources.clone();
+        resources.transaction(|_| {
+            self.finish_encoded(
+                options.color_mode,
+                options.color_theme,
+                trim,
+                before_materialize,
+            )
+        })
+    }
+
+    fn finish_encoded(
+        mut self,
+        color_mode: AsciiColorMode,
+        color_theme: AsciiColorTheme,
+        trim: bool,
+        before_materialize: impl FnOnce(),
+    ) -> crate::Result<String> {
         self.check_document_cells(trim)?;
         if self.width == 0 || self.height == 0 {
             return Ok(String::new());
         }
 
-        let mut out = CheckedOutput::new(self.resources.policy());
-        for row_start in (0..self.cells.len()).step_by(self.width) {
-            let row_end = if trim {
-                self.trimmed_row_end(row_start, row_start + self.width, false)
-            } else {
-                row_start + self.width
-            };
-            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
-                if let Some(text) = cell.try_output_text(&self.arena)? {
-                    push_terminal_text(&mut out, text)?;
-                }
-                Ok(())
-            })?;
-            out.push_char('\n')?;
-        }
-        Ok(out.finish())
-    }
+        let policy = self.resources.policy();
+        let mut counted = CountingTerminalOutput::new(policy);
+        self.encode_to_sink(color_mode, color_theme, trim, &mut counted)?;
+        let encoded_bytes = counted.bytes();
+        policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
 
-    fn finish_with_options_internal(
-        mut self,
-        options: &AsciiRenderOptions,
-        trim: bool,
-    ) -> crate::Result<String> {
-        self.check_document_cells(trim)?;
-        match options.color_mode {
-            AsciiColorMode::Plain => self.encode_plain(trim),
-            AsciiColorMode::Ansi16 => {
-                self.finish_ansi(options.color_theme, AsciiColorMode::Ansi16, trim)
-            }
-            AsciiColorMode::Ansi256 => {
-                self.finish_ansi(options.color_theme, AsciiColorMode::Ansi256, trim)
-            }
-            AsciiColorMode::TrueColor => {
-                self.finish_ansi(options.color_theme, AsciiColorMode::TrueColor, trim)
-            }
-            AsciiColorMode::Html => self.finish_html(options.color_theme, trim),
+        before_materialize();
+        let mut output = CheckedOutput::new(policy);
+        self.encode_to_sink(color_mode, color_theme, trim, &mut output)?;
+        let output = output.finish();
+        if output.len() != encoded_bytes {
+            return Err(invalid_encoded_output_plan());
         }
+        Ok(output)
     }
 
     fn check_document_cells(&mut self, trim: bool) -> crate::Result<()> {
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
+        let mut document_cells = 0usize;
+        let mut encoder_pass_work = 0usize;
         for row_start in (0..self.cells.len()).step_by(self.width) {
             let row_end = if trim {
                 self.trimmed_row_end(row_start, row_start + self.width, true)
@@ -523,32 +628,43 @@ impl Canvas {
                 row_start + self.width
             };
             let row_cells = row_end - row_start;
-            self.resources.charge_document_cells(row_cells)?;
-            self.resources.charge_layout_work(row_cells.max(1))?;
+            document_cells = document_cells.checked_add(row_cells).ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+            encoder_pass_work = self
+                .resources
+                .checked_work_add(encoder_pass_work, row_cells.max(1))?;
         }
-        Ok(())
+        let encoder_work = self.resources.checked_work_mul(encoder_pass_work, 2)?;
+        self.resources.check_usage(encoder_work, document_cells)?;
+        self.resources.charge_usage(encoder_work, document_cells)
     }
 
-    fn encode_plain(self, trim: bool) -> crate::Result<String> {
-        if self.width == 0 || self.height == 0 {
-            return Ok(String::new());
-        }
-        let mut out = CheckedOutput::new(self.resources.policy());
+    fn encode_to_sink(
+        &self,
+        color_mode: AsciiColorMode,
+        color_theme: AsciiColorTheme,
+        trim: bool,
+        output: &mut impl TerminalOutputSink,
+    ) -> crate::Result<()> {
+        let preserve_roles = color_mode != AsciiColorMode::Plain;
         for row_start in (0..self.cells.len()).step_by(self.width) {
             let row_end = if trim {
-                self.trimmed_row_end(row_start, row_start + self.width, false)
+                self.trimmed_row_end(row_start, row_start + self.width, preserve_roles)
             } else {
                 row_start + self.width
             };
-            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
-                if let Some(text) = cell.try_output_text(&self.arena)? {
-                    push_terminal_text(&mut out, text)?;
-                }
-                Ok(())
-            })?;
-            out.push_char('\n')?;
+            encode_surface_row(
+                output,
+                &self.cells[row_start..row_end],
+                &self.arena,
+                color_mode,
+                color_theme,
+            )?;
+            output.push_char('\n')?;
         }
-        Ok(out.finish())
+        Ok(())
     }
 
     fn index(&self, x: usize, y: usize) -> Option<usize> {
@@ -596,85 +712,6 @@ impl Canvas {
         }
     }
 
-    fn finish_ansi(
-        self,
-        theme: AsciiColorTheme,
-        mode: AsciiColorMode,
-        trim: bool,
-    ) -> crate::Result<String> {
-        if self.width == 0 || self.height == 0 {
-            return Ok(String::new());
-        }
-
-        let mut out = CheckedOutput::new(self.resources.policy());
-        for row_start in (0..self.cells.len()).step_by(self.width) {
-            let row_end = if trim {
-                self.trimmed_row_end(row_start, row_start + self.width, true)
-            } else {
-                row_start + self.width
-            };
-            let mut active_style = ResolvedCanvasStyle::default();
-            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
-                if let Some(text) = cell.try_output_text(&self.arena)? {
-                    let desired_style = cell.raw_style().resolve(theme);
-                    if desired_style != active_style {
-                        if !active_style.is_plain() {
-                            out.push_str("\u{1b}[0m")?;
-                        }
-                        if !desired_style.is_plain() {
-                            push_ansi_start(&mut out, mode, desired_style)?;
-                        }
-                        active_style = desired_style;
-                    }
-                    push_terminal_text(&mut out, text)?;
-                }
-                Ok(())
-            })?;
-            if !active_style.is_plain() {
-                out.push_str("\u{1b}[0m")?;
-            }
-            out.push_char('\n')?;
-        }
-        Ok(out.finish())
-    }
-
-    fn finish_html(self, theme: AsciiColorTheme, trim: bool) -> crate::Result<String> {
-        if self.width == 0 || self.height == 0 {
-            return Ok(String::new());
-        }
-
-        let mut out = CheckedOutput::new(self.resources.policy());
-        for row_start in (0..self.cells.len()).step_by(self.width) {
-            let row_end = if trim {
-                self.trimmed_row_end(row_start, row_start + self.width, true)
-            } else {
-                row_start + self.width
-            };
-            let mut active_style = ResolvedCanvasStyle::default();
-            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
-                if let Some(text) = cell.try_output_text(&self.arena)? {
-                    let desired_style = cell.raw_style().resolve(theme);
-                    if desired_style != active_style {
-                        if !active_style.is_plain() {
-                            out.push_str("</span>")?;
-                        }
-                        if !desired_style.is_plain() {
-                            push_html_span_start(&mut out, desired_style)?;
-                        }
-                        active_style = desired_style;
-                    }
-                    push_html_escaped_text(&mut out, text)?;
-                }
-                Ok(())
-            })?;
-            if !active_style.is_plain() {
-                out.push_str("</span>")?;
-            }
-            out.push_char('\n')?;
-        }
-        Ok(out.finish())
-    }
-
     fn trimmed_row_end(&self, row_start: usize, mut row_end: usize, preserve_roles: bool) -> usize {
         while row_end > row_start {
             let index = row_end - 1;
@@ -711,6 +748,41 @@ pub(crate) fn finish_styled_line_iter_with_resources<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
+    finish_styled_line_iter_with_probe(lines, options, trim, resources, || {})
+}
+
+fn finish_styled_line_iter_with_probe<'a, I>(
+    lines: I,
+    options: &AsciiRenderOptions,
+    trim: bool,
+    resources: &mut ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> crate::Result<String>
+where
+    I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
+{
+    let resources = resources.clone();
+    resources.transaction(|resources| {
+        finish_styled_line_iter_after_transaction(
+            lines,
+            options,
+            trim,
+            resources,
+            before_materialize,
+        )
+    })
+}
+
+fn finish_styled_line_iter_after_transaction<'a, I>(
+    lines: I,
+    options: &AsciiRenderOptions,
+    trim: bool,
+    resources: &ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> crate::Result<String>
+where
+    I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
+{
     let (line_count, width) = lines
         .clone()
         .fold((0usize, 0usize), |(count, width), line| {
@@ -720,48 +792,74 @@ where
         return Ok(String::new());
     }
     let document_resources = resources.scoped();
-    if width == 0 {
-        let mut output = CheckedOutput::new(options.resources);
-        for _ in lines.clone() {
-            document_resources.charge_layout_work(1)?;
-            output.push_char('\n')?;
-        }
-        return Ok(output.finish());
+    if width > 0 {
+        document_resources.grid_extent(width, line_count)?;
     }
-
-    document_resources.grid_extent(width, line_count)?;
+    let mut document_cells = 0usize;
+    let mut encoder_pass_work = 0usize;
     for line in lines.clone() {
         let row_end = if trim {
             line.trimmed_len(true)
         } else {
             line.len()
         };
-        document_resources.charge_document_cells(row_end)?;
-        document_resources.charge_layout_work(row_end.max(1))?;
+        document_cells = document_cells
+            .checked_add(row_end)
+            .ok_or_else(|| document_resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        encoder_pass_work =
+            document_resources.checked_work_add(encoder_pass_work, row_end.max(1))?;
     }
+    let encoder_work = document_resources.checked_work_mul(encoder_pass_work, 2)?;
+    document_resources.check_usage(encoder_work, document_cells)?;
+    document_resources.charge_usage(encoder_work, document_cells)?;
 
+    let mut counted = CountingTerminalOutput::new(options.resources);
+    encode_styled_line_iter_to_sink(lines.clone(), options, trim, &mut counted)?;
+    let encoded_bytes = counted.bytes();
+    options
+        .resources
+        .check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
+
+    before_materialize();
     let mut output = CheckedOutput::new(options.resources);
+    encode_styled_line_iter_to_sink(lines, options, trim, &mut output)?;
+    let output = output.finish();
+    if output.len() != encoded_bytes {
+        return Err(invalid_encoded_output_plan());
+    }
+    Ok(output)
+}
+
+fn encode_styled_line_iter_to_sink<'a, I>(
+    lines: I,
+    options: &AsciiRenderOptions,
+    trim: bool,
+    output: &mut impl TerminalOutputSink,
+) -> crate::Result<()>
+where
+    I: Iterator<Item = &'a crate::text::StyledLine>,
+{
     match options.color_mode {
         AsciiColorMode::Plain => {
-            for line in lines.clone() {
+            for line in lines {
                 let row_end = if trim {
                     line.trimmed_len(false)
                 } else {
                     line.len()
                 };
-                encode_styled_line_plain(&mut output, line, row_end)?;
+                encode_styled_line_plain(output, line, row_end)?;
                 output.push_char('\n')?;
             }
         }
         AsciiColorMode::Ansi16 | AsciiColorMode::Ansi256 | AsciiColorMode::TrueColor => {
             let mode = options.color_mode;
-            for line in lines.clone() {
+            for line in lines {
                 let row_end = if trim {
                     line.trimmed_len(true)
                 } else {
                     line.len()
                 };
-                encode_styled_line_ansi(&mut output, line, row_end, options.color_theme, mode)?;
+                encode_styled_line_ansi(output, line, row_end, options.color_theme, mode)?;
                 output.push_char('\n')?;
             }
         }
@@ -772,82 +870,118 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_html(&mut output, line, row_end, options.color_theme)?;
+                encode_styled_line_html(output, line, row_end, options.color_theme)?;
                 output.push_char('\n')?;
             }
         }
     }
-    Ok(output.finish())
+    Ok(())
 }
 
 fn encode_styled_line_plain(
-    output: &mut CheckedOutput,
+    output: &mut impl TerminalOutputSink,
     line: &crate::text::StyledLine,
     row_end: usize,
 ) -> crate::Result<()> {
-    visit_primary_cells(&line.surface_cells()[..row_end], |cell| {
-        if let Some(text) = cell.try_output_text(line.surface_arena())? {
-            push_terminal_text(output, text)?;
-        }
-        Ok(())
-    })
+    encode_surface_row(
+        output,
+        &line.surface_cells()[..row_end],
+        line.surface_arena(),
+        AsciiColorMode::Plain,
+        AsciiColorTheme::default(),
+    )
 }
 
 fn encode_styled_line_ansi(
-    output: &mut CheckedOutput,
+    output: &mut impl TerminalOutputSink,
     line: &crate::text::StyledLine,
     row_end: usize,
     theme: AsciiColorTheme,
     mode: AsciiColorMode,
 ) -> crate::Result<()> {
-    let mut active_style = ResolvedCanvasStyle::default();
-    visit_primary_cells(&line.surface_cells()[..row_end], |cell| {
-        if let Some(text) = cell.try_output_text(line.surface_arena())? {
-            let desired_style = cell.raw_style().resolve(theme);
-            if desired_style != active_style {
-                if !active_style.is_plain() {
-                    output.push_str("\u{1b}[0m")?;
-                }
-                if !desired_style.is_plain() {
-                    push_ansi_start(output, mode, desired_style)?;
-                }
-                active_style = desired_style;
-            }
-            push_terminal_text(output, text)?;
-        }
-        Ok(())
-    })?;
-    if !active_style.is_plain() {
-        output.push_str("\u{1b}[0m")?;
-    }
-    Ok(())
+    encode_surface_row(
+        output,
+        &line.surface_cells()[..row_end],
+        line.surface_arena(),
+        mode,
+        theme,
+    )
 }
 
 fn encode_styled_line_html(
-    output: &mut CheckedOutput,
+    output: &mut impl TerminalOutputSink,
     line: &crate::text::StyledLine,
     row_end: usize,
     theme: AsciiColorTheme,
 ) -> crate::Result<()> {
+    encode_surface_row(
+        output,
+        &line.surface_cells()[..row_end],
+        line.surface_arena(),
+        AsciiColorMode::Html,
+        theme,
+    )
+}
+
+fn encode_surface_row(
+    output: &mut impl TerminalOutputSink,
+    cells: &[TerminalCell],
+    arena: &GlyphArena,
+    mode: AsciiColorMode,
+    theme: AsciiColorTheme,
+) -> crate::Result<()> {
+    if mode == AsciiColorMode::Plain {
+        return visit_primary_cells(cells, |cell| {
+            if let Some(text) = cell.try_output_text(arena)? {
+                push_terminal_text(output, text)?;
+            }
+            Ok(())
+        });
+    }
+
     let mut active_style = ResolvedCanvasStyle::default();
-    visit_primary_cells(&line.surface_cells()[..row_end], |cell| {
-        if let Some(text) = cell.try_output_text(line.surface_arena())? {
+    visit_primary_cells(cells, |cell| {
+        if let Some(text) = cell.try_output_text(arena)? {
             let desired_style = cell.raw_style().resolve(theme);
             if desired_style != active_style {
                 if !active_style.is_plain() {
-                    output.push_str("</span>")?;
+                    match mode {
+                        AsciiColorMode::Html => output.push_str("</span>")?,
+                        AsciiColorMode::Ansi16
+                        | AsciiColorMode::Ansi256
+                        | AsciiColorMode::TrueColor => output.push_str("\u{1b}[0m")?,
+                        AsciiColorMode::Plain => {}
+                    }
                 }
                 if !desired_style.is_plain() {
-                    push_html_span_start(output, desired_style)?;
+                    match mode {
+                        AsciiColorMode::Html => push_html_span_start(output, desired_style)?,
+                        AsciiColorMode::Ansi16
+                        | AsciiColorMode::Ansi256
+                        | AsciiColorMode::TrueColor => {
+                            push_ansi_start(output, mode, desired_style)?
+                        }
+                        AsciiColorMode::Plain => {}
+                    }
                 }
                 active_style = desired_style;
             }
-            push_html_escaped_text(output, text)?;
+            if mode == AsciiColorMode::Html {
+                push_html_escaped_terminal_text(output, text)?;
+            } else {
+                push_terminal_text(output, text)?;
+            }
         }
         Ok(())
     })?;
     if !active_style.is_plain() {
-        output.push_str("</span>")?;
+        match mode {
+            AsciiColorMode::Html => output.push_str("</span>")?,
+            AsciiColorMode::Ansi16 | AsciiColorMode::Ansi256 | AsciiColorMode::TrueColor => {
+                output.push_str("\u{1b}[0m")?
+            }
+            AsciiColorMode::Plain => {}
+        }
     }
     Ok(())
 }
@@ -873,7 +1007,10 @@ fn visit_primary_cells(
     Ok(())
 }
 
-fn push_terminal_text(out: &mut CheckedOutput, text: TerminalCellText<'_>) -> crate::Result<()> {
+fn push_terminal_text(
+    out: &mut impl TerminalOutputSink,
+    text: TerminalCellText<'_>,
+) -> crate::Result<()> {
     match text {
         TerminalCellText::Scalar(ch) => out.push_char(ch),
         TerminalCellText::Grapheme(grapheme) => out.push_str(grapheme),
@@ -881,7 +1018,7 @@ fn push_terminal_text(out: &mut CheckedOutput, text: TerminalCellText<'_>) -> cr
 }
 
 fn push_ansi_start(
-    out: &mut CheckedOutput,
+    out: &mut impl TerminalOutputSink,
     mode: AsciiColorMode,
     style: ResolvedCanvasStyle,
 ) -> crate::Result<()> {
@@ -971,7 +1108,10 @@ fn color_distance(a: AsciiRgb, b: AsciiRgb) -> u32 {
     (dr * dr + dg * dg + db * db) as u32
 }
 
-fn push_html_span_start(out: &mut CheckedOutput, style: ResolvedCanvasStyle) -> crate::Result<()> {
+fn push_html_span_start(
+    out: &mut impl TerminalOutputSink,
+    style: ResolvedCanvasStyle,
+) -> crate::Result<()> {
     let mut wrote_any = false;
     out.push_str("<span style=\"")?;
     if let Some(color) = style.foreground {
@@ -998,16 +1138,27 @@ fn push_html_span_start(out: &mut CheckedOutput, style: ResolvedCanvasStyle) -> 
     Ok(())
 }
 
-fn push_html_escaped_text(
-    out: &mut CheckedOutput,
+fn push_html_escaped_terminal_text(
+    out: &mut impl TerminalOutputSink,
     text: TerminalCellText<'_>,
 ) -> crate::Result<()> {
     match text {
         TerminalCellText::Scalar(ch) => {
             let mut buffer = [0u8; 4];
-            push_html_escaped_str(out, ch.encode_utf8(&mut buffer))
+            visit_html_escaped_text(ch.encode_utf8(&mut buffer), |fragment| {
+                out.push_str(fragment)
+            })
         }
-        TerminalCellText::Grapheme(grapheme) => push_html_escaped_str(out, grapheme),
+        TerminalCellText::Grapheme(grapheme) => {
+            visit_html_escaped_text(grapheme, |fragment| out.push_str(fragment))
+        }
+    }
+}
+
+fn invalid_encoded_output_plan() -> crate::AsciiError {
+    crate::AsciiError::UnsupportedFeature {
+        diagram_type: "terminal_output",
+        feature: "encoded output byte accounting",
     }
 }
 
@@ -1224,44 +1375,139 @@ mod tests {
     }
 
     #[test]
-    fn every_encoder_counts_actual_output_bytes() {
-        for mode in [
-            AsciiColorMode::Plain,
-            AsciiColorMode::Ansi16,
-            AsciiColorMode::Ansi256,
-            AsciiColorMode::TrueColor,
-            AsciiColorMode::Html,
-        ] {
-            let base = AsciiRenderOptions::unicode().with_color_mode(mode);
-            let mut canvas = Canvas::try_with_options(1, 1, &base).expect("canvas should allocate");
-            canvas.set_role(0, 0, 'A', AsciiColorRole::Text);
-            let expected = canvas
-                .finish_with_options(&base)
-                .expect("unmodified profile should encode");
+    fn every_encoder_counts_fixed_output_before_materializing() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let cases = [
+            (AsciiColorMode::Plain, "<&中\n"),
+            (AsciiColorMode::Ansi16, "\u{1b}[30m<&中\u{1b}[0m\n"),
+            (AsciiColorMode::Ansi256, "\u{1b}[38;5;16m<&中\u{1b}[0m\n"),
+            (
+                AsciiColorMode::TrueColor,
+                "\u{1b}[38;2;1;2;3m<&中\u{1b}[0m\n",
+            ),
+            (
+                AsciiColorMode::Html,
+                "<span style=\"color:#010203\">&lt;&amp;中</span>\n",
+            ),
+        ];
+
+        for (mode, expected) in cases {
+            let base = AsciiRenderOptions::unicode()
+                .with_color_mode(mode)
+                .with_color_theme(theme);
+            let build = |options: &AsciiRenderOptions| {
+                let mut canvas =
+                    Canvas::try_with_options(4, 1, options).expect("canvas should allocate");
+                canvas
+                    .write_text_role(0, 0, "<&中", AsciiColorRole::Text)
+                    .expect("test text should fit");
+                canvas
+            };
 
             let exact = base
                 .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
                 .expect("valid exact output limit");
-            let mut canvas =
-                Canvas::try_with_options(1, 1, &exact).expect("exact canvas should allocate");
-            canvas.set_role(0, 0, 'A', AsciiColorRole::Text);
+            let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
-                canvas
-                    .finish_with_options(&exact)
+                build(&exact)
+                    .finish_with_options_internal_and_probe(&exact, true, || {
+                        exact_probe.set(true)
+                    })
                     .expect("exact output byte limit should fit"),
                 expected,
                 "mode={mode:?}"
             );
+            assert!(exact_probe.get(), "mode={mode:?}");
 
             let below = base
                 .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
                 .expect("valid below-exact output limit");
-            let mut canvas =
-                Canvas::try_with_options(1, 1, &below).expect("bounded canvas should allocate");
-            canvas.set_role(0, 0, 'A', AsciiColorRole::Text);
-            let error = canvas
-                .finish_with_options(&below)
+            let below_probe = std::cell::Cell::new(false);
+            let error = build(&below)
+                .finish_with_options_internal_and_probe(&below, true, || below_probe.set(true))
                 .expect_err("output byte limit below the encoded size must fail");
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert!(matches!(
+                error,
+                crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                    limit: AsciiResourceLimitId::MaxOutputBytes,
+                    actual,
+                    max,
+                    ..
+                }) if actual == expected.len() && max == expected.len() - 1
+            ));
+        }
+    }
+
+    #[test]
+    fn styled_line_encoder_counts_fixed_output_before_materializing() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let cases = [
+            (AsciiColorMode::Plain, "<&中\n"),
+            (AsciiColorMode::Ansi16, "\u{1b}[30m<&中\u{1b}[0m\n"),
+            (AsciiColorMode::Ansi256, "\u{1b}[38;5;16m<&中\u{1b}[0m\n"),
+            (
+                AsciiColorMode::TrueColor,
+                "\u{1b}[38;2;1;2;3m<&中\u{1b}[0m\n",
+            ),
+            (
+                AsciiColorMode::Html,
+                "<span style=\"color:#010203\">&lt;&amp;中</span>\n",
+            ),
+        ];
+
+        for (mode, expected) in cases {
+            let base = AsciiRenderOptions::unicode()
+                .with_color_mode(mode)
+                .with_color_theme(theme);
+            let build_line = |options: &AsciiRenderOptions| {
+                let resources = ResourceContext::new(options.resources);
+                let mut line = crate::text::StyledLine::with_resources(
+                    TerminalWidthProfile::Unicode,
+                    &resources,
+                );
+                line.try_push_role_text("<&中", AsciiColorRole::Text)
+                    .expect("test text should fit");
+                line
+            };
+
+            let exact = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .expect("valid exact output limit");
+            let exact_line = build_line(&exact);
+            let mut exact_resources = ResourceContext::new(exact.resources);
+            let exact_probe = std::cell::Cell::new(false);
+            assert_eq!(
+                finish_styled_line_iter_with_probe(
+                    std::iter::once(&exact_line),
+                    &exact,
+                    true,
+                    &mut exact_resources,
+                    || exact_probe.set(true),
+                )
+                .expect("exact output byte limit should fit"),
+                expected,
+                "mode={mode:?}"
+            );
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = base
+                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                .expect("valid below-exact output limit");
+            let below_line = build_line(&below);
+            let mut below_resources = ResourceContext::new(below.resources);
+            let below_probe = std::cell::Cell::new(false);
+            let error = finish_styled_line_iter_with_probe(
+                std::iter::once(&below_line),
+                &below,
+                true,
+                &mut below_resources,
+                || below_probe.set(true),
+            )
+            .expect_err("output byte limit below the encoded size must fail");
+            assert!(!below_probe.get(), "mode={mode:?}");
             assert!(matches!(
                 error,
                 crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {

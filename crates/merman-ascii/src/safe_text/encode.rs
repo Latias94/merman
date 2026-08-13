@@ -56,21 +56,31 @@ pub(super) fn encoded_text_len(
         return Ok(value.len());
     }
 
-    value.chars().try_fold(0usize, |encoded_len, ch| {
-        let char_len = html_escape(ch).map_or_else(|| ch.len_utf8(), str::len);
-        encoded_len
-            .checked_add(char_len)
-            .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxOutputBytes))
-    })
+    let mut encoded_len = 0usize;
+    visit_html_escaped_text(value, |fragment| {
+        encoded_len = encoded_len
+            .checked_add(fragment.len())
+            .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        Ok(())
+    })?;
+    Ok(encoded_len)
 }
 
 pub(crate) fn push_html_escaped_text(output: &mut CheckedOutput, value: &str) -> Result<()> {
+    visit_html_escaped_text(value, |fragment| output.push_str(fragment))
+}
+
+pub(crate) fn visit_html_escaped_text(
+    value: &str,
+    mut visit: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
     // HTML escaping classifies syntax scalars without participating in terminal layout.
     for ch in value.chars() {
         if let Some(escaped) = html_escape(ch) {
-            output.push_str(escaped)?;
+            visit(escaped)?;
         } else {
-            output.push_char(ch)?;
+            let mut buffer = [0u8; 4];
+            visit(ch.encode_utf8(&mut buffer))?;
         }
     }
     Ok(())
