@@ -1,16 +1,9 @@
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, DiagnosticFix, DiagnosticFixEdit, SourceMap,
-    source_directives::{ByteSpan, init_directive_spans_cancellable},
 };
 #[cfg(test)]
 use merman_core::preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block};
-use merman_core::{
-    MermaidConfig,
-    preprocess::{
-        FrontmatterBlock, locate_frontmatter_block_controlled,
-        parse_frontmatter_yaml_fields_bounded_controlled, split_frontmatter_block_controlled,
-    },
-};
+use merman_core::{MermaidConfig, SourceSpan, preprocess::SourceConfigEvidence};
 use serde_json::{Map, Value};
 
 const REWRITE_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
@@ -50,14 +43,28 @@ pub(crate) fn init_directives_to_frontmatter_fix_cancellable(
     source: &str,
     source_map: &SourceMap,
     config: &MermaidConfig,
+    evidence: &SourceConfigEvidence,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<DiagnosticFix>, AnalysisCancelled> {
     cancellation.checkpoint()?;
-    let init_directives = init_directive_spans_cancellable(source, cancellation)?;
-    if init_directives.is_empty() {
+    if !evidence.rewrite_safe() {
         return Ok(None);
     }
-    if init_directives.len() > MAX_CONFIG_MIGRATION_FIX_EDITS {
+    let mut init_directives = Vec::with_capacity(MAX_CONFIG_MIGRATION_FIX_EDITS);
+    for (index, directive) in evidence.directives().iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        if !directive.complete() || !matches!(directive.keyword(), "init" | "initialize") {
+            continue;
+        }
+        if init_directives.len() == MAX_CONFIG_MIGRATION_FIX_EDITS {
+            return Ok(None);
+        }
+        init_directives.push(directive);
+    }
+    cancellation.checkpoint()?;
+    if init_directives.is_empty() {
         return Ok(None);
     }
 
@@ -72,7 +79,7 @@ pub(crate) fn init_directives_to_frontmatter_fix_cancellable(
     for directive in init_directives {
         removals.push(directive_removal_span_cancellable(
             source,
-            directive.full,
+            directive.full_span(),
             cancellation,
         )?);
     }
@@ -81,6 +88,7 @@ pub(crate) fn init_directives_to_frontmatter_fix_cancellable(
         source,
         source_map,
         config,
+        evidence,
         removals,
         "Move init directive config into frontmatter",
         cancellation,
@@ -94,28 +102,37 @@ pub(crate) fn init_directives_to_frontmatter_fix(
     config: &MermaidConfig,
 ) -> Option<DiagnosticFix> {
     let cancellation = AnalysisCancellationToken::new();
-    init_directives_to_frontmatter_fix_cancellable(source, source_map, config, &cancellation)
-        .expect("a private analysis cancellation token cannot be cancelled")
+    let evidence = crate::test_support::capture_source_config_evidence(source);
+    init_directives_to_frontmatter_fix_cancellable(
+        source,
+        source_map,
+        config,
+        &evidence,
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
 fn frontmatter_config_fix_cancellable(
     source: &str,
     source_map: &SourceMap,
     config: BoundedMigrationConfig,
-    removals: Vec<ByteSpan>,
+    evidence: &SourceConfigEvidence,
+    removals: Vec<SourceSpan>,
     title: &'static str,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<DiagnosticFix>, AnalysisCancelled> {
     cancellation.checkpoint()?;
-    let Some(frontmatter) = frontmatter_config_edit_cancellable(source, config, cancellation)?
+    let Some(frontmatter) =
+        frontmatter_config_edit_cancellable(source, config, evidence, cancellation)?
     else {
         return Ok(None);
     };
-    let inserts_at_start = frontmatter.span.start == 0 && frontmatter.span.end == 0;
-    let folds_first_removal = inserts_at_start
+    let inserts = frontmatter.span.start == frontmatter.span.end;
+    let folds_first_removal = inserts
         && removals
             .first()
-            .is_some_and(|first_removal| first_removal.start == 0);
+            .is_some_and(|first_removal| first_removal.start == frontmatter.span.start);
     let required_edits = removals
         .len()
         .saturating_add(usize::from(!folds_first_removal));
@@ -127,8 +144,14 @@ fn frontmatter_config_fix_cancellable(
     cancellation.checkpoint()?;
 
     let mut edits = Vec::new();
-    if inserts_at_start {
-        if let Some(removal) = first_removal.take().filter(|span| span.start == 0) {
+    if inserts {
+        if first_removal
+            .as_ref()
+            .is_some_and(|span| span.start == frontmatter.span.start)
+        {
+            let removal = first_removal
+                .take()
+                .expect("the matching first removal was checked above");
             let Ok(span) = source_map.span_cancellable(removal.start, removal.end, cancellation)?
             else {
                 return Ok(None);
@@ -174,33 +197,45 @@ pub(crate) fn frontmatter_config_fix(
     source: &str,
     source_map: &SourceMap,
     config: Value,
-    removals: Vec<ByteSpan>,
+    removals: Vec<SourceSpan>,
     title: &'static str,
 ) -> Option<DiagnosticFix> {
     let cancellation = AnalysisCancellationToken::new();
     let config = MermaidConfig::from_value(config);
     let config = BoundedMigrationConfig::capture(&config, &cancellation)
         .expect("a private analysis cancellation token cannot be cancelled")?;
-    frontmatter_config_fix_cancellable(source, source_map, config, removals, title, &cancellation)
-        .expect("a private analysis cancellation token cannot be cancelled")
+    let evidence = crate::test_support::capture_source_config_evidence(source);
+    frontmatter_config_fix_cancellable(
+        source,
+        source_map,
+        config,
+        &evidence,
+        removals,
+        title,
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
 struct FrontmatterEdit {
-    span: ByteSpan,
+    span: SourceSpan,
     replacement: String,
 }
 
 fn frontmatter_config_edit_cancellable(
     source: &str,
     config: BoundedMigrationConfig,
+    evidence: &SourceConfigEvidence,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Option<FrontmatterEdit>, AnalysisCancelled> {
     let config = config.into_value();
     let newline = newline_for_source_cancellable(source, cancellation)?;
     cancellation.checkpoint()?;
-    let Some(location) = locate_frontmatter_block_controlled(source, cancellation.parse_control())
-        .map_err(|_| AnalysisCancelled)?
-    else {
+    let Some(frontmatter_evidence) = evidence.frontmatter() else {
+        let insert_span = evidence.config_insert_span();
+        if insert_span.start != insert_span.end || insert_span.end > source.len() {
+            return Ok(None);
+        }
         cancellation.checkpoint()?;
         let replacement = frontmatter_document_cancellable(
             frontmatter_fields_with_config(Map::new(), config),
@@ -210,69 +245,81 @@ fn frontmatter_config_edit_cancellable(
         )?;
         cancellation.checkpoint()?;
         return Ok(replacement.map(|replacement| FrontmatterEdit {
-            span: ByteSpan { start: 0, end: 0 },
+            span: insert_span,
             replacement,
         }));
     };
-    if location.full.end.saturating_sub(location.full.start) > MAX_FRONTMATTER_MIGRATION_INPUT_BYTES
+    let full_span = frontmatter_evidence.full_span();
+    let body_span = frontmatter_evidence.body_span();
+    let Some(frontmatter_source) = source.get(full_span.start..full_span.end) else {
+        return Ok(None);
+    };
+    if source.get(body_span.start..body_span.end).is_none()
+        || full_span.end.saturating_sub(full_span.start) > MAX_FRONTMATTER_MIGRATION_INPUT_BYTES
     {
         return Ok(None);
     }
-    let Some(frontmatter) =
-        split_frontmatter_block_controlled(source, cancellation.parse_control())
-            .map_err(|_| AnalysisCancelled)?
-    else {
-        return Ok(None);
-    };
     cancellation.checkpoint()?;
 
-    let newline = newline_for_source_cancellable(
-        &source[frontmatter.full.start..frontmatter.full.end],
-        cancellation,
-    )?;
-    let Some(existing_fields) =
-        parse_frontmatter_fields_cancellable(frontmatter.dedented_body.as_ref(), cancellation)?
-    else {
-        return Ok(None);
-    };
-    cancellation.checkpoint()?;
-    if !existing_fields.contains_key("config") {
+    let newline = newline_for_source_cancellable(frontmatter_source, cancellation)?;
+    if !frontmatter_evidence.has_config() {
+        let insert_span = evidence.config_insert_span();
+        if insert_span.start != insert_span.end || insert_span.end > source.len() {
+            return Ok(None);
+        }
         let replacement = frontmatter_config_insertion_cancellable(
             source,
-            &frontmatter,
+            body_span,
+            frontmatter_evidence.indent(),
             config,
             newline,
             cancellation,
         )?;
         cancellation.checkpoint()?;
         return Ok(replacement.map(|replacement| FrontmatterEdit {
-            span: ByteSpan {
-                start: frontmatter.body.end,
-                end: frontmatter.body.end,
-            },
+            span: insert_span,
             replacement,
         }));
     }
-    if frontmatter_contains_lossy_yaml_syntax_cancellable(
-        frontmatter.dedented_body.as_ref(),
-        cancellation,
-    )? {
+    if !frontmatter_evidence.rewrite_safe() {
+        return Ok(None);
+    }
+
+    let Some(fields) = frontmatter_evidence.fields() else {
+        return Ok(None);
+    };
+    let Some(fields) = fields
+        .clone_value_bounded_controlled(
+            MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES,
+            MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
+            cancellation.parse_control(),
+        )
+        .map_err(|_| AnalysisCancelled)?
+    else {
+        return Ok(None);
+    };
+    let existing_fields = match fields {
+        Value::Object(fields) => fields,
+        other => {
+            drop(MermaidConfig::from_value(other));
+            return Ok(None);
+        }
+    };
+    cancellation.checkpoint()?;
+    if !existing_fields.contains_key("config") {
         return Ok(None);
     }
 
     cancellation.checkpoint()?;
     let replacement = frontmatter_document_cancellable(
         frontmatter_fields_with_config(existing_fields, config),
-        frontmatter.indent,
+        frontmatter_evidence.indent(),
         newline,
         cancellation,
     )?;
     cancellation.checkpoint()?;
     Ok(replacement.map(|replacement| FrontmatterEdit {
-        span: ByteSpan {
-            start: frontmatter.full.start,
-            end: frontmatter.full.end,
-        },
+        span: full_span,
         replacement,
     }))
 }
@@ -289,7 +336,8 @@ fn frontmatter_fields_with_config(
 
 fn frontmatter_config_insertion_cancellable(
     source: &str,
-    frontmatter: &FrontmatterBlock<'_>,
+    body_span: SourceSpan,
+    indent: &str,
     config: Value,
     newline: &str,
     cancellation: &AnalysisCancellationToken,
@@ -300,14 +348,16 @@ fn frontmatter_config_insertion_cancellable(
         return Ok(None);
     };
     let Some(indented_body) =
-        frontmatter_body_with_indent_cancellable(&body, frontmatter.indent, newline, cancellation)?
+        frontmatter_body_with_indent_cancellable(&body, indent, newline, cancellation)?
     else {
         return Ok(None);
     };
     let mut insertion = BoundedReplacement::new();
-    let existing_body = &source[frontmatter.body.start..frontmatter.body.end];
+    let Some(existing_body) = source.get(body_span.start..body_span.end) else {
+        return Ok(None);
+    };
     let insertion_splits_crlf =
-        existing_body.ends_with('\r') && source[frontmatter.body.end..].starts_with('\n');
+        existing_body.ends_with('\r') && source[body_span.end..].starts_with('\n');
     if !is_whitespace_cancellable(existing_body, cancellation)? {
         if insertion_splits_crlf {
             if !insertion.push_char('\n') {
@@ -324,106 +374,11 @@ fn frontmatter_config_insertion_cancellable(
         if !insertion.push_char('\r') {
             return Ok(None);
         }
-    } else if frontmatter.body.start == frontmatter.body.end && !insertion.push_str(newline) {
+    } else if body_span.start == body_span.end && !insertion.push_str(newline) {
         return Ok(None);
     }
     cancellation.checkpoint()?;
     Ok(Some(insertion.finish()))
-}
-
-fn frontmatter_contains_lossy_yaml_syntax_cancellable(
-    yaml_body: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<bool, AnalysisCancelled> {
-    for line in yaml_body.lines() {
-        if frontmatter_line_contains_lossy_yaml_syntax_cancellable(line, cancellation)? {
-            return Ok(true);
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(false)
-}
-
-fn frontmatter_line_contains_lossy_yaml_syntax_cancellable(
-    line: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<bool, AnalysisCancelled> {
-    let trimmed = trim_start_cancellable(line, cancellation)?;
-    if trimmed.starts_with('#')
-        || trimmed.starts_with("<<:")
-        || trimmed == "?"
-        || trimmed.starts_with("? ")
-        || trimmed.starts_with('!')
-        || trimmed.starts_with("- !")
-    {
-        return Ok(true);
-    }
-    if frontmatter_line_has_inline_lossy_marker_cancellable(line, cancellation)?
-        || frontmatter_line_starts_with_flow_complex_key_cancellable(trimmed, cancellation)?
-        || frontmatter_line_uses_block_scalar_cancellable(trimmed, cancellation)?
-    {
-        return Ok(true);
-    }
-    cancellation.checkpoint()?;
-    Ok(false)
-}
-
-fn frontmatter_line_has_inline_lossy_marker_cancellable(
-    line: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<bool, AnalysisCancelled> {
-    let bytes = line.as_bytes();
-    let mut next_checkpoint = 0usize;
-    for index in 0..bytes.len() {
-        checkpoint_scan_offset(index, &mut next_checkpoint, cancellation)?;
-        if bytes[index] == b' ' && matches!(bytes.get(index + 1), Some(b'#' | b'&' | b'*')) {
-            return Ok(true);
-        }
-        if bytes[index] == b':'
-            && bytes.get(index + 1) == Some(&b' ')
-            && bytes.get(index + 2) == Some(&b'!')
-        {
-            return Ok(true);
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(false)
-}
-
-fn frontmatter_line_starts_with_flow_complex_key_cancellable(
-    trimmed: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<bool, AnalysisCancelled> {
-    if flow_complex_key_has_colon_cancellable(trimmed, cancellation)? {
-        return Ok(true);
-    }
-    let Some(item) = trimmed.strip_prefix("- ") else {
-        return Ok(false);
-    };
-    let item = trim_start_cancellable(item, cancellation)?;
-    flow_complex_key_has_colon_cancellable(item, cancellation)
-}
-
-fn flow_complex_key_has_colon_cancellable(
-    trimmed: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<bool, AnalysisCancelled> {
-    let close = match trimmed.as_bytes().first().copied() {
-        Some(b'[') => b']',
-        Some(b'{') => b'}',
-        _ => return Ok(false),
-    };
-    let bytes = trimmed.as_bytes();
-    let mut next_checkpoint = 0usize;
-    for (offset, byte) in bytes.iter().copied().enumerate() {
-        checkpoint_scan_offset(offset, &mut next_checkpoint, cancellation)?;
-        if byte == close {
-            let suffix = trim_start_cancellable(&trimmed[offset + 1..], cancellation)?;
-            return Ok(suffix.starts_with(':'));
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(false)
 }
 
 fn trim_start_cancellable<'a>(
@@ -446,23 +401,6 @@ fn is_whitespace_cancellable(
     cancellation: &AnalysisCancellationToken,
 ) -> Result<bool, AnalysisCancelled> {
     Ok(trim_start_cancellable(input, cancellation)?.is_empty())
-}
-
-fn frontmatter_line_uses_block_scalar_cancellable(
-    trimmed: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<bool, AnalysisCancelled> {
-    let bytes = trimmed.as_bytes();
-    let mut next_checkpoint = 0usize;
-    for (offset, byte) in bytes.iter().copied().enumerate() {
-        checkpoint_scan_offset(offset, &mut next_checkpoint, cancellation)?;
-        if byte == b':' {
-            let value = trim_start_cancellable(&trimmed[offset + 1..], cancellation)?;
-            return Ok(value.starts_with('|') || value.starts_with('>'));
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(false)
 }
 
 fn frontmatter_document_cancellable(
@@ -621,21 +559,6 @@ fn frontmatter_document_with_indent_cancellable(
     Ok(Some(document.finish()))
 }
 
-fn parse_frontmatter_fields_cancellable(
-    yaml_body: &str,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<Option<Map<String, Value>>, AnalysisCancelled> {
-    parse_frontmatter_yaml_fields_bounded_controlled(
-        yaml_body,
-        MAX_FRONTMATTER_MIGRATION_INPUT_BYTES,
-        MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
-        MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES,
-        cancellation.parse_control(),
-    )
-    .map_err(|_| AnalysisCancelled)
-    .map(|parsed| parsed.ok())
-}
-
 struct BoundedReplacement {
     text: String,
 }
@@ -676,10 +599,13 @@ fn newline_for_source_cancellable(
 ) -> Result<&'static str, AnalysisCancelled> {
     let bytes = source.as_bytes();
     let mut next_checkpoint = 0usize;
-    for index in 0..bytes.len().saturating_sub(1) {
+    for index in 0..bytes.len() {
         checkpoint_scan_offset(index, &mut next_checkpoint, cancellation)?;
-        if bytes[index] == b'\r' && bytes[index + 1] == b'\n' {
-            return Ok("\r\n");
+        match bytes[index] {
+            b'\r' if bytes.get(index + 1) == Some(&b'\n') => return Ok("\r\n"),
+            b'\r' => return Ok("\r"),
+            b'\n' => return Ok("\n"),
+            _ => {}
         }
     }
     cancellation.checkpoint()?;
@@ -688,9 +614,9 @@ fn newline_for_source_cancellable(
 
 fn directive_removal_span_cancellable(
     source: &str,
-    directive: ByteSpan,
+    directive: SourceSpan,
     cancellation: &AnalysisCancellationToken,
-) -> Result<ByteSpan, AnalysisCancelled> {
+) -> Result<SourceSpan, AnalysisCancelled> {
     let bytes = source.as_bytes();
     let mut line_start = directive.start;
     let mut scanned = 0usize;
@@ -698,7 +624,7 @@ fn directive_removal_span_cancellable(
         if scanned.is_multiple_of(REWRITE_SCAN_CHECKPOINT_BYTES) {
             cancellation.checkpoint()?;
         }
-        if bytes[line_start - 1] == b'\n' {
+        if matches!(bytes[line_start - 1], b'\r' | b'\n') {
             break;
         }
         line_start -= 1;
@@ -711,23 +637,29 @@ fn directive_removal_span_cancellable(
         if scanned.is_multiple_of(REWRITE_SCAN_CHECKPOINT_BYTES) {
             cancellation.checkpoint()?;
         }
-        if bytes[line_end] == b'\n' {
+        if matches!(bytes[line_end], b'\r' | b'\n') {
             break;
         }
         line_end += 1;
         scanned += 1;
     }
-    let line_end_with_newline = if line_end < source.len() {
-        line_end + 1
-    } else {
-        line_end
+    let line_end_with_newline = match bytes.get(line_end) {
+        Some(b'\r') if bytes.get(line_end + 1) == Some(&b'\n') => line_end + 2,
+        Some(b'\r' | b'\n') => line_end + 1,
+        Some(_) | None => line_end,
     };
 
-    if is_whitespace_cancellable(&source[line_start..directive.start], cancellation)?
+    let removable_line_start = if line_start == 0 && source.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        line_start
+    };
+
+    if is_whitespace_cancellable(&source[removable_line_start..directive.start], cancellation)?
         && is_whitespace_cancellable(&source[directive.end..line_end], cancellation)?
     {
-        Ok(ByteSpan {
-            start: line_start,
+        Ok(SourceSpan {
+            start: removable_line_start,
             end: line_end_with_newline,
         })
     } else {
@@ -789,7 +721,7 @@ mod tests {
 
     #[test]
     fn init_directive_migration_observes_cancellation_during_fix_construction() {
-        let mut source = "%%{ init: { theme: 'dark' } }%%\n".repeat(512);
+        let mut source = "%%{ init: { theme: 'dark' } }%%\n".repeat(64);
         source.push_str("flowchart TD\nA-->B\n");
         let source_map = SourceMap::new(source.as_str());
         let config = MermaidConfig::from_value(serde_json::json!({ "theme": "dark" }));
@@ -801,6 +733,28 @@ mod tests {
                 &source,
                 &source_map,
                 &config,
+                &crate::test_support::capture_source_config_evidence(&source),
+                &cancellation,
+            ),
+            Err(AnalysisCancelled)
+        ));
+    }
+
+    #[test]
+    fn init_directive_limit_scan_observes_cancellation() {
+        let mut source = "%%{ init: { theme: 'dark' } }%%\n".repeat(512);
+        source.push_str("flowchart TD\nA-->B\n");
+        let source_map = SourceMap::new(source.as_str());
+        let config = MermaidConfig::from_value(serde_json::json!({ "theme": "dark" }));
+        let cancellation = AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            init_directives_to_frontmatter_fix_cancellable(
+                &source,
+                &source_map,
+                &config,
+                &crate::test_support::capture_source_config_evidence(&source),
                 &cancellation,
             ),
             Err(AnalysisCancelled)
@@ -872,6 +826,11 @@ mod tests {
         }
     }
 
+    fn assert_only_bare_cr_newlines(text: &str) {
+        assert!(text.contains('\r'));
+        assert!(!text.contains('\n'), "{text:?}");
+    }
+
     #[test]
     fn init_directive_migration_inserts_frontmatter_and_removes_directive_line() {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
@@ -886,6 +845,24 @@ mod tests {
         assert!(!edited.contains("%%{ init"));
         assert!(edited.contains("flowchart TD\nA-->B\n"));
         assert_eq!(fix.edits.len(), 1);
+    }
+
+    #[test]
+    fn init_directive_migration_keeps_bom_before_created_or_rewritten_frontmatter() {
+        for source in [
+            "\u{feff}%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+            "\u{feff}---\ntitle: Demo\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+        ] {
+            let source_map = SourceMap::new(source);
+
+            let fix = migration_fix(source, &source_map).expect("migration fix");
+            let edited = apply_fix(source, &fix);
+
+            assert!(edited.starts_with("\u{feff}---\n"), "{edited:?}");
+            assert_eq!(edited.matches('\u{feff}').count(), 1);
+            assert!(edited.contains("theme: dark\n"));
+            assert!(!edited.contains("%%{ init"));
+        }
     }
 
     #[test]
@@ -1008,6 +985,27 @@ mod tests {
         assert!(edited.contains("theme: dark\r\n"));
         assert!(!edited.contains("%%{ init"));
         assert_only_crlf_newlines(&edited);
+    }
+
+    #[test]
+    fn init_directive_migration_preserves_bare_cr_and_bom() {
+        for source in [
+            "\u{feff}%%{ init: {\"theme\":\"dark\"} }%%\rflowchart TD\rA-->B\r",
+            "\u{feff}---\rtitle: Demo\rcustom: keep\r---\r%%{ init: {\"theme\":\"dark\"} }%%\rflowchart TD\rA-->B\r",
+            "\u{feff}---\rtitle: Demo\rconfig:\r  theme: default\r---\r%%{ init: {\"theme\":\"dark\"} }%%\rflowchart TD\rA-->B\r",
+        ] {
+            let source_map = SourceMap::new(source);
+
+            let fix = migration_fix(source, &source_map).expect("migration fix");
+            let edited = apply_fix(source, &fix);
+
+            assert!(edited.starts_with("\u{feff}---\r"), "{edited:?}");
+            assert_eq!(edited.matches('\u{feff}').count(), 1);
+            assert!(edited.contains("theme: dark\r"));
+            assert!(!edited.contains("%%{ init"));
+            assert!(!edited.contains("---\r\rflowchart"), "{edited:?}");
+            assert_only_bare_cr_newlines(&edited);
+        }
     }
 
     #[test]

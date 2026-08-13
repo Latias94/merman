@@ -1,11 +1,12 @@
 use merman_analysis::{
-    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions,
-    AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
-    DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
-    SourceDescriptor, analyze_document_facts,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisExpectedSyntaxKind,
+    AnalysisOptions, AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile,
+    AnalysisSemanticRole, AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity,
+    FenceTextIndexSource, SourceDescriptor, analyze_document_facts,
     document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
+use merman_core::{EditorExpectedSyntaxKind, EditorLexemeProducerKind};
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
     Analyzer::new().analyze(source)
@@ -357,6 +358,43 @@ fn analysis_generation_exposes_complete_parser_syntax_facts() {
 }
 
 #[test]
+fn analysis_index_preserves_core_lexeme_provenance() {
+    let analyzer = Analyzer::new();
+    let complete = analyzer
+        .analyze_generation("%% global comment\nflowchart TD\nA-->B\n")
+        .into_ready()
+        .expect("source is within the analysis limit");
+    let complete_lexemes = complete.diagrams()[0].syntax().text_index.lexemes();
+
+    assert!(complete_lexemes.iter().any(|lexeme| {
+        lexeme.producer().kind() == EditorLexemeProducerKind::GlobalPreprocess
+            && lexeme.producer().family().is_none()
+    }));
+    assert!(complete_lexemes.iter().any(|lexeme| {
+        matches!(
+            lexeme.producer().kind(),
+            EditorLexemeProducerKind::FamilyLexer | EditorLexemeProducerKind::FamilyParser
+        ) && lexeme.producer().family().map(|family| family.as_str()) == Some("flowchart")
+    }));
+
+    let recovered = analyzer
+        .analyze_generation("flowchart TD\nA-->")
+        .into_ready()
+        .expect("source is within the analysis limit");
+    assert!(
+        recovered.diagrams()[0]
+            .syntax()
+            .text_index
+            .lexemes()
+            .iter()
+            .any(|lexeme| {
+                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+                    && lexeme.producer().family().map(|family| family.as_str()) == Some("flowchart")
+            })
+    );
+}
+
+#[test]
 fn analysis_generation_preserves_exact_spans_through_entity_normalization() {
     let source = concat!(
         "---\n",
@@ -382,6 +420,41 @@ fn analysis_generation_preserves_exact_spans_through_entity_normalization() {
     assert!(!syntax.references.is_empty());
     assert!(!syntax.outline_items.is_empty());
     assert!(!syntax.semantic_items.is_empty());
+    let outline_projection = syntax
+        .outline_items
+        .iter()
+        .map(|item| {
+            (
+                item.name.as_str(),
+                item.detail.as_deref(),
+                item.kind,
+                &item.span,
+                &item.selection,
+            )
+        })
+        .collect::<Vec<_>>();
+    let canonical_outline = syntax
+        .semantic_items
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.role,
+                AnalysisSemanticRole::Entity
+                    | AnalysisSemanticRole::ClassDefinition
+                    | AnalysisSemanticRole::Outline
+            )
+        })
+        .map(|item| {
+            (
+                item.name.as_str(),
+                item.detail.as_deref(),
+                item.kind,
+                &item.span,
+                &item.selection,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(outline_projection, canonical_outline);
     assert!(!syntax.expected_syntax.is_empty());
     assert!(syntax.expected_syntax.iter().all(|expected| {
         expected.span.document.as_ref().is_some_and(|span| {
@@ -418,7 +491,7 @@ fn analysis_generation_exposes_expected_syntax_facts_for_invalid_input() {
             .text_index
             .expected_syntax()
             .iter()
-            .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+            .any(|expected| expected.kind == EditorExpectedSyntaxKind::ShapeValue)
     );
 }
 
@@ -460,7 +533,7 @@ fn document_analysis_generation_keeps_local_fence_syntax_facts() {
             .text_index
             .expected_syntax()
             .iter()
-            .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+            .any(|expected| expected.kind == EditorExpectedSyntaxKind::ShapeValue)
     );
 }
 
@@ -553,7 +626,7 @@ fn document_analysis_facts_payload_exposes_parser_backed_fence_facts() {
     let shape_expectation = syntax
         .expected_syntax
         .iter()
-        .find(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+        .find(|expected| expected.kind == AnalysisExpectedSyntaxKind::Shape)
         .expect("shape expectation");
     assert_eq!(
         shape_expectation
@@ -623,53 +696,6 @@ fn markdown_fence_facts_compose_crlf_preprocess_edits_and_utf16_positions() {
     assert_eq!(
         label_selection.lsp_range.end.character,
         3 + "😀 #quot;".encode_utf16().count()
-    );
-}
-
-#[test]
-fn analysis_facts_payload_exposes_flowchart_typed_facts() {
-    let source = concat!(
-        "flowchart TB\n",
-        "classDef hot fill:#f00\n",
-        "subgraph group\n",
-        "A[Alpha] -->|go| B@{ shape: rect }\n",
-        "end\n",
-        "class A hot\n",
-        "click A href \"https://example.com\" \"Open\" _blank\n",
-    );
-    let facts = Analyzer::new().analyze_facts(source);
-    let flowchart = facts.diagrams[0]
-        .syntax
-        .flowchart
-        .as_ref()
-        .expect("flowchart facts");
-
-    assert_eq!(flowchart.direction.as_deref(), Some("TB"));
-    assert!(flowchart.class_defs.contains_key("hot"));
-    assert!(flowchart.nodes.iter().any(|node| {
-        node.id == "A"
-            && node.label.as_deref() == Some("Alpha")
-            && node.classes.iter().any(|class| class == "hot")
-            && node.link.as_deref() == Some("https://example.com/")
-            && node.link_target.as_deref() == Some("_blank")
-    }));
-    assert!(
-        flowchart
-            .nodes
-            .iter()
-            .any(|node| node.id == "B" && node.layout_shape.as_deref() == Some("rect"))
-    );
-    assert!(
-        flowchart
-            .edges
-            .iter()
-            .any(|edge| edge.from == "A" && edge.to == "B" && edge.label.as_deref() == Some("go"))
-    );
-    assert!(
-        flowchart
-            .subgraphs
-            .iter()
-            .any(|subgraph| subgraph.id == "group" && subgraph.nodes.iter().any(|id| id == "B"))
     );
 }
 
@@ -829,6 +855,129 @@ fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
     assert!(diagnostic.fixes[0].is_preferred);
     let span = diagnostic.span.as_ref().expect("directive span");
     assert_eq!(&source[span.byte_start..span.byte_end], "init");
+}
+
+#[test]
+fn source_config_diagnostics_and_fixes_keep_original_crlf_unicode_coordinates() {
+    struct Case<'a> {
+        label: &'a str,
+        source: &'a str,
+        rule_id: &'a str,
+        expected_text: &'a str,
+        expected_line: usize,
+        expected_character: usize,
+        expected_fix_replacement: Option<&'a str>,
+        recommended: bool,
+    }
+
+    let cases = [
+        Case {
+            label: "directive keyword fix",
+            source: concat!(
+                "%% 前置 🤓\r\n",
+                "%%{ initialize: { \"theme\": \"dark\" } }%%\r\n",
+                "flowchart TD\r\n",
+                "A-->B\r\n",
+            ),
+            rule_id: "merman.authoring.config.prefer_init_directive",
+            expected_text: "initialize",
+            expected_line: 1,
+            expected_character: 4,
+            expected_fix_replacement: Some("init"),
+            recommended: true,
+        },
+        Case {
+            label: "frontmatter config key",
+            source: concat!(
+                "---\r\n",
+                "title: \"中文 🤓\"\r\n",
+                "config:\r\n",
+                "  flowchart:\r\n",
+                "    htmlLabels: false\r\n",
+                "---\r\n",
+                "flowchart TD\r\n",
+                "A-->B\r\n",
+            ),
+            rule_id: "merman.compatibility.config.deprecated_flowchart_html_labels",
+            expected_text: "htmlLabels",
+            expected_line: 4,
+            expected_character: 4,
+            expected_fix_replacement: None,
+            recommended: false,
+        },
+    ];
+
+    for case in cases {
+        let options = if case.recommended {
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config")
+                    .expect("test rule id should be configurable"),
+            )
+        } else {
+            AnalysisOptions::default()
+        };
+        let payload = Analyzer::with_options(options).analyze(case.source);
+        let diagnostic = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == case.rule_id)
+            .unwrap_or_else(|| panic!("missing {} diagnostic", case.label));
+        let span = diagnostic
+            .span
+            .as_ref()
+            .unwrap_or_else(|| panic!("missing {} span", case.label));
+
+        assert_eq!(
+            &case.source[span.byte_start..span.byte_end],
+            case.expected_text,
+            "{} source slice",
+            case.label
+        );
+        assert_eq!(
+            span.byte_start,
+            case.source
+                .find(case.expected_text)
+                .unwrap_or_else(|| panic!("missing {} source text", case.label)),
+            "{} byte start",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.start.line, case.expected_line,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.start.character, case.expected_character,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.end.line, case.expected_line,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.end.character,
+            case.expected_character + case.expected_text.encode_utf16().count(),
+            "{}",
+            case.label
+        );
+
+        match case.expected_fix_replacement {
+            Some(replacement) => {
+                let edit = diagnostic
+                    .fixes
+                    .iter()
+                    .flat_map(|fix| fix.edits.iter())
+                    .find(|edit| edit.replacement == replacement)
+                    .unwrap_or_else(|| panic!("missing {} fix edit", case.label));
+                assert_eq!(edit.span, *span, "{} fix span", case.label);
+            }
+            None => assert!(diagnostic.fixes.is_empty(), "{}", case.label),
+        }
+    }
 }
 
 #[test]

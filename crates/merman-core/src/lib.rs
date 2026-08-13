@@ -38,25 +38,24 @@ mod yaml_config;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
+    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CapturedPanic, CustomJsonProvenance,
     CustomJsonRenderModel, CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot,
-    DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
+    DiagramRegistry, DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
-    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
-    EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure, EditorLexemeKind,
-    EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer, EditorLexemeProducerKind,
-    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticDiagnostic,
-    EditorSemanticDiagnosticKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorFamilySemantics, EditorLexeme,
+    EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorLexemeProducer, EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
+    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
-    diagram_type_metadata_id, diagram_type_render_model_kind,
+    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id,
+    diagram_type_family_kind, diagram_type_metadata_id, diagram_type_render_model_kind,
 };
 pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
@@ -418,12 +417,16 @@ impl Engine {
             .parse_json(parse_pipeline::ParseTiming::Json)
     }
 
-    /// Captures semantic JSON or its original error and parser-backed editor facts in one operation.
+    /// Captures semantic JSON or its original error, parser-owned typed warning facts, and
+    /// parser-backed editor facts in one operation.
     ///
     /// This is intended for editor integrations that need both diagnostics/facts and the
     /// Mermaid-compatible model. Once preprocessing and detection succeed, family parse errors and
-    /// panics are retained inside the snapshot alongside metadata and recovery facts. Consumers
-    /// must project that failure state directly rather than parsing the source again.
+    /// panics are retained inside the snapshot alongside metadata and recovery facts. Successful
+    /// snapshots expose warnings through the `warning_facts` field of
+    /// [`DiagramParseOutcome::Parsed`]; consumers should not decode the compatibility model's
+    /// `warningFacts` field. Consumers must project a retained failure state directly rather than
+    /// parsing the source again.
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
@@ -445,11 +448,24 @@ impl Engine {
             .parse_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
     }
 
+    /// Captures an editor parse operation while retaining preprocessing source-configuration
+    /// evidence on non-cancellation failures and on panics after preprocessing completes.
+    /// Cooperative cancellation remains the outer error channel and never yields a partial
+    /// capture.
+    pub fn capture_diagram_snapshot_controlled_sync(
+        &self,
+        text: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<DiagramSnapshotCapture> {
+        parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict())
+            .capture_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
+    }
+
     /// Captures one editor-facing parse operation when the diagram type is already known.
     ///
-    /// This has the same closed snapshot contract as [`Engine::parse_diagram_snapshot_sync`], but
-    /// skips automatic detection. Family parse failures and panics remain inside the returned
-    /// snapshot.
+    /// This has the same closed snapshot contract, including parser-owned typed warning facts, as
+    /// [`Engine::parse_diagram_snapshot_sync`], but skips automatic detection. Family parse
+    /// failures and panics remain inside the returned snapshot.
     pub fn parse_diagram_snapshot_with_type_sync(
         &self,
         diagram_type: &str,

@@ -558,58 +558,6 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let prepared = if diagram == "gantt" {
-                let baseline_local_offset_minutes = super::gantt_baseline_local_offset_minutes();
-                let calibrated = super::gantt_calibrated_runtime_policy(
-                    &prepared,
-                    &upstream_svg,
-                    baseline_local_offset_minutes,
-                )
-                .map_err(|err| {
-                    XtaskError::SvgCompareFailed(format!(
-                        "invalid calibrated Gantt baseline time for {stem}: {err}"
-                    ))
-                })?;
-                if let Some(runtime_policy) = calibrated {
-                    let environment = merman::svg::RenderEnvironment::deterministic()
-                        .with_runtime_policy(runtime_policy)
-                        .with_text_measurement_policy(text_measurement_policy.clone());
-                    let renderer = merman::svg::HeadlessRenderer::new()
-                        .with_engine(engine.clone())
-                        .with_parse_options(merman::ParseOptions {
-                            suppress_errors: true,
-                        })
-                        .with_layout_options(layout_opts.clone())
-                        .with_environment(environment);
-                    let semantic = match renderer.prepare_semantic_sync(&text) {
-                        Ok(Some(value)) => value,
-                        Ok(None) => {
-                            missing.push(format!(
-                                "{diagram}/{stem}: calibrated parse detected no diagram"
-                            ));
-                            continue;
-                        }
-                        Err(err) => {
-                            missing
-                                .push(format!("{diagram}/{stem}: calibrated parse failed: {err}"));
-                            continue;
-                        }
-                    };
-                    match semantic.continue_layout() {
-                        Ok(value) => value,
-                        Err(err) => {
-                            missing
-                                .push(format!("{diagram}/{stem}: calibrated layout failed: {err}"));
-                            continue;
-                        }
-                    }
-                } else {
-                    prepared
-                }
-            } else {
-                prepared
-            };
-
             let diagram_id = if diagram == "flowchart" {
                 flowchart_fixture_diagram_id(stem, &upstream_svg)
             } else {

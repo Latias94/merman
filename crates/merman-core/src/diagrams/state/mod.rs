@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{
     EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, SourceSpan,
-    editor::EditorLexemeJournal,
+    diagrams::scan::consume_line_ending, editor::EditorLexemeJournal,
 };
 
 mod ast;
@@ -696,7 +696,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
 
     fn skip_ws(&mut self) {
         while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
+            if b == b' ' || b == b'\t' {
                 self.pos += 1;
                 continue;
             }
@@ -707,7 +707,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
     fn read_to_newline(&mut self) -> String {
         let start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if matches!(b, b'\r' | b'\n') {
                 break;
             }
             self.pos += 1;
@@ -716,12 +716,10 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
     }
 
     fn lex_newline(&mut self) -> Option<(usize, Tok, usize)> {
-        if self.peek()? != b'\n' {
-            return None;
-        }
         let start = self.pos;
-        while let Some(b'\n') = self.peek() {
-            self.pos += 1;
+        self.pos = consume_line_ending(self.input, self.pos)?;
+        while let Some(end) = consume_line_ending(self.input, self.pos) {
+            self.pos = end;
         }
         if matches!(self.mode(), Mode::State | Mode::StateId) {
             self.pop_mode();
@@ -817,7 +815,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             selection,
         )
         .expecting(
-            crate::EditorExpectedSyntaxKind::DirectionValue,
+            crate::EditorExpectedSyntaxKind::CardinalDirectionValue,
             selection,
         )))
     }
@@ -1091,10 +1089,12 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
             let raw = self.read_to_newline().trim().to_string();
 
             self.pending.push_back((start, Tok::Style, kw_end));
-            self.pending
-                .push_back((ids_start, Tok::StyleIds(ids), ids_end));
-            self.pending
-                .push_back((ids_end, Tok::StyleDefStyleOpts(raw), self.pos));
+            if !ids.is_empty() {
+                self.pending
+                    .push_back((ids_start, Tok::StyleIds(ids), ids_end));
+                self.pending
+                    .push_back((ids_end, Tok::StyleDefStyleOpts(raw), self.pos));
+            }
             return self.pending.pop_front().map(Ok);
         }
 
@@ -1120,7 +1120,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         if self.mode() == Mode::StateId {
             let body_start = self.pos;
             while let Some(b) = self.peek() {
-                if b == b'\n' || b == b'{' {
+                if matches!(b, b'\r' | b'\n' | b'{') {
                     break;
                 }
                 self.pos += 1;
@@ -1167,7 +1167,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
                 "Internal lexer error: invalid UTF-8 boundary",
             )));
         };
-        let eol = rel.find('\n').unwrap_or(rel.len());
+        let eol = rel.find(['\r', '\n']).unwrap_or(rel.len());
         let line = &rel[..eol];
         let trimmed = line.trim().to_string();
         let lower = trimmed.to_ascii_lowercase();
@@ -1214,14 +1214,14 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         let end = self.pos;
         let mut look = self.pos;
         while let Some(b) = self.input.as_bytes().get(look).copied() {
-            if matches!(b, b' ' | b'\t' | b'\r') {
+            if matches!(b, b' ' | b'\t') {
                 look += 1;
                 continue;
             }
             break;
         }
         let same_line_end = self.input[look..]
-            .find('\n')
+            .find(['\r', '\n'])
             .map(|rel| look + rel)
             .unwrap_or(self.input.len());
         let same_line_tail = &self.input[look..same_line_end];
@@ -1242,10 +1242,17 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
                 crate::SourceSpan::new(bad_start, bad_end.max(bad_start)),
             )));
         }
-        if self.input.as_bytes().get(look) == Some(&b'\n') {
+        if consume_line_ending(self.input, look).is_some() {
             let mut scan = look;
-            while let Some(b) = self.input.as_bytes().get(scan).copied() {
-                if matches!(b, b' ' | b'\t' | b'\r' | b'\n') {
+            loop {
+                if let Some(end) = consume_line_ending(self.input, scan) {
+                    scan = end;
+                    continue;
+                }
+                let Some(b) = self.input.as_bytes().get(scan).copied() else {
+                    break;
+                };
+                if matches!(b, b' ' | b'\t') {
                     scan += 1;
                     continue;
                 }
@@ -1283,7 +1290,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         self.pos += 1;
         let body_start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' || b == b';' {
+            if matches!(b, b'\r' | b'\n' | b';') {
                 break;
             }
             self.pos += 1;

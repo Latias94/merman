@@ -223,7 +223,9 @@ precedence. Severity overrides do not enable a rule whose profile is inactive; u
 `lint.profile = "recommended"` or `enable_rules` for Merman authoring recommendations.
 Bindings expose the same rule registry through their lint-rule catalog metadata surfaces; hosts
 should read that catalog when building settings UI instead of duplicating rule ids, evidence
-references, and origins.
+references, origins, or diagnostic tags. Catalog schema `1` treats a missing `tags` field as an
+empty list; current deprecation metadata is emitted explicitly as `"tags": ["deprecated"]` rather
+than inferred from rule ids or human-readable descriptions.
 
 Only Merman rule ids from the lint-rule catalog are accepted here. External linter ids such as
 markdownlint, remark, textlint, or `mermaid-lint` rules must stay in the host tool's own
@@ -571,7 +573,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `3`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `4`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for

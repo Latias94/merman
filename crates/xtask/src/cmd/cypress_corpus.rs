@@ -541,9 +541,9 @@ fn validate_pinned_manifest_contract(
         }
     }
     for effect in &collection.runtime_effects {
-        if !registrations
+        if registrations
             .get(effect.registration.as_str())
-            .is_some_and(|(source_spec, _)| *source_spec == effect.source_spec)
+            .is_none_or(|(source_spec, _)| *source_spec != effect.source_spec)
         {
             failures.push(format!(
                 "Cypress corpus runtime effect {} references an unknown active call registration",
@@ -1022,9 +1022,9 @@ pub(crate) fn project_new_family_cypress_collection(
 
     if !refresh {
         if projected != committed {
-            return Err(XtaskError::AlignmentCheckFailed(format!(
-                "committed Cypress corpus manifest differs from the pinned executable collection; rerun project-upstream-cypress-collection --scope new-family --input <collection.json> --refresh after review"
-            )));
+            return Err(XtaskError::AlignmentCheckFailed(
+                "committed Cypress corpus manifest differs from the pinned executable collection; rerun project-upstream-cypress-collection --scope new-family --input <collection.json> --refresh after review".to_string(),
+            ));
         }
         let failures = validate_pinned_manifest_contract(&workspace_root, &projected)
             .into_iter()

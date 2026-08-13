@@ -659,7 +659,7 @@ style User fill:#fff
 
     let href_target_start = text.find("click User href").unwrap() + "click ".len();
     let href_target = symbol_at("User", href_target_start);
-    assert_eq!(href_target.role, EditorSemanticRole::Entity);
+    assert_eq!(href_target.role, EditorSemanticRole::Reference);
     assert_eq!(href_target.kind, EditorSemanticKind::Class);
     assert_eq!(
         href_target.detail.as_deref(),
@@ -679,7 +679,7 @@ style User fill:#fff
     let service_start = text.find("service").unwrap();
     let service = symbol_at("service", service_start);
     assert_eq!(service.selection.end, service_start + "service".len());
-    assert_eq!(service.role, EditorSemanticRole::Outline);
+    assert_eq!(service.role, EditorSemanticRole::ClassDefinition);
     assert_eq!(service.detail.as_deref(), Some("class definition"));
 
     let class_def_style = symbol_with_detail("fill:#eee", "class definition style");
@@ -691,7 +691,7 @@ style User fill:#fff
     assert_eq!(inline_service.detail.as_deref(), Some("class inline class"));
 
     let css_admin = symbol_with_detail("Admin", "class css target");
-    assert_eq!(css_admin.role, EditorSemanticRole::Entity);
+    assert_eq!(css_admin.role, EditorSemanticRole::Reference);
 
     let css_service = symbol_with_detail("service", "class css reference");
     assert_eq!(css_service.role, EditorSemanticRole::Payload);
@@ -761,6 +761,67 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
         let symbol = symbol_at(detail, start);
         assert_eq!(symbol.selection.end, start + "123".len());
     }
+
+    assert_eq!(
+        symbol_at("class", numeric_starts[0]).role,
+        EditorSemanticRole::Entity
+    );
+    assert_eq!(
+        symbol_at("class relation target", numeric_starts[1]).role,
+        EditorSemanticRole::Reference
+    );
+    assert_eq!(
+        symbol_at("class interaction target", numeric_starts[2]).role,
+        EditorSemanticRole::Reference
+    );
+}
+
+#[test]
+fn class_relations_create_only_the_first_implicit_entity_occurrence() {
+    let engine = Engine::new();
+    let text = concat!(
+        "classDiagram\n",
+        "Future --> Known\n",
+        "Known --> Future\n",
+        "class Known\n",
+        "style Later fill:#fff\n",
+        "class Later\n",
+        "<<interface>> Annotated\n",
+        "class Annotated\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .expect("class editor facts");
+
+    let roles = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.role)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        roles("Future"),
+        [EditorSemanticRole::Entity, EditorSemanticRole::Reference]
+    );
+    assert_eq!(
+        roles("Known"),
+        [
+            EditorSemanticRole::Entity,
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Entity,
+        ]
+    );
+    assert_eq!(
+        roles("Later"),
+        [EditorSemanticRole::Reference, EditorSemanticRole::Entity]
+    );
+    assert_eq!(
+        roles("Annotated"),
+        [EditorSemanticRole::Entity, EditorSemanticRole::Entity]
+    );
 }
 
 #[test]
@@ -858,7 +919,7 @@ fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_s
 }
 
 #[test]
-fn parse_class_editor_facts_record_expected_node_identifier_spans() {
+fn parse_class_editor_facts_record_expected_class_name_spans() {
     let engine = Engine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";
     let facts = engine
@@ -867,9 +928,29 @@ fn parse_class_editor_facts_record_expected_node_identifier_spans() {
         .expect("class editor facts");
 
     assert!(facts.expected_syntax.iter().any(|expected| {
-        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+        expected.kind == EditorExpectedSyntaxKind::ClassName
             && expected.span.start == text.find("service").unwrap()
     }));
+}
+
+#[test]
+fn parse_class_editor_facts_do_not_consume_classdef_names_across_line_endings() {
+    let engine = Engine::new();
+
+    for line_ending in ["\n", "\r", "\r\n"] {
+        let text = ["classDiagram", "classDef", "User <|-- Admin", ""].join(line_ending);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .expect("class editor facts");
+
+        assert!(
+            !facts.symbols.iter().any(|symbol| {
+                symbol.name == "User" && symbol.role == EditorSemanticRole::ClassDefinition
+            }),
+            "classDef consumed the next physical line for {line_ending:?}"
+        );
+    }
 }
 
 #[test]

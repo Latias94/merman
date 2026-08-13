@@ -17,6 +17,7 @@ import {
 } from "./protocol.ts";
 
 const LEGEND_DIGEST = "legend-digest";
+const COMPLETION_TRIGGER_CHARACTERS = [" ", "\n", "-", ":"];
 
 class PendingWorkerPort implements EditorWorkerPort {
   readonly messages: EditorWorkerRequest[] = [];
@@ -803,7 +804,8 @@ function ready(worker: PendingWorkerPort): void {
     protocol: EDITOR_WORKER_PROTOCOL,
     requestId: initialize.requestId,
     type: "ready",
-    transportApiVersion: 3,
+    completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
+    transportApiVersion: 4,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: LEGEND_DIGEST,
     legend: { tokenTypes: ["keyword"], tokenModifiers: [] },

@@ -4,8 +4,10 @@
 - Date: 2026-07-18
 - Amended: 2026-07-23 (package-surface projection delegated to ADR-0076); 2026-08-05
   (benchmark phase, plan, lifecycle, corpus evidence, explicit WASM ownership, and browser
-  validation contracts unified)
-- Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, editor-token, diagnostics, and facts schema `1`
+  validation contracts unified); 2026-08-10 (facts schema 2 break and Flowchart-rich projection
+  deletion recorded as a coordinated Unreleased migration); 2026-08-11 (Web transport API 4 makes
+  the editor-owned completion trigger descriptor mandatory)
+- Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, Web transport API `4`, editor-token and diagnostics schema `1`, facts schema `2`
 
 These version fields describe the first public contract shapes after the 0.8 refactor. Their
 numbering does not preserve unreleased implementation iterations. None alters this ADR's realm,
@@ -225,8 +227,9 @@ token plan. Results with stale document versions or descriptor digests are disca
 client wait does not claim to interrupt synchronous WASM execution; the completed stale result is
 ignored. Protocol or result-shape mismatch fails closed.
 
-The browser transport API is `3`; the runtime catalog, editor diagnostics, and shared analysis
-facts use schema `1`. These numbers describe different contracts and do not advance together.
+The browser transport API is `4`; the runtime catalog and editor diagnostics use schema `1`, while
+shared analysis facts use schema `2`. These numbers describe different contracts and do not advance
+together.
 
 ### 7. Examples And Detection Have Canonical Sources
 
@@ -336,6 +339,6 @@ thread responsive.
 - The editor bundle is larger because Monaco and a Worker WASM are local, but it provides real
   parser-backed language intelligence and makes no runtime CDN dependency.
 - HTTP cache quality remains measurable deployment evidence rather than hidden application policy.
-- Native ABI is `3`; editor-token, diagnostics, and facts schemas use version `1`; and Mermaid
-  remains pinned to `11.16.0@7c0cafcf`. These values reflect the later coordinated transport
-  refactor and supersede the versions recorded when this ADR was first accepted.
+- Native ABI is `3`; editor-token and diagnostics schemas use version `1`, facts use version `2`;
+  and Mermaid remains pinned to `11.16.0@7c0cafcf`. These values reflect the later coordinated
+  transport refactor and supersede the versions recorded when this ADR was first accepted.

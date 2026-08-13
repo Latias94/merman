@@ -1,23 +1,22 @@
 use crate::client_profile::ClientProtocolProfile;
-use crate::code_actions::code_actions_for_snapshot_diagnostics_with_profile;
 use crate::completion::{
     completion_for_snapshot_with_profile, resolve_completion_item_with_profile,
 };
-use crate::diagnostics::analysis_payload_to_versioned_diagnostics_with_profile;
+use crate::diagnostics::unavailable_document_diagnostic_round_trip;
 use crate::protocol::{
-    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
-    RuleCatalogResponse, experimental_capabilities,
+    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
+    experimental_capabilities,
 };
 use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
-    semantic_tokens_delta_result, semantic_tokens_for_snapshot_range_with_profile,
-    semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
-    semantic_tokens_result_id,
+    semantic_token_plan_for_snapshot_range_with_profile,
+    semantic_token_plan_for_snapshot_with_profile, semantic_tokens_delta_result,
+    semantic_tokens_from_packed, semantic_tokens_options_with_profile, semantic_tokens_result_id,
 };
-use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
+use crate::session::{ClientEffects, LanguageSession, MermanLspService, commit_active_mutation};
 use crate::session::{
-    DiagnosticContext, DocumentDiagnosticState, DocumentSyncError, SemanticTokensState,
-    StoredDocument, analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    DocumentDiagnosticState, SemanticTokensState, analysis_options_with_lsp_resource_defaults,
+    default_lsp_analysis_options,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -28,78 +27,49 @@ use crate::structure::{
     rename_with_workspace_edit_encoding as structure_rename_with_workspace_edit_encoding,
     selection_ranges as structure_selection_ranges,
 };
-use merman_analysis::{
-    AnalysisPayload, options_json::analysis_options_from_json_value, source_descriptor_for_kind,
-    source_discarded_after_limit_change_diagnostic_with_span,
-    source_limit_diagnostic_for_len_and_span,
-};
-#[cfg(test)]
-use merman_analysis::{Analyzer, analyze_document};
-use merman_editor_core::{DocumentKind, TokenPlanError, analysis_payload_to_diagnostics};
-use std::hash::{Hash, Hasher};
+use merman_analysis::options_json::analysis_options_from_json_value;
+use merman_editor_core::COMPLETION_TRIGGER_CHARACTERS;
+use merman_editor_core::{DocumentKind, TokenPlanError};
 use std::sync::{Arc, OnceLock};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
-    FoldingRangeParams, FoldingRangeProviderCapability, FullDocumentDiagnosticReport,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, MessageType, NumberOrString, OneOf, Position,
-    PrepareRenameResponse, Range, ReferenceParams, RelatedFullDocumentDiagnosticReport,
-    RelatedUnchangedDocumentDiagnosticReport, RenameOptions, RenameParams, SelectionRange,
-    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensDeltaParams,
-    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
-    UnchangedDocumentDiagnosticReport, WorkspaceEdit,
+    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, FullDocumentDiagnosticReport, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameOptions,
+    RenameParams, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
+    SemanticTokens, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, UnchangedDocumentDiagnosticReport, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-const MAX_CLIENT_LOG_MESSAGE_BYTES: usize = 4 * 1024;
-const CLIENT_LOG_TRUNCATION_SUFFIX: &str = " [truncated]";
-
-fn bounded_client_log_message(message: impl Into<String>) -> String {
-    let message = message.into();
-    let (prefix, suffix) = if message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES {
-        (message.as_str(), "")
-    } else {
-        let mut end = MAX_CLIENT_LOG_MESSAGE_BYTES - CLIENT_LOG_TRUNCATION_SUFFIX.len();
-        while !message.is_char_boundary(end) {
-            end -= 1;
-        }
-        (&message[..end], CLIENT_LOG_TRUNCATION_SUFFIX)
-    };
-    let mut bounded = String::with_capacity(prefix.len() + suffix.len());
-    bounded.push_str(prefix);
-    bounded.push_str(suffix);
-    bounded
-}
-
-#[derive(Clone)]
-struct DiagnosticPublisher {
-    client: Client,
-    session: LanguageSession,
-    profile: ClientProtocolProfile,
-}
+const MISSING_DOCUMENT_DIAGNOSTIC_RESULT_ID: &str = "missing-document";
 
 #[derive(Debug, Clone)]
 pub struct MermanLanguageServer {
-    client: Client,
     session: LanguageSession,
     client_profile: Arc<OnceLock<ClientProtocolProfile>>,
+    client_effects: ClientEffects,
 }
 
 impl MermanLanguageServer {
     fn new(client: Client, session: LanguageSession) -> Self {
+        let client_profile = Arc::new(OnceLock::new());
+        let client_effects =
+            ClientEffects::new(client.clone(), session.clone(), Arc::clone(&client_profile));
         Self {
-            client,
             session,
-            client_profile: Arc::new(OnceLock::new()),
+            client_profile,
+            client_effects,
         }
     }
 
@@ -158,20 +128,12 @@ impl MermanLanguageServer {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions {
                 resolve_provider: Some(true),
-                trigger_characters: Some(vec![
-                    " ".to_string(),
-                    "\n".to_string(),
-                    "-".to_string(),
-                    ">".to_string(),
-                    "%".to_string(),
-                    "[".to_string(),
-                    "(".to_string(),
-                    "{".to_string(),
-                    "/".to_string(),
-                    "\\".to_string(),
-                    "@".to_string(),
-                    ":".to_string(),
-                ]),
+                trigger_characters: Some(
+                    COMPLETION_TRIGGER_CHARACTERS
+                        .iter()
+                        .map(char::to_string)
+                        .collect(),
+                ),
                 ..CompletionOptions::default()
             }),
             definition_provider: Some(OneOf::Left(true)),
@@ -224,97 +186,6 @@ impl MermanLanguageServer {
         }
     }
 
-    #[cfg(test)]
-    async fn snapshot_for_uri(
-        &self,
-        uri: &tower_lsp_server::ls_types::Uri,
-    ) -> Option<Arc<DocumentSnapshot>> {
-        self.session.structure_snapshot(uri).await
-    }
-
-    #[cfg(test)]
-    fn diagnostics_for_document(document: &StoredDocument, analyzer: &Analyzer) -> Vec<Diagnostic> {
-        let profile = ClientProtocolProfile::permissive();
-        if let Some(diagnostics) =
-            Self::unavailable_document_diagnostics_with_profile(document, &profile)
-        {
-            return diagnostics;
-        }
-
-        let source = source_descriptor_for_document(&document.uri, document.kind);
-        let payload = analyze_document(
-            document
-                .text()
-                .expect("available document diagnostics require retained source"),
-            analyzer,
-            source,
-        );
-        Self::analysis_payload_diagnostics_with_profile(document, &payload, &profile)
-    }
-
-    fn unavailable_document_diagnostics_with_profile(
-        document: &StoredDocument,
-        profile: &ClientProtocolProfile,
-    ) -> Option<Vec<Diagnostic>> {
-        if let Some(rejection) = document.analysis_rejection() {
-            return Some(Self::analysis_payload_diagnostics_with_profile(
-                document,
-                rejection.payload(),
-                profile,
-            ));
-        }
-
-        let diagnostic = if let Some(resource_limit) = document.resource_limit() {
-            source_limit_diagnostic_for_len_and_span(
-                resource_limit.source_len,
-                resource_limit.max_source_bytes,
-                resource_limit.span,
-            )
-        } else if let Some(discarded_source) = document.discarded_source() {
-            source_discarded_after_limit_change_diagnostic_with_span(
-                discarded_source.source_len,
-                discarded_source.previous_max_source_bytes,
-                discarded_source.span,
-            )
-        } else if let Some(sync_error) = document.sync_error_state() {
-            return Some(vec![document_sync_error_diagnostic(
-                sync_error,
-                document.version,
-                profile,
-            )]);
-        } else {
-            return None;
-        };
-        let payload = AnalysisPayload::new(
-            source_descriptor_for_document(&document.uri, document.kind),
-            vec![diagnostic],
-        );
-
-        Some(Self::analysis_payload_diagnostics_with_profile(
-            document, &payload, profile,
-        ))
-    }
-
-    fn analysis_payload_diagnostics_with_profile(
-        document: &StoredDocument,
-        payload: &AnalysisPayload,
-        profile: &ClientProtocolProfile,
-    ) -> Vec<Diagnostic> {
-        analysis_payload_to_versioned_diagnostics_with_profile(
-            payload,
-            &document.uri,
-            document.version,
-            profile,
-        )
-    }
-
-    fn diagnostic_result_id(diagnostics: &[tower_lsp_server::ls_types::Diagnostic]) -> String {
-        let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        serialized.hash(&mut hasher);
-        format!("{:016x}", hasher.finish())
-    }
-
     fn document_diagnostic_report(
         diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
         result_id: Option<String>,
@@ -344,51 +215,6 @@ impl MermanLanguageServer {
         ))
     }
 
-    fn diagnostic_publisher(&self) -> Option<DiagnosticPublisher> {
-        let profile = self.client_profile();
-        if profile.diagnostic_pull {
-            return None;
-        }
-        Some(DiagnosticPublisher {
-            client: self.client.clone(),
-            session: self.session.clone(),
-            profile: profile.clone(),
-        })
-    }
-
-    async fn enqueue_diagnostic_sync(&self, uri: tower_lsp_server::ls_types::Uri) {
-        let Some(publisher) = self.diagnostic_publisher() else {
-            return;
-        };
-        let key = ClientEffectKey::Document(uri.clone());
-        self.session
-            .enqueue_latest_client_effect(key, async move {
-                publisher.synchronize_uri(uri).await;
-            })
-            .await;
-    }
-
-    async fn enqueue_republish_all(&self) {
-        let Some(publisher) = self.diagnostic_publisher() else {
-            return;
-        };
-        self.session
-            .enqueue_latest_client_effect(ClientEffectKey::AllDiagnostics, async move {
-                publisher.publish_all().await;
-            })
-            .await;
-    }
-
-    async fn enqueue_log_message(&self, kind: MessageType, message: impl Into<String>) {
-        let client = self.client.clone();
-        let message = bounded_client_log_message(message);
-        self.session
-            .enqueue_latest_client_effect(ClientEffectKey::LogMessage, async move {
-                client.log_message(kind, message).await;
-            })
-            .await;
-    }
-
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
@@ -411,73 +237,6 @@ impl MermanLanguageServer {
     }
 }
 
-impl DiagnosticPublisher {
-    async fn diagnostics_for_current_context(
-        &self,
-        context: &DiagnosticContext,
-    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
-        self.session
-            .query_push_diagnostics(context, |document, payload| {
-                MermanLanguageServer::unavailable_document_diagnostics_with_profile(
-                    document,
-                    &self.profile,
-                )
-                .unwrap_or_else(|| {
-                    MermanLanguageServer::analysis_payload_diagnostics_with_profile(
-                        document,
-                        payload.expect("available documents require an analysis payload"),
-                        &self.profile,
-                    )
-                })
-            })
-            .await
-    }
-
-    async fn synchronize_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
-        match self.session.diagnostic_context(&uri).await {
-            Some(context) => self.publish_current(&context).await,
-            None => self.clear(uri).await,
-        }
-    }
-
-    async fn publish_all(&self) {
-        let contexts = self.session.diagnostic_contexts().await;
-        for context in contexts {
-            self.publish_current(&context).await;
-        }
-    }
-
-    async fn publish_current(&self, context: &DiagnosticContext) {
-        match self.diagnostics_for_current_context(context).await {
-            Ok(Some(diagnostics)) => {
-                self.client
-                    .publish_diagnostics(
-                        context.document.uri.clone(),
-                        diagnostics,
-                        self.profile
-                            .diagnostics
-                            .version
-                            .then_some(context.document.version),
-                    )
-                    .await;
-            }
-            Ok(None) => {}
-            Err(error) => {
-                tracing::error!(
-                    uri = %context.document.uri.as_str(),
-                    code = ?error.code,
-                    message = %error.message,
-                    "failed to compute push diagnostics"
-                );
-            }
-        }
-    }
-
-    async fn clear(&self, uri: tower_lsp_server::ls_types::Uri) {
-        self.client.publish_diagnostics(uri, Vec::new(), None).await;
-    }
-}
-
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let profile = ClientProtocolProfile::negotiate(&params.capabilities);
@@ -495,7 +254,8 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn initialized(&self, _: tower_lsp_server::ls_types::InitializedParams) {
         commit_active_mutation();
-        self.enqueue_log_message(MessageType::INFO, "merman-lsp initialized")
+        self.client_effects
+            .log_message(MessageType::INFO, "merman-lsp initialized")
             .await;
     }
 
@@ -513,7 +273,7 @@ impl LanguageServer for MermanLanguageServer {
             .await;
         commit_active_mutation();
         if committed {
-            self.enqueue_diagnostic_sync(uri).await;
+            self.client_effects.push_diagnostics(uri).await;
         }
     }
 
@@ -524,22 +284,22 @@ impl LanguageServer for MermanLanguageServer {
             .change_document(doc.uri.clone(), doc.version, params.content_changes)
             .await;
         commit_active_mutation();
-        if update.is_some_and(|update| update.affects_document_state()) {
-            self.enqueue_diagnostic_sync(doc.uri).await;
+        if update == Some(true) {
+            self.client_effects.push_diagnostics(doc.uri).await;
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
         commit_active_mutation();
-        self.enqueue_diagnostic_sync(uri).await;
+        self.client_effects.push_diagnostics(uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         self.session.close_document(&uri).await;
         commit_active_mutation();
-        self.enqueue_diagnostic_sync(uri).await;
+        self.client_effects.push_diagnostics(uri).await;
     }
 
     async fn did_change_configuration(
@@ -553,11 +313,12 @@ impl LanguageServer for MermanLanguageServer {
                 Ok(options) => analysis_options_with_lsp_resource_defaults(options),
                 Err(err) => {
                     commit_active_mutation();
-                    self.enqueue_log_message(
-                        MessageType::ERROR,
-                        format!("invalid merman analysis settings: {err}"),
-                    )
-                    .await;
+                    self.client_effects
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("invalid merman analysis settings: {err}"),
+                        )
+                        .await;
                     return;
                 }
             }
@@ -566,23 +327,15 @@ impl LanguageServer for MermanLanguageServer {
         let change = self.session.update_configuration(options).await;
         commit_active_mutation();
         if change.failed() {
-            self.enqueue_log_message(
-                MessageType::ERROR,
-                "failed to apply merman analysis settings",
-            )
-            .await;
+            self.client_effects
+                .log_message(
+                    MessageType::ERROR,
+                    "failed to apply merman analysis settings",
+                )
+                .await;
             return;
         }
-        if change.affects_diagnostics() {
-            self.enqueue_republish_all().await;
-        }
-        let profile = self.client_profile();
-        self.session.request_refresh(
-            change.affects_snapshots()
-                && profile.semantic_tokens.is_some()
-                && profile.semantic_tokens_refresh,
-            change.affects_diagnostics() && profile.diagnostic_pull && profile.diagnostic_refresh,
-        );
+        self.client_effects.configuration_changed(change).await;
     }
 
     async fn diagnostic(
@@ -594,28 +347,33 @@ impl LanguageServer for MermanLanguageServer {
         let profile = self.client_profile();
         let state = self
             .session
-            .pull_diagnostics(&uri, |document, payload| {
-                let diagnostics =
-                    Self::unavailable_document_diagnostics_with_profile(document, profile)
-                        .unwrap_or_else(|| {
-                            Self::analysis_payload_diagnostics_with_profile(
-                                document,
-                                payload.expect("available documents require an analysis payload"),
-                                profile,
-                            )
-                        });
+            .pull_diagnostics(&uri, |context, analysis| {
+                let (diagnostics, result_id) =
+                    if let Some(round_trip) = unavailable_document_diagnostic_round_trip(context) {
+                        (
+                            round_trip.diagnostics_with_profile(profile),
+                            round_trip.result_id(),
+                        )
+                    } else {
+                        let round_trip = analysis
+                            .expect("available documents require an analysis context")
+                            .diagnostic_round_trip();
+                        (
+                            round_trip.diagnostics_with_profile(profile),
+                            round_trip.result_id(),
+                        )
+                    };
                 DocumentDiagnosticState {
-                    result_id: Self::diagnostic_result_id(&diagnostics),
+                    result_id,
                     diagnostics,
                 }
             })
             .await?;
         let Some(state) = state else {
             let diagnostics = Vec::new();
-            let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
                 diagnostics,
-                result_id,
+                Some(MISSING_DOCUMENT_DIAGNOSTIC_RESULT_ID.to_string()),
                 previous_result_id,
             ));
         };
@@ -653,13 +411,9 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri.clone();
         self.session
             .query_code_actions(&uri, |context| {
-                let diagnostics = analysis_payload_to_diagnostics(context.analysis_payload());
-                Ok(code_actions_for_snapshot_diagnostics_with_profile(
-                    &context.snapshot,
-                    &diagnostics,
-                    &params,
-                    profile,
-                ))
+                Ok(context
+                    .diagnostic_round_trip()
+                    .code_actions_with_profile(&params, profile))
             })
             .await
     }
@@ -670,17 +424,30 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
         let profile = self.client_profile();
+        let Some(projection) = profile
+            .semantic_tokens
+            .as_ref()
+            .filter(|projection| projection.supports_full())
+        else {
+            return Ok(None);
+        };
+        let supports_delta = projection.supports_delta();
         self.session
             .query_semantic_tokens(&uri, None, |snapshot, _| {
-                let Some(mut tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+                let Some(plan) = semantic_token_plan_for_snapshot_with_profile(snapshot, profile)
                     .map_err(|error| semantic_token_planning_error(snapshot, error))?
                 else {
                     return Ok(None);
                 };
-                let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
-                tokens.result_id = Some(result_id.clone());
-                let state = SemanticTokensState::new(tokens.result_id.clone(), tokens.data.clone());
-                Ok(Some((SemanticTokensResult::Tokens(tokens), Some(state))))
+                let result_id =
+                    supports_delta.then(|| semantic_tokens_result_id(snapshot, plan.packed()));
+                let tokens = SemanticTokens {
+                    result_id: result_id.clone(),
+                    data: semantic_tokens_from_packed(plan.packed()),
+                };
+                let state = result_id
+                    .map(|result_id| SemanticTokensState::new(result_id, plan.packed().to_vec()));
+                Ok(Some((SemanticTokensResult::Tokens(tokens), state)))
             })
             .await
     }
@@ -691,33 +458,39 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<SemanticTokensFullDeltaResult>> {
         let uri = params.text_document.uri;
         let profile = self.client_profile();
+        if !profile
+            .semantic_tokens
+            .as_ref()
+            .is_some_and(|projection| projection.supports_delta())
+        {
+            return Ok(None);
+        }
         self.session
             .query_semantic_tokens(
                 &uri,
                 Some(params.previous_result_id.as_str()),
                 |snapshot, previous| {
-                    let Some(current_tokens) =
-                        semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+                    let Some(current_plan) =
+                        semantic_token_plan_for_snapshot_with_profile(snapshot, profile)
                             .map_err(|error| semantic_token_planning_error(snapshot, error))?
                     else {
                         return Ok(None);
                     };
                     let current_result_id =
-                        semantic_tokens_result_id(snapshot, &current_tokens.data);
+                        semantic_tokens_result_id(snapshot, current_plan.packed());
                     let delta = match previous {
                         Some(previous) => semantic_tokens_delta_result(
-                            &previous.tokens,
-                            &current_tokens.data,
+                            &previous.packed,
+                            current_plan.packed(),
                             current_result_id.clone(),
                         ),
-                        None => {
-                            let mut tokens = current_tokens.clone();
-                            tokens.result_id = Some(current_result_id.clone());
-                            SemanticTokensFullDeltaResult::Tokens(tokens)
-                        }
+                        None => SemanticTokensFullDeltaResult::Tokens(SemanticTokens {
+                            result_id: Some(current_result_id.clone()),
+                            data: semantic_tokens_from_packed(current_plan.packed()),
+                        }),
                     };
                     let state =
-                        SemanticTokensState::new(Some(current_result_id), current_tokens.data);
+                        SemanticTokensState::new(current_result_id, current_plan.packed().to_vec());
                     Ok(Some((delta, Some(state))))
                 },
             )
@@ -730,9 +503,16 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri;
         let profile = self.client_profile();
+        if !profile
+            .semantic_tokens
+            .as_ref()
+            .is_some_and(|projection| projection.supports_range())
+        {
+            return Ok(None);
+        }
         self.session
             .query_semantic_tokens(&uri, None, |snapshot, _| {
-                let Some(result) = semantic_tokens_for_snapshot_range_with_profile(
+                let Some(plan) = semantic_token_plan_for_snapshot_range_with_profile(
                     snapshot,
                     params.range,
                     profile,
@@ -740,6 +520,10 @@ impl LanguageServer for MermanLanguageServer {
                 .map_err(|error| semantic_token_planning_error(snapshot, error))?
                 else {
                     return Ok(None);
+                };
+                let result = SemanticTokens {
+                    result_id: None,
+                    data: semantic_tokens_from_packed(plan.packed()),
                 };
                 Ok(Some((SemanticTokensRangeResult::from(result), None)))
             })
@@ -881,48 +665,6 @@ fn semantic_token_planning_error(
         "detail": error.to_string(),
     }));
     response
-}
-
-fn document_sync_error_diagnostic(
-    sync_error: DocumentSyncError,
-    document_version: i32,
-    profile: &ClientProtocolProfile,
-) -> Diagnostic {
-    let message = match sync_error {
-        DocumentSyncError::InvalidIncrementalRange => {
-            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document".to_string()
-        }
-        DocumentSyncError::FullReplacementRequired {
-            source_len,
-            last_max_source_bytes,
-        } => format!(
-            "document text is unavailable after rejecting a {source_len}-byte source with a {last_max_source_bytes}-byte limit; ranged edits cannot recover discarded text, so send a full document replacement or reopen the document"
-        ),
-    };
-    Diagnostic {
-        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-        severity: Some(DiagnosticSeverity::ERROR),
-        code: Some(NumberOrString::String(
-            "merman.lsp.document_sync_lost".to_string(),
-        )),
-        source: Some("merman".to_string()),
-        message,
-        related_information: None,
-        tags: None,
-        code_description: None,
-        data: profile
-            .diagnostics
-            .data
-            .then(|| serde_json::to_value(DiagnosticVersionData { document_version }).ok())
-            .flatten(),
-    }
-}
-
-fn source_descriptor_for_document(
-    uri: &tower_lsp_server::ls_types::Uri,
-    kind: DocumentKind,
-) -> merman_analysis::SourceDescriptor {
-    source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind())
 }
 
 fn document_kind_for_language_id(

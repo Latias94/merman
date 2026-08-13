@@ -852,15 +852,24 @@ style ORDER fill:#eee
     };
 
     let customer_start = text.find("CUSTOMER").unwrap();
+    let first_customer = symbol_at("CUSTOMER", customer_start);
     assert_eq!(
-        symbol_at("CUSTOMER", customer_start).selection.end,
+        first_customer.selection.end,
         customer_start + "CUSTOMER".len()
     );
+    assert_eq!(first_customer.role, EditorSemanticRole::Entity);
+    assert_eq!(first_customer.detail.as_deref(), Some("er implicit entity"));
 
     let order_start = text.find("ORDER :").unwrap();
+    let first_order = symbol_at("ORDER", order_start);
+    assert_eq!(first_order.selection.end, order_start + "ORDER".len());
+    assert_eq!(first_order.role, EditorSemanticRole::Entity);
+    assert_eq!(first_order.detail.as_deref(), Some("er implicit entity"));
+
+    let declared_customer_start = text.find("CUSTOMER {").unwrap();
     assert_eq!(
-        symbol_at("ORDER", order_start).selection.end,
-        order_start + "ORDER".len()
+        symbol_at("CUSTOMER", declared_customer_start).role,
+        EditorSemanticRole::Entity
     );
 
     let attribute_start = text.find("customer_id").unwrap();
@@ -903,9 +912,78 @@ style ORDER fill:#eee
         important_start + "important".len()
     );
 
+    let class_definition_start = text.rfind("important").unwrap();
+    let class_definition = symbol_at("important", class_definition_start);
+    assert_eq!(class_definition.role, EditorSemanticRole::ClassDefinition);
+    assert_eq!(
+        class_definition.detail.as_deref(),
+        Some("er class definition")
+    );
+
+    let inline_class_start = text.find("important").unwrap();
+    let inline_class = symbol_at("important", inline_class_start);
+    assert_eq!(inline_class.role, EditorSemanticRole::Payload);
+    assert_eq!(inline_class.detail.as_deref(), Some("er inline class"));
+
+    let class_target_start = text.find("class CUSTOMER").unwrap() + "class ".len();
+    let class_target = symbol_at("CUSTOMER", class_target_start);
+    assert_eq!(class_target.role, EditorSemanticRole::Reference);
+    assert_eq!(class_target.detail.as_deref(), Some("er class target"));
+
+    let class_name_start = text.find("class CUSTOMER").unwrap() + "class CUSTOMER ".len();
+    let class_name = symbol_at("vip", class_name_start);
+    assert_eq!(class_name.role, EditorSemanticRole::Payload);
+    assert_eq!(class_name.detail.as_deref(), Some("er class name"));
+
+    let style_target_start = text.find("style ORDER").unwrap() + "style ".len();
+    let style_target = symbol_at("ORDER", style_target_start);
+    assert_eq!(style_target.role, EditorSemanticRole::Reference);
+    assert_eq!(style_target.detail.as_deref(), Some("er style target"));
+
     assert!(facts.directive_prefixes.iter().any(|p| p == "class"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
+}
+
+#[test]
+fn parse_er_editor_facts_distinguish_declarations_implicit_entities_and_references() {
+    let engine = Engine::new();
+    let text = concat!(
+        "erDiagram\n",
+        "KNOWN\n",
+        "KNOWN ||--o{ LATER : first\n",
+        "KNOWN:::hot ||--|| LATER:::cold : second\n",
+        "LATER {\n",
+        "  string id\n",
+        "}\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text)
+        .unwrap()
+        .expect("er editor facts");
+    let symbols_for = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name && symbol.kind == EditorSemanticKind::Struct)
+            .collect::<Vec<_>>()
+    };
+
+    let known = symbols_for("KNOWN");
+    assert_eq!(known.len(), 3);
+    assert_eq!(known[0].role, EditorSemanticRole::Entity);
+    assert!(
+        known[1..]
+            .iter()
+            .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+    );
+
+    let later = symbols_for("LATER");
+    assert_eq!(later.len(), 3);
+    assert_eq!(later[0].role, EditorSemanticRole::Entity);
+    assert_eq!(later[0].detail.as_deref(), Some("er implicit entity"));
+    assert_eq!(later[1].role, EditorSemanticRole::Reference);
+    assert_eq!(later[2].role, EditorSemanticRole::Entity);
 }
 
 #[test]
@@ -972,7 +1050,7 @@ fn parse_er_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
-fn parse_er_editor_facts_record_expected_id_list_spans() {
+fn parse_er_editor_facts_record_expected_class_name_spans() {
     let engine = Engine::new();
     let text = "erDiagram\nclassDef pink fill:#f9f\n";
     let facts = engine
@@ -981,9 +1059,35 @@ fn parse_er_editor_facts_record_expected_id_list_spans() {
         .expect("er editor facts");
 
     assert!(facts.expected_syntax.iter().any(|expected| {
-        expected.kind == EditorExpectedSyntaxKind::IdList
+        expected.kind == EditorExpectedSyntaxKind::ClassName
             && expected.span.start == text.find("pink").unwrap()
     }));
+}
+
+#[test]
+fn parse_er_editor_facts_do_not_consume_classdef_names_across_line_endings() {
+    let engine = Engine::new();
+
+    for line_ending in ["\n", "\r", "\r\n"] {
+        let text = [
+            "erDiagram",
+            "classDef",
+            "CUSTOMER ||--o{ ORDER : places",
+            "",
+        ]
+        .join(line_ending);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("er", &text)
+            .unwrap()
+            .expect("er editor facts");
+
+        assert!(
+            !facts.symbols.iter().any(|symbol| {
+                symbol.name == "CUSTOMER" && symbol.role == EditorSemanticRole::ClassDefinition
+            }),
+            "classDef consumed the next physical line for {line_ending:?}"
+        );
+    }
 }
 
 #[test]

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
@@ -12,6 +14,39 @@ use crate::{
 pub struct SourceSpan {
     pub start: usize,
     pub end: usize,
+}
+
+pub(crate) fn line_content_end(source: &str, end: usize) -> usize {
+    let end = end.min(source.len());
+    end.checked_sub(1)
+        .filter(|index| source.as_bytes().get(*index) == Some(&b'\r'))
+        .unwrap_or(end)
+}
+
+pub(crate) fn has_ascii_separator(source: &str, start: usize, end: usize) -> bool {
+    source.get(start..end).is_some_and(|slice| {
+        !slice.is_empty() && slice.as_bytes().iter().all(u8::is_ascii_whitespace)
+    })
+}
+
+pub(crate) fn trailing_ascii_whitespace_slot(
+    source: &str,
+    start: usize,
+    end: usize,
+) -> Option<SourceSpan> {
+    let end = line_content_end(source, end);
+    let slice = source.get(start..end)?;
+    (!slice.is_empty() && slice.as_bytes().last().is_some_and(u8::is_ascii_whitespace))
+        .then_some(SourceSpan::new(end, end))
+}
+
+pub(crate) fn source_value_span(source: &str, span: SourceSpan, value: &str) -> Option<SourceSpan> {
+    let slice = source.get(span.start..span.end)?;
+    let relative_start = slice.find(value)?;
+    Some(SourceSpan::new(
+        span.start + relative_start,
+        span.start + relative_start + value.len(),
+    ))
 }
 
 /// Grammar-domain lexical classification emitted by preprocessing or one diagram family.
@@ -345,7 +380,7 @@ impl SourceSpan {
 }
 
 /// Protocol-independent symbol classification for editor-facing consumers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditorSemanticKind {
     Class,
     Event,
@@ -360,12 +395,45 @@ pub enum EditorSemanticKind {
     Variable,
 }
 
+/// Typed family semantics consumed by editor projections.
+///
+/// Parser families own this classification. Downstream editor layers must not recover it from a
+/// diagram type name or other display string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditorFamilySemantics {
+    outline_kind: EditorSemanticKind,
+}
+
+impl Default for EditorFamilySemantics {
+    fn default() -> Self {
+        Self {
+            outline_kind: EditorSemanticKind::Variable,
+        }
+    }
+}
+
+impl EditorFamilySemantics {
+    pub(crate) const fn new(outline_kind: EditorSemanticKind) -> Self {
+        Self { outline_kind }
+    }
+
+    pub const fn outline_kind(self) -> EditorSemanticKind {
+        self.outline_kind
+    }
+}
+
 /// How downstream editor indexes should project a parser-produced symbol.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EditorSemanticRole {
     /// Addressable diagram entity: appears in completion, navigation, and outline surfaces.
     #[default]
     Entity,
+    /// A parser-declared CSS/class definition. It participates in class completion and outline
+    /// projection, but is not a diagram-node entity or a reference/rename target.
+    ClassDefinition,
+    /// A source occurrence that resolves to an addressable entity. References participate in
+    /// navigation and rename, but never become completion or outline declarations themselves.
+    Reference,
     /// Structural symbol that belongs in outline/hover, but is not a graph-node completion item.
     Outline,
     /// Span-rich parser payload for lint or future semantic consumers; not projected into LSP
@@ -426,82 +494,21 @@ fn is_ascii_identifier(value: &str) -> bool {
         && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
 }
 
-/// One family-owned body completion candidate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EditorCompletionCandidate {
-    label: &'static str,
-    detail: &'static str,
-    snippet: Option<&'static str>,
-}
-
-impl EditorCompletionCandidate {
-    pub const fn keyword(label: &'static str, detail: &'static str) -> Self {
-        Self {
-            label,
-            detail,
-            snippet: None,
-        }
-    }
-
-    pub const fn snippet(label: &'static str, detail: &'static str, snippet: &'static str) -> Self {
-        Self {
-            label,
-            detail,
-            snippet: Some(snippet),
-        }
-    }
-
-    pub const fn label(self) -> &'static str {
-        self.label
-    }
-
-    pub const fn detail(self) -> &'static str {
-        self.detail
-    }
-
-    pub const fn snippet_text(self) -> Option<&'static str> {
-        self.snippet
-    }
-}
-
-/// Family-owned candidates that editor consumers may project for the current parse generation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct EditorCompletionVocabulary {
-    operators: &'static [EditorCompletionCandidate],
-    directions: &'static [EditorCompletionCandidate],
-}
-
-impl EditorCompletionVocabulary {
-    pub const fn new(
-        operators: &'static [EditorCompletionCandidate],
-        directions: &'static [EditorCompletionCandidate],
-    ) -> Self {
-        Self {
-            operators,
-            directions,
-        }
-    }
-
-    pub const fn operators(self) -> &'static [EditorCompletionCandidate] {
-        self.operators
-    }
-
-    pub const fn directions(self) -> &'static [EditorCompletionCandidate] {
-        self.directions
-    }
-}
-
 impl EditorSemanticRole {
     pub fn contributes_completion(self) -> bool {
-        matches!(self, Self::Entity)
+        matches!(self, Self::Entity | Self::ClassDefinition)
     }
 
     pub fn contributes_references(self) -> bool {
-        matches!(self, Self::Entity)
+        matches!(self, Self::Entity | Self::Reference)
     }
 
     pub fn contributes_outline(self) -> bool {
-        matches!(self, Self::Entity | Self::Outline)
+        matches!(self, Self::Entity | Self::ClassDefinition | Self::Outline)
+    }
+
+    pub const fn is_class_definition(self) -> bool {
+        matches!(self, Self::ClassDefinition)
     }
 }
 
@@ -553,6 +560,40 @@ impl EditorSemanticSymbol {
         )
     }
 
+    pub fn class_definition(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::ClassDefinition,
+            span,
+            selection,
+        )
+    }
+
+    pub fn reference(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::Reference,
+            span,
+            selection,
+        )
+    }
+
     pub fn payload(
         name: impl Into<String>,
         detail: Option<String>,
@@ -578,7 +619,10 @@ impl EditorSemanticSymbol {
         span: SourceSpan,
         selection: SourceSpan,
     ) -> Self {
-        let rename_policy = if role == EditorSemanticRole::Entity {
+        let rename_policy = if matches!(
+            role,
+            EditorSemanticRole::Entity | EditorSemanticRole::Reference
+        ) {
             EditorRenamePolicy::Identifier
         } else {
             EditorRenamePolicy::None
@@ -633,19 +677,26 @@ impl EditorSemanticDiagnostic {
 }
 
 /// Parser-known syntax category that is expected at a source span.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditorExpectedSyntaxKind {
+    Directive,
+    Frontmatter,
     IdList,
     NodeIdentifier,
-    Operator,
+    ClassName,
+    FlowchartOperator,
     ShapeValue,
     ShapeTrigger,
-    DirectionValue,
+    FlowchartDirectionValue,
+    CardinalDirectionValue,
+    BlockDirectionValue,
+    StyleValue,
+    InteractionAction,
     Payload,
 }
 
 /// Parser-produced cursor context hint for completion and other editor features.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EditorExpectedSyntax {
     pub kind: EditorExpectedSyntaxKind,
     pub span: SourceSpan,
@@ -670,7 +721,7 @@ pub enum EditorSemanticCompleteness {
 #[non_exhaustive]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
-    pub completion_vocabulary: EditorCompletionVocabulary,
+    pub family_semantics: EditorFamilySemantics,
     pub symbols: Vec<EditorSemanticSymbol>,
     lexemes: Vec<EditorLexeme>,
     lexeme_failure: Option<EditorLexemeFailure>,
@@ -810,14 +861,6 @@ impl EditorSemanticFacts {
         Ok(Ok(()))
     }
 
-    pub fn with_completion_vocabulary(
-        mut self,
-        completion_vocabulary: EditorCompletionVocabulary,
-    ) -> Self {
-        self.completion_vocabulary = completion_vocabulary;
-        self
-    }
-
     pub fn mark_recovered(&mut self) {
         self.completeness = EditorSemanticCompleteness::Recovered;
         for lexeme in &mut self.lexemes {
@@ -857,9 +900,28 @@ impl EditorSemanticFacts {
     }
 
     pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
-        if !self.expected_syntax.contains(&expected) {
-            self.expected_syntax.push(expected);
+        self.expected_syntax.push(expected);
+    }
+
+    pub(crate) fn finalize_expected_syntax_controlled(
+        &mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
+        let mut seen = BTreeSet::new();
+        let mut unique = Vec::with_capacity(self.expected_syntax.len());
+        for (index, expected) in std::mem::take(&mut self.expected_syntax)
+            .into_iter()
+            .enumerate()
+        {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if seen.insert((expected.kind, expected.span.start, expected.span.end)) {
+                unique.push(expected);
+            }
         }
+        self.expected_syntax = unique;
+        control.checkpoint()
     }
 }
 
@@ -1108,7 +1170,8 @@ mod tests {
     use super::{
         EditorLexeme, EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind,
         EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducerKind, EditorRenamePolicy,
-        EditorSemanticFacts, lalrpop_parse_diagnostic,
+        EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
+        lalrpop_parse_diagnostic,
     };
     use crate::{ParseControl, ParseDiagnosticSpanKind};
 
@@ -1165,6 +1228,46 @@ mod tests {
             );
         }
         assert!(serde_json::from_str::<EditorRenamePolicy>("\"unknown\"").is_err());
+    }
+
+    #[test]
+    fn class_definition_role_is_typed_completion_without_reference_identity() {
+        let role = EditorSemanticRole::ClassDefinition;
+        assert!(role.contributes_completion());
+        assert!(!role.contributes_references());
+        assert!(role.contributes_outline());
+        assert!(role.is_class_definition());
+
+        let span = crate::SourceSpan::new(0, 3);
+        let symbol = EditorSemanticSymbol::class_definition(
+            "hot",
+            Some("display text may change".to_string()),
+            EditorSemanticKind::Class,
+            span,
+            span,
+        );
+        assert_eq!(symbol.role, role);
+        assert_eq!(symbol.rename_policy, EditorRenamePolicy::None);
+    }
+
+    #[test]
+    fn reference_role_is_navigation_only() {
+        let role = EditorSemanticRole::Reference;
+        assert!(!role.contributes_completion());
+        assert!(role.contributes_references());
+        assert!(!role.contributes_outline());
+        assert!(!role.is_class_definition());
+
+        let span = crate::SourceSpan::new(0, 3);
+        let symbol = EditorSemanticSymbol::reference(
+            "ref",
+            Some("display text may change".to_string()),
+            EditorSemanticKind::Class,
+            span,
+            span,
+        );
+        assert_eq!(symbol.role, role);
+        assert_eq!(symbol.rename_policy, EditorRenamePolicy::Identifier);
     }
 
     #[test]

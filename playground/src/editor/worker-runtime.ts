@@ -31,6 +31,7 @@ export interface EditorWorkerRuntimeBindings {
     uri: string,
   ) => BrowserEditorSession;
   readonly editorSemanticTokenDescriptor: () => EditorSemanticTokenDescriptor;
+  readonly editorCompletionTriggerCharacters: () => string[];
   readonly initMerman: () => Promise<unknown>;
   readonly legendDigest: string;
   readonly runtimeCatalog: () => RuntimeCatalog;
@@ -48,6 +49,7 @@ export interface EditorWorkerRuntime {
 }
 
 interface InitializedContract {
+  readonly completionTriggerCharacters: readonly string[];
   readonly descriptor: EditorSemanticTokenDescriptor;
   readonly transportApiVersion: number;
 }
@@ -148,6 +150,9 @@ export function createEditorWorkerRuntime(
         );
       }
       initializedContract = Object.freeze({
+        completionTriggerCharacters: Object.freeze([
+          ...bindings.editorCompletionTriggerCharacters(),
+        ]),
         descriptor,
         transportApiVersion: transportVersion,
       });
@@ -159,6 +164,9 @@ export function createEditorWorkerRuntime(
       requestId,
       transportApiVersion: contract.transportApiVersion,
       editorSchema: EDITOR_SCHEMA_VERSION,
+      completionTriggerCharacters: [
+        ...contract.completionTriggerCharacters,
+      ],
       legendDigest: contract.descriptor.digest,
       legend: {
         tokenTypes: [...contract.descriptor.tokenTypeLspNames],

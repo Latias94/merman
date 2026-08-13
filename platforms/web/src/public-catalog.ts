@@ -188,12 +188,15 @@ export type LintRuleOrigin =
   | "merman_resource_policy"
   | "merman_internal";
 
+export type LintRuleTag = "deprecated";
+
 export interface LintRuleCatalogEntry {
   id: string;
   description: string;
   evidence: string[];
   default_severity: LintRuleSeverity;
   category: LintRuleCategory;
+  tags?: LintRuleTag[];
   default_enabled: boolean;
   default_profile: LintRuleProfile;
   origin: LintRuleOrigin;

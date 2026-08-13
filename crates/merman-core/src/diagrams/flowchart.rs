@@ -1,11 +1,10 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorCompletionCandidate, EditorCompletionVocabulary,
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind,
+    EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
         lalrpop_recovery_span,
@@ -138,8 +137,20 @@ struct FlowchartSemanticSource {
 }
 
 pub(crate) fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_flowchart_with_warning_facts(code, meta)
+        .map(crate::family::WarningSemanticParse::into_model)
+}
+
+pub(crate) fn parse_flowchart_with_warning_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<crate::family::WarningSemanticParse> {
     let model = parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)?;
-    render_model_to_compat_json(&model, meta)
+    let compatibility = render_model_to_compat_json(&model, meta)?;
+    Ok(crate::family::WarningSemanticParse::new(
+        compatibility,
+        model.warning_facts,
+    ))
 }
 
 pub(crate) fn parse_flowchart_json_and_editor_facts(
@@ -167,17 +178,20 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             )?;
             collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
             facts.replace_family_lexemes(trace.lexemes);
-            let model = match parse_flowchart_semantic_source_from_ast_controlled(
+            let (model, warning_facts) = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, control,
             )? {
                 Ok(source) => match source.into_render_model_controlled(meta, control)? {
-                    Ok(model) => render_model_to_compat_json(&model, meta),
-                    Err(error) => Err(error),
+                    Ok(model) => {
+                        let compatibility = render_model_to_compat_json(&model, meta);
+                        (compatibility, model.warning_facts)
+                    }
+                    Err(error) => (Err(error), Vec::new()),
                 },
-                Err(error) => Err(error),
+                Err(error) => (Err(error), Vec::new()),
             };
             control.checkpoint()?;
-            Ok((model, facts))
+            Ok((model, facts, warning_facts))
         }
         Err(error) => {
             let facts = flowchart_recovery_facts(
@@ -194,7 +208,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             Err(crate::family::CombinedSemanticFailure::new(error, facts))
         }
     };
-    let parsed = crate::family::CombinedSemanticParse::from_construction(
+    let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
         construction,
         |parts| parts,
         crate::family::CombinedSemanticFailure::into_parts,
@@ -530,6 +544,7 @@ fn construct_flowchart_token_trace(
                     Tok::NodeLabel(label) => label.recovery_error.take(),
                     Tok::DirectionStmt(direction) => direction.recovery_error.take(),
                     Tok::Arrow(arrow) => arrow.recovery_error.take(),
+                    Tok::ClickStmt(click) => click.recovery_error.take(),
                     _ => None,
                 };
                 items.push(match strict_error {
@@ -650,34 +665,11 @@ fn flowchart_warning_facts(
     ]
 }
 
-const FLOWCHART_COMPLETION_OPERATORS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("-->", "edge operator"),
-    EditorCompletionCandidate::keyword("---", "edge operator"),
-    EditorCompletionCandidate::keyword("-.->", "edge operator"),
-    EditorCompletionCandidate::keyword("==>", "edge operator"),
-    EditorCompletionCandidate::snippet("-->|label|", "labeled edge operator", "-->|${1:label}|"),
-    EditorCompletionCandidate::keyword("--o", "circle-ended edge operator"),
-];
-
-const FLOWCHART_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
-    EditorCompletionCandidate::keyword("TB", "top to bottom"),
-    EditorCompletionCandidate::keyword("TD", "top down"),
-    EditorCompletionCandidate::keyword("BT", "bottom to top"),
-    EditorCompletionCandidate::keyword("LR", "left to right"),
-    EditorCompletionCandidate::keyword("RL", "right to left"),
-];
-
-const FLOWCHART_COMPLETION_VOCABULARY: EditorCompletionVocabulary = EditorCompletionVocabulary::new(
-    FLOWCHART_COMPLETION_OPERATORS,
-    FLOWCHART_COMPLETION_DIRECTIONS,
-);
-
 fn editor_facts_from_flowchart_ast(
     ast: &FlowchartAst,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let mut facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(FLOWCHART_COMPLETION_VOCABULARY);
+    let mut facts = EditorSemanticFacts::new();
     collect_editor_facts_from_statements(&ast.statements, &mut facts, control)?;
     Ok(facts)
 }
@@ -687,8 +679,7 @@ fn recover_flowchart_editor_facts_from_tokens(
     trace: FlowchartTokenTrace,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let mut facts =
-        EditorSemanticFacts::new().with_completion_vocabulary(FLOWCHART_COMPLETION_VOCABULARY);
+    let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
     for (index, (start, token, end)) in trace.editor_tokens().enumerate() {
@@ -704,8 +695,11 @@ fn recover_flowchart_editor_facts_from_tokens(
             | FlowchartTracedItem::LexerError(strict_error) => Some(strict_error),
             FlowchartTracedItem::Token(_) => None,
         };
-        if let Some(expected) = error.and_then(|error| error.expected_syntax.as_ref()) {
-            facts.push_expected_syntax(expected.clone());
+        if let Some(error) = error {
+            push_flowchart_expected_syntax(&mut facts, error.expected_syntax.iter().copied());
+        }
+        if let Some(prefix) = error.and_then(|error| error.directive_prefix) {
+            facts.push_directive_prefix(prefix);
         }
     }
     facts.replace_family_lexemes(trace.lexemes);
@@ -762,7 +756,8 @@ fn flowchart_eof_recovery_insertion(
         && facts.expected_syntax.iter().any(|expected| {
             matches!(
                 expected.kind,
-                EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::Operator
+                EditorExpectedSyntaxKind::NodeIdentifier
+                    | EditorExpectedSyntaxKind::FlowchartOperator
             ) && expected.span.end == code.len()
         }))
     .then_some(insertion)
@@ -799,6 +794,7 @@ fn collect_expected_syntax_from_tokens<'a>(
 #[derive(Debug, Default)]
 struct FlowchartRecoveryFactCollector {
     pending_node_identifier: Option<FlowchartRecoveryTargetState>,
+    seen_entities: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -831,7 +827,7 @@ impl FlowchartRecoveryFactCollector {
             Tok::Sep => TokenKind::Sep,
             _ => TokenKind::Other,
         };
-        collect_editor_fact_from_token(code, token, start, end, facts);
+        collect_editor_fact_from_token(code, token, start, end, facts, &mut self.seen_entities);
         match token_kind {
             TokenKind::Arrow => {
                 self.pending_node_identifier = Some(FlowchartRecoveryTargetState::Awaiting(
@@ -893,9 +889,10 @@ fn collect_editor_fact_from_token(
     start: usize,
     end: usize,
     facts: &mut EditorSemanticFacts,
+    seen_entities: &mut HashSet<String>,
 ) {
     match token {
-        Tok::Id(id) => push_flowchart_token_symbol(facts, id, start, end),
+        Tok::Id(id) => push_flowchart_token_symbol(facts, id, start, end, seen_entities),
         Tok::SubgraphHeader(header) => {
             push_flowchart_header_symbol(facts, header);
         }
@@ -919,7 +916,7 @@ fn collect_editor_fact_from_token(
         Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
         Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
         Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
-        Tok::ClickStmt(_) => facts.push_directive_prefix("click"),
+        Tok::ClickStmt(stmt) => push_flowchart_click_stmt_facts(facts, stmt),
         Tok::LinkStyleStmt(_) => facts.push_directive_prefix("linkStyle"),
         Tok::KwGraph
         | Tok::KwFlowchart
@@ -946,11 +943,13 @@ fn collect_editor_facts_from_statements(
 ) -> ParseControlResult<()> {
     let mut emitted_edge_label_spans = HashSet::new();
     let mut seen_edge_ids = HashSet::new();
+    let mut seen_entities = HashSet::new();
     collect_editor_facts_from_statements_with_seen_edges(
         statements,
         facts,
         &mut emitted_edge_label_spans,
         &mut seen_edge_ids,
+        &mut seen_entities,
         control,
     )
 }
@@ -960,6 +959,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
     facts: &mut EditorSemanticFacts,
     emitted_edge_label_spans: &mut HashSet<(usize, usize)>,
     seen_edge_ids: &mut HashSet<String>,
+    seen_entities: &mut HashSet<String>,
     control: &ParseControl,
 ) -> ParseControlResult<()> {
     let mut stack = vec![statements.iter()];
@@ -980,7 +980,12 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }
-                    push_flowchart_node_symbol(facts, node);
+                    let occurrence = if edges.is_empty() || node_defines_flowchart_entity(node) {
+                        FlowchartNodeOccurrence::Definition
+                    } else {
+                        FlowchartNodeOccurrence::RelationEndpoint
+                    };
+                    push_flowchart_node_symbol(facts, node, seen_entities, occurrence);
                 }
                 for (index, edge) in edges.iter().enumerate() {
                     if index % 128 == 0 {
@@ -992,7 +997,12 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                     }
                 }
             }
-            Stmt::Node(node) => push_flowchart_node_symbol(facts, node),
+            Stmt::Node(node) => push_flowchart_node_symbol(
+                facts,
+                node,
+                seen_entities,
+                FlowchartNodeOccurrence::Definition,
+            ),
             Stmt::Subgraph(subgraph) => {
                 push_flowchart_subgraph_symbol(facts, subgraph);
                 stack.push(subgraph.statements.iter());
@@ -1000,7 +1010,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
             Stmt::Style(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
             Stmt::ClassDef(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
             Stmt::ClassAssign(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
-            Stmt::Click(_) => facts.push_directive_prefix("click"),
+            Stmt::Click(stmt) => push_flowchart_click_stmt_facts(facts, stmt),
             Stmt::LinkStyle(_) => facts.push_directive_prefix("linkStyle"),
             Stmt::ShapeData {
                 target,
@@ -1008,6 +1018,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                 ..
             } => {
                 if !seen_edge_ids.contains(target) {
+                    seen_entities.insert(target.clone());
                     push_flowchart_span_symbol(
                         facts,
                         target,
@@ -1024,17 +1035,33 @@ fn collect_editor_facts_from_statements_with_seen_edges(
     control.checkpoint()
 }
 
-fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
+fn push_flowchart_node_symbol(
+    facts: &mut EditorSemanticFacts,
+    node: &Node,
+    seen_entities: &mut HashSet<String>,
+    occurrence: FlowchartNodeOccurrence,
+) {
     if let Some(span) = node.id_span {
-        facts.push_symbol(
-            EditorSemanticSymbol::new(
-                node.id.clone(),
-                Some("flowchart node".to_string()),
-                EditorSemanticKind::Module,
-                span,
-                span,
-            )
-            .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
+        let role = match occurrence {
+            FlowchartNodeOccurrence::Definition => {
+                seen_entities.insert(node.id.clone());
+                EditorSemanticRole::Entity
+            }
+            FlowchartNodeOccurrence::RelationEndpoint => {
+                if seen_entities.insert(node.id.clone()) {
+                    EditorSemanticRole::Entity
+                } else {
+                    EditorSemanticRole::Reference
+                }
+            }
+        };
+        push_flowchart_span_symbol(
+            facts,
+            &node.id,
+            "flowchart node",
+            EditorSemanticKind::Module,
+            Some(span),
+            role,
         );
     }
 
@@ -1047,6 +1074,16 @@ fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
             node.label_selection,
         );
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FlowchartNodeOccurrence {
+    Definition,
+    RelationEndpoint,
+}
+
+fn node_defines_flowchart_entity(node: &Node) -> bool {
+    node.label.is_some() || node.shape_data.is_some() || !node.classes.is_empty()
 }
 
 fn push_flowchart_edge_label_symbol(
@@ -1074,13 +1111,14 @@ fn push_flowchart_edge_label_symbol(
 
 fn push_flowchart_style_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &StyleStmt) {
     facts.push_directive_prefix("style");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
     push_flowchart_span_symbol(
         facts,
         &stmt.target,
         "flowchart style target",
         EditorSemanticKind::Module,
         stmt.target_span,
-        EditorSemanticRole::Entity,
+        EditorSemanticRole::Reference,
     );
     if let (Some(text), Some(span)) = (stmt.styles_text.as_deref(), stmt.styles_span) {
         push_flowchart_payload_symbol(facts, text, "flowchart style", Some(span), Some(span));
@@ -1089,6 +1127,7 @@ fn push_flowchart_style_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Style
 
 fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClassDefStmt) {
     facts.push_directive_prefix("classDef");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
     for (id, span) in stmt.ids.iter().zip(stmt.id_spans.iter().copied()) {
         push_flowchart_span_symbol(
             facts,
@@ -1096,7 +1135,7 @@ fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Cl
             "flowchart class definition",
             EditorSemanticKind::Property,
             Some(span),
-            EditorSemanticRole::Outline,
+            EditorSemanticRole::ClassDefinition,
         );
     }
     if let (Some(text), Some(span)) = (stmt.styles_text.as_deref(), stmt.styles_span) {
@@ -1112,6 +1151,7 @@ fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Cl
 
 fn push_flowchart_class_assign_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClassAssignStmt) {
     facts.push_directive_prefix("class");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
     for (target, span) in stmt.targets.iter().zip(stmt.target_spans.iter().copied()) {
         push_flowchart_span_symbol(
             facts,
@@ -1119,7 +1159,7 @@ fn push_flowchart_class_assign_stmt_facts(facts: &mut EditorSemanticFacts, stmt:
             "flowchart class target",
             EditorSemanticKind::Module,
             Some(span),
-            EditorSemanticRole::Entity,
+            EditorSemanticRole::Reference,
         );
     }
     push_flowchart_span_symbol(
@@ -1130,6 +1170,31 @@ fn push_flowchart_class_assign_stmt_facts(facts: &mut EditorSemanticFacts, stmt:
         stmt.class_name_span,
         EditorSemanticRole::Payload,
     );
+}
+
+fn push_flowchart_click_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClickStmt) {
+    facts.push_directive_prefix("click");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
+    push_flowchart_expected_syntax(facts, stmt.interaction_evidence.iter());
+    for (id, span) in stmt.ids.iter().zip(stmt.id_spans.iter().copied()) {
+        push_flowchart_span_symbol(
+            facts,
+            id,
+            "flowchart interaction target",
+            EditorSemanticKind::Module,
+            Some(span),
+            EditorSemanticRole::Reference,
+        );
+    }
+}
+
+fn push_flowchart_expected_syntax(
+    facts: &mut EditorSemanticFacts,
+    expected_syntax: impl IntoIterator<Item = EditorExpectedSyntax>,
+) {
+    for expected in expected_syntax {
+        facts.push_expected_syntax(expected);
+    }
 }
 
 fn push_flowchart_span_symbol(
@@ -1154,11 +1219,16 @@ fn push_flowchart_span_symbol(
         span,
         span,
     );
-    facts.push_symbol(if role == EditorSemanticRole::Entity {
-        symbol.with_rename_policy(EditorRenamePolicy::FlowchartNodeId)
-    } else {
-        symbol
-    });
+    facts.push_symbol(
+        if matches!(
+            role,
+            EditorSemanticRole::Entity | EditorSemanticRole::Reference
+        ) {
+            symbol.with_rename_policy(EditorRenamePolicy::FlowchartNodeId)
+        } else {
+            symbol
+        },
+    );
 }
 
 fn push_flowchart_labeled_payload_symbol(
@@ -1223,7 +1293,7 @@ fn push_flowchart_direction_value_expected_syntax(
     facts: &mut EditorSemanticFacts,
 ) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::DirectionValue,
+        EditorExpectedSyntaxKind::FlowchartDirectionValue,
         span,
     ));
 }
@@ -1471,20 +1541,24 @@ fn push_flowchart_token_symbol(
     id: &str,
     start: usize,
     end: usize,
+    seen_entities: &mut HashSet<String>,
 ) {
     if id.is_empty() {
         return;
     }
     let span = crate::SourceSpan::new(start, end);
-    facts.push_symbol(
-        EditorSemanticSymbol::new(
-            id.to_string(),
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            span,
-            span,
-        )
-        .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
+    let role = if seen_entities.insert(id.to_string()) {
+        EditorSemanticRole::Entity
+    } else {
+        EditorSemanticRole::Reference
+    };
+    push_flowchart_span_symbol(
+        facts,
+        id,
+        "flowchart node",
+        EditorSemanticKind::Module,
+        Some(span),
+        role,
     );
 }
 
@@ -2040,33 +2114,14 @@ F -- "&nbsp;" --> G
     }
 
     #[test]
-    fn completion_vocabulary_contains_only_parser_accepted_flowchart_syntax() {
-        let meta = ParseMetadata {
-            diagram_type: "flowchart-v2".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
-            title: None,
-        };
+    fn flowchart_parser_families_expose_typed_editor_semantics() {
+        let semantics = crate::family::diagram_type_editor_semantics("flowchart-v2")
+            .expect("flowchart is an admitted family");
 
-        for candidate in FLOWCHART_COMPLETION_OPERATORS {
-            let source = format!("flowchart TD\nA {} B\n", candidate.label());
-            parse_flowchart_ast(&source, &meta).unwrap_or_else(|error| {
-                panic!(
-                    "flowchart completion operator {:?} must parse: {error}",
-                    candidate.label()
-                )
-            });
-        }
-
-        for candidate in FLOWCHART_COMPLETION_DIRECTIONS {
-            let source = format!("flowchart {}\nA --> B\n", candidate.label());
-            parse_flowchart_ast(&source, &meta).unwrap_or_else(|error| {
-                panic!(
-                    "flowchart completion direction {:?} must parse: {error}",
-                    candidate.label()
-                )
-            });
-        }
+        assert_eq!(semantics.outline_kind(), EditorSemanticKind::Module);
+        let swimlane = crate::family::diagram_type_editor_semantics("swimlane")
+            .expect("swimlane is an admitted family");
+        assert_eq!(swimlane.outline_kind(), EditorSemanticKind::Variable);
     }
 
     #[test]

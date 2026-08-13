@@ -1,45 +1,87 @@
+#[cfg(test)]
+use crate::rules::INTERNAL_RULE_REGISTRY_GAP_RULE;
 use crate::rules::{
-    DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID,
-    INVALID_FRONT_MATTER_YAML_RULE_ID, INVALID_THEME_COLOR_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID,
-    NO_DIAGRAM_RULE_ID, PANIC_RULE_ID, PARSER_CONTRACT_VIOLATION_RULE_ID, RuleDescriptor,
-    UNSUPPORTED_DIAGRAM_RULE_ID, internal_rule_registry_gap_diagnostic, rule_descriptor,
+    DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, INVALID_DIRECTIVE_JSON_RULE,
+    INVALID_FRONT_MATTER_YAML_RULE, INVALID_THEME_COLOR_RULE, MALFORMED_FRONT_MATTER_RULE,
+    NO_DIAGRAM_RULE, PANIC_RULE, PARSER_CONTRACT_VIOLATION_RULE, RuleDescriptor,
+    UNSUPPORTED_DIAGRAM_RULE, rule_descriptor,
 };
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisDiagnosticPolicy,
-    AnalysisStatus, SourceMap,
+    AnalysisStatus, DiagnosticFix, DiagnosticRelated, DiagnosticSpan, SourceMap,
 };
 use merman_core::{
     EditorSemanticDiagnosticKind, Error as CoreError, ParseDiagnostic, ParseDiagnosticSpanKind,
 };
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
 
-/// A complete diagnostic before rule filtering and severity resolution.
+/// Policy-neutral diagnostic meaning retained by an analysis generation.
 #[derive(Debug, Clone)]
 pub(crate) struct DiagnosticCandidate {
-    diagnostic: AnalysisDiagnostic,
     descriptor: RuleDescriptor,
-    suppressor_ids: &'static [&'static str],
+    status: Option<AnalysisStatus>,
+    message: String,
+    diagram_type: Option<String>,
+    span: Option<DiagnosticSpan>,
+    related: Vec<DiagnosticRelated>,
+    help: Option<String>,
+    fixes: Vec<DiagnosticFix>,
+    suppressors: &'static [RuleDescriptor],
     parse_location: Option<ParseDiagnosticLocation>,
     recovery_kind: Option<EditorSemanticDiagnosticKind>,
     trailing_source_context_count: usize,
 }
 
 impl DiagnosticCandidate {
-    pub(crate) fn new(diagnostic: AnalysisDiagnostic) -> Self {
-        let descriptor = rule_descriptor(&diagnostic.id)
-            .expect("analysis diagnostics must reference a registered rule");
+    pub(crate) fn new(descriptor: RuleDescriptor, message: impl Into<String>) -> Self {
         Self {
-            diagnostic,
             descriptor,
-            suppressor_ids: &[],
+            status: None,
+            message: message.into(),
+            diagram_type: None,
+            span: None,
+            related: Vec::new(),
+            help: None,
+            fixes: Vec::new(),
+            suppressors: &[],
             parse_location: None,
             recovery_kind: None,
             trailing_source_context_count: 0,
         }
     }
 
-    pub(crate) fn with_suppressors(mut self, suppressor_ids: &'static [&'static str]) -> Self {
-        self.suppressor_ids = suppressor_ids;
+    pub(crate) const fn with_status(mut self, status: AnalysisStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    pub(crate) fn with_diagram_type(mut self, diagram_type: impl Into<String>) -> Self {
+        self.diagram_type = Some(diagram_type.into());
+        self
+    }
+
+    pub(crate) const fn with_span(mut self, span: DiagnosticSpan) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    pub(crate) fn with_related(mut self, related: DiagnosticRelated) -> Self {
+        self.related.push(related);
+        self
+    }
+
+    pub(crate) fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+
+    pub(crate) fn with_fix(mut self, fix: DiagnosticFix) -> Self {
+        self.fixes.push(fix);
+        self
+    }
+
+    pub(crate) fn with_suppressors(mut self, suppressors: &'static [RuleDescriptor]) -> Self {
+        self.suppressors = suppressors;
         self
     }
 
@@ -59,11 +101,15 @@ impl DiagnosticCandidate {
         self
     }
 
-    pub(crate) fn try_map_diagnostic<E>(
+    pub(crate) fn try_map_locations<E>(
         mut self,
-        map: impl FnOnce(AnalysisDiagnostic) -> Result<AnalysisDiagnostic, E>,
+        map: impl FnOnce(
+            &mut Option<DiagnosticSpan>,
+            &mut Vec<DiagnosticRelated>,
+            &mut Vec<DiagnosticFix>,
+        ) -> Result<(), E>,
     ) -> Result<Self, E> {
-        self.diagnostic = map(self.diagnostic)?;
+        map(&mut self.span, &mut self.related, &mut self.fixes)?;
         Ok(self)
     }
 
@@ -71,7 +117,7 @@ impl DiagnosticCandidate {
         mut self,
         context: crate::DiagnosticRelated,
     ) -> Self {
-        self.diagnostic.related.push(context);
+        self.related.push(context);
         self.trailing_source_context_count = self.trailing_source_context_count.saturating_add(1);
         self
     }
@@ -80,13 +126,33 @@ impl DiagnosticCandidate {
         &self,
         weight: &mut crate::payload::DiagnosticRetainedWeight,
     ) {
-        weight.add_diagnostic(&self.diagnostic);
+        weight.add_candidate(crate::payload::DiagnosticDynamicWeight {
+            tags_capacity: 0,
+            message_capacity: self.message.capacity(),
+            diagram_type_capacity: self.diagram_type.as_ref().map(String::capacity),
+            help_capacity: self.help.as_ref().map(String::capacity),
+            related: &self.related,
+            related_capacity: self.related.capacity(),
+            fixes: &self.fixes,
+            fixes_capacity: self.fixes.capacity(),
+        });
     }
 
     fn materialize(&self, severity: crate::DiagnosticSeverity) -> AnalysisDiagnostic {
-        let mut diagnostic = self.diagnostic.clone();
-        diagnostic.severity = severity;
-        diagnostic
+        AnalysisDiagnostic {
+            id: self.descriptor.id.to_string(),
+            severity,
+            category: self.descriptor.category,
+            tags: self.descriptor.tags.to_vec(),
+            message: self.message.clone(),
+            code: self.status.map(AnalysisStatus::code),
+            code_name: self.status.map(|status| status.code_name().to_string()),
+            diagram_type: self.diagram_type.clone(),
+            span: self.span,
+            related: self.related.clone(),
+            help: self.help.clone(),
+            fixes: self.fixes.clone(),
+        }
     }
 
     #[cfg(test)]
@@ -124,20 +190,19 @@ pub(crate) fn append_projected_diagnostic_candidates(
 
         let diagnostic = candidate.materialize(rule_config.severity_for(candidate.descriptor));
         if let Some(kind) = candidate.recovery_kind {
-            let recovery =
-                crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(diagnostic, kind);
             let merged = primary_parse.is_some_and(|primary: ProjectedPrimaryParse| {
                 crate::recovery::merge_duplicate_parse_recovery_diagnostic(
                     &mut diagnostics[primary.diagnostic_index],
                     primary.trailing_source_context_count,
-                    &recovery,
+                    &diagnostic,
+                    kind,
                     primary.parse_location,
                 )
             });
             if merged {
                 continue;
             }
-            diagnostics.push(recovery.diagnostic);
+            diagnostics.push(diagnostic);
             continue;
         }
 
@@ -178,33 +243,16 @@ pub(crate) fn materialize_diagnostic_candidates(
         .expect("a private analysis cancellation token cannot be cancelled")
 }
 
-pub(crate) fn candidates_from_diagnostics_cancellable(
-    diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
-    cancellation: &AnalysisCancellationToken,
-) -> Result<Vec<DiagnosticCandidate>, AnalysisCancelled> {
-    let mut candidates = Vec::new();
-    extend_candidates_from_diagnostics_cancellable(&mut candidates, diagnostics, cancellation)?;
-    Ok(candidates)
-}
-
-pub(crate) fn candidates_from_diagnostics(
-    diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
-) -> Vec<DiagnosticCandidate> {
-    let cancellation = AnalysisCancellationToken::new();
-    candidates_from_diagnostics_cancellable(diagnostics, &cancellation)
-        .expect("a private analysis cancellation token cannot be cancelled")
-}
-
-pub(crate) fn extend_candidates_from_diagnostics_cancellable(
-    candidates: &mut Vec<DiagnosticCandidate>,
-    diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
+pub(crate) fn append_diagnostic_candidates_cancellable(
+    target: &mut Vec<DiagnosticCandidate>,
+    candidates: Vec<DiagnosticCandidate>,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<(), AnalysisCancelled> {
-    for (index, diagnostic) in diagnostics.into_iter().enumerate() {
+    for (index, candidate) in candidates.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        candidates.push(DiagnosticCandidate::new(diagnostic));
+        target.push(candidate);
     }
     cancellation.checkpoint()?;
     Ok(())
@@ -215,15 +263,16 @@ fn candidate_enabled(
     rule_config: &crate::rules::AnalysisRuleConfig,
 ) -> bool {
     rule_config.is_rule_enabled(candidate.descriptor)
-        && !candidate.suppressor_ids.iter().any(|rule_id| {
-            rule_descriptor(rule_id)
-                .is_some_and(|descriptor| rule_config.is_rule_enabled(descriptor))
-        })
+        && !candidate
+            .suppressors
+            .iter()
+            .copied()
+            .any(|descriptor| rule_config.is_rule_enabled(descriptor))
 }
 
 #[derive(Debug)]
-pub(crate) struct CoreErrorDiagnostic {
-    pub(crate) diagnostic: Option<AnalysisDiagnostic>,
+pub(crate) struct CoreErrorCandidate {
+    pub(crate) candidate: DiagnosticCandidate,
     pub(crate) diagram_type: Option<String>,
     pub(crate) parse_location: Option<ParseDiagnosticLocation>,
 }
@@ -235,64 +284,59 @@ pub(crate) enum ParseDiagnosticLocation {
 }
 
 struct ParseDiagnosticProjection {
-    diagnostic: AnalysisDiagnostic,
+    candidate: DiagnosticCandidate,
     location: ParseDiagnosticLocation,
 }
 
-pub(crate) fn core_error_diagnostic(
+pub(crate) fn core_error_candidate(
     error: &CoreError,
     source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> CoreErrorDiagnostic {
+) -> CoreErrorCandidate {
     match error {
-        CoreError::ParseCancelled(error) => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                PARSER_CONTRACT_VIOLATION_RULE_ID,
+        CoreError::ParseCancelled(error) => CoreErrorCandidate {
+            candidate: rule_candidate(
+                PARSER_CONTRACT_VIOLATION_RULE,
                 AnalysisStatus::InternalError,
                 format!(
                     "custom parser returned cancellation to a non-cancellable analysis facade: {error}"
                 ),
                 source_map,
-                rule_config,
             ),
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::ThemeColor(error) => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic_without_default_span(
-                INVALID_THEME_COLOR_RULE_ID,
+        CoreError::ThemeColor(error) => CoreErrorCandidate {
+            candidate: rule_candidate_without_default_span(
+                INVALID_THEME_COLOR_RULE,
                 AnalysisStatus::ParseError,
                 error.to_string(),
-                rule_config,
             ),
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::RuntimePolicy(error) => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                DIAGRAM_PARSE_RULE_ID,
+        CoreError::RuntimePolicy(error) => CoreErrorCandidate {
+            candidate: rule_candidate(
+                DIAGRAM_PARSE_RULE,
                 AnalysisStatus::ParseError,
                 error.to_string(),
                 source_map,
-                rule_config,
             ),
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::DetectType(_) => CoreErrorDiagnostic {
-            diagnostic: no_diagram_diagnostic(source_map, rule_config),
+        CoreError::DetectType(_) => CoreErrorCandidate {
+            candidate: no_diagram_candidate(source_map),
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::UnsupportedDiagram { diagram_type } => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                UNSUPPORTED_DIAGRAM_RULE_ID,
+        CoreError::UnsupportedDiagram { diagram_type } => CoreErrorCandidate {
+            candidate: rule_candidate(
+                UNSUPPORTED_DIAGRAM_RULE,
                 AnalysisStatus::UnsupportedFormat,
                 format!("unsupported diagram type: {diagram_type}"),
                 source_map,
-                rule_config,
             )
-            .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
+            .with_diagram_type(diagram_type.clone()),
             diagram_type: Some(diagram_type.clone()),
             parse_location: None,
         },
@@ -300,46 +344,39 @@ pub(crate) fn core_error_diagnostic(
             diagram_type,
             diagnostic,
         } => {
-            let (diagnostic, parse_location) =
-                match parse_diagnostic(diagnostic, diagram_type, source_map, rule_config) {
-                    Some(projection) => (Some(projection.diagnostic), Some(projection.location)),
-                    None => (None, None),
-                };
-            CoreErrorDiagnostic {
-                diagnostic,
+            let projection = parse_diagnostic(diagnostic, diagram_type, source_map);
+            CoreErrorCandidate {
+                candidate: projection.candidate,
                 diagram_type: Some(diagram_type.clone()),
-                parse_location,
+                parse_location: Some(projection.location),
             }
         }
-        CoreError::MalformedFrontMatter => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                MALFORMED_FRONT_MATTER_RULE_ID,
+        CoreError::MalformedFrontMatter => CoreErrorCandidate {
+            candidate: rule_candidate(
+                MALFORMED_FRONT_MATTER_RULE,
                 AnalysisStatus::ParseError,
                 CoreError::MalformedFrontMatter.to_string(),
                 source_map,
-                rule_config,
             ),
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::InvalidDirectiveJson { message } => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                INVALID_DIRECTIVE_JSON_RULE_ID,
+        CoreError::InvalidDirectiveJson { message } => CoreErrorCandidate {
+            candidate: rule_candidate(
+                INVALID_DIRECTIVE_JSON_RULE,
                 AnalysisStatus::ParseError,
                 format!("invalid directive JSON: {message}"),
                 source_map,
-                rule_config,
             ),
             diagram_type: None,
             parse_location: None,
         },
-        CoreError::InvalidFrontMatterYaml { message } => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                INVALID_FRONT_MATTER_YAML_RULE_ID,
+        CoreError::InvalidFrontMatterYaml { message } => CoreErrorCandidate {
+            candidate: rule_candidate(
+                INVALID_FRONT_MATTER_YAML_RULE,
                 AnalysisStatus::ParseError,
                 format!("invalid YAML front-matter: {message}"),
                 source_map,
-                rule_config,
             ),
             diagram_type: None,
             parse_location: None,
@@ -351,19 +388,16 @@ fn parse_diagnostic(
     diagnostic: &ParseDiagnostic,
     diagram_type: &str,
     source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<ParseDiagnosticProjection> {
-    let rule_id = diagnostic
+) -> ParseDiagnosticProjection {
+    let descriptor = diagnostic
         .code()
         .and_then(rule_descriptor)
-        .map(|descriptor| descriptor.id)
-        .unwrap_or(DIAGRAM_PARSE_RULE_ID);
-    let mut out = rule_diagnostic_without_default_span(
-        rule_id,
+        .unwrap_or(DIAGRAM_PARSE_RULE);
+    let mut out = rule_candidate_without_default_span(
+        descriptor,
         AnalysisStatus::ParseError,
         diagnostic.message().to_string(),
-        rule_config,
-    )?
+    )
     .with_diagram_type(diagram_type);
     let location;
 
@@ -377,125 +411,86 @@ fn parse_diagnostic(
                 location = ParseDiagnosticLocation::Precise;
             }
             ParseDiagnosticSpanKind::Fallback => {
-                out.related.push(crate::DiagnosticRelated {
+                out = out.with_span(span).with_related(crate::DiagnosticRelated {
                     message: "Parser reported a fallback location for this syntax error."
                         .to_string(),
                     span: Some(span),
                 });
-                out = out.with_span(span);
                 location = ParseDiagnosticLocation::Fallback;
             }
         }
     } else if let Ok(span) = source_map.whole_source_span() {
-        out.related.push(crate::DiagnosticRelated {
+        out = out.with_span(span).with_related(crate::DiagnosticRelated {
             message: "Parser did not report a precise source location for this syntax error."
                 .to_string(),
             span: Some(span),
         });
-        out = out.with_span(span);
         location = ParseDiagnosticLocation::Fallback;
     } else {
         location = ParseDiagnosticLocation::Fallback;
     }
 
-    Some(ParseDiagnosticProjection {
-        diagnostic: out,
+    ParseDiagnosticProjection {
+        candidate: out,
         location,
-    })
+    }
 }
 
-pub(crate) fn panic_diagnostic(
-    message: &str,
-    source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    rule_diagnostic(
-        PANIC_RULE_ID,
-        AnalysisStatus::Panic,
-        message,
-        source_map,
-        rule_config,
-    )
+pub(crate) fn panic_candidate(message: &str, source_map: &SourceMap) -> DiagnosticCandidate {
+    rule_candidate(PANIC_RULE, AnalysisStatus::Panic, message, source_map)
 }
 
-pub(crate) fn flowchart_facts_projection_diagnostic(
-    error: impl std::fmt::Display,
-    diagram_type: &str,
-    source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    rule_diagnostic(
-        FLOWCHART_FACTS_PROJECTION_RULE_ID,
-        AnalysisStatus::InternalError,
-        format!("failed to project flowchart facts from parser model: {error}"),
-        source_map,
-        rule_config,
-    )
-    .map(|diagnostic| diagnostic.with_diagram_type(diagram_type))
-}
-
-pub(crate) fn no_diagram_diagnostic(
-    source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    rule_diagnostic(
-        NO_DIAGRAM_RULE_ID,
+pub(crate) fn no_diagram_candidate(source_map: &SourceMap) -> DiagnosticCandidate {
+    rule_candidate(
+        NO_DIAGRAM_RULE,
         AnalysisStatus::NoDiagram,
         NO_DIAGRAM_MESSAGE,
         source_map,
-        rule_config,
     )
 }
 
-pub(crate) fn rule_diagnostic(
-    rule_id: &'static str,
+#[cfg(test)]
+pub(crate) fn candidate_for_rule_id(
+    rule_id: &str,
     status: AnalysisStatus,
     message: impl Into<String>,
     source_map: &SourceMap,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
+) -> DiagnosticCandidate {
     let message = message.into();
     let Some(descriptor) = rule_descriptor(rule_id) else {
-        return Some(internal_rule_registry_gap_diagnostic(
+        let mut candidate = rule_candidate_without_default_span(
+            INTERNAL_RULE_REGISTRY_GAP_RULE,
+            AnalysisStatus::InternalError,
             format!("unknown analysis rule id `{rule_id}` while emitting diagnostic: {message}"),
-            source_map.whole_source_span().ok(),
-        ));
+        );
+        if let Ok(span) = source_map.whole_source_span() {
+            candidate = candidate.with_span(span);
+        }
+        return candidate;
     };
 
-    if !rule_config.is_rule_enabled(descriptor) {
-        return None;
-    }
-
-    let mut diagnostic =
-        rule_diagnostic_without_default_span(rule_id, status, message, rule_config)?;
-    if let Ok(span) = source_map.whole_source_span() {
-        diagnostic = diagnostic.with_span(span);
-    }
-    Some(diagnostic)
+    rule_candidate(descriptor, status, message, source_map)
 }
 
-pub(crate) fn rule_diagnostic_without_default_span(
-    rule_id: &'static str,
+pub(crate) fn rule_candidate(
+    descriptor: RuleDescriptor,
     status: AnalysisStatus,
     message: impl Into<String>,
-    rule_config: &crate::rules::AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    let message = message.into();
-    let descriptor = rule_descriptor(rule_id)?;
-
-    if !rule_config.is_rule_enabled(descriptor) {
-        return None;
+    source_map: &SourceMap,
+) -> DiagnosticCandidate {
+    let mut candidate = rule_candidate_without_default_span(descriptor, status, message);
+    if let Ok(span) = source_map.whole_source_span() {
+        candidate = candidate.with_span(span);
     }
+    candidate
+}
 
-    Some(
-        AnalysisDiagnostic::new(
-            descriptor.id,
-            rule_config.severity_for(descriptor),
-            descriptor.category,
-            message,
-        )
-        .with_code(status.code(), status.code_name()),
-    )
+pub(crate) fn rule_candidate_without_default_span(
+    descriptor: RuleDescriptor,
+    status: AnalysisStatus,
+    message: impl Into<String>,
+) -> DiagnosticCandidate {
+    DiagnosticCandidate::new(descriptor, message).with_status(status)
 }
 
 #[cfg(test)]
@@ -503,24 +498,20 @@ mod tests {
     use super::*;
     use crate::{
         DiagnosticCategory, DiagnosticSeverity,
-        rules::{
-            AnalysisRuleConfig, DIAGRAM_PARSE_RULE_ID, INVALID_THEME_COLOR_RULE_ID,
-            RECOVERED_EDITOR_FACTS_RULE_ID,
-        },
+        rules::{DIAGRAM_PARSE_RULE_ID, INVALID_THEME_COLOR_RULE_ID, RECOVERED_EDITOR_FACTS_RULE},
     };
     use merman_core::theme_color::ColorError;
 
     #[test]
     fn theme_color_errors_are_config_diagnostics_without_fabricated_source_ownership() {
-        let projection = core_error_diagnostic(
+        let projection = core_error_candidate(
             &CoreError::ThemeColor(ColorError::UnsupportedFormat {
                 input: "not-a-color".to_string(),
             }),
             &SourceMap::new("flowchart TD\nA-->B\n"),
-            &AnalysisRuleConfig::default(),
         );
 
-        let diagnostic = projection.diagnostic.expect("theme color diagnostic");
+        let diagnostic = projection.candidate.materialize(DiagnosticSeverity::Error);
         assert_eq!(diagnostic.id, INVALID_THEME_COLOR_RULE_ID);
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
         assert_eq!(diagnostic.category, DiagnosticCategory::Config);
@@ -540,43 +531,21 @@ mod tests {
         let span = source_map.whole_source_span().unwrap();
         let mut candidates = Vec::with_capacity(FILLER_COUNT + RECOVERY_COUNT + 2);
         candidates.extend((0..FILLER_COUNT).map(|index| {
-            DiagnosticCandidate::new(AnalysisDiagnostic::new(
-                INVALID_THEME_COLOR_RULE_ID,
-                DiagnosticSeverity::Error,
-                DiagnosticCategory::Config,
-                format!("filler {index}"),
-            ))
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, format!("filler {index}"))
         }));
         candidates.push(
-            DiagnosticCandidate::new(
-                AnalysisDiagnostic::error(
-                    DIAGRAM_PARSE_RULE_ID,
-                    DiagnosticCategory::Parse,
-                    "primary parse failure",
-                )
+            DiagnosticCandidate::new(DIAGRAM_PARSE_RULE, "primary parse failure")
                 .with_diagram_type("flowchart-v2")
-                .with_span(span),
-            )
-            .with_parse_location(Some(ParseDiagnosticLocation::Fallback)),
+                .with_span(span)
+                .with_parse_location(Some(ParseDiagnosticLocation::Fallback)),
         );
         candidates.extend((0..RECOVERY_COUNT).map(|index| {
-            DiagnosticCandidate::new(
-                AnalysisDiagnostic::error(
-                    RECOVERED_EDITOR_FACTS_RULE_ID,
-                    DiagnosticCategory::Parse,
-                    format!("recovery {index}"),
-                )
+            DiagnosticCandidate::new(RECOVERED_EDITOR_FACTS_RULE, format!("recovery {index}"))
                 .with_diagram_type("flowchart-v2")
-                .with_span(span),
-            )
-            .with_recovery_kind(EditorSemanticDiagnosticKind::ParserRecovery)
+                .with_span(span)
+                .with_recovery_kind(EditorSemanticDiagnosticKind::ParserRecovery)
         }));
-        candidates.push(DiagnosticCandidate::new(AnalysisDiagnostic::new(
-            INVALID_THEME_COLOR_RULE_ID,
-            DiagnosticSeverity::Error,
-            DiagnosticCategory::Config,
-            "tail",
-        )));
+        candidates.push(DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "tail"));
 
         let analyzer = crate::Analyzer::new();
         let diagnostics = project_diagnostic_candidates(
@@ -600,21 +569,77 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_candidate_conversion_observes_cancellation() {
-        let diagnostics = (0..1_024).map(|index| {
-            AnalysisDiagnostic::new(
-                INVALID_THEME_COLOR_RULE_ID,
-                DiagnosticSeverity::Error,
-                DiagnosticCategory::Config,
-                format!("diagnostic {index}"),
+    fn candidate_retained_weight_counts_dynamic_fields_and_shared_fix_edits_once() {
+        fn retained_weight(candidates: &[DiagnosticCandidate]) -> usize {
+            let mut weight = crate::payload::DiagnosticRetainedWeight::default();
+            for candidate in candidates {
+                candidate.add_estimated_owned_heap_bytes(&mut weight);
+            }
+            weight.finish()
+        }
+
+        let span = SourceMap::new("flowchart TD\nA-->B\n")
+            .whole_source_span()
+            .expect("fixture span");
+        let base = DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "message");
+        let rich = DiagnosticCandidate::new(
+            INVALID_THEME_COLOR_RULE,
+            "candidate message allocation".repeat(8),
+        )
+        .with_diagram_type("flowchart-v2".repeat(8))
+        .with_help("candidate help allocation".repeat(8))
+        .with_related(DiagnosticRelated {
+            message: "related allocation".repeat(8),
+            span: Some(span),
+        })
+        .with_fix(DiagnosticFix::new(
+            "fix allocation".repeat(8),
+            vec![crate::DiagnosticFixEdit::new(
+                span,
+                "replacement allocation".repeat(8),
+            )],
+        ));
+
+        assert!(retained_weight(&[rich]) > retained_weight(&[base]));
+
+        let make_fix = || {
+            DiagnosticFix::new(
+                "shared fix allocation".repeat(8),
+                vec![crate::DiagnosticFixEdit::new(
+                    span,
+                    "shared replacement allocation".repeat(8),
+                )],
             )
-        });
+        };
+        let shared_fix = make_fix();
+        let shared = [
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "first")
+                .with_fix(shared_fix.clone()),
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "second").with_fix(shared_fix),
+        ];
+        let distinct = [
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "first").with_fix(make_fix()),
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "second").with_fix(make_fix()),
+        ];
+
+        assert!(retained_weight(&distinct) > retained_weight(&shared));
+    }
+
+    #[test]
+    fn candidate_append_observes_cancellation_during_large_moves() {
+        let candidates = (0..1_024)
+            .map(|index| {
+                DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, format!("candidate {index}"))
+            })
+            .collect();
         let cancellation = AnalysisCancellationToken::new();
         cancellation.cancel_after_checkpoints(2);
+        let mut appended = Vec::new();
 
         assert!(matches!(
-            candidates_from_diagnostics_cancellable(diagnostics, &cancellation),
+            append_diagnostic_candidates_cancellable(&mut appended, candidates, &cancellation,),
             Err(AnalysisCancelled)
         ));
+        assert!(appended.len() < 1_024);
     }
 }

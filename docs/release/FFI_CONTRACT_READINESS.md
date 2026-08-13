@@ -9,13 +9,13 @@ sets and release evidence differ.
 
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
-| `public-native` | green | C ABI 3, Android JNI transport API 1, UniFFI API 3, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
+| `public-native` | green | C ABI 3, Android JNI transport API 1, UniFFI API 4, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
 | `public-typst` | green | Typst plugin ABI 2 with SVG, canonical analysis, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix |
 | `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public six-package contract, generated wire contract, target install/render smokes, and verified npm package-group workflow |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 1. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
-partial-table consumers are no longer a supported SDK target. UniFFI remains API 3. Source SDK
+partial-table consumers are no longer a supported SDK target. UniFFI is API 4. Source SDK
 breaks do not retain compatibility aliases.
 
 ## Dependency boundary

@@ -8,6 +8,7 @@
 
 mod analyzer;
 mod cancellation;
+mod config_contract;
 mod diagnostic_projection;
 pub mod document;
 mod document_limits;
@@ -20,10 +21,11 @@ mod result;
 mod retained_weight;
 mod rules;
 mod source_config_rewrite;
-mod source_directives;
 mod source_limits;
 mod source_map;
 mod status;
+#[cfg(test)]
+mod test_support;
 
 pub use analyzer::{
     ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity,
@@ -32,6 +34,14 @@ pub use analyzer::{
     analysis_resource_profile_value,
 };
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
+pub use config_contract::{
+    ANALYSIS_CONFIG_CLIENT_CONSTRAINTS_VERSION, AnalysisConfigChange, AnalysisConfigChangeScope,
+    AnalysisConfigClientConstraints, AnalysisConfigClientObjectField,
+    AnalysisConfigClientProjection, AnalysisConfigClientRuntimeConstraint,
+    AnalysisConfigClientSetting, AnalysisConfigClientSettingNormalization,
+    AnalysisConfigClientValueSet, AnalysisConfigContract, AnalysisConfigHostDefaults,
+    AnalysisConfigHostDefaultsError, AnalysisConfigSchemaProjection, FIXED_TODAY_SCHEMA_PATTERN,
+};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,
     FenceMarker, SharedTextSlice, analyze_document, analyze_document_facts,
@@ -39,28 +49,23 @@ pub use document::{
     analyze_document_generation_shared_cancellable, source_descriptor_for_kind,
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
-pub use editor::{
-    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
-    FenceExpectedSyntaxKind, FenceLexeme, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
-    FenceLineItem, FenceReferenceGroup, FenceRenamePolicy, FenceSemanticItem, FenceSemanticRole,
-    FenceTextIndex, FenceTextIndexSource,
-};
+pub use editor::{ByteSpan, FenceTextIndex, FenceTextIndexSource};
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
     ResourceOptionsJson, analysis_options_from_json_value, analysis_options_json_from_json_value,
 };
 pub use payload::{
-    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisDiagnostic, AnalysisPayload,
-    DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSeverity,
-    DiagnosticSpan, LspRange, SourceDescriptor, SourceKind, SourcePosition, Summary, Utf16Position,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisDiagnostic,
+    AnalysisDiagnosticTag, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
+    DiagnosticRelated, DiagnosticSeverity, DiagnosticSpan, LspRange, SourceDescriptor, SourceKind,
+    SourcePosition, Summary, Utf16Position,
 };
 pub use result::{
     AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,
-    AnalysisExpectedSyntaxFacts, AnalysisFactSpan, AnalysisFactsPayload,
-    AnalysisFenceDelimiterFacts, AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts,
-    AnalysisFlowchartFacts, AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts,
-    AnalysisGeneration, AnalysisLineItemFacts, AnalysisReferenceFacts, AnalysisRejection,
-    AnalysisResourceLimit, AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram,
+    AnalysisEditorSymbolKind, AnalysisExpectedSyntaxFacts, AnalysisExpectedSyntaxKind,
+    AnalysisFactSpan, AnalysisFactsPayload, AnalysisFenceDelimiterFacts, AnalysisGeneration,
+    AnalysisLineItemFacts, AnalysisReferenceFacts, AnalysisRejection, AnalysisResourceLimit,
+    AnalysisSemanticItemFacts, AnalysisSemanticRole, AnalysisSyntaxFacts, AnalyzedDiagram,
     DiagramParseDisposition,
 };
 pub use rules::{

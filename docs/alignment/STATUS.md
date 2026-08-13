@@ -17,7 +17,7 @@ prose ownership boundary.
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
 | Language catalog | All 35 built-in families are available independently of optional render backends |
-| Editor facts | All 35 built-in families emit parser-owned lexemes through one token planner; facts use schema `1` |
+| Editor facts | All 35 built-in families emit parser-owned lexemes through one token planner; facts use schema `2` and diagnostics use schema `1` |
 | Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
 
 Admission describes available capability and required evidence. It does not certify that every

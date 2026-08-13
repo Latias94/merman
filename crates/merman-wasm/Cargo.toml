@@ -30,15 +30,17 @@ svg = ["dep:js-sys", "merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 editor = [
-  "analysis",
-  "dep:merman-analysis",
-  "dep:merman-editor-core",
+    "analysis",
+    "dep:merman-analysis",
+    "dep:merman-editor-core",
+    "dep:merman-core",
 ]
 math = ["svg", "merman-bindings-core/math"]
 
 [dependencies]
 console_error_panic_hook.workspace = true
 merman-analysis = { workspace = true, optional = true }
+merman-core = { workspace = true, optional = true }
 merman-bindings-core.workspace = true
 merman-editor-core = { workspace = true, optional = true }
 serde.workspace = true

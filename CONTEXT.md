@@ -71,7 +71,7 @@ Current contract:
   own root emission or consult fixture-derived root data.
 - Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
   semantics are deleted; legal source-start headers remain catalog-backed.
-- Analysis diagnostics and parser-backed facts each use their independently defined schema `1`.
+- Analysis diagnostics and parser-backed facts use independent schemas: diagnostics `1`, facts `2`.
   Other facts versions are rejected at the version boundary, and the superseded TextScan path is
   not supported in parallel.
 - **Capability and Artifact Profiles** are separate contracts. The capability descriptor owns

@@ -1016,7 +1016,7 @@ fn parse_wardley_statement(
         editor_facts.push_directive_prefix("evolve");
         push_wardley_keyword(lexemes, statement_start, "evolve");
         let evolve = parse_evolve(body, body_start(statement, statement_start, body), lexemes)?;
-        push_entity_fact(editor_facts, &evolve.component, "wardley evolved component");
+        push_reference_fact(editor_facts, &evolve.component, "wardley evolved component");
         push_number_fact(editor_facts, evolve.target, "wardley evolution target");
         ast.evolves.push(evolve);
         return Ok(());
@@ -1084,8 +1084,8 @@ fn parse_wardley_statement(
     }
 
     let link = parse_link(statement, statement_start, lexemes)?;
-    push_entity_fact(editor_facts, &link.from, "wardley link source");
-    push_entity_fact(editor_facts, &link.to, "wardley link target");
+    push_reference_fact(editor_facts, &link.from, "wardley link source");
+    push_reference_fact(editor_facts, &link.to, "wardley link target");
     if let Some(label) = &link.label {
         push_payload_fact(editor_facts, label, "wardley link label");
     }
@@ -1142,7 +1142,7 @@ fn parse_pipeline(
         lexemes,
     ) {
         Ok(parent) => {
-            push_entity_fact(editor_facts, &parent, "wardley pipeline parent");
+            push_reference_fact(editor_facts, &parent, "wardley pipeline parent");
             Some(parent)
         }
         Err(problem) => {
@@ -2766,16 +2766,6 @@ fn push_entity_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail
         EditorExpectedSyntaxKind::NodeIdentifier,
         value.selection,
     ));
-    let rename_policy = if !value.quoted
-        && value
-            .text
-            .chars()
-            .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
-    {
-        EditorRenamePolicy::Identifier
-    } else {
-        EditorRenamePolicy::None
-    };
     facts.push_symbol(
         EditorSemanticSymbol::new(
             value.text.clone(),
@@ -2784,8 +2774,38 @@ fn push_entity_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail
             value.span,
             value.selection,
         )
-        .with_rename_policy(rename_policy),
+        .with_rename_policy(wardley_rename_policy(value)),
     );
+}
+
+fn push_reference_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        value.selection,
+    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::reference(
+            value.text.clone(),
+            Some(detail.to_string()),
+            EditorSemanticKind::Object,
+            value.span,
+            value.selection,
+        )
+        .with_rename_policy(wardley_rename_policy(value)),
+    );
+}
+
+fn wardley_rename_policy(value: &SpannedText) -> EditorRenamePolicy {
+    if !value.quoted
+        && value
+            .text
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
+    {
+        EditorRenamePolicy::Identifier
+    } else {
+        EditorRenamePolicy::None
+    }
 }
 
 fn push_outline_fact(facts: &mut EditorSemanticFacts, value: &SpannedText, detail: &str) {
@@ -3391,6 +3411,13 @@ pipeline Platform {
                 .count(),
             2
         );
+        let api: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "API")
+            .collect();
+        assert_eq!(api[0].role, crate::EditorSemanticRole::Entity);
+        assert_eq!(api[1].role, crate::EditorSemanticRole::Reference);
 
         let typed = engine
             .parse_diagram_for_render_model_with_type_sync(
@@ -3411,6 +3438,53 @@ pipeline Platform {
                 .parsed_model()
                 .expect("expected parsed snapshot")
         );
+    }
+
+    #[test]
+    fn wardley_reference_roles_cover_links_evolve_and_pipeline_parents() {
+        let source = concat!(
+            "wardley-beta\n",
+            "API -> DB\n",
+            "component API [0.6, 0.7]\n",
+            "component DB [0.4, 0.5]\n",
+            "API -> DB\n",
+            "evolve API 0.8\n",
+            "pipeline DB {\n",
+            "  component Storage [0.4]\n",
+            "}\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_wardley_json_and_editor_facts,
+            source,
+            &meta(),
+        );
+
+        for name in ["API", "DB"] {
+            let roles: Vec<_> = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .map(|symbol| symbol.role)
+                .collect();
+            assert_eq!(roles[0], crate::EditorSemanticRole::Reference);
+            assert_eq!(
+                roles
+                    .iter()
+                    .filter(|role| **role == crate::EditorSemanticRole::Entity)
+                    .count(),
+                1
+            );
+            assert_eq!(
+                roles
+                    .iter()
+                    .filter(|role| **role == crate::EditorSemanticRole::Reference)
+                    .count(),
+                roles.len() - 1
+            );
+        }
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Storage" && symbol.role == crate::EditorSemanticRole::Entity
+        }));
     }
 
     #[test]

@@ -77,6 +77,11 @@ impl MermaidConfig {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
+    #[cfg(test)]
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        estimated_value_owned_heap_bytes(self.as_value())
+    }
+
     pub fn as_value_mut(&mut self) -> &mut Value {
         self.value_mut()
     }
@@ -521,6 +526,23 @@ fn value_clone_weight(value: &Value) -> usize {
         Value::String(value) => value.len(),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => 0,
     })
+}
+
+#[cfg(test)]
+fn estimated_value_owned_heap_bytes(value: &Value) -> usize {
+    let mut retained_bytes = 0usize;
+    let mut stack = vec![value];
+    while let Some(current) = stack.pop() {
+        retained_bytes = retained_bytes
+            .saturating_add(value_structural_weight(current))
+            .saturating_add(value_clone_weight(current));
+        match current {
+            Value::Array(items) => stack.extend(items),
+            Value::Object(entries) => stack.extend(entries.values()),
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+    retained_bytes
 }
 
 fn drop_cloned_values(cloned: HashMap<*const Value, Value>) {

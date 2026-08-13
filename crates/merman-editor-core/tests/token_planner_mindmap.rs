@@ -1,7 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentWorkspace, PlannedToken, PlannedTokenKind,
-    PlannedTokenModifier, SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
+    DocumentKind, DocumentSnapshot, PlannedToken, PlannedTokenKind, PlannedTokenModifier,
+    SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn mindmap_complete_plan_merges_multiline_parser_lexemes_and_semantics() {
@@ -103,9 +106,9 @@ fn mindmap_recovery_plan_keeps_confirmed_prefix_and_later_overlay() {
 }
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             format!("file:///tmp/mindmap-{suffix}.mmd"),
             1,
             source.to_string(),

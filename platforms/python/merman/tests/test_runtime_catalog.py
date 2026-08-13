@@ -13,7 +13,7 @@ CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
 def valid_catalog():
     return {
         "schema_version": 1,
-        "transport_api_version": 3,
+        "transport_api_version": 4,
         "package_version": "test",
         "options_schema_versions": [2],
         "payload_schemas": [
@@ -139,8 +139,8 @@ class FakeEngine:
         self.catalog_calls += 1
         return json.dumps(self.catalog)
 
-    def binding_api_version(self):
-        return 3
+    def transport_api_version(self):
+        return 4
 
     def package_version(self):
         return "test"

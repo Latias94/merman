@@ -19,6 +19,20 @@ import {
 
 const URI = "file:///merman/runtime-test.mmd";
 const LEGEND_DIGEST = "sha256:runtime-test";
+const COMPLETION_TRIGGER_CHARACTERS = [
+  " ",
+  "\n",
+  "-",
+  ">",
+  "%",
+  "[",
+  "(",
+  "{",
+  "/",
+  "\\",
+  "@",
+  ":",
+];
 
 class RuntimePort implements EditorWorkerRuntimePort {
   closeCalls = 0;
@@ -55,7 +69,8 @@ test("runtime owns one native session and projects all eleven query kinds", asyn
     protocol: EDITOR_WORKER_PROTOCOL,
     type: "ready",
     requestId: 1,
-    transportApiVersion: 3,
+    completionTriggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
+    transportApiVersion: 4,
     editorSchema: EDITOR_SCHEMA_VERSION,
     legendDigest: LEGEND_DIGEST,
     legend: { tokenTypes: ["keyword"], tokenModifiers: ["entity"] },
@@ -163,17 +178,17 @@ test("initialization rejects an unsupported Web transport API", async () => {
     ...runtimeBindings,
     runtimeCatalog: () =>
       ({
-        transport_api_version: 4,
+        transport_api_version: 5,
         capabilities: { capability_ids: ["editor"] },
       }) as RuntimeCatalog,
-    transportApiVersion: () => 4,
+    transportApiVersion: () => 5,
   });
 
   await runtime.receive(request(1, "initialize"));
   const response = port.take(1);
   assert.equal(response.type, "error");
   assert.equal(response.code, "PROTOCOL_MISMATCH");
-  assert.match(response.message, /incompatible with 3/u);
+  assert.match(response.message, /incompatible with 4/u);
 });
 
 test("invalid rename remains request-local and later diagnostics still work", async () => {
@@ -286,13 +301,16 @@ function bindings(
       calls.push("init");
     },
     editorSemanticTokenDescriptor: () => semanticTokenDescriptor(),
+    editorCompletionTriggerCharacters: () => [
+      ...COMPLETION_TRIGGER_CHARACTERS,
+    ],
     legendDigest: LEGEND_DIGEST,
     runtimeCatalog: () =>
       ({
-        transport_api_version: 3,
+        transport_api_version: 4,
         capabilities: { capability_ids: ["editor"] },
       }) as RuntimeCatalog,
-    transportApiVersion: () => 3,
+    transportApiVersion: () => 4,
   };
 }
 

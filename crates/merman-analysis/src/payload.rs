@@ -6,8 +6,9 @@ use std::sync::Arc;
 use crate::retained_weight::{ARC_ALLOCATION_OVERHEAD, RetainedWeight};
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
-// Diagnostics and facts are independent contracts whose first public shapes both start at 1.
-pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
+// Diagnostics and facts are independent contracts; facts advanced to schema 2 for the deliberate
+// Flowchart-rich deletion while the diagnostics payload remains at schema 1.
+pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 2;
 
 fn deserialize_payload_version<'de, D>(
     deserializer: D,
@@ -93,6 +94,20 @@ impl SourceDescriptor {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisDiagnosticTag {
+    Deprecated,
+}
+
+impl AnalysisDiagnosticTag {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Deprecated => "deprecated",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiagnosticSeverity {
@@ -103,6 +118,8 @@ pub enum DiagnosticSeverity {
 }
 
 impl DiagnosticSeverity {
+    pub const ALL: [Self; 4] = [Self::Error, Self::Warning, Self::Info, Self::Hint];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Error => "error",
@@ -110,6 +127,12 @@ impl DiagnosticSeverity {
             Self::Info => "info",
             Self::Hint => "hint",
         }
+    }
+
+    pub fn from_config_str(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|severity| severity.as_str() == value)
     }
 }
 
@@ -277,6 +300,8 @@ pub struct AnalysisDiagnostic {
     pub id: String,
     pub severity: DiagnosticSeverity,
     pub category: DiagnosticCategory,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<AnalysisDiagnosticTag>,
     pub message: String,
     pub code: Option<i32>,
     pub code_name: Option<String>,
@@ -300,6 +325,7 @@ impl AnalysisDiagnostic {
             id: id.into(),
             severity,
             category,
+            tags: Vec::new(),
             message: message.into(),
             code: None,
             code_name: None,
@@ -330,6 +356,13 @@ impl AnalysisDiagnostic {
         self
     }
 
+    pub fn with_tag(mut self, tag: AnalysisDiagnosticTag) -> Self {
+        if !self.tags.contains(&tag) {
+            self.tags.push(tag);
+        }
+        self
+    }
+
     pub const fn with_span(mut self, span: DiagnosticSpan) -> Self {
         self.span = Some(span);
         self
@@ -357,20 +390,53 @@ pub(crate) struct DiagnosticRetainedWeight {
     fix_edit_allocations: BTreeSet<usize>,
 }
 
+pub(crate) struct DiagnosticDynamicWeight<'a> {
+    pub(crate) tags_capacity: usize,
+    pub(crate) message_capacity: usize,
+    pub(crate) diagram_type_capacity: Option<usize>,
+    pub(crate) help_capacity: Option<usize>,
+    pub(crate) related: &'a [DiagnosticRelated],
+    pub(crate) related_capacity: usize,
+    pub(crate) fixes: &'a [DiagnosticFix],
+    pub(crate) fixes_capacity: usize,
+}
+
 impl DiagnosticRetainedWeight {
     pub(crate) fn add_diagnostic(&mut self, diagnostic: &AnalysisDiagnostic) {
+        self.weight.add_string(&diagnostic.id);
+        self.add_dynamic(DiagnosticDynamicWeight {
+            tags_capacity: diagnostic.tags.capacity(),
+            message_capacity: diagnostic.message.capacity(),
+            diagram_type_capacity: diagnostic.diagram_type.as_ref().map(String::capacity),
+            help_capacity: diagnostic.help.as_ref().map(String::capacity),
+            related: &diagnostic.related,
+            related_capacity: diagnostic.related.capacity(),
+            fixes: &diagnostic.fixes,
+            fixes_capacity: diagnostic.fixes.capacity(),
+        });
+        self.weight.add_optional_string(&diagnostic.code_name);
+    }
+
+    pub(crate) fn add_candidate(&mut self, fields: DiagnosticDynamicWeight<'_>) {
+        self.add_dynamic(fields);
+    }
+
+    fn add_dynamic(&mut self, fields: DiagnosticDynamicWeight<'_>) {
         let weight = &mut self.weight;
-        weight.add_string(&diagnostic.id);
-        weight.add_string(&diagnostic.message);
-        weight.add_optional_string(&diagnostic.code_name);
-        weight.add_optional_string(&diagnostic.diagram_type);
-        weight.add_optional_string(&diagnostic.help);
-        weight.add_array::<DiagnosticRelated>(diagnostic.related.capacity());
-        for related in &diagnostic.related {
+        weight.add_array::<AnalysisDiagnosticTag>(fields.tags_capacity);
+        weight.add(fields.message_capacity);
+        if let Some(capacity) = fields.diagram_type_capacity {
+            weight.add(capacity);
+        }
+        if let Some(capacity) = fields.help_capacity {
+            weight.add(capacity);
+        }
+        weight.add_array::<DiagnosticRelated>(fields.related_capacity);
+        for related in fields.related {
             weight.add_string(&related.message);
         }
-        weight.add_array::<DiagnosticFix>(diagnostic.fixes.capacity());
-        for fix in &diagnostic.fixes {
+        weight.add_array::<DiagnosticFix>(fields.fixes_capacity);
+        for fix in fields.fixes {
             weight.add_string(&fix.title);
             if fix.edits.is_empty() {
                 continue;

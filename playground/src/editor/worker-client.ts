@@ -60,6 +60,7 @@ const DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT = 256;
 
 export interface EditorLanguageIdentity {
+  readonly completionTriggerCharacters: readonly string[];
   readonly legend: ReadonlyEditorSemanticTokenLegend;
   readonly legendDigest: string;
   readonly transportApiVersion: number;
@@ -255,6 +256,9 @@ class WorkerClient implements MermanLanguageWorkerClient {
           this.completePending(response.requestId, pending);
           pending.resolve(
             Object.freeze({
+              completionTriggerCharacters: Object.freeze([
+                ...response.completionTriggerCharacters,
+              ]),
               legend: Object.freeze({
                 tokenTypes: Object.freeze([...response.legend.tokenTypes]),
                 tokenModifiers: Object.freeze([

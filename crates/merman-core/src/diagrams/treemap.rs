@@ -257,7 +257,7 @@ fn push_treemap_payload(
 fn push_treemap_row_editor_facts(facts: &mut EditorSemanticFacts, row: &TreemapRow) {
     match row {
         TreemapRow::ClassDef(class_def) => {
-            facts.push_symbol(EditorSemanticSymbol::outline(
+            facts.push_symbol(EditorSemanticSymbol::class_definition(
                 class_def.class_name.text.clone(),
                 Some("treemap class definition".to_string()),
                 EditorSemanticKind::Class,
@@ -1826,6 +1826,21 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                     && symbol.selection == SourceSpan::new(start, start + name.len())
             }));
         }
+
+        let class_definition_start = text.rfind("hot").expect("classDef name");
+        let class_definition = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "hot"
+                    && symbol.detail.as_deref() == Some("treemap class definition")
+                    && symbol.selection.start == class_definition_start
+            })
+            .expect("treemap class definition fact");
+        assert_eq!(
+            class_definition.role,
+            crate::EditorSemanticRole::ClassDefinition
+        );
     }
 
     #[test]

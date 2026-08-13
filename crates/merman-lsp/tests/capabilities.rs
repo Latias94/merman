@@ -78,7 +78,6 @@ fn token_equivalence_evidence() -> TokenEquivalenceEvidence {
         )
     })
 }
-
 fn section<'a>(contents: &'a str, start: &str, end: &str) -> &'a str {
     let start_offset = contents
         .find(start)

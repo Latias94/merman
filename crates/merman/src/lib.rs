@@ -18,7 +18,7 @@
 //! | --- | --- | --- |
 //! | Parse Mermaid or produce semantic JSON | no facade default features | [`Engine`] and [`ParseOptions`] |
 //! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
-//! | Build parser-backed editor snapshots | `editor` | [`editor::DocumentWorkspace`] |
+//! | Build parser-backed editor snapshots | `editor` | [`editor::analyze_document_snapshot_with_shared_text`] |
 //! | Render Mermaid-like SVG | `svg` | [`render_svg`] |
 //! | Prepare SVG for export | `svg` | `HeadlessRenderer::render_resvg_compatible_svg_sync` |
 //! | Render terminal-friendly text | `ascii` | `merman::ascii::HeadlessAsciiRenderer` |

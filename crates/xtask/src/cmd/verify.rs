@@ -104,8 +104,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     run_checked("cargo fmt --check", &mut fmt_cmd)?;
 
     if !options.strict {
-        println!("\n== editor token descriptor ==");
-        cmd::verify_editor_token_descriptor(Vec::new())?;
+        println!("\n== editor language contract ==");
+        cmd::verify_editor_language_contract(Vec::new())?;
     }
 
     if options.all_features {

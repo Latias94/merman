@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-No package changes recorded yet.
+### Breaking changes
+
+- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
 
 ## 0.8.0-alpha.5 - 2026-08-12
 

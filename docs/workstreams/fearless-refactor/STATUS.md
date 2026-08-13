@@ -26,8 +26,8 @@ alignment dashboard owns the current verification read.
 - Render dependencies, including host/system text measurement, are selected by the operation-owned
   render environment.
 - Every family emits its SVG root through the shared Root Viewport module.
-- Native ABI remains version `2`; analysis, facts, and LSP schemas remain version `1` while the
-  coordinated repository consumers can migrate in the same change.
+- Native ABI remains version `2`; diagnostics and LSP schemas remain version `1`, while the
+  analysis facts schema is now version `2`. Coordinated repository consumers migrate together.
 - One generated Mermaid reference bundle owns release and companion package/source provenance.
 - Generated root tables, complete-label text tables, fixture-keyed calibration branches, and their
   generation/audit commands have been removed.

@@ -5,7 +5,7 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `3`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `4`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
 
 ## Public Model
@@ -21,10 +21,17 @@ The generated API exposes:
 - `MermanTextMeasurer` for synchronous host measurement; and
 - structured `MermanError::Binding { code, code_name, kind, capability_id, resource, message }` failures, where `resource` is optional typed limit evidence.
 
-`Merman::binding_api_version()` reports `3`. Use `runtime_catalog_json()` to inspect the
+`Merman::transport_api_version()` reports `4`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
+
+API `4` adds the required `tags` field to `MermanLintRuleCatalogEntry` and replaces the API `3`
+`binding_api_version()` probe with `transport_api_version()`. The native library no longer exports
+the API `3` method symbol, so an API `3` generated binding fails during symbol resolution or UniFFI
+initialization before it can decode the changed record layout. Regenerate the whole language
+projection and deploy it with the matching native library; changing only the library is not
+supported.
 
 Every operation is available through `execute(request)`, and `MermanOperationRequest.options_json`
 owns the generic operation's options. Named methods such as

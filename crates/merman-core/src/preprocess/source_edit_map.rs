@@ -1,4 +1,7 @@
-use crate::{EditorLexeme, EditorLexemeKind, ParseControl, ParseControlResult, SourceSpan};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeKind, ParseControl,
+    ParseControlResult, SourceSpan,
+};
 use std::ops::Range;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
@@ -45,6 +48,7 @@ pub struct PreprocessedSource {
     text: String,
     edit_map: SourceEditMap,
     global_lexemes: Vec<EditorLexeme>,
+    global_expected_syntax: Vec<EditorExpectedSyntax>,
     global_directive_prefixes: Vec<String>,
     recovered_incomplete_directive: bool,
 }
@@ -74,6 +78,7 @@ impl PreprocessedSource {
             text,
             edit_map: SourceEditMap::identity(source.len()),
             global_lexemes: Vec::new(),
+            global_expected_syntax: Vec::new(),
             global_directive_prefixes: Vec::new(),
             recovered_incomplete_directive: false,
         })
@@ -90,8 +95,19 @@ impl PreprocessedSource {
         self.edit_map.try_map_span(span)
     }
 
+    pub(super) fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
+            return None;
+        }
+        self.edit_map.try_map_enclosing_span(span)
+    }
+
     pub(crate) fn global_lexemes(&self) -> &[EditorLexeme] {
         &self.global_lexemes
+    }
+
+    pub(crate) fn global_expected_syntax(&self) -> &[EditorExpectedSyntax] {
+        &self.global_expected_syntax
     }
 
     pub(crate) fn global_directive_prefixes(&self) -> &[String] {
@@ -119,6 +135,18 @@ impl PreprocessedSource {
         if span.start < span.end {
             self.global_lexemes.push(EditorLexeme::global(kind, span));
         }
+    }
+
+    pub(super) fn record_global_expected_syntax(
+        &mut self,
+        kind: EditorExpectedSyntaxKind,
+        span: SourceSpan,
+    ) {
+        let Some(span) = self.try_map_span(span) else {
+            return;
+        };
+        self.global_expected_syntax
+            .push(EditorExpectedSyntax::new(kind, span));
     }
 
     pub fn into_text(self) -> String {
@@ -307,6 +335,28 @@ impl SourceEditMap {
         }
         if self.has_unmapped_overlap(span.start, span.end)
             || (span.start < span.end && self.has_gap_inside(span.start, span.end))
+        {
+            return None;
+        }
+
+        let start = self.original_at_start(span.start)?;
+        let end = if span.start == span.end {
+            start
+        } else {
+            self.original_at_end(span.end)?
+        };
+        (start <= end).then(|| SourceSpan::new(start, end))
+    }
+
+    /// Maps span boundaries while allowing deleted source bytes inside the enclosing range.
+    ///
+    /// This is provenance-only: callers must not treat the returned range as an exact rewrite
+    /// target. It is used for parser facts such as multiline keys that cross dedented indentation
+    /// or normalized line endings.
+    fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if span.start > span.end
+            || span.end > self.output_len
+            || self.has_unmapped_overlap(span.start, span.end)
         {
             return None;
         }
@@ -1083,6 +1133,24 @@ mod tests {
     }
 
     #[test]
+    fn enclosing_mapping_preserves_provenance_across_deleted_indentation() {
+        let original = "  first\n  second\n";
+        let mut source = PreprocessedSource::new(original);
+        let second_indent = original.find("  second").expect("second-line indentation");
+        source.apply_edits_uncontrolled(vec![
+            SourceEdit::delete(0..2),
+            SourceEdit::delete(second_indent..second_indent + 2),
+        ]);
+
+        let span = SourceSpan::new(0, "first\nsecond".len());
+        assert_eq!(source.try_map_span(span), None);
+        let enclosing = source
+            .try_map_enclosing_span(span)
+            .expect("provenance boundaries remain mappable");
+        assert_eq!(&original[enclosing.start..enclosing.end], "first\n  second");
+    }
+
+    #[test]
     fn boundary_replacements_only_reject_locally_ambiguous_offsets() {
         let mut source = PreprocessedSource::new("A#x;B");
         source.apply_edits_uncontrolled(vec![
@@ -1501,6 +1569,10 @@ mod tests {
         );
         assert_eq!(actual.edit_map.scan_stats, expected.edit_map.scan_stats);
         assert_eq!(actual.global_lexemes, expected.global_lexemes);
+        assert_eq!(
+            actual.global_expected_syntax,
+            expected.global_expected_syntax
+        );
         assert_eq!(
             actual.global_directive_prefixes,
             expected.global_directive_prefixes

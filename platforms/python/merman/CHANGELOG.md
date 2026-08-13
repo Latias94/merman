@@ -8,7 +8,9 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
+- Advanced the direct UniFFI binding API to `4` because lint rule catalog records now include required `tags`. API 4 replaces `binding_api_version()` with `transport_api_version()` and removes the old native method symbol, so an API 3 generated package rejects the new library before decoding the changed record. Regenerate and deploy the Python package and native library together.
 - Default wheels now bundle SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated API remains stable; unavailable operations return typed missing-capability or unsupported-operation errors, and custom source builds may enable the omitted capabilities.
+- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
 
 ## [0.8.0a5] - 2026-08-09
 

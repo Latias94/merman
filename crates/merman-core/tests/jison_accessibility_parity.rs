@@ -194,7 +194,7 @@ fn pinned_jison_closing_brace_resumes_same_line_lexing() {
         assert_valid_lexeme_spans(facts, case.source);
 
         match snapshot.outcome() {
-            DiagramParseOutcome::Parsed(model) if case.accepted => {
+            DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
                 assert_eq!(
                     model["accDescr"],
                     json!("desc"),
@@ -329,7 +329,7 @@ fn pinned_jison_unterminated_accessibility_state_matches_family_outcome() {
         assert_valid_lexeme_spans(facts, case.source);
 
         match snapshot.outcome() {
-            DiagramParseOutcome::Parsed(model) if case.accepted => {
+            DiagramParseOutcome::Parsed { model, .. } if case.accepted => {
                 assert_eq!(model["accDescr"], Value::Null, "{}", case.family);
                 assert!(
                     !facts
@@ -389,7 +389,7 @@ fn sequence_multiline_accessibility_preserves_an_ordinary_next_line() {
         .parse_diagram_snapshot_with_type_sync("sequence", source)
         .expect("sequence operation")
         .expect("sequence snapshot");
-    let DiagramParseOutcome::Parsed(model) = snapshot.outcome() else {
+    let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
         panic!("ordinary next-line sequence input must parse");
     };
 
