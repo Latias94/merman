@@ -1225,6 +1225,39 @@ fn er_parser_mixed_parallel_relationship_layout_preserves_all_facts_in_summary()
 }
 
 #[test]
+fn er_summary_uses_entity_ids_when_display_aliases_collide() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "A[\"X\"]\n",
+            "B[\"X\"]\n",
+            "C[\"X\"]\n",
+            "A ||--|| B : first\n",
+            "A ||..o{ B : second\n",
+            "A ||--|| C : third\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("colliding ER aliases should keep lossless relationship identities");
+
+    assert!(rendered.contains("relations:\n"), "{rendered}");
+    for relationship in [
+        "A ||--|| B : first",
+        "A ||..o{ B : second",
+        "A ||--|| C : third",
+    ] {
+        assert!(
+            rendered.contains(relationship),
+            "summary must preserve endpoint ids for {relationship:?}:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("X ||")),
+        "display aliases must not replace endpoint identities in summaries:\n{rendered}"
+    );
+}
+
+#[test]
 fn er_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : a\nB ||--|| C : b\nA ||--|| C : c",

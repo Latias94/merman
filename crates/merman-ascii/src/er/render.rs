@@ -126,7 +126,7 @@ impl ErDirection {
 
 struct ErRelationComponentAdapter<'adapter, 'model> {
     charset: ErCharset,
-    entity_labels: &'adapter HashMap<&'model str, &'model str>,
+    entity_identities: &'adapter HashMap<&'model str, &'model str>,
     width_profile: TerminalWidthProfile,
     direction: ErDirection,
 }
@@ -135,7 +135,7 @@ struct ErRenderContext<'render, 'model> {
     options: &'render AsciiRenderOptions,
     charset: ErCharset,
     direction: ErDirection,
-    entity_labels: &'render HashMap<&'model str, &'model str>,
+    entity_identities: &'render HashMap<&'model str, &'model str>,
 }
 
 struct ErRelationLayout<'a> {
@@ -171,7 +171,10 @@ fn render_er_diagram_impl(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut resources = ResourceContext::new(*execution.resources());
+    let base_resources = ResourceContext::new(*execution.resources());
+    let mut resources =
+        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+    let execution_context = execution;
     let execution = Some(execution);
     if model.entities.is_empty() {
         if !model.relationships.is_empty() {
@@ -189,6 +192,7 @@ fn render_er_diagram_impl(
     validate_unique_er_entity_ids(model, &mut resources)?;
     let charset = ErCharset::for_options(options);
     let direction = ErDirection::try_from_model(&model.direction)?;
+    resources = execution_context.resource_context(&resources, merman_core::OperationPhase::Layout);
     let mut deferred_text = DeferredTextRegistry::new();
     let mut boxes = Vec::new();
     boxes
@@ -255,22 +259,12 @@ fn render_er_diagram_impl(
         };
     }
 
-    let mut entity_labels = HashMap::new();
-    entity_labels
-        .try_reserve(model.entities.len())
-        .map_err(|_| layout_allocation_failed())?;
-    entity_labels.extend(
-        model
-            .entities
-            .values()
-            .map(|entity| (entity.id.as_str(), entity_display_label(entity))),
-    );
-
+    let entity_identities = er_entity_identities(model, &resources)?;
     let context = ErRenderContext {
         options,
         charset,
         direction,
-        entity_labels: &entity_labels,
+        entity_identities: &entity_identities,
     };
     let rendered = render_er_components(
         &boxes,
@@ -310,6 +304,26 @@ fn validate_unique_er_entity_ids(
     Ok(())
 }
 
+fn er_entity_identities<'model>(
+    model: &'model ErDiagramRenderModel,
+    resources: &ResourceContext,
+) -> Result<HashMap<&'model str, &'model str>> {
+    resources.charge_layout_work(model.entities.len())?;
+    let mut identities = HashMap::new();
+    identities
+        .try_reserve(model.entities.len())
+        .map_err(|_| layout_allocation_failed())?;
+    identities.extend(model.entities.values().map(|entity| {
+        let identity = if entity.label.is_empty() {
+            entity.id.as_str()
+        } else {
+            entity.label.as_str()
+        };
+        (entity.id.as_str(), identity)
+    }));
+    Ok(identities)
+}
+
 fn render_er_components<'model>(
     boxes: &[RenderedEntityBox],
     relationships: &'model [ErRelationshipRenderModel],
@@ -342,7 +356,7 @@ fn render_er_components<'model>(
     }
     let adapter = ErRelationComponentAdapter {
         charset: context.charset,
-        entity_labels: context.entity_labels,
+        entity_identities: context.entity_identities,
         width_profile: context.options.terminal_width_profile,
         direction: context.direction,
     };
@@ -740,7 +754,7 @@ fn plan_parallel_vertical_relationships<'plan, 'model>(
     layouts: Vec<&'plan ErRelationLayout<'model>>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
-    entity_labels: &HashMap<&'model str, &'model str>,
+    entity_identities: &HashMap<&'model str, &'model str>,
     resources: &mut ResourceContext,
     deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationRegionPlan<'plan>> {
@@ -786,8 +800,8 @@ fn plan_parallel_vertical_relationships<'plan, 'model>(
         for layout in layouts {
             rows.push(er_relationship_summary_row(
                 layout,
-                entity_labels,
                 charset,
+                entity_identities,
                 width_profile,
                 resources,
                 deferred,
@@ -907,8 +921,8 @@ fn parallel_er_lane_rows(
 
 fn er_relationship_summary_row<'model>(
     layout: &ErRelationLayout<'model>,
-    entity_labels: &HashMap<&'model str, &'model str>,
     charset: ErCharset,
+    entity_identities: &HashMap<&'model str, &'model str>,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
     deferred: &mut DeferredTextRegistry<'model>,
@@ -922,9 +936,9 @@ fn er_relationship_summary_row<'model>(
     let right_cardinality =
         horizontal_cardinality_marker(layout.bottom_cardinality, RelationPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
-    let source_text = relationship_label(entity_labels, layout.top_id);
+    let source_identity = relationship_identity(entity_identities, layout.top_id);
     let source = deferred.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(source_text))?,
+        ComposedTextPlan::try_new(resources, 1, |push| push(source_identity))?,
         width_profile,
         resources,
     )?;
@@ -937,9 +951,9 @@ fn er_relationship_summary_row<'model>(
         width_profile,
         resources,
     )?;
-    let target_text = relationship_label(entity_labels, layout.bottom_id);
+    let target_identity = relationship_identity(entity_identities, layout.bottom_id);
     let target = deferred.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(target_text))?,
+        ComposedTextPlan::try_new(resources, 1, |push| push(target_identity))?,
         width_profile,
         resources,
     )?;
@@ -955,8 +969,8 @@ fn er_relationship_summary_row<'model>(
 
 fn er_relationship_summary_row_for_reason<'model>(
     layout: &ErRelationLayout<'model>,
-    entity_labels: &HashMap<&'model str, &'model str>,
     charset: ErCharset,
+    entity_identities: &HashMap<&'model str, &'model str>,
     reason: relation_graph::LayeredRelationSummaryReason,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
@@ -968,8 +982,8 @@ fn er_relationship_summary_row_for_reason<'model>(
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
             er_relationship_summary_row(
                 layout,
-                entity_labels,
                 charset,
+                entity_identities,
                 width_profile,
                 resources,
                 deferred,
@@ -978,11 +992,11 @@ fn er_relationship_summary_row_for_reason<'model>(
     }
 }
 
-fn relationship_label<'model>(
-    entity_labels: &HashMap<&'model str, &'model str>,
+fn relationship_identity<'model>(
+    entity_identities: &HashMap<&'model str, &'model str>,
     id: &'model str,
 ) -> &'model str {
-    entity_labels.get(id).copied().unwrap_or(id)
+    entity_identities.get(id).copied().unwrap_or(id)
 }
 
 fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
@@ -1183,7 +1197,7 @@ impl<'adapter, 'model> relation_graph::RelationComponentAdapter<'model, ErRelati
             layouts,
             options,
             self.charset,
-            self.entity_labels,
+            self.entity_identities,
             resources,
             deferred,
         )
@@ -1198,8 +1212,8 @@ impl<'adapter, 'model> relation_graph::RelationComponentAdapter<'model, ErRelati
     ) -> Result<RelationGraphSummaryRow> {
         er_relationship_summary_row_for_reason(
             layout,
-            self.entity_labels,
             self.charset,
+            self.entity_identities,
             reason,
             self.width_profile,
             resources,
@@ -1580,16 +1594,6 @@ mod tests {
                     .expect("ER summary box should plan"),
             );
         }
-        let mut entity_labels = HashMap::new();
-        entity_labels
-            .try_reserve(model.entities.len())
-            .expect("ER summary label allocation should succeed");
-        entity_labels.extend(
-            model
-                .entities
-                .values()
-                .map(|entity| (entity.id.as_str(), entity_display_label(entity))),
-        );
         let mut layouts = Vec::new();
         layouts
             .try_reserve_exact(model.relationships.len())
@@ -1610,9 +1614,11 @@ mod tests {
                 .expect("ER summary label should plan"),
             });
         }
+        let entity_identities =
+            er_entity_identities(model, &resources).expect("ER summary identities should plan");
         let adapter = ErRelationComponentAdapter {
             charset,
-            entity_labels: &entity_labels,
+            entity_identities: &entity_identities,
             width_profile: options.terminal_width_profile,
             direction,
         };

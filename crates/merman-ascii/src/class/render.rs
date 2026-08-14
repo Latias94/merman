@@ -387,7 +387,10 @@ fn render_class_diagram_impl(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut resources = ResourceContext::new(*execution.resources());
+    let base_resources = ResourceContext::new(*execution.resources());
+    let mut resources =
+        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+    let execution_context = execution;
     let execution = Some(execution);
     checkpoint(execution, merman_core::OperationPhase::Semantic)?;
     preflight_class_text(model, &mut resources)?;
@@ -403,6 +406,7 @@ fn render_class_diagram_impl(
     let mut deferred_text = DeferredTextRegistry::new();
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
     checkpoint(execution, merman_core::OperationPhase::Layout)?;
+    resources = execution_context.resource_context(&resources, merman_core::OperationPhase::Layout);
     validate_class_references(model, &namespace_facade_aliases, &mut resources)?;
     validate_class_namespace_ownership(model, &mut resources)?;
     if has_renderable_namespaces(model) {
