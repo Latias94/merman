@@ -205,6 +205,7 @@ export declare class MermanError extends Error {
 export type MermanResourceCount = number | string;
 
 export interface MermanResourceErrorDetails {
+  readonly cause: string;
   readonly limit_id: string;
   readonly phase: string;
   readonly actual: MermanResourceCount;

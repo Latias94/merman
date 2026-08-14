@@ -150,6 +150,7 @@ function failure({ kind, capabilityId = null }) {
 
 test("operation errors preserve structured resource details", () => {
   const resource = {
+    cause: "arithmetic_overflow",
     limit_id: "max_embedded_image_bytes",
     phase: "embedded_image_decode",
     actual: "18446744073709551615",
@@ -166,6 +167,40 @@ test("operation errors preserve structured resource details", () => {
   });
 
   assert.deepEqual(error.resourceDetails, resource);
+});
+
+test("resource error declarations match the runtime detail shape", () => {
+  const declarations = readFileSync(path.join(nodeRoot, "src", "index.d.ts"), "utf8");
+  const resourceDetails = declarations.match(
+    /export interface MermanResourceErrorDetails\s*{(?<body>[^}]*)}/s,
+  );
+  assert.ok(resourceDetails?.groups?.body);
+  assert.match(resourceDetails.groups.body, /readonly\s+cause:\s*string;/);
+
+  const declaredFields = [...resourceDetails.groups.body.matchAll(/readonly\s+(\w+)\s*:/g)]
+    .map((match) => match[1])
+    .sort();
+  const runtimeFields = Object.keys(
+    new MermanOperationError({
+      code: 10,
+      code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+      kind: "generic",
+      capability_id: null,
+      details: {
+        resource: {
+          cause: "arithmetic_overflow",
+          limit_id: "max_layout_work_units",
+          phase: "layout_model",
+          actual: "18446744073709551615",
+          max: 800_000,
+          profile: "interactive",
+        },
+      },
+      message: "layout work overflowed",
+    }).resourceDetails,
+  ).sort();
+
+  assert.deepEqual(declaredFields, runtimeFields);
 });
 
 test("runtime catalog lossless integer scanning covers every known numeric path", () => {
