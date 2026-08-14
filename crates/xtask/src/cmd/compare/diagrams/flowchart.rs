@@ -266,8 +266,7 @@ fn run_flowchart_compare_with_math_renderer(
     if let Some(renderer) = observed_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)
-        .map_err(CompareRunFailure::without_evidence)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
         root_coverage: RootCoverageSummary::default(),
@@ -412,7 +411,7 @@ fn run_flowchart_compare_with_math_renderer(
                     ));
                 }
             };
-            let render_evidence = state
+            let measurement_route_count = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
@@ -473,14 +472,14 @@ fn run_flowchart_compare_with_math_renderer(
 
             Ok(match dom_mode_override {
                 None => CompareFixtureResult::Rendered {
-                    render_evidence,
+                    measurement_route_count,
                     local_svg,
                     compare_dom: true,
                     issues,
                     notes,
                 },
                 dom_mode_override => CompareFixtureResult::RenderedWithPolicy {
-                    render_evidence,
+                    measurement_route_count,
                     local_svg,
                     compare_dom: true,
                     compare_svg_when_dom_disabled: false,

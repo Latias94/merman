@@ -435,20 +435,20 @@ impl RootThemeReport {
     pub fn verification(&self) -> RootThemeVerification {
         match self.evaluation {
             RootThemeEvaluation::NotApplicable => RootThemeVerification::NotApplicable,
-            RootThemeEvaluation::Evaluated if !self.coverage_complete() => {
-                RootThemeVerification::Incomplete
+            RootThemeEvaluation::Evaluated => {
+                let coverage_complete = self.coverage_complete();
+                if !coverage_complete {
+                    RootThemeVerification::Incomplete
+                } else if self.mechanisms.iter().all(|mechanism| {
+                    !mechanism.has_residual()
+                        && mechanism.applied_capabilities == mechanism.required_capabilities
+                }) && self.residuals.is_empty()
+                {
+                    RootThemeVerification::Verified
+                } else {
+                    RootThemeVerification::Unverified
+                }
             }
-            RootThemeEvaluation::Evaluated
-                if self.coverage_complete()
-                    && self.mechanisms.iter().all(|mechanism| {
-                        !mechanism.has_residual()
-                            && mechanism.applied_capabilities == mechanism.required_capabilities
-                    })
-                    && self.residuals.is_empty() =>
-            {
-                RootThemeVerification::Verified
-            }
-            RootThemeEvaluation::Evaluated => RootThemeVerification::Unverified,
         }
     }
 

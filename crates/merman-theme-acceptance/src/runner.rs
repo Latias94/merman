@@ -5,20 +5,18 @@ use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
     FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement, FontSource, FontStack,
-    OrdinalPalette, RootThemeVerification, Specified, SvgPipeline, TextMeasurementSource,
-    ThemeAssets, ThemeCapability, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
+    OrdinalPalette, Specified, SvgPipeline, TextMeasurementSource, ThemeAssets, ThemeCapability,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman::{
     DiagramFamilyId, Engine, JpegRequest, MermaidConfig, OperationControl, PdfRequest, PngRequest,
     RenderEvidence, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest,
+    ThemeEvidenceStatus,
 };
 use merman_export::{
     ExportFontPlan, PdfExportReport, PdfFilterImagePlan, PdfOptions, RasterExportReport,
     RasterOptions, RasterOutputKind, SvgConversionPlan,
-};
-use merman_render::__private::{
-    FamilyEvidenceStatus, family_evidence, family_native_filter_receipt,
 };
 use merman_theme_fixtures::{
     C6AcceptanceCatalog, C6EnforcedCell, C6ExpectedFontSource, C6ProofFamily, C6ProofTheme,
@@ -773,30 +771,28 @@ pub(crate) fn prove_portable_family_evidence(
     expected_family: DiagramFamilyId,
     requirements: FamilyEvidenceRequirements,
 ) -> C6ProofResult<crate::observation::C6RenderIdentity> {
-    let family = evidence.family_report();
-    let session = family.session_report();
-    let summary = family_evidence(family);
+    let summary = merman::__theme_acceptance::theme_acceptance_evidence(evidence);
     let recipe = theme.recipe_fingerprint();
     c6_ensure!(
         "render-family",
-        family.family_id() == expected_family,
+        evidence.family_id() == expected_family,
         "expected {expected_family} family, got {}",
-        family.family_id()
+        evidence.family_id()
     );
     c6_ensure!(
         "render-recipe",
-        family.theme_recipe_fingerprint() == Some(recipe),
+        evidence.theme_recipe_fingerprint() == Some(recipe),
         "render evidence recipe fingerprint does not match the compiled theme"
     );
     c6_ensure!(
         "render-recipe-report",
-        session
-            .theme_recipe_report()
+        summary
+            .recipe_report()
             .map(|report| report.theme_recipe_fingerprint())
             == Some(recipe),
         "render evidence recipe report does not match the compiled theme"
     );
-    let root_theme = family.root_theme_report();
+    let root_theme = summary.root();
     if requirements.require_root_theme {
         c6_ensure!(
             "root-theme-report",
@@ -806,54 +802,49 @@ pub(crate) fn prove_portable_family_evidence(
     } else {
         c6_ensure!(
             "root-theme-report",
-            matches!(
-                root_theme.verification(),
-                RootThemeVerification::Verified | RootThemeVerification::NotApplicable
-            ),
+            root_theme.is_satisfied(),
             "root theme report is {:?}",
-            root_theme.verification()
+            root_theme.status()
         );
     }
     c6_ensure!(
         "theme-portability-requirement",
-        session
-            .theme_host_admission_report()
-            .map(|report| report.portability_requirement())
-            == Some(ThemePortabilityRequirement::RequirePortable),
+        summary.portability_requirement() == Some(ThemePortabilityRequirement::RequirePortable),
         "render session did not retain the strict portable theme requirement"
     );
+    let family = summary.family();
     c6_ensure!(
         "family-evidence-status",
-        summary.status() == FamilyEvidenceStatus::Verified,
+        family.status() == ThemeEvidenceStatus::Verified,
         "family evidence is {:?}",
-        summary.status()
+        family.status()
     );
     c6_ensure!(
         "family-evidence-coverage",
-        summary.required_count() == summary.accounted_count() && summary.incomplete_count() == 0,
+        family.required_count() == family.accounted_count() && family.incomplete_count() == 0,
         "family evidence coverage differs: required={}, accounted={}, incomplete={}",
-        summary.required_count(),
-        summary.accounted_count(),
-        summary.incomplete_count()
+        family.required_count(),
+        family.accounted_count(),
+        family.incomplete_count()
     );
     c6_ensure!(
         "family-evidence-residuals",
-        summary.theme_residual_count() == 0
+        family.residual_count() == 0
             && summary.source_residual_count() == 0
             && summary.compatibility_residual_count() == 0
             && summary.mermaid_compatibility_residual_count() == 0,
         "family evidence retained residual counts: theme={}, source={}, compatibility={}, mermaid={}",
-        summary.theme_residual_count(),
+        family.residual_count(),
         summary.source_residual_count(),
         summary.compatibility_residual_count(),
         summary.mermaid_compatibility_residual_count()
     );
     c6_ensure!(
         "family-evidence-output",
-        !summary.output_mutated(),
+        !family.output_mutated(),
         "family evidence was invalidated by an output mutation"
     );
-    match session.prepared_text_layout() {
+    match summary.prepared_text_layout() {
         Some(prepared_text) if requirements.require_prepared_text => c6_ensure!(
             "render-font-source",
             prepared_text.used_font_sources() == [FontSource::Embedded],
@@ -889,9 +880,9 @@ pub(crate) fn prove_portable_family_evidence(
     );
     c6_ensure!(
         "render-text-layout",
-        session.text_layout_failure().is_none(),
+        summary.text_layout_failure().is_none(),
         "render retained a text layout failure: {:?}",
-        session.text_layout_failure()
+        summary.text_layout_failure()
     );
     c6_ensure!(
         "render-runtime",
@@ -1169,7 +1160,7 @@ fn prove_native_export_report(
         resource_fingerprint.as_bytes() != &[0; 32],
         "native export retained a zero resource fingerprint"
     );
-    let expected_filter_receipt = family_native_filter_receipt(evidence.family_report());
+    let expected_filter_receipt = merman::__theme_acceptance::native_filter_receipt(evidence);
     c6_ensure!(
         "native-export-filter-receipt",
         expected_filter_receipt.is_some() && native_filter_receipt == expected_filter_receipt,

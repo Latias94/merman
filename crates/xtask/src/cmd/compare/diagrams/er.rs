@@ -95,8 +95,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
     let environment = merman::SvgEnvironment::deterministic();
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)
-        .map_err(CompareRunFailure::without_evidence)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let renderer = merman::Renderer::new()
         .with_engine(engine)
         .with_parse_options(fact.parse_policy.options());
@@ -218,7 +217,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                     ));
                 }
             };
-            let render_evidence = state
+            let measurement_route_count = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
@@ -266,7 +265,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             });
 
             Ok(CompareFixtureResult::Rendered {
-                render_evidence,
+                measurement_route_count,
                 local_svg,
                 compare_dom: true,
                 issues,

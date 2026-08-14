@@ -136,24 +136,119 @@ impl Default for SvgEnvironment {
     }
 }
 
-/// Identifies the canonical source-to-target operation path that produced an artifact.
+/// Coarse terminal state for one bounded theme-evidence scope.
 ///
-/// This deliberately describes the public facade rather than exposing an implementation type
-/// such as the former `HeadlessOperation`.
+/// The renderer keeps mechanism keys, selectors, element receipts, and residual ledgers private.
+/// Callers only need to know whether the scope was fully accounted for and how much bounded
+/// evidence remained outside the portable path.
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum OperationExecutionPath {
-    Renderer,
+pub enum ThemeEvidenceStatus {
+    NotApplicable,
+    Verified,
+    Residual,
+    Incomplete,
+}
+
+/// Coarse document-level projection of renderer-owned theme evidence.
+///
+/// This is intentionally not a mechanism ledger. It answers whether root and family work was
+/// accounted for while keeping the proof implementation private and free to evolve.
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ThemeEvidenceSummary {
+    status: ThemeEvidenceStatus,
+    output_mutated: bool,
 }
 
 #[cfg(feature = "svg")]
-impl OperationExecutionPath {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Renderer => "renderer",
+impl ThemeEvidenceSummary {
+    const fn new(status: ThemeEvidenceStatus, output_mutated: bool) -> Self {
+        Self {
+            status,
+            output_mutated,
         }
     }
+
+    pub const fn status(self) -> ThemeEvidenceStatus {
+        self.status
+    }
+
+    pub const fn output_mutated(self) -> bool {
+        self.output_mutated
+    }
+
+    pub const fn is_verified(self) -> bool {
+        matches!(self.status, ThemeEvidenceStatus::Verified) && !self.output_mutated
+    }
+
+    /// Returns whether the document either required no theme evidence or verified all required
+    /// evidence without a later output mutation.
+    pub const fn is_satisfied(self) -> bool {
+        matches!(
+            self.status,
+            ThemeEvidenceStatus::NotApplicable | ThemeEvidenceStatus::Verified
+        ) && !self.output_mutated
+    }
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ThemeEvidenceScopeProjection {
+    pub(crate) status: ThemeEvidenceStatus,
+    pub(crate) required_count: usize,
+    pub(crate) accounted_count: usize,
+    pub(crate) residual_count: usize,
+    pub(crate) output_mutated: bool,
+}
+
+#[cfg(feature = "svg")]
+impl ThemeEvidenceScopeProjection {
+    pub(crate) const fn incomplete_count(self) -> usize {
+        self.required_count.saturating_sub(self.accounted_count)
+    }
+
+    pub(crate) const fn is_verified(self) -> bool {
+        matches!(self.status, ThemeEvidenceStatus::Verified)
+            && self.incomplete_count() == 0
+            && self.residual_count == 0
+            && !self.output_mutated
+    }
+
+    pub(crate) const fn is_satisfied(self) -> bool {
+        matches!(
+            self.status,
+            ThemeEvidenceStatus::NotApplicable | ThemeEvidenceStatus::Verified
+        ) && self.incomplete_count() == 0
+            && self.residual_count == 0
+            && !self.output_mutated
+    }
+}
+
+#[cfg(all(feature = "svg", feature = "internal-theme-acceptance"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ThemeAcceptanceEvidenceSnapshot {
+    root: ThemeEvidenceScopeProjection,
+    family: ThemeEvidenceScopeProjection,
+    source_residual_count: usize,
+    compatibility_residual_count: usize,
+    mermaid_compatibility_residual_count: usize,
+}
+
+/// Workspace-only projection used by the non-published theme acceptance harness.
+#[cfg(all(feature = "svg", feature = "internal-theme-acceptance"))]
+pub(crate) struct ThemeAcceptanceEvidenceProjection<'a> {
+    pub(crate) root: ThemeEvidenceScopeProjection,
+    pub(crate) family: ThemeEvidenceScopeProjection,
+    pub(crate) source_residual_count: usize,
+    pub(crate) compatibility_residual_count: usize,
+    pub(crate) mermaid_compatibility_residual_count: usize,
+    pub(crate) recipe_report: Option<&'a merman_render::diagram_theme::ThemeRecipeReport>,
+    pub(crate) portability_requirement:
+        Option<merman_render::diagram_theme::ThemePortabilityRequirement>,
+    pub(crate) prepared_text_layout: Option<&'a merman_render::text::PreparedTextLayoutReport>,
+    pub(crate) text_layout_failure: Option<merman_render::text::TextLayoutFailure>,
 }
 
 /// Immutable evidence captured by a completed SVG operation.
@@ -164,58 +259,237 @@ impl OperationExecutionPath {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderEvidence {
-    execution_path: OperationExecutionPath,
-    family: Box<merman_render::family::FamilyRenderReport>,
+    session: merman_render::environment::RenderSessionReport,
+    family_id: merman_core::DiagramFamilyId,
+    theme_evidence: ThemeEvidenceSummary,
+    #[cfg(feature = "internal-theme-acceptance")]
+    theme_acceptance: ThemeAcceptanceEvidenceSnapshot,
+    #[cfg(feature = "internal-theme-acceptance")]
+    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
 }
 
 #[cfg(feature = "svg")]
 impl RenderEvidence {
     fn from_family(family: merman_render::family::FamilyRenderReport) -> Self {
+        let session = family.session_report().clone();
+        let family_id = family.family_id();
+        let (root, family_scope, family_evidence) = theme_evidence_scopes(&family);
+        let source_residual_count = family_evidence.source_residual_count();
+        let compatibility_residual_count = family_evidence.compatibility_residual_count();
+        let mermaid_compatibility_residual_count =
+            family_evidence.mermaid_compatibility_residual_count();
+        let theme_evidence = summarize_theme_evidence(
+            root,
+            family_scope,
+            source_residual_count,
+            compatibility_residual_count,
+            mermaid_compatibility_residual_count,
+        );
+        #[cfg(feature = "internal-theme-acceptance")]
+        let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
+
         Self {
-            execution_path: OperationExecutionPath::Renderer,
-            family: Box::new(family),
+            session,
+            family_id,
+            theme_evidence,
+            #[cfg(feature = "internal-theme-acceptance")]
+            theme_acceptance: ThemeAcceptanceEvidenceSnapshot {
+                root,
+                family: family_scope,
+                source_residual_count,
+                compatibility_residual_count,
+                mermaid_compatibility_residual_count,
+            },
+            #[cfg(feature = "internal-theme-acceptance")]
+            native_filter_receipt,
         }
     }
 
-    pub const fn execution_path(&self) -> OperationExecutionPath {
-        self.execution_path
-    }
-
     pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {
-        self.family.session_report().measurement_routes()
+        self.session.measurement_routes()
     }
 
     pub fn measurement(&self) -> &merman_render::environment::TextMeasurementReport {
-        self.family.session_report().measurement()
+        self.session.measurement()
     }
 
     pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
-        self.family.session_report().operation_context()
+        self.session.operation_context()
     }
 
     pub const fn unix_millis(&self) -> i64 {
-        self.family.session_report().unix_millis()
+        self.session.unix_millis()
     }
 
     pub const fn local_date(&self) -> merman_core::time::CivilDate {
-        self.family.session_report().local_date()
+        self.session.local_date()
     }
 
     pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
-        self.family.session_report().local_time_zone()
+        self.session.local_time_zone()
     }
 
     pub fn render_seed(&self) -> std::num::NonZeroU64 {
-        self.family.session_report().render_seed()
+        self.session.render_seed()
     }
 
     pub const fn layout_work_units(&self) -> usize {
-        self.family.session_report().layout_work_units()
+        self.session.layout_work_units()
     }
 
-    pub fn family_report(&self) -> &merman_render::family::FamilyRenderReport {
-        &self.family
+    pub const fn family_id(&self) -> merman_core::DiagramFamilyId {
+        self.family_id
     }
+
+    pub fn theme_recipe_fingerprint(
+        &self,
+    ) -> Option<merman_render::diagram_theme::ThemeRecipeFingerprint> {
+        self.session.theme_recipe_fingerprint()
+    }
+
+    pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {
+        self.theme_evidence
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn theme_acceptance_evidence(&self) -> ThemeAcceptanceEvidenceProjection<'_> {
+        ThemeAcceptanceEvidenceProjection {
+            root: self.theme_acceptance.root,
+            family: self.theme_acceptance.family,
+            source_residual_count: self.theme_acceptance.source_residual_count,
+            compatibility_residual_count: self.theme_acceptance.compatibility_residual_count,
+            mermaid_compatibility_residual_count: self
+                .theme_acceptance
+                .mermaid_compatibility_residual_count,
+            recipe_report: self.session.theme_recipe_report(),
+            portability_requirement: self
+                .session
+                .theme_host_admission_report()
+                .map(|report| report.portability_requirement()),
+            prepared_text_layout: self.session.prepared_text_layout(),
+            text_layout_failure: self.session.text_layout_failure(),
+        }
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(crate) fn native_filter_receipt(
+        &self,
+    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
+        self.native_filter_receipt
+    }
+}
+
+#[cfg(feature = "svg")]
+fn theme_evidence_scopes(
+    report: &merman_render::family::FamilyRenderReport,
+) -> (
+    ThemeEvidenceScopeProjection,
+    ThemeEvidenceScopeProjection,
+    merman_render::__private::FamilyEvidenceSummary,
+) {
+    let root = report.root_theme_report();
+    let root_status = match root.verification() {
+        merman_render::diagram_theme::RootThemeVerification::NotApplicable => {
+            ThemeEvidenceStatus::NotApplicable
+        }
+        merman_render::diagram_theme::RootThemeVerification::Verified => {
+            ThemeEvidenceStatus::Verified
+        }
+        merman_render::diagram_theme::RootThemeVerification::Unverified => {
+            ThemeEvidenceStatus::Residual
+        }
+        merman_render::diagram_theme::RootThemeVerification::Incomplete => {
+            ThemeEvidenceStatus::Incomplete
+        }
+        _ => ThemeEvidenceStatus::Incomplete,
+    };
+    let root_required_count = root.required_mechanisms().len();
+    let root_residual_count = root.residuals().len();
+    let root_accounted_count = root
+        .applied_mechanisms()
+        .len()
+        .saturating_add(root_residual_count);
+    let root_output_mutated = root.residuals().iter().any(|residual| {
+        residual.reason() == merman_render::diagram_theme::RootThemeResidualReason::OutputMutation
+    });
+
+    let family = merman_render::__private::family_evidence(report);
+    let family_status = match family.status() {
+        merman_render::__private::FamilyEvidenceStatus::NotApplicable => {
+            ThemeEvidenceStatus::NotApplicable
+        }
+        merman_render::__private::FamilyEvidenceStatus::Verified => ThemeEvidenceStatus::Verified,
+        merman_render::__private::FamilyEvidenceStatus::Unverified => ThemeEvidenceStatus::Residual,
+        merman_render::__private::FamilyEvidenceStatus::Unadapted
+        | merman_render::__private::FamilyEvidenceStatus::Incomplete => {
+            ThemeEvidenceStatus::Incomplete
+        }
+    };
+
+    (
+        ThemeEvidenceScopeProjection {
+            status: root_status,
+            required_count: root_required_count,
+            accounted_count: root_accounted_count,
+            residual_count: root_residual_count,
+            output_mutated: root_output_mutated,
+        },
+        ThemeEvidenceScopeProjection {
+            status: family_status,
+            required_count: family.required_count(),
+            accounted_count: family.accounted_count(),
+            residual_count: family.theme_residual_count(),
+            output_mutated: family.output_mutated(),
+        },
+        family,
+    )
+}
+
+#[cfg(feature = "svg")]
+fn summarize_theme_evidence(
+    root: ThemeEvidenceScopeProjection,
+    family: ThemeEvidenceScopeProjection,
+    source_residual_count: usize,
+    compatibility_residual_count: usize,
+    mermaid_compatibility_residual_count: usize,
+) -> ThemeEvidenceSummary {
+    let extra_residual_count = source_residual_count
+        .saturating_add(compatibility_residual_count)
+        .saturating_add(mermaid_compatibility_residual_count);
+    let residual_count = root
+        .residual_count
+        .saturating_add(family.residual_count)
+        .saturating_add(extra_residual_count);
+    let output_mutated = root.output_mutated || family.output_mutated;
+    let status = if root.status == ThemeEvidenceStatus::NotApplicable
+        && family.status == ThemeEvidenceStatus::NotApplicable
+        && residual_count == 0
+        && !output_mutated
+    {
+        ThemeEvidenceStatus::NotApplicable
+    } else if root.is_satisfied()
+        && family.is_satisfied()
+        && extra_residual_count == 0
+        && !output_mutated
+    {
+        ThemeEvidenceStatus::Verified
+    } else if root.status == ThemeEvidenceStatus::Incomplete
+        || family.status == ThemeEvidenceStatus::Incomplete
+        || root.incomplete_count() != 0
+        || family.incomplete_count() != 0
+    {
+        ThemeEvidenceStatus::Incomplete
+    } else if residual_count != 0
+        || output_mutated
+        || root.status == ThemeEvidenceStatus::Residual
+        || family.status == ThemeEvidenceStatus::Residual
+    {
+        ThemeEvidenceStatus::Residual
+    } else {
+        ThemeEvidenceStatus::Incomplete
+    };
+
+    ThemeEvidenceSummary::new(status, output_mutated)
 }
 
 /// Successful SVG output and the evidence for the operation that produced it.
@@ -1099,4 +1373,51 @@ fn render_pdf_target(
             })
         })
         .map_err(map_export_error)
+}
+
+#[cfg(all(test, feature = "svg"))]
+mod tests {
+    use super::{
+        ThemeEvidenceScopeProjection, ThemeEvidenceStatus, ThemeEvidenceSummary,
+        summarize_theme_evidence,
+    };
+
+    #[test]
+    fn theme_evidence_summary_rejects_output_mutation() {
+        let summary = ThemeEvidenceSummary::new(ThemeEvidenceStatus::Verified, true);
+
+        assert!(!summary.is_verified());
+        assert!(!summary.is_satisfied());
+    }
+
+    #[test]
+    fn not_applicable_theme_evidence_is_satisfied_but_not_verified() {
+        let summary = ThemeEvidenceSummary::new(ThemeEvidenceStatus::NotApplicable, false);
+
+        assert!(!summary.is_verified());
+        assert!(summary.is_satisfied());
+    }
+
+    #[test]
+    fn incomplete_theme_evidence_takes_precedence_over_residuals() {
+        let root = ThemeEvidenceScopeProjection {
+            status: ThemeEvidenceStatus::Incomplete,
+            required_count: 2,
+            accounted_count: 1,
+            residual_count: 1,
+            output_mutated: false,
+        };
+        let family = ThemeEvidenceScopeProjection {
+            status: ThemeEvidenceStatus::Residual,
+            required_count: 1,
+            accounted_count: 1,
+            residual_count: 1,
+            output_mutated: false,
+        };
+
+        let summary = summarize_theme_evidence(root, family, 1, 1, 1);
+
+        assert_eq!(summary.status(), ThemeEvidenceStatus::Incomplete);
+        assert!(!summary.is_satisfied());
+    }
 }

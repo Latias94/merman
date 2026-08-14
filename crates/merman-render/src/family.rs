@@ -357,7 +357,6 @@ pub(crate) struct FamilyStyleReport {
     output_mutated: bool,
     theme_required: Vec<FamilyThemeMechanismKey>,
     theme_applied: Vec<FamilyThemeMechanismKey>,
-    applied_capabilities: BTreeSet<ThemeCapability>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
@@ -395,7 +394,6 @@ impl FamilyStyleReport {
             output_mutated: plan.output_mutated,
             theme_required: plan.theme_evidence.required.clone(),
             theme_applied: plan.theme_evidence.applied.clone(),
-            applied_capabilities: plan.theme_evidence.applied_capabilities(),
             native_filter_receipt: plan.native_filter_receipt,
             theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
             theme_residuals: plan.theme_evidence.residuals.clone(),
@@ -419,7 +417,6 @@ impl FamilyStyleReport {
                 });
             }
         }
-        self.applied_capabilities.clear();
         self.native_filter_receipt = None;
         self
     }
@@ -449,12 +446,6 @@ impl FamilyStyleReport {
     /// Returns typed mechanisms the family adapter explicitly emitted or consumed.
     pub fn theme_applied_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
         &self.theme_applied
-    }
-
-    pub(crate) fn applied_capabilities(
-        &self,
-    ) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.applied_capabilities.iter().copied()
     }
 
     pub(crate) const fn native_filter_receipt(
@@ -611,7 +602,6 @@ pub struct FamilyRenderReport {
     root_theme: RootThemeReport,
     style: FamilyStyleReport,
     session: RenderSessionReport,
-    prepared_text_ledger: PreparedTextEvidenceLease,
 }
 
 impl FamilyRenderReport {
@@ -619,13 +609,11 @@ impl FamilyRenderReport {
         root_theme: RootThemeReport,
         style: FamilyStyleReport,
         session: RenderSession,
-        prepared_text_ledger: PreparedTextEvidenceLease,
     ) -> Self {
         Self {
             root_theme,
             style,
             session: session.report(),
-            prepared_text_ledger,
         }
     }
 
@@ -641,22 +629,6 @@ impl FamilyRenderReport {
         &self.root_theme
     }
 
-    /// Returns the frozen family style report carried by this completion.
-    pub(crate) const fn family_style_report(&self) -> &FamilyStyleReport {
-        &self.style
-    }
-
-    /// Returns source-style residuals recorded by the family adapter.
-    pub(crate) fn family_style_residuals(&self) -> &[FamilyStyleResidual] {
-        self.style.residuals()
-    }
-
-    pub(crate) fn applied_theme_capabilities(
-        &self,
-    ) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.style.applied_capabilities()
-    }
-
     pub(crate) const fn native_filter_receipt(
         &self,
     ) -> Option<crate::__private::NativeSvgFilterReceipt> {
@@ -668,7 +640,6 @@ impl FamilyRenderReport {
             + self.style.theme_not_applicable.len()
             + self.style.theme_residuals.len();
         crate::__private::FamilyEvidenceSummary::new(
-            self.style.family_id,
             crate::__private::FamilyEvidenceStatus::from_verification(self.style.verification()),
             self.style.theme_required.len(),
             accounted_count,
@@ -686,12 +657,6 @@ impl FamilyRenderReport {
 
     pub const fn session_report(&self) -> &RenderSessionReport {
         &self.session
-    }
-
-    pub(crate) fn prepared_text_label_ledger(
-        &self,
-    ) -> &[crate::text::PreparedTextLabelLedgerEntry] {
-        self.prepared_text_ledger.entries()
     }
 }
 
@@ -1944,6 +1909,11 @@ impl RenderedFamilySvg {
         } else {
             self.svg
         };
+        let prepared_text_ledger = if prepared_text_evidence_valid {
+            self.prepared_text_ledger
+        } else {
+            PreparedTextEvidenceLease::default()
+        };
         let svg = pipeline
             .process_owned_resvg_compatible_with_metadata(
                 source_svg,
@@ -1951,7 +1921,7 @@ impl RenderedFamilySvg {
                 &self.session,
             )?
             .attach_prepared_text_evidence(
-                self.prepared_text_ledger.clone(),
+                prepared_text_ledger,
                 prepared_text_evidence_valid,
                 self.session.resource_policy(),
             )?;
@@ -1973,18 +1943,12 @@ impl RenderedFamilySvg {
         if portability == ThemePortabilityRequirement::RequirePortable {
             style_report.ensure_portable()?;
         }
-        let prepared_text_ledger = if prepared_text_evidence_valid {
-            self.prepared_text_ledger
-        } else {
-            PreparedTextEvidenceLease::default()
-        };
         self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
             root_theme,
             style_report,
             session: self.session,
-            prepared_text_ledger,
         })
     }
 
@@ -1999,7 +1963,7 @@ impl RenderedFamilySvg {
         let Self {
             svg,
             prepared_text_svg: _,
-            prepared_text_ledger,
+            prepared_text_ledger: _,
             prepared_text_evidence_valid: _,
             root_theme,
             style_report,
@@ -2008,12 +1972,7 @@ impl RenderedFamilySvg {
         } = self;
         FamilyRenderCompletion {
             output: svg,
-            report: FamilyRenderReport::freeze(
-                root_theme,
-                style_report,
-                session,
-                prepared_text_ledger,
-            ),
+            report: FamilyRenderReport::freeze(root_theme, style_report, session),
         }
     }
 }
@@ -2024,7 +1983,6 @@ pub struct RenderedResvgCompatibleSvg {
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     session: RenderSession,
-    prepared_text_ledger: PreparedTextEvidenceLease,
 }
 
 impl RenderedResvgCompatibleSvg {
@@ -2047,12 +2005,7 @@ impl RenderedResvgCompatibleSvg {
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
         FamilyRenderCompletion {
             output: self.svg,
-            report: FamilyRenderReport::freeze(
-                self.root_theme,
-                self.style_report,
-                self.session,
-                self.prepared_text_ledger,
-            ),
+            report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
         }
     }
 }
@@ -3372,7 +3325,6 @@ mod tests {
             output_mutated: false,
             theme_required: required,
             theme_applied: applied,
-            applied_capabilities: BTreeSet::new(),
             native_filter_receipt: None,
             theme_not_applicable: Vec::new(),
             theme_residuals,
@@ -3790,7 +3742,6 @@ mod tests {
                 output_mutated: false,
                 theme_required: Vec::new(),
                 theme_applied: Vec::new(),
-                applied_capabilities: BTreeSet::new(),
                 native_filter_receipt: None,
                 theme_not_applicable: Vec::new(),
                 theme_residuals: Vec::new(),
@@ -4844,13 +4795,6 @@ A[Alpha]
                     target: ThemeTarget::Node,
                 }]
             );
-            assert_eq!(
-                rendered
-                    .style_report()
-                    .applied_capabilities()
-                    .collect::<BTreeSet<_>>(),
-                BTreeSet::from([ThemeCapability::DashStyling])
-            );
             assert!(rendered.style_report().theme_residuals().is_empty());
         }
     }
@@ -5004,13 +4948,6 @@ A[Alpha]
                     index: 0,
                     target: ThemeTarget::Node,
                 }]
-            );
-            assert_eq!(
-                rendered
-                    .style_report()
-                    .applied_capabilities()
-                    .collect::<BTreeSet<_>>(),
-                BTreeSet::from([ThemeCapability::RoundedGeometry])
             );
             assert!(rendered.style_report().theme_residuals().is_empty());
         }
@@ -5245,13 +5182,6 @@ A[Alpha]
                         target: ThemeTarget::NodeLabel,
                     },
                 ]
-            );
-            assert_eq!(
-                rendered
-                    .style_report()
-                    .applied_capabilities()
-                    .collect::<BTreeSet<_>>(),
-                BTreeSet::from([ThemeCapability::Typography])
             );
             assert!(rendered.style_report().theme_residuals().is_empty());
         }
@@ -7851,11 +7781,11 @@ style Empty font-weight:banana
             "none"
         ));
         assert_eq!(
-            rendered
-                .style_report()
-                .applied_capabilities()
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from([ThemeCapability::TransparentPaint])
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
     }
@@ -10538,11 +10468,31 @@ linkStyle 0 font-size:12px,font-style:italic
 
         let (output, report) = finalized.into_completion().into_output_and_report();
         let output_clone = output.clone();
-        drop(report);
         assert!(work_meter.prepared_text_retained_bytes() > 0);
         drop(output);
         assert!(work_meter.prepared_text_retained_bytes() > 0);
         drop(output_clone);
+        assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
+        assert_eq!(report.family_id(), DiagramFamilyId::FLOWCHART);
+    }
+
+    #[test]
+    fn raw_svg_completion_discards_the_prepared_text_reservation_lease() {
+        let artifact = prepare_with_prepared_text_retained_limit(
+            "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\nA -->|portable label| B\n",
+            None,
+        )
+        .unwrap();
+        let work_meter = Arc::clone(artifact.context.session.work_meter());
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(work_meter.prepared_text_retained_bytes() > 0);
+
+        let (svg, report) = rendered.into_completion().into_output_and_report();
+
+        assert!(svg.starts_with("<svg"));
+        assert_eq!(report.family_id(), DiagramFamilyId::FLOWCHART);
         assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
     }
 

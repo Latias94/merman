@@ -118,10 +118,6 @@ pub(crate) struct DiagramVerificationFact {
 }
 
 impl DiagramVerificationFact {
-    pub(crate) const fn render_path(self) -> merman::OperationExecutionPath {
-        merman::OperationExecutionPath::Renderer
-    }
-
     pub(crate) const fn supports_root_report(self) -> bool {
         matches!(self.diagnostics, DiagnosticsPolicy::RootDelta)
     }
@@ -216,23 +212,18 @@ impl CompareRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderOperationContract {
-    render_path: merman::OperationExecutionPath,
     measurement_routes: [merman::svg::TextMeasurementRoute; 4],
 }
 
 impl RenderOperationContract {
-    pub(crate) fn from_environment(
-        environment: &merman::SvgEnvironment,
-    ) -> Result<Self, XtaskError> {
-        Ok(Self {
-            render_path: merman::OperationExecutionPath::Renderer,
+    pub(crate) fn from_environment(environment: &merman::SvgEnvironment) -> Self {
+        Self {
             measurement_routes: environment.text_measurement_routes(),
-        })
+        }
     }
 
     fn from_evidence(evidence: &merman::RenderEvidence) -> Self {
         Self {
-            render_path: evidence.execution_path(),
             measurement_routes: evidence.measurement_routes().clone(),
         }
     }
@@ -244,41 +235,19 @@ pub(crate) struct ObservedRenderOperations {
     observed: bool,
 }
 
-#[derive(Debug)]
-pub(crate) struct ObservedRenderEvidence {
-    execution_path: merman::OperationExecutionPath,
-    measurement_routes: usize,
-}
-
-impl ObservedRenderEvidence {
-    const fn render_count(&self) -> usize {
-        1
-    }
-
-    #[cfg(test)]
-    const fn test_only() -> Self {
-        Self {
-            execution_path: merman::OperationExecutionPath::Renderer,
-            measurement_routes: 4,
-        }
-    }
-}
-
 impl ObservedRenderOperations {
-    pub(crate) fn from_environment(
-        environment: &merman::SvgEnvironment,
-    ) -> Result<Self, XtaskError> {
-        Ok(Self {
-            expected: RenderOperationContract::from_environment(environment)?,
+    pub(crate) fn from_environment(environment: &merman::SvgEnvironment) -> Self {
+        Self {
+            expected: RenderOperationContract::from_environment(environment),
             observed: false,
-        })
+        }
     }
 
     pub(crate) fn observe(
         &mut self,
         fixture: &str,
         evidence: &merman::RenderEvidence,
-    ) -> Result<ObservedRenderEvidence, String> {
+    ) -> Result<usize, String> {
         let observed = RenderOperationContract::from_evidence(evidence);
         validate_measurement_provenance(fixture, evidence)?;
         if observed != self.expected {
@@ -288,10 +257,7 @@ impl ObservedRenderOperations {
             ));
         }
         self.observed = true;
-        Ok(ObservedRenderEvidence {
-            execution_path: observed.render_path,
-            measurement_routes: observed.measurement_routes.len(),
-        })
+        Ok(observed.measurement_routes.len())
     }
 
     pub(crate) fn write_report(&self, report: &mut String) {
@@ -301,11 +267,7 @@ impl ObservedRenderOperations {
         }
         let operation = &self.expected;
 
-        let _ = writeln!(
-            report,
-            "- Render operation: `{}` (observed)",
-            operation.render_path.as_str()
-        );
+        let _ = writeln!(report, "- Render operation: `renderer` (observed)");
         let _ = writeln!(
             report,
             "- Text measurement routes: `{}` (observed)",
@@ -730,14 +692,10 @@ impl CompareEvidence {
         );
     }
 
-    fn record_render(&mut self, evidence: ObservedRenderEvidence) {
-        debug_assert_eq!(
-            evidence.execution_path,
-            merman::OperationExecutionPath::Renderer
-        );
-        self.rendered_fixtures += evidence.render_count();
+    fn record_render(&mut self, measurement_route_count: usize) {
+        self.rendered_fixtures += 1;
         self.observed_operation_reports += 1;
-        self.observed_measurement_routes += evidence.measurement_routes;
+        self.observed_measurement_routes += measurement_route_count;
     }
 
     fn record_comparison(&mut self, comparison: FixtureComparisonEvidence) {
@@ -840,14 +798,14 @@ pub(crate) enum CompareFixtureResult {
         reason: String,
     },
     Rendered {
-        render_evidence: ObservedRenderEvidence,
+        measurement_route_count: usize,
         local_svg: String,
         compare_dom: bool,
         issues: Vec<String>,
         notes: Vec<String>,
     },
     RenderedWithPolicy {
-        render_evidence: ObservedRenderEvidence,
+        measurement_route_count: usize,
         local_svg: String,
         compare_dom: bool,
         compare_svg_when_dom_disabled: bool,
@@ -898,8 +856,6 @@ pub(crate) fn run_canonical_svg_compare(
     fact: DiagramVerificationFact,
     request: CompareRequest,
 ) -> CompareRunResult {
-    debug_assert_eq!(fact.render_path(), merman::OperationExecutionPath::Renderer);
-
     let engine = match fact.render_profile {
         RenderProfile::Standard | RenderProfile::SequenceMath => super::svg_compare_engine(),
         RenderProfile::HandDrawnSeed => {
@@ -941,8 +897,7 @@ pub(crate) fn run_canonical_svg_compare(
     if let Some(renderer) = observed_node_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)
-        .map_err(CompareRunFailure::without_evidence)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let renderer = merman::Renderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options());
@@ -1074,7 +1029,7 @@ pub(crate) fn run_canonical_svg_compare(
                     input.fixture_path.display()
                 )
             })?;
-            let render_evidence = state
+            let measurement_route_count = state
                 .observed_operations
                 .observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
@@ -1126,7 +1081,7 @@ pub(crate) fn run_canonical_svg_compare(
 
             Ok(match (fact.compare_policy, dom_mode_override) {
                 (FixtureComparePolicy::Dom, None) => CompareFixtureResult::Rendered {
-                    render_evidence,
+                    measurement_route_count,
                     local_svg,
                     compare_dom: true,
                     issues,
@@ -1134,7 +1089,7 @@ pub(crate) fn run_canonical_svg_compare(
                 },
                 (FixtureComparePolicy::Dom, dom_mode_override) => {
                     CompareFixtureResult::RenderedWithPolicy {
-                        render_evidence,
+                        measurement_route_count,
                         local_svg,
                         compare_dom: true,
                         compare_svg_when_dom_disabled: false,
@@ -1145,7 +1100,7 @@ pub(crate) fn run_canonical_svg_compare(
                 }
                 (FixtureComparePolicy::DomAndRawSvgFallback, dom_mode_override) => {
                     CompareFixtureResult::RenderedWithPolicy {
-                        render_evidence,
+                        measurement_route_count,
                         local_svg,
                         compare_dom: true,
                         compare_svg_when_dom_disabled: true,
@@ -1418,13 +1373,13 @@ where
                 continue;
             }
             CompareFixtureResult::Rendered {
-                render_evidence,
+                measurement_route_count,
                 local_svg,
                 compare_dom,
                 issues,
                 notes: fixture_notes,
             } => {
-                evidence.record_render(render_evidence);
+                evidence.record_render(measurement_route_count);
                 let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
@@ -1447,7 +1402,7 @@ where
                 evidence.record_comparison(comparison);
             }
             CompareFixtureResult::RenderedWithPolicy {
-                render_evidence,
+                measurement_route_count,
                 local_svg,
                 compare_dom,
                 compare_svg_when_dom_disabled,
@@ -1455,7 +1410,7 @@ where
                 issues,
                 notes: fixture_notes,
             } => {
-                evidence.record_render(render_evidence);
+                evidence.record_render(measurement_route_count);
                 let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
@@ -1934,8 +1889,7 @@ mod tests {
     fn every_admitted_render_family_emits_a_computed_root_viewport() {
         for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
             let environment = merman::SvgEnvironment::deterministic();
-            let mut observed = ObservedRenderOperations::from_environment(&environment)
-                .expect("representative operation contract");
+            let mut observed = ObservedRenderOperations::from_environment(&environment);
             let diagram_id = format!("computed-root-{}", fact.diagram);
             let renderer = merman::Renderer::new()
                 .with_engine(super::super::svg_compare_engine())
@@ -2328,7 +2282,7 @@ mod tests {
                 |_, _, _| None,
                 |_, input| {
                     Ok(CompareFixtureResult::Rendered {
-                        render_evidence: ObservedRenderEvidence::test_only(),
+                        measurement_route_count: merman::svg::TextMeasurementPhase::ALL.len(),
                         local_svg: input.upstream_svg.to_string(),
                         compare_dom: true,
                         issues: Vec::new(),
@@ -2457,7 +2411,7 @@ mod tests {
                     });
                 }
                 Ok(CompareFixtureResult::Rendered {
-                    render_evidence: ObservedRenderEvidence::test_only(),
+                    measurement_route_count: merman::svg::TextMeasurementPhase::ALL.len(),
                     local_svg: input.upstream_svg.to_string(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -2531,8 +2485,7 @@ mod tests {
         fs::create_dir_all(root.join("harness_probe").join("rendered.svg"))
             .expect("conflicting local SVG directory should be created");
         let environment = merman::SvgEnvironment::deterministic();
-        let mut observed = ObservedRenderOperations::from_environment(&environment)
-            .expect("render operation contract");
+        let mut observed = ObservedRenderOperations::from_environment(&environment);
         let failure = run_svg_compare(
             CompareHarnessOptions {
                 run: CompareRunOptions {
@@ -2551,9 +2504,9 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
+                let measurement_route_count = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
-                    render_evidence,
+                    measurement_route_count,
                     local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -2603,8 +2556,7 @@ mod tests {
         let out_path = root.join("report.md");
         fs::create_dir_all(&out_path).expect("conflicting report directory should be created");
         let environment = merman::SvgEnvironment::deterministic();
-        let mut observed = ObservedRenderOperations::from_environment(&environment)
-            .expect("render operation contract");
+        let mut observed = ObservedRenderOperations::from_environment(&environment);
         let failure = run_svg_compare(
             CompareHarnessOptions {
                 run: CompareRunOptions {
@@ -2623,9 +2575,9 @@ mod tests {
             |_, _, _| None,
             |observed, input| {
                 let rendered = render_info_for_evidence(input.stem);
-                let render_evidence = observed.observe(input.stem, rendered.evidence())?;
+                let measurement_route_count = observed.observe(input.stem, rendered.evidence())?;
                 Ok(CompareFixtureResult::Rendered {
-                    render_evidence,
+                    measurement_route_count,
                     local_svg: rendered.svg().to_owned(),
                     compare_dom: true,
                     issues: Vec::new(),

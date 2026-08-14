@@ -9,6 +9,10 @@ use merman_theme_fixtures::{
     ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 
+// Frozen input to the v1 operation digest. The public execution-path enum was removed, but the
+// canonical renderer tag remains byte-for-byte stable for existing acceptance receipts.
+const C6_V1_RENDERER_TAG: &[u8] = b"renderer";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum C6ObservedMechanismDisposition {
     Applied,
@@ -45,14 +49,13 @@ pub(crate) struct C6RenderIdentity {
 
 impl C6RenderIdentity {
     pub(crate) fn from_evidence(evidence: &RenderEvidence) -> Self {
-        let family = evidence.family_report();
         let context = evidence.operation_context();
         let date = evidence.local_date();
         let time_zone = evidence.local_time_zone();
         let mut value = b"merman.c6-render-operation.v1\0".to_vec();
-        append_len_prefixed(&mut value, evidence.execution_path().as_str().as_bytes());
-        append_len_prefixed(&mut value, family.family_id().as_str().as_bytes());
-        match family.theme_recipe_fingerprint() {
+        append_len_prefixed(&mut value, C6_V1_RENDERER_TAG);
+        append_len_prefixed(&mut value, evidence.family_id().as_str().as_bytes());
+        match evidence.theme_recipe_fingerprint() {
             Some(fingerprint) => {
                 value.push(1);
                 value.extend_from_slice(fingerprint.as_bytes());
@@ -89,8 +92,8 @@ impl C6RenderIdentity {
                 .to_be_bytes(),
         );
         Self {
-            actual_family: family.family_id(),
-            recipe_fingerprint: family.theme_recipe_fingerprint(),
+            actual_family: evidence.family_id(),
+            recipe_fingerprint: evidence.theme_recipe_fingerprint(),
             operation_digest: sha256(value),
         }
     }
@@ -1054,6 +1057,7 @@ fn require_group_evidence(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
     use serde_json::json;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1102,6 +1106,33 @@ mod tests {
         )
         .expect("load C6 acceptance catalog with browser cell");
         (themes, acceptance)
+    }
+
+    #[test]
+    fn c6_v1_operation_digest_keeps_its_canonical_renderer_vector() {
+        let renderer = Renderer::new().with_runtime_policy(
+            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42),
+        );
+        let output = renderer
+            .render(RenderRequest::svg(
+                "stateDiagram-v2\n[*] --> Ready\n",
+                OperationControl::new(),
+                SvgRequest::default(),
+            ))
+            .expect("deterministic state SVG should render");
+        let RenderOutput::Svg(Some(output)) = output else {
+            panic!("expected deterministic SVG output");
+        };
+
+        let identity = C6RenderIdentity::from_evidence(output.evidence());
+
+        assert_eq!(
+            identity.operation_digest(),
+            &[
+                226, 22, 14, 12, 178, 176, 221, 255, 238, 66, 59, 145, 182, 132, 104, 140, 49, 191,
+                38, 99, 69, 44, 49, 59, 179, 76, 88, 217, 8, 31, 208, 80,
+            ]
+        );
     }
 
     fn synthetic_group(

@@ -17,7 +17,7 @@ jpeg = ["merman/jpeg", "merman-export/jpeg"]
 pdf = ["merman/pdf", "merman-export/pdf"]
 
 [dependencies]
-merman.workspace = true
+merman = { workspace = true, features = ["internal-theme-acceptance"] }
 merman-export.workspace = true
 merman-render = { workspace = true, features = ["internal-theme-acceptance"] }
 merman-theme-fixtures = { path = "../merman-theme-fixtures" }

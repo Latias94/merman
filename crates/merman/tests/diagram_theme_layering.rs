@@ -149,14 +149,11 @@ fn svg_pipeline_selection_does_not_change_theme_identity() {
     };
 
     assert_eq!(
-        plain.evidence().family_report().theme_recipe_fingerprint(),
+        plain.evidence().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
     );
     assert_eq!(
-        readable
-            .evidence()
-            .family_report()
-            .theme_recipe_fingerprint(),
+        readable.evidence().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
     );
 }

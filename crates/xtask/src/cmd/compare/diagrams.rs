@@ -732,12 +732,6 @@ mod tests {
                 fact.command
             );
             assert_eq!(
-                fact.render_path(),
-                merman::OperationExecutionPath::Renderer,
-                "{} must verify the canonical typed operation",
-                fact.diagram
-            );
-            assert_eq!(
                 diagram_verification_fact_for_command(fact.command).map(|found| found.diagram),
                 Some(fact.diagram),
                 "{} must route through its verification fact",

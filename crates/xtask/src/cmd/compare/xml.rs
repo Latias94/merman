@@ -308,7 +308,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let verification_environment = merman::SvgEnvironment::deterministic()
         .with_text_measurement_policy(text_measurement_policy.clone());
     let mut observed_operations =
-        super::ObservedRenderOperations::from_environment(&verification_environment)?;
+        super::ObservedRenderOperations::from_environment(&verification_environment);
 
     let workspace_root = crate::cmd::workspace_root();
 
@@ -750,8 +750,7 @@ mod tests {
     #[test]
     fn svg_xml_report_does_not_claim_an_unobserved_operation() {
         let environment = merman::SvgEnvironment::deterministic();
-        let observed = super::super::ObservedRenderOperations::from_environment(&environment)
-            .expect("render operation contract");
+        let observed = super::super::ObservedRenderOperations::from_environment(&environment);
         let pinned = svg_xml_report_header(
             crate::svgdom::DomMode::Parity,
             3,

@@ -65,7 +65,10 @@ pub mod zenuml;
 
 pub use merman_core::DiagramFamilyId;
 
-/// Workspace-internal facade seams that are scheduled for deletion after family cutover.
+/// Workspace-internal implementation seams with no compatibility promise.
+///
+/// Only route-cutover inventory is expected to disappear after family migration; the bounded
+/// facade projections may evolve independently of the public renderer API.
 #[doc(hidden)]
 pub mod __private {
     use crate::family::{FamilyRenderReport, FamilyStyleVerification};
@@ -122,7 +125,6 @@ pub mod __private {
     /// Bounded terminal family evidence projected for the workspace facade.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct FamilyEvidenceSummary {
-        family_id: crate::DiagramFamilyId,
         status: FamilyEvidenceStatus,
         required_count: usize,
         accounted_count: usize,
@@ -136,7 +138,6 @@ pub mod __private {
     impl FamilyEvidenceSummary {
         #[allow(clippy::too_many_arguments)]
         pub(crate) const fn new(
-            family_id: crate::DiagramFamilyId,
             status: FamilyEvidenceStatus,
             required_count: usize,
             accounted_count: usize,
@@ -147,7 +148,6 @@ pub mod __private {
             output_mutated: bool,
         ) -> Self {
             Self {
-                family_id,
                 status,
                 required_count,
                 accounted_count,
@@ -157,10 +157,6 @@ pub mod __private {
                 mermaid_compatibility_residual_count,
                 output_mutated,
             }
-        }
-
-        pub const fn family_id(self) -> crate::DiagramFamilyId {
-            self.family_id
         }
 
         pub const fn status(self) -> FamilyEvidenceStatus {
@@ -173,10 +169,6 @@ pub mod __private {
 
         pub const fn accounted_count(self) -> usize {
             self.accounted_count
-        }
-
-        pub const fn incomplete_count(self) -> usize {
-            self.required_count.saturating_sub(self.accounted_count)
         }
 
         pub const fn theme_residual_count(self) -> usize {
@@ -205,25 +197,11 @@ pub mod __private {
         report.evidence_summary()
     }
 
-    /// Returns coarse capabilities actually emitted by the selected family adapter.
-    pub fn family_applied_theme_capabilities(
-        report: &FamilyRenderReport,
-    ) -> impl ExactSizeIterator<Item = crate::diagram_theme::ThemeCapability> + '_ {
-        report.applied_theme_capabilities()
-    }
-
     /// Returns the exact State hard-shadow receipt frozen after SVG emission.
     pub fn family_native_filter_receipt(
         report: &FamilyRenderReport,
     ) -> Option<NativeSvgFilterReceipt> {
         report.native_filter_receipt()
-    }
-
-    /// Returns prepared labels consumed by one completed family renderer.
-    pub fn family_prepared_text_label_ledger(
-        report: &FamilyRenderReport,
-    ) -> &[PreparedTextLabelLedgerEntry] {
-        report.prepared_text_label_ledger()
     }
 
     /// Returns the terminal SVG carrying renderer-owned prepared-label locators.

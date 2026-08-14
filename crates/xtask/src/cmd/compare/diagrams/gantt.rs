@@ -86,8 +86,7 @@ pub(super) fn compare_gantt_request(
     let baseline_container = GanttBaselineContainerProfile::MERMAID_CLI;
     let layout_opts = baseline_container.layout_options();
     let environment = merman::SvgEnvironment::deterministic();
-    let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
-        .map_err(CompareRunFailure::without_evidence)?;
+    let mut observed_operations = ObservedRenderOperations::from_environment(&environment);
     let probe_renderer = merman::Renderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options());
@@ -169,11 +168,11 @@ pub(super) fn compare_gantt_request(
                 ),
             )
             .map_err(|err| format!("render failed for {}: {err}", input.fixture_path.display()))?;
-            let render_evidence = state.observe(input.stem, rendered.evidence())?;
+            let measurement_route_count = state.observe(input.stem, rendered.evidence())?;
             let local_svg = rendered.svg().to_owned();
 
             Ok(CompareFixtureResult::Rendered {
-                render_evidence,
+                measurement_route_count,
                 local_svg,
                 compare_dom: true,
                 issues: Vec::new(),

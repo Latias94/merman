@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use merman::{
     OperationControl, OperationPhase, ParseOptions, RenderError, RenderOutput, RenderRequest,
-    Renderer, SemanticArtifact,
+    Renderer, SemanticArtifact, ThemeEvidenceStatus,
     resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
@@ -23,6 +23,23 @@ impl merman::svg::HostTextMeasurer for CancellingTextMeasurer {
         self.control.cancel();
         Ok(None)
     }
+}
+
+#[cfg(feature = "svg")]
+fn portable_state_theme() -> merman::svg::DiagramTheme {
+    let palette = merman::svg::OrdinalPalette::new([
+        merman::svg::ThemeColorValue::parse("#0f172a").expect("valid first palette color"),
+        merman::svg::ThemeColorValue::parse("#22d3ee").expect("valid second palette color"),
+    ])
+    .expect("valid state palette");
+    merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new().with_styles(
+                merman::svg::ThemeRuleSet::default()
+                    .with_ordinal_palette(merman::svg::ThemeTarget::State, palette),
+            ),
+        )
+        .expect("portable state theme should compile")
 }
 
 #[test]
@@ -185,17 +202,91 @@ fn completed_svg_evidence_freezes_family_and_theme_identity() {
 
     assert!(output.svg().starts_with("<svg"));
     assert_eq!(
-        output.evidence().execution_path(),
-        merman::OperationExecutionPath::Renderer
-    );
-    assert_eq!(
-        output.evidence().family_report().family_id(),
+        output.evidence().family_id(),
         merman::DiagramFamilyId::SEQUENCE
     );
     assert_eq!(
-        output.evidence().family_report().theme_recipe_fingerprint(),
+        output.evidence().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
     );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn unthemed_svg_reports_theme_evidence_as_not_applicable() {
+    let output = Renderer::new()
+        .render(RenderRequest::svg(
+            "flowchart TD\nA[Start] --> B[Done]",
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("unthemed SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected an SVG output");
+    };
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::NotApplicable);
+    assert!(!summary.output_mutated());
+    assert!(!summary.is_verified());
+    assert!(summary.is_satisfied());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn themed_state_svg_reports_verified_coarse_theme_evidence() {
+    let theme = portable_state_theme();
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
+                OperationControl::new(),
+                merman::SvgRequest::default(),
+            )
+            .with_theme(theme),
+        )
+        .expect("themed state SVG should render");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a themed state SVG");
+    };
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::Verified);
+    assert!(!summary.output_mutated());
+    assert!(summary.is_verified());
+    assert!(summary.is_satisfied());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn custom_postprocessing_is_visible_in_coarse_theme_evidence() {
+    let theme = portable_state_theme();
+    let request = merman::SvgRequest {
+        pipeline: Some(
+            merman::svg::SvgPipeline::parity()
+                .with_postprocessor(merman::svg::RootBackgroundPostprocessor::new("#111827")),
+        ),
+        ..Default::default()
+    };
+    let output = Renderer::new()
+        .render(
+            RenderRequest::svg(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("postprocessed themed SVG should render in best-effort mode");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a postprocessed SVG");
+    };
+
+    let summary = output.evidence().theme_evidence();
+    assert_eq!(summary.status(), ThemeEvidenceStatus::Residual);
+    assert!(summary.output_mutated());
+    assert!(!summary.is_verified());
+    assert!(!summary.is_satisfied());
 }
 
 #[cfg(feature = "svg")]
@@ -222,7 +313,7 @@ fn finalized_svg_retains_terminal_resource_identity() {
     assert!(output.svg().starts_with("<svg"));
     assert_ne!(output.resource_fingerprint().as_bytes(), &[0; 32]);
     assert_eq!(
-        output.evidence().family_report().theme_recipe_fingerprint(),
+        output.evidence().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
     );
 }
@@ -254,16 +345,9 @@ fn png_output_retains_the_same_coarse_render_evidence() {
 
     assert!(output.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(output.export_report().raster(), output.plan);
+    assert_eq!(output.evidence().family_id(), merman::DiagramFamilyId::INFO);
     assert_eq!(
-        output.evidence().execution_path(),
-        merman::OperationExecutionPath::Renderer
-    );
-    assert_eq!(
-        output.evidence().family_report().family_id(),
-        merman::DiagramFamilyId::INFO
-    );
-    assert_eq!(
-        output.evidence().family_report().theme_recipe_fingerprint(),
+        output.evidence().theme_recipe_fingerprint(),
         Some(theme.recipe_fingerprint())
     );
 }

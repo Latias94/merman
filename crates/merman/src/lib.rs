@@ -93,8 +93,8 @@ pub use render::PngRequest;
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
 pub use render::{
-    FinalizedSvgOutput, OperationExecutionPath, RenderEvidence, SvgEnvironment, SvgLayoutOutput,
-    SvgOutput, SvgRequest,
+    FinalizedSvgOutput, RenderEvidence, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    ThemeEvidenceStatus, ThemeEvidenceSummary,
 };
 #[cfg(feature = "pdf")]
 pub use render::{PdfOutput, PdfRequest};
@@ -114,6 +114,119 @@ pub use merman_editor_core as editor;
 /// SVG target-local types and backend capabilities.
 #[cfg(feature = "svg")]
 pub mod svg;
+
+/// Workspace-only evidence seams used by the non-published theme acceptance harness.
+///
+/// These helpers are deliberately feature-gated and excluded from the ordinary facade. They may
+/// change or disappear without a compatibility promise.
+#[cfg(feature = "internal-theme-acceptance")]
+#[doc(hidden)]
+pub mod __theme_acceptance {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct ThemeAcceptanceScopeEvidence {
+        projection: crate::render::ThemeEvidenceScopeProjection,
+    }
+
+    impl ThemeAcceptanceScopeEvidence {
+        pub const fn status(&self) -> crate::ThemeEvidenceStatus {
+            self.projection.status
+        }
+
+        pub const fn required_count(&self) -> usize {
+            self.projection.required_count
+        }
+
+        pub const fn accounted_count(&self) -> usize {
+            self.projection.accounted_count
+        }
+
+        pub const fn incomplete_count(&self) -> usize {
+            self.projection.incomplete_count()
+        }
+
+        pub const fn residual_count(&self) -> usize {
+            self.projection.residual_count
+        }
+
+        pub const fn output_mutated(&self) -> bool {
+            self.projection.output_mutated
+        }
+
+        pub const fn is_verified(&self) -> bool {
+            self.projection.is_verified()
+        }
+
+        pub const fn is_satisfied(&self) -> bool {
+            self.projection.is_satisfied()
+        }
+    }
+
+    pub struct ThemeAcceptanceEvidence<'a> {
+        projection: crate::render::ThemeAcceptanceEvidenceProjection<'a>,
+    }
+
+    impl<'a> ThemeAcceptanceEvidence<'a> {
+        pub const fn root(&self) -> ThemeAcceptanceScopeEvidence {
+            ThemeAcceptanceScopeEvidence {
+                projection: self.projection.root,
+            }
+        }
+
+        pub const fn family(&self) -> ThemeAcceptanceScopeEvidence {
+            ThemeAcceptanceScopeEvidence {
+                projection: self.projection.family,
+            }
+        }
+
+        pub const fn source_residual_count(&self) -> usize {
+            self.projection.source_residual_count
+        }
+
+        pub const fn compatibility_residual_count(&self) -> usize {
+            self.projection.compatibility_residual_count
+        }
+
+        pub const fn mermaid_compatibility_residual_count(&self) -> usize {
+            self.projection.mermaid_compatibility_residual_count
+        }
+
+        pub const fn recipe_report(
+            &self,
+        ) -> Option<&'a merman_render::diagram_theme::ThemeRecipeReport> {
+            self.projection.recipe_report
+        }
+
+        pub const fn portability_requirement(
+            &self,
+        ) -> Option<merman_render::diagram_theme::ThemePortabilityRequirement> {
+            self.projection.portability_requirement
+        }
+
+        pub const fn prepared_text_layout(
+            &self,
+        ) -> Option<&'a merman_render::text::PreparedTextLayoutReport> {
+            self.projection.prepared_text_layout
+        }
+
+        pub const fn text_layout_failure(&self) -> Option<merman_render::text::TextLayoutFailure> {
+            self.projection.text_layout_failure
+        }
+    }
+
+    pub fn theme_acceptance_evidence(
+        evidence: &crate::RenderEvidence,
+    ) -> ThemeAcceptanceEvidence<'_> {
+        ThemeAcceptanceEvidence {
+            projection: evidence.theme_acceptance_evidence(),
+        }
+    }
+
+    pub fn native_filter_receipt(
+        evidence: &crate::RenderEvidence,
+    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
+        evidence.native_filter_receipt()
+    }
+}
 
 /// ASCII target-local types and model-level backend interface.
 #[cfg(feature = "ascii")]

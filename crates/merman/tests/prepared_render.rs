@@ -1,9 +1,7 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::{LayoutOptions, SvgRenderOptions};
-use merman::{
-    OperationControl, OperationExecutionPath, RenderOutput, RenderRequest, Renderer, SvgRequest,
-};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use merman_core::ParseOptions;
 
 fn svg_request(id: &str) -> SvgRequest {
@@ -28,12 +26,9 @@ fn render_svg(renderer: &Renderer, source: &str, request: SvgRequest) -> merman:
 }
 
 #[test]
-fn completed_svg_evidence_records_the_canonical_execution_path() {
+fn completed_svg_evidence_records_coarse_render_identity() {
     let output = render_svg(&Renderer::new(), "info", svg_request("info-evidence"));
-    assert_eq!(
-        output.evidence().execution_path(),
-        OperationExecutionPath::Renderer
-    );
+    assert_eq!(output.evidence().family_id(), merman::DiagramFamilyId::INFO);
     assert_eq!(output.evidence().measurement_routes().len(), 4);
 }
 

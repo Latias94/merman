@@ -496,7 +496,7 @@ fn prove_cutover_png_report(
     c6_ensure!(
         "route-png-report",
         report.native_filter_receipt()
-            == merman_render::__private::family_native_filter_receipt(evidence.family_report()),
+            == merman::__theme_acceptance::native_filter_receipt(evidence),
         "PNG filter receipt differs from family evidence"
     );
     let conversion = report.conversion();
