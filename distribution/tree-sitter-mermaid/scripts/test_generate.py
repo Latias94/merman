@@ -13,9 +13,11 @@ from scripts.generate import (
     C_BINDING_FILES,
     C_HEADER,
     GENERATED_ARTIFACTS,
+    SOURCE_ARTIFACTS,
     assert_exact_generated_set,
     cli_command,
     compare_sets,
+    generate_once,
     install_artifacts_transactionally,
     package_artifact_set_failures,
     receipt_input_drift,
@@ -71,6 +73,59 @@ class GenerationBoundaryTests(unittest.TestCase):
             failures = assert_exact_generated_set(package)
             self.assertEqual(len(failures), 1)
             self.assertIn("src artifact set mismatch", failures[0])
+
+    def test_source_only_generation_requires_exact_sources_and_no_wasm(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            write_artifacts(package)
+            (package / "wasm/tree-sitter-mermaid.wasm").unlink()
+            self.assertEqual(
+                assert_exact_generated_set(package, include_wasm=False), []
+            )
+            (package / SOURCE_ARTIFACTS[0]).unlink()
+            failures = assert_exact_generated_set(package, include_wasm=False)
+            self.assertEqual(len(failures), 1)
+            self.assertIn("src artifact set mismatch", failures[0])
+
+    def test_source_only_generation_does_not_build_wasm(self) -> None:
+        with patch("scripts.generate.copy_generation_inputs"), patch(
+            "scripts.generate.run", return_value=7
+        ) as run_command:
+            timings = generate_once(
+                Path("package"),
+                ["node", "tree-sitter"],
+                "node",
+                Path("destination"),
+                build_wasm=False,
+            )
+
+        run_command.assert_called_once()
+        command = run_command.call_args.args[0]
+        self.assertIn("generate", command)
+        self.assertNotIn("build", command)
+        self.assertEqual(
+            timings,
+            {"generateMilliseconds": 7, "wasmBuildMilliseconds": 0},
+        )
+
+    def test_canonical_generation_records_one_wasm_build(self) -> None:
+        with patch("scripts.generate.copy_generation_inputs"), patch(
+            "scripts.generate.run", side_effect=[7, 11]
+        ) as run_command, patch.object(Path, "mkdir"):
+            timings = generate_once(
+                Path("package"),
+                ["node", "tree-sitter"],
+                "native",
+                Path("destination"),
+            )
+
+        self.assertEqual(run_command.call_count, 2)
+        self.assertIn("generate", run_command.call_args_list[0].args[0])
+        self.assertIn("build", run_command.call_args_list[1].args[0])
+        self.assertEqual(
+            timings,
+            {"generateMilliseconds": 7, "wasmBuildMilliseconds": 11},
+        )
 
     def test_extra_c_binding_paths_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

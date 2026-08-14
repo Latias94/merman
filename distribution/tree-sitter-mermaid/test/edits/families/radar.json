@@ -1,0 +1,32 @@
+[
+  {
+    "name": "radar Unicode axis label",
+    "source": "radar-beta\naxis speed[\"Speed\"], quality[\"Quality\"]\ncurve score{4, 3}\n",
+    "old": "Speed",
+    "replacement": "速度"
+  },
+  {
+    "name": "radar CRLF duplicate option edit",
+    "source": "radar-beta\r\naxis A, B\r\ncurve score{1, 2}\r\nticks 4, ticks 5\r\n",
+    "old": "ticks 5",
+    "replacement": "ticks 6"
+  },
+  {
+    "name": "radar axis line insertion",
+    "source": "radar-beta\naxis A, B\ncurve score{1, 2}\n",
+    "old": "axis A, B",
+    "replacement": "axis A, B\naxis C[\"新增\"]"
+  },
+  {
+    "name": "radar incomplete curve repair",
+    "source": "radar-beta\naxis A\ncurve draft\ncurve complete{1}\n",
+    "old": "curve draft",
+    "replacement": "curve draft{2}"
+  },
+  {
+    "name": "radar option deletion",
+    "source": "radar-beta\naxis A\ncurve score{1}\nshowLegend true\nticks 5\n",
+    "old": "showLegend true\n",
+    "replacement": ""
+  }
+]

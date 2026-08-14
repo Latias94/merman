@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "pie.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "pie",
+      "startByte": 0,
+      "endByte": 3
+    },
+    {
+      "name": "keyword",
+      "text": "showData",
+      "startByte": 4,
+      "endByte": 12
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 13,
+      "endByte": 18
+    },
+    {
+      "name": "string",
+      "text": "市场份额",
+      "startByte": 19,
+      "endByte": 31
+    },
+    {
+      "name": "string",
+      "text": "\"Alpha\"",
+      "startByte": 32,
+      "endByte": 39
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 39,
+      "endByte": 40
+    },
+    {
+      "name": "number",
+      "text": "60.5",
+      "startByte": 41,
+      "endByte": 45
+    },
+    {
+      "name": "string",
+      "text": "'Beta'",
+      "startByte": 46,
+      "endByte": 52
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 52,
+      "endByte": 53
+    },
+    {
+      "name": "number",
+      "text": "-1",
+      "startByte": 54,
+      "endByte": 56
+    }
+  ]
+}

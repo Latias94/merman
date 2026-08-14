@@ -1,4 +1,9 @@
-use std::{cell::Cell, ops::ControlFlow};
+use std::{
+    cell::Cell,
+    fs,
+    ops::ControlFlow,
+    path::{Path, PathBuf},
+};
 
 use tree_sitter::{InputEdit, Language, ParseOptions, Parser, Point, Tree};
 
@@ -125,6 +130,61 @@ fn committed_u2_edit_traces_match_fresh_parse() {
             start + old.len(),
             replacement.as_bytes(),
         );
+    }
+}
+
+fn family_edit_trace_paths() -> Vec<PathBuf> {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("test/edits/families");
+    let mut paths = fs::read_dir(&directory)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", directory.display()))
+        .map(|entry| entry.expect("family edit trace directory entry").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
+}
+
+#[test]
+fn committed_family_edit_traces_match_fresh_parse() {
+    let paths = family_edit_trace_paths();
+    assert!(!paths.is_empty(), "family edit traces must not be empty");
+    for path in paths {
+        let traces: serde_json::Value = serde_json::from_slice(
+            &fs::read(&path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display())),
+        )
+        .unwrap_or_else(|error| panic!("invalid family edit traces {}: {error}", path.display()));
+        for trace in traces.as_array().unwrap_or_else(|| {
+            panic!(
+                "family edit trace file must be an array: {}",
+                path.display()
+            )
+        }) {
+            let name = trace["name"].as_str().expect("edit trace name");
+            let source = trace["source"].as_str().expect("edit trace source");
+            let old = trace["old"].as_str().expect("edit trace old text");
+            let replacement = trace["replacement"]
+                .as_str()
+                .expect("edit trace replacement");
+            assert!(!old.is_empty(), "{name}: old text must not be empty");
+            let mut matches = source.match_indices(old);
+            let (start, _) = matches
+                .next()
+                .unwrap_or_else(|| panic!("{name}: old text is absent"));
+            assert!(
+                matches.next().is_none(),
+                "{name}: old text must occur exactly once"
+            );
+            replace_and_compare(
+                source.as_bytes(),
+                start,
+                start + old.len(),
+                replacement.as_bytes(),
+            );
+        }
     }
 }
 

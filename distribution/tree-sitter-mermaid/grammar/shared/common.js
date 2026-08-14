@@ -18,6 +18,17 @@ const commonRules = {
     seq("'", /(?:[^'\\]|\\.)*/, "'"),
   )),
 
+  _radar_wardley_title_text: (_) => token(prec(5, /[^\s\r\n][^\r\n]*/)),
+
+  _radar_wardley_accessibility_text: (_) => token(prec(5, /[^\r\n]+/)),
+
+  _radar_wardley_accessibility_block: (_) => token(seq('{', /[^}]*/, '}')),
+
+  _radar_wardley_recovery_identifier: (_) => token(prec(
+    -10,
+    /[A-Za-z_\u00c0-\uffff][A-Za-z0-9_\-\u00c0-\uffff]*/,
+  )),
+
   unstructured_body: ($) => prec.right(repeat1(choice(
     seq($.unstructured_line, optional($._line_ending)),
     $._line_ending,

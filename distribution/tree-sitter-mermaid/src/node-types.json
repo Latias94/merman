@@ -1,5 +1,244 @@
 [
   {
+    "type": "architecture_accessibility_description_block",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_accessibility_description_statement",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_accessibility_description_block",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_line_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_accessibility_title_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_line_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_alignment_direction",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "architecture_alignment_statement",
+    "named": true,
+    "fields": {
+      "direction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_alignment_direction",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "member": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_arrow",
+    "named": true,
+    "fields": {
+      "connector": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_plain_connector",
+            "named": true
+          },
+          {
+            "type": "architecture_titled_connector",
+            "named": true
+          }
+        ]
+      },
+      "source_arrowhead": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_arrowhead",
+            "named": true
+          }
+        ]
+      },
+      "target_arrowhead": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_arrowhead",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_arrowhead",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "architecture_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "architecture_accessibility_description_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_accessibility_title_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_alignment_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_edge_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_group_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_junction_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_malformed_edge_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_service_statement",
+          "named": true
+        },
+        {
+          "type": "architecture_title_statement",
+          "named": true
+        },
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "architecture_diagram",
     "named": true,
     "fields": {
@@ -8,7 +247,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "architecture_body",
             "named": true
           }
         ]
@@ -26,6 +265,164 @@
     }
   },
   {
+    "type": "architecture_edge_endpoint",
+    "named": true,
+    "fields": {
+      "group": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_group_modifier",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_edge_recovery",
+    "named": true,
+    "fields": {
+      "arrow": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_arrow",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_edge_statement",
+    "named": true,
+    "fields": {
+      "arrow": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_arrow",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_edge_endpoint",
+            "named": true
+          }
+        ]
+      },
+      "source_port": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_left_port",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_edge_endpoint",
+            "named": true
+          }
+        ]
+      },
+      "target_port": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_right_port",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_group_statement",
+    "named": true,
+    "fields": {
+      "icon": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_icon",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_parent_clause",
+            "named": true
+          }
+        ]
+      },
+      "title": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_title",
+            "named": true
+          },
+          {
+            "type": "architecture_unclosed_title",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "architecture_header",
     "named": true,
     "fields": {
@@ -35,6 +432,344 @@
         "types": [
           {
             "type": "diagram_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_icon",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_icon_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_junction_statement",
+    "named": true,
+    "fields": {
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_parent_clause",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_left_port",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "direction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_port_direction",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_line_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "architecture_malformed_edge_statement",
+    "named": true,
+    "fields": {
+      "recovery": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_edge_recovery",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_edge_endpoint",
+            "named": true
+          }
+        ]
+      },
+      "source_port": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_left_port",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_parent_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_port_direction",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "architecture_quoted_string",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "architecture_right_port",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "direction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_port_direction",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_service_statement",
+    "named": true,
+    "fields": {
+      "icon": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_icon",
+            "named": true
+          }
+        ]
+      },
+      "icon_text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_quoted_string",
+            "named": true
+          },
+          {
+            "type": "architecture_unclosed_quoted_string",
+            "named": true
+          }
+        ]
+      },
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_identifier",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_parent_clause",
+            "named": true
+          }
+        ]
+      },
+      "title": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_title",
+            "named": true
+          },
+          {
+            "type": "architecture_unclosed_title",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_title",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_bare_title",
+            "named": true
+          },
+          {
+            "type": "architecture_quoted_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_title_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "architecture_line_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_titled_connector",
+    "named": true,
+    "fields": {
+      "title": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_title",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "architecture_unclosed_quoted_string",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "architecture_unclosed_title",
+    "named": true,
+    "fields": {
+      "recovery": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "architecture_unclosed_quoted_string",
             "named": true
           }
         ]
@@ -168,6 +903,45 @@
     }
   },
   {
+    "type": "cynefin_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "cynefin_domain_block",
+          "named": true
+        },
+        {
+          "type": "cynefin_transition_statement",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "langium_acc_descr_statement",
+          "named": true
+        },
+        {
+          "type": "langium_acc_title_statement",
+          "named": true
+        },
+        {
+          "type": "langium_title_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "cynefin_diagram",
     "named": true,
     "fields": {
@@ -176,7 +950,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "cynefin_body",
             "named": true
           }
         ]
@@ -187,6 +961,76 @@
         "types": [
           {
             "type": "cynefin_header",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "cynefin_domain_block",
+    "named": true,
+    "fields": {
+      "domain": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "cynefin_domain_name",
+            "named": true
+          }
+        ]
+      },
+      "item": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "cynefin_domain_item",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "cynefin_domain_item",
+    "named": true,
+    "fields": {
+      "label": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
             "named": true
           }
         ]
@@ -213,6 +1057,72 @@
         "types": [
           {
             "type": "diagram_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "cynefin_transition_statement",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "delimiter": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "from": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "cynefin_domain_name",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "cynefin_transition_operator",
+            "named": true
+          }
+        ]
+      },
+      "to": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "cynefin_domain_name",
             "named": true
           }
         ]
@@ -1422,6 +2332,231 @@
     }
   },
   {
+    "type": "git_graph_body",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "git_graph_branch_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_checkout_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_cherry_pick_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_commit_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_incomplete_branch_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_incomplete_checkout_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_incomplete_merge_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_malformed_statement",
+          "named": true
+        },
+        {
+          "type": "git_graph_merge_statement",
+          "named": true
+        },
+        {
+          "type": "langium_acc_descr_statement",
+          "named": true
+        },
+        {
+          "type": "langium_acc_title_statement",
+          "named": true
+        },
+        {
+          "type": "langium_title_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "git_graph_branch_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_reference",
+            "named": true
+          },
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "order": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "git_graph_order_clause",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_checkout_statement",
+    "named": true,
+    "fields": {
+      "branch": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_reference",
+            "named": true
+          },
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_cherry_pick_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "git_graph_id_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_parent_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_tag_clause",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "git_graph_commit_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "git_graph_id_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_message_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_tag_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_type_clause",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "git_graph_commit_type",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "git_graph_diagram",
     "named": true,
     "fields": {
@@ -1430,7 +2565,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "git_graph_body",
             "named": true
           }
         ]
@@ -1445,22 +2580,26 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
     }
   },
   {
     "type": "git_graph_header",
     "named": true,
     "fields": {
-      "colon": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": ":",
-            "named": false
-          }
-        ]
-      },
       "direction": {
         "multiple": false,
         "required": false,
@@ -1480,7 +2619,398 @@
             "named": true
           }
         ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "git_graph_header_separator",
+            "named": true
+          }
+        ]
       }
+    }
+  },
+  {
+    "type": "git_graph_id_clause",
+    "named": true,
+    "fields": {
+      "id": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_keyword",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_separator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_incomplete_branch_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_incomplete_checkout_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_incomplete_merge_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_malformed_statement",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_malformed_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_malformed_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "git_graph_merge_statement",
+    "named": true,
+    "fields": {
+      "branch": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_reference",
+            "named": true
+          },
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "git_graph_id_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_tag_clause",
+          "named": true
+        },
+        {
+          "type": "git_graph_type_clause",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "git_graph_message_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "git_graph_clause_keyword",
+            "named": true
+          }
+        ]
+      },
+      "message": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "git_graph_clause_separator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_order_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_keyword",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_separator",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_integer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_parent_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_keyword",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_separator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_tag_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_keyword",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_separator",
+            "named": true
+          }
+        ]
+      },
+      "tag": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "git_graph_type_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_keyword",
+            "named": true
+          }
+        ]
+      },
+      "separator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_clause_separator",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "git_graph_commit_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "info_body",
+    "named": true,
+    "fields": {
+      "show_info": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "info_show_statement",
+            "named": true
+          }
+        ]
+      },
+      "statement": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_acc_descr_statement",
+            "named": true
+          },
+          {
+            "type": "langium_acc_title_statement",
+            "named": true
+          },
+          {
+            "type": "langium_title_statement",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1492,7 +3022,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "info_body",
             "named": true
           }
         ]
@@ -1507,6 +3037,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1522,13 +3066,19 @@
             "named": true
           }
         ]
-      },
-      "option": {
+      }
+    }
+  },
+  {
+    "type": "info_show_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "header_option",
+            "type": "statement_keyword",
             "named": true
           }
         ]
@@ -1913,6 +3463,185 @@
     }
   },
   {
+    "type": "langium_acc_descr_block",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "{",
+            "named": false
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_acc_descr_block_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "langium_acc_descr_statement",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "delimiter": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "description": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_acc_descr_block",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_line_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "langium_acc_title_statement",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_line_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "langium_line_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "langium_title_statement",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "langium_line_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "mindmap_bang_shape",
     "named": true,
     "fields": {
@@ -2239,6 +3968,161 @@
     }
   },
   {
+    "type": "packet_bit_count",
+    "named": true,
+    "fields": {
+      "bits": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_integer",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_width_operator",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "packet_bit_range",
+    "named": true,
+    "fields": {
+      "end": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "packet_integer",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "packet_range_operator",
+            "named": true
+          }
+        ]
+      },
+      "start": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_integer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "packet_block_statement",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_label_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "range": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_bit_count",
+            "named": true
+          },
+          {
+            "type": "packet_bit_range",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "packet_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "langium_acc_descr_statement",
+          "named": true
+        },
+        {
+          "type": "langium_acc_title_statement",
+          "named": true
+        },
+        {
+          "type": "langium_title_statement",
+          "named": true
+        },
+        {
+          "type": "packet_block_statement",
+          "named": true
+        },
+        {
+          "type": "packet_incomplete_block_statement",
+          "named": true
+        },
+        {
+          "type": "packet_recovery_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "packet_diagram",
     "named": true,
     "fields": {
@@ -2247,7 +4131,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "packet_body",
             "named": true
           }
         ]
@@ -2262,6 +4146,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2281,6 +4179,105 @@
     }
   },
   {
+    "type": "packet_incomplete_block_statement",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_label_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "range": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_bit_count",
+            "named": true
+          },
+          {
+            "type": "packet_bit_range",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "packet_integer",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "packet_recovery_statement",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "packet_recovery_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "packet_recovery_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "pie_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "langium_acc_descr_statement",
+          "named": true
+        },
+        {
+          "type": "langium_acc_title_statement",
+          "named": true
+        },
+        {
+          "type": "langium_title_statement",
+          "named": true
+        },
+        {
+          "type": "pie_incomplete_section",
+          "named": true
+        },
+        {
+          "type": "pie_recovery_statement",
+          "named": true
+        },
+        {
+          "type": "pie_section",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "pie_diagram",
     "named": true,
     "fields": {
@@ -2289,7 +4286,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "pie_body",
             "named": true
           }
         ]
@@ -2304,22 +4301,26 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        }
+      ]
     }
   },
   {
     "type": "pie_header",
     "named": true,
     "fields": {
-      "inline_directive": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "pie_inline_directive",
-            "named": true
-          }
-        ]
-      },
       "keyword": {
         "multiple": false,
         "required": true,
@@ -2335,7 +4336,100 @@
         "required": false,
         "types": [
           {
-            "type": "header_option",
+            "type": "pie_show_data_option",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "pie_incomplete_section",
+    "named": true,
+    "fields": {
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pie_section_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "pie_recovery_statement",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pie_recovery_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "pie_recovery_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "pie_section",
+    "named": true,
+    "fields": {
+      "comment": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment",
+            "named": true
+          }
+        ]
+      },
+      "delimiter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pie_section_delimiter",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "langium_string",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pie_number",
             "named": true
           }
         ]
@@ -2385,6 +4479,313 @@
     }
   },
   {
+    "type": "radar_accessibility_description_statement",
+    "named": true,
+    "fields": {
+      "colon": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_accessibility_block",
+            "named": true
+          },
+          {
+            "type": "radar_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_accessibility_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "radar_accessibility_title_statement",
+    "named": true,
+    "fields": {
+      "colon": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_axis",
+    "named": true,
+    "fields": {
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_label",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_axis_statement",
+    "named": true,
+    "fields": {
+      "axis": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_axis",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "radar_accessibility_description_statement",
+          "named": true
+        },
+        {
+          "type": "radar_accessibility_title_statement",
+          "named": true
+        },
+        {
+          "type": "radar_axis_statement",
+          "named": true
+        },
+        {
+          "type": "radar_curve_statement",
+          "named": true
+        },
+        {
+          "type": "radar_incomplete_axis_statement",
+          "named": true
+        },
+        {
+          "type": "radar_incomplete_curve_statement",
+          "named": true
+        },
+        {
+          "type": "radar_malformed_statement",
+          "named": true
+        },
+        {
+          "type": "radar_option_statement",
+          "named": true
+        },
+        {
+          "type": "radar_title_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "radar_boolean",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "radar_curve",
+    "named": true,
+    "fields": {
+      "entries": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_curve_entries",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_label",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_curve_entries",
+    "named": true,
+    "fields": {
+      "entry": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_detailed_entry",
+            "named": true
+          },
+          {
+            "type": "radar_number_entry",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_curve_statement",
+    "named": true,
+    "fields": {
+      "curve": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_curve",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_detailed_entry",
+    "named": true,
+    "fields": {
+      "axis": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_identifier",
+            "named": true
+          }
+        ]
+      },
+      "colon": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_number",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "radar_diagram",
     "named": true,
     "fields": {
@@ -2393,7 +4794,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "radar_body",
             "named": true
           }
         ]
@@ -2409,6 +4810,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "radar_graticule",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "radar_header",
@@ -2430,6 +4836,206 @@
         "types": [
           {
             "type": "diagram_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_incomplete_axis_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_incomplete_curve_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_label",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_label",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "quoted_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_malformed_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_unknown_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_malformed_tail",
+            "named": true
+          },
+          {
+            "type": "radar_malformed_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_malformed_tail",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "radar_malformed_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "radar_number_entry",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_number",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_option",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_option_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_boolean",
+            "named": true
+          },
+          {
+            "type": "radar_graticule",
+            "named": true
+          },
+          {
+            "type": "radar_number",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_option_statement",
+    "named": true,
+    "fields": {
+      "option": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "radar_option",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "radar_title_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "radar_title_text",
             "named": true
           }
         ]
@@ -3236,6 +5842,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "tree_view_description_text",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "tree_view_diagram",
@@ -4123,6 +6734,461 @@
     }
   },
   {
+    "type": "wardley_accelerator_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_xy_position",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_accessibility_description_statement",
+    "named": true,
+    "fields": {
+      "colon": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_accessibility_block",
+            "named": true
+          },
+          {
+            "type": "wardley_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_accessibility_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "wardley_accessibility_title_statement",
+    "named": true,
+    "fields": {
+      "colon": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_accessibility_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_anchor_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_position",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_annotation_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "number": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_integer",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_coordinate_pair",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "quoted_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_annotations_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_coordinate_pair",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "wardley_accelerator_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_accessibility_description_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_accessibility_title_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_anchor_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_annotation_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_annotations_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_component_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_deaccelerator_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_evolution_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_evolve_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_incomplete_component_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_link_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_malformed_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_note_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_pipeline_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_size_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_title_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "wardley_component_statement",
+    "named": true,
+    "fields": {
+      "decorator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_strategy_decorator",
+            "named": true
+          }
+        ]
+      },
+      "inertia": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_inertia_clause",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_label_clause",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_position",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_coordinate_pair",
+    "named": true,
+    "fields": {
+      "x": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_coordinate_value",
+            "named": true
+          }
+        ]
+      },
+      "y": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_coordinate_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_coordinate_value",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "wardley_decimal",
+          "named": true
+        },
+        {
+          "type": "wardley_integer",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "wardley_deaccelerator_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_xy_position",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "wardley_diagram",
     "named": true,
     "fields": {
@@ -4131,7 +7197,7 @@
         "required": false,
         "types": [
           {
-            "type": "unstructured_body",
+            "type": "wardley_body",
             "named": true
           }
         ]
@@ -4149,6 +7215,114 @@
     }
   },
   {
+    "type": "wardley_evolution_stage",
+    "named": true,
+    "fields": {
+      "boundary": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_decimal",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "second_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_evolution_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_arrow",
+            "named": true
+          }
+        ]
+      },
+      "stage": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_evolution_stage",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_evolve_statement",
+    "named": true,
+    "fields": {
+      "component": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_decimal",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "wardley_header",
     "named": true,
     "fields": {
@@ -4158,6 +7332,589 @@
         "types": [
           {
             "type": "diagram_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_incomplete_component_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_incomplete_component_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_inertia_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_integer",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "wardley_label_clause",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "offset_x": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_signed_integer",
+            "named": true
+          }
+        ]
+      },
+      "offset_y": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_signed_integer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_link_label",
+    "named": true,
+    "fields": {
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_link_label_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_link_label_text",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_link_label_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_link_statement",
+    "named": true,
+    "fields": {
+      "from_port": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_link_port",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_link_label",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_link_operator",
+            "named": true
+          }
+        ]
+      },
+      "source": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      },
+      "to_port": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_link_port",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_malformed_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_unknown_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_malformed_tail",
+            "named": true
+          },
+          {
+            "type": "wardley_malformed_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_malformed_tail",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "wardley_malformed_text",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "wardley_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "quoted_string",
+          "named": true
+        },
+        {
+          "type": "wardley_name_hyphen",
+          "named": true
+        },
+        {
+          "type": "wardley_name_word",
+          "named": true
+        },
+        {
+          "type": "wardley_parenthesized_name_part",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "wardley_note_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "position": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_position",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "quoted_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_parenthesized_name_part",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "wardley_name_hyphen",
+          "named": true
+        },
+        {
+          "type": "wardley_name_word",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "wardley_pipeline_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "wardley_pipeline_component_statement",
+          "named": true
+        },
+        {
+          "type": "wardley_pipeline_malformed_statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "wardley_pipeline_component_statement",
+    "named": true,
+    "fields": {
+      "evolution": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_decimal",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_label_clause",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_pipeline_malformed_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_unknown_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_malformed_tail",
+            "named": true
+          },
+          {
+            "type": "wardley_pipeline_malformed_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_pipeline_statement",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_pipeline_body",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_position",
+    "named": true,
+    "fields": {
+      "evolution": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_decimal",
+            "named": true
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_decimal",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_size_statement",
+    "named": true,
+    "fields": {
+      "height": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_integer",
+            "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "width": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_integer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_strategy",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "wardley_strategy_decorator",
+    "named": true,
+    "fields": {
+      "strategy": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_strategy",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_title_statement",
+    "named": true,
+    "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "statement_keyword",
+            "named": true
+          }
+        ]
+      },
+      "text": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "wardley_title_text",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wardley_xy_position",
+    "named": true,
+    "fields": {
+      "x": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_decimal",
+            "named": true
+          }
+        ]
+      },
+      "y": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "wardley_decimal",
             "named": true
           }
         ]
@@ -4803,6 +8560,14 @@
     "named": false
   },
   {
+    "type": "%",
+    "named": false
+  },
+  {
+    "type": "'",
+    "named": false
+  },
+  {
     "type": "(",
     "named": false
   },
@@ -4843,6 +8608,10 @@
     "named": false
   },
   {
+    "type": "/",
+    "named": false
+  },
+  {
     "type": ":",
     "named": false
   },
@@ -4859,7 +8628,15 @@
     "named": false
   },
   {
+    "type": "<",
+    "named": false
+  },
+  {
     "type": "=",
+    "named": false
+  },
+  {
+    "type": ">",
     "named": false
   },
   {
@@ -4868,6 +8645,34 @@
   },
   {
     "type": "@{",
+    "named": false
+  },
+  {
+    "type": "B",
+    "named": false
+  },
+  {
+    "type": "HIGHLIGHT",
+    "named": false
+  },
+  {
+    "type": "L",
+    "named": false
+  },
+  {
+    "type": "NORMAL",
+    "named": false
+  },
+  {
+    "type": "R",
+    "named": false
+  },
+  {
+    "type": "REVERSE",
+    "named": false
+  },
+  {
+    "type": "T",
     "named": false
   },
   {
@@ -4899,6 +8704,30 @@
     "named": false
   },
   {
+    "type": "architecture_accessibility_text",
+    "named": true
+  },
+  {
+    "type": "architecture_bare_title",
+    "named": true
+  },
+  {
+    "type": "architecture_group_modifier",
+    "named": true
+  },
+  {
+    "type": "architecture_icon_name",
+    "named": true
+  },
+  {
+    "type": "architecture_identifier",
+    "named": true
+  },
+  {
+    "type": "architecture_plain_connector",
+    "named": true
+  },
+  {
     "type": "as",
     "named": false
   },
@@ -4907,11 +8736,27 @@
     "named": true
   },
   {
+    "type": "build",
+    "named": false
+  },
+  {
+    "type": "buy",
+    "named": false
+  },
+  {
     "type": "catch",
     "named": false
   },
   {
+    "type": "circle",
+    "named": false
+  },
+  {
     "type": "cmd",
+    "named": false
+  },
+  {
+    "type": "column",
     "named": false
   },
   {
@@ -4925,6 +8770,14 @@
   {
     "type": "critical",
     "named": false
+  },
+  {
+    "type": "cynefin_domain_name",
+    "named": true
+  },
+  {
+    "type": "cynefin_transition_operator",
+    "named": true
   },
   {
     "type": "data",
@@ -4968,6 +8821,10 @@
   },
   {
     "type": "evt",
+    "named": false
+  },
+  {
+    "type": "false",
     "named": false
   },
   {
@@ -5023,7 +8880,31 @@
     "named": true
   },
   {
+    "type": "git_graph_clause_keyword",
+    "named": true
+  },
+  {
+    "type": "git_graph_clause_separator",
+    "named": true
+  },
+  {
     "type": "git_graph_direction",
+    "named": true
+  },
+  {
+    "type": "git_graph_header_separator",
+    "named": true
+  },
+  {
+    "type": "git_graph_integer",
+    "named": true
+  },
+  {
+    "type": "git_graph_reference",
+    "named": true
+  },
+  {
+    "type": "git_graph_statement_keyword",
     "named": true
   },
   {
@@ -5037,10 +8918,6 @@
   {
     "type": "gwt",
     "named": false
-  },
-  {
-    "type": "header_option",
-    "named": true
   },
   {
     "type": "html",
@@ -5083,7 +8960,19 @@
     "named": true
   },
   {
+    "type": "langium_acc_descr_block_text",
+    "named": true
+  },
+  {
+    "type": "langium_string",
+    "named": true
+  },
+  {
     "type": "loop",
+    "named": false
+  },
+  {
+    "type": "market",
     "named": false
   },
   {
@@ -5119,6 +9008,22 @@
     "named": true
   },
   {
+    "type": "outsource",
+    "named": false
+  },
+  {
+    "type": "packet_label_delimiter",
+    "named": true
+  },
+  {
+    "type": "packet_range_operator",
+    "named": true
+  },
+  {
+    "type": "packet_width_operator",
+    "named": true
+  },
+  {
     "type": "par",
     "named": false
   },
@@ -5127,8 +9032,20 @@
     "named": false
   },
   {
-    "type": "pie_inline_directive",
+    "type": "pie_number",
     "named": true
+  },
+  {
+    "type": "pie_section_delimiter",
+    "named": true
+  },
+  {
+    "type": "pie_show_data_option",
+    "named": true
+  },
+  {
+    "type": "polygon",
+    "named": false
   },
   {
     "type": "processor",
@@ -5136,6 +9053,30 @@
   },
   {
     "type": "quoted_string",
+    "named": true
+  },
+  {
+    "type": "radar_accessibility_block",
+    "named": true
+  },
+  {
+    "type": "radar_identifier",
+    "named": true
+  },
+  {
+    "type": "radar_number",
+    "named": true
+  },
+  {
+    "type": "radar_option_name",
+    "named": true
+  },
+  {
+    "type": "radar_title_text",
+    "named": true
+  },
+  {
+    "type": "radar_unknown_keyword",
     "named": true
   },
   {
@@ -5156,6 +9097,10 @@
   },
   {
     "type": "rmo",
+    "named": false
+  },
+  {
+    "type": "row",
     "named": false
   },
   {
@@ -5227,10 +9172,6 @@
     "named": true
   },
   {
-    "type": "tree_view_description_text",
-    "named": true
-  },
-  {
     "type": "tree_view_icon_name",
     "named": true
   },
@@ -5249,6 +9190,10 @@
   {
     "type": "treemap_style_text",
     "named": true
+  },
+  {
+    "type": "true",
+    "named": false
   },
   {
     "type": "try",
@@ -5276,6 +9221,58 @@
   },
   {
     "type": "venn_indented_text_marker",
+    "named": true
+  },
+  {
+    "type": "wardley_accessibility_block",
+    "named": true
+  },
+  {
+    "type": "wardley_arrow",
+    "named": true
+  },
+  {
+    "type": "wardley_decimal",
+    "named": true
+  },
+  {
+    "type": "wardley_incomplete_component_text",
+    "named": true
+  },
+  {
+    "type": "wardley_link_label_value",
+    "named": true
+  },
+  {
+    "type": "wardley_link_operator",
+    "named": true
+  },
+  {
+    "type": "wardley_link_port",
+    "named": true
+  },
+  {
+    "type": "wardley_name_hyphen",
+    "named": true
+  },
+  {
+    "type": "wardley_name_word",
+    "named": true
+  },
+  {
+    "type": "wardley_pipeline_malformed_text",
+    "named": true
+  },
+  {
+    "type": "wardley_signed_integer",
+    "named": true
+  },
+  {
+    "type": "wardley_title_text",
+    "named": true
+  },
+  {
+    "type": "wardley_unknown_keyword",
     "named": true
   },
   {

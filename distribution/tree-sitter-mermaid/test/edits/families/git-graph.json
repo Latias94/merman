@@ -1,0 +1,26 @@
+[
+  {
+    "name": "GitGraph insert repeatable clauses",
+    "source": "gitGraph:\ncommit id:\"C1\" msg:\"Initial\"\nbranch feature\n",
+    "old": " msg:\"Initial\"",
+    "replacement": " tag:\"版本一\" msg:\"Initial\" type:HIGHLIGHT tag:\"stable\""
+  },
+  {
+    "name": "GitGraph delete a statement",
+    "source": "gitGraph\ncommit id:\"root\"\nbranch feature\ncheckout feature\ncommit id:\"tip\"\n",
+    "old": "checkout feature\n",
+    "replacement": ""
+  },
+  {
+    "name": "GitGraph CRLF quoted branch rename",
+    "source": "gitGraph TB:\r\ncommit id:\"root\"\r\nbranch \"功能/分支\" order:2\r\ncheckout \"功能/分支\"\r\n",
+    "old": "\"功能/分支\" order:2",
+    "replacement": "feature/release order:3"
+  },
+  {
+    "name": "GitGraph inline header EOF payload",
+    "source": "gitGraph: commit id:\"C1\" msg:\"inline\"",
+    "old": "\"inline\"",
+    "replacement": "\"Unicode 世界\""
+  }
+]

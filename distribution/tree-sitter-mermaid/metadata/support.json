@@ -21,16 +21,61 @@
       "publicId": "architecture",
       "rootNode": "architecture_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:architecture",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:architecture",
+          "kind": "corpus",
+          "path": "test/corpus/families/architecture.txt",
+          "sha256": "96ce810ee830b71d890b5e650dacca97f4d5bd6167b911b8ba8f631f086f9e5b"
+        },
+        {
+          "id": "u3-recovery:architecture",
+          "kind": "recovery",
+          "path": "test/corpus/families/architecture.txt",
+          "sha256": "96ce810ee830b71d890b5e650dacca97f4d5bd6167b911b8ba8f631f086f9e5b"
+        },
+        {
+          "id": "u3-incremental:architecture",
+          "kind": "incremental",
+          "path": "test/edits/families/architecture.json",
+          "sha256": "6c52b9cba5b6780a8acdaa70e9f0557dbd5472ff43602f5d05b7acdd89f0dcbc"
+        },
+        {
+          "id": "u3-node-schema:architecture",
+          "kind": "node-schema",
+          "path": "test/schema/families/architecture.json",
+          "sha256": "eddc17f260ab14803319c68c55e369e7413e6690202585e8d2418556aea34df8"
+        },
+        {
+          "id": "u3-query:architecture",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/architecture.captures.json",
+          "sha256": "48ca48c00ed6899273c591964f4dfdbb2948b33519e3681305e432b591aabecd"
+        },
+        {
+          "id": "u3-conformance:architecture",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:architecture"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "block",
@@ -42,7 +87,7 @@
           "id": "u2-header-dispatch:block",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -57,7 +102,7 @@
           "id": "u2-header-dispatch:c4",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -72,7 +117,7 @@
           "id": "u2-header-dispatch:class",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -81,16 +126,61 @@
       "publicId": "cynefin",
       "rootNode": "cynefin_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:cynefin",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:cynefin",
+          "kind": "corpus",
+          "path": "test/corpus/families/cynefin.txt",
+          "sha256": "6d98eb849fb114cbfdf59d3c059faa72d166aad8d7c52683ed9f0b56b2f21335"
+        },
+        {
+          "id": "u3-recovery:cynefin",
+          "kind": "recovery",
+          "path": "test/corpus/families/cynefin.txt",
+          "sha256": "6d98eb849fb114cbfdf59d3c059faa72d166aad8d7c52683ed9f0b56b2f21335"
+        },
+        {
+          "id": "u3-incremental:cynefin",
+          "kind": "incremental",
+          "path": "test/edits/families/cynefin.json",
+          "sha256": "c420bed34f8686b6841d1a046bd7a09002e593dc7b7028ef33657eb2ec9f0225"
+        },
+        {
+          "id": "u3-node-schema:cynefin",
+          "kind": "node-schema",
+          "path": "test/schema/families/cynefin.json",
+          "sha256": "059779a0da5f7387a429a6e014a3e06253a8a49d6ec02b3c820a279e8d1040cb"
+        },
+        {
+          "id": "u3-query:cynefin",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/cynefin.captures.json",
+          "sha256": "429201a71b509936528f1ba907060696887ca892f70621dfd567e79d20daa6b8"
+        },
+        {
+          "id": "u3-conformance:cynefin",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:cynefin"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "er",
@@ -102,7 +192,7 @@
           "id": "u2-header-dispatch:er",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -117,7 +207,7 @@
           "id": "u2-header-dispatch:eventmodeling",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -132,7 +222,7 @@
           "id": "u2-header-dispatch:flowchart",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -147,7 +237,7 @@
           "id": "u2-header-dispatch:gantt",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -156,31 +246,121 @@
       "publicId": "gitgraph",
       "rootNode": "git_graph_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:gitgraph",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:gitgraph",
+          "kind": "corpus",
+          "path": "test/corpus/families/git-graph.txt",
+          "sha256": "77477fc33e5c4864b11b95134c08f25979f272d47375ed690d01d9cb8fa647bc"
+        },
+        {
+          "id": "u3-recovery:gitgraph",
+          "kind": "recovery",
+          "path": "test/corpus/families/git-graph.txt",
+          "sha256": "77477fc33e5c4864b11b95134c08f25979f272d47375ed690d01d9cb8fa647bc"
+        },
+        {
+          "id": "u3-incremental:gitgraph",
+          "kind": "incremental",
+          "path": "test/edits/families/git-graph.json",
+          "sha256": "fce0c4800b9d2ccdc53d7be3b9a04eaf0561fc7da1ab1a51273ae505320353f4"
+        },
+        {
+          "id": "u3-node-schema:gitgraph",
+          "kind": "node-schema",
+          "path": "test/schema/families/gitgraph.json",
+          "sha256": "954171a73a642bf3146ad176d867950e52af5da3a78f61c39ef7dcac177280de"
+        },
+        {
+          "id": "u3-query:gitgraph",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/git-graph.captures.json",
+          "sha256": "ab666987b6dca14dfb119f9716dad2a6769d13c3a32cf8ae33dfff8a8696727c"
+        },
+        {
+          "id": "u3-conformance:gitgraph",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:gitgraph"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "info",
       "rootNode": "info_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:info",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:info",
+          "kind": "corpus",
+          "path": "test/corpus/families/info.txt",
+          "sha256": "76ce0b86f660119bcbb3dd1c7d0662c3858d6b8d659a4e6106c17df453eaf084"
+        },
+        {
+          "id": "u3-recovery:info",
+          "kind": "recovery",
+          "path": "test/corpus/families/info.txt",
+          "sha256": "76ce0b86f660119bcbb3dd1c7d0662c3858d6b8d659a4e6106c17df453eaf084"
+        },
+        {
+          "id": "u3-incremental:info",
+          "kind": "incremental",
+          "path": "test/edits/families/info.json",
+          "sha256": "0bcc972b30502667c9354637779d5496e510ec9317a5bdc24e445acb4ea05674"
+        },
+        {
+          "id": "u3-node-schema:info",
+          "kind": "node-schema",
+          "path": "test/schema/families/info.json",
+          "sha256": "72f7cd4e3276a08d2427b5fceb0154e2b1d2f9c4f0fe361e02e0f5d9b3784afa"
+        },
+        {
+          "id": "u3-query:info",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/info.captures.json",
+          "sha256": "6edf38eec2c2e5175f4cbd420fade6f98d5fcf91817ebd4e06b09b2b1788e384"
+        },
+        {
+          "id": "u3-conformance:info",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:info"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "ishikawa",
@@ -192,7 +372,7 @@
           "id": "u2-header-dispatch:ishikawa",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -207,7 +387,7 @@
           "id": "u2-header-dispatch:journey",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -222,7 +402,7 @@
           "id": "u2-header-dispatch:kanban",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -237,7 +417,7 @@
           "id": "u2-header-dispatch:mindmap",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -246,31 +426,121 @@
       "publicId": "packet",
       "rootNode": "packet_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:packet",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:packet",
+          "kind": "corpus",
+          "path": "test/corpus/families/packet.txt",
+          "sha256": "adafa343a51a1c534eb1b16c20382cc439ff9b3f27eb3424109e53b1e668d410"
+        },
+        {
+          "id": "u3-recovery:packet",
+          "kind": "recovery",
+          "path": "test/corpus/families/packet.txt",
+          "sha256": "adafa343a51a1c534eb1b16c20382cc439ff9b3f27eb3424109e53b1e668d410"
+        },
+        {
+          "id": "u3-incremental:packet",
+          "kind": "incremental",
+          "path": "test/edits/families/packet.json",
+          "sha256": "5daa9483004c22a3c6a3908ff4327ef7e1aea5a8a1f56ccd1fa4c1488be9ca1c"
+        },
+        {
+          "id": "u3-node-schema:packet",
+          "kind": "node-schema",
+          "path": "test/schema/families/packet.json",
+          "sha256": "2f96173dea0dc7c7f13c11a6287bab91d09f383cf43e4e74ba5f65bc744548de"
+        },
+        {
+          "id": "u3-query:packet",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/packet.captures.json",
+          "sha256": "b7deba1e94b36d53ae12709c388c0061d42d89da3d8b482993549daababfafa6"
+        },
+        {
+          "id": "u3-conformance:packet",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:packet"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "pie",
       "rootNode": "pie_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:pie",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:pie",
+          "kind": "corpus",
+          "path": "test/corpus/families/pie.txt",
+          "sha256": "28e0b4342258d97c84661d6d078cd74cd49392aa3b631fff32ca7f6a82c5bf31"
+        },
+        {
+          "id": "u3-recovery:pie",
+          "kind": "recovery",
+          "path": "test/corpus/families/pie.txt",
+          "sha256": "28e0b4342258d97c84661d6d078cd74cd49392aa3b631fff32ca7f6a82c5bf31"
+        },
+        {
+          "id": "u3-incremental:pie",
+          "kind": "incremental",
+          "path": "test/edits/families/pie.json",
+          "sha256": "0c93988cc26d3d1a8b453b4850254a5dd74b979606ea3005385ab0a2999954be"
+        },
+        {
+          "id": "u3-node-schema:pie",
+          "kind": "node-schema",
+          "path": "test/schema/families/pie.json",
+          "sha256": "a1bf37522df0e2aa968cfc9caa1e7a685210e139e1b6292036018e6adfc2a0a3"
+        },
+        {
+          "id": "u3-query:pie",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/pie.captures.json",
+          "sha256": "f761c50ddd3aafdc7056b706e1173cbe46db79b21d5e23df1ae30b6b5d531d92"
+        },
+        {
+          "id": "u3-conformance:pie",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:pie"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "quadrantchart",
@@ -282,7 +552,7 @@
           "id": "u2-header-dispatch:quadrantchart",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -291,16 +561,61 @@
       "publicId": "radar",
       "rootNode": "radar_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:radar",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:radar",
+          "kind": "corpus",
+          "path": "test/corpus/families/radar.txt",
+          "sha256": "22560c08cf6093cae38696d7024fff9b9c32e5cee8c545c3f88bab514f35a92e"
+        },
+        {
+          "id": "u3-recovery:radar",
+          "kind": "recovery",
+          "path": "test/corpus/families/radar.txt",
+          "sha256": "22560c08cf6093cae38696d7024fff9b9c32e5cee8c545c3f88bab514f35a92e"
+        },
+        {
+          "id": "u3-incremental:radar",
+          "kind": "incremental",
+          "path": "test/edits/families/radar.json",
+          "sha256": "26ceb32dc1332d3f1fbeeb5f049713199c0ba342f19491571e17920618154e3d"
+        },
+        {
+          "id": "u3-node-schema:radar",
+          "kind": "node-schema",
+          "path": "test/schema/families/radar.json",
+          "sha256": "a5068a08d3f3a0718a4b62202b5dcaea26be64a5251133eaaf0c508b28628ce2"
+        },
+        {
+          "id": "u3-query:radar",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/radar.captures.json",
+          "sha256": "224492a3a4ca373ca34b9c3035cbe7e787eb460d739d5dc3300babbdd742a6a9"
+        },
+        {
+          "id": "u3-conformance:radar",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:radar"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "railroad",
@@ -312,7 +627,7 @@
           "id": "u2-header-dispatch:railroad",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -327,7 +642,7 @@
           "id": "u2-header-dispatch:railroadAbnf",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -342,7 +657,7 @@
           "id": "u2-header-dispatch:railroadEbnf",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -357,7 +672,7 @@
           "id": "u2-header-dispatch:railroadPeg",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -372,7 +687,7 @@
           "id": "u2-header-dispatch:requirement",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -387,7 +702,7 @@
           "id": "u2-header-dispatch:sankey",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -402,7 +717,7 @@
           "id": "u2-header-dispatch:sequence",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -417,7 +732,7 @@
           "id": "u2-header-dispatch:state",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -432,7 +747,7 @@
           "id": "u2-header-dispatch:swimlane",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -447,7 +762,7 @@
           "id": "u2-header-dispatch:timeline",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -462,7 +777,7 @@
           "id": "u2-header-dispatch:treeView",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -477,7 +792,7 @@
           "id": "u2-header-dispatch:treemap",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -492,7 +807,7 @@
           "id": "u2-header-dispatch:venn",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -501,16 +816,61 @@
       "publicId": "wardley",
       "rootNode": "wardley_diagram",
       "lifecycle": "active",
-      "supportTier": "recognized",
+      "supportTier": "structured",
       "evidence": [
         {
           "id": "u2-header-dispatch:wardley",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
+        },
+        {
+          "id": "u3-corpus:wardley",
+          "kind": "corpus",
+          "path": "test/corpus/families/wardley.txt",
+          "sha256": "46d86312233b50e75a337de93977a012f2b16a2c95aa5231e1c5bb151c31a100"
+        },
+        {
+          "id": "u3-recovery:wardley",
+          "kind": "recovery",
+          "path": "test/corpus/families/wardley.txt",
+          "sha256": "46d86312233b50e75a337de93977a012f2b16a2c95aa5231e1c5bb151c31a100"
+        },
+        {
+          "id": "u3-incremental:wardley",
+          "kind": "incremental",
+          "path": "test/edits/families/wardley.json",
+          "sha256": "17d2463c2b290b8768814e93a23fdfd81f31d3a399355e1877856e057102e8e0"
+        },
+        {
+          "id": "u3-node-schema:wardley",
+          "kind": "node-schema",
+          "path": "test/schema/families/wardley.json",
+          "sha256": "591f2f03211460d1129f6d716108fa8257b2c82f2f5d5e7a0b4d057aef37f248"
+        },
+        {
+          "id": "u3-query:wardley",
+          "kind": "query",
+          "path": "test/queries/portable/highlights/wardley.captures.json",
+          "sha256": "69d5b16256c3689f7f0d339c77e10af2326e4046d08eacf89efe266182c21713"
+        },
+        {
+          "id": "u3-conformance:wardley",
+          "kind": "conformance",
+          "path": "test/conformance/admission.json",
+          "sha256": "c15d7777af47fc3598aec8d6e5e93d18d2a05f04880a677319edfcb64484df08"
         }
       ],
-      "queryApplicability": {}
+      "queryApplicability": {
+        "portable": {
+          "highlights": {
+            "status": "asserted",
+            "evidence": [
+              "u3-query:wardley"
+            ]
+          }
+        }
+      }
     },
     {
       "publicId": "xychart",
@@ -522,7 +882,7 @@
           "id": "u2-header-dispatch:xychart",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}
@@ -537,7 +897,7 @@
           "id": "u2-header-dispatch:zenuml",
           "kind": "header",
           "path": "metadata/evidence/u2-header-dispatch.json",
-          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+          "sha256": "46f1e9c98ed8aa0c527a8f809b04629d2f616b8bb336b75d2093039f2b02630a"
         }
       ],
       "queryApplicability": {}

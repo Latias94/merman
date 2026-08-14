@@ -1,0 +1,199 @@
+==================
+complete packet syntax
+==================
+
+packet-beta
+title IPv6 数据包
+accTitle: Packet overview
+accDescr {
+  Header fields
+  负载 details
+}
+%% packet comment
+%%{init: {"packet": {"bitsPerRow": 32}}}%%
+0-7: "Version" %% field comment
+8: 'Flags'
++ 16: "Payload"
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))
+    (packet_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_acc_descr_block
+          (langium_acc_descr_block_text)))
+      (comment)
+      (directive)
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer)
+          (packet_range_operator)
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string)
+        (comment))
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string))
+      (packet_block_statement
+        (packet_bit_count
+          (packet_width_operator)
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string)))))
+
+==================
+beta header retains upstream adjacent-body behavior
+==================
+
+packet-beta0:"A"
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))
+    (packet_body
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string)))))
+
+==================
+minimal packet header
+==================
+
+packet
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))))
+
+==================
+inline and duplicate common clauses
+==================
+
+packet title First title
+title Second title
+accTitle:
+accTitle: Duplicate title
+accDescr:
+0: "重复标签"
+1: "重复标签"
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))
+    (packet_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword))
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string))
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string)))))
+
+==================
+multiline and escaped Langium labels
+==================
+
+packet
+0-7: "Line one
+Line two %% literal"
++8: 'Payload \' two'
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))
+    (packet_body
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer)
+          (packet_range_operator)
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string))
+      (packet_block_statement
+        (packet_bit_count
+          (packet_width_operator)
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string)))))
+
+==================
+malformed statements recover between siblings
+==================
+
+packet
+0-7: "Before"
+invalid packet statement
++8: %% missing label
++8: "After"
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))
+    (packet_body
+      (packet_block_statement
+        (packet_bit_range
+          (packet_integer)
+          (packet_range_operator)
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string))
+      (packet_recovery_statement
+        (packet_recovery_text))
+      (packet_incomplete_block_statement
+        (packet_bit_count
+          (packet_width_operator)
+          (packet_integer))
+        (packet_label_delimiter))
+      (comment)
+      (packet_block_statement
+        (packet_bit_count
+          (packet_width_operator)
+          (packet_integer))
+        (packet_label_delimiter)
+        (langium_string)))))

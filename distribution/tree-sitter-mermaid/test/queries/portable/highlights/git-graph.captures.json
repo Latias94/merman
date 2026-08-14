@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "git-graph.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "gitGraph",
+      "startByte": 0,
+      "endByte": 8
+    },
+    {
+      "name": "constant",
+      "text": "TB",
+      "startByte": 9,
+      "endByte": 11
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 11,
+      "endByte": 12
+    },
+    {
+      "name": "keyword",
+      "text": "commit",
+      "startByte": 13,
+      "endByte": 19
+    },
+    {
+      "name": "property",
+      "text": "id",
+      "startByte": 20,
+      "endByte": 22
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 22,
+      "endByte": 23
+    },
+    {
+      "name": "string",
+      "text": "\"root\"",
+      "startByte": 23,
+      "endByte": 29
+    },
+    {
+      "name": "property",
+      "text": "msg",
+      "startByte": 30,
+      "endByte": 33
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 33,
+      "endByte": 34
+    },
+    {
+      "name": "string",
+      "text": "\"功能完成\"",
+      "startByte": 34,
+      "endByte": 48
+    },
+    {
+      "name": "property",
+      "text": "tag",
+      "startByte": 49,
+      "endByte": 52
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 52,
+      "endByte": 53
+    },
+    {
+      "name": "string",
+      "text": "\"v1\"",
+      "startByte": 53,
+      "endByte": 57
+    },
+    {
+      "name": "property",
+      "text": "type",
+      "startByte": 58,
+      "endByte": 62
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 62,
+      "endByte": 63
+    },
+    {
+      "name": "constant",
+      "text": "HIGHLIGHT",
+      "startByte": 63,
+      "endByte": 72
+    },
+    {
+      "name": "keyword",
+      "text": "branch",
+      "startByte": 73,
+      "endByte": 79
+    },
+    {
+      "name": "variable",
+      "text": "feature/test",
+      "startByte": 80,
+      "endByte": 92
+    },
+    {
+      "name": "property",
+      "text": "order",
+      "startByte": 93,
+      "endByte": 98
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 98,
+      "endByte": 99
+    },
+    {
+      "name": "number",
+      "text": "2",
+      "startByte": 99,
+      "endByte": 100
+    },
+    {
+      "name": "keyword",
+      "text": "checkout",
+      "startByte": 101,
+      "endByte": 109
+    },
+    {
+      "name": "variable",
+      "text": "feature/test",
+      "startByte": 110,
+      "endByte": 122
+    },
+    {
+      "name": "keyword",
+      "text": "switch",
+      "startByte": 123,
+      "endByte": 129
+    },
+    {
+      "name": "variable",
+      "text": "main",
+      "startByte": 130,
+      "endByte": 134
+    },
+    {
+      "name": "keyword",
+      "text": "merge",
+      "startByte": 135,
+      "endByte": 140
+    },
+    {
+      "name": "variable",
+      "text": "feature/test",
+      "startByte": 141,
+      "endByte": 153
+    },
+    {
+      "name": "property",
+      "text": "tag",
+      "startByte": 154,
+      "endByte": 157
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 157,
+      "endByte": 158
+    },
+    {
+      "name": "string",
+      "text": "\"merged\"",
+      "startByte": 158,
+      "endByte": 166
+    },
+    {
+      "name": "property",
+      "text": "id",
+      "startByte": 167,
+      "endByte": 169
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 169,
+      "endByte": 170
+    },
+    {
+      "name": "string",
+      "text": "\"merge-1\"",
+      "startByte": 170,
+      "endByte": 179
+    },
+    {
+      "name": "property",
+      "text": "type",
+      "startByte": 180,
+      "endByte": 184
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 184,
+      "endByte": 185
+    },
+    {
+      "name": "constant",
+      "text": "REVERSE",
+      "startByte": 185,
+      "endByte": 192
+    },
+    {
+      "name": "keyword",
+      "text": "cherry-pick",
+      "startByte": 193,
+      "endByte": 204
+    },
+    {
+      "name": "property",
+      "text": "id",
+      "startByte": 205,
+      "endByte": 207
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 207,
+      "endByte": 208
+    },
+    {
+      "name": "string",
+      "text": "\"root\"",
+      "startByte": 208,
+      "endByte": 214
+    },
+    {
+      "name": "property",
+      "text": "parent",
+      "startByte": 215,
+      "endByte": 221
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 221,
+      "endByte": 222
+    },
+    {
+      "name": "string",
+      "text": "\"base\"",
+      "startByte": 222,
+      "endByte": 228
+    },
+    {
+      "name": "property",
+      "text": "tag",
+      "startByte": 229,
+      "endByte": 232
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 232,
+      "endByte": 233
+    },
+    {
+      "name": "string",
+      "text": "\"backport\"",
+      "startByte": 233,
+      "endByte": 243
+    }
+  ]
+}

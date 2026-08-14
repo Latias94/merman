@@ -1,19 +1,19 @@
 {
   "artifacts": [
     {
-      "bytes": 1123124,
+      "bytes": 2282299,
       "path": "src/parser.c",
-      "sha256": "4571124f7b6db8932a20755a3d11c133de605aa17d3572002776cc4bb4e1b60f"
+      "sha256": "6894374ae5ea2bb1ce7ae0b33941ada2b7f1e6a9682f24197689cee2f6b9a9ec"
     },
     {
-      "bytes": 221131,
+      "bytes": 397452,
       "path": "src/grammar.json",
-      "sha256": "b0ab30496963f9a10fa92304776a0c9f872d50e645fb7c6ca49de01635269d2f"
+      "sha256": "c7dc1cc0493f7e7e63e50ff986d24061acc45736e230de7babf4bd21665b5670"
     },
     {
-      "bytes": 96031,
+      "bytes": 172375,
       "path": "src/node-types.json",
-      "sha256": "0961bae20b4f99f9218129eb1871f08bed4cb68e98f7969df67ffdf444de02e5"
+      "sha256": "445784f783d114b5cca90a98095e7bb6b0be71436cd4b9f330407bb765d49f8b"
     },
     {
       "bytes": 985,
@@ -31,9 +31,9 @@
       "sha256": "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
     },
     {
-      "bytes": 418755,
+      "bytes": 822514,
       "path": "wasm/tree-sitter-mermaid.wasm",
-      "sha256": "442b73f6452d9a32e374d784a48a297e573692d0a36b27f0e4d84a8dbcf49a3d"
+      "sha256": "9e70848a6f00d7b1bdbe57ddcd53bec218ff0c5084ed1f70a5c5bc143588d2e5"
     }
   ],
   "baselines": {
@@ -109,6 +109,16 @@
       "sha256": "fe9021b384c97331358925d48aa2e9a2f9921c6a8b46a75e8d84c95d072e6aec"
     },
     {
+      "bytes": 8408,
+      "path": "grammar/families/architecture.js",
+      "sha256": "92f178cea348fef749d17c61cc8b29504b31da640e81db40a3871cdea4653fe0"
+    },
+    {
+      "bytes": 2195,
+      "path": "grammar/families/cynefin.js",
+      "sha256": "7644129d3bea0c4a4e2798fbfd216ccc1e3c306a7d12ea1f6058eec33201fdc2"
+    },
+    {
       "bytes": 3745,
       "path": "grammar/families/event-modeling.js",
       "sha256": "beefbfe0962edb9a9c1c90953ecb914ae1283a8dcc92f4478e23a033ce40032c"
@@ -117,6 +127,16 @@
       "bytes": 4587,
       "path": "grammar/families/flowchart.js",
       "sha256": "aa75bbb28b980b62bb270999de912579486e0d6e14635d2709cba3f957ea2074"
+    },
+    {
+      "bytes": 6346,
+      "path": "grammar/families/git-graph.js",
+      "sha256": "72903b4dff57c74b105ac0a72bbb1d4958f7135d9b1a85e3aaf1923815eb81fe"
+    },
+    {
+      "bytes": 1442,
+      "path": "grammar/families/info.js",
+      "sha256": "292a30bf39927c18c01c2b5e8f839440751c2b5433e03f39056b7e8db912ea73"
     },
     {
       "bytes": 2423,
@@ -129,9 +149,24 @@
       "sha256": "0fc1aff2d6c9cc3e3b86e39c310f2db390275cd89fc0be905cec76610f494665"
     },
     {
-      "bytes": 7040,
+      "bytes": 2828,
+      "path": "grammar/families/packet.js",
+      "sha256": "2ba317263366067e8357f4cae49f588b883562de4714fed4cff7fb2d59572ff9"
+    },
+    {
+      "bytes": 2855,
+      "path": "grammar/families/pie.js",
+      "sha256": "ae3421f2e7c4d55620389f272085ad5d54b2ee73bbf5374901477e832019797f"
+    },
+    {
+      "bytes": 6195,
+      "path": "grammar/families/radar.js",
+      "sha256": "81702cf8d4fe29b0dfbb83e759097b315c83cd3d190d82f66ae8ecd5175d1442"
+    },
+    {
+      "bytes": 4516,
       "path": "grammar/families/recognized.js",
-      "sha256": "50be98e2e65b157357354394e4481a668d5256eca3207626275f5dbd84b70878"
+      "sha256": "a705d71834e5b1416860a788c4ae38e2722bce2478169879e80c9e0b0e57fc5e"
     },
     {
       "bytes": 1269,
@@ -154,14 +189,19 @@
       "sha256": "f60fab11a92a337b1576210f4d0a918788ed50a643772c3c4f7f07e2673333cc"
     },
     {
+      "bytes": 10991,
+      "path": "grammar/families/wardley.js",
+      "sha256": "8ba1dbfb094300dfc609cc81f74404e3bae30ccc3d0ce8be39dbdd4857788dbf"
+    },
+    {
       "bytes": 4698,
       "path": "grammar/families/zenuml.js",
       "sha256": "58590a864cf2e0ef15935fbc4bbe9cdba36eef3b64039127ab830328544f99fe"
     },
     {
-      "bytes": 825,
+      "bytes": 1180,
       "path": "grammar/shared/common.js",
-      "sha256": "f974a557621fd52eca40c4b39f527cd7261467976f00d4475d6bd0a99482d8fb"
+      "sha256": "5dfc37f6bed00ed57d5bf36091f1116bc3211532698e42d5f7630f86ec6016bf"
     },
     {
       "bytes": 372,
@@ -174,24 +214,29 @@
       "sha256": "3afbdbefd2c962e6ba4dd40ed09db7ac2ea4396d51107a8819d11e9cba07586c"
     },
     {
+      "bytes": 3020,
+      "path": "grammar/shared/langium.js",
+      "sha256": "b2f822bcc80499d7e00df946e1973a144d0d7c3943499283ed7529ab3238fd41"
+    },
+    {
       "bytes": 535,
       "path": "grammar/shared/preamble.js",
       "sha256": "06f0008d7bd93fc1e3e80c482b81038081a0fff51e5851efa75f4439def1ec4d"
     },
     {
-      "bytes": 1786,
+      "bytes": 2931,
       "path": "grammar.js",
-      "sha256": "ee718c5bb0d46a4df5a65a6f90d52fc73b49659bb471d8555f2bbdd54803ac2d"
+      "sha256": "276f4be0e315aa7a286d0e03eef05e52cdef8d37cee412d5165ea093297f0e9c"
     },
     {
-      "bytes": 8379,
+      "bytes": 10107,
       "path": "metadata/derivations.json",
-      "sha256": "b4ccca9b89c194cd0d98a9feac6e6ace31a49b7adaff54adb499b377b9d1677e"
+      "sha256": "3724a96efa50e457458a3c70ae85c3962a031c9e0d5ad1dbf8685d8c36330862"
     },
     {
-      "bytes": 45243,
+      "bytes": 45702,
       "path": "metadata/evidence/u2-mermaid-header-oracle.json",
-      "sha256": "070ffb8d84bed556429e97511ccb6019a88d6b2b8c253478722a6bceefab83e5"
+      "sha256": "4bc145b3384ee66bffa0de122c3ec5a17e4db6257258e40e2a21625487c6513e"
     },
     {
       "bytes": 8815,
@@ -199,9 +244,9 @@
       "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
     },
     {
-      "bytes": 15198,
+      "bytes": 15282,
       "path": "metadata/headers.json",
-      "sha256": "731d342be7268c93d2b539dd42dac5632ba015d25863c5a6e903aa0506ca2fbc"
+      "sha256": "c84cd0a852de2217154e610e69d5c145b3623c3a3440c52b0a779d4e62d1657f"
     },
     {
       "bytes": 3529,
@@ -219,19 +264,19 @@
       "sha256": "dacc5b79fd2ba33f01afaa4e98d23e4f1223e164eedad6d9b8d477b3bea01c71"
     },
     {
-      "bytes": 2531,
+      "bytes": 2607,
       "path": "package.json",
-      "sha256": "3b6635be10842fd0294261d8178bcf75db64f08a2d51f21f600d597a17c28b2e"
+      "sha256": "f6dd835b2bf71e82fb2a8fe1d30f3c7abca5abe436c7c0e66444e74021b2585a"
     },
     {
-      "bytes": 240,
+      "bytes": 3397,
       "path": "queries/portable/highlights.scm",
-      "sha256": "6c7a7b970291c14c8569eba173f28ccc4cd35710563d52c1da5fd64a352f155c"
+      "sha256": "3fcb9779362ffa7f986adde69c037440ec2fb71fdeb3868bc12f86d26944ddbd"
     },
     {
-      "bytes": 18026,
+      "bytes": 20190,
       "path": "scripts/generate.py",
-      "sha256": "7ee1868c1701379e730669c911621616e869f92730799d1951fecc2d92f57b92"
+      "sha256": "99d3102337bd0b56366109862ca5d27da9444ec203981be56f29fc6a5d78ce1f"
     },
     {
       "bytes": 86472,
@@ -254,9 +299,14 @@
       "sha256": "c2b799d43270d602aa6f3beff1522108da3e1d4e426f86d3d8de3060e126c13c"
     },
     {
-      "bytes": 17541,
+      "bytes": 19014,
       "path": "scripts/mechanics_gate.js",
-      "sha256": "20c13324a6e2a335731052d0eff49fdefe67a0dfe6f3b0122b2f291f395e4d8d"
+      "sha256": "5042b2c8b7ffcbbe5f6d7e8515500b8426a58e0940356dee511ce8dc79f0fdf5"
+    },
+    {
+      "bytes": 3721,
+      "path": "scripts/query_golden.js",
+      "sha256": "7fa9be5e24e664d046e4045cdf2e25cb352709a2181e8ddeecceddb5cb70858b"
     },
     {
       "bytes": 1074,
@@ -287,14 +337,14 @@
   },
   "queryProfiles": [
     {
-      "bytes": 240,
+      "bytes": 3397,
       "path": "queries/portable/highlights.scm",
       "profile": "portable",
-      "sha256": "6c7a7b970291c14c8569eba173f28ccc4cd35710563d52c1da5fd64a352f155c",
+      "sha256": "3fcb9779362ffa7f986adde69c037440ec2fb71fdeb3868bc12f86d26944ddbd",
       "surface": "highlights"
     }
   ],
-  "receiptId": "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613",
+  "receiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",
   "schemaVersion": 1,
   "toolchain": {
     "nodeRuntime": "0.25.1",

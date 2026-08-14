@@ -1,5 +1,7 @@
 //! Composed language contract for the independently versioned Tree-sitter Mermaid package.
 
+mod admission;
+
 use crate::XtaskError;
 use merman_core::{diagram_family_capabilities, diagram_header_facts, supported_diagrams};
 use serde::{Deserialize, Serialize};
@@ -118,7 +120,7 @@ const GENERATED_ARTIFACTS: [&str; 7] = [
     "src/tree_sitter/parser.h",
     "wasm/tree-sitter-mermaid.wasm",
 ];
-const ATTRIBUTED_PACKAGE_FILES: [&str; 30] = [
+const ATTRIBUTED_PACKAGE_FILES: [&str; 39] = [
     "binding.gyp",
     "bindings/c/tree-sitter-mermaid.pc.in",
     "bindings/c/tree_sitter/tree-sitter-mermaid.h",
@@ -130,19 +132,28 @@ const ATTRIBUTED_PACKAGE_FILES: [&str; 30] = [
     "bindings/rust/build.rs",
     "bindings/rust/lib.rs",
     "grammar.js",
+    "grammar/families/architecture.js",
+    "grammar/families/cynefin.js",
     "grammar/families/event-modeling.js",
     "grammar/families/flowchart.js",
+    "grammar/families/git-graph.js",
+    "grammar/families/info.js",
     "grammar/families/kanban.js",
     "grammar/families/mindmap.js",
+    "grammar/families/packet.js",
+    "grammar/families/pie.js",
+    "grammar/families/radar.js",
     "grammar/families/recognized.js",
     "grammar/families/sankey.js",
     "grammar/families/tree-view.js",
     "grammar/families/treemap.js",
     "grammar/families/venn.js",
+    "grammar/families/wardley.js",
     "grammar/families/zenuml.js",
     "grammar/shared/common.js",
     "grammar/shared/header.js",
     "grammar/shared/indentation.js",
+    "grammar/shared/langium.js",
     "grammar/shared/preamble.js",
     "metadata/headers.json",
     "src/scanner.c",
@@ -504,9 +515,35 @@ struct MechanicsMetrics {
     schema_version: u32,
     checkpoint: String,
     artifact_receipt_id: String,
+    attribution: MetricsAttribution,
     r#static: StaticMetrics,
     ratchet: MetricsRatchet,
     observed: ObservedMetrics,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MetricsAttribution {
+    previous_checkpoint: String,
+    previous_artifact_receipt_id: String,
+    structured_families_added: Vec<String>,
+    previous_static: StaticMetrics,
+    delta: StaticMetricsDelta,
+    explanation: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StaticMetricsDelta {
+    generated_c_bytes: i64,
+    wasm_bytes: i64,
+    parser_states: i64,
+    large_states: i64,
+    symbols: i64,
+    fields: i64,
+    external_tokens: i64,
+    conflicts: i64,
+    wasm_declared_minimum_memory_pages: i64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -541,7 +578,8 @@ struct MetricsEnvironment {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct BuildMetrics {
-    two_runtime_two_wasm_generation_wall_milliseconds: u64,
+    two_runtime_one_wasm_generation_wall_milliseconds: u64,
+    canonical_wasm_build_wall_milliseconds: u64,
     rust_release_compile_wall_milliseconds: u64,
     node_binding_compile_wall_milliseconds: u64,
     measurement: String,
@@ -592,6 +630,8 @@ struct MetricsRatchet {
     parser_states_investigate_above: u64,
     large_states_investigate_above: u64,
     conflicts_allowed: u64,
+    generation_hard_limit_milliseconds: u64,
+    canonical_wasm_build_hard_limit_milliseconds: u64,
     independent_compile_hard_limit_milliseconds: u64,
     native_smoke_parse_hard_limit_milliseconds: u64,
     wasm_smoke_parse_hard_limit_milliseconds: u64,
@@ -1938,11 +1978,12 @@ fn validate_metrics(
     receipt: &ArtifactReceipt,
 ) -> Result<(), String> {
     if metrics.schema_version != 1
-        || metrics.checkpoint != "u2-mechanics"
+        || metrics.checkpoint != "u3-low-state-complexity"
         || metrics.artifact_receipt_id != receipt.receipt_id
     {
-        return Err("U2 mechanics metrics identity drifted".to_string());
+        return Err("mechanics metrics identity drifted".to_string());
     }
+    validate_metrics_attribution(metrics)?;
     let incremental = &metrics.observed.fresh_and_incremental_work;
     let metric = |name: &str| {
         incremental
@@ -2072,9 +2113,15 @@ fn validate_metrics(
 
     let build = &metrics.observed.build;
     let compile_limit = metrics.ratchet.independent_compile_hard_limit_milliseconds;
-    if compile_limit != 120_000
-        || build.two_runtime_two_wasm_generation_wall_milliseconds == 0
-        || build.two_runtime_two_wasm_generation_wall_milliseconds > compile_limit
+    let generation_limit = metrics.ratchet.generation_hard_limit_milliseconds;
+    let wasm_build_limit = metrics.ratchet.canonical_wasm_build_hard_limit_milliseconds;
+    if generation_limit != 300_000
+        || wasm_build_limit != 180_000
+        || compile_limit != 120_000
+        || build.two_runtime_one_wasm_generation_wall_milliseconds == 0
+        || build.two_runtime_one_wasm_generation_wall_milliseconds > generation_limit
+        || build.canonical_wasm_build_wall_milliseconds == 0
+        || build.canonical_wasm_build_wall_milliseconds > wasm_build_limit
         || build.rust_release_compile_wall_milliseconds == 0
         || build.rust_release_compile_wall_milliseconds > compile_limit
         || build.node_binding_compile_wall_milliseconds == 0
@@ -2354,6 +2401,13 @@ fn validate_metrics(
         .collect::<BTreeMap<_, _>>();
     let parser_source = fs::read_to_string(root.join(PACKAGE_ROOT).join("src/parser.c"))
         .map_err(|error| format!("failed to read generated parser metrics: {error}"))?;
+    let grammar: serde_json::Value =
+        read_json(root, "distribution/tree-sitter-mermaid/src/grammar.json")?;
+    let conflict_count = grammar
+        .get("conflicts")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "generated grammar lacks conflicts".to_string())?
+        .len() as u64;
     let expected = [
         ("STATE_COUNT", metrics.r#static.parser_states),
         ("LARGE_STATE_COUNT", metrics.r#static.large_states),
@@ -2368,22 +2422,98 @@ fn validate_metrics(
     }
     if artifact_sizes.get("src/parser.c") != Some(&metrics.r#static.generated_c_bytes)
         || artifact_sizes.get("wasm/tree-sitter-mermaid.wasm") != Some(&metrics.r#static.wasm_bytes)
-        || metrics.r#static.conflicts != 0
+        || metrics.r#static.conflicts != conflict_count
+        || metrics.r#static.conflicts > metrics.ratchet.conflicts_allowed
+        || metrics.ratchet.conflicts_allowed != conflict_count
         || metrics.r#static.wasm_declared_minimum_memory_pages != 2
         || metrics.ratchet.generated_c_hard_limit_bytes != 10 * 1024 * 1024
         || metrics.ratchet.wasm_hard_limit_bytes != 5 * 1024 * 1024
-        || metrics.ratchet.conflicts_allowed != 0
         || metrics.ratchet.native_smoke_parse_hard_limit_milliseconds != 2_000
         || metrics.ratchet.wasm_smoke_parse_hard_limit_milliseconds != 2_000
         || metrics.ratchet.native_peak_rss_investigate_above_bytes != 256 * 1024 * 1024
-        || metrics.ratchet.wasm_peak_rss_investigate_above_bytes != 512 * 1024 * 1024
+        || metrics.ratchet.wasm_peak_rss_investigate_above_bytes != 768 * 1024 * 1024
         || metrics.ratchet.query_hard_limit_milliseconds != 2_000
         || metrics.r#static.generated_c_bytes > metrics.ratchet.generated_c_hard_limit_bytes
         || metrics.r#static.wasm_bytes > metrics.ratchet.wasm_hard_limit_bytes
         || metrics.r#static.parser_states > metrics.ratchet.parser_states_investigate_above
         || metrics.r#static.large_states > metrics.ratchet.large_states_investigate_above
     {
-        return Err("U2 mechanics metrics or ratchet limits drifted".to_string());
+        return Err("mechanics metrics or ratchet limits drifted".to_string());
+    }
+    Ok(())
+}
+
+fn validate_metrics_attribution(metrics: &MechanicsMetrics) -> Result<(), String> {
+    const U2_RECEIPT: &str = "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613";
+    const U3_FAMILIES: [&str; 8] = [
+        "architecture",
+        "cynefin",
+        "gitgraph",
+        "info",
+        "packet",
+        "pie",
+        "radar",
+        "wardley",
+    ];
+
+    let attribution = &metrics.attribution;
+    if attribution.previous_checkpoint != "u2-mechanics"
+        || attribution.previous_artifact_receipt_id != U2_RECEIPT
+        || attribution.previous_artifact_receipt_id == metrics.artifact_receipt_id
+        || attribution.structured_families_added != U3_FAMILIES.map(str::to_owned)
+        || attribution.explanation.trim().is_empty()
+    {
+        return Err("U3 metrics attribution identity drifted".to_string());
+    }
+
+    let previous = &attribution.previous_static;
+    if previous.generated_c_bytes != 1_123_124
+        || previous.wasm_bytes != 418_755
+        || previous.parser_states != 944
+        || previous.large_states != 5
+        || previous.symbols != 441
+        || previous.fields != 52
+        || previous.external_tokens != 15
+        || previous.conflicts != 0
+        || previous.wasm_declared_minimum_memory_pages != 2
+    {
+        return Err("U3 metrics attribution baseline drifted".to_string());
+    }
+
+    let delta = |current: u64, prior: u64| -> Result<i64, String> {
+        let current = i64::try_from(current)
+            .map_err(|_| "current static metric exceeds signed delta range".to_string())?;
+        let prior = i64::try_from(prior)
+            .map_err(|_| "previous static metric exceeds signed delta range".to_string())?;
+        Ok(current - prior)
+    };
+    let current = &metrics.r#static;
+    let recorded = &attribution.delta;
+    let actual = StaticMetricsDelta {
+        generated_c_bytes: delta(current.generated_c_bytes, previous.generated_c_bytes)?,
+        wasm_bytes: delta(current.wasm_bytes, previous.wasm_bytes)?,
+        parser_states: delta(current.parser_states, previous.parser_states)?,
+        large_states: delta(current.large_states, previous.large_states)?,
+        symbols: delta(current.symbols, previous.symbols)?,
+        fields: delta(current.fields, previous.fields)?,
+        external_tokens: delta(current.external_tokens, previous.external_tokens)?,
+        conflicts: delta(current.conflicts, previous.conflicts)?,
+        wasm_declared_minimum_memory_pages: delta(
+            current.wasm_declared_minimum_memory_pages,
+            previous.wasm_declared_minimum_memory_pages,
+        )?,
+    };
+    if recorded.generated_c_bytes != actual.generated_c_bytes
+        || recorded.wasm_bytes != actual.wasm_bytes
+        || recorded.parser_states != actual.parser_states
+        || recorded.large_states != actual.large_states
+        || recorded.symbols != actual.symbols
+        || recorded.fields != actual.fields
+        || recorded.external_tokens != actual.external_tokens
+        || recorded.conflicts != actual.conflicts
+        || recorded.wasm_declared_minimum_memory_pages != actual.wasm_declared_minimum_memory_pages
+    {
+        return Err("U3 static metrics delta drifted".to_string());
     }
     Ok(())
 }
@@ -2842,6 +2972,7 @@ fn build_contract(root: &Path) -> Result<LanguageContract, String> {
     validate_provenance(&provenance)?;
     validate_derivations(root, &derivations, &provenance)?;
     validate_artifact_receipt(root, &receipt, &provenance)?;
+    admission::validate(root, &receipt.receipt_id, &support)?;
     validate_metrics(root, &metrics, &receipt)?;
     validate_schemas(&schemas, &provenance)?;
     validate_external_sources(&provenance, &upstream_lock, &legal)?;
@@ -2989,20 +3120,77 @@ mod tests {
     }
 
     #[test]
-    fn support_metadata_matches_exact_public_catalog_at_recognized_tier() {
+    fn support_metadata_matches_the_u3_recognized_and_structured_tiers() {
         let (support, core) = repository_inputs();
+        let expected_structured = [
+            "architecture",
+            "cynefin",
+            "gitgraph",
+            "info",
+            "packet",
+            "pie",
+            "radar",
+            "wardley",
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        let expected_structured_evidence = [
+            "conformance",
+            "corpus",
+            "header",
+            "incremental",
+            "node-schema",
+            "query",
+            "recovery",
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
 
         validate_repository_support(&support, &core).expect("valid support metadata");
         assert_eq!(support.families.len(), PUBLIC_FAMILY_COUNT);
-        assert!(support.families.iter().all(|family| {
-            family.lifecycle == "active"
-                && family.support_tier.as_deref() == Some("recognized")
-                && family.evidence.len() == 1
-                && family.evidence[0].id == format!("u2-header-dispatch:{}", family.public_id)
-                && family.evidence[0].kind == "header"
-                && family.evidence[0].path == HEADER_RECEIPT_PACKAGE_PATH
-                && family.query_applicability.is_empty()
-        }));
+        let actual_structured = support
+            .families
+            .iter()
+            .filter(|family| family.support_tier.as_deref() == Some("structured"))
+            .map(|family| family.public_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual_structured, expected_structured);
+
+        for family in &support.families {
+            assert_eq!(family.lifecycle, "active");
+            if expected_structured.contains(family.public_id.as_str()) {
+                let evidence = family
+                    .evidence
+                    .iter()
+                    .map(|item| item.kind.as_str())
+                    .collect::<BTreeSet<_>>();
+                assert_eq!(
+                    evidence, expected_structured_evidence,
+                    "{}",
+                    family.public_id
+                );
+                assert_eq!(
+                    family
+                        .query_applicability
+                        .get("portable")
+                        .and_then(|surfaces| surfaces.get("highlights"))
+                        .map(|query| query.status.as_str()),
+                    Some("asserted"),
+                    "{}",
+                    family.public_id
+                );
+            } else {
+                assert_eq!(family.support_tier.as_deref(), Some("recognized"));
+                assert_eq!(family.evidence.len(), 1);
+                assert_eq!(
+                    family.evidence[0].id,
+                    format!("u2-header-dispatch:{}", family.public_id)
+                );
+                assert_eq!(family.evidence[0].kind, "header");
+                assert_eq!(family.evidence[0].path, HEADER_RECEIPT_PACKAGE_PATH);
+                assert!(family.query_applicability.is_empty());
+            }
+        }
     }
 
     #[test]

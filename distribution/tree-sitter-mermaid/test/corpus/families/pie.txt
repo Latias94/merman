@@ -1,0 +1,158 @@
+==================
+complete pie syntax
+==================
+
+pie showData
+title 市场份额
+accTitle: Pie overview
+accDescr {
+  Regional split
+  世界 distribution
+}
+%% pie comment
+%%{init: {"pie": {"textPosition": 0.75}}}%%
+"GitHub": 60.67 %% slice comment
+'GitLab': 39.33
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword)
+      (pie_show_data_option))
+    (pie_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_acc_descr_block
+          (langium_acc_descr_block_text)))
+      (comment)
+      (directive)
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number)
+        (comment))
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number)))))
+
+==================
+minimal pie header
+==================
+
+pie
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword))))
+
+==================
+inline duplicate clauses and number forms
+==================
+
+pie showData title First title
+title Second title
+accTitle:
+accDescr:
+"重复": 0
+"重复": 01.5
+"Negative syntax": -1
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword)
+      (pie_show_data_option))
+    (pie_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword))
+      (langium_acc_descr_statement
+        (statement_keyword))
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number))
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number))
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number)))))
+
+==================
+multiline and escaped Langium labels
+==================
+
+pie
+"Line one
+Line two %% literal": 1
+'Escaped \' label': 2
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword))
+    (pie_body
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number))
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number)))))
+
+==================
+malformed statements recover between siblings
+==================
+
+pie
+"Before": 1
+not a pie slice
+"Missing": %% missing value
+"After": 2
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword))
+    (pie_body
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number))
+      (pie_recovery_statement
+        (pie_recovery_text))
+      (pie_incomplete_section
+        (langium_string)
+        (pie_section_delimiter))
+      (comment)
+      (pie_section
+        (langium_string)
+        (pie_section_delimiter)
+        (pie_number)))))

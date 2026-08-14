@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "wardley.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "wardley-beta",
+      "startByte": 0,
+      "endByte": 12
+    },
+    {
+      "name": "keyword",
+      "text": "component",
+      "startByte": 13,
+      "endByte": 22
+    },
+    {
+      "name": "variable",
+      "text": "API",
+      "startByte": 23,
+      "endByte": 26
+    },
+    {
+      "name": "number",
+      "text": "0.6",
+      "startByte": 28,
+      "endByte": 31
+    },
+    {
+      "name": "number",
+      "text": "0.7",
+      "startByte": 33,
+      "endByte": 36
+    },
+    {
+      "name": "constant",
+      "text": "build",
+      "startByte": 39,
+      "endByte": 44
+    },
+    {
+      "name": "keyword",
+      "text": "component",
+      "startByte": 46,
+      "endByte": 55
+    },
+    {
+      "name": "variable",
+      "text": "DB",
+      "startByte": 56,
+      "endByte": 58
+    },
+    {
+      "name": "number",
+      "text": "0.4",
+      "startByte": 60,
+      "endByte": 63
+    },
+    {
+      "name": "number",
+      "text": "0.5",
+      "startByte": 65,
+      "endByte": 68
+    },
+    {
+      "name": "variable",
+      "text": "API",
+      "startByte": 70,
+      "endByte": 73
+    },
+    {
+      "name": "operator",
+      "text": "+<>",
+      "startByte": 74,
+      "endByte": 77
+    },
+    {
+      "name": "variable",
+      "text": "DB",
+      "startByte": 78,
+      "endByte": 80
+    },
+    {
+      "name": "string",
+      "text": "constraint",
+      "startByte": 82,
+      "endByte": 92
+    },
+    {
+      "name": "keyword",
+      "text": "evolve",
+      "startByte": 93,
+      "endByte": 99
+    },
+    {
+      "name": "variable",
+      "text": "API",
+      "startByte": 100,
+      "endByte": 103
+    },
+    {
+      "name": "number",
+      "text": "0.8",
+      "startByte": 104,
+      "endByte": 107
+    }
+  ]
+}

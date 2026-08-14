@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "publicId": "radar",
+  "rootNode": "radar_diagram",
+  "nodes": {
+    "radar_axis": ["label", "name"],
+    "radar_axis_statement": ["axis", "keyword"],
+    "radar_curve": ["entries", "label", "name"],
+    "radar_curve_entries": ["entry"],
+    "radar_curve_statement": ["curve", "keyword"],
+    "radar_detailed_entry": ["axis", "colon", "value"],
+    "radar_diagram": ["body", "header"],
+    "radar_option": ["name", "value"]
+  }
+}

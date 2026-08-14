@@ -40,10 +40,11 @@
     "test:edits": "tree-sitter fuzz --iterations 5 --edits 5",
     "test:generation-script": "node scripts/run_python.js -m unittest scripts.test_generate scripts.test_c_smoke",
     "test:mechanics": "node scripts/mechanics_gate.js",
+    "test:queries": "node scripts/query_golden.js",
     "test:node": "node --test bindings/node/binding_test.js",
     "test:c": "node scripts/run_python.js scripts/c_smoke.py",
     "test:wasm": "node --test bindings/node/wasm_test.js",
-    "test": "npm run check:header-evidence && npm run check:metadata && npm run test:generation-script && npm run test:corpus && npm run test:corpus:wasm && npm run test:edits && npm run test:node && npm run test:c && npm run test:wasm && npm run test:mechanics"
+    "test": "npm run check:header-evidence && npm run check:metadata && npm run test:generation-script && npm run test:corpus && npm run test:corpus:wasm && npm run test:edits && npm run test:queries && npm run test:node && npm run test:c && npm run test:wasm && npm run test:mechanics"
   },
   "dependencies": {
     "node-addon-api": "8.9.2",

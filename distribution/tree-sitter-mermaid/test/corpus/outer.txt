@@ -105,7 +105,8 @@ cynefin-beta:
 (source_file
   (cynefin_diagram
     (cynefin_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (cynefin_body)))
 
 ==================
 entity relationship header
@@ -186,7 +187,9 @@ gitGraph LR:
   (git_graph_diagram
     (git_graph_header
       (diagram_keyword)
-      (git_graph_direction))))
+      (git_graph_direction)
+      (git_graph_header_separator))
+    (git_graph_body)))
 
 ==================
 info header
@@ -278,7 +281,7 @@ pie showData
   (pie_diagram
     (pie_header
       (diagram_keyword)
-      (header_option))))
+      (pie_show_data_option))))
 
 ==================
 pie inline title
@@ -291,8 +294,11 @@ pie title NETFLIX
 (source_file
   (pie_diagram
     (pie_header
-      (diagram_keyword)
-      (pie_inline_directive))))
+      (diagram_keyword))
+    (pie_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text)))))
 
 ==================
 quadrant chart header

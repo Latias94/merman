@@ -1,5 +1,5 @@
 {
-  "receiptId": "66c046126c33902c9d1c5dd6ca70a35154c156c0f60999a8de3d03d7d760effd",
+  "receiptId": "8bdfc24e586356b4f573040081435ed43373cae08de065a9ee9078ff947bc051",
   "schemaVersion": 3,
   "producer": {
     "id": "tree-sitter-mermaid/mermaid-strict-header-oracle",
@@ -23,7 +23,7 @@
   },
   "headerManifest": {
     "path": "metadata/headers.json",
-    "sha256": "731d342be7268c93d2b539dd42dac5632ba015d25863c5a6e903aa0506ca2fbc"
+    "sha256": "c84cd0a852de2217154e610e69d5c145b3623c3a3440c52b0a779d4e62d1657f"
   },
   "runnerLock": {
     "path": "scripts/header-oracle/package-lock.json",
@@ -1358,6 +1358,21 @@
     },
     {
       "inputSha256": "2b2b70710f02310c085a69ed8f8b299f6abad764690ba9db8361643b9317d587",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "7cb11f72fa426f6eea4b1922e752840f69552d048f4b19134c067534b66c6430",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "058dec8002a22d6416a8fb92bf16bad0f5cc76c6c555affd4c1a79dd47d74236",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "786c88710ac056d7c36334175039b674131db286c5dff62db89861359f67200b",
       "accepted": false,
       "diagramType": null
     },

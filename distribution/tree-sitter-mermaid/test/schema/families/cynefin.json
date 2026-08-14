@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "publicId": "cynefin",
+  "rootNode": "cynefin_diagram",
+  "nodes": {
+    "cynefin_diagram": ["body", "header"],
+    "cynefin_domain_block": ["domain", "item"],
+    "cynefin_domain_item": ["label"],
+    "cynefin_header": ["colon", "keyword"],
+    "cynefin_transition_statement": ["comment", "delimiter", "from", "label", "operator", "to"]
+  }
+}

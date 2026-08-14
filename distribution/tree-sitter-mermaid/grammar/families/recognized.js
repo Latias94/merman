@@ -1,7 +1,4 @@
-const {
-  optionallyColonTerminatedHeader,
-  terminatedHeader,
-} = require('../shared/header');
+const { terminatedHeader } = require('../shared/header');
 
 const keywordChoice = (...keywords) => token(prec(
   20,
@@ -28,7 +25,6 @@ const simple = (root, header, acceptsEof, ...keywords) => ({
 });
 
 const FAMILY_SPECS = [
-  simple('architecture_diagram', 'architecture_header', true, 'architecture-beta'),
   simple('block_diagram', 'block_header', false, 'block-beta', 'block'),
   simple(
     'c4_diagram',
@@ -41,59 +37,8 @@ const FAMILY_SPECS = [
     'C4Context',
   ),
   simple('class_diagram', 'class_header', false, 'classDiagram-v2', 'classDiagram'),
-  {
-    root: 'cynefin_diagram',
-    header: 'cynefin_header',
-    rule: ($) => terminatedHeader(
-      $,
-      'cynefin-beta',
-      optional(field('colon', token.immediate(':'))),
-    ),
-    eofRule: ($) => seq(
-      headerKeyword($, 'cynefin-beta'),
-      optional(field('colon', token.immediate(':'))),
-    ),
-  },
   simple('entity_relationship_diagram', 'entity_relationship_header', true, 'erDiagram'),
   simple('gantt_diagram', 'gantt_header', true, 'gantt'),
-  {
-    root: 'git_graph_diagram',
-    header: 'git_graph_header',
-    rule: ($) => terminatedHeader(
-      $,
-      'gitGraph',
-      optional(choice(
-        field('colon', ':'),
-        seq(
-          spacedField($, 'direction', /(?:LR|TB|BT)/, $.git_graph_direction),
-          field('colon', ':'),
-        ),
-      )),
-    ),
-    eofRule: ($) => seq(
-      headerKeyword($, 'gitGraph'),
-      optional(choice(
-        field('colon', ':'),
-        seq(
-          spacedField($, 'direction', /(?:LR|TB|BT)/, $.git_graph_direction),
-          field('colon', ':'),
-        ),
-      )),
-    ),
-  },
-  {
-    root: 'info_diagram',
-    header: 'info_header',
-    rule: ($) => terminatedHeader(
-      $,
-      'info',
-      optional(spacedField($, 'option', 'showInfo', $.header_option)),
-    ),
-    eofRule: ($) => seq(
-      headerKeyword($, 'info'),
-      optional(spacedField($, 'option', 'showInfo', $.header_option)),
-    ),
-  },
   {
     root: 'ishikawa_diagram',
     header: 'ishikawa_header',
@@ -101,38 +46,7 @@ const FAMILY_SPECS = [
     eofRule: null,
   },
   simple('journey_diagram', 'journey_header', true, 'journey'),
-  simple('packet_diagram', 'packet_header', true, 'packet-beta', 'packet'),
-  {
-    root: 'pie_diagram',
-    header: 'pie_header',
-    rule: ($) => terminatedHeader(
-      $,
-      'pie',
-      optional(spacedField($, 'option', 'showData', $.header_option)),
-      optional(seq(
-        token.immediate(/[ \t]+/),
-        field('inline_directive', $.pie_inline_directive),
-      )),
-    ),
-    eofRule: ($) => seq(
-      headerKeyword($, 'pie'),
-      optional(spacedField($, 'option', 'showData', $.header_option)),
-      optional(seq(
-        token.immediate(/[ \t]+/),
-        field('inline_directive', $.pie_inline_directive),
-      )),
-    ),
-  },
   simple('quadrant_chart_diagram', 'quadrant_chart_header', true, 'quadrantChart'),
-  {
-    root: 'radar_diagram',
-    header: 'radar_header',
-    rule: ($) => optionallyColonTerminatedHeader($, 'radar-beta'),
-    eofRule: ($) => seq(
-      headerKeyword($, 'radar-beta'),
-      optional(field('colon', ':')),
-    ),
-  },
   simple('railroad_diagram', 'railroad_header', true, 'railroad-beta'),
   simple('railroad_abnf_diagram', 'railroad_abnf_header', true, 'railroad-abnf-beta'),
   simple('railroad_ebnf_diagram', 'railroad_ebnf_header', true, 'railroad-ebnf-beta'),
@@ -204,7 +118,6 @@ const FAMILY_SPECS = [
       )),
     ),
   },
-  simple('wardley_diagram', 'wardley_header', true, 'wardley-beta'),
   {
     root: 'xy_chart_diagram',
     header: 'xy_chart_header',
@@ -254,14 +167,6 @@ const recognizedFamilyRules = Object.fromEntries([
     [spec.header, spec.rule],
     ...(spec.eofRule ? [[`_${spec.header}_eof`, spec.eofRule]] : []),
   ]),
-  [
-    'pie_inline_directive',
-    (_) => token.immediate(prec(10, choice(
-      /title(?:[ \t][^\r\n]*)?/,
-      /accTitle[ \t]*:[^\r\n]*/,
-      /accDescr[ \t]*:[^\r\n]*/,
-    ))),
-  ],
 ]);
 
 module.exports = {

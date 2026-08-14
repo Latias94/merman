@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "publicId": "architecture",
+  "rootNode": "architecture_diagram",
+  "nodes": {
+    "architecture_alignment_statement": ["direction", "keyword", "member"],
+    "architecture_diagram": ["body", "header"],
+    "architecture_edge_statement": ["arrow", "source", "source_port", "target", "target_port"],
+    "architecture_group_statement": ["icon", "id", "keyword", "parent", "title"],
+    "architecture_junction_statement": ["id", "keyword", "parent"],
+    "architecture_service_statement": ["icon", "icon_text", "id", "keyword", "parent", "title"]
+  }
+}

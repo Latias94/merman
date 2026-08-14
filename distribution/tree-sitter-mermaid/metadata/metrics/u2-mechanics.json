@@ -1,29 +1,68 @@
 {
   "schemaVersion": 1,
-  "checkpoint": "u2-mechanics",
-  "artifactReceiptId": "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613",
+  "checkpoint": "u3-low-state-complexity",
+  "artifactReceiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",
+  "attribution": {
+    "previousCheckpoint": "u2-mechanics",
+    "previousArtifactReceiptId": "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613",
+    "structuredFamiliesAdded": [
+      "architecture",
+      "cynefin",
+      "gitgraph",
+      "info",
+      "packet",
+      "pie",
+      "radar",
+      "wardley"
+    ],
+    "previousStatic": {
+      "generatedCBytes": 1123124,
+      "wasmBytes": 418755,
+      "parserStates": 944,
+      "largeStates": 5,
+      "symbols": 441,
+      "fields": 52,
+      "externalTokens": 15,
+      "conflicts": 0,
+      "wasmDeclaredMinimumMemoryPages": 2
+    },
+    "delta": {
+      "generatedCBytes": 1159175,
+      "wasmBytes": 403759,
+      "parserStates": 1023,
+      "largeStates": 0,
+      "symbols": 280,
+      "fields": 51,
+      "externalTokens": 0,
+      "conflicts": 3,
+      "wasmDeclaredMinimumMemoryPages": 0
+    },
+    "explanation": "Eight pinned-source family grammars replace recognized bodies with named statements and fields. Three conflicts are narrow header/recovery ambiguities. A 1 MiB WASM Flowchart reaches about 656 MiB process RSS while linear memory remains 1064 pages; the 768 MiB process ratchet records that investigated web-tree-sitter CST cost."
+  },
   "static": {
-    "generatedCBytes": 1123124,
-    "wasmBytes": 418755,
-    "parserStates": 944,
+    "generatedCBytes": 2282299,
+    "wasmBytes": 822514,
+    "parserStates": 1967,
     "largeStates": 5,
-    "symbols": 441,
-    "fields": 52,
+    "symbols": 721,
+    "fields": 103,
     "externalTokens": 15,
-    "conflicts": 0,
+    "conflicts": 3,
     "wasmDeclaredMinimumMemoryPages": 2
   },
   "ratchet": {
     "generatedCHardLimitBytes": 10485760,
     "wasmHardLimitBytes": 5242880,
-    "parserStatesInvestigateAbove": 1200,
+    "parserStatesInvestigateAbove": 2200,
     "largeStatesInvestigateAbove": 20,
-    "conflictsAllowed": 0,
+    "conflictsAllowed": 3,
+    "generationHardLimitMilliseconds": 300000,
+    "canonicalWasmBuildHardLimitMilliseconds": 180000,
     "independentCompileHardLimitMilliseconds": 120000,
     "nativeSmokeParseHardLimitMilliseconds": 2000,
     "wasmSmokeParseHardLimitMilliseconds": 2000,
     "nativePeakRssInvestigateAboveBytes": 268435456,
-    "wasmPeakRssInvestigateAboveBytes": 536870912,
+    "wasmPeakRssInvestigateAboveBytes": 805306368,
     "queryHardLimitMilliseconds": 2000
   },
   "observed": {
@@ -36,15 +75,16 @@
       "wasiSdk": "29.0"
     },
     "build": {
-      "twoRuntimeTwoWasmGenerationWallMilliseconds": 40475,
-      "rustReleaseCompileWallMilliseconds": 1946,
-      "nodeBindingCompileWallMilliseconds": 2017,
-      "measurement": "Generation covers two JavaScript runtimes and two canonical WASM builds; Rust and Node compile times are measured independently from package-local committed sources."
+      "twoRuntimeOneWasmGenerationWallMilliseconds": 123127,
+      "canonicalWasmBuildWallMilliseconds": 122368,
+      "rustReleaseCompileWallMilliseconds": 2347,
+      "nodeBindingCompileWallMilliseconds": 2198,
+      "measurement": "Read-only generation covers native and Node JavaScript runtimes plus one canonical WASM build; the final receipt-bound run measured 123127 ms total and 122368 ms for the canonical WASM stage. Write transactions additionally perform a full post-install clean regeneration; the final write measured byte-identical WASM stages at 141836 ms and 153227 ms. The 300000 ms outer watchdog and 180000 ms WASM ratchet are separate from the unchanged 120000 ms Rust and Node compile limit; final independent compiles measured 2347 ms and 2198 ms."
     },
-    "nativeNodeSmokeParseMilliseconds": 0.4469,
-    "nativeNodeSmokeMaximumResidentSetBytes": 57212928,
-    "wasmNodeSmokeParseMilliseconds": 8.8404,
-    "wasmNodeSmokeMaximumResidentSetBytes": 86523904,
+    "nativeNodeSmokeParseMilliseconds": 0.614419,
+    "nativeNodeSmokeMaximumResidentSetBytes": 61063168,
+    "wasmNodeSmokeParseMilliseconds": 15.839964,
+    "wasmNodeSmokeMaximumResidentSetBytes": 95928320,
     "smokeMeasurement": "Fresh Node processes parse the receipt-bound 35-family fixture manifest after language initialization; max RSS comes from process.resourceUsage().maxRSS converted from KiB to bytes.",
     "realCorpus": {
       "fixtureCount": 35,
@@ -52,7 +92,7 @@
       "sourceBytes": 5444,
       "freshSuppliedBytes": 5615,
       "freshUniqueCoverageBytes": 5444,
-      "freshProgressCallbacks": 9,
+      "freshProgressCallbacks": 14,
       "observedFreshWallMilliseconds": 1,
       "maxFreshWallMilliseconds": 2000,
       "measurement": "The receipt-bound 35-family fixture manifest is parsed through the Rust callback API with 64-byte input slices; work counters are deterministic and wall time is an environment observation."
@@ -73,19 +113,19 @@
           "incrementalSuppliedBytes": 64,
           "incrementalUniqueCoverageBytes": 64,
           "incrementalProgressCallbacks": 199,
-          "observedFreshWallMilliseconds": 25,
+          "observedFreshWallMilliseconds": 28,
           "maxFreshWallMilliseconds": 2000,
           "nativeRuntime": {
-            "observedParseMilliseconds": 5.6137,
-            "observedQueryCompileMilliseconds": 0.2881,
-            "observedQueryMilliseconds": 3.2093,
-            "observedMaximumResidentSetBytes": 60555264
+            "observedParseMilliseconds": 5.181541,
+            "observedQueryCompileMilliseconds": 0.584875,
+            "observedQueryMilliseconds": 3.282375,
+            "observedMaximumResidentSetBytes": 63668224
           },
           "wasmRuntime": {
-            "observedParseMilliseconds": 27.6266,
-            "observedQueryCompileMilliseconds": 1.5599,
-            "observedQueryMilliseconds": 8.5631,
-            "observedMaximumResidentSetBytes": 130023424,
+            "observedParseMilliseconds": 28.752125,
+            "observedQueryCompileMilliseconds": 2.366541,
+            "observedQueryMilliseconds": 8.383834,
+            "observedMaximumResidentSetBytes": 159809536,
             "observedMemoryPages": 512,
             "maxMemoryPages": 2048
           }
@@ -100,19 +140,19 @@
           "incrementalSuppliedBytes": 64,
           "incrementalUniqueCoverageBytes": 64,
           "incrementalProgressCallbacks": 397,
-          "observedFreshWallMilliseconds": 50,
+          "observedFreshWallMilliseconds": 57,
           "maxFreshWallMilliseconds": 2000,
           "nativeRuntime": {
-            "observedParseMilliseconds": 11.9023,
-            "observedQueryCompileMilliseconds": 0.2562,
-            "observedQueryMilliseconds": 6.4456,
-            "observedMaximumResidentSetBytes": 64356352
+            "observedParseMilliseconds": 11.966916,
+            "observedQueryCompileMilliseconds": 0.62725,
+            "observedQueryMilliseconds": 6.662542,
+            "observedMaximumResidentSetBytes": 67420160
           },
           "wasmRuntime": {
-            "observedParseMilliseconds": 42.0335,
-            "observedQueryCompileMilliseconds": 1.2008,
-            "observedQueryMilliseconds": 13.493,
-            "observedMaximumResidentSetBytes": 219594752,
+            "observedParseMilliseconds": 43.502542,
+            "observedQueryCompileMilliseconds": 2.359875,
+            "observedQueryMilliseconds": 15.3425,
+            "observedMaximumResidentSetBytes": 172228608,
             "observedMemoryPages": 512,
             "maxMemoryPages": 2048
           }
@@ -127,19 +167,19 @@
           "incrementalSuppliedBytes": 64,
           "incrementalUniqueCoverageBytes": 64,
           "incrementalProgressCallbacks": 790,
-          "observedFreshWallMilliseconds": 105,
+          "observedFreshWallMilliseconds": 113,
           "maxFreshWallMilliseconds": 2000,
           "nativeRuntime": {
-            "observedParseMilliseconds": 25.193,
-            "observedQueryCompileMilliseconds": 0.3076,
-            "observedQueryMilliseconds": 12.8912,
-            "observedMaximumResidentSetBytes": 72204288
+            "observedParseMilliseconds": 23.670792,
+            "observedQueryCompileMilliseconds": 0.629708,
+            "observedQueryMilliseconds": 13.832334,
+            "observedMaximumResidentSetBytes": 75317248
           },
           "wasmRuntime": {
-            "observedParseMilliseconds": 71.9773,
-            "observedQueryCompileMilliseconds": 1.3573,
-            "observedQueryMilliseconds": 27.8197,
-            "observedMaximumResidentSetBytes": 230457344,
+            "observedParseMilliseconds": 75.200625,
+            "observedQueryCompileMilliseconds": 2.596291,
+            "observedQueryMilliseconds": 30.902709,
+            "observedMaximumResidentSetBytes": 459931648,
             "observedMemoryPages": 512,
             "maxMemoryPages": 2048
           }
@@ -154,19 +194,19 @@
           "incrementalSuppliedBytes": 64,
           "incrementalUniqueCoverageBytes": 64,
           "incrementalProgressCallbacks": 1577,
-          "observedFreshWallMilliseconds": 202,
+          "observedFreshWallMilliseconds": 230,
           "maxFreshWallMilliseconds": 2000,
           "nativeRuntime": {
-            "observedParseMilliseconds": 53.8211,
-            "observedQueryCompileMilliseconds": 0.267,
-            "observedQueryMilliseconds": 26.483,
-            "observedMaximumResidentSetBytes": 87588864
+            "observedParseMilliseconds": 49.030291,
+            "observedQueryCompileMilliseconds": 0.592125,
+            "observedQueryMilliseconds": 27.478958,
+            "observedMaximumResidentSetBytes": 90750976
           },
           "wasmRuntime": {
-            "observedParseMilliseconds": 143.5406,
-            "observedQueryCompileMilliseconds": 1.4299,
-            "observedQueryMilliseconds": 54.1177,
-            "observedMaximumResidentSetBytes": 268894208,
+            "observedParseMilliseconds": 133.621708,
+            "observedQueryCompileMilliseconds": 2.645458,
+            "observedQueryMilliseconds": 60.041583,
+            "observedMaximumResidentSetBytes": 591953920,
             "observedMemoryPages": 512,
             "maxMemoryPages": 2048
           }
@@ -181,19 +221,19 @@
           "incrementalSuppliedBytes": 64,
           "incrementalUniqueCoverageBytes": 64,
           "incrementalProgressCallbacks": 3155,
-          "observedFreshWallMilliseconds": 423,
+          "observedFreshWallMilliseconds": 521,
           "maxFreshWallMilliseconds": 2000,
           "nativeRuntime": {
-            "observedParseMilliseconds": 113.3823,
-            "observedQueryCompileMilliseconds": 0.3864,
-            "observedQueryMilliseconds": 55.6855,
-            "observedMaximumResidentSetBytes": 118571008
+            "observedParseMilliseconds": 97.396875,
+            "observedQueryCompileMilliseconds": 0.616292,
+            "observedQueryMilliseconds": 57.532375,
+            "observedMaximumResidentSetBytes": 121749504
           },
           "wasmRuntime": {
-            "observedParseMilliseconds": 233.9527,
-            "observedQueryCompileMilliseconds": 1.67,
-            "observedQueryMilliseconds": 106.7021,
-            "observedMaximumResidentSetBytes": 297844736,
+            "observedParseMilliseconds": 249.979375,
+            "observedQueryCompileMilliseconds": 2.83,
+            "observedQueryMilliseconds": 126.759667,
+            "observedMaximumResidentSetBytes": 688029696,
             "observedMemoryPages": 1064,
             "maxMemoryPages": 2048
           }
@@ -347,10 +387,10 @@
     },
     "queryTime": {
       "status": "measured",
-      "nativeCompileMilliseconds": 0.2703,
-      "nativeExecutionMilliseconds": 0.3247,
-      "wasmCompileMilliseconds": 1.2433,
-      "wasmExecutionMilliseconds": 1.0071,
+      "nativeCompileMilliseconds": 0.589167,
+      "nativeExecutionMilliseconds": 1.037086,
+      "wasmCompileMilliseconds": 2.334167,
+      "wasmExecutionMilliseconds": 1.252498,
       "measurement": "Three isolated Node processes per runtime record median compile and total execution time for the receipt-bound portable highlight profile over all 35 family fixtures; the family-complete query matrix remains an U8 responsibility."
     },
     "wasmRuntimeMemoryPages": {

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Cynefin same-line domain item insertion",
+    "source": "cynefin-beta complex \"Before\" complicated \"Review\"\ncomplex --> complicated : \"Pattern\"\n",
+    "old": "\"Before\"",
+    "replacement": "\"Before\" \"世界\""
+  },
+  {
+    "name": "Cynefin CRLF transition label",
+    "source": "cynefin-beta:\r\ncomplex \"Probe\"\r\nclear \"Act\"\r\ncomplex --> clear : \"Before\"\r\n",
+    "old": "Before",
+    "replacement": "稳定化"
+  },
+  {
+    "name": "Cynefin malformed middle sibling repair",
+    "source": "cynefin-beta\ncomplex \"Before\"\n?\nclear \"After\"\n",
+    "old": "?",
+    "replacement": "complicated \"Repaired\""
+  },
+  {
+    "name": "Cynefin transition target edit",
+    "source": "cynefin-beta\ncomplex \"Probe\"\nclear \"Act\"\ncomplex --> clear\n",
+    "old": "--> clear",
+    "replacement": "--> complicated : \"Analyze\""
+  }
+]

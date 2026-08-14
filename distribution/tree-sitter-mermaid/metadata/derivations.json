@@ -27,7 +27,9 @@
           "relationship": "translated",
           "sourcePaths": [
             "packages/mermaid/src/diagram-api/detectType.ts:36-45",
-            "packages/mermaid/src/diagram-api/regexes.ts:7-12"
+            "packages/mermaid/src/diagram-api/regexes.ts:7-12",
+            "packages/parser/src/language/radar/radar.langium:1-55",
+            "packages/parser/src/language/wardley/wardley.langium:1-154"
           ]
         }
       ]
@@ -53,6 +55,49 @@
             "packages/mermaid/src/diagrams/*/*Detector.ts",
             "packages/mermaid/src/diagrams/*/parser/*.jison",
             "packages/parser/src/language/**/*.langium"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/architecture.js",
+        "grammar/families/cynefin.js",
+        "grammar/families/git-graph.js",
+        "grammar/families/info.js",
+        "grammar/families/packet.js",
+        "grammar/families/pie.js",
+        "grammar/families/radar.js",
+        "grammar/families/wardley.js",
+        "grammar/shared/langium.js"
+      ],
+      "localSymbols": [
+        "architectureRules",
+        "cynefinRules",
+        "gitGraphRules",
+        "infoRules",
+        "packetRules",
+        "pieRules",
+        "radarRules",
+        "wardleyRules",
+        "langiumRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/parser/src/language/architecture/architecture.langium:1-57",
+            "packages/parser/src/language/architecture/arch.langium:1",
+            "packages/parser/src/language/common/common.langium:1-34",
+            "packages/parser/src/language/cynefin/cynefin.langium:1-30",
+            "packages/parser/src/language/gitGraph/gitGraph.langium:1-56",
+            "packages/parser/src/language/gitGraph/reference.langium:1-3",
+            "packages/parser/src/language/info/info.langium:1-9",
+            "packages/parser/src/language/packet/packet.langium:1-21",
+            "packages/parser/src/language/pie/pie.langium:1-20",
+            "packages/parser/src/language/radar/radar.langium:1-55",
+            "packages/parser/src/language/wardley/wardley.langium:1-154"
           ]
         }
       ]

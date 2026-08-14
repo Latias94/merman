@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "artifactReceiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",
+  "families": [
+    {
+      "publicId": "architecture",
+      "expectedDiagramType": "architecture",
+      "rootNode": "architecture_diagram",
+      "requiredNamedNodes": [
+        "architecture_diagram",
+        "architecture_edge_statement",
+        "architecture_group_statement",
+        "architecture_junction_statement",
+        "architecture_service_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/architecture/upstream_architecture_docs_example.mmd",
+          "sourceSha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/architecture/upstream_architecture_docs_junctions.mmd",
+          "sourceSha256": "1b061069afe28e72900616cec02513893e4d7ef6be5e9aa25750875597259272",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "cynefin",
+      "expectedDiagramType": "cynefin",
+      "rootNode": "cynefin_diagram",
+      "requiredNamedNodes": [
+        "cynefin_diagram",
+        "cynefin_domain_block",
+        "cynefin_domain_item",
+        "cynefin_transition_statement",
+        "langium_title_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/cynefin/basic_domains_transitions.mmd",
+          "sourceSha256": "32458e67a3fbbfef64c09cce483dff3cbd28b7d3c9bdae0d0d8387bb4a6686f2",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001.mmd",
+          "sourceSha256": "7c25ee8b1a5eb55155791d76f3d60049016dc59fbe72faaab62d36d99dacd326",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "gitgraph",
+      "expectedDiagramType": "gitGraph",
+      "rootNode": "git_graph_diagram",
+      "requiredNamedNodes": [
+        "git_graph_branch_statement",
+        "git_graph_checkout_statement",
+        "git_graph_cherry_pick_statement",
+        "git_graph_commit_statement",
+        "git_graph_diagram",
+        "git_graph_merge_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/gitgraph/upstream_cypress_appli_spec_1_should_render_a_simple_gitgraph_with_commit_on_main_branch_001.mmd",
+          "sourceSha256": "71ed66275c3ad3879f65cc5c71fb4677a4c886f13e0a50a7e7b4d2ae04595767",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/gitgraph/upstream_docs_gitgraph_cherry_pick_commit_from_another_branch_010.mmd",
+          "sourceSha256": "1e4751fdc7cf19be97f4622875db54c290f904ec07ba68e4f0b12bd88c6d8fa7",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "info",
+      "expectedDiagramType": "info",
+      "rootNode": "info_diagram",
+      "requiredNamedNodes": [
+        "info_diagram",
+        "info_header",
+        "info_show_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/info/upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_info_001.mmd",
+          "sourceSha256": "68a75951352e5a172016721f9b23e17d75d6295ee25d6666e8d096d6aa9897a3",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/info/upstream_info_show_info_multiline_spec.mmd",
+          "sourceSha256": "aeaec1a369df80786c4e2bb8366aa52e445d1b0d5d6bcff12a93806ba107ed5f",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "packet",
+      "expectedDiagramType": "packet",
+      "rootNode": "packet_diagram",
+      "requiredNamedNodes": [
+        "langium_title_statement",
+        "packet_bit_range",
+        "packet_block_statement",
+        "packet_diagram"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/packet/upstream_cypress_packet_spec_should_render_a_simple_packet_diagram_002.mmd",
+          "sourceSha256": "6c851a4da5178e96a8b44c83649aaf8c8dde1adc495fdd5cc64dbfeccde73163",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/packet/upstream_cypress_packet_spec_should_render_a_complex_packet_diagram_004.mmd",
+          "sourceSha256": "af8fd399eba73bab857facbfce53e9684eab7a581e8dd5a02b5ffdc377ab09b8",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "pie",
+      "expectedDiagramType": "pie",
+      "rootNode": "pie_diagram",
+      "requiredNamedNodes": [
+        "langium_acc_descr_statement",
+        "langium_acc_title_statement",
+        "langium_title_statement",
+        "pie_diagram",
+        "pie_section"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd",
+          "sourceSha256": "28b468acdb67b7088180448fc08db4a6fe7a84a7cd3c5bf29e251274e1bae9b3",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/pie/upstream_docs_accessibility_pie_chart_012.mmd",
+          "sourceSha256": "3b8e072faf4eec0d2af9dd452cd021b789f905634cfe53494a36c82573f0a52e",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "radar",
+      "expectedDiagramType": "radar",
+      "rootNode": "radar_diagram",
+      "requiredNamedNodes": [
+        "radar_axis_statement",
+        "radar_curve_statement",
+        "radar_diagram",
+        "radar_option_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/radar/upstream_docs_radar_examples_003.mmd",
+          "sourceSha256": "3e866a35e9ee4a7a25fc3dfa2f4a13b1e06e1ec606675de08355cce2d8748357",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/radar/upstream_cypress_radar_spec_should_render_a_complex_radar_diagram_003.mmd",
+          "sourceSha256": "9255adbb1c7d45c85e10d3ff2634a2157ffdd90ffd1011faeda03fa931d0e95f",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "wardley",
+      "expectedDiagramType": "wardley",
+      "rootNode": "wardley_diagram",
+      "requiredNamedNodes": [
+        "wardley_anchor_statement",
+        "wardley_component_statement",
+        "wardley_diagram",
+        "wardley_evolve_statement",
+        "wardley_link_statement",
+        "wardley_note_statement",
+        "wardley_pipeline_component_statement",
+        "wardley_pipeline_statement",
+        "wardley_size_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/wardley/upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd",
+          "sourceSha256": "088e16cee1482251bb8153fc3e327394a09ba7e411e933d5cfeeb8ba4110c756",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/wardley/upstream_cypress_wardley_spec_3_should_render_pipelines_003.mmd",
+          "sourceSha256": "31d76a47fcf121b9b02fa20e471f4a4990cb6c7a8452b794efcd9e004ab9f09a",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    }
+  ]
+}

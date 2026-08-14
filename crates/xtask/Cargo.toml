@@ -52,6 +52,7 @@ thiserror.workspace = true
 tempfile = "3.27.0"
 toml.workspace = true
 tree-sitter-mermaid = { path = "../../distribution/tree-sitter-mermaid" }
+tree-sitter = "=0.26.12"
 wasmi.workspace = true
 
 [target.'cfg(unix)'.dependencies]

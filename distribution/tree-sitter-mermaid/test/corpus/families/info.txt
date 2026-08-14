@@ -1,0 +1,100 @@
+==================
+header body and common Langium statements
+==================
+
+info showInfo title Build information
+accTitle: Accessible build information
+%%{init: {}}%%
+accDescr: Current build metadata %% retained comment
+accDescr {
+  Unicode 描述
+  second line
+}
+
+---
+
+(source_file
+  (info_diagram
+    (info_header
+      (diagram_keyword))
+    (info_body
+      (info_show_statement
+        (statement_keyword))
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (directive)
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_line_text)
+        (comment))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_acc_descr_block
+          (langium_acc_descr_block_text))))))
+
+==================
+empty common values
+==================
+
+info
+title
+accTitle:
+accDescr:
+
+---
+
+(source_file
+  (info_diagram
+    (info_header
+      (diagram_keyword))
+    (info_body
+      (langium_title_statement
+        (statement_keyword))
+      (langium_acc_title_statement
+        (statement_keyword))
+      (langium_acc_descr_statement
+        (statement_keyword)))))
+
+==================
+header only remains structured
+==================
+
+info
+
+---
+
+(source_file
+  (info_diagram
+    (info_header
+      (diagram_keyword))))
+
+==================
+malformed middle sibling stays local
+==================
+
+info showInfo
+title Before
+?
+accTitle: After
+
+---
+
+(source_file
+  (info_diagram
+    (info_header
+      (diagram_keyword))
+    (info_body
+      (info_show_statement
+        (statement_keyword))
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (ERROR
+        (UNEXPECTED '?'))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text)))))

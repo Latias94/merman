@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -24,7 +25,11 @@ GENERATED_ARTIFACTS = (
     Path("src/tree_sitter/parser.h"),
     Path("wasm/tree-sitter-mermaid.wasm"),
 )
+SOURCE_ARTIFACTS = tuple(
+    path for path in GENERATED_ARTIFACTS if path.parts[0] == "src"
+)
 AUTHORED_SOURCE_FILES = (Path("src/scanner.c"),)
+SOURCE_PARITY_ARTIFACTS = (*SOURCE_ARTIFACTS, *AUTHORED_SOURCE_FILES)
 C_HEADER = Path("bindings/c/tree_sitter/tree-sitter-mermaid.h")
 C_HEADER_TEMPLATE = Path("bindings/c/tree_sitter/tree-sitter-mermaid.h.in")
 C_BINDING_FILES = (
@@ -65,8 +70,10 @@ def validate_cli_version(version: str) -> None:
         raise SystemExit(f"expected {expected}, found {version}")
 
 
-def run(command: list[str], *, cwd: Path) -> None:
+def run(command: list[str], *, cwd: Path) -> int:
+    started = time.perf_counter_ns()
     subprocess.run(command, cwd=cwd, check=True)
+    return (time.perf_counter_ns() - started) // 1_000_000
 
 
 def copy_generation_inputs(package: Path, destination: Path) -> None:
@@ -80,10 +87,15 @@ def copy_generation_inputs(package: Path, destination: Path) -> None:
 
 
 def generate_once(
-    package: Path, cli: list[str], runtime: str, destination: Path
-) -> None:
+    package: Path,
+    cli: list[str],
+    runtime: str,
+    destination: Path,
+    *,
+    build_wasm: bool = True,
+) -> dict[str, int]:
     copy_generation_inputs(package, destination)
-    run(
+    generate_milliseconds = run(
         [
             *cli,
             "generate",
@@ -95,23 +107,34 @@ def generate_once(
         ],
         cwd=destination,
     )
-    (destination / "wasm").mkdir()
-    run(
-        [
-            *cli,
-            "build",
-            "--wasm",
-            "--output",
-            "wasm/tree-sitter-mermaid.wasm",
-            ".",
-        ],
-        cwd=destination,
-    )
+    wasm_milliseconds = 0
+    if build_wasm:
+        (destination / "wasm").mkdir()
+        wasm_milliseconds = run(
+            [
+                *cli,
+                "build",
+                "--wasm",
+                "--output",
+                "wasm/tree-sitter-mermaid.wasm",
+                ".",
+            ],
+            cwd=destination,
+        )
+    return {
+        "generateMilliseconds": generate_milliseconds,
+        "wasmBuildMilliseconds": wasm_milliseconds,
+    }
 
 
-def compare_sets(left: Path, right: Path, description: str) -> list[str]:
+def compare_sets(
+    left: Path,
+    right: Path,
+    description: str,
+    artifacts: tuple[Path, ...] = GENERATED_ARTIFACTS,
+) -> list[str]:
     failures = []
-    for relative in GENERATED_ARTIFACTS:
+    for relative in artifacts:
         left_file = left / relative
         right_file = right / relative
         if not left_file.is_file() or not right_file.is_file():
@@ -122,7 +145,9 @@ def compare_sets(left: Path, right: Path, description: str) -> list[str]:
     return failures
 
 
-def assert_exact_generated_set(package: Path) -> list[str]:
+def assert_exact_generated_set(
+    package: Path, *, include_wasm: bool = True
+) -> list[str]:
     expected_source = {
         *(path.as_posix() for path in GENERATED_ARTIFACTS if path.parts[0] == "src"),
         *(path.as_posix() for path in AUTHORED_SOURCE_FILES),
@@ -132,9 +157,15 @@ def assert_exact_generated_set(package: Path) -> list[str]:
         for path in (package / "src").rglob("*")
         if path.is_file()
     }
-    expected_wasm = {
-        path.as_posix() for path in GENERATED_ARTIFACTS if path.parts[0] == "wasm"
-    }
+    expected_wasm = (
+        {
+            path.as_posix()
+            for path in GENERATED_ARTIFACTS
+            if path.parts[0] == "wasm"
+        }
+        if include_wasm
+        else set()
+    )
     actual_wasm = {
         path.relative_to(package).as_posix()
         for path in (package / "wasm").rglob("*")
@@ -207,6 +238,7 @@ def receipt_inputs(package: Path) -> list[Path]:
         package / "scripts/header_receipt.js",
         package / "scripts/header_oracle.js",
         package / "scripts/mechanics_gate.js",
+        package / "scripts/query_golden.js",
         package / "scripts/run_python.js",
         package / "scripts/header-oracle/package.json",
         package / "scripts/header-oracle/package-lock.json",
@@ -392,6 +424,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="replace committed generated artifacts and receipt",
     )
+    parser.add_argument(
+        "--timings-json",
+        type=Path,
+        help="write generation stage timings to this path",
+    )
     return parser.parse_args()
 
 
@@ -407,16 +444,32 @@ def main() -> int:
     ).stdout.strip()
     validate_cli_version(version)
     input_snapshot = snapshot_receipt_inputs(package)
+    timings: list[dict[str, int | str]] = []
+    total_started = time.perf_counter_ns()
 
     with tempfile.TemporaryDirectory(prefix="tree-sitter-mermaid-generate-") as first:
         with tempfile.TemporaryDirectory(prefix="tree-sitter-mermaid-generate-") as second:
             native = Path(first)
             node = Path(second)
-            generate_once(package, cli, "native", native)
-            generate_once(package, cli, "node", node)
-            failures = compare_sets(native, node, "native and node generation")
+            timings.append({
+                "stage": "native",
+                **generate_once(package, cli, "native", native),
+            })
+            timings.append({
+                "stage": "node-source",
+                **generate_once(package, cli, "node", node, build_wasm=False),
+            })
+            # The runtime only affects grammar evaluation. One canonical WASM
+            # build is sufficient after every generated and authored C input
+            # is byte-identical across the runtime-specific trees.
+            failures = compare_sets(
+                native,
+                node,
+                "native and node source generation",
+                SOURCE_PARITY_ARTIFACTS,
+            )
             failures.extend(assert_exact_generated_set(native))
-            failures.extend(assert_exact_generated_set(node))
+            failures.extend(assert_exact_generated_set(node, include_wasm=False))
             failures.extend(receipt_input_drift(package, input_snapshot))
             if not arguments.write:
                 failures.extend(compare_sets(native, package, "committed generation"))
@@ -445,7 +498,10 @@ def main() -> int:
                         prefix="tree-sitter-mermaid-post-install-"
                     ) as rebuilt_directory:
                         rebuilt = Path(rebuilt_directory)
-                        generate_once(installed_package, cli, "native", rebuilt)
+                        timings.append({
+                            "stage": "post-install-native",
+                            **generate_once(installed_package, cli, "native", rebuilt),
+                        })
                         installed_failures.extend(
                             compare_sets(
                                 rebuilt,
@@ -481,6 +537,17 @@ def main() -> int:
                     raise SystemExit(
                         f"committed receipt carriers are stale: {stale_carriers}"
                     )
+
+    if arguments.timings_json is not None:
+        arguments.timings_json.parent.mkdir(parents=True, exist_ok=True)
+        timings_payload = {
+            "totalMilliseconds": (time.perf_counter_ns() - total_started) // 1_000_000,
+            "stages": timings,
+        }
+        arguments.timings_json.write_text(
+            json.dumps(timings_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     print(f"verified receipt {receipt['receiptId']}")
     return 0

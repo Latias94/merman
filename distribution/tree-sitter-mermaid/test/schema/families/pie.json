@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "publicId": "pie",
+  "rootNode": "pie_diagram",
+  "nodes": {
+    "pie_diagram": ["body", "header"],
+    "pie_header": ["keyword", "option"],
+    "pie_incomplete_section": ["delimiter", "label"],
+    "pie_section": ["comment", "delimiter", "label", "value"]
+  }
+}

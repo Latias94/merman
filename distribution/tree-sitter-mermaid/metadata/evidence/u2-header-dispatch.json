@@ -5,15 +5,15 @@
     "version": 5,
     "command": "node scripts/header_receipt.js"
   },
-  "artifactReceiptId": "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613",
+  "artifactReceiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",
   "strictOracleReceipt": {
     "path": "metadata/evidence/u2-mermaid-header-oracle.json",
-    "sha256": "070ffb8d84bed556429e97511ccb6019a88d6b2b8c253478722a6bceefab83e5",
-    "receiptId": "66c046126c33902c9d1c5dd6ca70a35154c156c0f60999a8de3d03d7d760effd"
+    "sha256": "4bc145b3384ee66bffa0de122c3ec5a17e4db6257258e40e2a21625487c6513e",
+    "receiptId": "8bdfc24e586356b4f573040081435ed43373cae08de065a9ee9078ff947bc051"
   },
   "headerManifest": {
     "path": "metadata/headers.json",
-    "sha256": "731d342be7268c93d2b539dd42dac5632ba015d25863c5a6e903aa0506ca2fbc"
+    "sha256": "c84cd0a852de2217154e610e69d5c145b3623c3a3440c52b0a779d4e62d1657f"
   },
   "fixtureManifest": {
     "path": "metadata/fixtures/family-roots.json",
@@ -1812,9 +1812,7 @@
     },
     {
       "inputSha256": "fa207516dff00778d8432680b3461b46934b30be615b88d6364834593726affa",
-      "actualRoots": [
-        "cynefin_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
@@ -1859,23 +1857,34 @@
     },
     {
       "inputSha256": "2b2b70710f02310c085a69ed8f8b299f6abad764690ba9db8361643b9317d587",
+      "actualRoots": [],
+      "hasError": true
+    },
+    {
+      "inputSha256": "7cb11f72fa426f6eea4b1922e752840f69552d048f4b19134c067534b66c6430",
       "actualRoots": [
-        "info_diagram"
+        "cynefin_diagram"
       ],
+      "hasError": true
+    },
+    {
+      "inputSha256": "058dec8002a22d6416a8fb92bf16bad0f5cc76c6c555affd4c1a79dd47d74236",
+      "actualRoots": [],
+      "hasError": true
+    },
+    {
+      "inputSha256": "786c88710ac056d7c36334175039b674131db286c5dff62db89861359f67200b",
+      "actualRoots": [],
       "hasError": true
     },
     {
       "inputSha256": "bd2ed9c37ff9fb5473979eb12c4f451d3334186bb7a70a3d26a02e864b6addda",
-      "actualRoots": [
-        "pie_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "inputSha256": "f6673335d5585f74606b0f47e105129705b3bf6bb1c986c8fc0fc4c69b6b9ff7",
-      "actualRoots": [
-        "pie_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {

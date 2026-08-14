@@ -401,14 +401,17 @@ function validateRealCorpusObservations(observations) {
   }
 }
 
-function runCommand(command, arguments_, cwd, environment = process.env) {
+function runCommand(command, arguments_, cwd, options = {}) {
+  const environment = options.environment ?? process.env;
+  const timeout = options.timeout
+    ?? metrics.ratchet.independentCompileHardLimitMilliseconds;
   const started = performance.now();
   const result = spawnSync(command, arguments_, {
     cwd,
     env: environment,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
-    timeout: metrics.ratchet.independentCompileHardLimitMilliseconds,
+    timeout,
   });
   if (result.error || result.status !== 0) {
     throw new Error(
@@ -421,10 +424,33 @@ function runCommand(command, arguments_, cwd, environment = process.env) {
 function validateBuildMetrics() {
   const build = metrics.observed.build;
   const hardLimit = metrics.ratchet.independentCompileHardLimitMilliseconds;
-  const generation = runCommand(
-    process.execPath,
-    ['scripts/run_python.js', 'scripts/generate.py'],
-    packageRoot,
+  const wasmBuildHardLimit = metrics.ratchet.canonicalWasmBuildHardLimitMilliseconds;
+  const timingDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'tree-sitter-mermaid-generation-timings-'),
+  );
+  const timingPath = path.join(timingDirectory, 'timings.json');
+  let generation;
+  let generationTimings;
+  try {
+    generation = runCommand(
+      process.execPath,
+      ['scripts/run_python.js', 'scripts/generate.py', '--timings-json', timingPath],
+      packageRoot,
+      { timeout: metrics.ratchet.generationHardLimitMilliseconds },
+    );
+    generationTimings = JSON.parse(fs.readFileSync(timingPath, 'utf8'));
+  } finally {
+    fs.rmSync(timingDirectory, { recursive: true, force: true });
+  }
+  assert.ok(Array.isArray(generationTimings.stages), 'generation timings lack stages');
+  const wasmStages = generationTimings.stages.filter(
+    (stage) => stage.wasmBuildMilliseconds > 0,
+  );
+  assert.equal(wasmStages.length, 1, 'read-only generation must build exactly one WASM');
+  const canonicalWasmBuild = wasmStages[0].wasmBuildMilliseconds;
+  assert.ok(
+    canonicalWasmBuild <= wasmBuildHardLimit,
+    `canonical WASM build took ${canonicalWasmBuild} ms; limit is ${wasmBuildHardLimit} ms`,
   );
   const targetDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'tree-sitter-mermaid-target-'));
   let rustCompile;
@@ -433,7 +459,7 @@ function validateBuildMetrics() {
       process.env.CARGO || 'cargo',
       ['check', '--locked', '--release', '-p', 'tree-sitter-mermaid'],
       workspaceRoot,
-      { ...process.env, CARGO_TARGET_DIR: targetDirectory },
+      { environment: { ...process.env, CARGO_TARGET_DIR: targetDirectory } },
     );
   } finally {
     fs.rmSync(targetDirectory, { recursive: true, force: true });
@@ -444,15 +470,26 @@ function validateBuildMetrics() {
     packageRoot,
   );
 
-  for (const [name, actual, recorded] of [
-    ['generation', generation, build.twoRuntimeTwoWasmGenerationWallMilliseconds],
-    ['Rust release compile', rustCompile, build.rustReleaseCompileWallMilliseconds],
-    ['Node binding compile', nodeCompile, build.nodeBindingCompileWallMilliseconds],
+  for (const [name, actual, recorded, limit] of [
+    [
+      'generation',
+      generation,
+      build.twoRuntimeOneWasmGenerationWallMilliseconds,
+      metrics.ratchet.generationHardLimitMilliseconds,
+    ],
+    [
+      'canonical WASM build',
+      canonicalWasmBuild,
+      build.canonicalWasmBuildWallMilliseconds,
+      wasmBuildHardLimit,
+    ],
+    ['Rust release compile', rustCompile, build.rustReleaseCompileWallMilliseconds, hardLimit],
+    ['Node binding compile', nodeCompile, build.nodeBindingCompileWallMilliseconds, hardLimit],
   ]) {
-    const limit = observedUpperBound(recorded, TIME_BASELINE_MULTIPLIER, 60_000, hardLimit);
-    assert.ok(actual <= limit, `${name} took ${actual} ms; limit is ${limit} ms`);
+    const upperBound = observedUpperBound(recorded, TIME_BASELINE_MULTIPLIER, 60_000, limit);
+    assert.ok(actual <= upperBound, `${name} took ${actual} ms; limit is ${upperBound} ms`);
   }
-  return { generation, rustCompile, nodeCompile };
+  return { generation, canonicalWasmBuild, rustCompile, nodeCompile };
 }
 
 async function main() {
