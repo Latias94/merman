@@ -151,6 +151,17 @@ pub enum ThemeEvidenceStatus {
     Incomplete,
 }
 
+#[cfg(feature = "svg")]
+impl ThemeEvidenceStatus {
+    /// Stable discovery view for the coarse evidence states exposed by the facade.
+    pub const ALL: &'static [Self] = &[
+        Self::NotApplicable,
+        Self::Verified,
+        Self::Residual,
+        Self::Incomplete,
+    ];
+}
+
 /// Coarse document-level projection of renderer-owned theme evidence.
 ///
 /// This is intentionally not a mechanism ledger. It answers whether root and family work was
@@ -1381,6 +1392,19 @@ mod tests {
         ThemeEvidenceScopeProjection, ThemeEvidenceStatus, ThemeEvidenceSummary,
         summarize_theme_evidence,
     };
+
+    #[test]
+    fn theme_evidence_status_exposes_the_complete_coarse_catalog() {
+        assert_eq!(
+            ThemeEvidenceStatus::ALL,
+            &[
+                ThemeEvidenceStatus::NotApplicable,
+                ThemeEvidenceStatus::Verified,
+                ThemeEvidenceStatus::Residual,
+                ThemeEvidenceStatus::Incomplete,
+            ]
+        );
+    }
 
     #[test]
     fn theme_evidence_summary_rejects_output_mutation() {
