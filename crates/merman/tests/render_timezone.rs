@@ -15,7 +15,7 @@ use merman::{
 };
 #[cfg(feature = "ascii")]
 use merman::{
-    ascii::{AsciiRenderOptions, HeadlessAsciiRenderer},
+    ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy},
     diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask},
 };
 
@@ -140,10 +140,17 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
         },
     ];
 
-    let rendered = HeadlessAsciiRenderer::new()
-        .with_runtime_policy(runtime_policy)
-        .with_ascii_options(AsciiRenderOptions::ascii())
-        .render_model(&RenderSemanticModel::Gantt(model))
+    let context = runtime_policy
+        .begin_operation()
+        .expect("capture New York operation context");
+    let rendered = AsciiRenderer::new(AsciiRenderOptions::ascii())
+        .expect("ASCII options should validate")
+        .render_model(
+            &RenderSemanticModel::Gantt(model),
+            &OperationControl::new(),
+            &context,
+            AsciiResourcePolicy::default(),
+        )
         .expect("render repeated New York local time");
 
     assert!(

@@ -1,3 +1,4 @@
+use super::super::SequenceCheckpointCursor;
 use super::super::layout::SequenceLayout;
 use super::super::render::{SequenceChars, build_lifeline_line};
 use super::super::text::{SequenceLine, SequenceRowFootprint};
@@ -20,9 +21,11 @@ impl SequenceControlBoundaryState {
         active_counts: &[usize],
         visible_actors: &[bool],
         resources: &mut ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<Self> {
         let width = active_counts.len().max(visible_actors.len());
         resources.grid_extent(width, 1)?;
+        checkpoints.before_charge()?;
         resources.charge_layout_work(
             active_counts
                 .len()
@@ -40,6 +43,7 @@ impl SequenceControlBoundaryState {
         layout: &SequenceLayout,
         chars: &SequenceChars,
         resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<SequenceLine> {
         build_lifeline_line(
             layout,
@@ -47,6 +51,7 @@ impl SequenceControlBoundaryState {
             &self.active_counts,
             &self.visible_actors,
             resources,
+            checkpoints,
         )
     }
 }
@@ -211,21 +216,42 @@ fn allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operation::AsciiExecution;
     use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::OperationPhase;
 
     #[test]
     fn boundary_snapshot_accepts_exact_work_and_rejects_max_minus_one() {
         let mut exact = resources_with_work_limit(4);
-        let snapshot =
-            SequenceControlBoundaryState::try_capture(&[0, 1], &[true, false], &mut exact)
-                .expect("the exact boundary snapshot work should be admitted");
+        let exact_policy = exact.policy();
+        let exact_checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&exact_policy),
+            OperationPhase::Layout,
+        );
+        let snapshot = SequenceControlBoundaryState::try_capture(
+            &[0, 1],
+            &[true, false],
+            &mut exact,
+            &exact_checkpoints,
+        )
+        .expect("the exact boundary snapshot work should be admitted");
         assert_eq!(snapshot.active_counts, [0, 1]);
         assert_eq!(snapshot.visible_actors, [true, false]);
 
         let mut below = resources_with_work_limit(3);
-        let error = SequenceControlBoundaryState::try_capture(&[0, 1], &[true, false], &mut below)
-            .expect_err("the boundary snapshot should reject max minus one");
+        let below_policy = below.policy();
+        let below_checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&below_policy),
+            OperationPhase::Layout,
+        );
+        let error = SequenceControlBoundaryState::try_capture(
+            &[0, 1],
+            &[true, false],
+            &mut below,
+            &below_checkpoints,
+        )
+        .expect_err("the boundary snapshot should reject max minus one");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)

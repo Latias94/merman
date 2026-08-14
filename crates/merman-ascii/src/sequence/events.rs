@@ -1,11 +1,11 @@
-use super::{LABEL_BUFFER_SPACE, LABEL_LEFT_MARGIN};
+use super::{
+    LABEL_BUFFER_SPACE, LABEL_LEFT_MARGIN, SequenceCheckpointCursor, try_plan_sequence_label,
+};
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::safe_text::{
-    LabelBreakPolicy, NormalizedLabelPlan, try_plan_normalized_label_lines_with_policy,
-};
+use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::display_width_with_profile;
 
 use super::layout::SequenceLayout;
@@ -156,6 +156,7 @@ fn message_label_plan(
     max_width: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<Option<NormalizedLabelPlan>> {
     if message.label.is_empty() {
         return Ok(None);
@@ -166,13 +167,14 @@ fn message_label_plan(
     } else {
         (None, LabelBreakPolicy::VisibleLine)
     };
-    try_plan_normalized_label_lines_with_policy(
+    try_plan_sequence_label(
         &message.label,
         width_profile,
         false,
         wrap_width,
         break_policy,
         resources,
+        checkpoints,
     )
 }
 
@@ -181,6 +183,7 @@ pub(super) fn prepare_message_rows(
     layout: &SequenceLayout,
     visible_actors: &[bool],
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedMessageRows> {
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
@@ -189,8 +192,10 @@ pub(super) fn prepare_message_rows(
         from.abs_diff(to).saturating_sub(LABEL_LEFT_MARGIN),
         layout.width_profile,
         resources,
+        checkpoints,
     )?;
     if let Some(plan) = label_plan {
+        checkpoints.before_charge()?;
         plan.check_materialization_limits(resources)?;
     }
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
@@ -204,17 +209,20 @@ pub(super) fn prepare_message_rows(
             resources.checked_grid_add(layout.total_width.max(label_right), LABEL_BUFFER_SPACE)?;
         max_width = max_width.max(label_width);
     }
+    checkpoints.before_charge()?;
     resources.grid_extent(max_width, row_count)?;
+    checkpoints.before_charge()?;
     charge_row_work(resources, max_width, row_count)?;
 
-    let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
+    let lifeline_width = retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
     let mut footprints = Vec::new();
     footprints
         .try_reserve_exact(row_count)
         .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
-        plan.try_visit_row_metrics(&message.label, resources, |row| {
+        let visited = plan.try_visit_row_metrics(&message.label, resources, |row| {
+            checkpoints.tick()?;
             let label_right = resources.checked_grid_add(start, row.retained_width)?;
             let retained_width = lifeline_width.max(label_right);
             extent.try_push_line_length(retained_width, resources)?;
@@ -230,7 +238,9 @@ pub(super) fn prepare_message_rows(
                 )?
             });
             Ok(())
-        })?;
+        });
+        checkpoints.before_charge()?;
+        visited?;
     }
     extent.try_push_line_length(lifeline_width, resources)?;
     footprints.push(SequenceRowFootprint::with_content(
@@ -254,6 +264,7 @@ pub(super) fn render_message(
     chars: &SequenceChars,
     actor_state: MessageActorState<'_>,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<SequenceLine>> {
     let MessageActorState {
         active_counts,
@@ -267,9 +278,10 @@ pub(super) fn render_message(
     } = prepared;
     let label_lines = match label_plan {
         Some(plan) => {
-            plan.materialize_after_admission(&message.label)?
-                .into_parts()
-                .0
+            checkpoints.checkpoint()?;
+            let materialized = plan.materialize_after_admission(&message.label);
+            checkpoints.checkpoint()?;
+            materialized?.into_parts().0
         }
         None => Vec::new(),
     };
@@ -284,19 +296,34 @@ pub(super) fn render_message(
         .map_err(|_| allocation_failed())?;
 
     for label in label_lines {
+        checkpoints.tick()?;
         let label_width = display_width_with_profile(&label, layout.width_profile);
         let label_right = resources.checked_grid_add(start, label_width)?;
         let width =
             resources.checked_grid_add(layout.total_width.max(label_right), LABEL_BUFFER_SPACE)?;
         let mut line = padded_line(
-            build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
+            build_lifeline_line(
+                layout,
+                chars,
+                active_counts,
+                visible_actors,
+                resources,
+                checkpoints,
+            )?,
             width,
         )?;
         write_text_role(&mut line, start, &label, AsciiColorRole::EdgeLabel)?;
         lines.push(trim_right(line)?);
     }
 
-    let mut line = build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?;
+    let mut line = build_lifeline_line(
+        layout,
+        chars,
+        active_counts,
+        visible_actors,
+        resources,
+        checkpoints,
+    )?;
     let style = match message.style {
         SequenceLineStyle::Solid => chars.solid_line,
         SequenceLineStyle::Dotted => chars.dotted_line,
@@ -313,6 +340,7 @@ pub(super) fn render_message(
             line.try_set_role(from, chars.tee_right, AsciiColorRole::Junction)?;
         }
         for x in line_start..to {
+            checkpoints.tick()?;
             line.try_set_role(x, style, AsciiColorRole::EdgeLine)?;
         }
         paint_endpoint_marker(
@@ -358,6 +386,7 @@ pub(super) fn render_message(
         }
         line.try_set_role(target_marker_x, style, AsciiColorRole::EdgeLine)?;
         for x in line_start..from {
+            checkpoints.tick()?;
             line.try_set_role(x, style, AsciiColorRole::EdgeLine)?;
         }
         paint_endpoint_marker(
@@ -395,13 +424,20 @@ pub(super) fn prepare_self_message_rows(
     chars: &SequenceChars,
     visible_actors: &[bool],
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedSelfMessageRows> {
     let center = layout.participant_centers[message.from];
     let geometry = SelfMessageGeometry::try_new(message, layout, chars, resources)?;
     let label_wrap_width = resources.checked_grid_add(geometry.width, LABEL_BUFFER_SPACE)?;
-    let label_plan =
-        message_label_plan(message, label_wrap_width, layout.width_profile, resources)?;
+    let label_plan = message_label_plan(
+        message,
+        label_wrap_width,
+        layout.width_profile,
+        resources,
+        checkpoints,
+    )?;
     if let Some(plan) = label_plan {
+        checkpoints.before_charge()?;
         plan.check_materialization_limits(resources)?;
     }
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
@@ -413,10 +449,12 @@ pub(super) fn prepare_self_message_rows(
         let label_right = resources.checked_grid_add(start, metrics.max_width)?;
         max_width = max_width.max(resources.checked_grid_add(label_right, LABEL_BUFFER_SPACE)?);
     }
+    checkpoints.before_charge()?;
     resources.grid_extent(max_width, row_count)?;
+    checkpoints.before_charge()?;
     charge_row_work(resources, max_width, row_count)?;
 
-    let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
+    let lifeline_width = retained_lifeline_width(layout, visible_actors, resources, checkpoints)?;
     let message_row_width = lifeline_width.max(geometry.loop_needed);
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
     let mut footprints = Vec::new();
@@ -424,7 +462,8 @@ pub(super) fn prepare_self_message_rows(
         .try_reserve_exact(row_count)
         .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
-        plan.try_visit_row_metrics(&message.label, resources, |row| {
+        let visited = plan.try_visit_row_metrics(&message.label, resources, |row| {
+            checkpoints.tick()?;
             let label_right = resources.checked_grid_add(start, row.retained_width)?;
             let retained_width = lifeline_width.max(label_right);
             extent.try_push_line_length(retained_width, resources)?;
@@ -440,9 +479,12 @@ pub(super) fn prepare_self_message_rows(
                 )?
             });
             Ok(())
-        })?;
+        });
+        checkpoints.before_charge()?;
+        visited?;
     }
     for _ in 0..3 {
+        checkpoints.tick()?;
         extent.try_push_line_length(message_row_width, resources)?;
         footprints.push(SequenceRowFootprint::with_content(
             message_row_width,
@@ -467,6 +509,7 @@ pub(super) fn render_self_message(
     chars: &SequenceChars,
     actor_state: MessageActorState<'_>,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<SequenceLine>> {
     let MessageActorState {
         active_counts,
@@ -481,9 +524,10 @@ pub(super) fn render_self_message(
     } = prepared;
     let label_lines = match label_plan {
         Some(plan) => {
-            plan.materialize_after_admission(&message.label)?
-                .into_parts()
-                .0
+            checkpoints.checkpoint()?;
+            let materialized = plan.materialize_after_admission(&message.label);
+            checkpoints.checkpoint()?;
+            materialized?.into_parts().0
         }
         None => Vec::new(),
     };
@@ -497,13 +541,21 @@ pub(super) fn render_self_message(
         .map_err(|_| allocation_failed())?;
 
     for label in label_lines {
+        checkpoints.tick()?;
         let label_right = resources.checked_grid_add(
             start,
             display_width_with_profile(&label, layout.width_profile),
         )?;
         let needed = resources.checked_grid_add(label_right, LABEL_BUFFER_SPACE)?;
         let mut line = geometry.pad_line(
-            build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
+            build_lifeline_line(
+                layout,
+                chars,
+                active_counts,
+                visible_actors,
+                resources,
+                checkpoints,
+            )?,
             needed,
         )?;
         write_text_role(&mut line, start, &label, AsciiColorRole::EdgeLabel)?;
@@ -511,7 +563,14 @@ pub(super) fn render_self_message(
     }
 
     let mut top = geometry.pad_line(
-        build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
+        build_lifeline_line(
+            layout,
+            chars,
+            active_counts,
+            visible_actors,
+            resources,
+            checkpoints,
+        )?,
         geometry.loop_needed,
     )?;
     let style = match message.style {
@@ -521,6 +580,7 @@ pub(super) fn render_self_message(
     validate_message_direction(message)?;
     top.try_set_role(center, chars.tee_right, AsciiColorRole::Junction)?;
     for offset in 1..geometry.width {
+        checkpoints.tick()?;
         top.try_set_role(
             resources.checked_grid_add(center, offset)?,
             style,
@@ -553,7 +613,14 @@ pub(super) fn render_self_message(
     lines.push(trim_right(top)?);
 
     let mut middle = geometry.pad_line(
-        build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
+        build_lifeline_line(
+            layout,
+            chars,
+            active_counts,
+            visible_actors,
+            resources,
+            checkpoints,
+        )?,
         geometry.loop_needed,
     )?;
     middle.try_set_role(
@@ -564,7 +631,14 @@ pub(super) fn render_self_message(
     lines.push(trim_right(middle)?);
 
     let mut bottom = geometry.pad_line(
-        build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
+        build_lifeline_line(
+            layout,
+            chars,
+            active_counts,
+            visible_actors,
+            resources,
+            checkpoints,
+        )?,
         geometry.loop_needed,
     )?;
     if destroyed_actors.contains(&message.from) {
@@ -578,6 +652,7 @@ pub(super) fn render_self_message(
     }
     bottom.try_set_role(geometry.arrow_x, style, AsciiColorRole::EdgeLine)?;
     for offset in 2..geometry.width - 1 {
+        checkpoints.tick()?;
         bottom.try_set_role(
             resources.checked_grid_add(center, offset)?,
             style,
@@ -751,9 +826,11 @@ fn invalid_message_geometry() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operation::AsciiExecution;
     use crate::options::AsciiRenderOptions;
-    use crate::resource::AsciiResourceLimitId;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::sequence::text::blank_line;
+    use merman_core::OperationPhase;
 
     fn narrow_self_layout() -> SequenceLayout {
         SequenceLayout {
@@ -785,14 +862,25 @@ mod tests {
     fn narrow_filled_half_self_message_uses_one_exact_geometry_for_admission_and_paint() {
         let layout = narrow_self_layout();
         let message = filled_half_self_message();
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 30)
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 30)
             .unwrap();
         let chars = SequenceChars::for_options(&options);
-        let mut resources = ResourceContext::new(options.resources);
-        let prepared =
-            prepare_self_message_rows(&message, &layout, &chars, &[true], &mut resources)
-                .expect("the exact 10x3 self-message extent should be admitted");
+        let mut resources = ResourceContext::new(policy);
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&policy),
+            OperationPhase::Layout,
+        );
+        let prepared = prepare_self_message_rows(
+            &message,
+            &layout,
+            &chars,
+            &[true],
+            &mut resources,
+            &mut checkpoints,
+        )
+        .expect("the exact 10x3 self-message extent should be admitted");
 
         assert_eq!(prepared.extent().materialized_width(), 10);
         assert_eq!(prepared.extent().height(), 3);
@@ -813,21 +901,27 @@ mod tests {
             &chars,
             MessageActorState::new(&[0], &[true], &[]),
             &mut resources,
+            &mut checkpoints,
         )
         .expect("the admitted self-message should paint from the same geometry");
         assert_eq!(lines.len(), 3);
         assert!(lines.iter().any(|line| line.text().contains("/|")));
 
-        let below = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 29)
+        let below = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 29)
             .unwrap();
-        let mut resources = ResourceContext::new(below.resources);
+        let mut resources = ResourceContext::new(below);
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&below),
+            OperationPhase::Layout,
+        );
         let error = prepare_self_message_rows(
             &message,
             &layout,
-            &SequenceChars::for_options(&below),
+            &SequenceChars::for_options(&options),
             &[true],
             &mut resources,
+            &mut checkpoints,
         )
         .expect_err("the 10x3 self-message must reject a 29-cell grid limit");
         assert!(matches!(

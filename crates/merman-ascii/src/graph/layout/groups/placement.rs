@@ -8,8 +8,10 @@ use crate::error::Result;
 use crate::graph::layout::GridCoord;
 use crate::graph::model::{AsciiGraph, GraphDirection};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
+use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use merman_core::OperationPhase;
 
 mod local_direction;
 
@@ -20,6 +22,7 @@ pub(super) fn apply_group_placement_adjustments(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
     let original_placements = clone_grid_placements(placements, resources)?;
     let original_root_axis = root_axis_positions(graph.direction, placements, resources)?;
@@ -41,6 +44,7 @@ pub(super) fn apply_group_placement_adjustments(
         placements,
         &mut disabled_overrides,
         resources,
+        execution,
     )?;
 
     separate_placement_blocks_on_cross_axis(
@@ -48,6 +52,7 @@ pub(super) fn apply_group_placement_adjustments(
         placements,
         &placement_state.blocks,
         resources,
+        execution,
     )?;
     reserve_group_left_constraint_space(graph, placements, topology, width_profile, resources)?;
     separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
@@ -57,6 +62,7 @@ pub(super) fn apply_group_placement_adjustments(
         placements,
         &placement_state.invariants,
         resources,
+        execution,
     )? {
         disable_all_group_overrides(&direction_overrides, &mut disabled_overrides, resources)?;
         placement_state = solve_group_placement_constraints(
@@ -64,12 +70,14 @@ pub(super) fn apply_group_placement_adjustments(
             placements,
             &mut disabled_overrides,
             resources,
+            execution,
         )?;
         separate_placement_blocks_on_cross_axis(
             graph.direction,
             placements,
             &placement_state.blocks,
             resources,
+            execution,
         )?;
         reserve_group_left_constraint_space(graph, placements, topology, width_profile, resources)?;
         separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
@@ -80,6 +88,7 @@ pub(super) fn apply_group_placement_adjustments(
         placements,
         &placement_state.invariants,
         resources,
+        execution,
     )? {
         restore_grid_placements(placements, &original_placements, resources)?;
         separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
@@ -149,6 +158,7 @@ fn solve_group_placement_constraints(
     placements: &mut [GridCoord],
     disabled_overrides: &mut [bool],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<GroupPlacementState> {
     // Rebuild each attempt from the Dagre placement. A conflicting rigid-block cycle therefore
     // disables only the implicated local override instead of accumulating partial shifts.
@@ -157,13 +167,11 @@ fn solve_group_placement_constraints(
         resources.charge_layout_work(1)?;
         restore_grid_placements(placements, context.original_placements, resources)?;
         apply_subgraph_direction_overrides(
-            context.graph,
+            context,
             placements,
-            context.topology,
-            context.width_profile,
-            context.direction_overrides,
             disabled_overrides,
             resources,
+            execution,
         )?;
         stack_divider_sections(context.graph, placements, context.topology, resources)?;
 
@@ -772,6 +780,7 @@ fn separate_placement_blocks_on_cross_axis(
     placements: &mut [GridCoord],
     blocks: &PlacementBlocks,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
     for current_block_index in 0..blocks.blocks.len() {
         let current_block = &blocks.blocks[current_block_index];
@@ -789,6 +798,7 @@ fn separate_placement_blocks_on_cross_axis(
                     &current_block.members,
                     &previous_block.members,
                     resources,
+                    execution,
                 )?);
             }
             if required_shift == 0 {
@@ -812,9 +822,11 @@ fn required_cross_axis_shift(
     current_members: &[usize],
     previous_members: &[usize],
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<usize> {
     const NODE_GRID_SPAN: usize = 3;
 
+    checkpoint_layout(execution)?;
     resources.charge_layout_work_product(current_members.len(), previous_members.len())?;
     let mut required_shift = 0;
     for current_member in current_members {
@@ -822,6 +834,7 @@ fn required_cross_axis_shift(
             continue;
         };
         for previous_member in previous_members {
+            checkpoint_layout(execution)?;
             let Some(previous) = placements.get(*previous_member).copied() else {
                 continue;
             };
@@ -895,9 +908,12 @@ fn placement_state_is_valid(
     placements: &[GridCoord],
     invariants: &[RankInvariant],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<bool> {
+    checkpoint_layout(execution)?;
     resources.charge_layout_work(invariants.len())?;
     for invariant in invariants {
+        checkpoint_layout(execution)?;
         let (Some(source), Some(target)) = (
             placements.get(invariant.source_node).copied(),
             placements.get(invariant.target_node).copied(),
@@ -913,6 +929,7 @@ fn placement_state_is_valid(
 
     for left_index in 0..placements.len() {
         for right_index in resources.checked_work_add(left_index, 1)?..placements.len() {
+            checkpoint_layout(execution)?;
             resources.charge_layout_work(1)?;
             if raw_bounds_intersects(
                 node_bounds(placements[left_index], resources)?,
@@ -923,6 +940,13 @@ fn placement_state_is_valid(
         }
     }
     Ok(true)
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(OperationPhase::Layout)?;
+    }
+    Ok(())
 }
 
 fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
@@ -965,6 +989,7 @@ mod tests {
     use super::*;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::AsciiResourcePolicy;
+    use merman_core::OperationControl;
     use merman_core::resources::ResourceProfile;
 
     fn unbounded_resources() -> ResourceContext {
@@ -1029,5 +1054,35 @@ mod tests {
             endpoint_index.resolve(endpoint, EndpointRole::Target),
             Some(0)
         );
+    }
+
+    #[test]
+    fn placement_pair_scan_observes_cancellation_before_work_exhaustion() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one work unit should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(1)
+            .expect("the setup should consume the only admitted work unit");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let placements = [GridCoord { x: 0, y: 0 }, GridCoord { x: 4, y: 0 }];
+
+        let error = placement_state_is_valid(
+            GraphDirection::TopDown,
+            &placements,
+            &[],
+            &mut resources,
+            Some(AsciiExecution::new(&control, &policy)),
+        )
+        .expect_err("cancellation should win before the next pair-work debit");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
     }
 }

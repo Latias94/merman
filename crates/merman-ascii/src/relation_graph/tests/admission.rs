@@ -49,8 +49,8 @@ fn aggregate_test_regions<'a>(
 
 #[test]
 fn render_plan_admits_aggregate_extent_before_materializing_regions() -> Result<()> {
-    let options = options_with_grid_limit(30);
-    let mut resources = test_resources(&options);
+    let options = AsciiRenderOptions::ascii();
+    let mut resources = test_resources(policy_with_grid_limit(30));
     let wide_top = RelationGraphBox::new("a".to_string(), vec!["aaaaa".to_string()], 5);
     let wide_bottom = RelationGraphBox::new("b".to_string(), vec!["bbbbb".to_string()], 5);
     let narrow_top = RelationGraphBox::new("c".to_string(), vec!["ccc".to_string()], 3);
@@ -83,8 +83,7 @@ fn render_plan_admits_aggregate_extent_before_materializing_regions() -> Result<
 
 #[test]
 fn render_plan_rejects_aggregate_n_minus_one_before_materializing_regions() -> Result<()> {
-    let options = options_with_grid_limit(29);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(29));
     let wide_top = RelationGraphBox::new("a".to_string(), vec!["aaaaa".to_string()], 5);
     let wide_bottom = RelationGraphBox::new("b".to_string(), vec!["bbbbb".to_string()], 5);
     let narrow_top = RelationGraphBox::new("c".to_string(), vec!["ccc".to_string()], 3);
@@ -191,8 +190,7 @@ fn materialize_self_loop_test_rows(
 #[test]
 fn self_loop_plan_admits_exact_extent_before_materializing() {
     let boxes = admission_test_boxes();
-    let options = options_with_grid_limit(42);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(42));
     let plan = RelationSelfLoopPlan::try_new(&boxes[0], self_loop_test_metrics(), &resources)
         .expect("self-loop descriptor should fit the exact aggregate limit");
     assert_eq!(
@@ -218,8 +216,7 @@ fn self_loop_plan_admits_exact_extent_before_materializing() {
 #[test]
 fn self_loop_plan_rejects_n_minus_one_before_materializing() {
     let boxes = admission_test_boxes();
-    let options = options_with_grid_limit(41);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(41));
     let materialized = Cell::new(false);
 
     let error = RelationSelfLoopPlan::try_new(&boxes[0], self_loop_test_metrics(), &resources)
@@ -238,8 +235,7 @@ fn self_loop_plan_rejects_n_minus_one_before_materializing() {
 #[test]
 fn self_loop_plan_rejects_materialized_descriptor_mismatch() {
     let boxes = admission_test_boxes();
-    let options = options_with_grid_limit(42);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(42));
     let plan = RelationSelfLoopPlan::try_new(&boxes[0], self_loop_test_metrics(), &resources)
         .expect("self-loop descriptor should fit before row validation");
     let error = plan
@@ -257,8 +253,7 @@ fn self_loop_plan_rejects_materialized_descriptor_mismatch() {
 #[test]
 fn stack_plan_admits_exact_extent_before_materializing() {
     let boxes = admission_test_boxes();
-    let options = options_with_grid_limit(24);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(24));
     let plan = RelationStackPlan::try_new(
         &boxes[0],
         &boxes[1],
@@ -290,8 +285,7 @@ fn stack_plan_admits_exact_extent_before_materializing() {
 #[test]
 fn stack_plan_rejects_n_minus_one_before_materializing() {
     let boxes = admission_test_boxes();
-    let options = options_with_grid_limit(23);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(23));
     let materialized = Cell::new(false);
 
     let error = RelationStackPlan::try_new(
@@ -317,8 +311,7 @@ fn stack_plan_rejects_n_minus_one_before_materializing() {
 fn parallel_plan_admits_odd_endpoint_extent_at_exact_limit_before_materializing() {
     let top = RelationGraphBox::new("top".to_string(), vec!["abcde".to_string()], 5);
     let bottom = RelationGraphBox::new("bottom".to_string(), vec!["vwxyz".to_string()], 5);
-    let default_options = AsciiRenderOptions::ascii();
-    let mut default_resources = test_resources(&default_options);
+    let mut default_resources = test_resources(AsciiResourcePolicy::default());
     let plan = RelationParallelPlan::new(
         &top,
         &bottom,
@@ -337,8 +330,7 @@ fn parallel_plan_admits_odd_endpoint_extent_at_exact_limit_before_materializing(
         (5, 4, 20)
     );
 
-    let options = options_with_grid_limit(planned.cells());
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(planned.cells()));
     let plan = RelationParallelPlan::new(
         &top,
         &bottom,
@@ -368,8 +360,7 @@ fn parallel_plan_admits_odd_endpoint_extent_at_exact_limit_before_materializing(
 fn parallel_plan_rejects_odd_endpoint_extent_at_n_minus_one_before_materializing() {
     let top = RelationGraphBox::new("top".to_string(), vec!["abcde".to_string()], 5);
     let bottom = RelationGraphBox::new("bottom".to_string(), vec!["vwxyz".to_string()], 5);
-    let options = options_with_grid_limit(19);
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(policy_with_grid_limit(19));
     let materialized = Cell::new(false);
     let error = RelationParallelPlan::new(
         &top,
@@ -393,12 +384,12 @@ fn parallel_plan_rejects_odd_endpoint_extent_at_n_minus_one_before_materializing
 #[test]
 fn stack_and_horizontal_strip_admit_exact_grid_extent() {
     let boxes = admission_test_boxes();
+    let options = AsciiRenderOptions::ascii();
 
-    let stack_options = options_with_grid_limit(24);
-    let mut stack_resources = test_resources(&stack_options);
+    let mut stack_resources = test_resources(policy_with_grid_limit(24));
     let stack = stacked_box_lines_ordered(
         &boxes,
-        stack_options.terminal_width_profile,
+        options.terminal_width_profile,
         true,
         &mut stack_resources,
     )
@@ -407,13 +398,12 @@ fn stack_and_horizontal_strip_admit_exact_grid_extent() {
     assert_eq!(stack[0].width(), 4);
     assert_eq!(stack[4].width(), 3);
 
-    let horizontal_options = options_with_grid_limit(27);
-    let horizontal_resources = test_resources(&horizontal_options);
+    let horizontal_resources = test_resources(policy_with_grid_limit(27));
     let strip = render_horizontal_box_strip_lines(
         &boxes,
         RelationGraphHorizontalDirection::LeftRight,
         2,
-        horizontal_options.terminal_width_profile,
+        options.terminal_width_profile,
         &horizontal_resources,
     )
     .expect("9 by 3 horizontal strip should fit 27 cells");
@@ -424,25 +414,24 @@ fn stack_and_horizontal_strip_admit_exact_grid_extent() {
 #[test]
 fn stack_and_horizontal_strip_reject_grid_extent_at_n_minus_one() {
     let boxes = admission_test_boxes();
+    let options = AsciiRenderOptions::ascii();
 
-    let stack_options = options_with_grid_limit(23);
-    let mut stack_resources = test_resources(&stack_options);
+    let mut stack_resources = test_resources(policy_with_grid_limit(23));
     let error = stacked_box_lines_ordered(
         &boxes,
-        stack_options.terminal_width_profile,
+        options.terminal_width_profile,
         true,
         &mut stack_resources,
     )
     .expect_err("4 by 6 reversed stack must not fit 23 cells");
     assert_grid_limit(error, 24, 23);
 
-    let horizontal_options = options_with_grid_limit(26);
-    let horizontal_resources = test_resources(&horizontal_options);
+    let horizontal_resources = test_resources(policy_with_grid_limit(26));
     let error = render_horizontal_box_strip_lines(
         &boxes,
         RelationGraphHorizontalDirection::LeftRight,
         2,
-        horizontal_options.terminal_width_profile,
+        options.terminal_width_profile,
         &horizontal_resources,
     )
     .expect_err("9 by 3 horizontal strip must not fit 26 cells");
@@ -453,7 +442,7 @@ fn stack_and_horizontal_strip_reject_grid_extent_at_n_minus_one() {
 fn relation_document_admits_exact_extent_before_materializing() {
     let boxes = admission_test_boxes();
     let default_options = AsciiRenderOptions::ascii();
-    let default_resources = test_resources(&default_options);
+    let default_resources = test_resources(AsciiResourcePolicy::default());
     let mut deferred = DeferredTextRegistry::new();
     let rows = vec![
         test_summary_row(
@@ -481,8 +470,8 @@ fn relation_document_admits_exact_extent_before_materializing() {
     );
 
     let exact = planned.cells();
-    let options = options_with_grid_limit(exact);
-    let mut resources = test_resources(&options);
+    let options = AsciiRenderOptions::ascii();
+    let mut resources = test_resources(policy_with_grid_limit(exact));
     let base_extent =
         stacked_box_extent(&boxes, &resources).expect("base stack should fit the aggregate limit");
     let materialized = Cell::new(false);
@@ -508,8 +497,8 @@ fn relation_document_admits_exact_extent_before_materializing() {
 #[test]
 fn relation_document_rejects_n_minus_one_before_materializing() {
     let boxes = admission_test_boxes();
-    let options = options_with_grid_limit(89);
-    let mut resources = test_resources(&options);
+    let options = AsciiRenderOptions::ascii();
+    let mut resources = test_resources(policy_with_grid_limit(89));
     let mut deferred = DeferredTextRegistry::new();
     let rows = vec![
         test_summary_row(

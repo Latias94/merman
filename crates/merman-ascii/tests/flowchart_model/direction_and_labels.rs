@@ -118,22 +118,21 @@ fn flowchart_node_label_wrapping_preserves_authored_breaks_and_graphemes() {
 fn flowchart_wrapped_node_labels_respect_exact_grid_limit() {
     let input = "flowchart TD\nA[\"Alpha Beta Gamma Delta Epsilon\"] --> B[Done]";
     let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-    let base_options = AsciiRenderOptions::ascii()
-        .with_flowchart_node_label_wrap_width(8)
-        .with_resource_policy(unbounded);
-    let measured = render_flowchart(input, &base_options).expect("unbounded graph should render");
+    let base_options = AsciiRenderOptions::ascii().with_flowchart_node_label_wrap_width(8);
+    let measured = render_flowchart_with_resources(input, &base_options, unbounded)
+        .expect("unbounded graph should render");
     let exact_cells = rendered_terminal_width(&measured) * measured.lines().count();
 
     let exact_policy = unbounded
         .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells)
         .expect("exact grid limit should be valid");
-    render_flowchart(input, &base_options.with_resource_policy(exact_policy))
+    render_flowchart_with_resources(input, &base_options, exact_policy)
         .expect("exact wrapped-node grid limit should render");
 
     let below_policy = unbounded
         .with_limit(AsciiResourceLimitId::MaxGridCells, exact_cells - 1)
         .expect("max-minus-one grid limit should be valid");
-    let error = render_flowchart(input, &base_options.with_resource_policy(below_policy))
+    let error = render_flowchart_with_resources(input, &base_options, below_policy)
         .expect_err("max-minus-one wrapped-node grid limit should fail");
     let AsciiError::ResourceLimitExceeded(details) = error else {
         panic!("expected a grid resource error, got {error:?}");
@@ -177,11 +176,8 @@ fn flowchart_node_label_plans_check_aggregate_text_limits() {
         let policy = unbounded
             .with_limit(limit, 9)
             .expect("aggregate text limit should be valid");
-        let error = render_flowchart(
-            input,
-            &AsciiRenderOptions::ascii().with_resource_policy(policy),
-        )
-        .expect_err("two five-cell labels should exceed an aggregate limit of nine");
+        let error = render_flowchart_with_resources(input, &AsciiRenderOptions::ascii(), policy)
+            .expect_err("two five-cell labels should exceed an aggregate limit of nine");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected an aggregate text resource error, got {error:?}");
         };

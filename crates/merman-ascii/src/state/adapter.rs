@@ -8,6 +8,7 @@ use crate::graph::{
     GraphNodeCompartments, GraphNodeSemantics, GraphNodeShape, GraphNodeSide,
     GraphNodeSideConstraint, GraphNodeStyle,
 };
+use crate::operation::AsciiExecution;
 #[cfg(test)]
 use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
@@ -36,25 +37,43 @@ pub(crate) fn from_state_model_with_resources(
     from_state_model_with_context(model, &mut resources)
 }
 
+#[cfg(test)]
 pub(crate) fn from_state_model_with_context(
     model: &StateDiagramRenderModel,
     resources: &mut ResourceContext,
 ) -> Result<AsciiGraph> {
-    preflight_state_projection_text(model, resources)?;
-    let projection_work = state_projection_work(model, resources)?;
-    resources.charge_layout_work(projection_work)?;
-    validate_supported_state_model(model)?;
+    from_state_model_with_context_controlled(model, resources, None)
+}
 
-    let group_members = group_members_by_id(model)?;
-    let note_node_parent_by_id = note_node_parent_by_id(model)?;
-    let note_side_constraints = note_side_constraints(model, &note_node_parent_by_id)?;
+pub(crate) fn from_state_model_with_context_and_execution(
+    model: &StateDiagramRenderModel,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<AsciiGraph> {
+    from_state_model_with_context_controlled(model, resources, Some(execution))
+}
+
+fn from_state_model_with_context_controlled(
+    model: &StateDiagramRenderModel,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<AsciiGraph> {
+    preflight_state_projection_text(model, resources, execution)?;
+    let projection_work = state_projection_work(model, resources, execution)?;
+    resources.charge_layout_work(projection_work)?;
+    validate_supported_state_model(model, resources, execution)?;
+
+    let group_members = group_members_by_id(model, execution)?;
+    let note_node_parent_by_id = note_node_parent_by_id(model, execution)?;
+    let note_side_constraints = note_side_constraints(model, &note_node_parent_by_id, execution)?;
     let direction = parse_state_direction(&model.direction)?;
-    let state_directions = state_direction_projection(model, direction)?;
+    let state_directions = state_direction_projection(model, direction, resources, execution)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.nodes.len())?;
     graph.use_incoming_edge_roots();
 
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if is_group_container(node, &group_members) {
             continue;
         }
@@ -81,7 +100,11 @@ pub(crate) fn from_state_model_with_context(
         );
     }
 
-    for node in sorted_group_nodes(model, &group_members, resources)? {
+    for (index, node) in sorted_group_nodes(model, &group_members, resources, execution)?
+        .into_iter()
+        .enumerate()
+    {
+        checkpoint_projection(execution, index)?;
         let members = group_members.get(&node.id).cloned().unwrap_or_default();
         graph.add_group_with_kind_and_style(
             &node.id,
@@ -93,7 +116,8 @@ pub(crate) fn from_state_model_with_context(
         );
     }
 
-    for edge in &model.edges {
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         let mut from = remap_note_endpoint(&edge.start, &note_node_parent_by_id);
         let mut to = remap_note_endpoint(&edge.end, &note_node_parent_by_id);
         if is_note_edge(edge) {
@@ -114,12 +138,21 @@ pub(crate) fn from_state_model_with_context(
     Ok(graph)
 }
 
+fn checkpoint_projection(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)?;
+    }
+    Ok(())
+}
+
 fn preflight_state_projection_text(
     model: &StateDiagramRenderModel,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
     charge_text_layout(resources, &model.direction)?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         charge_text_layout(resources, &node.id)?;
         if let Some(parent_id) = node.parent_id.as_deref() {
             charge_text_layout(resources, parent_id)?;
@@ -131,7 +164,8 @@ fn preflight_state_projection_text(
             if let Some(label) = label.as_str() {
                 charge_text_layout(resources, label)?;
             } else if let Some(items) = label.as_array() {
-                for item in items {
+                for (item_index, item) in items.iter().enumerate() {
+                    checkpoint_projection(execution, item_index)?;
                     if let Some(line) = item.as_str() {
                         charge_text_layout(resources, line)?;
                     }
@@ -139,12 +173,14 @@ fn preflight_state_projection_text(
             }
         }
         if let Some(description) = node.description.as_ref() {
-            for line in description {
+            for (line_index, line) in description.iter().enumerate() {
+                checkpoint_projection(execution, line_index)?;
                 charge_text_layout(resources, line)?;
             }
         }
     }
-    for edge in &model.edges {
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         charge_text_layout(resources, &edge.start)?;
         charge_text_layout(resources, &edge.end)?;
         charge_text_layout(resources, &edge.label)?;
@@ -155,9 +191,11 @@ fn preflight_state_projection_text(
 fn state_projection_work(
     model: &StateDiagramRenderModel,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<usize> {
     let mut authored_items = 0usize;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         let label_items = node
             .label
             .as_ref()
@@ -179,15 +217,6 @@ fn state_projection_work(
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
     }
-    let node_pairs = model
-        .nodes
-        .len()
-        .checked_mul(model.nodes.len())
-        .ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-        })?;
     let node_containers = model
         .nodes
         .len()
@@ -206,9 +235,8 @@ fn state_projection_work(
                 .policy()
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
-    node_pairs
-        .checked_add(node_containers)
-        .and_then(|work| work.checked_add(edge_containers))
+    node_containers
+        .checked_add(edge_containers)
         .and_then(|work| work.checked_add(authored_items))
         .ok_or_else(|| {
             resources
@@ -223,20 +251,26 @@ fn projection_allocation_failed() -> AsciiError {
     }
 }
 
-fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
+fn validate_supported_state_model(
+    model: &StateDiagramRenderModel,
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<()> {
     let mut node_by_id = HashMap::new();
     node_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if node_by_id.insert(node.id.as_str(), node).is_some() {
             return Err(unsupported("duplicate node ids"));
         }
         validate_supported_state_node(node)?;
     }
-    validate_state_parent_ownership(model, &node_by_id)?;
+    validate_state_parent_ownership(model, &node_by_id, resources, execution)?;
 
-    for edge in &model.edges {
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if !edge.arrow_type_end.is_empty()
             && !matches!(
                 edge.arrow_type_end.as_str(),
@@ -253,8 +287,11 @@ fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()>
 fn validate_state_parent_ownership(
     model: &StateDiagramRenderModel,
     node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         let Some(parent_id) = node.parent_id.as_deref() else {
             continue;
         };
@@ -267,12 +304,15 @@ fn validate_state_parent_ownership(
         }
     }
 
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         let mut parent_id = node.parent_id.as_deref();
         for _ in 0..model.nodes.len() {
+            checkpoint_projection_before_charge(execution)?;
             let Some(current_parent_id) = parent_id else {
                 break;
             };
+            resources.charge_layout_work(1)?;
             parent_id = node_by_id
                 .get(current_parent_id)
                 .and_then(|parent| parent.parent_id.as_deref());
@@ -319,12 +359,16 @@ fn unsupported(feature: &'static str) -> AsciiError {
     }
 }
 
-fn group_members_by_id(model: &StateDiagramRenderModel) -> Result<HashMap<String, Vec<String>>> {
+fn group_members_by_id(
+    model: &StateDiagramRenderModel,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<HashMap<String, Vec<String>>> {
     let mut members = HashMap::<String, Vec<String>>::new();
     members
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         let Some(parent_id) = node.parent_id.as_ref() else {
             continue;
         };
@@ -337,12 +381,16 @@ fn group_members_by_id(model: &StateDiagramRenderModel) -> Result<HashMap<String
     Ok(members)
 }
 
-fn note_node_parent_by_id(model: &StateDiagramRenderModel) -> Result<HashMap<String, String>> {
+fn note_node_parent_by_id(
+    model: &StateDiagramRenderModel,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<HashMap<String, String>> {
     let mut parents = HashMap::new();
     parents
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if !is_state_note_node(node) {
             continue;
         }
@@ -357,12 +405,14 @@ fn note_node_parent_by_id(model: &StateDiagramRenderModel) -> Result<HashMap<Str
 fn note_side_constraints(
     model: &StateDiagramRenderModel,
     note_node_parent_by_id: &HashMap<String, String>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<HashMap<String, GraphNodeSideConstraint>> {
     let mut note_group_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     note_group_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if is_state_note_group(node) {
             note_group_by_id.insert(node.id.as_str(), node);
         }
@@ -372,7 +422,8 @@ fn note_side_constraints(
     constraints
         .try_reserve(note_group_by_id.len())
         .map_err(|_| projection_allocation_failed())?;
-    for edge in &model.edges {
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if !is_note_edge(edge) {
             continue;
         }
@@ -436,12 +487,14 @@ fn sorted_group_nodes<'a>(
     model: &'a StateDiagramRenderModel,
     group_members: &HashMap<String, Vec<String>>,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<&'a StateDiagramRenderNode>> {
     let mut parent_by_id = HashMap::new();
     parent_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         parent_by_id.insert(node.id.as_str(), node.parent_id.as_deref());
     }
 
@@ -449,10 +502,11 @@ fn sorted_group_nodes<'a>(
     depth_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         depth_by_id.insert(
             node.id.as_str(),
-            node_depth(node, &parent_by_id, model.nodes.len(), resources)?,
+            node_depth(node, &parent_by_id, model.nodes.len(), resources, execution)?,
         );
     }
 
@@ -482,6 +536,7 @@ fn node_depth(
     parent_by_id: &HashMap<&str, Option<&str>>,
     node_count: usize,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<usize> {
     let mut depth = 0usize;
     let mut seen = HashSet::new();
@@ -491,6 +546,8 @@ fn node_depth(
     resources.check_nesting_depth(1)?;
 
     while let Some(parent_id) = parent {
+        checkpoint_projection_before_charge(execution)?;
+        resources.charge_layout_work(1)?;
         if !seen.insert(parent_id) {
             break;
         }
@@ -514,12 +571,15 @@ fn node_depth(
 fn state_direction_projection(
     model: &StateDiagramRenderModel,
     root_direction: GraphDirection,
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<StateDirectionProjection> {
     let mut node_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     node_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         node_by_id.insert(node.id.as_str(), node);
     }
 
@@ -531,8 +591,15 @@ fn state_direction_projection(
     group_directions
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
-        let inherited = nearest_explicit_ancestor_direction(node, &node_by_id, model.nodes.len())?;
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
+        let inherited = nearest_explicit_ancestor_direction(
+            node,
+            &node_by_id,
+            model.nodes.len(),
+            resources,
+            execution,
+        )?;
         node_directions.insert(node.id.clone(), inherited.unwrap_or(root_direction));
 
         let group_direction = if node.explicit_dir == Some(true) {
@@ -556,6 +623,8 @@ fn nearest_explicit_ancestor_direction(
     node: &StateDiagramRenderNode,
     node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
     node_count: usize,
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<GraphDirection>> {
     let mut parent_id = node.parent_id.as_deref();
     let mut visited = HashSet::new();
@@ -563,6 +632,8 @@ fn nearest_explicit_ancestor_direction(
         .try_reserve(node_count)
         .map_err(|_| projection_allocation_failed())?;
     while let Some(parent) = parent_id {
+        checkpoint_projection_before_charge(execution)?;
+        resources.charge_layout_work(1)?;
         if !visited.insert(parent) {
             break;
         }
@@ -579,6 +650,13 @@ fn nearest_explicit_ancestor_direction(
         parent_id = parent_node.parent_id.as_deref();
     }
     Ok(None)
+}
+
+fn checkpoint_projection_before_charge(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    }
+    Ok(())
 }
 
 fn is_group_container(
@@ -819,6 +897,60 @@ mod tests {
             }],
             ..StateDiagramRenderModel::default()
         };
+        assert_projection_accepts_exact_work(&model);
+    }
+
+    #[test]
+    fn state_parent_chain_charges_each_ancestor_traversal() {
+        let mut root = state_node("root");
+        root.is_group = true;
+        let mut middle = state_node("middle");
+        middle.is_group = true;
+        middle.parent_id = Some(root.id.clone());
+        let mut inner = state_node("inner");
+        inner.is_group = true;
+        inner.parent_id = Some(middle.id.clone());
+        let mut leaf = state_node("leaf");
+        leaf.parent_id = Some(inner.id.clone());
+        let model = StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes: vec![root, middle, inner, leaf],
+            ..StateDiagramRenderModel::default()
+        };
+        let expected_ancestor_steps = 6;
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        let node_by_id = model
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
+        let validation_resources = ResourceContext::new(unbounded);
+        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, None)
+            .expect("valid state parent chain should pass ownership validation");
+        assert_eq!(
+            validation_resources.layout_work_used(),
+            expected_ancestor_steps
+        );
+
+        let group_members = group_members_by_id(&model, None)
+            .expect("valid state parent chain should project group members");
+        let sorting_resources = ResourceContext::new(unbounded);
+        sorted_group_nodes(&model, &group_members, &sorting_resources, None)
+            .expect("valid state parent chain should sort groups");
+        assert_eq!(
+            sorting_resources.layout_work_used(),
+            expected_ancestor_steps
+        );
+
+        let direction_resources = ResourceContext::new(unbounded);
+        state_direction_projection(&model, GraphDirection::TopDown, &direction_resources, None)
+            .expect("valid state parent chain should project directions");
+        assert_eq!(
+            direction_resources.layout_work_used(),
+            expected_ancestor_steps
+        );
+
         assert_projection_accepts_exact_work(&model);
     }
 

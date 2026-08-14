@@ -8,12 +8,13 @@ use super::layout::SequenceLayout;
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
 use super::text::{SequenceLine, SequenceRowFootprint};
+use super::{SequenceCheckpointCursor, try_plan_sequence_label};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::LabelBreakPolicy;
 use crate::safe_text::NormalizedLabelPlan;
-use crate::safe_text::{LabelBreakPolicy, try_plan_normalized_label_lines_with_policy};
 use geometry::SequenceFrameBounds;
 use paint::materialize_control_frames;
 
@@ -104,20 +105,24 @@ impl<'a> SequenceControlTitlePlan<'a> {
         label: &'a str,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<Self> {
+        checkpoints.before_charge()?;
         resources.charge_layout_work(keyword.len().max(1))?;
         let label_plan = if label.is_empty() {
             None
         } else {
-            let plan = try_plan_normalized_label_lines_with_policy(
+            let plan = try_plan_sequence_label(
                 label,
                 width_profile,
                 false,
                 None,
                 LabelBreakPolicy::VisibleLine,
                 resources,
+                checkpoints,
             )?
             .ok_or_else(invalid_control_frame)?;
+            checkpoints.before_charge()?;
             plan.check_materialization_limits(resources)?;
             Some(plan)
         };
@@ -128,6 +133,7 @@ impl<'a> SequenceControlTitlePlan<'a> {
             .checked_add(label_metrics.map_or(0, |metrics| metrics.materialized_bytes))
             .and_then(|length| length.checked_add(separator_bytes))
             .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        checkpoints.before_charge()?;
         resources.check(AsciiResourceLimitId::MaxOutputBytes, capacity)?;
 
         let mut width = resources.checked_grid_add(keyword.len(), 2)?;
@@ -158,16 +164,24 @@ impl<'a> SequenceControlTitlePlan<'a> {
         )
     }
 
-    fn materialize_after_admission(self) -> Result<String> {
-        self.materialize_impl(|| {})
+    fn materialize_after_admission(
+        self,
+        checkpoints: &SequenceCheckpointCursor<'_>,
+    ) -> Result<String> {
+        checkpoints.checkpoint()?;
+        let materialized = self.materialize_impl(|| {});
+        checkpoints.checkpoint()?;
+        materialized
     }
 
     #[cfg(test)]
     fn materialize_with(
         self,
         resources: &ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
         before_materialize: impl FnOnce(),
     ) -> Result<String> {
+        checkpoints.before_charge()?;
         resources.charge_layout_work(self.materialization_work_units(resources)?)?;
         self.materialize_impl(before_materialize)
     }
@@ -205,9 +219,10 @@ impl<'a> SequenceControlTitlePlan<'a> {
     fn materialize_with_probe(
         self,
         resources: &ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
         materialized: &std::cell::Cell<bool>,
     ) -> Result<String> {
-        self.materialize_with(resources, || materialized.set(true))
+        self.materialize_with(resources, checkpoints, || materialized.set(true))
     }
 }
 
@@ -224,17 +239,19 @@ pub(super) fn prepare_sequence_control_frames<'diagram>(
     footprints: &[SequenceRowFootprint],
     layout: &SequenceLayout,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Option<PreparedSequenceControlFrames<'diagram>>> {
     if tree.frames.is_empty() || footprints.is_empty() {
         return Ok(None);
     }
 
-    let input_width = footprints
-        .iter()
-        .map(|footprint| footprint.retained_width())
-        .max()
-        .unwrap_or(0);
+    let mut input_width = 0usize;
+    for footprint in footprints {
+        checkpoints.tick()?;
+        input_width = input_width.max(footprint.retained_width());
+    }
     resources.grid_extent(input_width, footprints.len())?;
+    checkpoints.before_charge()?;
     charge_work_product(resources, tree.frames.len(), 2)?;
     resources.grid_extent(tree.frames.len(), 1)?;
     if tree.forest.nodes.is_empty() {
@@ -245,8 +262,9 @@ pub(super) fn prepare_sequence_control_frames<'diagram>(
         &tree.frames,
         footprints,
         layout,
-        layout.width_profile,
+        input_width,
         resources,
+        checkpoints,
     )?;
     let output_admission = admit_control_output(
         footprints,
@@ -254,6 +272,7 @@ pub(super) fn prepare_sequence_control_frames<'diagram>(
         &tree.frames,
         &frame_plans,
         resources,
+        checkpoints,
     )?;
     Ok(Some(PreparedSequenceControlFrames {
         forest: tree.forest,
@@ -264,8 +283,12 @@ pub(super) fn prepare_sequence_control_frames<'diagram>(
 }
 
 impl PreparedSequenceControlFrames<'_> {
-    pub(super) fn materialization_work_units(&self, resources: &ResourceContext) -> Result<usize> {
-        control_materialization_work_units(&self.frame_plans, resources)
+    pub(super) fn materialization_work_units(
+        &self,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<usize> {
+        control_materialization_work_units(&self.frame_plans, resources, checkpoints)
     }
 
     pub(super) fn materialize(
@@ -274,6 +297,7 @@ impl PreparedSequenceControlFrames<'_> {
         layout: &SequenceLayout,
         chars: &SequenceChars,
         resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<Vec<SequenceLine>> {
         materialize_control_frames(
             lines,
@@ -284,6 +308,7 @@ impl PreparedSequenceControlFrames<'_> {
             layout,
             chars,
             resources,
+            checkpoints,
         )
     }
 }
@@ -291,16 +316,20 @@ impl PreparedSequenceControlFrames<'_> {
 fn control_materialization_work_units(
     frame_plans: &[SequenceControlFramePlan<'_>],
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<usize> {
-    frame_plans.iter().try_fold(0usize, |total, plan| {
-        let total =
+    let mut total = 0usize;
+    for plan in frame_plans {
+        checkpoints.tick()?;
+        total =
             resources.checked_work_add(total, plan.title.materialization_work_units(resources)?)?;
-        plan.separator_titles
-            .iter()
-            .try_fold(total, |total, title| {
-                resources.checked_work_add(total, title.materialization_work_units(resources)?)
-            })
-    })
+        for title in &plan.separator_titles {
+            checkpoints.tick()?;
+            total =
+                resources.checked_work_add(total, title.materialization_work_units(resources)?)?;
+        }
+    }
+    Ok(total)
 }
 
 #[cfg(test)]
@@ -321,14 +350,10 @@ fn plan_control_frames<'diagram>(
     frames: &[SequenceControlFrame<'diagram>],
     footprints: &[SequenceRowFootprint],
     layout: &SequenceLayout,
-    width_profile: TerminalWidthProfile,
+    input_width: usize,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<SequenceControlFramePlan<'diagram>>> {
-    let input_width = footprints
-        .iter()
-        .map(|footprint| footprint.retained_width())
-        .max()
-        .unwrap_or(0);
     let body_context = SequenceFrameBodyPlanContext {
         forest,
         frames,
@@ -341,11 +366,13 @@ fn plan_control_frames<'diagram>(
     pending.resize_with(forest.nodes.len(), || None);
 
     for node_index in (0..forest.nodes.len()).rev() {
+        checkpoints.tick()?;
         let node = forest
             .nodes
             .get(node_index)
             .ok_or_else(invalid_control_frame)?;
         resources.check_nesting_depth(node.depth)?;
+        checkpoints.before_charge()?;
         resources.charge_layout_work(1)?;
         let frame = frames
             .get(node.frame_index)
@@ -369,18 +396,21 @@ fn plan_control_frames<'diagram>(
             participant_span,
             initial_bounds,
             resources,
+            checkpoints,
         )?;
-        let title = frame_title_plan(frame, width_profile, resources)?;
+        let title = frame_title_plan(frame, layout.width_profile, resources, checkpoints)?;
         let mut separator_titles = Vec::new();
         separator_titles
             .try_reserve_exact(frame.separators.len())
             .map_err(|_| allocation_failed())?;
         for separator in &frame.separators {
+            checkpoints.tick()?;
             separator_titles.push(separator_title_plan(
                 frame,
                 separator,
-                width_profile,
+                layout.width_profile,
                 resources,
+                checkpoints,
             )?);
         }
         let minimum_width = resources.checked_grid_add(title.width(), 2)?.max(3).max(
@@ -402,6 +432,7 @@ fn plan_control_frames<'diagram>(
         let row_count = resources.checked_grid_add(body_rows, 2)?;
         let total_width = input_width.max(bounds.right_exclusive(resources)?);
         resources.grid_extent(total_width, row_count)?;
+        checkpoints.before_charge()?;
         charge_work_product(resources, total_width, row_count)?;
         let slot = pending
             .get_mut(node_index)
@@ -421,6 +452,7 @@ fn plan_control_frames<'diagram>(
         .try_reserve_exact(pending.len())
         .map_err(|_| allocation_failed())?;
     for plan in pending {
+        checkpoints.tick()?;
         plans.push(plan.ok_or_else(invalid_control_frame)?);
     }
     Ok(plans)
@@ -433,6 +465,7 @@ fn planned_frame_body_extent(
     participant_span: Option<SequenceParticipantSpan>,
     mut bounds: SequenceFrameBounds,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<(usize, SequenceFrameBounds)> {
     let node = context
         .forest
@@ -450,12 +483,14 @@ fn planned_frame_body_extent(
     let mut separator_index = 0;
 
     while row <= end_row {
+        checkpoints.before_charge()?;
         resources.charge_layout_work(1)?;
         while frame
             .separators
             .get(separator_index)
             .is_some_and(|separator| separator.row == row)
         {
+            checkpoints.tick()?;
             planned_rows = resources.checked_grid_add(planned_rows, 1)?;
             separator_index = resources.checked_grid_add(separator_index, 1)?;
         }
@@ -505,11 +540,13 @@ fn admit_control_output(
     frames: &[SequenceControlFrame<'_>],
     frame_plans: &[SequenceControlFramePlan<'_>],
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceControlOutputAdmission> {
     let mut admission = SequenceControlOutputAdmission::default();
     let mut row = 0;
 
     for root in &forest.roots {
+        checkpoints.tick()?;
         let node = forest.nodes.get(*root).ok_or_else(invalid_control_frame)?;
         let frame = frames
             .get(node.frame_index)
@@ -523,6 +560,7 @@ fn admit_control_output(
             .get(row..frame.start_row)
             .ok_or_else(invalid_control_frame)?
         {
+            checkpoints.tick()?;
             admission.add_line(footprint.retained_width(), resources)?;
         }
         let plan = frame_plans.get(*root).ok_or_else(invalid_control_frame)?;
@@ -531,9 +569,10 @@ fn admit_control_output(
     }
 
     for footprint in footprints.get(row..).ok_or_else(invalid_control_frame)? {
+        checkpoints.tick()?;
         admission.add_line(footprint.retained_width(), resources)?;
     }
-    admission.admit(resources)?;
+    admission.admit(resources, checkpoints)?;
     Ok(admission)
 }
 
@@ -573,15 +612,26 @@ impl SequenceControlOutputAdmission {
         Ok(())
     }
 
-    fn admit(self, resources: &mut ResourceContext) -> Result<()> {
+    fn admit(
+        self,
+        resources: &mut ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
         resources.grid_extent(self.max_width, self.height)?;
         resources.check(AsciiResourceLimitId::MaxDocumentCells, self.document_cells)?;
+        checkpoints.before_charge()?;
         resources.charge_layout_work(self.work_units)
     }
 
-    fn validate(self, lines: &[SequenceLine], resources: &ResourceContext) -> Result<()> {
+    fn validate(
+        self,
+        lines: &[SequenceLine],
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
         let mut actual = Self::default();
         for line in lines {
+            checkpoints.tick()?;
             actual.add_line(line.len(), resources)?;
         }
         if actual.height != self.height
@@ -605,8 +655,15 @@ fn frame_title_plan<'a>(
     frame: &SequenceControlFrame<'a>,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceControlTitlePlan<'a>> {
-    SequenceControlTitlePlan::try_new(frame.kind.keyword(), frame.label, width_profile, resources)
+    SequenceControlTitlePlan::try_new(
+        frame.kind.keyword(),
+        frame.label,
+        width_profile,
+        resources,
+        checkpoints,
+    )
 }
 
 fn separator_title_plan<'a>(
@@ -614,6 +671,7 @@ fn separator_title_plan<'a>(
     separator: &SequenceControlFrameSeparator<'a>,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceControlTitlePlan<'a>> {
     SequenceControlTitlePlan::try_new(
         frame
@@ -623,6 +681,7 @@ fn separator_title_plan<'a>(
         separator.label,
         width_profile,
         resources,
+        checkpoints,
     )
 }
 
@@ -650,10 +709,12 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+    use crate::operation::AsciiExecution;
     use crate::resource::AsciiResourcePolicy;
     use crate::sequence::text::blank_line;
     #[cfg(not(target_arch = "wasm32"))]
     use merman_core::resources::ResourceProfile;
+    use merman_core::{OperationControl, OperationPhase};
 
     #[test]
     fn control_output_admits_aggregate_extent_before_frame_materialization() {
@@ -716,13 +777,18 @@ mod tests {
             .iter()
             .map(line_footprint)
             .collect::<Result<Vec<_>>>()?;
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&policy),
+            OperationPhase::Layout,
+        );
         let frame_plans = plan_control_frames(
             &tree.forest,
             &tree.frames,
             &footprints,
             &test_layout(),
-            TerminalWidthProfile::Unicode,
+            4,
             &mut resources,
+            &mut checkpoints,
         )?;
         let admission = admit_control_output(
             &footprints,
@@ -730,12 +796,13 @@ mod tests {
             &tree.frames,
             &frame_plans,
             &mut resources,
+            &mut checkpoints,
         )?;
         assert_eq!(admission.max_width, 14);
         assert_eq!(admission.height, 6);
         frame_plans[0]
             .title
-            .materialize_with_probe(&resources, materialized)?;
+            .materialize_with_probe(&resources, &checkpoints, materialized)?;
         Ok(())
     }
 
@@ -771,6 +838,107 @@ mod tests {
             .expect("the small-stack thread should finish");
 
         assert_eq!(rendered_len, DEPTH * 2 + 1);
+    }
+
+    #[test]
+    fn control_frame_planning_inner_loop_observes_cancellation() {
+        const ROWS: usize = 128;
+        let policy = AsciiResourcePolicy::default();
+        let mut resources = ResourceContext::new(policy);
+        let lines = (0..ROWS)
+            .map(|_| blank_line(4, TerminalWidthProfile::Unicode, &resources))
+            .collect::<Result<Vec<_>>>()
+            .expect("control test rows should fit");
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()
+            .expect("control test footprints should be valid");
+        let tree = disjoint_tree(vec![test_frame(SequenceControlKind::Loop, "", 0, ROWS - 1)]);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(5);
+
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::new(&control, &policy),
+            OperationPhase::Layout,
+        );
+        let error = prepare_sequence_control_frames(
+            tree,
+            &footprints,
+            &test_layout(),
+            &mut resources,
+            &mut checkpoints,
+        )
+        .expect_err("control-frame planning should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn control_frame_materialization_inner_loop_observes_cancellation() {
+        const ROWS: usize = 128;
+        let policy = AsciiResourcePolicy::default();
+        let mut resources = ResourceContext::new(policy);
+        let lines = (0..ROWS)
+            .map(|_| blank_line(4, TerminalWidthProfile::Unicode, &resources))
+            .collect::<Result<Vec<_>>>()
+            .expect("control test rows should fit");
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()
+            .expect("control test footprints should be valid");
+        let tree = disjoint_tree(vec![test_frame(SequenceControlKind::Loop, "", 0, ROWS - 1)]);
+        let mut planning_checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&policy),
+            OperationPhase::Layout,
+        );
+        let prepared = prepare_sequence_control_frames(
+            tree,
+            &footprints,
+            &test_layout(),
+            &mut resources,
+            &mut planning_checkpoints,
+        )
+        .expect("control-frame planning should succeed")
+        .expect("the test frame should require materialization");
+        let materialization_work = prepared
+            .materialization_work_units(&resources, &mut planning_checkpoints)
+            .expect("control-frame materialization work should be representable");
+        planning_checkpoints
+            .before_charge()
+            .expect("standalone planning checkpoint should succeed");
+        resources
+            .charge_layout_work(materialization_work)
+            .expect("control-frame materialization work should fit");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::new(&control, &policy),
+            OperationPhase::Layout,
+        );
+
+        let error = prepared
+            .materialize(
+                lines,
+                &test_layout(),
+                &ascii_chars(),
+                &mut resources,
+                &mut checkpoints,
+            )
+            .expect_err("control-frame materialization should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
     }
 
     fn render_disjoint_frames_with_limit(
@@ -810,12 +978,26 @@ mod tests {
             .iter()
             .map(line_footprint)
             .collect::<Result<Vec<_>>>()?;
-        let Some(prepared) = prepare_sequence_control_frames(tree, &footprints, layout, resources)?
+        let policy = resources.policy();
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&policy),
+            OperationPhase::Layout,
+        );
+        let Some(prepared) = prepare_sequence_control_frames(
+            tree,
+            &footprints,
+            layout,
+            resources,
+            &mut checkpoints,
+        )?
         else {
             return Ok(lines);
         };
-        resources.charge_layout_work(prepared.materialization_work_units(resources)?)?;
-        prepared.materialize(lines, layout, chars, resources)
+        let materialization_work =
+            prepared.materialization_work_units(resources, &mut checkpoints)?;
+        checkpoints.before_charge()?;
+        resources.charge_layout_work(materialization_work)?;
+        prepared.materialize(lines, layout, chars, resources, &mut checkpoints)
     }
 
     fn disjoint_tree(

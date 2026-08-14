@@ -28,6 +28,8 @@ impl DeferredTextMetrics {
 pub(crate) struct DeferredTextPiece {
     source_start: usize,
     source_end: usize,
+    fragment_start: usize,
+    fragment_end: usize,
     output_index: u32,
     display_width: u8,
     plain_bytes: usize,
@@ -80,7 +82,12 @@ impl ReplayFragment<'_> {
         }
     }
 
-    fn append_range(self, start: usize, end: usize, output: &mut String) -> Result<()> {
+    fn try_visit_range<T>(
+        self,
+        start: usize,
+        end: usize,
+        visit: impl FnOnce(&str) -> Result<T>,
+    ) -> Result<T> {
         let local_start = start
             .checked_sub(self.start())
             .ok_or_else(invalid_composed_text_plan)?;
@@ -88,7 +95,7 @@ impl ReplayFragment<'_> {
             .checked_sub(self.start())
             .ok_or_else(invalid_composed_text_plan)?;
         match self {
-            Self::Borrowed(fragment) => output.push_str(
+            Self::Borrowed(fragment) => visit(
                 fragment
                     .value
                     .get(local_start..local_end)
@@ -96,25 +103,160 @@ impl ReplayFragment<'_> {
             ),
             Self::Scalar { value, .. } => {
                 let mut buffer = [0u8; 4];
-                output.push_str(
+                visit(
                     value
                         .encode_utf8(&mut buffer)
                         .get(local_start..local_end)
                         .ok_or_else(invalid_composed_text_plan)?,
-                );
+                )
             }
         }
-        Ok(())
+    }
+
+    fn append_range(self, start: usize, end: usize, output: &mut String) -> Result<()> {
+        self.try_visit_range(start, end, |value| {
+            output.push_str(value);
+            Ok(())
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FragmentSpan {
+    start: usize,
+    end: usize,
+}
+
+impl FragmentSpan {
+    const fn len(self) -> usize {
+        self.end - self.start
+    }
+}
+
+/// Replays monotonically increasing logical ranges without restarting the fragment scan.
+struct ComposedRangeCursor<'fragments, 'text> {
+    fragments: &'fragments [ReplayFragment<'text>],
+    next_fragment: usize,
+    buffer: String,
+}
+
+impl<'fragments, 'text> ComposedRangeCursor<'fragments, 'text> {
+    const fn new(fragments: &'fragments [ReplayFragment<'text>]) -> Self {
+        Self {
+            fragments,
+            next_fragment: 0,
+            buffer: String::new(),
+        }
+    }
+
+    fn try_visit_next<T>(
+        &mut self,
+        start: usize,
+        end: usize,
+        visit: impl FnOnce(&str, FragmentSpan) -> Result<T>,
+    ) -> Result<T> {
+        let expected_bytes = end
+            .checked_sub(start)
+            .filter(|bytes| *bytes > 0)
+            .ok_or_else(invalid_composed_text_plan)?;
+
+        while self.next_fragment < self.fragments.len() {
+            let fragment = self.fragments[self.next_fragment];
+            let fragment_end = fragment
+                .start()
+                .checked_add(fragment.len())
+                .ok_or_else(invalid_composed_text_plan)?;
+            if fragment_end > start {
+                break;
+            }
+            self.next_fragment += 1;
+        }
+
+        let first = self
+            .fragments
+            .get(self.next_fragment)
+            .copied()
+            .ok_or_else(invalid_composed_text_plan)?;
+        let first_end = first
+            .start()
+            .checked_add(first.len())
+            .ok_or_else(invalid_composed_text_plan)?;
+        if first.start() > start {
+            return Err(invalid_composed_text_plan());
+        }
+
+        if end <= first_end {
+            let span_end = self
+                .next_fragment
+                .checked_add(1)
+                .ok_or_else(invalid_composed_text_plan)?;
+            let span = FragmentSpan {
+                start: self.next_fragment,
+                end: span_end,
+            };
+            if end == first_end {
+                self.next_fragment = span.end;
+            }
+            return first.try_visit_range(start, end, |value| {
+                if value.len() != expected_bytes {
+                    return Err(invalid_composed_text_plan());
+                }
+                visit(value, span)
+            });
+        }
+
+        self.buffer.clear();
+        self.buffer
+            .try_reserve_exact(expected_bytes)
+            .map_err(|_| layout_allocation_failed())?;
+        let span_start = self.next_fragment;
+        let mut span_end = span_start;
+        let mut last_end = first_end;
+        while let Some(fragment) = self.fragments.get(span_end).copied() {
+            let fragment_start = fragment.start();
+            let fragment_end = fragment_start
+                .checked_add(fragment.len())
+                .ok_or_else(invalid_composed_text_plan)?;
+            let kept_start = start.max(fragment_start);
+            let kept_end = end.min(fragment_end);
+            if kept_start < kept_end {
+                fragment.append_range(kept_start, kept_end, &mut self.buffer)?;
+            }
+            span_end = span_end
+                .checked_add(1)
+                .ok_or_else(invalid_composed_text_plan)?;
+            last_end = fragment_end;
+            if fragment_end >= end {
+                break;
+            }
+        }
+        if last_end < end {
+            return Err(invalid_composed_text_plan());
+        }
+        if self.buffer.len() != expected_bytes {
+            return Err(invalid_composed_text_plan());
+        }
+        let span = FragmentSpan {
+            start: span_start,
+            end: span_end,
+        };
+        self.next_fragment = if last_end == end {
+            span.end
+        } else {
+            span.end - 1
+        };
+        visit(self.buffer.as_str(), span)
     }
 }
 
 /// A borrowed plan for text assembled from family-owned fields and separators.
 ///
 /// The fragment producer is replayed once to measure and once to retain borrowed slices. The
-/// complete logical byte stream is then segmented with `GraphemeCursor`, so a combining mark or
-/// joiner at a fragment boundary cannot bypass the final grapheme limit. No authored text is
-/// copied until the caller admits `materialization_work_units` and calls
-/// [`Self::materialize_after_admission`].
+/// complete logical byte stream is segmented through a bounded streaming buffer that retains only
+/// the unresolved grapheme and one lookahead scalar. This keeps planning linear while ensuring
+/// that a combining mark or joiner at a fragment boundary cannot bypass the final grapheme limit.
+/// The plan retains only borrowed fragments; final output is copied only after the caller admits
+/// `materialization_work_units` and calls [`Self::materialize_after_admission`].
 #[derive(Debug)]
 pub(crate) struct ComposedTextPlan<'a> {
     fragments: Vec<ReplayFragment<'a>>,
@@ -259,61 +401,141 @@ impl<'a> ComposedTextPlan<'a> {
         profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<(Vec<DeferredTextPiece>, DeferredTextMetrics)> {
+        resources
+            .transaction(|resources| self.try_deferred_pieces_transactional(profile, resources))
+    }
+
+    fn try_deferred_pieces_transactional(
+        &self,
+        profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<(Vec<DeferredTextPiece>, DeferredTextMetrics)> {
+        let range_scan_work = self.deferred_range_scan_work_units(resources)?;
+        // The first pass may retain one cross-fragment grapheme in `ranges.buffer`. Admit its
+        // complete additive structural scan before the first collection or temporary allocation.
+        resources.check_usage(range_scan_work, 0)?;
+
+        let (piece_count, display_width) = self.measure_deferred_pieces(profile, resources)?;
+        let planning_work = self.deferred_planning_work(resources, range_scan_work, piece_count)?;
+        resources.check_usage(planning_work, 0)?;
+
+        let pieces = self.collect_deferred_pieces(profile, resources, piece_count)?;
+        resources.charge_usage(planning_work, 0)?;
+        Ok((pieces, DeferredTextMetrics { display_width }))
+    }
+
+    fn measure_deferred_pieces(
+        &self,
+        profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<(usize, usize)> {
         let mut piece_count = 0usize;
         let mut display_width = 0usize;
         let mut source_start = 0usize;
+        let mut ranges = ComposedRangeCursor::new(&self.fragments);
         for &source_end in &self.grapheme_boundaries {
-            let grapheme = collect_composed_range(&self.fragments, source_start, source_end)?;
-            visit_normalized_output_graphemes(&grapheme.value, profile, |_, width| {
-                piece_count = resources.checked_work_add(piece_count, 1)?;
-                display_width = resources.checked_grid_add(display_width, width)?;
-                Ok(())
+            ranges.try_visit_next(source_start, source_end, |grapheme, _| {
+                visit_normalized_output_graphemes(grapheme, profile, |_, width| {
+                    piece_count = resources.checked_work_add(piece_count, 1)?;
+                    display_width = resources.checked_grid_add(display_width, width)?;
+                    Ok(())
+                })
             })?;
             source_start = source_end;
         }
+        Ok((piece_count, display_width))
+    }
 
-        let replay_work_units = resources.checked_work_add(
-            resources.checked_work_mul(piece_count.max(1), self.fragments.len().max(1))?,
-            self.metrics.materialized_bytes.max(1),
-        )?;
-        let planning_work = resources.checked_work_mul(replay_work_units, 2)?;
-        resources.check_usage(planning_work, 0)?;
-        resources.charge_usage(planning_work, 0)?;
+    fn deferred_planning_work(
+        &self,
+        resources: &ResourceContext,
+        range_scan_work: usize,
+        piece_count: usize,
+    ) -> Result<usize> {
+        resources.checked_work_mul(
+            resources.checked_work_add(range_scan_work, piece_count.max(1))?,
+            2,
+        )
+    }
 
+    fn collect_deferred_pieces(
+        &self,
+        profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        piece_count: usize,
+    ) -> Result<Vec<DeferredTextPiece>> {
         let mut pieces = Vec::new();
         pieces
             .try_reserve_exact(piece_count)
             .map_err(|_| layout_allocation_failed())?;
-        source_start = 0;
+        let mut ranges = ComposedRangeCursor::new(&self.fragments);
+        let mut source_start = 0usize;
         for &source_end in &self.grapheme_boundaries {
-            let grapheme = collect_composed_range(&self.fragments, source_start, source_end)?;
             let mut output_index = 0u32;
-            visit_normalized_output_graphemes(&grapheme.value, profile, |value, width| {
-                pieces.push(DeferredTextPiece {
-                    source_start,
-                    source_end,
-                    output_index,
-                    display_width: u8::try_from(width).map_err(|_| invalid_composed_text_plan())?,
-                    plain_bytes: value.len(),
-                    html_bytes: encoded_html_bytes(resources, value)?,
-                    replay_work_units: resources.checked_work_add(
-                        self.fragments.len().max(1),
-                        source_end
-                            .checked_sub(source_start)
-                            .ok_or_else(invalid_composed_text_plan)?,
-                    )?,
-                });
-                output_index = output_index
-                    .checked_add(1)
-                    .ok_or_else(invalid_composed_text_plan)?;
-                Ok(())
+            ranges.try_visit_next(source_start, source_end, |grapheme, span| {
+                visit_normalized_output_graphemes(grapheme, profile, |value, width| {
+                    pieces.push(DeferredTextPiece {
+                        source_start,
+                        source_end,
+                        fragment_start: span.start,
+                        fragment_end: span.end,
+                        output_index,
+                        display_width: u8::try_from(width)
+                            .map_err(|_| invalid_composed_text_plan())?,
+                        plain_bytes: value.len(),
+                        html_bytes: encoded_html_bytes(resources, value)?,
+                        replay_work_units: resources.checked_work_add(
+                            span.len().max(1),
+                            source_end
+                                .checked_sub(source_start)
+                                .ok_or_else(invalid_composed_text_plan)?,
+                        )?,
+                    });
+                    output_index = output_index
+                        .checked_add(1)
+                        .ok_or_else(invalid_composed_text_plan)?;
+                    Ok(())
+                })
             })?;
             source_start = source_end;
         }
         if pieces.len() != piece_count {
             return Err(invalid_composed_text_plan());
         }
-        Ok((pieces, DeferredTextMetrics { display_width }))
+        Ok(pieces)
+    }
+
+    fn deferred_range_scan_work_units(&self, resources: &ResourceContext) -> Result<usize> {
+        Ok(resources
+            .checked_work_add(
+                resources.checked_work_add(self.fragments.len(), self.grapheme_boundaries.len())?,
+                self.metrics.materialized_bytes,
+            )?
+            .max(1))
+    }
+
+    #[cfg(test)]
+    fn try_deferred_pieces_with_probe(
+        &self,
+        profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        phase_probe: &std::cell::Cell<usize>,
+    ) -> Result<(Vec<DeferredTextPiece>, DeferredTextMetrics)> {
+        resources.transaction(|resources| {
+            let range_scan_work = self.deferred_range_scan_work_units(resources)?;
+            resources.check_usage(range_scan_work, 0)?;
+
+            phase_probe.set(phase_probe.get() + 1);
+            let (piece_count, display_width) = self.measure_deferred_pieces(profile, resources)?;
+            let planning_work =
+                self.deferred_planning_work(resources, range_scan_work, piece_count)?;
+            resources.check_usage(planning_work, 0)?;
+
+            phase_probe.set(phase_probe.get() + 1);
+            let pieces = self.collect_deferred_pieces(profile, resources, piece_count)?;
+            resources.charge_usage(planning_work, 0)?;
+            Ok((pieces, DeferredTextMetrics { display_width }))
+        })
     }
 
     pub(crate) fn try_visit_deferred_piece(
@@ -322,19 +544,24 @@ impl<'a> ComposedTextPlan<'a> {
         piece: DeferredTextPiece,
         mut visit: impl FnMut(&str) -> Result<()>,
     ) -> Result<()> {
-        let grapheme =
-            collect_composed_range(&self.fragments, piece.source_start, piece.source_end)?;
+        let fragments = self
+            .fragments
+            .get(piece.fragment_start..piece.fragment_end)
+            .ok_or_else(invalid_composed_text_plan)?;
+        let mut ranges = ComposedRangeCursor::new(fragments);
         let mut output_index = 0u32;
         let mut found = false;
-        visit_normalized_output_graphemes(&grapheme.value, profile, |value, _| {
-            if output_index == piece.output_index {
-                visit(value)?;
-                found = true;
-            }
-            output_index = output_index
-                .checked_add(1)
-                .ok_or_else(invalid_composed_text_plan)?;
-            Ok(())
+        ranges.try_visit_next(piece.source_start, piece.source_end, |grapheme, _| {
+            visit_normalized_output_graphemes(grapheme, profile, |value, _| {
+                if output_index == piece.output_index {
+                    visit(value)?;
+                    found = true;
+                }
+                output_index = output_index
+                    .checked_add(1)
+                    .ok_or_else(invalid_composed_text_plan)?;
+                Ok(())
+            })
         })?;
         if !found {
             return Err(invalid_composed_text_plan());
@@ -371,24 +598,7 @@ impl<'a> ComposedTextPlan<'a> {
         before_materialize: impl FnOnce(),
     ) -> Result<String> {
         before_materialize();
-        let mut output = String::new();
-        output
-            .try_reserve_exact(self.metrics.materialized_bytes)
-            .map_err(|_| layout_allocation_failed())?;
-        for fragment in self.fragments {
-            fragment.append_range(
-                fragment.start(),
-                fragment
-                    .start()
-                    .checked_add(fragment.len())
-                    .ok_or_else(invalid_composed_text_plan)?,
-                &mut output,
-            )?;
-        }
-        if output.len() != self.metrics.materialized_bytes {
-            return Err(invalid_composed_text_plan());
-        }
-        Ok(output)
+        collect_composed_text(&self.fragments, self.metrics.materialized_bytes)
     }
 }
 
@@ -401,57 +611,152 @@ fn plan_grapheme_boundaries(
         return Ok(Vec::new());
     }
 
-    let mut boundaries = Vec::new();
-    boundaries
-        .try_reserve_exact(fragments.len().max(1))
-        .map_err(|_| layout_allocation_failed())?;
-    let mut cursor = GraphemeCursor::new(0, materialized_bytes, true);
-    let mut fragment_index = 0usize;
-    let mut grapheme_start = 0usize;
-    loop {
-        while fragment_index < fragments.len()
-            && cursor.cur_cursor()
-                >= fragments[fragment_index]
-                    .start()
-                    .checked_add(fragments[fragment_index].len())
-                    .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?
-        {
-            fragment_index += 1;
-        }
-        if fragment_index == fragments.len() {
-            if grapheme_start < materialized_bytes {
-                resources.check_grapheme_bytes(materialized_bytes - grapheme_start)?;
-                try_push_grapheme_boundary(&mut boundaries, materialized_bytes)?;
-            }
-            return Ok(boundaries);
-        }
+    // Repeat the local byte/work checks so the bounded streaming scratch cannot be separated from
+    // admission by a future refactor. The scratch holds one unresolved grapheme plus at most one
+    // lookahead scalar; it never materializes the complete logical stream.
+    resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
+    resources.check_usage(materialized_bytes.max(1), 0)?;
 
-        let fragment = fragments[fragment_index];
-        let mut scalar_buffer = [0u8; 4];
-        let value = match fragment {
-            ReplayFragment::Borrowed(fragment) => fragment.value,
-            ReplayFragment::Scalar { value, .. } => value.encode_utf8(&mut scalar_buffer),
-        };
-        match cursor.next_boundary(value, fragment.start()) {
-            Ok(Some(boundary)) => {
-                resources.check_grapheme_bytes(boundary - grapheme_start)?;
-                grapheme_start = boundary;
-                try_push_grapheme_boundary(&mut boundaries, boundary)?;
-            }
-            Ok(None) => return Ok(boundaries),
-            Err(GraphemeIncomplete::NextChunk) => {
-                fragment_index += 1;
-            }
-            Err(GraphemeIncomplete::PreContext(offset)) => {
-                let Some(context) = context_ending_at(fragments, offset) else {
-                    return Err(invalid_composed_text_plan());
-                };
-                cursor.provide_context(context.value.as_str(), context.start);
-            }
-            Err(GraphemeIncomplete::PrevChunk | GraphemeIncomplete::InvalidOffset) => {
-                return Err(invalid_composed_text_plan());
+    let mut planner =
+        GraphemeBoundaryPlanner::try_new(materialized_bytes, fragments.len().max(1), resources)?;
+    let mut visited_bytes = 0usize;
+    for fragment in fragments.iter().copied() {
+        if fragment.start() != visited_bytes {
+            return Err(invalid_composed_text_plan());
+        }
+        let fragment_end = fragment
+            .start()
+            .checked_add(fragment.len())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        fragment.try_visit_range(fragment.start(), fragment_end, |value| {
+            planner.try_push_str(value)
+        })?;
+        visited_bytes = fragment_end;
+    }
+    if visited_bytes != materialized_bytes {
+        return Err(invalid_composed_text_plan());
+    }
+    planner.finish()
+}
+
+struct GraphemeBoundaryPlanner<'resources> {
+    total_bytes: usize,
+    committed_bytes: usize,
+    scratch: String,
+    cursor: GraphemeCursor,
+    boundaries: Vec<usize>,
+    resources: &'resources ResourceContext,
+}
+
+impl<'resources> GraphemeBoundaryPlanner<'resources> {
+    fn try_new(
+        total_bytes: usize,
+        boundary_capacity: usize,
+        resources: &'resources ResourceContext,
+    ) -> Result<Self> {
+        let mut boundaries = Vec::new();
+        boundaries
+            .try_reserve_exact(boundary_capacity)
+            .map_err(|_| layout_allocation_failed())?;
+        Ok(Self {
+            total_bytes,
+            committed_bytes: 0,
+            scratch: String::new(),
+            cursor: GraphemeCursor::new(0, total_bytes, true),
+            boundaries,
+            resources,
+        })
+    }
+
+    fn try_push_str(&mut self, value: &str) -> Result<()> {
+        for scalar in value.chars() {
+            self.try_push_scalar(scalar)?;
+        }
+        Ok(())
+    }
+
+    fn try_push_scalar(&mut self, scalar: char) -> Result<()> {
+        // `GraphemeCursor` may need one scalar of lookahead before it can confirm the previous
+        // boundary. Only the existing unresolved prefix is known to belong to one grapheme here;
+        // counting `scalar` as part of that grapheme would reject adjacent exact-limit graphemes.
+        // Checking before the append still bounds the scratch overrun to one UTF-8 scalar.
+        self.resources.check_grapheme_bytes(self.scratch.len())?;
+        let pending_unresolved_bytes = self
+            .scratch
+            .len()
+            .checked_add(scalar.len_utf8())
+            .ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxGraphemeBytes)
+            })?;
+        let pending_bytes = self
+            .committed_bytes
+            .checked_add(pending_unresolved_bytes)
+            .ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxOutputBytes)
+            })?;
+        if pending_bytes > self.total_bytes {
+            return Err(invalid_composed_text_plan());
+        }
+        self.scratch
+            .try_reserve(scalar.len_utf8())
+            .map_err(|_| layout_allocation_failed())?;
+        self.scratch.push(scalar);
+        self.try_advance()
+    }
+
+    fn try_advance(&mut self) -> Result<()> {
+        loop {
+            match self.cursor.next_boundary(self.scratch.as_str(), 0) {
+                Ok(Some(boundary)) => {
+                    if boundary == 0 || self.scratch.get(..boundary).is_none() {
+                        return Err(invalid_composed_text_plan());
+                    }
+                    self.resources.check_grapheme_bytes(boundary)?;
+                    let absolute_boundary =
+                        self.committed_bytes.checked_add(boundary).ok_or_else(|| {
+                            self.resources
+                                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+                        })?;
+                    try_push_grapheme_boundary(&mut self.boundaries, absolute_boundary)?;
+                    self.committed_bytes = absolute_boundary;
+                    drop(self.scratch.drain(..boundary));
+
+                    if self.committed_bytes == self.total_bytes {
+                        if !self.scratch.is_empty() {
+                            return Err(invalid_composed_text_plan());
+                        }
+                        return Ok(());
+                    }
+                    let remaining_bytes = self
+                        .total_bytes
+                        .checked_sub(self.committed_bytes)
+                        .ok_or_else(invalid_composed_text_plan)?;
+                    self.cursor = GraphemeCursor::new(0, remaining_bytes, true);
+                    if self.scratch.is_empty() {
+                        return Ok(());
+                    }
+                }
+                Err(GraphemeIncomplete::NextChunk) => return Ok(()),
+                Ok(None)
+                | Err(
+                    GraphemeIncomplete::PreContext(_)
+                    | GraphemeIncomplete::PrevChunk
+                    | GraphemeIncomplete::InvalidOffset,
+                ) => return Err(invalid_composed_text_plan()),
             }
         }
+    }
+
+    fn finish(self) -> Result<Vec<usize>> {
+        if self.committed_bytes != self.total_bytes
+            || !self.scratch.is_empty()
+            || self.boundaries.last().copied() != Some(self.total_bytes)
+        {
+            return Err(invalid_composed_text_plan());
+        }
+        Ok(self.boundaries)
     }
 }
 
@@ -484,23 +789,6 @@ fn try_push_grapheme_boundary(boundaries: &mut Vec<usize>, boundary: usize) -> R
     Ok(())
 }
 
-fn context_ending_at<'a>(
-    fragments: &'a [ReplayFragment<'a>],
-    offset: usize,
-) -> Option<ComposedGrapheme> {
-    fragments.iter().rev().find_map(|fragment| {
-        let end = fragment.start().checked_add(fragment.len())?;
-        (fragment.start() < offset && offset <= end)
-            .then(|| collect_composed_range(fragments, fragment.start(), offset))?
-            .ok()
-    })
-}
-
-struct ComposedGrapheme {
-    start: usize,
-    value: String,
-}
-
 fn visit_normalized_output_graphemes(
     value: &str,
     profile: TerminalWidthProfile,
@@ -531,30 +819,26 @@ fn visit_normalized_output_graphemes(
     })
 }
 
-fn collect_composed_range(
+#[cfg(test)]
+fn collect_composed_text(
     fragments: &[ReplayFragment<'_>],
-    start: usize,
-    end: usize,
-) -> Result<ComposedGrapheme> {
+    expected_bytes: usize,
+) -> Result<String> {
     let mut value = String::new();
     value
-        .try_reserve_exact(
-            end.checked_sub(start)
-                .ok_or_else(invalid_composed_text_plan)?,
-        )
+        .try_reserve_exact(expected_bytes)
         .map_err(|_| layout_allocation_failed())?;
-    for fragment in fragments {
-        let fragment_start = fragment.start();
-        let fragment_end = fragment_start
+    for fragment in fragments.iter().copied() {
+        let fragment_end = fragment
+            .start()
             .checked_add(fragment.len())
             .ok_or_else(invalid_composed_text_plan)?;
-        let kept_start = start.max(fragment_start);
-        let kept_end = end.min(fragment_end);
-        if kept_start < kept_end {
-            fragment.append_range(kept_start, kept_end, &mut value)?;
-        }
+        fragment.append_range(fragment.start(), fragment_end, &mut value)?;
     }
-    Ok(ComposedGrapheme { start, value })
+    if value.len() != expected_bytes {
+        return Err(invalid_composed_text_plan());
+    }
+    Ok(value)
 }
 
 fn checked_work_add(resources: &ResourceContext, left: usize, right: usize) -> Result<usize> {
@@ -627,6 +911,7 @@ mod tests {
         for (fragments, expected_bytes) in [
             (vec!["👩", "\u{200d}", "💻"], 11usize),
             (vec!["🇺", "🇸"], 8usize),
+            (vec![" ", "\u{301}", "\u{301}"], 5usize),
         ] {
             let exact = ResourceContext::new(policy_with_limit(
                 AsciiResourceLimitId::MaxGraphemeBytes,
@@ -663,6 +948,99 @@ mod tests {
                         && details.max == expected_bytes - 1
             ));
         }
+    }
+
+    #[test]
+    fn composed_text_allows_one_scalar_of_lookahead_at_the_exact_grapheme_limit() {
+        for (fragments, exact_bytes) in [(vec!["A", "B"], 1usize), (vec!["🍒", "🍋"], 4usize)] {
+            let exact = ResourceContext::new(policy_with_limit(
+                AsciiResourceLimitId::MaxGraphemeBytes,
+                exact_bytes,
+            ));
+            let plan = ComposedTextPlan::try_new(&exact, 1, |push| {
+                for fragment in &fragments {
+                    push(fragment)?;
+                }
+                Ok(())
+            })
+            .expect("adjacent exact-limit graphemes should be admitted");
+            assert_eq!(
+                plan.materialize(&exact, || {})
+                    .expect("the admitted text should materialize"),
+                fragments.concat()
+            );
+
+            if exact_bytes > 1 {
+                let below = ResourceContext::new(policy_with_limit(
+                    AsciiResourceLimitId::MaxGraphemeBytes,
+                    exact_bytes - 1,
+                ));
+                let error = ComposedTextPlan::try_new(&below, 1, |push| {
+                    for fragment in &fragments {
+                        push(fragment)?;
+                    }
+                    Ok(())
+                })
+                .expect_err("max-minus-one must reject an individual grapheme");
+                assert!(matches!(
+                    error,
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
+                            && details.actual == exact_bytes
+                            && details.max == exact_bytes - 1
+                ));
+                assert_eq!(below.layout_work_used(), 0);
+                assert_eq!(below.document_cells_used(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn composed_text_planning_stays_additive_for_many_boundary_sensitive_fragments() {
+        const FRAGMENT_COUNT: usize = 64;
+        const PLANNING_WORK: usize = FRAGMENT_COUNT * 9;
+        const MATERIALIZATION_WORK: usize = FRAGMENT_COUNT * 5;
+        const COMPLETE_WORK: usize = PLANNING_WORK + MATERIALIZATION_WORK;
+
+        let fragments = ["🍒"; FRAGMENT_COUNT];
+        let exact = ResourceContext::new(policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            COMPLETE_WORK,
+        ));
+        let plan = ComposedTextPlan::try_new(&exact, FRAGMENT_COUNT, |push| {
+            for fragment in &fragments {
+                push(fragment)?;
+            }
+            Ok(())
+        })
+        .expect("the exact additive budget should admit fragmented emoji");
+        assert_eq!(exact.layout_work_used(), PLANNING_WORK);
+        let materialized = plan
+            .materialize(&exact, || {})
+            .expect("the admitted fragmented emoji should materialize");
+        assert_eq!(materialized, fragments.concat());
+        assert_eq!(exact.layout_work_used(), COMPLETE_WORK);
+
+        let below = ResourceContext::new(policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            COMPLETE_WORK - 1,
+        ));
+        let error = ComposedTextPlan::try_new(&below, FRAGMENT_COUNT, |push| {
+            for fragment in &fragments {
+                push(fragment)?;
+            }
+            Ok(())
+        })
+        .expect_err("max-minus-one must reject before the segmentation buffer allocation");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == COMPLETE_WORK
+                    && details.max == COMPLETE_WORK - 1
+        ));
+        assert_eq!(below.layout_work_used(), 0);
+        assert_eq!(below.document_cells_used(), 0);
     }
 
     #[test]
@@ -735,5 +1113,172 @@ mod tests {
                     && details.max == exact_work - 1
         ));
         assert_eq!(below_work.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn deferred_piece_planning_admits_before_collection_and_rolls_back_at_n_minus_one() {
+        const CHECKPOINT_WORK: usize = 7;
+        const CHECKPOINT_CELLS: usize = 5;
+        const RANGE_SCAN_WORK: usize = 6;
+        const PLANNING_WORK: usize = 24;
+
+        let plan_resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let plan = ComposedTextPlan::try_new(&plan_resources, 2, |push| {
+            push("a")?;
+            push("\u{7}")
+        })
+        .expect("fixed composed text should plan");
+        assert_eq!(
+            plan.deferred_range_scan_work_units(&plan_resources)
+                .expect("fixed scan work should fit"),
+            RANGE_SCAN_WORK
+        );
+
+        let exact = ResourceContext::new(policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            CHECKPOINT_WORK + PLANNING_WORK,
+        ));
+        exact
+            .charge_usage(CHECKPOINT_WORK, CHECKPOINT_CELLS)
+            .expect("exact checkpoint should fit");
+        let exact_probe = Cell::new(0usize);
+        let (pieces, metrics) = plan
+            .try_deferred_pieces_with_probe(TerminalWidthProfile::Unicode, &exact, &exact_probe)
+            .expect("the exact additive planning budget should fit");
+        assert_eq!(pieces.len(), 6);
+        assert_eq!(metrics.display_width(), 6);
+        assert_eq!(exact_probe.get(), 2);
+        assert_eq!(exact.layout_work_used(), CHECKPOINT_WORK + PLANNING_WORK);
+        assert_eq!(exact.document_cells_used(), CHECKPOINT_CELLS);
+
+        let below = ResourceContext::new(policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            CHECKPOINT_WORK + PLANNING_WORK - 1,
+        ));
+        below
+            .charge_usage(CHECKPOINT_WORK, CHECKPOINT_CELLS)
+            .expect("below-exact checkpoint should fit");
+        let below_probe = Cell::new(0usize);
+        let error = plan
+            .try_deferred_pieces_with_probe(TerminalWidthProfile::Unicode, &below, &below_probe)
+            .expect_err("max-minus-one planning work should reject before the second pass");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == CHECKPOINT_WORK + PLANNING_WORK
+                    && details.max == CHECKPOINT_WORK + PLANNING_WORK - 1
+        ));
+        assert_eq!(below_probe.get(), 1);
+        assert_eq!(below.layout_work_used(), CHECKPOINT_WORK);
+        assert_eq!(below.document_cells_used(), CHECKPOINT_CELLS);
+
+        let below_scan = ResourceContext::new(policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            CHECKPOINT_WORK + RANGE_SCAN_WORK - 1,
+        ));
+        below_scan
+            .charge_usage(CHECKPOINT_WORK, CHECKPOINT_CELLS)
+            .expect("below-scan checkpoint should fit");
+        let scan_probe = Cell::new(0usize);
+        let error = plan
+            .try_deferred_pieces_with_probe(TerminalWidthProfile::Unicode, &below_scan, &scan_probe)
+            .expect_err("insufficient structural scan work should reject before collection");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == CHECKPOINT_WORK + RANGE_SCAN_WORK
+                    && details.max == CHECKPOINT_WORK + RANGE_SCAN_WORK - 1
+        ));
+        assert_eq!(scan_probe.get(), 0);
+        assert_eq!(below_scan.layout_work_used(), CHECKPOINT_WORK);
+        assert_eq!(below_scan.document_cells_used(), CHECKPOINT_CELLS);
+    }
+
+    #[test]
+    fn deferred_piece_planning_charges_additive_work_for_many_fragments() {
+        const FRAGMENT_COUNT: usize = 64;
+        const EXPECTED_PLANNING_WORK: usize = FRAGMENT_COUNT * 8;
+
+        let fragments = ["a"; FRAGMENT_COUNT];
+        let plan_resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let plan = ComposedTextPlan::try_new(&plan_resources, FRAGMENT_COUNT, |push| {
+            for fragment in &fragments {
+                push(fragment)?;
+            }
+            Ok(())
+        })
+        .expect("fragmented composed text should plan");
+
+        let resources = ResourceContext::new(policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_PLANNING_WORK,
+        ));
+        let phase_probe = Cell::new(0usize);
+        let (pieces, metrics) = plan
+            .try_deferred_pieces_with_probe(TerminalWidthProfile::Unicode, &resources, &phase_probe)
+            .expect("the exact additive work budget should admit fragmented text");
+        assert_eq!(pieces.len(), FRAGMENT_COUNT);
+        assert_eq!(metrics.display_width(), FRAGMENT_COUNT);
+        assert_eq!(phase_probe.get(), 2);
+        assert_eq!(resources.layout_work_used(), EXPECTED_PLANNING_WORK);
+        assert!(pieces.iter().all(|piece| piece.replay_work_units() == 2));
+    }
+
+    #[test]
+    fn deferred_piece_replay_preserves_fragmented_entities_and_visible_escapes() {
+        let plan_resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let plan = ComposedTextPlan::try_new_html_decoded(
+            "e&#x301;👩&#x200D;💻\u{7}&amp;",
+            &plan_resources,
+        )
+        .expect("fragmented HTML-decoded text should plan");
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let (pieces, metrics) = plan
+            .try_deferred_pieces(TerminalWidthProfile::Unicode, &resources)
+            .expect("fragmented deferred text should plan");
+
+        let mut replayed = String::new();
+        for &piece in &pieces {
+            plan.try_visit_deferred_piece(TerminalWidthProfile::Unicode, piece, |fragment| {
+                replayed.push_str(fragment);
+                Ok(())
+            })
+            .expect("each deferred piece should replay");
+        }
+
+        let expected = "e\u{301}👩\u{200d}💻\\u{7}&";
+        let expected_html = "e\u{301}👩\u{200d}💻\\u{7}&amp;";
+        assert_eq!(replayed, expected);
+        assert_eq!(pieces.len(), 8);
+        assert_eq!(metrics.display_width(), 9);
+        assert_eq!(
+            pieces
+                .iter()
+                .map(|piece| piece.encoded_bytes(false))
+                .sum::<usize>(),
+            expected.len()
+        );
+        assert_eq!(
+            pieces
+                .iter()
+                .map(|piece| piece.encoded_bytes(true))
+                .sum::<usize>(),
+            expected_html.len()
+        );
+        assert!(
+            pieces[2..]
+                .iter()
+                .all(|piece| piece.replay_work_units() == 2)
+        );
     }
 }

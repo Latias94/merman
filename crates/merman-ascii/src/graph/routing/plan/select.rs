@@ -12,8 +12,7 @@ use super::boundary::edge_boundary_context_with_resources;
 use super::compound::plan_compound_endpoint_route_with_resources;
 use super::edges::parallel_edge_index;
 use super::grid::{
-    GridRouteOptions, plan_left_right_grid_path_route_with_options_and_resources,
-    plan_left_right_grid_path_route_with_resources,
+    GridRouteOptions, plan_left_right_grid_path_route_with_options_resources_and_execution,
 };
 use super::left_right::{
     plan_left_right_down_route_with_resources,
@@ -33,6 +32,7 @@ use super::top_down::{
 use crate::error::Result;
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::graph::topology::GraphEndpointIndex;
+use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +134,7 @@ pub(in crate::graph::routing) fn plan_edge_route_with_resources(
     } else {
         Some(GraphGroupTopology::try_new(request.graph, resources)?)
     };
-    plan_edge_route_with_topology(request, topology.as_ref(), label, resources)
+    plan_edge_route_with_topology(request, topology.as_ref(), label, resources, None)
 }
 
 pub(in crate::graph::routing) fn plan_edge_route_with_topology(
@@ -142,6 +142,7 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
     topology: Option<&GraphGroupTopology<'_>>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<EdgeRoutePlan> {
     let boundary =
         edge_boundary_context_with_resources(request.graph, request.edge, topology, resources)?;
@@ -168,13 +169,13 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
             return Ok(EdgeRoutePlan::Routed(plan));
         }
     }
-    if let Some(plan) = plan_boundary_route(boundary, request, label, resources)? {
+    if let Some(plan) = plan_boundary_route(boundary, request, label, resources, execution)? {
         return Ok(EdgeRoutePlan::Routed(plan));
     }
 
     let plan = match boundary.direction().canonical() {
-        GraphDirection::LeftRight => plan_left_right_route(request, label, resources)?,
-        GraphDirection::TopDown => plan_top_down_route(request, label, resources)?,
+        GraphDirection::LeftRight => plan_left_right_route(request, label, resources, execution)?,
+        GraphDirection::TopDown => plan_top_down_route(request, label, resources, execution)?,
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     };
     let plan = plan.map(|plan| match boundary {
@@ -196,6 +197,7 @@ fn plan_left_right_route(
     request: EdgeRouteRequest<'_>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<RoutePlan>> {
     let graph_layout = request.graph_layout;
     let from = request.from;
@@ -278,14 +280,16 @@ fn plan_left_right_route(
         return Ok(Some(plan));
     }
 
-    if let Some(plan) = plan_left_right_grid_path_route_with_resources(
+    if let Some(plan) = plan_left_right_grid_path_route_with_options_resources_and_execution(
         graph_layout,
         from,
         to,
         edge,
         label,
         charset,
+        GridRouteOptions::direct(),
         resources,
+        execution,
     )? {
         return Ok(Some(plan));
     }
@@ -329,6 +333,7 @@ fn plan_top_down_route(
     request: EdgeRouteRequest<'_>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<RoutePlan>> {
     let from = request.from;
     let to = request.to;
@@ -398,7 +403,7 @@ fn plan_top_down_route(
     }
 
     if top_down_skips_occupied_rank(&request.graph_layout.nodes, from, to, resources)? {
-        return plan_left_right_grid_path_route_with_options_and_resources(
+        return plan_left_right_grid_path_route_with_options_resources_and_execution(
             request.graph_layout,
             from,
             to,
@@ -407,6 +412,7 @@ fn plan_top_down_route(
             charset,
             GridRouteOptions::with_fixed_ports(Port::Right, Port::Right),
             resources,
+            execution,
         );
     }
 
@@ -420,7 +426,7 @@ fn plan_top_down_route(
                 (false, true) => (Port::Down, Port::Right),
                 (false, false) => unreachable!(),
             };
-            return plan_left_right_grid_path_route_with_options_and_resources(
+            return plan_left_right_grid_path_route_with_options_resources_and_execution(
                 request.graph_layout,
                 from,
                 to,
@@ -429,6 +435,7 @@ fn plan_top_down_route(
                 charset,
                 GridRouteOptions::with_fixed_ports(start_port, end_port),
                 resources,
+                execution,
             );
         }
         return plan_top_down_bent_route_with_resources(from, to, edge, label, charset, resources);
@@ -500,13 +507,14 @@ fn plan_boundary_route(
     request: EdgeRouteRequest<'_>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<RoutePlan>> {
     match boundary {
         EdgeBoundaryContext::Entering {
             root_direction: GraphDirection::TopDown,
             local_direction: GraphDirection::LeftRight,
             ..
-        } => plan_left_right_grid_path_route_with_options_and_resources(
+        } => plan_left_right_grid_path_route_with_options_resources_and_execution(
             request.graph_layout,
             request.from,
             request.to,
@@ -517,12 +525,13 @@ fn plan_boundary_route(
                 .with_segment(PlannedRouteSegment::Boundary)
                 .with_first_vertical_transit_label(),
             resources,
+            execution,
         ),
         EdgeBoundaryContext::Leaving {
             root_direction: GraphDirection::TopDown,
             local_direction: GraphDirection::LeftRight,
             ..
-        } => plan_left_right_grid_path_route_with_options_and_resources(
+        } => plan_left_right_grid_path_route_with_options_resources_and_execution(
             request.graph_layout,
             request.from,
             request.to,
@@ -533,6 +542,7 @@ fn plan_boundary_route(
                 .with_segment(PlannedRouteSegment::Boundary)
                 .with_last_vertical_transit_label(),
             resources,
+            execution,
         ),
         EdgeBoundaryContext::Entering {
             group_id,

@@ -257,10 +257,10 @@ fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> &'stati
 mod tests {
     use super::*;
     use crate::color::{AsciiColorTheme, AsciiRgb};
-    use crate::{AsciiColorMode, AsciiRenderOptions};
+    use crate::{AsciiColorMode, AsciiRenderOptions, AsciiResourcePolicy};
 
-    fn test_resources(options: &AsciiRenderOptions) -> ResourceContext {
-        ResourceContext::new(options.resources)
+    fn test_resources(policy: AsciiResourcePolicy) -> ResourceContext {
+        ResourceContext::new(policy)
     }
 
     fn rows_with_label<'a>(
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_aligns_columns_and_wraps_labels() {
         let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let label = RelationGraphLabel::new(
             "receives<br>request",
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_aligns_wide_text_by_display_width() {
         let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let label = RelationGraphLabel::new(
             "处理🚀<br>完成",
@@ -383,7 +383,7 @@ mod tests {
         let options = AsciiRenderOptions::ascii()
             .with_color_mode(AsciiColorMode::Html)
             .with_color_theme(theme);
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let label = RelationGraphLabel::new(
             "one<br>two",
@@ -415,7 +415,7 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_hides_diagnostics_by_default() {
         let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let rows = rows_with_label(
             &[("A", "-->", "B", None)],
@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_can_show_diagnostics() {
         let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let mut deferred = DeferredTextRegistry::new();
         let rows = rows_with_label(
             &[("A", "-->", "B", None)],

@@ -512,10 +512,10 @@ mod tests {
     use super::super::route::LayeredRelationRouteProfile;
     use super::*;
     use crate::relation_graph::RelationGraphLine;
-    use crate::{AsciiError, AsciiResourceLimitId};
+    use crate::{AsciiError, AsciiResourceLimitId, AsciiResourcePolicy};
 
-    fn test_resources(options: &AsciiRenderOptions) -> ResourceContext {
-        ResourceContext::new(options.resources)
+    fn test_resources(policy: AsciiResourcePolicy) -> ResourceContext {
+        ResourceContext::new(policy)
     }
 
     fn relation_box_refs(boxes: &[RelationGraphBox]) -> Vec<&RelationGraphBox> {
@@ -535,8 +535,7 @@ mod tests {
             LayeredRelationEdge::new("a", "c", 0, 0),
             LayeredRelationEdge::new("a", "b", 0, 0),
         ];
-        let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
         let scene = LayeredRelationScene::new(
             &box_refs,
@@ -558,8 +557,7 @@ mod tests {
         ];
         let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
 
-        let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
         let plan = plan_layered_relation_scene(
             &box_refs,
@@ -589,8 +587,7 @@ mod tests {
             LayeredRelationEdge::new("c", "b", 0, 0),
         ];
 
-        let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
         let plan = plan_layered_relation_scene(
             &box_refs,
@@ -615,10 +612,10 @@ mod tests {
         ];
         let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
 
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
             .expect("test resource limit should be valid");
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(policy);
         let box_refs = relation_box_refs(&boxes);
         let error = plan_layered_relation_scene(
             &box_refs,
@@ -662,7 +659,7 @@ mod tests {
         ];
         let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
         let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let mut resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
         let scene = LayeredRelationScene::new(&box_refs, edges, 1, width_profile, &mut resources)
             .expect("scene should be buildable");
@@ -728,7 +725,7 @@ mod tests {
             ),
         ];
         let options = AsciiRenderOptions::ascii();
-        let mut planning_resources = test_resources(&options);
+        let mut planning_resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
         let scene = LayeredRelationScene::new(
             &box_refs,
@@ -752,23 +749,23 @@ mod tests {
             scene.width() * scene.height() + snapshot_cells + resolved_cells;
         let document_cells = snapshot_cells + resolved_cells;
 
-        let exact_options = options
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, concurrent_grid_cells)
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, concurrent_grid_cells)
             .expect("exact grid limit should be valid")
-            .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, document_cells)
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, document_cells)
             .expect("exact document limit should be valid");
         scene
-            .capture_box_snapshot(&canvas, &mut test_resources(&exact_options))
+            .capture_box_snapshot(&canvas, &mut test_resources(exact_policy))
             .expect("exact concurrent surfaces should fit");
 
-        let below_grid = exact_options
-            .with_resource_limit(
+        let below_grid = exact_policy
+            .with_limit(
                 AsciiResourceLimitId::MaxGridCells,
                 concurrent_grid_cells - 1,
             )
             .expect("below-grid limit should be valid");
         let error = scene
-            .capture_box_snapshot(&canvas, &mut test_resources(&below_grid))
+            .capture_box_snapshot(&canvas, &mut test_resources(below_grid))
             .expect_err("N-1 concurrent grid cells must fail");
         assert!(matches!(
             error,
@@ -778,11 +775,11 @@ mod tests {
                     && details.max == concurrent_grid_cells - 1
         ));
 
-        let below_document = exact_options
-            .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, document_cells - 1)
+        let below_document = exact_policy
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, document_cells - 1)
             .expect("below-document limit should be valid");
         let error = scene
-            .capture_box_snapshot(&canvas, &mut test_resources(&below_document))
+            .capture_box_snapshot(&canvas, &mut test_resources(below_document))
             .expect_err("N-1 snapshot document cells must fail");
         assert!(matches!(
             error,

@@ -1267,7 +1267,7 @@ fn try_push_adjacency<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AsciiRenderOptions;
+    use crate::AsciiResourcePolicy;
 
     #[test]
     fn score_ordered_layered_group_candidate_skips_duplicate_orders() {
@@ -1280,8 +1280,7 @@ mod tests {
         let levels = HashMap::from([("a".to_string(), 0), ("b".to_string(), 1)]);
         let mut seen = HashSet::new();
         let mut best = None;
-        let options = AsciiRenderOptions::ascii();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
         let first = score_ordered_layered_group_candidate(
             &candidate,

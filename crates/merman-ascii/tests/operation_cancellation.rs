@@ -1,8 +1,8 @@
-use merman_ascii::{
-    AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy, render_model,
-    render_model_with_operation,
-};
+mod support;
+
+use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy};
 use merman_core::{Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel};
+use support::{render_controlled_model, render_model};
 
 fn parse_model(source: &str) -> RenderSemanticModel {
     Engine::new()
@@ -25,7 +25,7 @@ fn cancelled_operation_is_distinct_from_resource_exhaustion() {
     let control = OperationControl::new();
     control.cancel();
 
-    let error = render_model_with_operation(
+    let error = render_controlled_model(
         &model,
         &AsciiRenderOptions::ascii(),
         &control,
@@ -45,7 +45,7 @@ fn cancelled_operation_is_distinct_from_resource_exhaustion() {
 #[test]
 fn flowchart_grid_admission_returns_structured_resource_error() {
     let model = parse_model("flowchart LR\n  A --> B\n");
-    let error = render_model_with_operation(
+    let error = render_controlled_model(
         &model,
         &AsciiRenderOptions::ascii(),
         &OperationControl::new(),
@@ -67,35 +67,81 @@ fn flowchart_grid_admission_returns_structured_resource_error() {
 }
 
 #[test]
-fn sequence_event_traversal_observes_cancellation_at_layout_checkpoint() {
-    let model =
-        parse_model("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: one\nB-->>A: two\n");
+fn flowchart_projection_observes_cancellation_during_semantic_work() {
+    let model = parse_model("flowchart LR\n  A --> B\n  B --> C\n");
     let control = OperationControl::new();
-    control.cancel_after_checkpoints(4);
+    control.cancel_after_checkpoints(2);
 
-    let error = render_model_with_operation(
+    let error = render_controlled_model(
         &model,
         &AsciiRenderOptions::ascii(),
         &control,
         &operation_context(),
         AsciiResourcePolicy::default(),
     )
-    .expect_err("sequence traversal should observe scheduled cancellation");
+    .expect_err("flowchart projection should observe scheduled cancellation");
 
     assert!(matches!(
         error,
         AsciiError::Cancelled(cancelled)
-            if cancelled.phase == OperationPhase::Layout
+            if cancelled.phase == OperationPhase::Semantic
                 && cancelled.reason == merman_core::CancelReason::Requested
     ));
 }
 
 #[test]
-fn controlled_success_matches_uncontrolled_flowchart_output() {
+fn state_projection_observes_cancellation_during_semantic_work() {
+    let model = parse_model("stateDiagram-v2\n  [*] --> Active\n  Active --> [*]\n");
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(2);
+
+    let error = render_controlled_model(
+        &model,
+        &AsciiRenderOptions::ascii(),
+        &control,
+        &operation_context(),
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("state projection should observe scheduled cancellation");
+
+    assert!(matches!(
+        error,
+        AsciiError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Semantic
+                && cancelled.reason == merman_core::CancelReason::Requested
+    ));
+}
+
+#[test]
+fn sequence_projection_observes_cancellation_at_semantic_checkpoint() {
+    let model =
+        parse_model("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: one\nB-->>A: two\n");
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(2);
+
+    let error = render_controlled_model(
+        &model,
+        &AsciiRenderOptions::ascii(),
+        &control,
+        &operation_context(),
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("sequence projection should observe scheduled cancellation");
+
+    assert!(matches!(
+        error,
+        AsciiError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Semantic
+                && cancelled.reason == merman_core::CancelReason::Requested
+    ));
+}
+
+#[test]
+fn explicit_control_success_matches_default_test_operation_output() {
     let model = parse_model("flowchart LR\n  A[Start] --> B[Finish]\n");
     let options = AsciiRenderOptions::ascii();
-    let expected = render_model(&model, &options).expect("uncontrolled render should succeed");
-    let actual = render_model_with_operation(
+    let expected = render_model(&model, &options).expect("default test operation should succeed");
+    let actual = render_controlled_model(
         &model,
         &options,
         &OperationControl::new(),

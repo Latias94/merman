@@ -17,7 +17,7 @@ pub(super) fn render_journey_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let mut document = BudgetedTextDocument::new(options, *execution.resources());
     let section_plan = plan_sectioned_text(
         "journey",
         &model.sections,
@@ -59,7 +59,7 @@ pub(super) fn render_journey_diagram(
     }
     push_orphan_tasks(&mut document, model, &section_plan, execution)?;
 
-    document.finish(options)
+    document.finish()
 }
 
 impl SectionedTextTask for JourneyRenderTask {

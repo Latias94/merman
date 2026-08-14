@@ -1,7 +1,10 @@
+use super::SequenceCheckpointCursor;
 use super::model::{SequenceControlKind, SequenceEvent};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
+use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceItemId(usize);
@@ -112,22 +115,31 @@ impl SequenceBody {
         }
     }
 
-    pub(super) fn event_items(&self) -> impl Iterator<Item = &SequenceEvent> {
-        self.items.iter().filter_map(|item| match item {
-            SequenceItem::Event(event) => Some(event),
-            SequenceItem::Control(_) => None,
-        })
+    pub(super) fn try_for_each_event(
+        &self,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+        mut visitor: impl FnMut(&SequenceEvent, &mut SequenceCheckpointCursor<'_>) -> Result<()>,
+    ) -> Result<()> {
+        for item in &self.items {
+            checkpoints.tick()?;
+            if let SequenceItem::Event(event) = item {
+                visitor(event, checkpoints)?;
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn try_visit<'body>(
         &'body self,
         resources: &mut ResourceContext,
+        execution: AsciiExecution<'_>,
         mut visitor: impl FnMut(SequenceVisit<'body>, &mut ResourceContext) -> Result<()>,
     ) -> Result<()> {
         let capacity = self
             .max_depth
             .checked_add(1)
             .ok_or_else(|| resources.work_overflow())?;
+        execution.checkpoint(OperationPhase::Layout)?;
         resources.charge_layout_work(capacity)?;
         let mut stack = Vec::new();
         stack
@@ -136,6 +148,7 @@ impl SequenceBody {
         stack.push(SequenceVisitCursor::Root { next: 0 });
 
         while !stack.is_empty() {
+            execution.checkpoint(OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             let action = next_visit_action(self, &mut stack)?;
             match action {
@@ -282,16 +295,22 @@ struct OpenControl {
 }
 
 impl SequenceTreeBuilder {
-    pub(super) fn new(expected_items: usize, resources: &ResourceContext) -> Result<Self> {
-        Self::new_with_probe(expected_items, resources, || {})
+    pub(super) fn new(
+        expected_items: usize,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        Self::new_with_probe(expected_items, resources, execution, || {})
     }
 
     fn new_with_probe(
         expected_items: usize,
         resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
         before_allocate: impl FnOnce(),
     ) -> Result<Self> {
         resources.transaction(|resources| {
+            execution.checkpoint(OperationPhase::Semantic)?;
             resources.charge_layout_work_product(expected_items, 2)?;
             before_allocate();
             let mut body = SequenceBody::default();
@@ -312,8 +331,10 @@ impl SequenceTreeBuilder {
         &mut self,
         event: SequenceEvent,
         resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
     ) -> Result<()> {
         resources.transaction(|resources| {
+            execution.checkpoint(OperationPhase::Semantic)?;
             resources.charge_layout_work(1)?;
             let parent = self.current_parent();
             self.reserve_item_attachment(parent)?;
@@ -332,6 +353,7 @@ impl SequenceTreeBuilder {
         label: String,
         background: Option<AsciiRgb>,
         resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
     ) -> Result<()> {
         resources.transaction(|resources| {
             let depth = self
@@ -340,6 +362,7 @@ impl SequenceTreeBuilder {
                 .checked_add(1)
                 .ok_or_else(|| resources.nesting_overflow())?;
             resources.check_nesting_depth(depth)?;
+            execution.checkpoint(OperationPhase::Semantic)?;
             resources.charge_layout_work(1)?;
             let parent = self.current_parent();
             self.reserve_item_attachment(parent)?;
@@ -379,8 +402,10 @@ impl SequenceTreeBuilder {
         kind: SequenceControlKind,
         label: String,
         resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
     ) -> Result<()> {
         resources.transaction(|resources| {
+            execution.checkpoint(OperationPhase::Semantic)?;
             resources.charge_layout_work(1)?;
             let open = self
                 .stack
@@ -415,8 +440,10 @@ impl SequenceTreeBuilder {
         model_index: usize,
         kind: SequenceControlKind,
         resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
     ) -> Result<()> {
         resources.transaction(|resources| {
+            execution.checkpoint(OperationPhase::Semantic)?;
             resources.charge_layout_work(1)?;
             let open = self
                 .stack
@@ -428,15 +455,21 @@ impl SequenceTreeBuilder {
                 if !control.kind.accepts_end(kind) {
                     return Err(invalid_control_ordering());
                 }
+                execution.checkpoint(OperationPhase::Semantic)?;
                 resources.charge_layout_work(control.sections.len().max(1))?;
-                control
-                    .sections
-                    .iter()
-                    .filter_map(|section| section.participant_span)
-                    .reduce(|mut combined, span| {
+                let mut participant_span: Option<SequenceParticipantSpan> = None;
+                for section in &control.sections {
+                    execution.checkpoint(OperationPhase::Semantic)?;
+                    let Some(span) = section.participant_span else {
+                        continue;
+                    };
+                    if let Some(combined) = participant_span.as_mut() {
                         combined.include(span);
-                        combined
-                    })
+                    } else {
+                        participant_span = Some(span);
+                    }
+                }
+                participant_span
             };
             let control = self.control_mut(open.item)?;
             control.end_model_index = model_index;

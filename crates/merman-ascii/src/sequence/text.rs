@@ -1,3 +1,4 @@
+use super::SequenceCheckpointCursor;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
@@ -166,7 +167,9 @@ impl SequenceExtentLedger {
         &self,
         batch: SequenceBatchExtent,
         resources: &mut ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<SequenceExtentReservation> {
+        checkpoints.before_charge()?;
         let height = resources.checked_grid_add(self.height, batch.height)?;
         let materialized_width = self.retained_width.max(batch.materialized_width);
         resources.grid_extent(materialized_width, height)?;
@@ -307,12 +310,15 @@ pub(super) fn charge_text_work(
     value: &str,
     width_profile: crate::options::TerminalWidthProfile,
     resources: &mut ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
+    checkpoints.before_charge()?;
     resources.charge_layout_work(1)?;
     let text = SafeText::new(value);
     for logical_line in text.lines() {
         let line = SafeLine::new(logical_line);
         for grapheme in line.graphemes(width_profile) {
+            checkpoints.before_charge()?;
             resources.check_grapheme_bytes(grapheme.text().len())?;
             resources.charge_layout_work(1)?;
         }
@@ -343,16 +349,19 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
-    use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+    use crate::operation::AsciiExecution;
+    use crate::options::TerminalWidthProfile;
+    use crate::resource::AsciiResourcePolicy;
+    use merman_core::OperationPhase;
 
     #[test]
     fn extent_ledger_accepts_exact_grid_and_document_limits() {
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 12)
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 12)
             .unwrap()
-            .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 12)
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 12)
             .unwrap();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(policy);
         let mut ledger = SequenceExtentLedger::default();
 
         commit_uniform_batch(&mut ledger, 2, 4, &mut resources).unwrap();
@@ -368,14 +377,14 @@ mod tests {
             AsciiResourceLimitId::MaxGridCells,
             AsciiResourceLimitId::MaxDocumentCells,
         ] {
-            let options = AsciiRenderOptions::ascii()
-                .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 12)
+            let policy = AsciiResourcePolicy::default()
+                .with_limit(AsciiResourceLimitId::MaxGridCells, 12)
                 .unwrap()
-                .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 12)
+                .with_limit(AsciiResourceLimitId::MaxDocumentCells, 12)
                 .unwrap()
-                .with_resource_limit(limit, 11)
+                .with_limit(limit, 11)
                 .unwrap();
-            let mut resources = ResourceContext::new(options.resources);
+            let mut resources = ResourceContext::new(policy);
             let mut ledger = SequenceExtentLedger::default();
 
             commit_uniform_batch(&mut ledger, 2, 4, &mut resources).unwrap();
@@ -391,19 +400,19 @@ mod tests {
 
     #[test]
     fn extent_ledger_accepts_exact_work_and_rejects_limit_minus_one() {
-        let exact = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 12)
+        let exact = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 12)
             .unwrap();
-        let mut exact_resources = ResourceContext::new(exact.resources);
+        let mut exact_resources = ResourceContext::new(exact);
         let mut exact_ledger = SequenceExtentLedger::default();
         commit_uniform_batch(&mut exact_ledger, 2, 4, &mut exact_resources).unwrap();
         commit_uniform_batch(&mut exact_ledger, 1, 4, &mut exact_resources).unwrap();
         assert_eq!(exact_resources.layout_work_used(), 12);
 
-        let below = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 11)
+        let below = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 11)
             .unwrap();
-        let mut below_resources = ResourceContext::new(below.resources);
+        let mut below_resources = ResourceContext::new(below);
         let mut below_ledger = SequenceExtentLedger::default();
         commit_uniform_batch(&mut below_ledger, 2, 4, &mut below_resources).unwrap();
         let error = reserve_uniform_batch(&below_ledger, 1, 4, &mut below_resources).unwrap_err();
@@ -418,10 +427,10 @@ mod tests {
 
     #[test]
     fn combined_grid_rejects_before_the_next_batch_is_materialized() {
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 100)
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 100)
             .unwrap();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(policy);
         let mut ledger = SequenceExtentLedger::default();
         commit_uniform_batch(&mut ledger, 9, 10, &mut resources).unwrap();
 
@@ -454,8 +463,7 @@ mod tests {
     }
 
     fn next_batch_work_delta(history_rows: usize) -> usize {
-        let options = AsciiRenderOptions::ascii();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
         let mut ledger = SequenceExtentLedger::default();
         commit_uniform_batch(&mut ledger, history_rows, 4, &mut resources).unwrap();
         let before = resources.layout_work_used();
@@ -470,7 +478,12 @@ mod tests {
         resources: &mut ResourceContext,
     ) -> Result<SequenceExtentReservation> {
         let batch = SequenceBatchExtent::uniform(height, width, width, resources)?;
-        ledger.reserve(batch, resources)
+        let policy = resources.policy();
+        let checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&policy),
+            OperationPhase::Layout,
+        );
+        ledger.reserve(batch, resources, &checkpoints)
     }
 
     fn commit_uniform_batch(

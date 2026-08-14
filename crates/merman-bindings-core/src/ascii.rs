@@ -303,7 +303,7 @@ fn classify_render_error(
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::RuntimePolicy(err) => {
             let safe_message =
-                merman::ascii::HeadlessAsciiError::from(err.clone()).terminal_safe_message();
+                merman::ascii::AsciiDiagnostic::from(err.clone()).terminal_safe_message();
             if let Some(capability) = err.missing_capability() {
                 BindingError::missing_capability(capability.id(), safe_message)
             } else {
@@ -311,7 +311,7 @@ fn classify_render_error(
             }
         }
         merman::RenderError::Parse(err) => {
-            let error = merman::ascii::HeadlessAsciiError::from(err);
+            let error = merman::ascii::AsciiDiagnostic::from(err);
             let safe_message = error.terminal_safe_message();
             let diagnostic = error
                 .terminal_diagnostic_details()
@@ -344,7 +344,7 @@ fn classify_render_error(
                 }
                 _ => BindingStatus::RenderError,
             };
-            let error = merman::ascii::HeadlessAsciiError::from(err);
+            let error = merman::ascii::AsciiDiagnostic::from(err);
             let safe_message = error.terminal_safe_message();
             let diagnostic = error
                 .terminal_diagnostic_details()
@@ -369,7 +369,7 @@ fn attach_diagnostic(
 }
 
 fn binding_diagnostic_details(
-    details: merman::ascii::HeadlessAsciiDiagnosticDetails,
+    details: merman::ascii::AsciiDiagnosticDetails,
 ) -> BindingDiagnosticErrorDetails {
     let span = details.span.and_then(|span| {
         Some(BindingDiagnosticSpan {
@@ -459,9 +459,13 @@ mod tests {
         let diagnostic = merman::ParseDiagnostic::new("bad input")
             .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
             .with_code("merman.test");
-        let error = classify_ascii_error(merman::ascii::HeadlessAsciiError::from(
-            merman::Error::diagram_parse_diagnostic("flow\u{1b}", diagnostic),
-        ));
+        let error = classify_render_error(
+            merman::RenderError::Parse(merman::Error::diagram_parse_diagnostic(
+                "flow\u{1b}",
+                diagnostic,
+            )),
+            merman::resources::ResourceProfile::Interactive,
+        );
 
         let details = error
             .diagnostic_details()

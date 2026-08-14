@@ -9,7 +9,7 @@ use crate::canvas::{
 use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 #[cfg(test)]
-use crate::resource::AsciiResourceLimitId;
+use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::DeferredTextRegistry;
 use crate::text::{StyledLine, display_width_with_profile};
@@ -130,11 +130,13 @@ pub(crate) fn render_stacked_boxes_with_deferred_options_with_execution(
     deferred: &DeferredTextRegistry<'_>,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    let mut layout_resources =
+        execution.resource_context(resources, merman_core::OperationPhase::Layout);
     let lines = stacked_box_lines_ordered_impl(
         boxes,
         options.terminal_width_profile,
         false,
-        resources,
+        &mut layout_resources,
         Some(execution),
     )?;
     render_lines_with_deferred_options_with_execution(
@@ -442,7 +444,14 @@ where
     regions.extend(standalone_regions);
     let plan = RelationRenderPlan::try_new(regions, resources)?;
     checkpoint(execution, merman_core::OperationPhase::Emit)?;
-    let lines = plan.materialize(options, resources)?;
+    let lines = match execution {
+        Some(execution) => {
+            let mut emit_resources =
+                execution.resource_context(resources, merman_core::OperationPhase::Emit);
+            plan.materialize(options, &mut emit_resources)?
+        }
+        None => plan.materialize(options, resources)?,
+    };
     for _ in &lines {
         checkpoint(execution, merman_core::OperationPhase::Emit)?;
     }
@@ -461,11 +470,12 @@ pub(crate) fn render_relation_component_lines_with_execution<'plan, 'text, R, A>
 where
     A: RelationComponentAdapter<'text, R> + 'plan,
 {
+    let mut resources = execution.resource_context(resources, merman_core::OperationPhase::Layout);
     render_relation_component_lines_impl(
         boxes,
         relations,
         options,
-        resources,
+        &mut resources,
         adapter,
         deferred,
         Some(execution),
@@ -663,13 +673,14 @@ pub(crate) fn render_layered_relation_component<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
+    policy: AsciiResourcePolicy,
     horizontal_gap: usize,
     adapter: &A,
 ) -> Result<String>
 where
     for<'text> A: RelationComponentAdapter<'text, R>,
 {
-    let mut resources = ResourceContext::new(options.resources);
+    let mut resources = ResourceContext::new(policy);
     let mut deferred = DeferredTextRegistry::new();
     let lines = render_layered_relation_component_lines(
         boxes,
@@ -1475,11 +1486,12 @@ pub(crate) fn render_lines_with_deferred_options_with_execution(
             .all(|line| line.width_profile() == options.terminal_width_profile)
     );
 
+    let mut resources = execution.resource_context(resources, merman_core::OperationPhase::Emit);
     finish_styled_line_iter_with_deferred_resources_with_execution(
         lines.iter().map(RelationGraphLine::styled),
         options,
         true,
-        resources,
+        &mut resources,
         deferred,
         execution,
     )

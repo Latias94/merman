@@ -20,7 +20,7 @@ pub(super) fn render_gantt_diagram(
     local_time_zone: &merman_core::time::LocalTimeZone,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let mut document = BudgetedTextDocument::new(options, *execution.resources());
     let task_index = admit_then_materialize_gantt_structure(
         model,
         document.resources_mut(),
@@ -120,7 +120,7 @@ pub(super) fn render_gantt_diagram(
         }
     }
 
-    document.finish(options)
+    document.finish()
 }
 
 #[derive(Debug, Clone, Copy)]

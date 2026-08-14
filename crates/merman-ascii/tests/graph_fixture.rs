@@ -1,7 +1,10 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+mod support;
+
+use merman_ascii::AsciiRenderOptions;
 use merman_core::{Engine, ParseOptions};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use support::render_model;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct GraphFixture {

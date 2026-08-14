@@ -8,9 +8,11 @@ use super::{
 use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{LogicalExtent, ResourceContext};
 use crate::safe_text::DeferredTextRegistry;
+use merman_core::OperationPhase;
 
 mod collision;
 
@@ -277,6 +279,53 @@ pub(crate) fn render_horizontal_relation_components<'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
+    render_horizontal_relation_components_impl(
+        boxes, relations, direction, options, resources, adapter, deferred, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_horizontal_relation_components_with_execution<'text, R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    direction: RelationGraphHorizontalDirection,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<RelationGraphLine>>
+where
+    A: RelationComponentAdapter<'text, R>,
+{
+    let mut resources = execution.resource_context(resources, OperationPhase::Layout);
+    render_horizontal_relation_components_impl(
+        boxes,
+        relations,
+        direction,
+        options,
+        &mut resources,
+        adapter,
+        deferred,
+        Some(execution),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_horizontal_relation_components_impl<'text, R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    direction: RelationGraphHorizontalDirection,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &A,
+    deferred: &mut DeferredTextRegistry<'text>,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<Vec<RelationGraphLine>>
+where
+    A: RelationComponentAdapter<'text, R>,
+{
+    checkpoint_layout(execution)?;
     if boxes.is_empty() {
         return Ok(Vec::new());
     }
@@ -296,7 +345,7 @@ where
             .materialize(options, resources);
     }
 
-    let edges = build_layered_edges(relations, adapter, resources, None)?;
+    let edges = build_layered_edges(relations, adapter, resources, execution)?;
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?;
     let mut regions = Vec::new();
@@ -316,6 +365,7 @@ where
     };
 
     for component in &components {
+        checkpoint_layout(execution)?;
         if component.edge_indices().is_empty() {
             standalone.extend(component.boxes().iter().copied());
             continue;
@@ -341,7 +391,15 @@ where
         ));
     }
 
+    checkpoint_layout(execution)?;
     RelationRenderPlan::try_new(regions, resources)?.materialize(options, resources)
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(OperationPhase::Layout)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn render_horizontal_box_strip_lines(

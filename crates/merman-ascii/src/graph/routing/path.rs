@@ -1,7 +1,9 @@
 use super::super::layout::{GridCoord, NodeLayout};
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
 use crate::resource::ResourceContext;
+use merman_core::OperationPhase;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::hash::Hash;
@@ -52,12 +54,24 @@ pub(super) fn route_grid_path(
         .expect("test grid routing work must remain representable")
 }
 
+#[cfg(test)]
 pub(super) fn route_grid_path_with_resources(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
     port_policy: GridPathPortPolicy,
     resources: &mut ResourceContext,
+) -> Result<Option<GridPathRoute>> {
+    route_grid_path_with_resources_and_execution(layouts, from, to, port_policy, resources, None)
+}
+
+pub(super) fn route_grid_path_with_resources_and_execution(
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    port_policy: GridPathPortPolicy,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<GridPathRoute>> {
     match port_policy {
         GridPathPortPolicy::DirectionalShortest => select_shortest_reachable_grid_path(
@@ -66,9 +80,10 @@ pub(super) fn route_grid_path_with_resources(
             to,
             directional_left_right_port_pairs(from, to),
             resources,
+            execution,
         ),
         GridPathPortPolicy::Fixed(ports) => {
-            plan_grid_path_for_ports(layouts, from, to, ports, resources)
+            plan_grid_path_for_ports(layouts, from, to, ports, resources, execution)
         }
     }
 }
@@ -79,10 +94,12 @@ fn select_shortest_reachable_grid_path(
     to: &NodeLayout,
     candidates: [PortPair; 2],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<GridPathRoute>> {
     let mut selected: Option<GridPathRoute> = None;
     for ports in candidates {
-        let Some(route) = plan_grid_path_for_ports(layouts, from, to, ports, resources)? else {
+        let Some(route) = plan_grid_path_for_ports(layouts, from, to, ports, resources, execution)?
+        else {
             continue;
         };
         if selected
@@ -101,14 +118,15 @@ fn plan_grid_path_for_ports(
     to: &NodeLayout,
     ports: PortPair,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<GridPathRoute>> {
     let start = from.grid_for_port(ports.start, resources)?;
     let target = to.grid_for_port(ports.end, resources)?;
-    let Some(path) = find_grid_path(layouts, start, target, resources)? else {
+    let Some(path) = find_grid_path(layouts, start, target, resources, execution)? else {
         return Ok(None);
     };
     Ok(Some(GridPathRoute {
-        path: merge_grid_path(path, resources)?,
+        path: merge_grid_path(path, resources, execution)?,
         ports,
     }))
 }
@@ -239,6 +257,7 @@ fn find_grid_path(
     start: GridCoord,
     target: GridCoord,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<Vec<GridCoord>>> {
     let max_x = layouts.iter().try_fold(0usize, |current, layout| {
         Ok::<_, crate::error::AsciiError>(
@@ -252,7 +271,7 @@ fn find_grid_path(
     })?;
     let max_x = resources.checked_grid_add(max_x, 6)?;
     let max_y = resources.checked_grid_add(max_y, 6)?;
-    let occupied = occupied_grid_cells(layouts, resources)?;
+    let occupied = occupied_grid_cells(layouts, resources, execution)?;
     let mut open = BinaryHeap::new();
     let mut cost_so_far = HashMap::new();
     let mut came_from = HashMap::<GridCoord, GridCoord>::new();
@@ -269,6 +288,7 @@ fn find_grid_path(
     let mut sequence = 0usize;
 
     while let Some(entry) = open.pop() {
+        checkpoint_layout(execution)?;
         resources.charge_layout_work(1)?;
         let current = entry.coord;
         if cost_so_far
@@ -285,6 +305,7 @@ fn find_grid_path(
             path.push(current);
             let mut cursor = current;
             while let Some(previous) = came_from.get(&cursor).copied() {
+                checkpoint_layout(execution)?;
                 resources.charge_layout_work(1)?;
                 path.push(previous);
                 cursor = previous;
@@ -294,6 +315,7 @@ fn find_grid_path(
         }
 
         for next in grid_neighbors(current, max_x, max_y).into_iter().flatten() {
+            checkpoint_layout(execution)?;
             resources.charge_layout_work(1)?;
             if occupied.contains(&next) && next != target {
                 continue;
@@ -357,6 +379,7 @@ impl PartialOrd for OpenEntry {
 fn occupied_grid_cells(
     layouts: &[NodeLayout],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<HashSet<GridCoord>> {
     const NODE_GRID_FOOTPRINT: usize = 9;
     let capacity = resources.checked_work_mul(layouts.len(), NODE_GRID_FOOTPRINT)?;
@@ -367,6 +390,7 @@ fn occupied_grid_cells(
     for layout in layouts {
         for y_offset in 0..=2 {
             for x_offset in 0..=2 {
+                checkpoint_layout(execution)?;
                 resources.charge_layout_work(1)?;
                 occupied.insert(GridCoord {
                     x: resources.checked_grid_add(layout.grid.x, x_offset)?,
@@ -413,6 +437,7 @@ fn grid_heuristic(a: GridCoord, b: GridCoord, resources: &ResourceContext) -> Re
 fn merge_grid_path(
     path: Vec<GridCoord>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<GridCoord>> {
     if path.len() <= 2 {
         return Ok(path);
@@ -424,6 +449,7 @@ fn merge_grid_path(
         .map_err(|_| layout_allocation_failed())?;
     merged.push(path[0]);
     for window in path.windows(3) {
+        checkpoint_layout(execution)?;
         resources.charge_layout_work(1)?;
         let previous = step_direction(window[0], window[1]);
         let next = step_direction(window[1], window[2]);
@@ -433,6 +459,13 @@ fn merge_grid_path(
     }
     merged.push(*path.last().expect("path has at least one element"));
     Ok(merged)
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(OperationPhase::Layout)?;
+    }
+    Ok(())
 }
 
 pub(super) fn step_direction(from: GridCoord, to: GridCoord) -> StepDirection {
@@ -456,6 +489,7 @@ mod tests {
     use crate::graph::model::{GraphNodeShape, GraphNodeStyle};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
+    use merman_core::{OperationControl, OperationPhase};
 
     #[test]
     fn fixed_port_policy_does_not_substitute_directional_candidates() {
@@ -527,6 +561,38 @@ mod tests {
         };
         assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
         assert!(details.actual > details.max);
+    }
+
+    #[test]
+    fn grid_path_cancellation_wins_before_the_next_work_debit() {
+        let from = node("from", 0, 0);
+        let blocker = node("blocker", 1, 2);
+        let to = node("to", 5, 5);
+        let layouts = vec![from.clone(), blocker, to.clone()];
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one work unit should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let error = route_grid_path_with_resources_and_execution(
+            &layouts,
+            &from,
+            &to,
+            GridPathPortPolicy::DirectionalShortest,
+            &mut resources,
+            Some(AsciiExecution::new(&control, &policy)),
+        )
+        .expect_err("routing should observe cancellation before exhausting work");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 1);
     }
 
     #[test]

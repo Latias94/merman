@@ -465,6 +465,10 @@ impl Default for SvgRequest {
 }
 
 #[cfg(feature = "ascii")]
+/// Target-local configuration for one ASCII render operation.
+///
+/// Presentation and family layout settings remain reusable in `options`; resource budgets belong
+/// to this request and are passed unchanged to the model backend.
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRequest {
     pub options: AsciiRenderOptions,
@@ -859,15 +863,16 @@ fn render_ascii_target(
     request: AsciiRequest,
 ) -> Result<Option<String>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
-    merman_ascii::render_model_with_operation(
-        parsed.model(),
-        &request.options,
-        &operation.control,
-        &operation.context,
-        request.resources,
-    )
-    .map(Some)
-    .map_err(map_ascii_error)
+    let renderer = merman_ascii::AsciiRenderer::new(request.options).map_err(map_ascii_error)?;
+    renderer
+        .render_model(
+            parsed.model(),
+            &operation.control,
+            &operation.context,
+            request.resources,
+        )
+        .map(Some)
+        .map_err(map_ascii_error)
 }
 
 #[cfg(feature = "png")]

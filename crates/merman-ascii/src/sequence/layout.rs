@@ -1,8 +1,15 @@
+use super::SequenceCheckpointCursor;
 use super::model::AsciiSequenceDiagram;
 use super::{BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH};
 use crate::error::{AsciiError, Result};
+#[cfg(test)]
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+#[cfg(test)]
+use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+#[cfg(test)]
+use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceLayout {
@@ -18,16 +25,21 @@ pub(super) struct SequenceLayout {
 pub(super) fn calculate_layout(
     diagram: &AsciiSequenceDiagram,
     options: &AsciiRenderOptions,
+    policy: &AsciiResourcePolicy,
 ) -> Result<SequenceLayout> {
-    let mut resources = ResourceContext::new(options.resources);
-    calculate_layout_with_resources(diagram, options, &mut resources)
+    let mut resources = ResourceContext::new(*policy);
+    let mut checkpoints =
+        SequenceCheckpointCursor::new(AsciiExecution::standalone(policy), OperationPhase::Layout);
+    calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)
 }
 
 pub(super) fn calculate_layout_with_resources(
     diagram: &AsciiSequenceDiagram,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLayout> {
+    checkpoints.before_charge()?;
     charge_work_product(resources, diagram.participants.len(), 2)?;
     resources.grid_extent(diagram.participants.len(), 1)?;
 
@@ -38,6 +50,7 @@ pub(super) fn calculate_layout_with_resources(
             phase: AsciiResourceLimitPhase::Layout.as_str(),
         })?;
     for participant in &diagram.participants {
+        checkpoints.tick()?;
         let width = resources
             .checked_grid_add(participant.label.width(), BOX_PADDING_LEFT_RIGHT)?
             .max(MIN_BOX_WIDTH);
@@ -52,6 +65,7 @@ pub(super) fn calculate_layout_with_resources(
         })?;
     let mut current_x = 0;
     for (index, width) in participant_widths.iter().enumerate() {
+        checkpoints.tick()?;
         let box_width = resources.checked_grid_add(*width, BOX_BORDER_WIDTH)?;
         if index == 0 {
             participant_centers.push(box_width / 2);
@@ -93,6 +107,7 @@ fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usiz
 pub(super) fn initial_visible_actors(
     diagram: &AsciiSequenceDiagram,
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<bool>> {
     resources.grid_extent(diagram.lifecycles.len(), 1)?;
     let mut visible = Vec::new();
@@ -102,6 +117,7 @@ pub(super) fn initial_visible_actors(
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
     for lifecycle in &diagram.lifecycles {
+        checkpoints.tick()?;
         visible.push(lifecycle.created_at.is_none());
     }
     Ok(visible)
@@ -118,6 +134,7 @@ pub(super) fn lifecycle_actors_at(
     model_index: usize,
     edge: LifecycleEdge,
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<usize>> {
     resources.grid_extent(diagram.lifecycles.len(), 1)?;
     let mut actors = Vec::new();
@@ -127,6 +144,7 @@ pub(super) fn lifecycle_actors_at(
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
     for (actor, lifecycle) in diagram.lifecycles.iter().enumerate() {
+        checkpoints.tick()?;
         let target = match edge {
             LifecycleEdge::Created => lifecycle.created_at,
             LifecycleEdge::Destroyed => lifecycle.destroyed_at,

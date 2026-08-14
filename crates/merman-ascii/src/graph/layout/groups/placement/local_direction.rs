@@ -4,6 +4,7 @@ use super::super::members::{
 };
 use super::super::side_constraints::override_member_semantics;
 use super::super::{layout_work_allocation_failed, shift_external_nodes_away_from_group};
+use super::GroupPlacementContext;
 use crate::error::Result;
 use crate::graph::layout::GridCoord;
 use crate::graph::model::{
@@ -11,20 +12,24 @@ use crate::graph::model::{
     GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
 };
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
-use crate::options::TerminalWidthProfile;
+use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use merman_core::OperationPhase;
 use std::collections::HashMap;
 
 pub(super) fn apply_subgraph_direction_overrides(
-    graph: &AsciiGraph,
+    context: &GroupPlacementContext<'_, '_>,
     placements: &mut [GridCoord],
-    topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
-    direction_overrides: &[Option<GraphDirection>],
     disabled_overrides: &[bool],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
+    let graph = context.graph;
+    let topology = context.topology;
     for group_index in 0..graph.groups.len() {
+        if let Some(execution) = execution {
+            execution.checkpoint(OperationPhase::Layout)?;
+        }
         if disabled_overrides
             .get(group_index)
             .copied()
@@ -35,7 +40,12 @@ pub(super) fn apply_subgraph_direction_overrides(
         let Some(group) = graph.groups.get(group_index) else {
             continue;
         };
-        let Some(direction) = direction_overrides.get(group_index).copied().flatten() else {
+        let Some(direction) = context
+            .direction_overrides
+            .get(group_index)
+            .copied()
+            .flatten()
+        else {
             continue;
         };
         resources.charge_layout_work(group.nodes.len())?;
@@ -60,7 +70,7 @@ pub(super) fn apply_subgraph_direction_overrides(
         let start_x = start_x.unwrap_or_default();
         let start_y = start_y.unwrap_or_default();
 
-        let mut local = place_group_nodes(&override_graph, layout_direction, resources)?;
+        let mut local = place_group_nodes(&override_graph, layout_direction, resources, execution)?;
         mirror_local_placements(&mut local, layout_direction, resources)?;
         for (member_index, coord) in local {
             let Some(member) = members.get(member_index) else {
@@ -95,7 +105,7 @@ pub(super) fn apply_subgraph_direction_overrides(
             group_index,
             &group_member_indices,
             placements,
-            width_profile,
+            context.width_profile,
             resources,
         )? {
             shift_external_nodes_away_from_group(
@@ -318,9 +328,10 @@ fn place_group_nodes(
     graph: &AsciiGraph,
     direction: GraphDirection,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<HashMap<usize, GridCoord>> {
     let ranked = super::super::super::grid::place_ranked_grid_nodes_without_group_adjustments(
-        graph, direction, resources,
+        graph, direction, resources, execution,
     )?;
     let mut placements = HashMap::new();
     placements.try_reserve(ranked.len()).map_err(|_| {

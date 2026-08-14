@@ -1,7 +1,10 @@
-use merman_ascii::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile, render_model};
+mod support;
+
+use merman_ascii::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::git_graph::{GitGraphBranchRenderModel, GitGraphRenderModel};
 use merman_core::{Engine, ParseOptions};
+use support::render_model;
 use unicode_width::UnicodeWidthStr;
 
 fn parse_model(source: &str) -> RenderSemanticModel {

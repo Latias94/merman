@@ -50,7 +50,7 @@ pub(super) fn render_mindmap_diagram(
     render_mindmap_with_resources(
         model,
         options,
-        ResourceContext::new(options.resources),
+        ResourceContext::new(*execution.resources()),
         execution,
     )
 }
@@ -190,7 +190,7 @@ fn render_mindmap_with_resources(
         }
     }
 
-    document.finish(options)
+    document.finish()
 }
 
 fn index_nodes<'a>(
@@ -607,11 +607,10 @@ mod tests {
         MindmapDiagramRenderModel { nodes, edges }
     }
 
-    fn options_with_nesting_limit(limit: usize) -> AsciiRenderOptions {
-        let resources = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    fn policy_with_nesting_limit(limit: usize) -> AsciiResourcePolicy {
+        AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxNestingDepth, limit)
-            .expect("positive nesting limit");
-        AsciiRenderOptions::ascii().with_resource_policy(resources)
+            .expect("positive nesting limit")
     }
 
     fn isolated_nodes(count: usize) -> MindmapDiagramRenderModel {
@@ -664,7 +663,7 @@ mod tests {
 
     fn measured_work(model: &MindmapDiagramRenderModel) -> usize {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let options = AsciiRenderOptions::ascii().with_resource_policy(policy);
+        let options = AsciiRenderOptions::ascii();
         let resources = ResourceContext::new(policy);
         render_mindmap_with_resources(
             model,
@@ -678,11 +677,12 @@ mod tests {
 
     #[test]
     fn mindmap_accepts_exact_nesting_limit() {
-        let options = options_with_nesting_limit(DEEP_NESTING);
+        let options = AsciiRenderOptions::ascii();
+        let resources = policy_with_nesting_limit(DEEP_NESTING);
         let rendered = render_mindmap_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&options.resources),
+            AsciiExecution::standalone(&resources),
         )
         .expect("deep nesting equal to the limit should render iteratively");
 
@@ -691,11 +691,12 @@ mod tests {
 
     #[test]
     fn mindmap_rejects_limit_minus_one_before_descending() {
-        let options = options_with_nesting_limit(DEEP_NESTING - 1);
+        let options = AsciiRenderOptions::ascii();
+        let resources = policy_with_nesting_limit(DEEP_NESTING - 1);
         let error = render_mindmap_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&options.resources),
+            AsciiExecution::standalone(&resources),
         )
         .expect_err("deep nesting above the limit should fail before the final descent");
 

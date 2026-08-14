@@ -68,11 +68,9 @@ pub(crate) fn centered_text_line_with_role(
     resources: &ResourceContext,
 ) -> Result<RelationGraphLine> {
     let half_width = display_width_with_profile(text, width_profile) / 2;
-    let left_padding = center.checked_sub(half_width).ok_or_else(|| {
-        resources
-            .policy()
-            .overflow(crate::resource::AsciiResourceLimitId::MaxGridCells)
-    })?;
+    let left_padding = center
+        .checked_sub(half_width)
+        .ok_or_else(|| resources.grid_overflow())?;
     try_concat_relation_lines(
         vec![
             RelationGraphLine::try_blank(left_padding, width_profile, resources)?,

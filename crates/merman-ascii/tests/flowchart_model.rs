@@ -1,6 +1,8 @@
+mod support;
+
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, render_model,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::flowchart::{
@@ -9,15 +11,24 @@ use merman_core::diagrams::flowchart::{
 use merman_core::resources::ResourceProfile;
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
+use support::{render_model, render_model_with_resources};
 use unicode_width::UnicodeWidthStr;
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
+    render_flowchart_with_resources(input, options, AsciiResourcePolicy::default())
+}
+
+fn render_flowchart_with_resources(
+    input: &str,
+    options: &AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
+) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("flowchart should parse")
         .expect("flowchart should be detected");
 
-    render_model(parsed.model(), options)
+    render_model_with_resources(parsed.model(), options, resources)
 }
 
 fn parse_flowchart_error(input: &str) -> String {

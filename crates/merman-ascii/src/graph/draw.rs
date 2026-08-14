@@ -1,7 +1,10 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
+#[cfg(test)]
+use super::layout::layout_graph_with_resources;
 use super::layout::{
-    GraphLayout, GroupLayout, NodeLayout, graph_canvas_extent, layout_graph_with_resources,
+    GraphLayout, GroupLayout, NodeLayout, graph_canvas_extent,
+    layout_graph_with_resources_and_execution,
 };
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::routing;
@@ -11,6 +14,8 @@ use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
+#[cfg(test)]
+use crate::resource::AsciiResourcePolicy;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
 type Canvas<'surface> = dyn GraphSurface + 'surface;
@@ -25,17 +30,21 @@ struct PreparedGraphRender {
 }
 
 #[cfg(test)]
-pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Result<String> {
-    let mut resources = ResourceContext::new(options.resources);
+pub(crate) fn render_graph(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    policy: AsciiResourcePolicy,
+) -> Result<String> {
+    let mut resources = ResourceContext::new(policy);
     render_graph_uncontrolled(graph, options, &mut resources)
 }
 
+#[cfg(test)]
 pub(crate) fn render_graph_with_resources(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<String> {
-    debug_assert_eq!(resources.policy(), options.resources);
     render_graph_uncontrolled(graph, options, resources)
 }
 
@@ -65,6 +74,7 @@ pub(crate) fn render_graph_with_resources_and_execution(
     paint_graph_render_controlled(prepared, options, resources, execution)
 }
 
+#[cfg(test)]
 fn render_graph_uncontrolled(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
@@ -117,8 +127,13 @@ fn render_graph_uncontrolled(
             height,
             options.terminal_width_profile,
         );
+        for group_index in &graph_layout.group_background_order {
+            if let Some(group) = graph_layout.groups.get(*group_index) {
+                paint_group_background(&mut surface, group);
+            }
+        }
         for group in &graph_layout.groups {
-            draw_group(&mut surface, group, &charset)?;
+            draw_group_frame(&mut surface, group, &charset)?;
         }
         for layout in &graph_layout.nodes {
             draw_node(&mut surface, layout, &charset, options)?;
@@ -178,7 +193,8 @@ fn prepare_graph_render_controlled(
 ) -> Result<PreparedGraphRender> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let charset = GraphCharset::for_options(options);
-    let graph_layout = layout_graph_with_resources(graph, options, resources)?;
+    let graph_layout =
+        layout_graph_with_resources_and_execution(graph, options, resources, execution)?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
     let route_scene_plan = routing::prepare_route_scene_with_execution(
@@ -249,9 +265,15 @@ fn paint_graph_render_controlled(
             height,
             options.terminal_width_profile,
         );
+        for group_index in &graph_layout.group_background_order {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            if let Some(group) = graph_layout.groups.get(*group_index) {
+                paint_group_background(&mut surface, group);
+            }
+        }
         for group in &graph_layout.groups {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_group(&mut surface, group, &charset)?;
+            draw_group_frame(&mut surface, group, &charset)?;
         }
         for layout in &graph_layout.nodes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
@@ -307,8 +329,7 @@ fn paint_graph_render_controlled(
     }
 
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
-    let target_options = (*options).with_resource_policy(*execution.resources());
-    canvas.finish_with_options_with_execution(&target_options, execution)
+    canvas.finish_with_options_with_execution(options, execution)
 }
 
 impl OutputTransform {
@@ -368,10 +389,11 @@ fn draw_node(
     }
 }
 
-fn draw_group(canvas: &mut Canvas<'_>, group: &GroupLayout, charset: &GraphCharset) -> Result<()> {
-    if group.kind == GraphGroupKind::Container {
-        paint_group_background(canvas, group);
-    }
+fn draw_group_frame(
+    canvas: &mut Canvas<'_>,
+    group: &GroupLayout,
+    charset: &GraphCharset,
+) -> Result<()> {
     match group.kind {
         GraphGroupKind::Container => draw_group_box(canvas, group, charset),
         GraphGroupKind::Divider => draw_group_divider(canvas, group, charset),
@@ -390,6 +412,9 @@ fn paint_node_background(canvas: &mut Canvas<'_>, layout: &NodeLayout) {
 }
 
 fn paint_group_background(canvas: &mut Canvas<'_>, group: &GroupLayout) {
+    if group.kind != GraphGroupKind::Container {
+        return;
+    }
     let Some(color) = group.style.background else {
         return;
     };
@@ -1533,7 +1558,8 @@ mod tests {
         let options =
             AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk);
 
-        let rendered = render_graph(&graph, &options).expect("CJK graph should render");
+        let rendered = render_graph(&graph, &options, AsciiResourcePolicy::default())
+            .expect("CJK graph should render");
         let widths = rendered
             .lines()
             .map(|line| display_width_with_profile(line, TerminalWidthProfile::Cjk))
@@ -1570,8 +1596,12 @@ mod tests {
                 GraphGroupStyle::default(),
             );
 
-            let rendered = render_graph(&graph, &AsciiRenderOptions::ascii())
-                .expect("state graph should render");
+            let rendered = render_graph(
+                &graph,
+                &AsciiRenderOptions::ascii(),
+                AsciiResourcePolicy::default(),
+            )
+            .expect("state graph should render");
 
             for authored in [
                 "Cafe\u{301} \u{1f469}\u{200d}\u{1f4bb}",
@@ -1594,7 +1624,7 @@ mod tests {
         graph.add_node("b", "B");
         graph.add_edge("a", "b");
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let base_options = AsciiRenderOptions::ascii().with_resource_policy(unbounded);
+        let base_options = AsciiRenderOptions::ascii();
         let mut resources = ResourceContext::new(unbounded);
         let charset = GraphCharset::for_options(&base_options);
         let layout = layout_graph_with_resources(&graph, &base_options, &mut resources)
@@ -1621,13 +1651,12 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxGridCells, exact)
             .expect("exact grid limit should be valid");
-        render_graph(&graph, &base_options.with_resource_policy(exact_policy))
-            .expect("exact grid limit should render");
+        render_graph(&graph, &base_options, exact_policy).expect("exact grid limit should render");
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxGridCells, exact - 1)
             .expect("max-minus-one grid limit should be valid");
-        let error = render_graph(&graph, &base_options.with_resource_policy(below_policy))
+        let error = render_graph(&graph, &base_options, below_policy)
             .expect_err("max-minus-one grid limit should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a grid resource error, got {error:?}");
@@ -1642,7 +1671,7 @@ mod tests {
         let mut graph = AsciiGraph::new(GraphDirection::BottomTop);
         graph.add_node("a", "A");
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let base_options = AsciiRenderOptions::ascii().with_resource_policy(unbounded);
+        let base_options = AsciiRenderOptions::ascii();
         let mut measured_resources = ResourceContext::new(unbounded);
         render_graph_with_resources(&graph, &base_options, &mut measured_resources)
             .expect("the unbounded mirror graph should render");
@@ -1651,18 +1680,16 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
             .expect("exact mirror-work limit should be valid");
-        let exact_options = base_options.with_resource_policy(exact_policy);
         let mut exact_resources = ResourceContext::new(exact_policy);
-        render_graph_with_resources(&graph, &exact_options, &mut exact_resources)
+        render_graph_with_resources(&graph, &base_options, &mut exact_resources)
             .expect("exact cumulative mirror-work limit should render");
         assert_eq!(exact_resources.layout_work_used(), exact);
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
             .expect("max-minus-one mirror-work limit should be valid");
-        let below_options = base_options.with_resource_policy(below_policy);
         let mut below_resources = ResourceContext::new(below_policy);
-        let error = render_graph_with_resources(&graph, &below_options, &mut below_resources)
+        let error = render_graph_with_resources(&graph, &base_options, &mut below_resources)
             .expect_err("max-minus-one cumulative mirror-work limit should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
@@ -1705,7 +1732,7 @@ mod tests {
         let mut options = AsciiRenderOptions::ascii();
         options.box_border_padding = usize::MAX;
 
-        let error = render_graph(&graph, &options)
+        let error = render_graph(&graph, &options, AsciiResourcePolicy::default())
             .expect_err("overflowing authored-node geometry should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a grid resource error, got {error:?}");

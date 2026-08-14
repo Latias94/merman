@@ -366,7 +366,7 @@ impl CalibrationRenderer {
         Self {
             renderer: Renderer::new()
                 .with_parse_options(ParseOptions::strict())
-                .with_resource_policy(policy.input_policy().clone()),
+                .with_resource_policy(*policy.input_policy()),
             policy,
             svg_request: SvgRequest {
                 environment: SvgEnvironment::deterministic().with_resource_policy(policy),

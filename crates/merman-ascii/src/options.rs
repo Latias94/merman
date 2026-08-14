@@ -1,6 +1,5 @@
 use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -50,7 +49,6 @@ pub struct AsciiRenderOptions {
     pub xychart_vertical_plot_height: usize,
     pub xychart_category_band_width: usize,
     pub xychart_horizontal_plot_width: usize,
-    pub resources: AsciiResourcePolicy,
     pub relation_summary_diagnostics: bool,
 }
 
@@ -73,7 +71,6 @@ impl Default for AsciiRenderOptions {
             xychart_vertical_plot_height: 5,
             xychart_category_band_width: 3,
             xychart_horizontal_plot_width: 10,
-            resources: AsciiResourcePolicy::default(),
             relation_summary_diagnostics: false,
         }
     }
@@ -129,29 +126,6 @@ impl AsciiRenderOptions {
     pub fn with_xychart_horizontal_plot_width(mut self, width: usize) -> Self {
         self.xychart_horizontal_plot_width = width;
         self
-    }
-
-    pub fn with_resource_policy(mut self, resources: AsciiResourcePolicy) -> Self {
-        self.resources = resources;
-        self
-    }
-
-    pub fn with_resource_profile(
-        mut self,
-        profile: merman_core::resources::ResourceProfile,
-    ) -> Self {
-        self.resources = self.resources.with_profile(profile);
-        self
-    }
-
-    pub fn with_resource_limit(mut self, id: AsciiResourceLimitId, value: usize) -> Result<Self> {
-        self.resources
-            .apply_limit(id, value)
-            .map_err(|_| AsciiError::InvalidOption {
-                field: id.as_str(),
-                message: "must be greater than 0",
-            })?;
-        Ok(self)
     }
 
     pub fn with_relation_summary_diagnostics(mut self, enabled: bool) -> Self {

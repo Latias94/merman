@@ -9,7 +9,9 @@ use crate::Result;
 use crate::color::AsciiColorMode;
 use crate::error::AsciiError;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
+};
 use std::fmt;
 
 /// Normalizes and encodes a family-owned line document.
@@ -20,12 +22,13 @@ use std::fmt;
 pub(crate) fn encode_text_lines(
     lines: Vec<String>,
     options: &AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let mut document = BudgetedTextDocument::new(options, resources);
     for line in lines {
         document.push_line(line)?;
     }
-    document.finish(options)
+    document.finish()
 }
 
 pub(crate) struct BudgetedTextDocument {
@@ -59,8 +62,8 @@ struct NormalizedTextRange {
 }
 
 impl BudgetedTextDocument {
-    pub(crate) fn new(options: &AsciiRenderOptions) -> Self {
-        Self::from_resources(ResourceContext::new(options.resources), options)
+    pub(crate) fn new(options: &AsciiRenderOptions, resources: AsciiResourcePolicy) -> Self {
+        Self::from_resources(ResourceContext::new(resources), options)
     }
 
     pub(crate) fn from_resources(resources: ResourceContext, options: &AsciiRenderOptions) -> Self {
@@ -228,14 +231,11 @@ impl BudgetedTextDocument {
         Ok(())
     }
 
-    pub(crate) fn finish(self, options: &AsciiRenderOptions) -> Result<String> {
-        debug_assert_eq!(self.width_profile, options.terminal_width_profile);
-        debug_assert_eq!(self.color_mode, options.color_mode);
-        debug_assert_eq!(self.resources.policy(), options.resources);
+    pub(crate) fn finish(self) -> Result<String> {
         let policy = self.resources.policy();
         encode_budgeted_lines_with_expected(
             self.lines,
-            options.color_mode,
+            self.color_mode,
             policy,
             self.encoded_bytes_used,
             || {},
@@ -243,18 +243,11 @@ impl BudgetedTextDocument {
     }
 
     #[cfg(test)]
-    pub(crate) fn finish_with_probe(
-        self,
-        options: &AsciiRenderOptions,
-        materialized: &std::cell::Cell<bool>,
-    ) -> Result<String> {
-        debug_assert_eq!(self.width_profile, options.terminal_width_profile);
-        debug_assert_eq!(self.color_mode, options.color_mode);
-        debug_assert_eq!(self.resources.policy(), options.resources);
+    pub(crate) fn finish_with_probe(self, materialized: &std::cell::Cell<bool>) -> Result<String> {
         let policy = self.resources.policy();
         encode_budgeted_lines_with_expected(
             self.lines,
-            options.color_mode,
+            self.color_mode,
             policy,
             self.encoded_bytes_used,
             || materialized.set(true),

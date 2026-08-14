@@ -1,10 +1,13 @@
-use merman_ascii::{AsciiColorMode, AsciiError, AsciiRenderOptions, render_model};
+mod support;
+
+use merman_ascii::{AsciiColorMode, AsciiError, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
+use support::render_model;
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()

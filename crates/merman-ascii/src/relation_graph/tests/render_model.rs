@@ -13,7 +13,7 @@ fn render_stacked_boxes_preserves_plain_text() {
 #[test]
 fn render_stacked_boxes_with_section_appends_summary() {
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let boxes = [
         RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
         RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
@@ -46,7 +46,7 @@ fn render_stacked_boxes_with_section_colors_title_and_summary_lines() {
                 .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x222222))
                 .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x333333)),
         );
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let boxes = vec![RelationGraphBox::new_with_lines(
         "a".to_string(),
         vec![RelationGraphLine::with_role(
@@ -89,7 +89,7 @@ fn render_stacked_boxes_with_section_colors_title_and_summary_lines() {
 #[test]
 fn relation_graph_box_from_sections_builds_shared_sectioned_boxes() {
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let style = RelationGraphBoxStyle {
         top_left: '+',
         top_right: '+',
@@ -145,7 +145,7 @@ fn relation_graph_box_draws_role_lines_to_trimmed_canvas() {
     let options = AsciiRenderOptions::ascii()
         .with_color_mode(AsciiColorMode::TrueColor)
         .with_color_theme(theme);
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let mut canvas = Canvas::new(4, 1);
     relation_box
         .draw_at(&mut canvas, 0, 0, &resources)
@@ -167,7 +167,7 @@ fn relation_graph_box_content_line_preserves_border_and_text_roles() {
                 .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x111111))
                 .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x222222)),
         );
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let style = RelationGraphBoxStyle {
         top_left: '+',
         top_right: '+',
@@ -214,8 +214,7 @@ fn relation_line_chars_merge_crossing_relation_lines_to_junction() {
 
 #[test]
 fn parallel_relation_lane_offsets_group_by_endpoint_pair() {
-    let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let offsets = parallel_relation_lane_offsets(
         [("A", "B"), ("A", "B"), ("A", "C"), ("A", "B")],
         &mut resources,
@@ -227,8 +226,7 @@ fn parallel_relation_lane_offsets_group_by_endpoint_pair() {
 
 #[test]
 fn parallel_relation_lane_offsets_group_reverse_endpoint_pairs() {
-    let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let offsets =
         parallel_relation_lane_offsets([("A", "B"), ("B", "A"), ("A", "B")], &mut resources)
             .expect("lane offsets should fit");
@@ -239,7 +237,7 @@ fn parallel_relation_lane_offsets_group_reverse_endpoint_pairs() {
 #[test]
 fn relation_graph_label_splits_breaks_and_tracks_line_count() {
     let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let mut deferred = DeferredTextRegistry::new();
     let label = RelationGraphLabel::try_new(
         "north<br>south",
@@ -259,7 +257,7 @@ fn relation_graph_label_splits_breaks_and_tracks_line_count() {
             .expect("deferred label line should fit");
         lines.push(styled);
     }
-    let mut output_resources = test_resources(&options);
+    let mut output_resources = test_resources(AsciiResourcePolicy::default());
     let rendered = crate::canvas::finish_styled_line_iter_with_deferred_resources(
         lines.iter(),
         &options,
@@ -276,7 +274,7 @@ fn relation_graph_label_splits_breaks_and_tracks_line_count() {
 #[test]
 fn write_centered_relation_label_draws_each_line() {
     let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let mut deferred = DeferredTextRegistry::new();
     let label = RelationGraphLabel::try_new(
         "A<br>B",
@@ -294,7 +292,7 @@ fn write_centered_relation_label_draws_each_line() {
     let lines = canvas
         .into_styled_lines_preserving_extent()
         .expect("deferred canvas should convert to styled lines");
-    let mut output_resources = test_resources(&options);
+    let mut output_resources = test_resources(AsciiResourcePolicy::default());
     let rendered = crate::canvas::finish_styled_line_iter_with_deferred_resources(
         lines.iter(),
         &options,

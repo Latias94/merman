@@ -2,9 +2,10 @@ use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
+#[cfg(test)]
+use crate::resource::CheckedOutput;
 use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, CheckedOutput,
-    ResourceContext,
+    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
 };
 use crate::safe_text::{
     DeferredTextLine, SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
@@ -210,6 +211,7 @@ impl StyledLine {
     }
 
     /// Writes this row into an existing checked output without a per-line `String`.
+    #[cfg(test)]
     pub(crate) fn try_write_plain_to(&self, output: &mut CheckedOutput) -> Result<()> {
         let mut offset = 0usize;
         while let Some(cell) = self.cells.get(offset).copied() {

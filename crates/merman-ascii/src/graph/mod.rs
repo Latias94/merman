@@ -10,10 +10,9 @@ pub(crate) mod style;
 mod surface;
 mod topology;
 
-pub(crate) use adapter::from_flowchart_model;
+pub(crate) use adapter::from_flowchart_model_with_execution;
 #[cfg(test)]
 pub(crate) use draw::render_graph_with_execution;
-pub(crate) use draw::render_graph_with_resources;
 pub(crate) use draw::render_graph_with_resources_and_execution;
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,

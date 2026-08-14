@@ -1,5 +1,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};
+use merman::ascii::{AsciiRenderOptions, AsciiResourcePolicy};
+use merman::resources::{InputResourcePolicy, ResourceProfile};
+use merman::{AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{hint::black_box, sync::OnceLock};
@@ -10,6 +12,28 @@ const GROUP: &str = "ascii_end_to_end";
 struct OutputIdentity {
     bytes: usize,
     sha256: String,
+}
+
+struct BenchmarkRenderer {
+    renderer: Renderer,
+    request: AsciiRequest,
+}
+
+impl BenchmarkRenderer {
+    fn render(&self, name: &str, input: &str) -> String {
+        let output = self
+            .renderer
+            .render(RenderRequest::ascii(
+                input,
+                OperationControl::new(),
+                self.request.clone(),
+            ))
+            .unwrap_or_else(|error| panic!("{GROUP}/{name} render failed: {error}"));
+        let RenderOutput::Ascii(Some(output)) = output else {
+            panic!("{GROUP}/{name} returned no diagram");
+        };
+        output
+    }
 }
 
 fn fixtures() -> [(&'static str, &'static str); 10] {
@@ -65,11 +89,8 @@ fn benchmark_selected(name: &str) -> bool {
     exact_benchmark().is_none_or(|exact| fixture_name_from_exact(exact) == Some(name))
 }
 
-fn render_fixture(renderer: &HeadlessAsciiRenderer, name: &str, input: &str) -> String {
-    renderer
-        .render_ascii_sync(input)
-        .unwrap_or_else(|error| panic!("{GROUP}/{name} render failed: {error}"))
-        .unwrap_or_else(|| panic!("{GROUP}/{name} returned no diagram"))
+fn render_fixture(renderer: &BenchmarkRenderer, name: &str, input: &str) -> String {
+    renderer.render(name, input)
 }
 
 fn output_identity(output: &str) -> OutputIdentity {
@@ -96,7 +117,7 @@ fn emit_preflight(name: &str, identity: &OutputIdentity) {
 }
 
 fn verify_postflight(
-    renderer: &HeadlessAsciiRenderer,
+    renderer: &BenchmarkRenderer,
     name: &str,
     input: &str,
     preflight: &OutputIdentity,
@@ -113,10 +134,16 @@ fn verify_postflight(
 }
 
 fn bench_ascii_end_to_end(c: &mut Criterion) {
-    let renderer = HeadlessAsciiRenderer::new()
-        .with_strict_parsing()
-        .with_ascii_options(AsciiRenderOptions::ascii())
-        .with_resource_profile(merman_core::resources::ResourceProfile::UnboundedForTrustedInput);
+    let profile = ResourceProfile::UnboundedForTrustedInput;
+    let renderer = BenchmarkRenderer {
+        renderer: Renderer::new()
+            .with_parse_options(merman::ParseOptions::strict())
+            .with_resource_policy(InputResourcePolicy::for_profile(profile)),
+        request: AsciiRequest {
+            options: AsciiRenderOptions::ascii(),
+            resources: AsciiResourcePolicy::for_profile(profile),
+        },
+    };
     let mut group = c.benchmark_group(GROUP);
 
     for (name, input) in fixtures() {
@@ -128,10 +155,7 @@ fn bench_ascii_end_to_end(c: &mut Criterion) {
         emit_preflight(name, &preflight);
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let output = renderer
-                    .render_ascii_sync(black_box(data))
-                    .expect("ASCII end-to-end benchmark render")
-                    .expect("ASCII end-to-end benchmark diagram");
+                let output = renderer.render(name, black_box(data));
                 black_box(output);
             });
         });

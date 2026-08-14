@@ -1,5 +1,7 @@
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
+use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration, SequenceDiagramRenderModel, SequenceMessage, SequenceMessageKind,
     SequenceMessagePayload, SequenceNote,
@@ -9,55 +11,66 @@ use std::collections::HashSet;
 const CENTRAL_TARGET_MESSAGE_TYPE: i32 = 59;
 const CENTRAL_SOURCE_MESSAGE_TYPE: i32 = 60;
 
-pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Result<()> {
-    validate_actor_order(model)?;
-    validate_message_payloads(model)?;
-    validate_message_record_shapes(model)?;
-    validate_autonumber_values(model)?;
-    validate_central_records(model)?;
+pub(super) fn validate_supported_sequence_model(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    validate_actor_order(model, execution)?;
+    validate_message_payloads(model, execution)?;
+    validate_message_record_shapes(model, execution)?;
+    validate_autonumber_values(model, execution)?;
+    validate_central_records(model, execution)?;
 
-    if model
-        .actors
-        .values()
-        .any(|actor| !is_supported_sequence_actor_type(&actor.actor_type))
-    {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "actor types",
-        });
+    for actor in model.actors.values() {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        if !is_supported_sequence_actor_type(&actor.actor_type) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "actor types",
+            });
+        }
     }
 
-    validate_note_projection(model)?;
-    validate_activated_signals(model)?;
+    validate_note_projection(model, execution)?;
+    validate_activated_signals(model, execution)?;
 
-    if model.messages.iter().any(|message| {
-        message.semantic_kind() != SequenceMessageKind::Note && message.placement.is_some()
-    }) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "message placement",
-        });
+    for message in &model.messages {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        if message.semantic_kind() != SequenceMessageKind::Note && message.placement.is_some() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "message placement",
+            });
+        }
     }
 
     Ok(())
 }
 
-fn validate_message_payloads(model: &SequenceDiagramRenderModel) -> Result<()> {
-    let mismatched = model.messages.iter().any(|message| {
-        matches!(message.semantic_kind(), SequenceMessageKind::Autonumber)
+fn validate_message_payloads(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    for message in &model.messages {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        if matches!(message.semantic_kind(), SequenceMessageKind::Autonumber)
             != matches!(message.message, SequenceMessagePayload::Autonumber(_))
-    });
-    if mismatched {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "message payload shape",
-        });
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "message payload shape",
+            });
+        }
     }
     Ok(())
 }
 
-fn validate_message_record_shapes(model: &SequenceDiagramRenderModel) -> Result<()> {
-    if model.messages.iter().any(|message| {
+fn validate_message_record_shapes(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    for message in &model.messages {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let kind = message.semantic_kind();
         let text_is_empty =
             matches!(&message.message, SequenceMessagePayload::Text(text) if text.is_empty());
@@ -97,12 +110,12 @@ fn validate_message_record_shapes(model: &SequenceDiagramRenderModel) -> Result<
             }
             SequenceMessageKind::Unknown => true,
         };
-        !endpoints_match || !semantic_fields_match
-    }) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "message record shape",
-        });
+        if !endpoints_match || !semantic_fields_match {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "message record shape",
+            });
+        }
     }
     Ok(())
 }
@@ -111,25 +124,34 @@ fn control_message_consumes_text(message_type: i32) -> bool {
     !matches!(message_type, 11 | 14 | 16 | 21 | 23 | 29 | 31)
 }
 
-fn validate_autonumber_values(model: &SequenceDiagramRenderModel) -> Result<()> {
-    if model.messages.iter().any(|message| {
+fn validate_autonumber_values(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    for message in &model.messages {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let SequenceMessagePayload::Autonumber(autonumber) = &message.message else {
-            return false;
+            continue;
         };
-        autonumber.start.is_some_and(|value| !value.is_finite())
+        if autonumber.start.is_some_and(|value| !value.is_finite())
             || autonumber.step.is_some_and(|value| !value.is_finite())
-    }) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "autonumber values",
-        });
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "autonumber values",
+            });
+        }
     }
     Ok(())
 }
 
-fn validate_central_records(model: &SequenceDiagramRenderModel) -> Result<()> {
+fn validate_central_records(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     let mut index = 0;
     while index < model.messages.len() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let message = &model.messages[index];
         if message.semantic_kind() == SequenceMessageKind::CentralDecorationRecord {
             return Err(AsciiError::UnsupportedFeature {
@@ -167,6 +189,7 @@ fn validate_central_records(model: &SequenceDiagramRenderModel) -> Result<()> {
 
         let record_count = expected.iter().flatten().count();
         for (offset, (message_type, actor)) in expected.into_iter().flatten().enumerate() {
+            execution.checkpoint(OperationPhase::Semantic)?;
             let record = model.messages.get(index + offset + 1);
             if !record.is_some_and(|record| {
                 record.semantic_kind() == SequenceMessageKind::CentralDecorationRecord
@@ -184,7 +207,10 @@ fn validate_central_records(model: &SequenceDiagramRenderModel) -> Result<()> {
     Ok(())
 }
 
-fn validate_actor_order(model: &SequenceDiagramRenderModel) -> Result<()> {
+fn validate_actor_order(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     if model.actor_order.is_empty() {
         return Ok(());
     }
@@ -196,10 +222,12 @@ fn validate_actor_order(model: &SequenceDiagramRenderModel) -> Result<()> {
         });
     }
 
+    execution.checkpoint(OperationPhase::Semantic)?;
     let mut seen = HashSet::new();
     seen.try_reserve(model.actor_order.len())
         .map_err(|_| AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str()))?;
     for actor_id in &model.actor_order {
+        execution.checkpoint(OperationPhase::Semantic)?;
         if !model.actors.contains_key(actor_id) || !seen.insert(actor_id.as_str()) {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "sequence",
@@ -211,21 +239,27 @@ fn validate_actor_order(model: &SequenceDiagramRenderModel) -> Result<()> {
     Ok(())
 }
 
-fn validate_note_projection(model: &SequenceDiagramRenderModel) -> Result<()> {
+fn validate_note_projection(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     if model.notes.is_empty() {
         return Ok(());
     }
 
-    let mut note_messages = model
-        .messages
-        .iter()
-        .filter(|message| message.semantic_kind() == SequenceMessageKind::Note);
-    let matches = model.notes.iter().all(|note| {
-        note_messages
-            .next()
+    let mut next_message = 0usize;
+    for note in &model.notes {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        if !next_note_message(model, &mut next_message, execution)?
             .is_some_and(|message| note_matches_message(note, message))
-    });
-    if !matches || note_messages.next().is_some() {
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "note model consistency",
+            });
+        }
+    }
+    if next_note_message(model, &mut next_message, execution)?.is_some() {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "note model consistency",
@@ -233,6 +267,21 @@ fn validate_note_projection(model: &SequenceDiagramRenderModel) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn next_note_message<'a>(
+    model: &'a SequenceDiagramRenderModel,
+    next_message: &mut usize,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<&'a SequenceMessage>> {
+    while let Some(message) = model.messages.get(*next_message) {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        *next_message += 1;
+        if message.semantic_kind() == SequenceMessageKind::Note {
+            return Ok(Some(message));
+        }
+    }
+    Ok(None)
 }
 
 fn note_matches_message(note: &SequenceNote, message: &SequenceMessage) -> bool {
@@ -259,8 +308,12 @@ fn note_matches_message(note: &SequenceNote, message: &SequenceMessage) -> bool 
     message.from.as_deref() == Some(from) && message.to.as_deref() == Some(to)
 }
 
-fn validate_activated_signals(model: &SequenceDiagramRenderModel) -> Result<()> {
+fn validate_activated_signals(
+    model: &SequenceDiagramRenderModel,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     for (index, message) in model.messages.iter().enumerate() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         if message.semantic_kind() != SequenceMessageKind::Signal
             || !message.activate
             || message.central_decoration() != Some(SequenceCentralDecoration::None)

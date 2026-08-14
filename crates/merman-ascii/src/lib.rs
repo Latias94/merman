@@ -3,7 +3,8 @@
 //!
 //! `merman-ascii` is deliberately model-driven: callers parse Mermaid text with `merman-core`, then
 //! pass the resulting typed render model into this crate. The renderer does not own Mermaid syntax
-//! parsing.
+//! parsing. Rendering requires the caller's operation control, runtime context, and resource
+//! policy so this backend cannot create a second source-to-output operation.
 
 mod canvas;
 mod capability;
@@ -84,48 +85,29 @@ impl AsciiRenderer {
         &self.options
     }
 
-    pub fn render_model(&self, model: &RenderSemanticModel) -> Result<String> {
-        render_model(model, &self.options)
-    }
-
-    /// Renders a typed model using caller-owned operation control and runtime context.
-    pub fn render_model_with_operation(
+    /// Renders a typed model using caller-owned operation control, runtime context, and resources.
+    ///
+    /// This is the crate's only public rendering entrypoint. It never creates a replacement
+    /// operation, deadline, runtime context, or resource policy.
+    pub fn render_model(
         &self,
         model: &RenderSemanticModel,
         control: &merman_core::OperationControl,
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
-        render_model_with_operation(model, &self.options, control, context, resources)
-    }
-}
-
-pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
-    render_model_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
-}
-
-/// Renders a typed model through the shared operation projection.
-///
-/// This is the model-level backend seam used by the canonical facade. It never creates a new
-/// control, runtime context, or engine operation; callers retain ownership of all three.
-pub fn render_model_with_operation(
-    model: &RenderSemanticModel,
-    options: &AsciiRenderOptions,
-    control: &merman_core::OperationControl,
-    context: &OperationContext,
-    resources: AsciiResourcePolicy,
-) -> Result<String> {
-    let execution = operation::AsciiExecution::new(control, &resources);
-    match model {
-        RenderSemanticModel::Flowchart(model) => {
-            return render_flowchart_operation(model, options, execution);
+        let execution = operation::AsciiExecution::new(control, &resources);
+        match model {
+            RenderSemanticModel::Flowchart(model) => {
+                return render_flowchart_operation(model, &self.options, execution);
+            }
+            RenderSemanticModel::State(model) => {
+                return render_state_operation(model, &self.options, execution);
+            }
+            _ => {}
         }
-        RenderSemanticModel::State(model) => {
-            return render_state_operation(model, options, execution);
-        }
-        _ => {}
+        render_model_with_execution(model, &self.options, execution, context.local_time_zone())
     }
-    render_model_with_execution(model, options, execution, context.local_time_zone())
 }
 
 fn render_flowchart_operation(
@@ -159,9 +141,7 @@ fn render_model_with_execution(
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Admission)?;
-    let target_options = (*options).with_resource_policy(*execution.resources());
-    target_options.validate()?;
-    let options = &target_options;
+    options.validate()?;
 
     let rendered = match model {
         RenderSemanticModel::Class(model) => render_class_model(model, options, &execution),
@@ -211,7 +191,8 @@ fn render_flowchart_model(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     let mut resources = resource::ResourceContext::new(*execution.resources());
-    let graph = graph::from_flowchart_model(model, options, &mut resources)?;
+    let graph =
+        graph::from_flowchart_model_with_execution(model, options, &mut resources, *execution)?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     graph::render_graph_with_resources_and_execution(&graph, options, &mut resources, *execution)
 }
@@ -278,8 +259,12 @@ fn render_sequence_model(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     let mut resources = resource::ResourceContext::new(*execution.resources());
-    let diagram =
-        sequence::from_sequence_model(model, options.terminal_width_profile, &mut resources)?;
+    let diagram = sequence::from_sequence_model(
+        model,
+        options.terminal_width_profile,
+        &mut resources,
+        *execution,
+    )?;
     sequence::render_sequence_diagram_with_execution(&diagram, options, &mut resources, *execution)
 }
 
@@ -290,7 +275,8 @@ fn render_state_model(
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     let mut resources = resource::ResourceContext::new(*execution.resources());
-    let graph = state::from_state_model_with_context(model, &mut resources)?;
+    let graph =
+        state::from_state_model_with_context_and_execution(model, &mut resources, *execution)?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     graph::render_graph_with_resources_and_execution(&graph, options, &mut resources, *execution)
 }
@@ -322,178 +308,6 @@ fn render_tree_view_model(
     tree_view::render_tree_view_diagram(model, options, *execution)
 }
 
-/// Renders a typed model with an explicitly captured local-time resolver.
-///
-/// The resolver is used by Gantt output. This convenience entrypoint owns no operation state;
-/// callers that need cancellation or deadlines should use [`render_model_with_operation`].
-pub fn render_model_with_local_time_zone(
-    model: &RenderSemanticModel,
-    options: &AsciiRenderOptions,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Result<String> {
-    render_model_with_execution(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-        local_time_zone,
-    )
-}
-
-pub fn render_class(model: &ClassDiagram, options: &AsciiRenderOptions) -> Result<String> {
-    options.validate()?;
-    class::render_class_diagram(model, options)
-}
-
-pub fn render_er(model: &ErDiagramRenderModel, options: &AsciiRenderOptions) -> Result<String> {
-    options.validate()?;
-    er::render_er_diagram(model, options)
-}
-
-pub fn render_flowchart(model: &FlowchartModel, options: &AsciiRenderOptions) -> Result<String> {
-    options.validate()?;
-    let mut resources = resource::ResourceContext::new(options.resources);
-    let graph = graph::from_flowchart_model(model, options, &mut resources)?;
-    graph::render_graph_with_resources(&graph, options, &mut resources)
-}
-
-pub fn render_mindmap(
-    model: &MindmapDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    mindmap::render_mindmap_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_gantt(
-    model: &GanttDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    render_gantt_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
-}
-
-pub fn render_gantt_with_local_time_zone(
-    model: &GanttDiagramRenderModel,
-    options: &AsciiRenderOptions,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Result<String> {
-    options.validate()?;
-    gantt::render_gantt_diagram(
-        model,
-        options,
-        local_time_zone,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_git_graph(
-    model: &GitGraphRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    git_graph::render_git_graph_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_journey(
-    model: &JourneyDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    journey::render_journey_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_kanban(
-    model: &KanbanDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    kanban::render_kanban_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_packet(
-    model: &PacketDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    packet::render_packet_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_sequence(
-    model: &SequenceDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    let mut resources = resource::ResourceContext::new(options.resources);
-    let diagram =
-        sequence::from_sequence_model(model, options.terminal_width_profile, &mut resources)?;
-    sequence::render_sequence_diagram_with_resources(&diagram, options, &mut resources)
-}
-
-pub fn render_state(
-    model: &StateDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    let mut resources = resource::ResourceContext::new(options.resources);
-    let graph = state::from_state_model_with_context(model, &mut resources)?;
-    graph::render_graph_with_resources(&graph, options, &mut resources)
-}
-
-pub fn render_timeline(
-    model: &TimelineDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    timeline::render_timeline_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_xychart(
-    model: &XyChartDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    xychart::render_xychart_diagram_with_execution(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
-pub fn render_tree_view(
-    model: &TreeViewDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    options.validate()?;
-    tree_view::render_tree_view_diagram(
-        model,
-        options,
-        operation::AsciiExecution::standalone(&options.resources),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +317,42 @@ mod tests {
     };
     use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+
+    fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
+        render_model_with_resources(model, options, AsciiResourcePolicy::default())
+    }
+
+    fn render_model_with_resources(
+        model: &RenderSemanticModel,
+        options: &AsciiRenderOptions,
+        resources: AsciiResourcePolicy,
+    ) -> Result<String> {
+        let context = merman_core::runtime::RuntimePolicy::deterministic()
+            .begin_operation()
+            .expect("deterministic test operation context");
+        AsciiRenderer::new(*options)?.render_model(
+            model,
+            &merman_core::OperationControl::new(),
+            &context,
+            resources,
+        )
+    }
+
+    fn render_flowchart(model: &FlowchartModel, options: &AsciiRenderOptions) -> Result<String> {
+        render_model(&RenderSemanticModel::Flowchart(model.clone()), options)
+    }
+
+    fn render_flowchart_with_resources(
+        model: &FlowchartModel,
+        options: &AsciiRenderOptions,
+        resources: AsciiResourcePolicy,
+    ) -> Result<String> {
+        render_model_with_resources(
+            &RenderSemanticModel::Flowchart(model.clone()),
+            options,
+            resources,
+        )
+    }
 
     fn empty_flowchart() -> FlowchartModel {
         FlowchartModel {
@@ -589,10 +439,6 @@ mod tests {
         assert_eq!(options.xychart_vertical_plot_height, 5);
         assert_eq!(options.xychart_category_band_width, 3);
         assert_eq!(options.xychart_horizontal_plot_width, 10);
-        assert_eq!(
-            options.resources.value(AsciiResourceLimitId::MaxGridCells),
-            Some(250_000)
-        );
         assert!(!options.relation_summary_diagnostics);
     }
 
@@ -654,13 +500,14 @@ mod tests {
     }
 
     #[test]
-    fn options_builder_sets_typed_grid_cell_limit() {
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 42)
+    fn resource_policy_sets_typed_grid_cell_limit() {
+        let mut resources = AsciiResourcePolicy::default();
+        resources
+            .apply_limit(AsciiResourceLimitId::MaxGridCells, 42)
             .unwrap();
 
         assert_eq!(
-            options.resources.value(AsciiResourceLimitId::MaxGridCells),
+            resources.value(AsciiResourceLimitId::MaxGridCells),
             Some(42)
         );
     }
@@ -877,11 +724,13 @@ mod tests {
         let mut model = empty_flowchart();
         model.nodes = vec![node("A"), node("B")];
         model.edges = vec![edge("A", "B")];
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = AsciiResourcePolicy::default();
+        resources
+            .apply_limit(AsciiResourceLimitId::MaxGridCells, 1)
             .unwrap();
 
-        let err = render_flowchart(&model, &options).unwrap_err();
+        let err = render_flowchart_with_resources(&model, &options, resources).unwrap_err();
 
         assert!(matches!(
             err,

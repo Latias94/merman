@@ -7,6 +7,7 @@ use super::groups;
 use super::{GridCoord, NodeLayout};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
@@ -45,10 +46,27 @@ struct DagreRankLevels {
 }
 
 struct DagreRankGraph {
-    graph: Graph<NodeLabel, EdgeLabel, DagreGraphLabel>,
+    // Keep the graphlib owner off callers' fixed stack frames. Rank planning invokes several
+    // independently large debug-build phases, so carrying this aggregate by value through the
+    // whole call chain can exhaust otherwise reasonable small worker stacks.
+    graph: Box<Graph<NodeLabel, EdgeLabel, DagreGraphLabel>>,
     node_ids: Vec<String>,
     group_ids: Vec<String>,
     group_anchors: Vec<GroupRankAnchor>,
+}
+
+struct PlannedDagreRanks {
+    plan: dugong::rank::RankPlan,
+    node_ids: Vec<String>,
+    group_ids: Vec<String>,
+    group_anchors: Vec<GroupRankAnchor>,
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint_loop(merman_core::OperationPhase::Layout, iteration)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -78,12 +96,46 @@ pub(super) fn layout_nodes(
     label_plans: &[GraphNodeLabelPlan],
     resources: &mut ResourceContext,
 ) -> Result<GridNodeLayoutParts> {
+    layout_nodes_controlled(graph, options, topology, label_plans, resources, None)
+}
+
+pub(super) fn layout_nodes_with_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    topology: Option<&GraphGroupTopology<'_>>,
+    label_plans: &[GraphNodeLabelPlan],
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<GridNodeLayoutParts> {
+    layout_nodes_controlled(
+        graph,
+        options,
+        topology,
+        label_plans,
+        resources,
+        Some(execution),
+    )
+}
+
+fn layout_nodes_controlled(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    topology: Option<&GraphGroupTopology<'_>>,
+    label_plans: &[GraphNodeLabelPlan],
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<GridNodeLayoutParts> {
     match graph.direction.canonical() {
-        GraphDirection::LeftRight => {
-            layout_left_right_grid_nodes(graph, options, topology, label_plans, resources)
-        }
+        GraphDirection::LeftRight => layout_left_right_grid_nodes(
+            graph,
+            options,
+            topology,
+            label_plans,
+            resources,
+            execution,
+        ),
         GraphDirection::TopDown => {
-            layout_top_down_grid_nodes(graph, options, topology, label_plans, resources)
+            layout_top_down_grid_nodes(graph, options, topology, label_plans, resources, execution)
         }
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
@@ -174,9 +226,15 @@ fn layout_left_right_grid_nodes(
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlan],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<GridNodeLayoutParts> {
-    let ranked =
-        place_left_right_grid_nodes(graph, topology, options.terminal_width_profile, resources)?;
+    let ranked = place_left_right_grid_nodes(
+        graph,
+        topology,
+        options.terminal_width_profile,
+        resources,
+        execution,
+    )?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
@@ -184,6 +242,7 @@ fn layout_left_right_grid_nodes(
     let mut row_heights = new_axis_sizes(axis_entity_count, resources)?;
 
     for (index, coord) in placements.iter().copied().enumerate() {
+        checkpoint_layout(execution, index)?;
         let node = &graph.nodes[index];
         let label_plan = label_plans
             .get(index)
@@ -227,7 +286,8 @@ fn layout_left_right_grid_nodes(
     )?;
 
     let coord_by_id = node_coords_by_id(graph, &placements)?;
-    for edge in &graph.edges {
+    for (index, edge) in graph.edges.iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         let (Some(from), Some(to)) = (
             coord_by_id.get(edge.from.as_str()).copied(),
             coord_by_id.get(edge.to.as_str()).copied(),
@@ -268,17 +328,26 @@ fn place_left_right_grid_nodes(
     topology: Option<&GraphGroupTopology<'_>>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<RankedGridPlacements> {
-    let mut ranked =
-        place_ranked_grid_nodes(graph, topology, GraphDirection::LeftRight, resources)?;
+    let mut ranked = place_ranked_grid_nodes(
+        graph,
+        topology,
+        GraphDirection::LeftRight,
+        resources,
+        execution,
+    )?;
     if !graph.groups.is_empty() {
+        checkpoint_layout(execution, 0)?;
         groups::apply_group_placement_adjustments(
             graph,
             &mut ranked.nodes,
             topology.expect("non-empty graph groups must have topology"),
             width_profile,
             resources,
+            execution,
         )?;
+        checkpoint_layout(execution, 0)?;
     }
     Ok(ranked)
 }
@@ -287,8 +356,9 @@ pub(super) fn place_ranked_grid_nodes_without_group_adjustments(
     graph: &AsciiGraph,
     direction: GraphDirection,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<GridCoord>> {
-    Ok(place_ranked_grid_nodes(graph, None, direction.canonical(), resources)?.nodes)
+    Ok(place_ranked_grid_nodes(graph, None, direction.canonical(), resources, execution)?.nodes)
 }
 
 fn place_ranked_grid_nodes(
@@ -296,9 +366,14 @@ fn place_ranked_grid_nodes(
     topology: Option<&GraphGroupTopology<'_>>,
     direction: GraphDirection,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<RankedGridPlacements> {
     let resolved_side_constraints = resolve_node_side_constraints(graph, topology, resources)?;
-    let mut rank_levels = dagre_rank_levels(graph, topology, direction, resources)?;
+    let mut rank_levels = if execution.is_some() {
+        dagre_rank_levels_controlled(graph, topology, direction, resources, execution)?
+    } else {
+        dagre_rank_levels(graph, topology, direction, resources)?
+    };
     apply_side_constraint_levels(
         graph,
         direction,
@@ -338,7 +413,8 @@ fn place_ranked_grid_nodes(
     let mut occupied = new_occupied_grid(graph.nodes.len(), resources)?;
     let mut highest_position_per_level = new_level_positions(graph.nodes.len())?;
 
-    for node_index in placement_order {
+    for (iteration, node_index) in placement_order.into_iter().enumerate() {
+        checkpoint_layout(execution, iteration)?;
         let level = rank_levels.nodes[node_index];
         let next_available = highest_position_per_level
             .get(&level)
@@ -592,19 +668,65 @@ fn dagre_rank_levels(
     direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<DagreRankLevels> {
+    dagre_rank_levels_controlled(graph, topology, direction, resources, None)
+}
+
+fn dagre_rank_levels_controlled(
+    graph: &AsciiGraph,
+    topology: Option<&GraphGroupTopology<'_>>,
+    direction: GraphDirection,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<DagreRankLevels> {
+    let planned = plan_dagre_ranks(graph, topology, direction, resources, execution)?;
+    project_dagre_rank_levels(graph, planned, resources, execution)
+}
+
+fn plan_dagre_ranks(
+    graph: &AsciiGraph,
+    topology: Option<&GraphGroupTopology<'_>>,
+    direction: GraphDirection,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<PlannedDagreRanks> {
     let DagreRankGraph {
         graph: rank_graph,
         node_ids,
         group_ids,
         group_anchors,
-    } = build_dagre_rank_graph(graph, topology, direction, resources)?;
+    } = if execution.is_some() {
+        build_dagre_rank_graph_controlled(graph, topology, direction, resources, execution)?
+    } else {
+        build_dagre_rank_graph(graph, topology, direction, resources)?
+    };
     let plan = {
-        let mut work_control = AsciiDagreWorkControl::new(resources);
+        let mut work_control = AsciiDagreWorkControl::new(resources, execution);
         match dugong::rank::plan_controlled(&rank_graph, &mut work_control) {
             Ok(plan) => plan,
             Err(error) => return Err(work_control.into_ascii_error(error, graph.diagram_type())),
         }
     };
+
+    Ok(PlannedDagreRanks {
+        plan,
+        node_ids,
+        group_ids,
+        group_anchors,
+    })
+}
+
+fn project_dagre_rank_levels(
+    graph: &AsciiGraph,
+    planned: PlannedDagreRanks,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<DagreRankLevels> {
+    let PlannedDagreRanks {
+        plan,
+        node_ids,
+        group_ids,
+        group_anchors,
+    } = planned;
 
     let endpoint_count = resources.checked_work_add(node_ids.len(), group_ids.len())?;
     let projection_work = resources.checked_work_add(
@@ -614,7 +736,8 @@ fn dagre_rank_levels(
     resources.charge_layout_work(projection_work)?;
     let mut rank_by_id = HashMap::new();
     try_reserve_hash_map(&mut rank_by_id, plan.nodes.len())?;
-    for node in plan.nodes {
+    for (index, node) in plan.nodes.into_iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         if let Some(rank) = node.rank {
             rank_by_id.insert(node.id, rank);
         }
@@ -622,7 +745,8 @@ fn dagre_rank_levels(
 
     let mut node_ranks = Vec::new();
     try_reserve_vec(&mut node_ranks, node_ids.len())?;
-    for id in &node_ids {
+    for (index, id) in node_ids.iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         let Some(rank) = rank_by_id.get(id.as_str()).copied() else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
@@ -636,6 +760,7 @@ fn dagre_rank_levels(
     try_reserve_vec(&mut leaf_group_ranks, group_ids.len())?;
     leaf_group_ranks.resize(group_ids.len(), None);
     for (group_index, anchor) in group_anchors.iter().copied().enumerate() {
+        checkpoint_layout(execution, group_index)?;
         if anchor != GroupRankAnchor::Group(group_index) {
             continue;
         }
@@ -665,6 +790,7 @@ fn dagre_rank_levels(
     let mut dense_rank = HashMap::new();
     try_reserve_hash_map(&mut dense_rank, occupied_ranks.len())?;
     for (index, rank) in occupied_ranks.into_iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         dense_rank.insert(
             rank,
             resources.checked_grid_mul(index, GRID_UNITS_PER_RANK)?,
@@ -673,7 +799,8 @@ fn dagre_rank_levels(
 
     let mut node_levels = Vec::new();
     try_reserve_vec(&mut node_levels, node_ranks.len())?;
-    for rank in node_ranks {
+    for (index, rank) in node_ranks.into_iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         let Some(level) = dense_rank.get(&rank).copied() else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
@@ -685,7 +812,8 @@ fn dagre_rank_levels(
 
     let mut leaf_group_levels = Vec::new();
     try_reserve_vec(&mut leaf_group_levels, leaf_group_ranks.len())?;
-    for rank in leaf_group_ranks {
+    for (index, rank) in leaf_group_ranks.into_iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         let level = rank
             .map(|rank| {
                 dense_rank
@@ -720,11 +848,37 @@ pub(super) fn rank_leaf_group_levels(
     .leaf_groups)
 }
 
+pub(super) fn rank_leaf_group_levels_with_execution(
+    graph: &AsciiGraph,
+    topology: &GraphGroupTopology<'_>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<Option<usize>>> {
+    Ok(dagre_rank_levels_controlled(
+        graph,
+        Some(topology),
+        graph.direction.canonical(),
+        resources,
+        Some(execution),
+    )?
+    .leaf_groups)
+}
+
 fn build_dagre_rank_graph(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
     direction: GraphDirection,
     resources: &ResourceContext,
+) -> Result<DagreRankGraph> {
+    build_dagre_rank_graph_controlled(graph, topology, direction, resources, None)
+}
+
+fn build_dagre_rank_graph_controlled(
+    graph: &AsciiGraph,
+    topology: Option<&GraphGroupTopology<'_>>,
+    direction: GraphDirection,
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<DagreRankGraph> {
     let mut rank_graph = Graph::new(GraphOptions {
         directed: true,
@@ -747,6 +901,7 @@ fn build_dagre_rank_graph(
     try_reserve_vec(&mut node_ids, graph.nodes.len())?;
     node_ids.resize_with(graph.nodes.len(), String::new);
     for (ordinal, node_index) in node_order.into_iter().enumerate() {
+        checkpoint_layout(execution, ordinal)?;
         let internal_id = format!("node:{ordinal}");
         rank_graph.set_node(internal_id.clone(), NodeLabel::default());
         node_ids[node_index] = internal_id;
@@ -757,6 +912,7 @@ fn build_dagre_rank_graph(
     try_reserve_vec(&mut group_ids, graph.groups.len())?;
     group_ids.resize_with(graph.groups.len(), String::new);
     for (ordinal, group_index) in group_order.into_iter().enumerate() {
+        checkpoint_layout(execution, ordinal)?;
         let internal_id = format!("group:{ordinal}");
         rank_graph.set_node(internal_id.clone(), NodeLabel::default());
         group_ids[group_index] = internal_id;
@@ -770,6 +926,7 @@ fn build_dagre_rank_graph(
         let mut parent_assignments = Vec::new();
         try_reserve_vec(&mut parent_assignments, parent_capacity)?;
         for (node_index, node_id) in node_ids.iter().enumerate() {
+            checkpoint_layout(execution, node_index)?;
             let Some(group_index) = topology.direct_node_group_index(&graph.nodes[node_index].id)
             else {
                 continue;
@@ -784,6 +941,7 @@ fn build_dagre_rank_graph(
             }
         }
         for (group_index, group_id) in group_ids.iter().enumerate() {
+            checkpoint_layout(execution, group_index)?;
             let Some(parent_index) = topology.parent_group_index(group_index) else {
                 continue;
             };
@@ -811,6 +969,7 @@ fn build_dagre_rank_graph(
         .unwrap_or_default();
     let edge_order = graphlib_edge_order(graph)?;
     for (ordinal, edge_index) in edge_order.into_iter().enumerate() {
+        checkpoint_layout(execution, ordinal)?;
         let edge = &graph.edges[edge_index];
         let constrained_endpoints = side_constraint_for_edge(graph, &index_by_id, edge);
         let (from_id, to_id) = if let Some((node_index, anchor_id, side)) = constrained_endpoints {
@@ -870,7 +1029,7 @@ fn build_dagre_rank_graph(
     }
 
     Ok(DagreRankGraph {
-        graph: rank_graph,
+        graph: Box::new(rank_graph),
         node_ids,
         group_ids,
         group_anchors,
@@ -1205,15 +1364,20 @@ const fn dagre_rank_direction(direction: GraphDirection) -> RankDir {
     }
 }
 
-struct AsciiDagreWorkControl<'a> {
-    resources: &'a ResourceContext,
+struct AsciiDagreWorkControl<'resources, 'execution> {
+    resources: &'resources ResourceContext,
+    execution: Option<AsciiExecution<'execution>>,
     ascii_error: Option<AsciiError>,
 }
 
-impl<'a> AsciiDagreWorkControl<'a> {
-    fn new(resources: &'a ResourceContext) -> Self {
+impl<'resources, 'execution> AsciiDagreWorkControl<'resources, 'execution> {
+    fn new(
+        resources: &'resources ResourceContext,
+        execution: Option<AsciiExecution<'execution>>,
+    ) -> Self {
         Self {
             resources,
+            execution,
             ascii_error: None,
         }
     }
@@ -1238,9 +1402,15 @@ impl<'a> AsciiDagreWorkControl<'a> {
     }
 }
 
-impl WorkControl for AsciiDagreWorkControl<'_> {
+impl WorkControl for AsciiDagreWorkControl<'_, '_> {
     fn charge(&mut self, units: usize) -> std::result::Result<(), WorkError> {
         if self.ascii_error.is_some() {
+            return Err(WorkError::Interrupted);
+        }
+        if let Some(execution) = self.execution
+            && let Err(error) = execution.checkpoint(merman_core::OperationPhase::Layout)
+        {
+            self.ascii_error = Some(error);
             return Err(WorkError::Interrupted);
         }
         if let Err(error) = self.resources.charge_layout_work(units) {
@@ -1299,9 +1469,15 @@ fn layout_top_down_grid_nodes(
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlan],
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<GridNodeLayoutParts> {
-    let ranked =
-        place_top_down_grid_nodes(graph, topology, options.terminal_width_profile, resources)?;
+    let ranked = place_top_down_grid_nodes(
+        graph,
+        topology,
+        options.terminal_width_profile,
+        resources,
+        execution,
+    )?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
@@ -1309,6 +1485,7 @@ fn layout_top_down_grid_nodes(
     let mut row_heights = new_axis_sizes(axis_entity_count, resources)?;
 
     for (index, coord) in placements.iter().copied().enumerate() {
+        checkpoint_layout(execution, index)?;
         let node = &graph.nodes[index];
         let label_plan = label_plans
             .get(index)
@@ -1352,7 +1529,8 @@ fn layout_top_down_grid_nodes(
     )?;
 
     let index_by_id = node_indices_by_id(graph)?;
-    for edge in &graph.edges {
+    for (index, edge) in graph.edges.iter().enumerate() {
+        checkpoint_layout(execution, index)?;
         let (Some(from_index), Some(to_index)) = (
             index_by_id.get(edge.from.as_str()).copied(),
             index_by_id.get(edge.to.as_str()).copied(),
@@ -1525,16 +1703,26 @@ fn place_top_down_grid_nodes(
     topology: Option<&GraphGroupTopology<'_>>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<RankedGridPlacements> {
-    let mut ranked = place_ranked_grid_nodes(graph, topology, GraphDirection::TopDown, resources)?;
+    let mut ranked = place_ranked_grid_nodes(
+        graph,
+        topology,
+        GraphDirection::TopDown,
+        resources,
+        execution,
+    )?;
     if !graph.groups.is_empty() {
+        checkpoint_layout(execution, 0)?;
         groups::apply_group_placement_adjustments(
             graph,
             &mut ranked.nodes,
             topology.expect("non-empty graph groups must have topology"),
             width_profile,
             resources,
+            execution,
         )?;
+        checkpoint_layout(execution, 0)?;
     }
     Ok(ranked)
 }
@@ -1718,8 +1906,10 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::graph::model::GraphGroupStyle;
+    use crate::operation::AsciiExecution;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::resources::ResourceProfile;
+    use merman_core::{OperationControl, OperationPhase};
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
@@ -2218,5 +2408,37 @@ mod tests {
         )
         .unwrap();
         assert!(levels.leaf_groups[0].unwrap() < levels.nodes[0]);
+    }
+
+    #[test]
+    fn dagre_rank_work_observes_operation_cancellation() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_edge("a", "b");
+        let policy = AsciiResourcePolicy::default();
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        // Two graph-construction checkpoints complete before cancellation is observed through
+        // Dugong's existing work-charge seam.
+        control.cancel_after_checkpoints(2);
+
+        let error = match dagre_rank_levels_controlled(
+            &graph,
+            None,
+            GraphDirection::TopDown,
+            &mut resources,
+            Some(AsciiExecution::new(&control, &policy)),
+        ) {
+            Ok(_) => panic!("Dagre rank work should observe scheduled cancellation"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
     }
 }

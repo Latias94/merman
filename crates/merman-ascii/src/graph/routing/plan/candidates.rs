@@ -5,7 +5,9 @@ use super::compound::{
     plan_compound_endpoint_route_with_resources,
 };
 use super::edges::parallel_edge_index;
-use super::grid::{GridRouteOptions, plan_left_right_grid_path_route_with_options_and_resources};
+use super::grid::{
+    GridRouteOptions, plan_left_right_grid_path_route_with_options_resources_and_execution,
+};
 use super::left_right::plan_left_right_self_loop_route_with_resources;
 use super::same_rank::plan_same_rank_bottom_lane_route_with_index_and_resources;
 use super::select::{
@@ -15,6 +17,7 @@ use crate::error::{AsciiError, Result};
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::graph::routing::path::Port;
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
+use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
 use crate::resource::ResourceContext;
 
@@ -30,11 +33,15 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
     topology: Option<&GraphGroupTopology<'_>>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<EdgeRouteCandidates> {
-    let primary = match plan_edge_route_with_topology(request, topology, label, resources)? {
-        EdgeRoutePlan::Routed(plan) => plan,
-        EdgeRoutePlan::Unsupported(route) => return Ok(EdgeRouteCandidates::Unsupported(route)),
-    };
+    let primary =
+        match plan_edge_route_with_topology(request, topology, label, resources, execution)? {
+            EdgeRoutePlan::Routed(plan) => plan,
+            EdgeRoutePlan::Unsupported(route) => {
+                return Ok(EdgeRouteCandidates::Unsupported(route));
+            }
+        };
     let mut candidates = Vec::new();
     candidates
         .try_reserve(1 + ADDITIONAL_LANE_CANDIDATES + PORT_PAIRS.len())
@@ -106,16 +113,19 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
         edge_boundary_context_with_resources(request.graph, request.edge, topology, resources)?;
     if endpoints_are_nodes(request, topology) && boundary_stays_within_one_scope(boundary) {
         for (start, end) in PORT_PAIRS {
-            if let Some(plan) = plan_left_right_grid_path_route_with_options_and_resources(
-                request.graph_layout,
-                request.from,
-                request.to,
-                request.edge,
-                label,
-                request.charset,
-                GridRouteOptions::with_fixed_ports(start, end),
-                resources,
-            )? {
+            if let Some(plan) =
+                plan_left_right_grid_path_route_with_options_resources_and_execution(
+                    request.graph_layout,
+                    request.from,
+                    request.to,
+                    request.edge,
+                    label,
+                    request.charset,
+                    GridRouteOptions::with_fixed_ports(start, end),
+                    resources,
+                    execution,
+                )?
+            {
                 push_unique_candidate(&mut candidates, plan, resources)?;
             }
         }

@@ -2,6 +2,7 @@ use super::label::GraphLabel;
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::topology::GraphGroupTopology;
 use crate::error::Result;
+use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 use std::collections::HashMap;
@@ -13,6 +14,8 @@ mod groups;
 pub(super) struct GraphLayout {
     pub(super) nodes: Vec<NodeLayout>,
     pub(super) groups: Vec<GroupLayout>,
+    /// Group indices ordered from containing backgrounds to nested backgrounds.
+    pub(super) group_background_order: Vec<usize>,
     column_widths: HashMap<usize, usize>,
     row_heights: HashMap<usize, usize>,
     offset_x: usize,
@@ -100,13 +103,34 @@ pub(super) struct DividerSpan {
     pub(super) x_end: usize,
 }
 
+#[cfg(test)]
 pub(super) fn layout_graph_with_resources(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<GraphLayout> {
+    layout_graph_controlled(graph, options, resources, None)
+}
+
+pub(super) fn layout_graph_with_resources_and_execution(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<GraphLayout> {
+    layout_graph_controlled(graph, options, resources, Some(execution))
+}
+
+fn layout_graph_controlled(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<GraphLayout> {
+    checkpoint_layout(execution)?;
     grid::preflight_minimum_grid_extent(graph, options, resources)?;
     charge_graph_layout_work(graph, resources)?;
+    checkpoint_layout(execution)?;
     let label_plans = grid::plan_node_labels(graph, options.terminal_width_profile, resources)?;
     let topology = if graph.groups.is_empty() {
         None
@@ -114,8 +138,20 @@ pub(super) fn layout_graph_with_resources(
         Some(GraphGroupTopology::try_new(graph, resources)?)
     };
     check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
-    let (mut nodes, column_widths, row_heights) =
-        grid::layout_nodes(graph, options, topology.as_ref(), &label_plans, resources)?;
+    checkpoint_layout(execution)?;
+    let (mut nodes, column_widths, row_heights) = if let Some(execution) = execution {
+        grid::layout_nodes_with_execution(
+            graph,
+            options,
+            topology.as_ref(),
+            &label_plans,
+            resources,
+            execution,
+        )?
+    } else {
+        grid::layout_nodes(graph, options, topology.as_ref(), &label_plans, resources)?
+    };
+    checkpoint_layout(execution)?;
     let (group_offset_x, group_offset_y) = if graph.groups.is_empty() {
         (0, 0)
     } else {
@@ -129,7 +165,10 @@ pub(super) fn layout_graph_with_resources(
             resources,
         )?
     };
-    for node in &mut nodes {
+    for (index, node) in nodes.iter_mut().enumerate() {
+        if let Some(execution) = execution {
+            execution.checkpoint_loop(merman_core::OperationPhase::Layout, index)?;
+        }
         node.x = resources.checked_grid_add(node.x, group_offset_x)?;
         node.y = resources.checked_grid_add(node.y, group_offset_y)?;
     }
@@ -147,8 +186,23 @@ pub(super) fn layout_graph_with_resources(
                 .saturating_sub(grid::axis_position(&row_heights, node.grid.y))
         })
         .unwrap_or_default();
-    let groups = if graph.groups.is_empty() {
-        Vec::new()
+    checkpoint_layout(execution)?;
+    let laid_out_groups = if graph.groups.is_empty() {
+        groups::LaidOutGroups {
+            items: Vec::new(),
+            background_order: Vec::new(),
+        }
+    } else if let Some(execution) = execution {
+        groups::layout_groups_with_execution(
+            graph,
+            &nodes,
+            topology
+                .as_ref()
+                .expect("non-empty graph groups must have topology"),
+            options.terminal_width_profile,
+            resources,
+            execution,
+        )?
     } else {
         groups::layout_groups(
             graph,
@@ -160,16 +214,27 @@ pub(super) fn layout_graph_with_resources(
             resources,
         )?
     };
+    checkpoint_layout(execution)?;
+    let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
     grid::materialize_node_labels(&mut nodes, graph, &label_plans, resources)?;
+    checkpoint_layout(execution)?;
     Ok(GraphLayout {
         nodes,
         groups,
+        group_background_order: laid_out_groups.background_order,
         column_widths,
         row_heights,
         offset_x,
         offset_y,
     })
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    }
+    Ok(())
 }
 
 pub(super) fn graph_canvas_extent(

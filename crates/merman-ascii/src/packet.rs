@@ -11,7 +11,7 @@ pub(super) fn render_packet_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let mut document = BudgetedTextDocument::new(options, *execution.resources());
     validate_packet_blocks(model, document.resources_mut(), execution)?;
 
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
@@ -38,7 +38,7 @@ pub(super) fn render_packet_diagram(
         }
     }
 
-    document.finish(options)
+    document.finish()
 }
 
 fn validate_packet_blocks(

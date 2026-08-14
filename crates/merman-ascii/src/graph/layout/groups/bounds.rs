@@ -3,10 +3,13 @@ use super::super::super::model::{AsciiGraph, AsciiGraphGroup, GraphDirection, Gr
 use super::super::super::topology::GraphGroupTopology;
 use super::super::grid;
 use super::super::{DividerSpan, GroupLayout, NodeLayout};
+use super::LaidOutGroups;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use std::collections::{HashMap, HashSet};
+use merman_core::OperationPhase;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const EMPTY_GROUP_RANK_GAP: usize = 2;
 
@@ -167,19 +170,45 @@ pub(super) fn layout_groups(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<Vec<GroupLayout>> {
-    // Charge one layout lookup, one member lookup, and two linear group passes up front.
-    let (member_count, has_empty_group) =
-        graph
-            .groups
-            .iter()
-            .try_fold((0usize, false), |(total, has_empty_group), group| {
-                Ok::<_, AsciiError>((
-                    resources.checked_work_add(total, group.nodes.len())?,
-                    has_empty_group || group.nodes.is_empty(),
-                ))
-            })?;
-    let group_visits = resources.checked_work_mul(graph.groups.len(), 2)?;
+) -> Result<LaidOutGroups> {
+    layout_groups_controlled(graph, layouts, topology, width_profile, resources, None)
+}
+
+pub(super) fn layout_groups_with_execution(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<LaidOutGroups> {
+    layout_groups_controlled(
+        graph,
+        layouts,
+        topology,
+        width_profile,
+        resources,
+        Some(execution),
+    )
+}
+
+fn layout_groups_controlled(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<LaidOutGroups> {
+    // Charge indexed lookups plus the linear topology, layout, and output passes up front.
+    let mut member_count = 0usize;
+    let mut has_empty_group = false;
+    for (group_index, group) in graph.groups.iter().enumerate() {
+        checkpoint_layout(execution, group_index)?;
+        member_count = resources.checked_work_add(member_count, group.nodes.len())?;
+        has_empty_group |= group.nodes.is_empty();
+    }
+    let group_visits = resources.checked_work_mul(graph.groups.len(), 6)?;
     let layout_work = resources.checked_work_add(
         resources.checked_work_add(layouts.len(), member_count)?,
         group_visits,
@@ -193,7 +222,8 @@ pub(super) fn layout_groups(
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
     node_layout_by_index.resize(graph.nodes.len(), None);
-    for layout in layouts {
+    for (layout_index, layout) in layouts.iter().enumerate() {
+        checkpoint_layout(execution, layout_index)?;
         let Some(node_index) = topology.node_index(&layout.id) else {
             continue;
         };
@@ -204,29 +234,34 @@ pub(super) fn layout_groups(
         }
     }
 
-    let mut groups = Vec::<GroupLayout>::new();
-    groups
+    let mut child_first_order = child_first_group_order(graph, topology, resources, execution)?;
+    let mut groups_by_graph_index = Vec::<Option<GroupLayout>>::new();
+    groups_by_graph_index
         .try_reserve_exact(graph.groups.len())
         .map_err(|_| AsciiError::AllocationFailed {
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
-    let mut group_layout_index_by_graph_index = Vec::<Option<usize>>::new();
-    group_layout_index_by_graph_index
-        .try_reserve_exact(graph.groups.len())
-        .map_err(|_| AsciiError::AllocationFailed {
-            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
-    group_layout_index_by_graph_index.resize(graph.groups.len(), None);
+    groups_by_graph_index.resize_with(graph.groups.len(), || None);
 
     let leaf_group_levels = if has_empty_group {
-        Some(grid::rank_leaf_group_levels(graph, topology, resources)?)
+        Some(if let Some(execution) = execution {
+            grid::rank_leaf_group_levels_with_execution(graph, topology, resources, execution)?
+        } else {
+            grid::rank_leaf_group_levels(graph, topology, resources)?
+        })
     } else {
         None
     };
 
-    for (group_index, group) in graph.groups.iter().enumerate() {
+    for (order_index, group_index) in child_first_order.iter().copied().enumerate() {
+        checkpoint_layout(execution, order_index)?;
+        let group = graph
+            .groups
+            .get(group_index)
+            .ok_or_else(|| invalid_group_membership(graph))?;
         let mut member_bounds = None::<GroupLayoutBounds>;
-        for member in &group.nodes {
+        for (member_index, member) in group.nodes.iter().enumerate() {
+            checkpoint_layout(execution, member_index)?;
             if let Some(layout) = topology
                 .node_index(member)
                 .and_then(|node_index| node_layout_by_index.get(node_index))
@@ -245,12 +280,8 @@ pub(super) fn layout_groups(
             if let Some(layout) = topology
                 .group_index(member)
                 .filter(|child_index| *child_index != group_index)
-                .and_then(|child_index| {
-                    group_layout_index_by_graph_index
-                        .get(child_index)
-                        .and_then(|layout_index| *layout_index)
-                })
-                .and_then(|layout_index| groups.get(layout_index))
+                .and_then(|child_index| groups_by_graph_index.get(child_index))
+                .and_then(Option::as_ref)
             {
                 include_group_layout_bounds(
                     &mut member_bounds,
@@ -299,8 +330,7 @@ pub(super) fn layout_groups(
                 width_profile,
                 leaf_group_levels.as_deref(),
                 layouts,
-                &groups,
-                &group_layout_index_by_graph_index,
+                &groups_by_graph_index,
                 resources,
             )?;
             let title = empty_group_title(group, width_profile, resources)?;
@@ -324,8 +354,7 @@ pub(super) fn layout_groups(
             1,
         )?;
 
-        let layout_index = groups.len();
-        groups.push(GroupLayout {
+        let layout = GroupLayout {
             id: group.id.clone(),
             kind: group.kind,
             title,
@@ -335,19 +364,118 @@ pub(super) fn layout_groups(
             y: bounds.y,
             width,
             height,
-        });
-        if let Some(slot) = group_layout_index_by_graph_index.get_mut(group_index) {
-            *slot = Some(layout_index);
+        };
+        let slot = groups_by_graph_index
+            .get_mut(group_index)
+            .ok_or_else(|| invalid_group_membership(graph))?;
+        *slot = Some(layout);
+    }
+
+    let mut groups = Vec::<GroupLayout>::new();
+    groups
+        .try_reserve_exact(graph.groups.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    for (group_index, layout) in groups_by_graph_index.into_iter().enumerate() {
+        checkpoint_layout(execution, group_index)?;
+        groups.push(layout.ok_or_else(|| invalid_group_membership(graph))?);
+    }
+
+    assign_divider_spans(graph, topology, &mut groups);
+    // Bounds require children before parents, while authored backgrounds require the inverse so a
+    // containing group cannot erase a nested group's fill. Keep both orders explicit instead of
+    // coupling paint behavior to declaration order.
+    child_first_order.reverse();
+    Ok(LaidOutGroups {
+        items: groups,
+        background_order: child_first_order,
+    })
+}
+
+fn child_first_group_order(
+    graph: &AsciiGraph,
+    topology: &GraphGroupTopology<'_>,
+    resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<Vec<usize>> {
+    let mut remaining_children = Vec::new();
+    remaining_children
+        .try_reserve_exact(graph.groups.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    remaining_children.resize(graph.groups.len(), 0usize);
+
+    for child_index in 0..graph.groups.len() {
+        checkpoint_layout(execution, child_index)?;
+        let Some(parent_index) = topology.parent_group_index(child_index) else {
+            continue;
+        };
+        let count = remaining_children
+            .get(parent_index)
+            .copied()
+            .ok_or_else(|| invalid_group_membership(graph))?;
+        let count = resources.checked_work_add(count, 1)?;
+        *remaining_children
+            .get_mut(parent_index)
+            .ok_or_else(|| invalid_group_membership(graph))? = count;
+    }
+
+    let mut ready = VecDeque::new();
+    ready
+        .try_reserve(graph.groups.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    for (group_index, remaining) in remaining_children.iter().copied().enumerate() {
+        checkpoint_layout(execution, group_index)?;
+        if remaining == 0 {
+            ready.push_back(group_index);
         }
     }
 
-    assign_divider_spans(
-        graph,
-        topology,
-        &group_layout_index_by_graph_index,
-        &mut groups,
-    );
-    Ok(groups)
+    let mut order = Vec::new();
+    order
+        .try_reserve_exact(graph.groups.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    while let Some(group_index) = ready.pop_front() {
+        checkpoint_layout(execution, order.len())?;
+        order.push(group_index);
+        let Some(parent_index) = topology.parent_group_index(group_index) else {
+            continue;
+        };
+        let remaining = remaining_children
+            .get_mut(parent_index)
+            .ok_or_else(|| invalid_group_membership(graph))?;
+        *remaining = remaining
+            .checked_sub(1)
+            .ok_or_else(|| invalid_group_membership(graph))?;
+        if *remaining == 0 {
+            ready.push_back(parent_index);
+        }
+    }
+
+    if order.len() != graph.groups.len() {
+        return Err(invalid_group_membership(graph));
+    }
+    Ok(order)
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
+    match execution {
+        Some(execution) => execution.checkpoint_loop(OperationPhase::Layout, iteration),
+        None => Ok(()),
+    }
+}
+
+fn invalid_group_membership(graph: &AsciiGraph) -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: graph.diagram_type(),
+        feature: "cyclic or multiply-owned compound graph membership",
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -360,8 +488,7 @@ fn empty_group_origin(
     width_profile: TerminalWidthProfile,
     leaf_group_levels: Option<&[Option<usize>]>,
     node_layouts: &[NodeLayout],
-    group_layouts: &[GroupLayout],
-    group_layout_index_by_graph_index: &[Option<usize>],
+    group_layouts: &[Option<GroupLayout>],
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     let Some(level) = leaf_group_levels
@@ -380,8 +507,7 @@ fn empty_group_origin(
         width_profile,
         resources,
     )?;
-    let scan_work =
-        resources.checked_work_add(node_layouts.len(), group_layout_index_by_graph_index.len())?;
+    let scan_work = resources.checked_work_add(node_layouts.len(), group_layouts.len())?;
     resources.charge_layout_work(scan_work)?;
     let mut same_level_start = None::<usize>;
     let mut same_level_cross_end = None::<usize>;
@@ -418,18 +544,11 @@ fn empty_group_origin(
     }
 
     if let Some(levels) = leaf_group_levels {
-        for (candidate_group_index, layout_index) in group_layout_index_by_graph_index
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            let (Some(candidate_level), Some(layout_index)) = (
-                levels.get(candidate_group_index).copied().flatten(),
-                layout_index,
-            ) else {
+        for (candidate_group_index, layout) in group_layouts.iter().enumerate() {
+            let Some(candidate_level) = levels.get(candidate_group_index).copied().flatten() else {
                 continue;
             };
-            let Some(layout) = group_layouts.get(layout_index) else {
+            let Some(layout) = layout.as_ref() else {
                 continue;
             };
             if candidate_level != level {
@@ -1020,30 +1139,18 @@ fn group_layout_bounds_for_members(
 fn assign_divider_spans(
     graph: &AsciiGraph,
     topology: &GraphGroupTopology<'_>,
-    group_layout_index_by_graph_index: &[Option<usize>],
     groups: &mut [GroupLayout],
 ) {
     for (group_index, graph_group) in graph.groups.iter().enumerate() {
         if graph_group.kind != GraphGroupKind::Divider {
             continue;
         }
-        let Some(layout_index) = group_layout_index_by_graph_index
-            .get(group_index)
-            .and_then(|layout_index| *layout_index)
-        else {
-            continue;
-        };
         let span = topology
             .parent_group_index(group_index)
-            .and_then(|parent_index| {
-                group_layout_index_by_graph_index
-                    .get(parent_index)
-                    .and_then(|layout_index| *layout_index)
-            })
-            .and_then(|parent_layout_index| groups.get(parent_layout_index))
+            .and_then(|parent_index| groups.get(parent_index))
             .and_then(divider_inner_span)
-            .or_else(|| groups.get(layout_index).and_then(divider_inner_span));
-        if let Some(layout) = groups.get_mut(layout_index) {
+            .or_else(|| groups.get(group_index).and_then(divider_inner_span));
+        if let Some(layout) = groups.get_mut(group_index) {
             layout.divider_span = span;
         }
     }
@@ -1129,7 +1236,7 @@ mod tests {
             &mut exact_resources,
         )
         .expect("exact indexed group-bound work should pass");
-        assert_eq!(groups.len(), graph.groups.len());
+        assert_eq!(groups.items.len(), graph.groups.len());
         assert_eq!(exact_resources.layout_work_used(), exact_work);
 
         let below_policy = unbounded
@@ -1177,10 +1284,10 @@ mod tests {
         )
         .expect("empty group should receive a visible perimeter");
 
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].id, "empty");
-        assert!(groups[0].width >= "Empty".len() + 2);
-        assert!(groups[0].height >= 4);
+        assert_eq!(groups.items.len(), 1);
+        assert_eq!(groups.items[0].id, "empty");
+        assert!(groups.items[0].width >= "Empty".len() + 2);
+        assert!(groups.items[0].height >= 4);
     }
 
     #[test]
@@ -1275,12 +1382,21 @@ mod tests {
             &mut resources,
         )
         .expect("nested empty groups should receive real bounds");
-        let inner = groups.iter().find(|group| group.id == "inner").unwrap();
-        let outer = groups.iter().find(|group| group.id == "outer").unwrap();
+        let inner = groups
+            .items
+            .iter()
+            .find(|group| group.id == "inner")
+            .unwrap();
+        let outer = groups
+            .items
+            .iter()
+            .find(|group| group.id == "outer")
+            .unwrap();
 
         assert!(outer.x <= inner.x);
         assert!(outer.y <= inner.y);
         assert!(outer.right() >= inner.right());
         assert!(outer.bottom() >= inner.bottom());
+        assert_eq!(groups.background_order, vec![1, 0]);
     }
 }

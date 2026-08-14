@@ -1,12 +1,14 @@
+mod support;
+
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile, render_model,
-    render_model_with_operation,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
 use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
+use support::{render_controlled_model, render_model, render_model_with_resources};
 
 fn parse_er_render_model(input: &str) -> RenderSemanticModel {
     Engine::new()
@@ -30,6 +32,16 @@ fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<
     render_model(&model, options)
 }
 
+fn render_er_with_resources(
+    input: &str,
+    options: &AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
+) -> merman_ascii::Result<String> {
+    let model = parse_er_render_model(input);
+
+    render_model_with_resources(&model, options, resources)
+}
+
 fn render_er_model(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -51,7 +63,7 @@ fn render_er_with_grid_limit(
         .with_limit(AsciiResourceLimitId::MaxGridCells, max_grid_cells)
         .expect("valid operation grid limit");
 
-    render_model_with_operation(&model, options, &control, &context, resources)
+    render_controlled_model(&model, options, &control, &context, resources)
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -926,10 +938,10 @@ fn er_parser_horizontal_direction_propagates_resource_errors() {
         AsciiResourceLimitId::MaxGridCells,
         AsciiResourceLimitId::MaxLayoutWorkUnits,
     ] {
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(limit, 1)
+        let resources = AsciiResourcePolicy::default()
+            .with_limit(limit, 1)
             .expect("horizontal ER resource limit should be valid");
-        let error = render_er(input, &options)
+        let error = render_er_with_resources(input, &AsciiRenderOptions::ascii(), resources)
             .expect_err("horizontal ER rendering must propagate resource errors");
         assert!(matches!(
             error,
@@ -1379,13 +1391,14 @@ fn er_parser_k2_2_relationships_use_a_bounded_planar_layout() {
 
 #[test]
 fn er_parser_relationship_layout_propagates_grid_resource_errors() {
-    let options = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
         .expect("test resource limit should be valid");
 
-    let error = render_er(
+    let error = render_er_with_resources(
         "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : \"places<br>orders\"\nORDER ||--|| INVOICE : bills",
-        &options,
+        &AsciiRenderOptions::ascii(),
+        resources,
     )
     .expect_err("grid resource errors must not become summary fallback");
     assert!(matches!(

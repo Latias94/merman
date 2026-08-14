@@ -1,5 +1,6 @@
 use crate::error::{AsciiError, Result};
 use merman_core::resources::{GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, ResourceProfile};
+use merman_core::{OperationControl, OperationPhase};
 use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
@@ -383,6 +384,13 @@ pub(crate) struct ResourceContext {
     policy: AsciiResourcePolicy,
     layout_work_used: Rc<Cell<usize>>,
     document_cells_used: Rc<Cell<usize>>,
+    operation: Option<ResourceOperation>,
+}
+
+#[derive(Debug, Clone)]
+struct ResourceOperation {
+    control: OperationControl,
+    phase: OperationPhase,
 }
 
 impl ResourceContext {
@@ -391,6 +399,17 @@ impl ResourceContext {
             policy,
             layout_work_used: Rc::new(Cell::new(0)),
             document_cells_used: Rc::new(Cell::new(0)),
+            operation: None,
+        }
+    }
+
+    /// Creates a ledger-sharing view whose resource admissions observe operation cancellation.
+    pub(crate) fn controlled(&self, control: OperationControl, phase: OperationPhase) -> Self {
+        Self {
+            policy: self.policy,
+            layout_work_used: Rc::clone(&self.layout_work_used),
+            document_cells_used: Rc::clone(&self.document_cells_used),
+            operation: Some(ResourceOperation { control, phase }),
         }
     }
 
@@ -400,6 +419,7 @@ impl ResourceContext {
             policy: self.policy,
             layout_work_used: Rc::clone(&self.layout_work_used),
             document_cells_used: Rc::new(Cell::new(0)),
+            operation: self.operation.clone(),
         }
     }
 
@@ -408,11 +428,14 @@ impl ResourceContext {
     }
 
     pub(crate) fn check(&self, id: AsciiResourceLimitId, actual: usize) -> Result<()> {
+        self.checkpoint()?;
         self.policy.check(id, actual)
     }
 
     pub(crate) fn overflow(&self, id: AsciiResourceLimitId) -> AsciiError {
-        self.policy.overflow(id)
+        self.checkpoint()
+            .err()
+            .unwrap_or_else(|| self.policy.overflow(id))
     }
 
     pub(crate) fn layout_work_used(&self) -> usize {
@@ -424,17 +447,18 @@ impl ResourceContext {
     }
 
     pub(crate) fn grid_extent(&self, width: usize, height: usize) -> Result<LogicalExtent> {
+        self.checkpoint()?;
         LogicalExtent::checked(width, height, self.policy)
     }
 
     pub(crate) fn checked_grid_add(&self, left: usize, right: usize) -> Result<usize> {
         left.checked_add(right)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxGridCells))
+            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))
     }
 
     pub(crate) fn checked_grid_mul(&self, left: usize, right: usize) -> Result<usize> {
         left.checked_mul(right)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxGridCells))
+            .ok_or_else(|| self.overflow(AsciiResourceLimitId::MaxGridCells))
     }
 
     pub(crate) fn checked_work_add(&self, left: usize, right: usize) -> Result<usize> {
@@ -446,6 +470,7 @@ impl ResourceContext {
     }
 
     pub(crate) fn charge_layout_work(&self, delta: usize) -> Result<()> {
+        self.checkpoint()?;
         let actual = self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -456,11 +481,22 @@ impl ResourceContext {
     }
 
     pub(crate) fn charge_layout_work_product(&self, left: usize, right: usize) -> Result<()> {
-        let work = self.checked_work_mul(left, right)?;
-        self.charge_layout_work(work)
+        self.checkpoint()?;
+        let work = left.checked_mul(right).ok_or_else(|| {
+            self.policy
+                .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+        })?;
+        let actual = self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            work,
+        )?;
+        self.layout_work_used.set(actual);
+        Ok(())
     }
 
     pub(crate) fn charge_document_cells(&self, delta: usize) -> Result<()> {
+        self.checkpoint()?;
         let actual = self.checked_total(
             AsciiResourceLimitId::MaxDocumentCells,
             self.document_cells_used.get(),
@@ -476,6 +512,7 @@ impl ResourceContext {
         layout_work_delta: usize,
         document_cells_delta: usize,
     ) -> Result<()> {
+        self.checkpoint()?;
         self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -498,6 +535,7 @@ impl ResourceContext {
         layout_work_delta: usize,
         document_cells_delta: usize,
     ) -> Result<()> {
+        self.checkpoint()?;
         let layout_work_used = self.checked_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
@@ -557,26 +595,36 @@ impl ResourceContext {
     }
 
     pub(crate) fn check_grapheme_bytes(&self, bytes: usize) -> Result<()> {
+        self.checkpoint()?;
         self.policy
             .check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
     }
 
     pub(crate) fn check_nesting_depth(&self, depth: usize) -> Result<()> {
+        self.checkpoint()?;
         self.policy
             .check(AsciiResourceLimitId::MaxNestingDepth, depth)
     }
 
     pub(crate) fn grid_overflow(&self) -> AsciiError {
-        self.policy.overflow(AsciiResourceLimitId::MaxGridCells)
+        self.overflow(AsciiResourceLimitId::MaxGridCells)
     }
 
     pub(crate) fn work_overflow(&self) -> AsciiError {
-        self.policy
-            .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+        self.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
     }
 
     pub(crate) fn nesting_overflow(&self) -> AsciiError {
-        self.policy.overflow(AsciiResourceLimitId::MaxNestingDepth)
+        self.overflow(AsciiResourceLimitId::MaxNestingDepth)
+    }
+
+    fn checkpoint(&self) -> Result<()> {
+        self.operation.as_ref().map_or(Ok(()), |operation| {
+            operation
+                .control
+                .checkpoint_at(operation.phase)
+                .map_err(AsciiError::Cancelled)
+        })
     }
 
     fn checked_total(
@@ -668,6 +716,7 @@ impl CheckedOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::CancelReason;
 
     #[test]
     fn descriptors_and_profile_matrix_are_total() {
@@ -837,6 +886,32 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 2);
         assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn controlled_compound_admission_prioritizes_cancellation_without_ledger_mutation() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 1)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+        let controlled = resources.controlled(control, OperationPhase::Emit);
+
+        let error = controlled
+            .charge_usage(2, 2)
+            .expect_err("cancellation must win over both compound ceilings");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]

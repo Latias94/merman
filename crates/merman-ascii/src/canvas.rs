@@ -162,16 +162,6 @@ impl Canvas {
     }
 
     #[cfg(test)]
-    pub(crate) fn try_with_options(
-        width: usize,
-        height: usize,
-        options: &AsciiRenderOptions,
-    ) -> crate::Result<Self> {
-        let resources = ResourceContext::new(options.resources);
-        Self::try_with_resources(width, height, options.terminal_width_profile, &resources)
-    }
-
-    #[cfg(test)]
     pub(crate) fn try_with_policy(
         width: usize,
         height: usize,
@@ -487,6 +477,7 @@ impl Canvas {
             .expect("test canvas encoding should fit the unbounded policy")
     }
 
+    #[cfg(test)]
     pub(crate) fn finish_with_options(self, options: &AsciiRenderOptions) -> crate::Result<String> {
         self.finish_with_options_internal(options, false)
     }
@@ -496,6 +487,7 @@ impl Canvas {
         options: &AsciiRenderOptions,
         execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
+        debug_assert_eq!(self.resources.policy(), *execution.resources());
         self.finish_with_options_internal_and_execution(options, false, Some(execution))
     }
 
@@ -642,6 +634,7 @@ impl Canvas {
         })
     }
 
+    #[cfg(test)]
     fn finish_with_options_internal(
         self,
         options: &AsciiRenderOptions,
@@ -695,6 +688,9 @@ impl Canvas {
         let mut counted = CountingTerminalOutput::new(policy);
         self.encode_to_sink(color_mode, color_theme, trim, execution, &mut counted)?;
         let encoded_bytes = counted.bytes();
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
 
         if let Some(execution) = execution {
@@ -739,7 +735,13 @@ impl Canvas {
                 .checked_work_add(encoder_pass_work, row_cells.max(1))?;
         }
         let encoder_work = self.resources.checked_work_mul(encoder_pass_work, 2)?;
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         self.resources.check_usage(encoder_work, document_cells)?;
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         self.resources.charge_usage(encoder_work, document_cells)
     }
 
@@ -768,6 +770,7 @@ impl Canvas {
                 color_mode,
                 color_theme,
                 None,
+                execution,
             )?;
             output.push_char('\n')?;
         }
@@ -882,6 +885,7 @@ pub(crate) fn finish_styled_line_iter_with_deferred_resources_with_execution<'a,
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
+    debug_assert_eq!(resources.policy(), *execution.resources());
     finish_styled_line_iter_with_probe(
         lines,
         options,
@@ -984,6 +988,9 @@ where
             document_resources.checked_work_add(encoder_pass_work, row_end.max(1))?;
         if let Some(deferred) = deferred {
             for cell in &line.surface_cells()[..row_end] {
+                if let Some(execution) = execution {
+                    execution.checkpoint(merman_core::OperationPhase::Emit)?;
+                }
                 if let Some(id) = cell.deferred_text_id() {
                     encoder_pass_work = document_resources
                         .checked_work_add(encoder_pass_work, deferred.replay_work_units(id)?)?;
@@ -992,10 +999,17 @@ where
         }
     }
     let encoder_work = document_resources.checked_work_mul(encoder_pass_work, 2)?;
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
     document_resources.check_usage(encoder_work, document_cells)?;
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
     document_resources.charge_usage(encoder_work, document_cells)?;
 
-    let mut counted = CountingTerminalOutput::new(options.resources);
+    let policy = resources.policy();
+    let mut counted = CountingTerminalOutput::new(policy);
     encode_styled_line_iter_to_sink(
         lines.clone(),
         options,
@@ -1005,12 +1019,16 @@ where
         &mut counted,
     )?;
     let encoded_bytes = counted.bytes();
-    options
-        .resources
-        .check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
+    policy.check(AsciiResourceLimitId::MaxOutputBytes, encoded_bytes)?;
 
+    if let Some(execution) = execution {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    }
     before_materialize();
-    let mut output = CheckedOutput::new(options.resources);
+    let mut output = CheckedOutput::new(policy);
     encode_styled_line_iter_to_sink(lines, options, trim, deferred, execution, &mut output)?;
     let output = output.finish();
     if output.len() != encoded_bytes {
@@ -1041,7 +1059,7 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_plain(output, line, row_end, deferred)?;
+                encode_styled_line_plain(output, line, row_end, deferred, execution)?;
                 output.push_char('\n')?;
             }
         }
@@ -1063,6 +1081,7 @@ where
                     options.color_theme,
                     mode,
                     deferred,
+                    execution,
                 )?;
                 output.push_char('\n')?;
             }
@@ -1077,7 +1096,14 @@ where
                 } else {
                     line.len()
                 };
-                encode_styled_line_html(output, line, row_end, options.color_theme, deferred)?;
+                encode_styled_line_html(
+                    output,
+                    line,
+                    row_end,
+                    options.color_theme,
+                    deferred,
+                    execution,
+                )?;
                 output.push_char('\n')?;
             }
         }
@@ -1090,6 +1116,7 @@ fn encode_styled_line_plain(
     line: &crate::text::StyledLine,
     row_end: usize,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -1098,6 +1125,7 @@ fn encode_styled_line_plain(
         AsciiColorMode::Plain,
         AsciiColorTheme::default(),
         deferred,
+        execution,
     )
 }
 
@@ -1108,6 +1136,7 @@ fn encode_styled_line_ansi(
     theme: AsciiColorTheme,
     mode: AsciiColorMode,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -1116,6 +1145,7 @@ fn encode_styled_line_ansi(
         mode,
         theme,
         deferred,
+        execution,
     )
 }
 
@@ -1125,6 +1155,7 @@ fn encode_styled_line_html(
     row_end: usize,
     theme: AsciiColorTheme,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     encode_surface_row(
         output,
@@ -1133,6 +1164,7 @@ fn encode_styled_line_html(
         AsciiColorMode::Html,
         theme,
         deferred,
+        execution,
     )
 }
 
@@ -1143,9 +1175,10 @@ fn encode_surface_row(
     mode: AsciiColorMode,
     theme: AsciiColorTheme,
     deferred: Option<&DeferredTextRegistry<'_>>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> crate::Result<()> {
     if mode == AsciiColorMode::Plain {
-        return visit_primary_cells(cells, |cell| {
+        return visit_primary_cells(cells, execution, |cell| {
             if let Some(id) = cell.deferred_text_id() {
                 let deferred = deferred.ok_or_else(missing_deferred_text_resolver)?;
                 push_deferred_terminal_text(output, deferred, id, mode)?;
@@ -1159,7 +1192,7 @@ fn encode_surface_row(
     }
 
     let mut active_style = ResolvedCanvasStyle::default();
-    visit_primary_cells(cells, |cell| {
+    visit_primary_cells(cells, execution, |cell| {
         let has_text = cell.deferred_text_id().is_some() || cell.try_output_text(arena)?.is_some();
         if has_text {
             let desired_style = cell.raw_style().resolve(theme);
@@ -1248,10 +1281,14 @@ fn missing_deferred_text_resolver() -> crate::AsciiError {
 
 fn visit_primary_cells(
     cells: &[TerminalCell],
+    execution: Option<AsciiExecution<'_>>,
     mut visit: impl FnMut(TerminalCell) -> crate::Result<()>,
 ) -> crate::Result<()> {
     let mut offset = 0usize;
     while let Some(cell) = cells.get(offset).copied() {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
         let width = primary_width(cells, offset);
         if width == 0 {
             return Err(crate::AsciiError::allocation_failed(
@@ -1429,9 +1466,9 @@ mod tests {
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
     use merman_core::{CancelReason, OperationControl, OperationPhase};
 
-    fn options_with_limit(id: AsciiResourceLimitId, limit: usize) -> AsciiRenderOptions {
-        AsciiRenderOptions::unicode()
-            .with_resource_limit(id, limit)
+    fn policy_with_limit(id: AsciiResourceLimitId, limit: usize) -> AsciiResourcePolicy {
+        AsciiResourcePolicy::default()
+            .with_limit(id, limit)
             .expect("valid test resource limit")
     }
 
@@ -1462,21 +1499,24 @@ mod tests {
 
     #[test]
     fn canvas_counts_complete_logical_document_cells() {
-        let exact = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 2);
-        let mut canvas = Canvas::try_with_options(2, 1, &exact).expect("canvas should allocate");
+        let options = AsciiRenderOptions::unicode();
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 2);
+        let mut canvas = Canvas::try_with_policy(2, 1, options.terminal_width_profile, exact)
+            .expect("canvas should allocate");
         canvas.set(0, 0, 'A');
         assert_eq!(
             canvas
-                .finish_with_options(&exact)
+                .finish_with_options(&options)
                 .expect("exact document extent should fit"),
             "A \n"
         );
 
-        let below = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
-        let mut canvas = Canvas::try_with_options(2, 1, &below).expect("canvas should allocate");
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let mut canvas = Canvas::try_with_policy(2, 1, options.terminal_width_profile, below)
+            .expect("canvas should allocate");
         canvas.set(0, 0, 'A');
         let error = canvas
-            .finish_with_options(&below)
+            .finish_with_options(&options)
             .expect_err("document extent above the limit must fail");
         assert!(matches!(
             error,
@@ -1512,8 +1552,9 @@ mod tests {
 
     #[test]
     fn styled_line_extraction_checks_the_aggregate_document_before_copying_rows() {
-        let exact = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3);
-        let mut canvas = Canvas::try_with_options(2, 2, &exact).expect("canvas should allocate");
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3);
+        let mut canvas = Canvas::try_with_policy(2, 2, TerminalWidthProfile::Unicode, exact)
+            .expect("canvas should allocate");
         canvas.set(1, 0, 'A');
         canvas.set(0, 1, 'B');
         assert_eq!(
@@ -1524,8 +1565,9 @@ mod tests {
             2
         );
 
-        let below = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 2);
-        let mut canvas = Canvas::try_with_options(2, 2, &below).expect("canvas should allocate");
+        let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, 2);
+        let mut canvas = Canvas::try_with_policy(2, 2, TerminalWidthProfile::Unicode, below)
+            .expect("canvas should allocate");
         canvas.set(1, 0, 'A');
         canvas.set(0, 1, 'B');
         let error = canvas
@@ -1544,8 +1586,9 @@ mod tests {
 
     #[test]
     fn canvas_checks_raw_control_grapheme_bytes_before_visible_escape() {
-        let options = options_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1);
-        let mut canvas = Canvas::try_with_options(8, 1, &options).expect("canvas should allocate");
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1);
+        let mut canvas = Canvas::try_with_policy(8, 1, TerminalWidthProfile::Unicode, policy)
+            .expect("canvas should allocate");
         let error = canvas
             .write_text_role(0, 0, "\u{85}", AsciiColorRole::Text)
             .expect_err("a two-byte control grapheme must fail before escaping");
@@ -1571,14 +1614,16 @@ mod tests {
             .expect("unbounded escape work should fit");
         let exact_work = measured.layout_work_used();
 
-        let exact = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work);
-        let mut canvas = Canvas::try_with_options(8, 1, &exact).expect("canvas should allocate");
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work);
+        let mut canvas = Canvas::try_with_policy(8, 1, TerminalWidthProfile::Unicode, exact)
+            .expect("canvas should allocate");
         canvas
             .write_text_role(0, 0, "\u{1b}", AsciiColorRole::Text)
             .expect("exact escape work should fit");
 
-        let below = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1);
-        let mut canvas = Canvas::try_with_options(8, 1, &below).expect("canvas should allocate");
+        let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1);
+        let mut canvas = Canvas::try_with_policy(8, 1, TerminalWidthProfile::Unicode, below)
+            .expect("canvas should allocate");
         let error = canvas
             .write_text_role(0, 0, "\u{1b}", AsciiColorRole::Text)
             .expect_err("escape expansion above the work limit must fail");
@@ -1657,22 +1702,20 @@ mod tests {
             let base = AsciiRenderOptions::unicode()
                 .with_color_mode(mode)
                 .with_color_theme(theme);
-            let build = |options: &AsciiRenderOptions| {
-                let mut canvas =
-                    Canvas::try_with_options(4, 1, options).expect("canvas should allocate");
+            let build = |policy| {
+                let mut canvas = Canvas::try_with_policy(4, 1, base.terminal_width_profile, policy)
+                    .expect("canvas should allocate");
                 canvas
                     .write_text_role(0, 0, "<&中", AsciiColorRole::Text)
                     .expect("test text should fit");
                 canvas
             };
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
-                .expect("valid exact output limit");
+            let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
             let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
-                build(&exact)
-                    .finish_with_options_internal_and_probe(&exact, true, None, || {
+                build(exact)
+                    .finish_with_options_internal_and_probe(&base, true, None, || {
                         exact_probe.set(true)
                     })
                     .expect("exact output byte limit should fit"),
@@ -1681,14 +1724,10 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
-                .expect("valid below-exact output limit");
+            let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
             let below_probe = std::cell::Cell::new(false);
-            let error = build(&below)
-                .finish_with_options_internal_and_probe(&below, true, None, || {
-                    below_probe.set(true)
-                })
+            let error = build(below)
+                .finish_with_options_internal_and_probe(&base, true, None, || below_probe.set(true))
                 .expect_err("output byte limit below the encoded size must fail");
             assert!(!below_probe.get(), "mode={mode:?}");
             assert!(matches!(
@@ -1725,8 +1764,8 @@ mod tests {
             let base = AsciiRenderOptions::unicode()
                 .with_color_mode(mode)
                 .with_color_theme(theme);
-            let build_line = |options: &AsciiRenderOptions| {
-                let resources = ResourceContext::new(options.resources);
+            let build_line = |policy| {
+                let resources = ResourceContext::new(policy);
                 let mut line = crate::text::StyledLine::with_resources(
                     TerminalWidthProfile::Unicode,
                     &resources,
@@ -1736,16 +1775,14 @@ mod tests {
                 line
             };
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
-                .expect("valid exact output limit");
-            let exact_line = build_line(&exact);
-            let mut exact_resources = ResourceContext::new(exact.resources);
+            let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
+            let exact_line = build_line(exact);
+            let mut exact_resources = ResourceContext::new(exact);
             let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
                 finish_styled_line_iter_with_probe(
                     std::iter::once(&exact_line),
-                    &exact,
+                    &base,
                     true,
                     &mut exact_resources,
                     None,
@@ -1758,15 +1795,13 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
-                .expect("valid below-exact output limit");
-            let below_line = build_line(&below);
-            let mut below_resources = ResourceContext::new(below.resources);
+            let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
+            let below_line = build_line(below);
+            let mut below_resources = ResourceContext::new(below);
             let below_probe = std::cell::Cell::new(false);
             let error = finish_styled_line_iter_with_probe(
                 std::iter::once(&below_line),
-                &below,
+                &base,
                 true,
                 &mut below_resources,
                 None,
@@ -1809,8 +1844,8 @@ mod tests {
             let base = AsciiRenderOptions::unicode()
                 .with_color_mode(mode)
                 .with_color_theme(theme);
-            let build = |options: &AsciiRenderOptions| {
-                let resources = ResourceContext::new(options.resources);
+            let build = |policy| {
+                let resources = ResourceContext::new(policy);
                 let mut deferred = DeferredTextRegistry::new();
                 let text = deferred
                     .try_register(
@@ -1832,15 +1867,13 @@ mod tests {
                 (line, deferred, resources)
             };
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
-                .expect("valid exact output limit");
-            let (exact_line, exact_deferred, mut exact_resources) = build(&exact);
+            let exact = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
+            let (exact_line, exact_deferred, mut exact_resources) = build(exact);
             let exact_probe = std::cell::Cell::new(false);
             assert_eq!(
                 finish_styled_line_iter_with_probe(
                     std::iter::once(&exact_line),
-                    &exact,
+                    &base,
                     true,
                     &mut exact_resources,
                     Some(&exact_deferred),
@@ -1853,16 +1886,14 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
-                .expect("valid below-exact output limit");
-            let (below_line, below_deferred, mut below_resources) = build(&below);
+            let below = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1);
+            let (below_line, below_deferred, mut below_resources) = build(below);
             let work_before = below_resources.layout_work_used();
             let document_before = below_resources.document_cells_used();
             let below_probe = std::cell::Cell::new(false);
             let error = finish_styled_line_iter_with_probe(
                 std::iter::once(&below_line),
-                &below,
+                &base,
                 true,
                 &mut below_resources,
                 Some(&below_deferred),
@@ -1889,10 +1920,9 @@ mod tests {
     fn deferred_styled_line_encoder_preserves_text_wider_than_u8() {
         let text = "x".repeat(300);
         let expected = format!("{text}\n");
-        let options = AsciiRenderOptions::unicode()
-            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
-            .expect("valid exact output limit");
-        let mut resources = ResourceContext::new(options.resources);
+        let options = AsciiRenderOptions::unicode();
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len());
+        let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let planned = deferred
             .try_register(
@@ -1946,10 +1976,11 @@ mod tests {
 
     #[test]
     fn controlled_plain_finish_stops_during_row_emission() {
-        let canvas = Canvas::new(4, 8);
+        let policy = AsciiResourcePolicy::default();
+        let canvas = Canvas::try_with_policy(4, 8, TerminalWidthProfile::Unicode, policy)
+            .expect("controlled test canvas should allocate");
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
-        let policy = AsciiResourcePolicy::default();
         let execution = AsciiExecution::new(&control, &policy);
 
         let error = canvas
@@ -1961,6 +1992,87 @@ mod tests {
                 if cancelled.phase == OperationPhase::Emit
                     && cancelled.reason == CancelReason::Requested
         ));
+    }
+
+    #[test]
+    fn controlled_styled_finish_checks_each_primary_cell_in_colored_modes() {
+        for mode in [
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let options = AsciiRenderOptions::unicode().with_color_mode(mode);
+            let policy = AsciiResourcePolicy::default();
+            let mut resources = ResourceContext::new(policy);
+            let mut line =
+                crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &resources);
+            line.try_push_role_text("AB", AsciiColorRole::Text)
+                .expect("test cells should fit");
+            let control = OperationControl::new();
+            // Admission consumes five checkpoints and the count pass consumes one row plus the
+            // first primary cell. Cancellation must be observed before encoding the second cell.
+            control.cancel_after_checkpoints(7);
+            let execution = AsciiExecution::new(&control, &policy);
+
+            let error = finish_styled_line_iter_with_probe(
+                std::iter::once(&line),
+                &options,
+                true,
+                &mut resources,
+                None,
+                Some(execution),
+                || {},
+            )
+            .expect_err("colored emission must observe cancellation inside the row");
+
+            assert!(
+                matches!(
+                    error,
+                    crate::AsciiError::Cancelled(cancelled)
+                        if cancelled.phase == OperationPhase::Emit
+                            && cancelled.reason == CancelReason::Requested
+                ),
+                "mode={mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn controlled_styled_finish_prefers_cancellation_to_work_ceiling() {
+        let options = AsciiRenderOptions::unicode();
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1);
+        let line_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &line_resources);
+        line.try_push_role_text("A", AsciiColorRole::Text)
+            .expect("test cell should fit");
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        // The line inspection succeeds once; the next checkpoint is immediately before the
+        // compound work/document admission that would otherwise exceed the one-unit ceiling.
+        control.cancel_after_checkpoints(1);
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = finish_styled_line_iter_with_probe(
+            std::iter::once(&line),
+            &options,
+            true,
+            &mut resources,
+            None,
+            Some(execution),
+            || {},
+        )
+        .expect_err("requested cancellation must win over the work ceiling");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]

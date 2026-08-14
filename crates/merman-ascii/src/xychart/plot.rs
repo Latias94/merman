@@ -1,8 +1,7 @@
 use crate::color::AsciiColorRole;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, LogicalExtent,
-    ResourceContext,
+    AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
 use crate::safe_text::terminal_text_requires_normalization;
 use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
@@ -57,7 +56,6 @@ pub(super) struct XyChartPlotArea {
     pub(super) category_band_width: usize,
     pub(super) horizontal_width: usize,
     pub(super) width_profile: TerminalWidthProfile,
-    pub(super) resources: AsciiResourcePolicy,
 }
 
 impl XyChartPlotArea {
@@ -67,7 +65,6 @@ impl XyChartPlotArea {
             category_band_width: options.xychart_category_band_width,
             horizontal_width: options.xychart_horizontal_plot_width,
             width_profile: options.terminal_width_profile,
-            resources: options.resources,
         }
     }
 
@@ -1649,6 +1646,11 @@ pub(super) fn format_tick_number(value: f64, step: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resource::AsciiResourcePolicy;
+
+    fn default_resources() -> AsciiResourcePolicy {
+        AsciiResourcePolicy::default()
+    }
 
     #[test]
     fn tick_formatter_keeps_representable_sub_epsilon_steps_distinct() {
@@ -1663,7 +1665,7 @@ mod tests {
     fn linear_samples_align_with_the_first_and_last_axis_band_centers() {
         let options = AsciiRenderOptions::ascii().with_xychart_category_band_width(4);
         let plot_area = XyChartPlotArea::from_options(&options);
-        let resources = ResourceContext::new(options.resources);
+        let resources = ResourceContext::new(default_resources());
         let axis = AxisPlan::Linear {
             range: ValueRange {
                 min: 0.0,
@@ -1702,10 +1704,10 @@ mod tests {
     #[test]
     fn write_band_text_preserves_wide_glyph_continuation_cells() {
         let options = AsciiRenderOptions::unicode();
-        let resources = ResourceContext::new(options.resources);
-        let mut row =
-            StyledLine::try_blank_with_policy(5, options.terminal_width_profile, options.resources)
-                .expect("wide-glyph test row should fit the configured resource policy");
+        let policy = default_resources();
+        let resources = ResourceContext::new(policy);
+        let mut row = StyledLine::try_blank_with_policy(5, options.terminal_width_profile, policy)
+            .expect("wide-glyph test row should fit the configured resource policy");
 
         write_band_text(&mut row, 1, 3, "中", AsciiColorRole::Text, &resources)
             .expect("wide glyph should fit the authored band");
@@ -1721,10 +1723,10 @@ mod tests {
     #[test]
     fn write_band_text_preserves_complex_grapheme_arena_entries() {
         let options = AsciiRenderOptions::unicode();
-        let resources = ResourceContext::new(options.resources);
-        let mut row =
-            StyledLine::try_blank_with_policy(6, options.terminal_width_profile, options.resources)
-                .expect("ZWJ test row should fit the configured resource policy");
+        let policy = default_resources();
+        let resources = ResourceContext::new(policy);
+        let mut row = StyledLine::try_blank_with_policy(6, options.terminal_width_profile, policy)
+            .expect("ZWJ test row should fit the configured resource policy");
 
         write_band_text(&mut row, 1, 4, "👩‍💻", AsciiColorRole::Text, &resources)
             .expect("ZWJ grapheme should fit the authored band");
@@ -1739,8 +1741,7 @@ mod tests {
 
     #[test]
     fn fit_centered_obeys_cjk_ambiguous_width() {
-        let options = AsciiRenderOptions::unicode();
-        let resources = ResourceContext::new(options.resources);
+        let resources = ResourceContext::new(default_resources());
         assert_eq!(
             fit_centered("·", 3, TerminalWidthProfile::Unicode, &resources)
                 .expect("Unicode-width label should fit"),
@@ -1755,8 +1756,7 @@ mod tests {
 
     #[test]
     fn fit_centered_escapes_terminal_controls_before_measurement() {
-        let options = AsciiRenderOptions::unicode();
-        let resources = ResourceContext::new(options.resources);
+        let resources = ResourceContext::new(default_resources());
         let fitted = fit_centered("A\u{1b}B", 10, TerminalWidthProfile::Unicode, &resources)
             .expect("normalized control text should fit");
 
@@ -1774,11 +1774,12 @@ mod tests {
             AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
         let chars = ChartChars::from_options(&options);
         let plot_area = XyChartPlotArea::from_options(&options);
-        let mut resources = ResourceContext::new(options.resources);
+        let policy = default_resources();
+        let mut resources = ResourceContext::new(policy);
         let mut row = StyledLine::try_blank_with_policy(
             plot_area.horizontal_width,
             TerminalWidthProfile::Cjk,
-            options.resources,
+            policy,
         )
         .expect("CJK plot row should fit the configured resource policy");
 

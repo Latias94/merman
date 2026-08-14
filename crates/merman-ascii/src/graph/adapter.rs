@@ -6,6 +6,7 @@ use super::shape::resolve_flowchart_node_shape;
 use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
@@ -18,6 +19,7 @@ use merman_core::diagrams::flowchart::{
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 
+#[cfg(test)]
 pub(crate) fn from_flowchart_model(
     model: &FlowchartModel,
     options: &AsciiRenderOptions,
@@ -26,14 +28,46 @@ pub(crate) fn from_flowchart_model(
     from_flowchart_model_impl(model, options, resources, || {})
 }
 
+pub(crate) fn from_flowchart_model_with_execution(
+    model: &FlowchartModel,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<AsciiGraph> {
+    from_flowchart_model_impl_controlled(model, options, resources, Some(execution), || {})
+}
+
+#[cfg(test)]
 fn from_flowchart_model_impl(
     model: &FlowchartModel,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     before_edge_label_allocation: impl FnOnce(),
 ) -> Result<AsciiGraph> {
+    from_flowchart_model_impl_controlled(
+        model,
+        options,
+        resources,
+        None,
+        before_edge_label_allocation,
+    )
+}
+
+fn from_flowchart_model_impl_controlled(
+    model: &FlowchartModel,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+    before_edge_label_allocation: impl FnOnce(),
+) -> Result<AsciiGraph> {
     resources.transaction(|resources| {
-        from_flowchart_model_transactional(model, options, resources, before_edge_label_allocation)
+        from_flowchart_model_transactional(
+            model,
+            options,
+            resources,
+            execution,
+            before_edge_label_allocation,
+        )
     })
 }
 
@@ -41,10 +75,11 @@ fn from_flowchart_model_transactional(
     model: &FlowchartModel,
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
     before_edge_label_allocation: impl FnOnce(),
 ) -> Result<AsciiGraph> {
-    let memberships = preflight_flowchart_projection(model, resources)?;
-    validate_supported_flowchart_model(model, &memberships, resources)?;
+    let memberships = preflight_flowchart_projection(model, resources, execution)?;
+    validate_supported_flowchart_model(model, &memberships, resources, execution)?;
 
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
@@ -66,6 +101,7 @@ fn from_flowchart_model_transactional(
         direction,
         options.terminal_width_profile,
         resources,
+        execution,
         before_edge_label_allocation,
     )?;
 
@@ -77,7 +113,8 @@ fn from_flowchart_model_transactional(
         memberships.canonical_group_indices().len(),
     )?;
 
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         if memberships.is_group_id(&node.id) {
             continue;
         }
@@ -96,7 +133,13 @@ fn from_flowchart_model_transactional(
     }
 
     debug_assert_eq!(model.edges.len(), projection_plan.edge_labels.len());
-    for (edge, label_plan) in model.edges.iter().zip(&projection_plan.edge_labels) {
+    for (index, (edge, label_plan)) in model
+        .edges
+        .iter()
+        .zip(&projection_plan.edge_labels)
+        .enumerate()
+    {
+        checkpoint_projection(execution, index)?;
         let from = try_clone_projection_string(&edge.from)?;
         let to = try_clone_projection_string(&edge.to)?;
         graph.add_edge_with_attrs(
@@ -120,13 +163,16 @@ fn from_flowchart_model_transactional(
         );
     }
 
-    for (canonical_index, canonical_members) in memberships.canonical_groups() {
+    for (index, (canonical_index, canonical_members)) in memberships.canonical_groups().enumerate()
+    {
+        checkpoint_projection(execution, index)?;
         let subgraph = &model.subgraphs[canonical_index];
         let mut members = Vec::new();
         members
             .try_reserve_exact(canonical_members.len())
             .map_err(|_| projection_allocation_failed())?;
-        for member in canonical_members {
+        for (member_index, member) in canonical_members.iter().enumerate() {
+            checkpoint_projection(execution, member_index)?;
             members.push(try_clone_projection_string(member)?);
         }
         graph.add_group_with_style(
@@ -144,6 +190,13 @@ fn from_flowchart_model_transactional(
     }
 
     Ok(graph)
+}
+
+fn checkpoint_projection(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)?;
+    }
+    Ok(())
 }
 
 fn parse_flow_edge_marker(marker: CoreFlowEdgeMarker) -> GraphEdgeMarker {
@@ -172,26 +225,31 @@ fn parse_flow_edge_stroke(
 fn preflight_flowchart_projection<'a>(
     model: &'a FlowchartModel,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<FlowchartMembershipIndex<'a>> {
     resources.charge_layout_work(1)?;
     if let Some(direction) = model.direction.as_deref() {
         charge_text_layout(resources, direction)?;
     }
 
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, &node.id)?;
         charge_text_layout(resources, node.label.as_deref().unwrap_or(&node.id))?;
         if let Some(shape) = node.layout_shape.as_deref() {
             charge_text_layout(resources, shape)?;
         }
-        for declaration in node.classes.iter().chain(&node.styles) {
+        for (declaration_index, declaration) in node.classes.iter().chain(&node.styles).enumerate()
+        {
+            checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
     }
 
-    for edge in &model.edges {
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, &edge.id)?;
         charge_text_layout(resources, &edge.from)?;
@@ -206,37 +264,45 @@ fn preflight_flowchart_projection<'a>(
         if let Some(label) = edge.label.as_deref() {
             charge_text_layout(resources, label)?;
         }
-        for declaration in edge.classes.iter().chain(&edge.style) {
+        for (declaration_index, declaration) in edge.classes.iter().chain(&edge.style).enumerate() {
+            checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
     }
 
-    for subgraph in &model.subgraphs {
+    for (index, subgraph) in model.subgraphs.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, &subgraph.id)?;
         charge_text_layout(resources, &subgraph.title)?;
-        for member in &subgraph.nodes {
+        for (member_index, member) in subgraph.nodes.iter().enumerate() {
+            checkpoint_projection(execution, member_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, member)?;
         }
-        for declaration in subgraph.classes.iter().chain(&subgraph.styles) {
+        for (declaration_index, declaration) in
+            subgraph.classes.iter().chain(&subgraph.styles).enumerate()
+        {
+            checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
     }
 
-    for (class_name, declarations) in &model.class_defs {
+    for (index, (class_name, declarations)) in model.class_defs.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         charge_text_layout(resources, class_name)?;
-        for declaration in declarations {
+        for (declaration_index, declaration) in declarations.iter().enumerate() {
+            checkpoint_projection(execution, declaration_index)?;
             resources.charge_layout_work(1)?;
             charge_text_layout(resources, declaration)?;
         }
     }
 
-    let memberships = FlowchartMembershipIndex::try_new(model, resources)?;
-    preflight_subgraph_nesting(model, &memberships, resources)?;
+    let memberships = FlowchartMembershipIndex::try_new(model, resources, execution)?;
+    preflight_subgraph_nesting(model, &memberships, resources, execution)?;
     Ok(memberships)
 }
 
@@ -249,7 +315,11 @@ struct FlowchartMembershipIndex<'a> {
 }
 
 impl<'a> FlowchartMembershipIndex<'a> {
-    fn try_new(model: &'a FlowchartModel, resources: &ResourceContext) -> Result<Self> {
+    fn try_new(
+        model: &'a FlowchartModel,
+        resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
+    ) -> Result<Self> {
         let member_count = model.subgraphs.iter().try_fold(0usize, |total, group| {
             resources.checked_work_add(total, group.nodes.len())
         })?;
@@ -281,6 +351,7 @@ impl<'a> FlowchartMembershipIndex<'a> {
             .try_reserve(model.subgraphs.len())
             .map_err(|_| projection_allocation_failed())?;
         for (parent_index, subgraph) in model.subgraphs.iter().enumerate() {
+            checkpoint_projection(execution, parent_index)?;
             let group_id = subgraph.id.as_str();
             let (canonical_slot, needs_member_reserve) =
                 match canonical_slot_by_group_id.entry(group_id) {
@@ -312,7 +383,8 @@ impl<'a> FlowchartMembershipIndex<'a> {
                     .map_err(|_| projection_allocation_failed())?;
             }
             let canonical_index = canonical_group_indices[canonical_slot];
-            for member in &subgraph.nodes {
+            for (member_index, member) in subgraph.nodes.iter().enumerate() {
+                checkpoint_projection(execution, member_index)?;
                 // Preserve the former first-match parent semantics without rescanning candidates.
                 parent_group_by_member
                     .entry(member.as_str())
@@ -366,6 +438,7 @@ fn preflight_subgraph_nesting(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
     // Every group is inspected once by the outer pass and resolved at most once.
     let traversal_work = resources.checked_work_mul(model.subgraphs.len(), 2)?;
@@ -387,14 +460,18 @@ fn preflight_subgraph_nesting(
     path.try_reserve(model.subgraphs.len())
         .map_err(|_| projection_allocation_failed())?;
 
-    for &start_index in memberships.canonical_group_indices() {
+    for (start_ordinal, &start_index) in memberships.canonical_group_indices().iter().enumerate() {
+        checkpoint_projection(execution, start_ordinal)?;
         if states[start_index] == NestingVisitState::Complete {
             continue;
         }
         path.clear();
         let mut current_index = start_index;
         let mut base_depth;
+        let mut traversal_step = 0usize;
         loop {
+            checkpoint_projection(execution, traversal_step)?;
+            traversal_step = traversal_step.saturating_add(1);
             match states[current_index] {
                 NestingVisitState::Complete => {
                     base_depth = depths[current_index];
@@ -455,12 +532,14 @@ impl<'a> FlowchartProjectionPlan<'a> {
         direction: GraphDirection,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
         before_edge_label_allocation: impl FnOnce(),
     ) -> Result<Self> {
         let mut work_units = 0usize;
         let mut document_cells = 0usize;
         let mut output_bytes = 0usize;
-        for node in &model.nodes {
+        for (index, node) in model.nodes.iter().enumerate() {
+            checkpoint_projection(execution, index)?;
             if memberships.is_group_id(&node.id) {
                 continue;
             }
@@ -471,7 +550,8 @@ impl<'a> FlowchartProjectionPlan<'a> {
             work_units = resources.checked_work_add(work_units, node.id.len())?;
             work_units = resources.checked_work_add(work_units, projected_label.len())?;
         }
-        for edge in &model.edges {
+        for (index, edge) in model.edges.iter().enumerate() {
+            checkpoint_projection(execution, index)?;
             work_units = resources.checked_work_add(work_units, edge.from.len())?;
             work_units = resources.checked_work_add(work_units, edge.to.len())?;
             work_units = resources.checked_work_add(work_units, edge.id.len())?;
@@ -502,10 +582,12 @@ impl<'a> FlowchartProjectionPlan<'a> {
             }
         }
         work_units = resources.checked_work_add(work_units, model.edges.len())?;
-        for subgraph in &model.subgraphs {
+        for (index, subgraph) in model.subgraphs.iter().enumerate() {
+            checkpoint_projection(execution, index)?;
             work_units = resources.checked_work_add(work_units, subgraph.id.len())?;
             work_units = resources.checked_work_add(work_units, subgraph.title.len())?;
-            for member in &subgraph.nodes {
+            for (member_index, member) in subgraph.nodes.iter().enumerate() {
+                checkpoint_projection(execution, member_index)?;
                 work_units = resources.checked_work_add(work_units, member.len())?;
             }
         }
@@ -519,7 +601,8 @@ impl<'a> FlowchartProjectionPlan<'a> {
         edge_labels
             .try_reserve_exact(model.edges.len())
             .map_err(|_| projection_allocation_failed())?;
-        for edge in &model.edges {
+        for (index, edge) in model.edges.iter().enumerate() {
+            checkpoint_projection(execution, index)?;
             let label_plan = match edge.label.as_deref() {
                 Some(label) => {
                     let scratch = ResourceContext::new(resources.policy());
@@ -576,8 +659,10 @@ fn validate_supported_flowchart_model(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
-    for member_id in memberships.member_ids() {
+    for (index, member_id) in memberships.member_ids().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         if member_id.contains('\n') {
             return Err(AsciiError::UnsupportedFeature {
@@ -591,7 +676,8 @@ fn validate_supported_flowchart_model(
     node_ids
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         if !node_ids.insert(node.id.as_str()) {
             return Err(AsciiError::UnsupportedFeature {
@@ -600,7 +686,8 @@ fn validate_supported_flowchart_model(
             });
         }
     }
-    for edge in &model.edges {
+    for (index, edge) in model.edges.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         if (!node_ids.contains(edge.from.as_str()) && !memberships.is_group_id(&edge.from))
             || (!node_ids.contains(edge.to.as_str()) && !memberships.is_group_id(&edge.to))
@@ -612,7 +699,8 @@ fn validate_supported_flowchart_model(
         }
     }
 
-    for member_id in memberships.member_ids() {
+    for (index, member_id) in memberships.member_ids().enumerate() {
+        checkpoint_projection(execution, index)?;
         resources.charge_layout_work(1)?;
         if !node_ids.contains(member_id) && !memberships.is_group_id(member_id) {
             return Err(AsciiError::UnsupportedFeature {
@@ -767,7 +855,6 @@ mod tests {
             let exact_policy = unbounded
                 .with_limit(limit, exact)
                 .expect("exact projection limit should be valid");
-            let exact_options = AsciiRenderOptions::default().with_resource_policy(exact_policy);
             let mut exact_resources = ResourceContext::new(exact_policy);
             exact_resources
                 .charge_layout_work(PRIOR_WORK)
@@ -776,9 +863,12 @@ mod tests {
                 .charge_document_cells(PRIOR_DOCUMENT_CELLS)
                 .expect("prior document cells should fit the exact policy");
             let exact_materialized = Cell::new(false);
-            from_flowchart_model_impl(&model, &exact_options, &mut exact_resources, || {
-                exact_materialized.set(true)
-            })
+            from_flowchart_model_impl(
+                &model,
+                &AsciiRenderOptions::default(),
+                &mut exact_resources,
+                || exact_materialized.set(true),
+            )
             .unwrap_or_else(|error| panic!("exact {description} limit should admit: {error:?}"));
             assert!(
                 exact_materialized.get(),
@@ -795,7 +885,6 @@ mod tests {
             let below_policy = unbounded
                 .with_limit(limit, exact - 1)
                 .expect("max-minus-one projection limit should be valid");
-            let below_options = AsciiRenderOptions::default().with_resource_policy(below_policy);
             let mut below_resources = ResourceContext::new(below_policy);
             below_resources
                 .charge_layout_work(PRIOR_WORK)
@@ -806,7 +895,7 @@ mod tests {
             let below_materialized = Cell::new(false);
             let error = match from_flowchart_model_impl(
                 &model,
-                &below_options,
+                &AsciiRenderOptions::default(),
                 &mut below_resources,
                 || below_materialized.set(true),
             ) {
@@ -844,9 +933,9 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact layout-work limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &exact_resources)
+        let memberships = FlowchartMembershipIndex::try_new(&model, &exact_resources, None)
             .expect("exact membership construction work should pass");
-        preflight_subgraph_nesting(&model, &memberships, &exact_resources)
+        preflight_subgraph_nesting(&model, &memberships, &exact_resources, None)
             .expect("exact nesting traversal work should pass");
         assert_eq!(exact_resources.layout_work_used(), exact_work);
 
@@ -854,9 +943,9 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one layout-work limit should be valid");
         let below_resources = ResourceContext::new(below_policy);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &below_resources)
+        let memberships = FlowchartMembershipIndex::try_new(&model, &below_resources, None)
             .expect("membership construction should fit below the combined work boundary");
-        let error = preflight_subgraph_nesting(&model, &memberships, &below_resources)
+        let error = preflight_subgraph_nesting(&model, &memberships, &below_resources, None)
             .expect_err("max-minus-one work should fail before nesting-state allocation");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
@@ -875,7 +964,7 @@ mod tests {
         let mut model = model_with_edge(flow_edge("A", "B"));
         model.nodes.push(flow_node("A"));
         let options = AsciiRenderOptions::ascii();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
         resources
             .charge_usage(7, 3)
@@ -918,7 +1007,7 @@ mod tests {
             length: 1,
         });
         let options = AsciiRenderOptions::ascii();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
         let graph = from_flowchart_model(&model, &options, &mut resources).unwrap();
         let edge = &graph.edges[0];
@@ -961,7 +1050,7 @@ mod tests {
             warning_facts: Vec::new(),
         };
         let options = AsciiRenderOptions::ascii();
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
 
         let graph = from_flowchart_model(&model, &options, &mut resources)
             .expect("subgraph endpoint projection should remain supported");

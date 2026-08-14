@@ -14,7 +14,7 @@ pub(super) fn render_kanban_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let mut document = BudgetedTextDocument::new(options, *execution.resources());
     let mut group_ids = HashSet::new();
     let mut node_ids = HashSet::new();
     let mut children_by_parent: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
@@ -129,7 +129,7 @@ pub(super) fn render_kanban_diagram(
         }
     }
 
-    document.finish(options)
+    document.finish()
 }
 
 fn push_node_text(

@@ -1,5 +1,8 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+mod support;
+
+use merman_ascii::AsciiRenderOptions;
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use support::render_model;
 
 const SUBGRAPH_ENDPOINT_FIXTURE: &str = include_str!(
     "../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_and_edge_labels_063.mmd"

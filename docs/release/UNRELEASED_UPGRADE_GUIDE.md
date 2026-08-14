@@ -11,6 +11,8 @@ generated bindings together.
 | Alpha.5 or development-snapshot API | Unreleased replacement |
 | --- | --- |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
+| `HeadlessAsciiError` | Match the canonical `RenderError`; use `ascii::AsciiDiagnostic` only when projecting parse, runtime-policy, or target failures onto an untrusted terminal surface |
+| `AsciiRenderOptions::resources`, `with_resource_policy(...)`, `with_resource_profile(...)`, or `with_resource_limit(...)` | Keep presentation settings in `AsciiRenderOptions`; set `AsciiRequest::resources` for facade rendering, or pass an explicit `AsciiResourcePolicy` as the fourth argument to `AsciiRenderer::render_model` |
 | `PreparedSemantic`, public SVG `PreparedRender`, or SVG-owned `HeadlessOperation` | Format-neutral `SemanticArtifact`, consumed once by a typed SVG, ASCII, layout, or export target |
 | `ParseControl`, `ParseCancelled`, or `ParseControlResult` | `OperationControl`, `OperationCancelled`, and `OperationControlResult`; analysis may keep its domain token but it shares the same operation state |
 | Direct UniFFI binding API `3` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `4`, replace `binding_api_version` / `bindingApiVersion` with `transport_api_version` / `transportApiVersion`, rename generic requests to `MermanOperationRequestV4`, and deploy the generated projection and native library together; API 4 lint rule records require `tags` and generic requests may carry `MermanOperationControl` |
@@ -93,3 +95,22 @@ host_control.cancel();
 Cancellation is cooperative. Merman checks the same control through parse, semantic projection,
 layout adapters, ASCII/SVG emission, postprocessing, and export boundaries. An opaque host callback
 or third-party encoder may finish its current call before the next checkpoint.
+
+ASCII resource limits belong to the request or caller-owned typed-model operation, not to reusable
+render options:
+
+```rust
+use merman::ascii::{AsciiRenderOptions, AsciiResourcePolicy};
+use merman::{AsciiRequest, OperationControl, RenderRequest, Renderer};
+
+let request = AsciiRequest {
+    options: AsciiRenderOptions::ascii(),
+    resources: AsciiResourcePolicy::default(),
+};
+let output = Renderer::new().render(RenderRequest::ascii(
+    "flowchart TD\nA --> B",
+    OperationControl::new(),
+    request,
+))?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```

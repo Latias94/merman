@@ -19,7 +19,11 @@ cells per structural token.
 
 > **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Depend on `merman-ascii` directly only when the host already owns a typed `merman-core::RenderSemanticModel`.
 
-This model renderer does not own a runtime-policy constructor, so it does not forward `system-*` features. Applications that need host-derived values select adapters on their parsing/facade owner, capture one operation context, and pass its local time zone through `render_model_with_local_time_zone`. Deterministic and sandboxed applications should provide explicit operation values instead of enabling system adapters.
+This model renderer does not own a runtime-policy constructor, so it does not forward `system-*`
+features. Direct users construct `AsciiRenderer`, capture an `OperationContext` from their facade or
+host runtime policy, and pass that context together with the caller-owned `OperationControl` and
+`AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
+should provide explicit operation values instead of enabling system adapters.
 
 ## Quick Start
 
@@ -53,13 +57,15 @@ grapheme-safe plan drives node measurement and final text materialization.
 
 ## Resource Policy
 
-`AsciiRenderOptions::resources` owns six typed limits: checked grid extent, deterministic layout
-work, aggregate logical document cells, actual encoded output bytes, bytes in one grapheme cluster,
-and semantic nesting depth. Select a shared `ResourceProfile` with
-`AsciiRenderOptions::with_resource_profile`, or tighten one limit with
-`with_resource_limit(AsciiResourceLimitId, value)`. `UnboundedForTrustedInput` uses an explicit
-unbounded value rather than a numeric sentinel; arithmetic overflow and allocation failure remain
-fallible.
+`AsciiResourcePolicy` owns six typed limits: checked grid extent, deterministic layout work,
+aggregate logical document cells, actual encoded output bytes, bytes in one grapheme cluster, and
+semantic nesting depth. Facade users set `AsciiRequest::resources`; direct typed-model users pass
+the policy as the fourth argument to `AsciiRenderer::render_model`. Select a shared profile with
+`AsciiResourcePolicy::for_profile`, or tighten one limit with
+`AsciiResourcePolicy::with_limit(AsciiResourceLimitId, value)`. `UnboundedForTrustedInput` uses an
+explicit unbounded value rather than a numeric sentinel; arithmetic overflow and allocation
+failure remain fallible. `AsciiRenderOptions` contains presentation and family layout choices only,
+so copying options cannot implicitly copy or replace an operation's resource budget.
 
 Resource limits are hard errors. They never select a relation summary or another lower-fidelity
 projection. Plain, ANSI16, ANSI256, TrueColor, and HTML use the same logical document accounting,
@@ -94,8 +100,8 @@ Class and ER diagrams fall back to readable `relations:` summary sections when a
 ## Direct Model API
 
 ```rust,no_run
-use merman_ascii::{AsciiRenderOptions, AsciiRenderer};
-use merman_core::{Engine, ParseOptions};
+use merman_ascii::{AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy};
+use merman_core::{Engine, OperationControl, ParseOptions, runtime::RuntimePolicy};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
@@ -107,7 +113,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("diagram detected");
 
     let renderer = AsciiRenderer::new(AsciiRenderOptions::default())?;
-    let text = renderer.render_model(&parsed.model)?;
+    let control = OperationControl::new();
+    let context = RuntimePolicy::deterministic().begin_operation()?;
+    let resources = AsciiResourcePolicy::default();
+    let text = renderer.render_model(&parsed.model, &control, &context, resources)?;
 
     println!("{text}");
     Ok(())

@@ -232,8 +232,8 @@ where
     }
 }
 
-fn test_resources(options: &AsciiRenderOptions) -> ResourceContext {
-    ResourceContext::new(options.resources)
+fn test_resources(policy: AsciiResourcePolicy) -> ResourceContext {
+    ResourceContext::new(policy)
 }
 
 fn strict_k2_2_boxes() -> Vec<RelationGraphBox> {
@@ -243,9 +243,9 @@ fn strict_k2_2_boxes() -> Vec<RelationGraphBox> {
         .collect()
 }
 
-fn options_with_grid_limit(max: usize) -> AsciiRenderOptions {
-    AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, max)
+fn policy_with_grid_limit(max: usize) -> AsciiResourcePolicy {
+    AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, max)
         .expect("test grid limit should be valid")
 }
 

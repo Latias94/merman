@@ -1,8 +1,11 @@
-use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+mod support;
+
+use merman_ascii::{AsciiError, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 use merman_core::{Engine, ParseOptions};
+use support::render_model;
 
 fn render_parsed(source: &str) -> String {
     let parsed = Engine::new()

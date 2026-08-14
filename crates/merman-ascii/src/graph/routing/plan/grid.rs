@@ -7,8 +7,8 @@ use super::super::label::{
     routed_label_right_of_vertical_route_placement_for_descriptor,
 };
 use super::super::path::{
-    GridPathPortPolicy, Port, PortPair, StepDirection, route_grid_path_with_resources,
-    step_direction,
+    GridPathPortPolicy, Port, PortPair, StepDirection,
+    route_grid_path_with_resources_and_execution, step_direction,
 };
 use super::{
     MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
@@ -16,7 +16,9 @@ use super::{
     route_turn_char,
 };
 use crate::error::Result;
+use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
+use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GridRouteOptions {
@@ -110,6 +112,7 @@ pub(super) fn plan_left_right_grid_path_route(
     )
 }
 
+#[cfg(test)]
 pub(super) fn plan_left_right_grid_path_route_with_resources(
     graph_layout: &GraphLayout,
     from: &NodeLayout,
@@ -166,6 +169,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
 // Keep the route geometry, label descriptor, charset, and resource ledger explicit at this
 // internal planning seam; bundling them would obscure which inputs affect candidate geometry.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     graph_layout: &GraphLayout,
     from: &NodeLayout,
@@ -176,12 +180,40 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     options: GridRouteOptions,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
-    let Some(route) = route_grid_path_with_resources(
+    plan_left_right_grid_path_route_with_options_resources_and_execution(
+        graph_layout,
+        from,
+        to,
+        edge,
+        label,
+        charset,
+        options,
+        resources,
+        None,
+    )
+}
+
+// Keep the route geometry, label descriptor, charset, resource ledger, and operation state
+// explicit at this internal planning seam. The uncontrolled wrapper above exists for unit tests.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_execution(
+    graph_layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
+    charset: &GraphCharset,
+    options: GridRouteOptions,
+    resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
+) -> Result<Option<RoutePlan>> {
+    let Some(route) = route_grid_path_with_resources_and_execution(
         &graph_layout.nodes,
         from,
         to,
         options.port_policy,
         resources,
+        execution,
     )?
     else {
         return Ok(None);
@@ -200,14 +232,30 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
         line_directions,
         first_line_cell,
         last_line_cell,
-    } = plan_grid_path(graph_layout, &path, edge, charset, segment, resources)?;
+    } = plan_grid_path(
+        graph_layout,
+        &path,
+        edge,
+        charset,
+        segment,
+        resources,
+        execution,
+    )?;
     if lines_drawn.is_empty() || line_directions.is_empty() {
         return Ok(None);
     }
     let (Some(start_cell), Some(end_cell)) = (first_line_cell, last_line_cell) else {
         return Ok(None);
     };
-    plan_grid_corners(&mut cells, graph_layout, &path, charset, segment, resources)?;
+    plan_grid_corners(
+        &mut cells,
+        graph_layout,
+        &path,
+        charset,
+        segment,
+        resources,
+        execution,
+    )?;
     plan_grid_box_start(
         &mut cells,
         lines_drawn[0].as_slice(),
@@ -215,6 +263,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
         charset,
         segment,
         resources,
+        execution,
     )?;
     let labels = planned_grid_label(label, &lines_drawn, &line_directions, options.label_mode)
         .into_iter()
@@ -314,6 +363,7 @@ fn plan_grid_path(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<GridPathPlan> {
     let mut cells = PlannedRouteCells::new();
     let mut lines_drawn = Vec::new();
@@ -322,14 +372,16 @@ fn plan_grid_path(
     let mut last_line_cell = None;
 
     for path_segment in path.windows(2) {
+        checkpoint_layout(execution)?;
         let direction = step_direction(path_segment[0], path_segment[1]);
         let line_span = GridLineSpan {
             from: graph_layout.grid_to_canvas(path_segment[0]),
             to: graph_layout.grid_to_canvas(path_segment[1]),
             direction,
         };
-        let (line, first_cell, last_cell) =
-            plan_grid_line(&mut cells, line_span, edge, charset, segment, resources)?;
+        let (line, first_cell, last_cell) = plan_grid_line(
+            &mut cells, line_span, edge, charset, segment, resources, execution,
+        )?;
         if !line.is_empty() {
             lines_drawn.push(line);
             line_dirs.push(direction);
@@ -354,6 +406,7 @@ fn plan_grid_line(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<(
     Vec<CanvasCoord>,
     Option<PlannedCellId>,
@@ -371,6 +424,7 @@ fn plan_grid_line(
         StepDirection::Right => {
             let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
             for x in (from.x + 1)..to.x {
+                checkpoint_layout(execution)?;
                 let cell = cells.try_push(resources, || {
                     route_cell_in_segment(x, from.y, line, segment)
                 })?;
@@ -382,6 +436,7 @@ fn plan_grid_line(
         StepDirection::Left => {
             let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
             for x in ((to.x + 1)..from.x).rev() {
+                checkpoint_layout(execution)?;
                 let cell = cells.try_push(resources, || {
                     route_cell_in_segment(x, from.y, line, segment)
                 })?;
@@ -393,6 +448,7 @@ fn plan_grid_line(
         StepDirection::Down => {
             let line = edge_line_char(edge, charset, GraphDirection::TopDown);
             for y in (from.y + 1)..to.y {
+                checkpoint_layout(execution)?;
                 let cell = cells.try_push(resources, || {
                     route_cell_in_segment(from.x, y, line, segment)
                 })?;
@@ -404,6 +460,7 @@ fn plan_grid_line(
         StepDirection::Up => {
             let line = edge_line_char(edge, charset, GraphDirection::TopDown);
             for y in ((to.y + 1)..from.y).rev() {
+                checkpoint_layout(execution)?;
                 let cell = cells.try_push(resources, || {
                     route_cell_in_segment(from.x, y, line, segment)
                 })?;
@@ -423,8 +480,10 @@ fn plan_grid_corners(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
     for index in 1..path.len().saturating_sub(1) {
+        checkpoint_layout(execution)?;
         let previous = step_direction(path[index - 1], path[index]);
         let next = step_direction(path[index], path[index + 1]);
         let coord = graph_layout.grid_to_canvas(path[index]);
@@ -447,7 +506,9 @@ fn plan_grid_box_start(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
+    checkpoint_layout(execution)?;
     if !charset.unicode {
         return Ok(());
     }
@@ -475,5 +536,12 @@ fn plan_grid_box_start(
             segment,
         ),
     })?;
+    Ok(())
+}
+
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(OperationPhase::Layout)?;
+    }
     Ok(())
 }

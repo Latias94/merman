@@ -14,7 +14,7 @@ pub(super) fn render_git_graph_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let resources = ResourceContext::new(options.resources);
+    let resources = ResourceContext::new(*execution.resources());
     resources.charge_layout_work(model.commits.len())?;
     if model
         .commits
@@ -69,7 +69,7 @@ pub(super) fn render_git_graph_diagram(
         }
     }
 
-    document.finish(options)
+    document.finish()
 }
 
 fn push_commit_text(
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(
             render_git_graph_diagram(
                 &model,
-                &AsciiRenderOptions::ascii().with_resource_policy(exact),
+                &AsciiRenderOptions::ascii(),
                 AsciiExecution::standalone(&exact),
             )
             .expect_err("exact validation work should reach the unknown-type boundary"),
@@ -181,7 +181,7 @@ mod tests {
             .expect("N-1 validation-work limit should be valid");
         let error = render_git_graph_diagram(
             &model,
-            &AsciiRenderOptions::ascii().with_resource_policy(below),
+            &AsciiRenderOptions::ascii(),
             AsciiExecution::standalone(&below),
         )
         .expect_err("N-1 validation work should reject before scanning commit types");
@@ -203,7 +203,7 @@ mod tests {
         let resources = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_prefix)
             .expect("positive document limit");
-        let options = AsciiRenderOptions::ascii().with_resource_policy(resources);
+        let options = AsciiRenderOptions::ascii();
         let model = GitGraphRenderModel {
             diagram_type: "gitGraph".to_string(),
             commits: Vec::new(),
@@ -216,12 +216,9 @@ mod tests {
             warning_facts: Vec::new(),
         };
 
-        let error = render_git_graph_diagram(
-            &model,
-            &options,
-            AsciiExecution::standalone(&options.resources),
-        )
-        .expect_err("the branch row must fail at its first document cell");
+        let error =
+            render_git_graph_diagram(&model, &options, AsciiExecution::standalone(&resources))
+                .expect_err("the branch row must fail at its first document cell");
 
         assert!(matches!(
             error,

@@ -45,7 +45,7 @@ fn render_with_probe(
     push_axis(&mut document, "yAxis", &model.y_axis)?;
     push_display_policy(&mut document, model)?;
     push_plots(&mut document, &model.plots)?;
-    document.finish(options)
+    document.finish()
 }
 
 fn push_axis(
@@ -182,7 +182,7 @@ mod tests {
 
     fn measured_layout_work(model: &XyChartDiagramRenderModel) -> usize {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let options = AsciiRenderOptions::ascii().with_resource_policy(policy);
+        let options = AsciiRenderOptions::ascii();
         let mut resources = ResourceContext::new(policy);
         let meter = resources.clone();
         assert!(
@@ -205,18 +205,20 @@ mod tests {
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact layout-work limit should be valid");
-        super::super::render_xychart_diagram(
+        super::super::render_xychart_diagram_with_resources(
             &model,
-            &AsciiRenderOptions::ascii().with_resource_policy(exact_policy),
+            &AsciiRenderOptions::ascii(),
+            exact_policy,
         )
         .expect("exact zero-slot layout-work budget should render through the public path");
 
         let below_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("N-1 layout-work limit should be valid");
-        let error = super::super::render_xychart_diagram(
+        let error = super::super::render_xychart_diagram_with_resources(
             &model,
-            &AsciiRenderOptions::ascii().with_resource_policy(below_policy),
+            &AsciiRenderOptions::ascii(),
+            below_policy,
         )
         .expect_err("N-1 zero-slot layout-work budget should reject through the public path");
         let AsciiError::ResourceLimitExceeded(details) = error else {
@@ -230,34 +232,34 @@ mod tests {
     #[test]
     fn empty_projection_rejects_n_minus_one_before_retaining_overflow_fragment() {
         let model = zero_slot_model();
-        let unbounded = AsciiRenderOptions::ascii()
-            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
-        let resources = ResourceContext::new(unbounded.resources);
-        let rendered = render(&model, ChartOrientation::Vertical, &unbounded, resources)
+        let options = AsciiRenderOptions::ascii();
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(unbounded);
+        let rendered = render(&model, ChartOrientation::Vertical, &options, resources)
             .expect("the unbounded empty projection should render");
 
         let exact = unbounded
-            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
             .expect("the exact output limit should be valid");
         let exact_retained = Rc::new(Cell::new(0));
         render_with_probe(
             &model,
             ChartOrientation::Vertical,
-            &exact,
-            ResourceContext::new(exact.resources),
+            &options,
+            ResourceContext::new(exact),
             Some(Rc::clone(&exact_retained)),
         )
         .expect("the exact empty projection should retain every fragment");
 
         let below = exact
-            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
             .expect("the N-1 output limit should be valid");
         let below_retained = Rc::new(Cell::new(0));
         let error = render_with_probe(
             &model,
             ChartOrientation::Vertical,
-            &below,
-            ResourceContext::new(below.resources),
+            &options,
+            ResourceContext::new(below),
             Some(Rc::clone(&below_retained)),
         )
         .expect_err("N-1 must reject before retaining the overflow fragment");

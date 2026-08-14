@@ -1,12 +1,14 @@
+mod support;
+
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile, render_model,
-    render_model_with_operation,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
+use support::{render_controlled_model, render_model, render_model_with_resources};
 
 fn parse_class_render_model(input: &str) -> RenderSemanticModel {
     Engine::new()
@@ -30,6 +32,16 @@ fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
     render_model(&model, options)
 }
 
+fn render_class_with_resources(
+    input: &str,
+    options: &AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
+) -> merman_ascii::Result<String> {
+    let model = parse_class_render_model(input);
+
+    render_model_with_resources(&model, options, resources)
+}
+
 fn render_class_model(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
@@ -51,7 +63,7 @@ fn render_class_with_grid_limit(
         .with_limit(AsciiResourceLimitId::MaxGridCells, max_grid_cells)
         .expect("valid operation grid limit");
 
-    render_model_with_operation(&model, options, &control, &context, resources)
+    render_controlled_model(&model, options, &control, &context, resources)
 }
 
 fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
@@ -746,10 +758,10 @@ fn class_parser_horizontal_direction_propagates_resource_errors() {
         AsciiResourceLimitId::MaxGridCells,
         AsciiResourceLimitId::MaxLayoutWorkUnits,
     ] {
-        let options = AsciiRenderOptions::ascii()
-            .with_resource_limit(limit, 1)
+        let resources = AsciiResourcePolicy::default()
+            .with_limit(limit, 1)
             .expect("horizontal class resource limit should be valid");
-        let error = render_class(input, &options)
+        let error = render_class_with_resources(input, &AsciiRenderOptions::ascii(), resources)
             .expect_err("horizontal class rendering must propagate resource errors");
         assert!(matches!(
             error,
@@ -2301,13 +2313,14 @@ fn class_parser_dense_plain_associations_keep_summary_connector() {
 
 #[test]
 fn class_parser_relation_layout_propagates_grid_resource_errors() {
-    let options = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
         .expect("test resource limit should be valid");
 
-    let error = render_class(
+    let error = render_class_with_resources(
         "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes<br>through\nService --> Repo : stores",
-        &options,
+        &AsciiRenderOptions::ascii(),
+        resources,
     )
     .expect_err("grid resource errors must not become summary fallback");
     assert!(matches!(

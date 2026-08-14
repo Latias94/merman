@@ -1,6 +1,8 @@
+mod support;
+
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    TerminalWidthProfile, render_model,
+    TerminalWidthProfile,
 };
 use merman_core::diagrams::sequence::{
     SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
@@ -9,6 +11,7 @@ use merman_core::diagrams::sequence::{
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use support::render_model;
 
 const LINETYPE_LOOP_START: i32 = 10;
 const LINETYPE_LOOP_END: i32 = 11;

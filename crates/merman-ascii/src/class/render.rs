@@ -112,6 +112,13 @@ impl ClassCharset {
 
 type RenderedClassBox = RelationGraphBox;
 
+#[derive(Clone, Copy)]
+struct ClassRenderSettings<'a> {
+    options: &'a AsciiRenderOptions,
+    charset: ClassCharset,
+    direction: ClassDirection,
+}
+
 #[derive(Debug)]
 struct ClassNoteIndex<'a> {
     by_id: HashMap<&'a str, &'a ClassNote>,
@@ -366,42 +373,33 @@ fn join_endpoint_label_with_facade<'a>(
     RelationGraphLabel::try_from_lines(lines, width_profile, resources).map(Some)
 }
 
-pub(crate) fn render_class_diagram(
-    model: &ClassDiagram,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    render_class_diagram_impl(model, options, None)
-}
-
 pub(crate) fn render_class_diagram_with_execution(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    render_class_diagram_impl(model, options, Some(execution))
+    render_class_diagram_impl(model, options, execution)
 }
 
 fn render_class_diagram_impl(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let options_with_operation_resources;
-    let options = match execution {
-        Some(execution) => {
-            options_with_operation_resources = options.with_resource_policy(*execution.resources());
-            &options_with_operation_resources
-        }
-        None => options,
-    };
-    let mut resources = ResourceContext::new(options.resources);
+    let mut resources = ResourceContext::new(*execution.resources());
+    let execution = Some(execution);
     checkpoint(execution, merman_core::OperationPhase::Semantic)?;
     preflight_class_text(model, &mut resources)?;
     charge_class_model_work(model, &mut resources)?;
     validate_unique_class_render_ids(model, &mut resources)?;
     let charset = ClassCharset::for_options(options);
     let direction = ClassDirection::try_from_model(&model.direction)?;
+    let settings = ClassRenderSettings {
+        options,
+        charset,
+        direction,
+    };
     let mut deferred_text = DeferredTextRegistry::new();
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
     checkpoint(execution, merman_core::OperationPhase::Layout)?;
@@ -410,12 +408,11 @@ fn render_class_diagram_impl(
     if has_renderable_namespaces(model) {
         let rendered = render_namespaced_class_diagram(
             model,
-            options,
-            charset,
-            direction,
+            settings,
             &namespace_facade_aliases,
             &mut deferred_text,
             &mut resources,
+            execution,
         )?;
         checkpoint(execution, merman_core::OperationPhase::Emit)?;
         return Ok(rendered);
@@ -423,12 +420,11 @@ fn render_class_diagram_impl(
 
     let boxes = render_class_boxes(
         model,
-        options,
-        charset,
-        direction,
+        settings,
         &namespace_facade_aliases,
         &mut deferred_text,
         &mut resources,
+        execution,
     )?;
     if boxes.is_empty() {
         if !model.relations.is_empty() {
@@ -542,11 +538,10 @@ fn render_class_diagram_impl(
         let lines = render_horizontal_class_component_lines(
             &boxes,
             &layouts,
-            direction,
-            options,
-            charset,
+            settings,
             &mut resources,
             &mut deferred_text,
+            execution,
         )?;
         return render_class_document_lines_with_execution(
             lines,
@@ -676,12 +671,11 @@ fn validate_class_references(
 
 fn render_class_boxes<'a>(
     model: &'a ClassDiagram,
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-    direction: ClassDirection,
+    settings: ClassRenderSettings<'_>,
     namespace_facade_aliases: &HashMap<String, String>,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<RenderedClassBox>> {
     let capacity = model
         .classes
@@ -699,41 +693,44 @@ fn render_class_boxes<'a>(
         .values()
         .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
     {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         boxes.push(render_class_box(
             class,
-            options,
-            charset,
+            settings.options,
+            settings.charset,
             deferred_text,
             resources,
         )?);
     }
     for interface in &model.interfaces {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         boxes.push(render_interface_box(
             interface,
-            options,
-            charset,
+            settings.options,
+            settings.charset,
             deferred_text,
             resources,
         )?);
     }
     for note in &model.notes {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         boxes.push(render_note_box(
             note,
-            options,
-            charset,
+            settings.options,
+            settings.charset,
             deferred_text,
             resources,
         )?);
     }
     for namespace in model.namespaces.values() {
+        checkpoint(execution, merman_core::OperationPhase::Layout)?;
         boxes.push(render_namespace_container_box(
             namespace,
             Vec::new(),
-            options,
-            charset,
-            direction,
+            settings,
             deferred_text,
             resources,
+            execution,
         )?);
     }
     Ok(boxes)
@@ -777,24 +774,35 @@ fn render_class_component_lines<'text>(
     boxes: &[RenderedClassBox],
     _box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'text>],
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
+    settings: ClassRenderSettings<'_>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'text>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
-        charset,
-        width_profile: options.terminal_width_profile,
+        charset: settings.charset,
+        width_profile: settings.options.terminal_width_profile,
     };
-    Ok(relation_graph::render_relation_component_lines(
-        boxes,
-        layouts,
-        options,
-        resources,
-        &adapter,
-        deferred_text,
-    )?
-    .unwrap_or_default())
+    let lines = match execution {
+        Some(execution) => relation_graph::render_relation_component_lines_with_execution(
+            boxes,
+            layouts,
+            settings.options,
+            resources,
+            &adapter,
+            deferred_text,
+            execution,
+        )?,
+        None => relation_graph::render_relation_component_lines(
+            boxes,
+            layouts,
+            settings.options,
+            resources,
+            &adapter,
+            deferred_text,
+        )?,
+    };
+    Ok(lines.unwrap_or_default())
 }
 
 fn render_class_document_lines(
@@ -828,25 +836,36 @@ fn render_class_document_lines_with_execution(
 fn render_horizontal_class_component_lines<'text>(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'text>],
-    direction: ClassDirection,
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
+    settings: ClassRenderSettings<'_>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'text>,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
-        charset,
-        width_profile: options.terminal_width_profile,
+        charset: settings.charset,
+        width_profile: settings.options.terminal_width_profile,
     };
-    relation_graph::render_horizontal_relation_components(
-        boxes,
-        layouts,
-        direction.horizontal_direction(),
-        options,
-        resources,
-        &adapter,
-        deferred_text,
-    )
+    match execution {
+        Some(execution) => relation_graph::render_horizontal_relation_components_with_execution(
+            boxes,
+            layouts,
+            settings.direction.horizontal_direction(),
+            settings.options,
+            resources,
+            &adapter,
+            deferred_text,
+            execution,
+        ),
+        None => relation_graph::render_horizontal_relation_components(
+            boxes,
+            layouts,
+            settings.direction.horizontal_direction(),
+            settings.options,
+            resources,
+            &adapter,
+            deferred_text,
+        ),
+    }
 }
 
 fn render_class_box<'a>(
@@ -2672,6 +2691,10 @@ mod tests {
         resources_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, max)
     }
 
+    fn unbounded_policy() -> AsciiResourcePolicy {
+        AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
     fn note(id: &str, text: &str) -> ClassNote {
         ClassNote {
             id: id.to_string(),
@@ -2706,9 +2729,10 @@ mod tests {
     fn render_class_section_fixture(
         class: &ClassNode,
         options: &AsciiRenderOptions,
+        policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let relation_box = render_class_box(
             class,
@@ -2777,22 +2801,27 @@ mod tests {
     fn render_class_summary_fixture(
         model: &ClassDiagram,
         options: &AsciiRenderOptions,
+        policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(policy);
         let charset = ClassCharset::for_options(options);
         let direction = ClassDirection::try_from_model(&model.direction)
             .expect("class summary direction should be valid");
+        let settings = ClassRenderSettings {
+            options,
+            charset,
+            direction,
+        };
         let aliases = namespace_facade_aliases(model).expect("class summary aliases should plan");
         let mut deferred = DeferredTextRegistry::new();
         let boxes = render_class_boxes(
             model,
-            options,
-            charset,
-            direction,
+            settings,
             &aliases,
             &mut deferred,
             &mut resources,
+            None,
         )
         .expect("class summary boxes should plan");
         let mut layouts = Vec::new();
@@ -2854,11 +2883,11 @@ mod tests {
             AsciiColorMode::TrueColor,
             AsciiColorMode::Html,
         ] {
-            let base = AsciiRenderOptions::unicode()
-                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
-                .with_color_mode(mode);
+            let base = AsciiRenderOptions::unicode().with_color_mode(mode);
+            let base_policy = unbounded_policy();
             let measured_probe = Cell::new(false);
-            let (measured, _, _) = render_class_summary_fixture(&model, &base, &measured_probe);
+            let (measured, _, _) =
+                render_class_summary_fixture(&model, &base, base_policy, &measured_probe);
             let expected = measured.expect("unbounded class summary should render");
             assert!(measured_probe.get(), "mode={mode:?}");
             assert!(expected.contains("relations:"), "mode={mode:?}");
@@ -2871,11 +2900,12 @@ mod tests {
                 assert!(expected.contains("endpoint1=[bytes=6 \"a<&中\", bytes=1 \"b\"]"));
             }
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            let exact_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
                 .expect("exact class summary output limit should be valid");
             let exact_probe = Cell::new(false);
-            let (rendered, _, _) = render_class_summary_fixture(&model, &exact, &exact_probe);
+            let (rendered, _, _) =
+                render_class_summary_fixture(&model, &base, exact_policy, &exact_probe);
             assert_eq!(
                 rendered.expect("exact class summary should materialize"),
                 expected,
@@ -2883,11 +2913,12 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+            let below_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
                 .expect("max-minus-one class summary limit should be valid");
             let below_probe = Cell::new(false);
-            let (error, before, after) = render_class_summary_fixture(&model, &below, &below_probe);
+            let (error, before, after) =
+                render_class_summary_fixture(&model, &base, below_policy, &below_probe);
             assert!(!below_probe.get(), "mode={mode:?}");
             assert_eq!(after, before, "mode={mode:?}");
             assert!(matches!(
@@ -2931,11 +2962,11 @@ mod tests {
             AsciiColorMode::TrueColor,
             AsciiColorMode::Html,
         ] {
-            let base = AsciiRenderOptions::unicode()
-                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
-                .with_color_mode(mode);
+            let base = AsciiRenderOptions::unicode().with_color_mode(mode);
+            let base_policy = unbounded_policy();
             let measured_probe = Cell::new(false);
-            let (measured, _, _) = render_class_section_fixture(class, &base, &measured_probe);
+            let (measured, _, _) =
+                render_class_section_fixture(class, &base, base_policy, &measured_probe);
             let expected = measured.expect("unbounded class section should render");
             assert!(measured_probe.get(), "mode={mode:?}");
             if mode == AsciiColorMode::Html {
@@ -2945,11 +2976,12 @@ mod tests {
                 assert!(expected.contains("+value<&中*"), "mode={mode:?}");
             }
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            let exact_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
                 .expect("exact class output limit should be valid");
             let exact_probe = Cell::new(false);
-            let (rendered, _, _) = render_class_section_fixture(class, &exact, &exact_probe);
+            let (rendered, _, _) =
+                render_class_section_fixture(class, &base, exact_policy, &exact_probe);
             assert_eq!(
                 rendered.expect("exact class output should materialize"),
                 expected,
@@ -2957,11 +2989,12 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+            let below_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
                 .expect("max-minus-one class output limit should be valid");
             let below_probe = Cell::new(false);
-            let (error, before, after) = render_class_section_fixture(class, &below, &below_probe);
+            let (error, before, after) =
+                render_class_section_fixture(class, &base, below_policy, &below_probe);
             assert!(!below_probe.get(), "mode={mode:?}");
             assert_eq!(after, before, "mode={mode:?}");
             assert!(

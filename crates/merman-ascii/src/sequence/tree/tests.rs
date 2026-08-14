@@ -1,6 +1,6 @@
 use super::*;
-use crate::options::AsciiRenderOptions;
-use crate::resource::ResourceContext;
+use crate::operation::AsciiExecution;
+use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
 use crate::sequence::model::{
     SequenceArrowHead, SequenceCentralDecoration, SequenceLineStyle, SequenceMessage,
     SequenceMessageDirection,
@@ -8,9 +8,10 @@ use crate::sequence::model::{
 
 #[test]
 fn builder_owns_nested_controls_and_explicit_sections_before_layout() {
-    let options = AsciiRenderOptions::ascii();
-    let resources = ResourceContext::new(options.resources);
-    let mut builder = SequenceTreeBuilder::new(6, &resources).unwrap();
+    let policy = AsciiResourcePolicy::default();
+    let resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::standalone(&policy);
+    let mut builder = SequenceTreeBuilder::new(6, &resources, execution).unwrap();
     builder
         .start_control(
             0,
@@ -18,6 +19,7 @@ fn builder_owns_nested_controls_and_explicit_sections_before_layout() {
             "outer".to_string(),
             None,
             &resources,
+            execution,
         )
         .unwrap();
     builder
@@ -27,10 +29,11 @@ fn builder_owns_nested_controls_and_explicit_sections_before_layout() {
             "choice".to_string(),
             None,
             &resources,
+            execution,
         )
         .unwrap();
     builder
-        .push_event(message_event(2, 0, 1, "yes"), &resources)
+        .push_event(message_event(2, 0, 1, "yes"), &resources, execution)
         .unwrap();
     builder
         .start_section(
@@ -38,16 +41,17 @@ fn builder_owns_nested_controls_and_explicit_sections_before_layout() {
             SequenceControlKind::Alt,
             "otherwise".to_string(),
             &resources,
+            execution,
         )
         .unwrap();
     builder
-        .push_event(message_event(4, 1, 0, "no"), &resources)
+        .push_event(message_event(4, 1, 0, "no"), &resources, execution)
         .unwrap();
     builder
-        .end_control(5, SequenceControlKind::Alt, &resources)
+        .end_control(5, SequenceControlKind::Alt, &resources, execution)
         .unwrap();
     builder
-        .end_control(6, SequenceControlKind::Loop, &resources)
+        .end_control(6, SequenceControlKind::Loop, &resources, execution)
         .unwrap();
 
     let body = builder.finish().unwrap();
@@ -86,32 +90,32 @@ fn builder_admits_both_input_sized_containers_before_allocation() {
     const EXPECTED_ITEMS: usize = 3;
     const REQUIRED_WORK: usize = EXPECTED_ITEMS * 2;
 
-    let exact_options = AsciiRenderOptions::ascii()
-        .with_resource_limit(
-            crate::resource::AsciiResourceLimitId::MaxLayoutWorkUnits,
-            REQUIRED_WORK,
-        )
+    let exact_policy = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, REQUIRED_WORK)
         .unwrap();
-    let exact_resources = ResourceContext::new(exact_options.resources);
+    let exact_resources = ResourceContext::new(exact_policy);
     let exact_allocated = Cell::new(false);
-    SequenceTreeBuilder::new_with_probe(EXPECTED_ITEMS, &exact_resources, || {
-        exact_allocated.set(true)
-    })
+    SequenceTreeBuilder::new_with_probe(
+        EXPECTED_ITEMS,
+        &exact_resources,
+        AsciiExecution::standalone(&exact_policy),
+        || exact_allocated.set(true),
+    )
     .expect("the exact two-container work budget should be admitted");
     assert!(exact_allocated.get());
     assert_eq!(exact_resources.layout_work_used(), REQUIRED_WORK);
 
-    let below_options = AsciiRenderOptions::ascii()
-        .with_resource_limit(
-            crate::resource::AsciiResourceLimitId::MaxLayoutWorkUnits,
-            REQUIRED_WORK - 1,
-        )
+    let below_policy = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, REQUIRED_WORK - 1)
         .unwrap();
-    let below_resources = ResourceContext::new(below_options.resources);
+    let below_resources = ResourceContext::new(below_policy);
     let below_allocated = Cell::new(false);
-    let error = match SequenceTreeBuilder::new_with_probe(EXPECTED_ITEMS, &below_resources, || {
-        below_allocated.set(true)
-    }) {
+    let error = match SequenceTreeBuilder::new_with_probe(
+        EXPECTED_ITEMS,
+        &below_resources,
+        AsciiExecution::standalone(&below_policy),
+        || below_allocated.set(true),
+    ) {
         Ok(_) => panic!("the limit-minus-one budget should reject before allocation"),
         Err(error) => error,
     };
@@ -119,7 +123,7 @@ fn builder_admits_both_input_sized_containers_before_allocation() {
     assert!(matches!(
         error,
         AsciiError::ResourceLimitExceeded(details)
-            if details.limit == crate::resource::AsciiResourceLimitId::MaxLayoutWorkUnits
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
                 && details.actual == REQUIRED_WORK
                 && details.max == REQUIRED_WORK - 1
     ));
@@ -129,11 +133,12 @@ fn builder_admits_both_input_sized_containers_before_allocation() {
 
 #[test]
 fn nesting_limit_rejects_before_attaching_the_child_control() {
-    let options = AsciiRenderOptions::ascii()
-        .with_resource_limit(crate::resource::AsciiResourceLimitId::MaxNestingDepth, 1)
+    let policy = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxNestingDepth, 1)
         .unwrap();
-    let resources = ResourceContext::new(options.resources);
-    let mut builder = SequenceTreeBuilder::new(2, &resources).unwrap();
+    let resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::standalone(&policy);
+    let mut builder = SequenceTreeBuilder::new(2, &resources, execution).unwrap();
     builder
         .start_control(
             0,
@@ -141,6 +146,7 @@ fn nesting_limit_rejects_before_attaching_the_child_control() {
             "outer".to_string(),
             None,
             &resources,
+            execution,
         )
         .unwrap();
     let work_checkpoint = resources.layout_work_used();
@@ -152,13 +158,14 @@ fn nesting_limit_rejects_before_attaching_the_child_control() {
             "inner".to_string(),
             None,
             &resources,
+            execution,
         )
         .unwrap_err();
 
     assert!(matches!(
         error,
         AsciiError::ResourceLimitExceeded(details)
-            if details.limit == crate::resource::AsciiResourceLimitId::MaxNestingDepth
+            if details.limit == AsciiResourceLimitId::MaxNestingDepth
                 && details.actual == 2
                 && details.max == 1
     ));

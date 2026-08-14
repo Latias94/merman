@@ -35,6 +35,65 @@ pub(super) fn push_value_disclosure_lines(
     Ok(())
 }
 
+/// Closed ownership tag for the injective authored-title row protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TitleOwner {
+    Chart,
+    XAxis,
+    YAxis,
+}
+
+impl TitleOwner {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chart => "chart",
+            Self::XAxis => "xAxis",
+            Self::YAxis => "yAxis",
+        }
+    }
+}
+
+pub(super) fn push_title_display_line(
+    out: &mut ChartDocument,
+    owner: TitleOwner,
+    value: &str,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let mut line = new_chart_line(options, resources);
+    write_title_display_line(
+        &mut StyledDisclosureLine { line: &mut line },
+        owner,
+        value,
+        resources,
+    )?;
+    out.push(line, resources)
+}
+
+pub(super) fn title_display_line_width(
+    owner: TitleOwner,
+    value: &str,
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    let mut line = MeasuredDisclosureLine {
+        width: 0,
+        width_profile: options.terminal_width_profile,
+    };
+    write_title_display_line(&mut line, owner, value, resources)?;
+    Ok(line.width)
+}
+
+fn write_title_display_line(
+    line: &mut impl DisclosureLine,
+    owner: TitleOwner,
+    value: &str,
+    resources: &ResourceContext,
+) -> Result<()> {
+    line.push_text("titleDisplay: ", AsciiColorRole::Text, resources)?;
+    push_disclosure_field(line, owner.as_str(), value, resources)
+}
+
 pub(super) fn value_disclosure_line_width(
     model: &XyChartDiagramRenderModel,
     series: &SeriesPlan,

@@ -1,16 +1,17 @@
 use super::tree::{SequenceBody, SequenceTreeBuilder};
 use super::{
-    SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, lifecycle::resolve_actor_lifecycles,
-    projection_allocation_failed, validate::validate_supported_sequence_model,
+    SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, SequenceCheckpointCursor, charge_sequence_projection_text,
+    lifecycle::resolve_actor_lifecycles, projection_allocation_failed, try_plan_sequence_label,
+    try_plan_sequence_projection_label, validate::validate_supported_sequence_model,
 };
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use crate::safe_text::{
-    LabelBreakPolicy, charge_text_layout, try_plan_normalized_label_lines_with_policy,
-};
+use crate::safe_text::LabelBreakPolicy;
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
+use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceDiagramRenderModel,
     SequenceMessage as CoreSequenceMessage,
@@ -93,27 +94,33 @@ impl SequenceParticipantLabel {
         wrap: bool,
         width_profile: TerminalWidthProfile,
         resources: &mut ResourceContext,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let wrap_width = wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH);
-        let plan = try_plan_normalized_label_lines_with_policy(
+        let plan = try_plan_sequence_projection_label(
             raw,
             width_profile,
             false,
             wrap_width,
             LabelBreakPolicy::MermaidLabelBreaks,
             resources,
+            execution,
         )?
         .expect("non-trimmed labels always retain one row");
+        execution.checkpoint(OperationPhase::Semantic)?;
         plan.check_materialization_limits(resources)?;
         let metrics = plan.metrics();
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.check(
             AsciiResourceLimitId::MaxDocumentCells,
             metrics.document_cells,
         )?;
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.check(AsciiResourceLimitId::MaxOutputBytes, raw.len())?;
         Ok(Self {
-            raw: try_clone_projection_string(raw)?,
+            raw: try_clone_projection_string(raw, execution)?,
             wrap_width,
             width_profile,
             metrics: SequenceParticipantLabelMetrics {
@@ -131,7 +138,8 @@ impl SequenceParticipantLabel {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut resources = ResourceContext::new(policy);
-        Self::try_from_raw(raw, wrap, width_profile, &mut resources)
+        let execution = AsciiExecution::standalone(&policy);
+        Self::try_from_raw(raw, wrap, width_profile, &mut resources, execution)
             .expect("test participant label should fit the unbounded resource policy")
     }
 
@@ -146,16 +154,19 @@ impl SequenceParticipantLabel {
     pub(super) fn prepare_materialization(
         &self,
         resources: &ResourceContext,
+        checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<PreparedSequenceParticipantLabel<'_>> {
-        let plan = try_plan_normalized_label_lines_with_policy(
+        let plan = try_plan_sequence_label(
             &self.raw,
             self.width_profile,
             false,
             self.wrap_width,
             LabelBreakPolicy::MermaidLabelBreaks,
             resources,
+            checkpoints,
         )?
         .expect("non-trimmed labels always retain one row");
+        checkpoints.before_charge()?;
         plan.check_materialization_limits(resources)?;
         let metrics = plan.metrics();
         if metrics.materialized_bytes != self.metrics.materialized_bytes
@@ -179,11 +190,12 @@ impl PreparedSequenceParticipantLabel<'_> {
 
     pub(super) fn materialize_after_admission(
         self,
+        checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<MaterializedSequenceParticipantLabel> {
-        let (lines, width) = self
-            .plan
-            .materialize_after_admission(&self.label.raw)?
-            .into_parts();
+        checkpoints.checkpoint()?;
+        let materialized = self.plan.materialize_after_admission(&self.label.raw);
+        checkpoints.checkpoint()?;
+        let (lines, width) = materialized?.into_parts();
         if lines.len() != self.label.metrics.line_count || width != self.label.metrics.max_width {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "sequence",
@@ -340,43 +352,50 @@ impl SequenceNotePlacement {
 fn preflight_sequence_projection(
     model: &SequenceDiagramRenderModel,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
+    execution.checkpoint(OperationPhase::Semantic)?;
     resources.charge_layout_work(1)?;
     if let Some(title) = model.title.as_deref() {
-        charge_text_layout(resources, title)?;
+        charge_sequence_projection_text(resources, title, execution)?;
     }
 
     for actor_id in &model.actor_order {
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.charge_layout_work(1)?;
-        charge_text_layout(resources, actor_id)?;
+        charge_sequence_projection_text(resources, actor_id, execution)?;
     }
     for (actor_id, actor) in &model.actors {
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.charge_layout_work(1)?;
-        charge_text_layout(resources, actor_id)?;
-        charge_text_layout(resources, &actor.name)?;
-        charge_text_layout(resources, &actor.description)?;
+        charge_sequence_projection_text(resources, actor_id, execution)?;
+        charge_sequence_projection_text(resources, &actor.name, execution)?;
+        charge_sequence_projection_text(resources, &actor.description, execution)?;
     }
     for sequence_box in &model.boxes {
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.charge_layout_work(1)?;
-        charge_text_layout(resources, &sequence_box.fill)?;
+        charge_sequence_projection_text(resources, &sequence_box.fill, execution)?;
         if let Some(name) = sequence_box.name.as_deref() {
-            charge_text_layout(resources, name)?;
+            charge_sequence_projection_text(resources, name, execution)?;
         }
         for actor_key in &sequence_box.actor_keys {
+            execution.checkpoint(OperationPhase::Semantic)?;
             resources.charge_layout_work(1)?;
-            charge_text_layout(resources, actor_key)?;
+            charge_sequence_projection_text(resources, actor_key, execution)?;
         }
     }
 
     for message in &model.messages {
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.charge_layout_work(1)?;
         if let Some(from) = message.from.as_deref() {
-            charge_text_layout(resources, from)?;
+            charge_sequence_projection_text(resources, from, execution)?;
         }
         if let Some(to) = message.to.as_deref() {
-            charge_text_layout(resources, to)?;
+            charge_sequence_projection_text(resources, to, execution)?;
         }
-        charge_text_layout(resources, message.message_text())?;
+        charge_sequence_projection_text(resources, message.message_text(), execution)?;
     }
 
     for actor_id in model
@@ -384,8 +403,9 @@ fn preflight_sequence_projection(
         .keys()
         .chain(model.destroyed_actors.keys())
     {
+        execution.checkpoint(OperationPhase::Semantic)?;
         resources.charge_layout_work(1)?;
-        charge_text_layout(resources, actor_id)?;
+        charge_sequence_projection_text(resources, actor_id, execution)?;
     }
     Ok(())
 }
@@ -394,11 +414,12 @@ pub(crate) fn from_sequence_model(
     model: &SequenceDiagramRenderModel,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<AsciiSequenceDiagram> {
-    preflight_sequence_projection(model, resources)?;
-    validate_supported_sequence_model(model)?;
+    preflight_sequence_projection(model, resources, execution)?;
+    validate_supported_sequence_model(model, execution)?;
 
-    let participants = sequence_participants(model, width_profile, resources)?;
+    let participants = sequence_participants(model, width_profile, resources, execution)?;
     if participants.is_empty() {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
@@ -406,19 +427,22 @@ pub(crate) fn from_sequence_model(
         });
     }
 
+    execution.checkpoint(OperationPhase::Semantic)?;
     let mut participant_index = HashMap::new();
     participant_index
         .try_reserve(participants.len())
         .map_err(|_| projection_allocation_failed())?;
     for (index, participant) in participants.iter().enumerate() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         participant_index.insert(participant.id.as_str(), index);
     }
-    let boxes = sequence_boxes(model, &participant_index)?;
-    let lifecycles = resolve_actor_lifecycles(model, &participant_index, resources)?;
-    let mut body = SequenceTreeBuilder::new(model.messages.len(), resources)?;
+    let boxes = sequence_boxes(model, &participant_index, execution)?;
+    let lifecycles = resolve_actor_lifecycles(model, &participant_index, resources, execution)?;
+    let mut body = SequenceTreeBuilder::new(model.messages.len(), resources, execution)?;
     let mut autonumber = AutonumberState::default();
 
     for (model_index, message) in model.messages.iter().enumerate() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let semantic_kind = message.semantic_kind();
         if consume_autonumber(message, &mut autonumber) {
             continue;
@@ -428,21 +452,23 @@ pub(crate) fn from_sequence_model(
             continue;
         }
 
-        if let Some(record) = sequence_control_record(message, model_index)? {
+        if let Some(record) = sequence_control_record(message, model_index, execution)? {
             match record {
                 SequenceControlRecord::Start {
                     model_index,
                     kind,
                     label,
                     background,
-                } => body.start_control(model_index, kind, label, background, resources)?,
+                } => {
+                    body.start_control(model_index, kind, label, background, resources, execution)?
+                }
                 SequenceControlRecord::Separator {
                     model_index,
                     kind,
                     label,
-                } => body.start_section(model_index, kind, label, resources)?,
+                } => body.start_section(model_index, kind, label, resources, execution)?,
                 SequenceControlRecord::End { model_index, kind } => {
-                    body.end_control(model_index, kind, resources)?
+                    body.end_control(model_index, kind, resources, execution)?
                 }
             }
             continue;
@@ -470,7 +496,7 @@ pub(crate) fn from_sequence_model(
             } else {
                 SequenceEvent::ActivationEnd { actor, model_index }
             };
-            body.push_event(event, resources)?;
+            body.push_event(event, resources, execution)?;
             continue;
         }
 
@@ -510,11 +536,12 @@ pub(crate) fn from_sequence_model(
                     model_index,
                     from,
                     to,
-                    label: try_clone_projection_string(label)?,
+                    label: try_clone_projection_string(label, execution)?,
                     wrap: message.wrap,
                     placement,
                 }),
                 resources,
+                execution,
             )?;
             continue;
         }
@@ -539,7 +566,7 @@ pub(crate) fn from_sequence_model(
                     diagram_type: "sequence",
                     feature: "central connection types",
                 })?;
-        let label = autonumber.label(message.message_text())?;
+        let label = autonumber.label(message.message_text(), execution)?;
 
         body.push_event(
             SequenceEvent::Message(SequenceMessage {
@@ -555,6 +582,7 @@ pub(crate) fn from_sequence_model(
                 central_decoration,
             }),
             resources,
+            execution,
         )?;
     }
 
@@ -563,7 +591,7 @@ pub(crate) fn from_sequence_model(
             .title
             .as_deref()
             .filter(|title| !title.is_empty())
-            .map(try_clone_projection_string)
+            .map(|title| try_clone_projection_string(title, execution))
             .transpose()?,
         participants,
         lifecycles,
@@ -575,6 +603,7 @@ pub(crate) fn from_sequence_model(
 fn sequence_control_record(
     message: &CoreSequenceMessage,
     model_index: usize,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<SequenceControlRecord>> {
     let kind = match message.message_type {
         LOOP_START_MESSAGE_TYPE => Some((SequenceControlKind::Loop, true)),
@@ -608,7 +637,7 @@ fn sequence_control_record(
             return Ok(Some(SequenceControlRecord::Separator {
                 model_index,
                 kind,
-                label: try_clone_projection_string(message.message_text())?,
+                label: try_clone_projection_string(message.message_text(), execution)?,
             }));
         }
         return Ok(None);
@@ -618,7 +647,7 @@ fn sequence_control_record(
 
     if is_start {
         let raw_label = message.message_text();
-        let (label, background) = sequence_control_start_label(kind, raw_label)?;
+        let (label, background) = sequence_control_start_label(kind, raw_label, execution)?;
         Ok(Some(SequenceControlRecord::Start {
             model_index,
             kind,
@@ -633,15 +662,16 @@ fn sequence_control_record(
 fn sequence_control_start_label(
     kind: SequenceControlKind,
     raw_label: &str,
+    execution: AsciiExecution<'_>,
 ) -> Result<(String, Option<AsciiRgb>)> {
     if kind != SequenceControlKind::Rect {
-        return Ok((try_clone_projection_string(raw_label)?, None));
+        return Ok((try_clone_projection_string(raw_label, execution)?, None));
     }
 
     Ok(match parse_css_color_value(raw_label) {
         Some(CssColor::Rgb(color)) => (String::new(), Some(color)),
         Some(CssColor::Transparent) => (String::new(), None),
-        None => (try_clone_projection_string(raw_label)?, None),
+        None => (try_clone_projection_string(raw_label, execution)?, None),
     })
 }
 
@@ -660,12 +690,14 @@ fn sequence_participants(
     model: &SequenceDiagramRenderModel,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceParticipant>> {
     let expected = if model.actor_order.is_empty() {
         model.actors.len()
     } else {
         model.actor_order.len()
     };
+    execution.checkpoint(OperationPhase::Semantic)?;
     let mut participants = Vec::new();
     participants
         .try_reserve_exact(expected)
@@ -673,11 +705,27 @@ fn sequence_participants(
 
     if model.actor_order.is_empty() {
         for id in model.actors.keys() {
-            push_sequence_participant(&mut participants, model, id, width_profile, resources)?;
+            execution.checkpoint(OperationPhase::Semantic)?;
+            push_sequence_participant(
+                &mut participants,
+                model,
+                id,
+                width_profile,
+                resources,
+                execution,
+            )?;
         }
     } else {
         for id in &model.actor_order {
-            push_sequence_participant(&mut participants, model, id, width_profile, resources)?;
+            execution.checkpoint(OperationPhase::Semantic)?;
+            push_sequence_participant(
+                &mut participants,
+                model,
+                id,
+                width_profile,
+                resources,
+                execution,
+            )?;
         }
     }
 
@@ -690,6 +738,7 @@ fn push_sequence_participant(
     id: &str,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let actor = model.actors.get(id).ok_or(AsciiError::UnsupportedFeature {
         diagram_type: "sequence",
@@ -704,10 +753,15 @@ fn push_sequence_participant(
     } else {
         &actor.description
     };
-    let label =
-        SequenceParticipantLabel::try_from_raw(raw_label, actor.wrap, width_profile, resources)?;
+    let label = SequenceParticipantLabel::try_from_raw(
+        raw_label,
+        actor.wrap,
+        width_profile,
+        resources,
+        execution,
+    )?;
     participants.push(SequenceParticipant {
-        id: try_clone_projection_string(id)?,
+        id: try_clone_projection_string(id, execution)?,
         label,
     });
     Ok(())
@@ -716,17 +770,21 @@ fn push_sequence_participant(
 fn sequence_boxes(
     model: &SequenceDiagramRenderModel,
     participant_index: &HashMap<&str, usize>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceGroupBox>> {
+    execution.checkpoint(OperationPhase::Semantic)?;
     let mut boxes = Vec::new();
     boxes
         .try_reserve_exact(model.boxes.len())
         .map_err(|_| projection_allocation_failed())?;
     for sequence_box in &model.boxes {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let mut actor_indices = Vec::new();
         actor_indices
             .try_reserve_exact(sequence_box.actor_keys.len())
             .map_err(|_| projection_allocation_failed())?;
         for actor_key in &sequence_box.actor_keys {
+            execution.checkpoint(OperationPhase::Semantic)?;
             actor_indices.push(participant_index.get(actor_key.as_str()).copied().ok_or(
                 AsciiError::UnsupportedFeature {
                     diagram_type: "sequence",
@@ -739,7 +797,7 @@ fn sequence_boxes(
             .name
             .as_deref()
             .filter(|name| !name.is_empty())
-            .map(try_clone_projection_string)
+            .map(|name| try_clone_projection_string(name, execution))
             .transpose()?;
 
         boxes.push(SequenceGroupBox {
@@ -752,7 +810,8 @@ fn sequence_boxes(
     Ok(boxes)
 }
 
-fn try_clone_projection_string(value: &str) -> Result<String> {
+fn try_clone_projection_string(value: &str, execution: AsciiExecution<'_>) -> Result<String> {
+    execution.checkpoint(OperationPhase::Semantic)?;
     let mut output = String::new();
     output
         .try_reserve_exact(value.len())
@@ -779,7 +838,8 @@ impl Default for AutonumberState {
 }
 
 impl AutonumberState {
-    fn label(&mut self, text: &str) -> Result<String> {
+    fn label(&mut self, text: &str, execution: AsciiExecution<'_>) -> Result<String> {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let next = self.next;
         self.next = round_sequence_number(next + self.step);
 
@@ -804,7 +864,7 @@ impl AutonumberState {
             };
             return Ok(label);
         }
-        try_clone_projection_string(text)
+        try_clone_projection_string(text, execution)
     }
 }
 
@@ -841,11 +901,55 @@ fn consume_autonumber(message: &CoreSequenceMessage, state: &mut AutonumberState
 
 #[cfg(test)]
 mod tests {
-    use super::SequenceParticipantLabel;
+    use super::{SequenceParticipantLabel, from_sequence_model};
     use crate::error::AsciiError;
+    use crate::operation::AsciiExecution;
     use crate::options::TerminalWidthProfile;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use merman_core::resources::ResourceProfile;
+    use merman_core::{
+        Engine, OperationControl, OperationPhase, ParseOptions, RenderSemanticModel,
+    };
+
+    fn parse_sequence_model(
+        source: &str,
+    ) -> merman_core::diagrams::sequence::SequenceDiagramRenderModel {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("sequence cancellation fixture should parse")
+            .expect("sequence cancellation fixture should be detected");
+        match parsed.into_parts().1 {
+            RenderSemanticModel::Sequence(model) => model,
+            other => panic!("expected sequence model, got {}", other.kind()),
+        }
+    }
+
+    #[test]
+    fn sequence_projection_cancellation_precedes_the_next_semantic_work_charge() {
+        let model = parse_sequence_model("sequenceDiagram\nparticipant A\nparticipant B\n");
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one semantic work unit should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let error = from_sequence_model(
+            &model,
+            TerminalWidthProfile::Unicode,
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("scheduled semantic cancellation should beat the limit-minus-one charge");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Semantic
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 1);
+    }
 
     #[test]
     fn participant_label_checks_its_grid_extent_before_projection_clone() {
@@ -857,6 +961,7 @@ mod tests {
             true,
             TerminalWidthProfile::Unicode,
             &mut measured_resources,
+            AsciiExecution::standalone(&unbounded),
         )
         .expect("unbounded participant-label plan should pass");
         let required_cells = measured.metrics.max_width * measured.metrics.line_count;
@@ -871,6 +976,7 @@ mod tests {
             true,
             TerminalWidthProfile::Unicode,
             &mut exact_resources,
+            AsciiExecution::standalone(&exact_policy),
         )
         .expect("exact participant-label grid extent should pass");
 
@@ -883,6 +989,7 @@ mod tests {
             true,
             TerminalWidthProfile::Unicode,
             &mut below_resources,
+            AsciiExecution::standalone(&below_policy),
         )
         .expect_err("max-minus-one participant-label grid extent should reject");
 

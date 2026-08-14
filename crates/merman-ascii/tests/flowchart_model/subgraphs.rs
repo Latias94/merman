@@ -96,6 +96,116 @@ fn flowchart_direct_model_duplicate_subgraph_ids_use_the_parser_semantics() {
 }
 
 #[test]
+fn duplicate_flowchart_parent_contains_its_nested_child_layout() {
+    let mut model = single_node_flowchart_model("squareRect", "A");
+    model.direction = Some("TB".to_string());
+    let mut second_node = model.nodes[0].clone();
+    second_node.id = "B".to_string();
+    second_node.label = Some("B".to_string());
+    model.nodes.push(second_node);
+    model.subgraphs = vec![
+        merman_core::diagrams::flowchart::FlowSubgraph {
+            id: "X".to_string(),
+            title: "First X".to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["A".to_string()],
+        },
+        merman_core::diagrams::flowchart::FlowSubgraph {
+            id: "Y".to_string(),
+            title: "Inner Y".to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["B".to_string()],
+        },
+        merman_core::diagrams::flowchart::FlowSubgraph {
+            id: "X".to_string(),
+            title: "Later X".to_string(),
+            dir: None,
+            has_explicit_dir: false,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["Y".to_string()],
+        },
+    ];
+
+    let rendered = render_model(
+        &RenderSemanticModel::Flowchart(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("duplicate parent declarations should retain nested child containment");
+    let outer = ascii_group_box(&rendered, "First X");
+    let inner = ascii_group_box(&rendered, "Inner Y");
+
+    assert!(!rendered.contains("Later X"), "{rendered}");
+    assert!(
+        outer.0 < inner.0,
+        "outer left must precede inner: {rendered}"
+    );
+    assert!(
+        outer.1 < inner.1,
+        "outer top must precede inner: {rendered}"
+    );
+    assert!(
+        outer.2 > inner.2,
+        "outer right must follow inner: {rendered}"
+    );
+    assert!(
+        outer.3 > inner.3,
+        "outer bottom must follow inner: {rendered}"
+    );
+}
+
+fn ascii_group_box(rendered: &str, title: &str) -> (usize, usize, usize, usize) {
+    let rows = rendered
+        .lines()
+        .map(|line| line.chars().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let (title_row, title_column) = rows
+        .iter()
+        .enumerate()
+        .find_map(|(row, chars)| {
+            chars
+                .iter()
+                .collect::<String>()
+                .find(title)
+                .map(|column| (row, column))
+        })
+        .unwrap_or_else(|| panic!("missing group title {title:?}:\n{rendered}"));
+    let top = title_row
+        .checked_sub(1)
+        .unwrap_or_else(|| panic!("group title has no top border: {title:?}"));
+    let left = rows[top][..title_column]
+        .iter()
+        .rposition(|ch| *ch == '+')
+        .unwrap_or_else(|| panic!("missing left border for {title:?}:\n{rendered}"));
+    let right = rows[top][title_column + title.len()..]
+        .iter()
+        .position(|ch| *ch == '+')
+        .map(|offset| title_column + title.len() + offset)
+        .unwrap_or_else(|| panic!("missing right border for {title:?}:\n{rendered}"));
+    let bottom = rows
+        .iter()
+        .enumerate()
+        .skip(title_row + 1)
+        .find_map(|(row, chars)| {
+            (chars.get(left) == Some(&'+')
+                && chars.get(right) == Some(&'+')
+                && chars[left + 1..right].iter().all(|ch| *ch == '-'))
+            .then_some(row)
+        })
+        .unwrap_or_else(|| panic!("missing bottom border for {title:?}:\n{rendered}"));
+    (left, top, right, bottom)
+}
+
+#[test]
 fn flowchart_duplicate_subgraph_declarations_deduplicate_repeated_members() {
     let rendered = render_flowchart(
         "flowchart TB\nsubgraph X[First]\nA\nend\nsubgraph X[Second]\nA\nB\nend",

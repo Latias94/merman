@@ -157,35 +157,22 @@ impl ErRelationLayout<'_> {
     }
 }
 
-pub(crate) fn render_er_diagram(
-    model: &ErDiagramRenderModel,
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    render_er_diagram_impl(model, options, None)
-}
-
 pub(crate) fn render_er_diagram_with_execution(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    render_er_diagram_impl(model, options, Some(execution))
+    render_er_diagram_impl(model, options, execution)
 }
 
 fn render_er_diagram_impl(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let options_with_operation_resources;
-    let options = match execution {
-        Some(execution) => {
-            options_with_operation_resources = options.with_resource_policy(*execution.resources());
-            &options_with_operation_resources
-        }
-        None => options,
-    };
+    let mut resources = ResourceContext::new(*execution.resources());
+    let execution = Some(execution);
     if model.entities.is_empty() {
         if !model.relationships.is_empty() {
             return Err(AsciiError::UnsupportedFeature {
@@ -196,7 +183,6 @@ fn render_er_diagram_impl(
         return Ok(String::new());
     }
 
-    let mut resources = ResourceContext::new(options.resources);
     checkpoint(execution, merman_core::OperationPhase::Semantic)?;
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
@@ -1490,9 +1476,10 @@ mod tests {
     fn render_er_section_fixture(
         entity: &ErEntityRenderModel,
         options: &AsciiRenderOptions,
+        policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let relation_box = render_entity_box(
             entity,
@@ -1575,9 +1562,10 @@ mod tests {
     fn render_er_summary_fixture(
         model: &ErDiagramRenderModel,
         options: &AsciiRenderOptions,
+        policy: AsciiResourcePolicy,
         materialized: &Cell<bool>,
     ) -> (Result<String>, (usize, usize), (usize, usize)) {
-        let mut resources = ResourceContext::new(options.resources);
+        let mut resources = ResourceContext::new(policy);
         let charset = ErCharset::for_options(options);
         let direction = ErDirection::try_from_model(&model.direction)
             .expect("ER summary direction should be valid");
@@ -1666,11 +1654,11 @@ mod tests {
             AsciiColorMode::TrueColor,
             AsciiColorMode::Html,
         ] {
-            let base = AsciiRenderOptions::unicode()
-                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
-                .with_color_mode(mode);
+            let base = AsciiRenderOptions::unicode().with_color_mode(mode);
+            let base_policy = unbounded_policy();
             let measured_probe = Cell::new(false);
-            let (measured, _, _) = render_er_summary_fixture(&model, &base, &measured_probe);
+            let (measured, _, _) =
+                render_er_summary_fixture(&model, &base, base_policy, &measured_probe);
             let expected = measured.expect("unbounded ER summary should render");
             assert!(measured_probe.get(), "mode={mode:?}");
             assert!(expected.contains("relations:"), "mode={mode:?}");
@@ -1682,11 +1670,12 @@ mod tests {
                 assert!(expected.contains("self<&中"), "mode={mode:?}");
             }
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            let exact_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
                 .expect("exact ER summary output limit should be valid");
             let exact_probe = Cell::new(false);
-            let (rendered, _, _) = render_er_summary_fixture(&model, &exact, &exact_probe);
+            let (rendered, _, _) =
+                render_er_summary_fixture(&model, &base, exact_policy, &exact_probe);
             assert_eq!(
                 rendered.expect("exact ER summary should materialize"),
                 expected,
@@ -1694,11 +1683,12 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+            let below_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
                 .expect("max-minus-one ER summary limit should be valid");
             let below_probe = Cell::new(false);
-            let (error, before, after) = render_er_summary_fixture(&model, &below, &below_probe);
+            let (error, before, after) =
+                render_er_summary_fixture(&model, &base, below_policy, &below_probe);
             assert!(!below_probe.get(), "mode={mode:?}");
             assert_eq!(after, before, "mode={mode:?}");
             assert!(matches!(
@@ -1732,11 +1722,11 @@ mod tests {
             AsciiColorMode::TrueColor,
             AsciiColorMode::Html,
         ] {
-            let base = AsciiRenderOptions::unicode()
-                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
-                .with_color_mode(mode);
+            let base = AsciiRenderOptions::unicode().with_color_mode(mode);
+            let base_policy = unbounded_policy();
             let measured_probe = Cell::new(false);
-            let (measured, _, _) = render_er_section_fixture(&entity, &base, &measured_probe);
+            let (measured, _, _) =
+                render_er_section_fixture(&entity, &base, base_policy, &measured_probe);
             let expected = measured.expect("unbounded ER section should render");
             assert!(measured_probe.get(), "mode={mode:?}");
             if mode == AsciiColorMode::Html {
@@ -1747,11 +1737,12 @@ mod tests {
                 assert!(expected.contains("owner<&中"), "mode={mode:?}");
             }
 
-            let exact = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+            let exact_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
                 .expect("exact ER output limit should be valid");
             let exact_probe = Cell::new(false);
-            let (rendered, _, _) = render_er_section_fixture(&entity, &exact, &exact_probe);
+            let (rendered, _, _) =
+                render_er_section_fixture(&entity, &base, exact_policy, &exact_probe);
             assert_eq!(
                 rendered.expect("exact ER output should materialize"),
                 expected,
@@ -1759,11 +1750,12 @@ mod tests {
             );
             assert!(exact_probe.get(), "mode={mode:?}");
 
-            let below = base
-                .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+            let below_policy = base_policy
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
                 .expect("max-minus-one ER output limit should be valid");
             let below_probe = Cell::new(false);
-            let (error, before, after) = render_er_section_fixture(&entity, &below, &below_probe);
+            let (error, before, after) =
+                render_er_section_fixture(&entity, &base, below_policy, &below_probe);
             assert!(!below_probe.get(), "mode={mode:?}");
             assert_eq!(after, before, "mode={mode:?}");
             assert!(

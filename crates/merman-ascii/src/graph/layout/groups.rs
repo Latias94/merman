@@ -2,6 +2,7 @@ use super::super::model::{AsciiGraph, AsciiGraphGroup, GraphDirection, GraphGrou
 use super::super::topology::GraphGroupTopology;
 use super::{GridCoord, GroupLayout, NodeLayout};
 use crate::error::Result;
+use crate::operation::AsciiExecution;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::collections::HashSet;
@@ -18,12 +19,19 @@ use self::members::{
     member_grid_bounds, shift_member_indices_x, shift_member_indices_y,
 };
 
+#[derive(Debug)]
+pub(super) struct LaidOutGroups {
+    pub(super) items: Vec<GroupLayout>,
+    pub(super) background_order: Vec<usize>,
+}
+
 pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<()> {
     placement::apply_group_placement_adjustments(
         graph,
@@ -31,6 +39,7 @@ pub(super) fn apply_group_placement_adjustments(
         topology,
         width_profile,
         resources,
+        execution,
     )
 }
 
@@ -50,8 +59,26 @@ pub(super) fn layout_groups(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<Vec<GroupLayout>> {
+) -> Result<LaidOutGroups> {
     bounds::layout_groups(graph, layouts, topology, width_profile, resources)
+}
+
+pub(super) fn layout_groups_with_execution(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<LaidOutGroups> {
+    bounds::layout_groups_with_execution(
+        graph,
+        layouts,
+        topology,
+        width_profile,
+        resources,
+        execution,
+    )
 }
 
 pub(super) fn empty_group_minimum_size(

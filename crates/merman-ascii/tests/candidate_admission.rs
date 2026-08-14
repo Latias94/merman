@@ -1,5 +1,6 @@
 #[path = "candidate_admission/evaluator.rs"]
 mod evaluator;
+mod support;
 
 use std::fs;
 use std::path::Path;
@@ -7,9 +8,10 @@ use std::path::Path;
 use evaluator::{CandidateKind, PrototypeObservation, Scenario, evaluate};
 use merman_ascii::{
     AsciiError, AsciiPrimaryProjection, AsciiRenderOptions, AsciiSupportLevel, ascii_capabilities,
-    ascii_diagrammatic_diagram_types, ascii_supported_diagram_types, render_model,
+    ascii_diagrammatic_diagram_types, ascii_supported_diagram_types,
 };
 use merman_core::{Engine, ParseOptions};
+use support::render_model;
 
 #[derive(Clone, Copy)]
 struct CandidateFixture {

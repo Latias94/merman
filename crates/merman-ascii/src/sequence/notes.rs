@@ -1,13 +1,16 @@
 use super::{
     BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH, NOTE_SIDE_GAP, NOTE_WRAP_TEXT_WIDTH,
+    SequenceActorRenderState, SequenceCheckpointCursor, try_plan_sequence_label,
 };
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+#[cfg(test)]
+use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::safe_text::{
-    LabelBreakPolicy, NormalizedLabelPlan, try_plan_normalized_label_lines_with_policy,
-};
+use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::display_width_with_profile;
+#[cfg(test)]
+use merman_core::OperationPhase;
 
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
@@ -68,43 +71,50 @@ pub(super) fn apply_note_gutters(
     diagram: &AsciiSequenceDiagram,
     layout: &mut SequenceLayout,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
     let mut left_gutter = 0;
-    for event in diagram.body.event_items() {
-        let SequenceEvent::Note(note) = event else {
-            continue;
-        };
-        resources.charge_layout_work(1)?;
-        let from = layout
-            .participant_centers
-            .get(note.from)
-            .copied()
-            .ok_or_else(invalid_note_geometry)?;
-        layout
-            .participant_centers
-            .get(note.to)
-            .ok_or_else(invalid_note_geometry)?;
-        let inner_width = note_inner_width(note, layout, resources)?;
-        let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
-        let required_anchor_offset = match note.placement {
-            SequenceNotePlacement::LeftOf => {
-                resources.checked_grid_add(note_width, NOTE_SIDE_GAP)?
+    diagram
+        .body
+        .try_for_each_event(checkpoints, |event, checkpoints| {
+            let SequenceEvent::Note(note) = event else {
+                return Ok(());
+            };
+            checkpoints.before_charge()?;
+            resources.charge_layout_work(1)?;
+            let from = layout
+                .participant_centers
+                .get(note.from)
+                .copied()
+                .ok_or_else(invalid_note_geometry)?;
+            layout
+                .participant_centers
+                .get(note.to)
+                .ok_or_else(invalid_note_geometry)?;
+            let inner_width = note_inner_width(note, layout, resources, checkpoints)?;
+            let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
+            let required_anchor_offset = match note.placement {
+                SequenceNotePlacement::LeftOf => {
+                    resources.checked_grid_add(note_width, NOTE_SIDE_GAP)?
+                }
+                SequenceNotePlacement::Over if note.from == note.to => note_width / 2,
+                SequenceNotePlacement::Over => 1,
+                SequenceNotePlacement::RightOf => 0,
+            };
+            if required_anchor_offset > from {
+                left_gutter = left_gutter.max(required_anchor_offset - from);
             }
-            SequenceNotePlacement::Over if note.from == note.to => note_width / 2,
-            SequenceNotePlacement::Over => 1,
-            SequenceNotePlacement::RightOf => 0,
-        };
-        if required_anchor_offset > from {
-            left_gutter = left_gutter.max(required_anchor_offset - from);
-        }
-    }
+            Ok(())
+        })?;
 
     if left_gutter == 0 {
         return Ok(());
     }
 
+    checkpoints.before_charge()?;
     resources.charge_layout_work(layout.participant_centers.len())?;
     for center in &mut layout.participant_centers {
+        checkpoints.tick()?;
         *center = resources.checked_grid_add(*center, left_gutter)?;
     }
     layout.total_width = resources.checked_grid_add(layout.total_width, left_gutter)?;
@@ -117,8 +127,10 @@ pub(super) fn prepare_note_rows(
     layout: &SequenceLayout,
     visible_actors: &[bool],
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedNoteRows> {
-    let label_plan = note_label_plan(note, layout, resources)?;
+    let label_plan = note_label_plan(note, layout, resources, checkpoints)?;
+    checkpoints.before_charge()?;
     label_plan.check_materialization_limits(resources)?;
     let label_metrics = label_plan.metrics();
     let mut inner_width = resources
@@ -165,16 +177,19 @@ pub(super) fn prepare_note_rows(
     let max_width = resources
         .checked_grid_add(layout.total_width, 1)?
         .max(overlay_right);
+    checkpoints.before_charge()?;
     resources.grid_extent(max_width, row_count)?;
+    checkpoints.before_charge()?;
     charge_note_work(resources, max_width, row_count)?;
 
     let retained_width =
-        retained_lifeline_width(layout, visible_actors, resources)?.max(overlay_right);
+        retained_lifeline_width(layout, visible_actors, resources, checkpoints)?.max(overlay_right);
     let extent = SequenceBatchExtent::uniform(row_count, max_width, retained_width, resources)?;
     let content_right = overlay_right
         .checked_sub(1)
         .ok_or_else(invalid_note_geometry)?;
     let footprint = SequenceRowFootprint::with_content(retained_width, left, content_right)?;
+    checkpoints.before_charge()?;
     resources.grid_extent(row_count, 1)?;
     let mut footprints = Vec::new();
     footprints
@@ -196,9 +211,9 @@ pub(super) fn render_note(
     note: &SequenceNote,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    active_counts: &[usize],
-    visible_actors: &[bool],
+    actor_state: SequenceActorRenderState<'_>,
     resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<SequenceLine>> {
     let PreparedNoteRows {
         label_plan,
@@ -207,10 +222,10 @@ pub(super) fn render_note(
         extent,
         footprints: _,
     } = prepared;
-    let label_lines = label_plan
-        .materialize_after_admission(&note.label)?
-        .into_parts()
-        .0;
+    checkpoints.checkpoint()?;
+    let materialized = label_plan.materialize_after_admission(&note.label);
+    checkpoints.checkpoint()?;
+    let label_lines = materialized?.into_parts().0;
     let row_count = extent.height();
     let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
 
@@ -224,8 +239,10 @@ pub(super) fn render_note(
         inner_width,
         layout.width_profile,
         resources,
+        checkpoints,
     )?);
     for line in label_lines {
+        checkpoints.tick()?;
         let line_width = display_width_with_profile(&line, layout.width_profile);
         let left_padding = inner_width
             .checked_sub(line_width)
@@ -252,6 +269,7 @@ pub(super) fn render_note(
         inner_width,
         layout.width_profile,
         resources,
+        checkpoints,
     )?);
 
     let mut rendered = Vec::new();
@@ -259,14 +277,16 @@ pub(super) fn render_note(
         .try_reserve_exact(row_count)
         .map_err(|_| allocation_failed())?;
     for row in rows {
+        checkpoints.tick()?;
         rendered.push(render_overlay_row(
             layout,
             chars,
-            active_counts,
-            visible_actors,
+            actor_state.active_counts,
+            actor_state.visible_actors,
             left,
             &row,
             resources,
+            checkpoints,
         )?);
     }
     Ok(rendered)
@@ -299,11 +319,13 @@ fn note_border_row(
     inner_width: usize,
     width_profile: crate::options::TerminalWidthProfile,
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
     let total_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
     let mut row = blank_line(total_width, width_profile, resources)?;
     row.try_set_role(0, left, AsciiColorRole::SequenceFrame)?;
     for x in 1..=inner_width {
+        checkpoints.tick()?;
         row.try_set_role(x, horizontal, AsciiColorRole::SequenceFrame)?;
     }
     row.try_set_role(
@@ -318,8 +340,9 @@ fn note_inner_width(
     note: &SequenceNote,
     layout: &SequenceLayout,
     resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<usize> {
-    let label_width = note_label_plan(note, layout, resources)?
+    let label_width = note_label_plan(note, layout, resources, checkpoints)?
         .metrics()
         .max_width;
     let mut inner_width = resources
@@ -345,6 +368,7 @@ fn note_label_plan(
     note: &SequenceNote,
     layout: &SequenceLayout,
     resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
 ) -> Result<NormalizedLabelPlan> {
     let wrap_width = if note.wrap {
         let from = layout
@@ -361,13 +385,14 @@ fn note_label_plan(
     } else {
         None
     };
-    try_plan_normalized_label_lines_with_policy(
+    try_plan_sequence_label(
         &note.label,
         layout.width_profile,
         false,
         wrap_width,
         LabelBreakPolicy::MermaidLabelBreaks,
         resources,
+        checkpoints,
     )
     .and_then(|plan| plan.ok_or_else(invalid_note_geometry))
 }
@@ -424,7 +449,12 @@ mod tests {
             wrap: false,
             placement: SequenceNotePlacement::Over,
         };
-        let prepared = prepare_note_rows(&note, &layout, &[true], &mut resources)?;
+        let mut checkpoints = SequenceCheckpointCursor::new(
+            AsciiExecution::standalone(&policy),
+            OperationPhase::Layout,
+        );
+        let prepared =
+            prepare_note_rows(&note, &layout, &[true], &mut resources, &mut checkpoints)?;
         assert_eq!(prepared.extent().materialized_width(), 11);
         assert_eq!(prepared.extent().height(), 4);
         prepared.materialize_label_with_probe(&note.label, &resources, materialized)

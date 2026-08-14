@@ -1,6 +1,8 @@
 use super::projection_allocation_failed;
 use crate::error::{AsciiError, Result};
+use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
+use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
     SequenceActorLifecycle as CoreSequenceActorLifecycle, SequenceDiagramRenderModel,
     SequenceMessageKind as CoreSequenceMessageKind,
@@ -33,12 +35,19 @@ pub(super) fn resolve_actor_lifecycles(
     model: &SequenceDiagramRenderModel,
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceActorLifecycle>> {
     if let Some(lifecycles) = &model.actor_lifecycles {
-        return project_resolved_actor_lifecycles(model, lifecycles, participant_index, resources);
+        return project_resolved_actor_lifecycles(
+            model,
+            lifecycles,
+            participant_index,
+            resources,
+            execution,
+        );
     }
 
-    resolve_compatibility_actor_lifecycles(model, participant_index, resources)
+    resolve_compatibility_actor_lifecycles(model, participant_index, resources, execution)
 }
 
 fn project_resolved_actor_lifecycles(
@@ -46,17 +55,22 @@ fn project_resolved_actor_lifecycles(
     resolved: &[CoreSequenceActorLifecycle],
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceActorLifecycle>> {
-    let edge_count = resolved.iter().try_fold(0usize, |count, lifecycle| {
+    let mut edge_count = 0usize;
+    for lifecycle in resolved {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let count =
-            resources.checked_work_add(count, usize::from(lifecycle.created_at.is_some()))?;
-        resources.checked_work_add(count, usize::from(lifecycle.destroyed_at.is_some()))
-    })?;
+            resources.checked_work_add(edge_count, usize::from(lifecycle.created_at.is_some()))?;
+        edge_count =
+            resources.checked_work_add(count, usize::from(lifecycle.destroyed_at.is_some()))?;
+    }
     // Visit every sidecar slot once to count owned edges and once to validate
     // and project it. Each present lifecycle edge adds one signal lookup.
     let resolved_work = resources.checked_work_mul(resolved.len(), 2)?;
     let work = resources.checked_work_add(participant_index.len(), resolved_work)?;
     let work = resources.checked_work_add(work, edge_count)?;
+    execution.checkpoint(OperationPhase::Semantic)?;
     resources.charge_layout_work(work)?;
 
     let mut lifecycles = Vec::new();
@@ -69,6 +83,7 @@ fn project_resolved_actor_lifecycles(
     }
 
     for (actor_index, lifecycle) in resolved.iter().enumerate() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         let actor_id = model
             .actor_order
             .get(actor_index)
@@ -94,7 +109,7 @@ fn project_resolved_actor_lifecycles(
             }
             lifecycles[actor_index].destroyed_at = Some(model_index);
         }
-        validate_lifecycle_order(std::slice::from_ref(&lifecycles[actor_index]))?;
+        validate_lifecycle_order(std::slice::from_ref(&lifecycles[actor_index]), execution)?;
     }
 
     Ok(lifecycles)
@@ -104,6 +119,7 @@ fn resolve_compatibility_actor_lifecycles(
     model: &SequenceDiagramRenderModel,
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<SequenceActorLifecycle>> {
     let request_count =
         resources.checked_work_add(model.created_actors.len(), model.destroyed_actors.len())?;
@@ -128,6 +144,7 @@ fn resolve_compatibility_actor_lifecycles(
     let work = resources.checked_work_add(message_work, request_work)?;
     let work = resources.checked_work_add(work, participant_work)?;
     let work = resources.checked_work_add(work, sort_work)?;
+    execution.checkpoint(OperationPhase::Semantic)?;
     resources.charge_layout_work(work)?;
 
     let mut lifecycles = Vec::new();
@@ -144,6 +161,7 @@ fn resolve_compatibility_actor_lifecycles(
         .try_reserve_exact(request_count)
         .map_err(|_| projection_allocation_failed())?;
     for (actor_id, model_index) in &model.created_actors {
+        execution.checkpoint(OperationPhase::Semantic)?;
         requests.push(SequenceLifecycleRequest {
             actor_id,
             actor_index: actor_lifecycle_index(
@@ -160,6 +178,7 @@ fn resolve_compatibility_actor_lifecycles(
         });
     }
     for (actor_id, model_index) in &model.destroyed_actors {
+        execution.checkpoint(OperationPhase::Semantic)?;
         requests.push(SequenceLifecycleRequest {
             actor_id,
             actor_index: actor_lifecycle_index(
@@ -175,16 +194,18 @@ fn resolve_compatibility_actor_lifecycles(
             kind: SequenceLifecycleKind::Destroyed,
         });
     }
-    requests.sort_unstable_by_key(|request| (request.model_index, request.kind));
+    sort_lifecycle_requests(&mut requests, execution)?;
 
     let mut next_request = 0usize;
     let mut pending_created = None;
     let mut pending_destroyed = None;
     for (model_index, message) in model.messages.iter().enumerate() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         while requests
             .get(next_request)
             .is_some_and(|request| request.model_index == model_index)
         {
+            execution.checkpoint(OperationPhase::Semantic)?;
             let request = requests[next_request];
             next_request += 1;
             register_pending_lifecycle(request, &mut pending_created, &mut pending_destroyed)?;
@@ -209,6 +230,7 @@ fn resolve_compatibility_actor_lifecycles(
     }
 
     while let Some(request) = requests.get(next_request).copied() {
+        execution.checkpoint(OperationPhase::Semantic)?;
         debug_assert_eq!(request.model_index, model.messages.len());
         next_request += 1;
         register_pending_lifecycle(request, &mut pending_created, &mut pending_destroyed)?;
@@ -220,7 +242,7 @@ fn resolve_compatibility_actor_lifecycles(
         return Err(sequence_lifecycle_feature("actor destruction messages"));
     }
 
-    validate_lifecycle_order(&lifecycles)?;
+    validate_lifecycle_order(&lifecycles, execution)?;
 
     Ok(lifecycles)
 }
@@ -242,8 +264,12 @@ fn resolved_lifecycle_signal(
     Ok(message)
 }
 
-fn validate_lifecycle_order(lifecycles: &[SequenceActorLifecycle]) -> Result<()> {
+fn validate_lifecycle_order(
+    lifecycles: &[SequenceActorLifecycle],
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     for lifecycle in lifecycles {
+        execution.checkpoint(OperationPhase::Semantic)?;
         if let (Some(created_at), Some(destroyed_at)) =
             (lifecycle.created_at, lifecycle.destroyed_at)
             && destroyed_at <= created_at
@@ -252,6 +278,59 @@ fn validate_lifecycle_order(lifecycles: &[SequenceActorLifecycle]) -> Result<()>
         }
     }
     Ok(())
+}
+
+fn sort_lifecycle_requests(
+    requests: &mut [SequenceLifecycleRequest<'_>],
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    if requests.len() < 2 {
+        return Ok(());
+    }
+
+    for root in (0..requests.len() / 2).rev() {
+        sift_lifecycle_request_down(requests, root, requests.len(), execution)?;
+    }
+    for end in (1..requests.len()).rev() {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        requests.swap(0, end);
+        sift_lifecycle_request_down(requests, 0, end, execution)?;
+    }
+    Ok(())
+}
+
+fn sift_lifecycle_request_down(
+    requests: &mut [SequenceLifecycleRequest<'_>],
+    mut root: usize,
+    end: usize,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    loop {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        let Some(left) = root.checked_mul(2).and_then(|value| value.checked_add(1)) else {
+            return Ok(());
+        };
+        if left >= end {
+            return Ok(());
+        }
+        let right = left + 1;
+        let child = if right < end
+            && lifecycle_request_key(requests[left]) < lifecycle_request_key(requests[right])
+        {
+            right
+        } else {
+            left
+        };
+        if lifecycle_request_key(requests[root]) >= lifecycle_request_key(requests[child]) {
+            return Ok(());
+        }
+        requests.swap(root, child);
+        root = child;
+    }
+}
+
+fn lifecycle_request_key(request: SequenceLifecycleRequest<'_>) -> (usize, SequenceLifecycleKind) {
+    (request.model_index, request.kind)
 }
 
 fn register_pending_lifecycle<'a>(
@@ -315,6 +394,7 @@ fn sequence_lifecycle_feature(feature: &'static str) -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operation::AsciiExecution;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
@@ -356,8 +436,13 @@ mod tests {
         let participant_index = participant_index(&model);
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(unbounded);
-        let lifecycles = resolve_actor_lifecycles(&model, &participant_index, &mut resources)
-            .expect("shared lifecycle anchors should consume successive signals");
+        let lifecycles = resolve_actor_lifecycles(
+            &model,
+            &participant_index,
+            &mut resources,
+            AsciiExecution::standalone(&unbounded),
+        )
+        .expect("shared lifecycle anchors should consume successive signals");
         let total_work = resources.layout_work_used();
 
         assert_eq!(lifecycles[participant_index["B"]].created_at, Some(0));
@@ -367,8 +452,13 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work)
             .expect("exact lifecycle work limit should be valid");
         let mut exact_resources = ResourceContext::new(exact);
-        resolve_actor_lifecycles(&model, &participant_index, &mut exact_resources)
-            .expect("exact lifecycle work limit should pass");
+        resolve_actor_lifecycles(
+            &model,
+            &participant_index,
+            &mut exact_resources,
+            AsciiExecution::standalone(&exact),
+        )
+        .expect("exact lifecycle work limit should pass");
         assert_eq!(exact_resources.layout_work_used(), total_work);
 
         let below = unbounded
@@ -378,8 +468,13 @@ mod tests {
             )
             .expect("lifecycle work limit minus one should be valid");
         let mut below_resources = ResourceContext::new(below);
-        let error = resolve_actor_lifecycles(&model, &participant_index, &mut below_resources)
-            .expect_err("lifecycle planning must reject before request materialization");
+        let error = resolve_actor_lifecycles(
+            &model,
+            &participant_index,
+            &mut below_resources,
+            AsciiExecution::standalone(&below),
+        )
+        .expect_err("lifecycle planning must reject before request materialization");
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
@@ -402,8 +497,13 @@ mod tests {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
 
-        let error = resolve_actor_lifecycles(&model, &participant_index, &mut resources)
-            .expect_err("misaligned lifecycle sidecars must be rejected");
+        let error = resolve_actor_lifecycles(
+            &model,
+            &participant_index,
+            &mut resources,
+            AsciiExecution::standalone(&policy),
+        )
+        .expect_err("misaligned lifecycle sidecars must be rejected");
         assert!(matches!(
             error,
             AsciiError::UnsupportedFeature {

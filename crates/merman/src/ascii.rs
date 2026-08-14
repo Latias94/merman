@@ -1,9 +1,8 @@
-//! ASCII target-local types, compatibility helpers, and the model-level backend interface.
+//! ASCII target-local types, capabilities, and terminal-safe diagnostic projection.
 //!
-//! New source-to-text operations should use [`crate::Renderer`] so parsing, resource policy, and
-//! cancellation share one operation owner. Existing callers may continue to use the compatibility
-//! helpers in this module. Hosts that already own a typed
-//! [`merman_core::diagram::RenderSemanticModel`] may use [`render_model`] directly.
+//! Source-to-text operations use [`crate::Renderer`] so parsing, resource policy, cancellation,
+//! and deadlines share one operation owner. Hosts that already own an operation-bound typed model
+//! may use [`AsciiRenderer`] as the lower-level target backend.
 
 pub use merman_ascii::{
     ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability,
@@ -17,20 +16,16 @@ pub use merman_ascii::{
     MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID,
     MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, TerminalWidthProfile, ascii_capabilities,
     ascii_diagrammatic_diagram_types, ascii_resource_profile_value, ascii_supported_diagram_types,
-    render_class, render_er, render_flowchart, render_gantt, render_gantt_with_local_time_zone,
-    render_git_graph, render_journey, render_kanban, render_mindmap, render_model,
-    render_model_with_local_time_zone, render_model_with_operation, render_packet, render_sequence,
-    render_state, render_timeline, render_tree_view, render_xychart,
+    normalize_terminal_diagnostic, normalize_terminal_text,
 };
-pub use merman_ascii::{normalize_terminal_diagnostic, normalize_terminal_text};
 
-/// Machine-readable context for a headless ASCII failure.
+/// Machine-readable context for a terminal-safe ASCII diagnostic.
 ///
 /// Authored string fields are terminal-safe and bounded. Byte spans remain separate from the
 /// human-readable message so bindings do not need to parse display text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct HeadlessAsciiDiagnosticDetails {
+pub struct AsciiDiagnosticDetails {
     pub code: String,
     pub span: Option<merman_core::SourceSpan>,
     pub span_kind: Option<merman_core::ParseDiagnosticSpanKind>,
@@ -38,52 +33,54 @@ pub struct HeadlessAsciiDiagnosticDetails {
     pub diagram_type: Option<String>,
 }
 
-pub enum HeadlessAsciiError {
+/// Terminal-safe projection for parse, runtime-policy, and ASCII target errors.
+///
+/// The canonical [`crate::RenderError`] remains the operation error contract. This type exists
+/// only for hosts that must display a bounded diagnostic on an untrusted terminal surface.
+#[non_exhaustive]
+pub enum AsciiDiagnostic {
     Parse(merman_core::Error),
-    Ascii(merman_ascii::AsciiError),
+    Target(merman_ascii::AsciiError),
     RuntimePolicy(merman_core::runtime::RuntimePolicyError),
-    Resource(merman_core::resources::InputResourceLimitExceeded),
 }
 
-impl HeadlessAsciiError {
+impl AsciiDiagnostic {
     pub fn terminal_safe_message(&self) -> String {
         match self {
             Self::Parse(error) => safe_parse_error(error),
-            Self::Ascii(error) => safe_ascii_error(error),
+            Self::Target(error) => safe_ascii_error(error),
             Self::RuntimePolicy(error) => safe_runtime_policy_error(error),
-            Self::Resource(error) => normalize_terminal_diagnostic(&error.to_string()),
         }
     }
 
-    pub fn terminal_diagnostic_details(&self) -> Option<HeadlessAsciiDiagnosticDetails> {
+    pub fn terminal_diagnostic_details(&self) -> Option<AsciiDiagnosticDetails> {
         match self {
             Self::Parse(error) => Some(safe_parse_details(error)),
-            Self::Ascii(error) => safe_ascii_details(error),
-            Self::RuntimePolicy(_) | Self::Resource(_) => None,
+            Self::Target(error) => safe_ascii_details(error),
+            Self::RuntimePolicy(_) => None,
         }
     }
 
     fn kind(&self) -> &'static str {
         match self {
             Self::Parse(_) => "parse",
-            Self::Ascii(_) => "ascii",
+            Self::Target(_) => "ascii",
             Self::RuntimePolicy(_) => "runtime_policy",
-            Self::Resource(_) => "resource",
         }
     }
 }
 
-impl std::fmt::Debug for HeadlessAsciiError {
+impl std::fmt::Debug for AsciiDiagnostic {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("HeadlessAsciiError")
+            .debug_struct("AsciiDiagnostic")
             .field("kind", &self.kind())
             .field("message", &self.terminal_safe_message())
             .finish()
     }
 }
 
-impl std::fmt::Display for HeadlessAsciiError {
+impl std::fmt::Display for AsciiDiagnostic {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(&self.terminal_safe_message())
     }
@@ -91,29 +88,23 @@ impl std::fmt::Display for HeadlessAsciiError {
 
 // The wrapped errors may retain authored source or host-adapter messages. This public display
 // boundary therefore intentionally does not expose them through `Error::source()`.
-impl std::error::Error for HeadlessAsciiError {}
+impl std::error::Error for AsciiDiagnostic {}
 
-impl From<merman_core::Error> for HeadlessAsciiError {
+impl From<merman_core::Error> for AsciiDiagnostic {
     fn from(error: merman_core::Error) -> Self {
         Self::Parse(error)
     }
 }
 
-impl From<merman_ascii::AsciiError> for HeadlessAsciiError {
+impl From<merman_ascii::AsciiError> for AsciiDiagnostic {
     fn from(error: merman_ascii::AsciiError) -> Self {
-        Self::Ascii(error)
+        Self::Target(error)
     }
 }
 
-impl From<merman_core::runtime::RuntimePolicyError> for HeadlessAsciiError {
+impl From<merman_core::runtime::RuntimePolicyError> for AsciiDiagnostic {
     fn from(error: merman_core::runtime::RuntimePolicyError) -> Self {
         Self::RuntimePolicy(error)
-    }
-}
-
-impl From<merman_core::resources::InputResourceLimitExceeded> for HeadlessAsciiError {
-    fn from(error: merman_core::resources::InputResourceLimitExceeded) -> Self {
-        Self::Resource(error)
     }
 }
 
@@ -154,8 +145,8 @@ fn safe_parse_error(error: &merman_core::Error) -> String {
     }
 }
 
-fn safe_parse_details(error: &merman_core::Error) -> HeadlessAsciiDiagnosticDetails {
-    let mut details = HeadlessAsciiDiagnosticDetails {
+fn safe_parse_details(error: &merman_core::Error) -> AsciiDiagnosticDetails {
+    let mut details = AsciiDiagnosticDetails {
         code: "merman.ascii.parse".to_string(),
         span: None,
         span_kind: None,
@@ -234,7 +225,7 @@ fn safe_ascii_error(error: &merman_ascii::AsciiError) -> String {
     }
 }
 
-fn safe_ascii_details(error: &merman_ascii::AsciiError) -> Option<HeadlessAsciiDiagnosticDetails> {
+fn safe_ascii_details(error: &merman_ascii::AsciiError) -> Option<AsciiDiagnosticDetails> {
     let (code, field, diagram_type) = match error {
         merman_ascii::AsciiError::InvalidOption { field, .. } => (
             "merman.ascii.invalid_option",
@@ -257,7 +248,7 @@ fn safe_ascii_details(error: &merman_ascii::AsciiError) -> Option<HeadlessAsciiD
         merman_ascii::AsciiError::ResourceLimitExceeded(_) => return None,
         _ => ("merman.ascii.render", None, None),
     };
-    Some(HeadlessAsciiDiagnosticDetails {
+    Some(AsciiDiagnosticDetails {
         code: code.to_string(),
         span: None,
         span_kind: None,
@@ -289,300 +280,13 @@ fn bounded_two_field_message(prefix: &str, first: &str, separator: &str, second:
     normalize_terminal_diagnostic(&format!("{prefix}{first}{separator}{second}"))
 }
 
-pub type Result<T> = std::result::Result<T, HeadlessAsciiError>;
-
-fn render_model_with_engine_time(
-    engine: &merman_core::Engine,
-    model: &merman_core::diagram::RenderSemanticModel,
-    ascii_options: &AsciiRenderOptions,
-) -> Result<String> {
-    let context = engine.begin_operation()?;
-    Ok(merman_ascii::render_model_with_local_time_zone(
-        model,
-        ascii_options,
-        context.local_time_zone(),
-    )?)
-}
-
-/// Synchronous ASCII/Unicode render helper (executor-free).
-///
-/// The Mermaid source is parsed by `merman-core`; the typed render model is then rendered by
-/// `merman-ascii`. Supported diagram families currently include flowchart, sequenceDiagram,
-/// classDiagram, erDiagram, stateDiagram, xychart, mindmap, treeView, timeline, gantt, journey,
-/// kanban, packet, and gitGraph.
-pub fn render_ascii_sync(
-    engine: &merman_core::Engine,
-    text: &str,
-    parse_options: merman_core::ParseOptions,
-    ascii_options: &AsciiRenderOptions,
-) -> Result<Option<String>> {
-    render_ascii_with_resource_policy_sync(
-        engine,
-        text,
-        parse_options,
-        ascii_options,
-        &merman_core::resources::InputResourcePolicy::default(),
-    )
-}
-
-fn render_ascii_with_resource_policy_sync(
-    engine: &merman_core::Engine,
-    text: &str,
-    parse_options: merman_core::ParseOptions,
-    ascii_options: &AsciiRenderOptions,
-    resources: &merman_core::resources::InputResourcePolicy,
-) -> Result<Option<String>> {
-    resources.check_source_bytes(text)?;
-    let context = engine.begin_operation()?;
-    let operation_engine = engine.clone().with_operation_context(context.clone());
-    let Some(parsed) = operation_engine.parse_diagram_for_render_model_sync(text, parse_options)?
-    else {
-        return Ok(None);
-    };
-    resources.check_render_model(parsed.model())?;
-
-    Ok(Some(merman_ascii::render_model_with_local_time_zone(
-        parsed.model(),
-        ascii_options,
-        context.local_time_zone(),
-    )?))
-}
-
-pub async fn render_ascii(
-    engine: &merman_core::Engine,
-    text: &str,
-    parse_options: merman_core::ParseOptions,
-    ascii_options: &AsciiRenderOptions,
-) -> Result<Option<String>> {
-    // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
-    // It executes synchronously and does not yield.
-    render_ascii_sync(engine, text, parse_options, ascii_options)
-}
-
-/// Convenience wrapper that bundles an [`merman_core::Engine`] and ASCII render options.
-///
-/// This is intended for terminal, log, documentation, and chat-surface integrations that want
-/// stable text output without wiring parsing and rendering parameters on every call.
-#[derive(Clone)]
-pub struct HeadlessAsciiRenderer {
-    pub engine: merman_core::Engine,
-    pub parse: merman_core::ParseOptions,
-    pub ascii: AsciiRenderOptions,
-    resources: merman_core::resources::InputResourcePolicy,
-}
-
-impl Default for HeadlessAsciiRenderer {
-    fn default() -> Self {
-        Self {
-            engine: merman_core::Engine::new(),
-            parse: merman_core::ParseOptions::default(),
-            ascii: AsciiRenderOptions::default(),
-            resources: merman_core::resources::InputResourcePolicy::default(),
-        }
-    }
-}
-
-impl HeadlessAsciiRenderer {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn try_native() -> Result<Self> {
-        Ok(Self::new().with_runtime_policy(merman_core::runtime::RuntimePolicy::try_native()?))
-    }
-
-    pub fn with_engine(mut self, engine: merman_core::Engine) -> Self {
-        self.engine = engine;
-        self
-    }
-
-    pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
-        self.engine = self.engine.with_site_config(site_config);
-        self
-    }
-
-    pub fn with_runtime_policy(mut self, policy: merman_core::runtime::RuntimePolicy) -> Self {
-        self.engine = self.engine.with_runtime_policy(policy);
-        self
-    }
-
-    pub fn with_operation_context(
-        mut self,
-        context: merman_core::runtime::OperationContext,
-    ) -> Self {
-        self.engine = self.engine.with_operation_context(context);
-        self
-    }
-
-    pub fn with_parse_options(mut self, parse: merman_core::ParseOptions) -> Self {
-        self.parse = parse;
-        self
-    }
-
-    pub fn with_strict_parsing(self) -> Self {
-        self.with_parse_options(merman_core::ParseOptions::strict())
-    }
-
-    pub fn with_lenient_parsing(self) -> Self {
-        self.with_parse_options(merman_core::ParseOptions::lenient())
-    }
-
-    pub fn with_ascii_options(mut self, ascii: AsciiRenderOptions) -> Self {
-        let resources = ascii.resources.with_profile(self.resources.profile());
-        self.ascii = ascii.with_resource_policy(resources);
-        self
-    }
-
-    pub fn with_resource_profile(
-        mut self,
-        profile: merman_core::resources::ResourceProfile,
-    ) -> Self {
-        self.resources = merman_core::resources::InputResourcePolicy::for_profile(profile);
-        self.ascii.resources = self.ascii.resources.with_profile(profile);
-        self
-    }
-
-    pub fn with_resource_policy(
-        mut self,
-        resources: merman_core::resources::InputResourcePolicy,
-    ) -> Self {
-        self.ascii.resources = self.ascii.resources.with_profile(resources.profile());
-        self.resources = resources;
-        self
-    }
-
-    pub const fn resource_policy(&self) -> &merman_core::resources::InputResourcePolicy {
-        &self.resources
-    }
-
-    pub fn with_charset(mut self, charset: AsciiCharset) -> Self {
-        self.ascii.charset = charset;
-        self
-    }
-
-    pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
-        self.resources.check_source_bytes(text)?;
-        Ok(self.engine.parse_metadata_sync(text)?)
-    }
-
-    pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
-        self.resources.check_source_bytes(text)?;
-        Ok(self.engine.parse_diagram_sync(text, self.parse)?)
-    }
-
-    pub fn render_model(
-        &self,
-        model: &merman_core::diagram::RenderSemanticModel,
-    ) -> Result<String> {
-        self.resources.check_render_model(model)?;
-        render_model_with_engine_time(&self.engine, model, &self.ascii)
-    }
-
-    pub fn render_ascii_sync(&self, text: &str) -> Result<Option<String>> {
-        render_ascii_with_resource_policy_sync(
-            &self.engine,
-            text,
-            self.parse,
-            &self.ascii,
-            &self.resources,
-        )
-    }
-
-    pub async fn render_ascii(&self, text: &str) -> Result<Option<String>> {
-        self.render_ascii_sync(text)
-    }
-}
-
 #[cfg(test)]
-mod headless_ascii_renderer_tests {
+mod tests {
     use super::*;
-    use merman_ascii_test_contracts::ascii_resource_boundaries;
-    use serde_json::Value;
-
-    fn render_with_ascii_limit(
-        limit: AsciiResourceLimitId,
-        max: usize,
-        source: &str,
-    ) -> Result<Option<String>> {
-        let ascii = AsciiRenderOptions::ascii()
-            .with_resource_limit(limit, max)
-            .expect("test limit must satisfy the public minimum");
-        HeadlessAsciiRenderer::new()
-            .with_ascii_options(ascii)
-            .render_ascii_sync(source)
-    }
-
-    fn ascii_limit_details(error: HeadlessAsciiError) -> AsciiResourceLimitExceeded {
-        match error {
-            HeadlessAsciiError::Ascii(AsciiError::ResourceLimitExceeded(details)) => details,
-            other => panic!("expected typed ASCII resource error, got {other:?}"),
-        }
-    }
-
-    fn assert_headless_ascii_exact_boundary(
-        limit: AsciiResourceLimitId,
-        expected: u64,
-        source: &str,
-    ) {
-        let exact = usize::try_from(expected).expect("test boundary must fit usize");
-        let output = render_with_ascii_limit(limit, exact, source)
-            .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", limit.as_str()))
-            .expect("fixture should render at the exact boundary");
-        assert!(!output.is_empty(), "{} produced no output", limit.as_str());
-        let details = ascii_limit_details(
-            render_with_ascii_limit(limit, exact - 1, source)
-                .expect_err("one-below headless ASCII boundary must fail"),
-        );
-        assert_eq!(details.limit, limit);
-        assert_eq!(details.phase(), limit.descriptor().phase);
-        assert_eq!(details.actual, exact);
-        assert_eq!(details.max, exact - 1);
-        assert_eq!(details.profile.id(), "interactive");
-    }
-
-    fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
-        model["tasks"]
-            .as_array()
-            .expect("Gantt tasks should be an array")
-            .iter()
-            .find(|task| task["id"].as_str() == Some(id))
-            .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
-    }
 
     #[test]
-    fn headless_ascii_renderer_proves_every_ascii_limit_at_exact_boundary() {
-        for case in ascii_resource_boundaries() {
-            let limit = match case.id.as_str() {
-                "max_ascii_grid_cells" => AsciiResourceLimitId::MaxGridCells,
-                "max_ascii_layout_work_units" => AsciiResourceLimitId::MaxLayoutWorkUnits,
-                "max_ascii_document_cells" => AsciiResourceLimitId::MaxDocumentCells,
-                "max_ascii_output_bytes" => AsciiResourceLimitId::MaxOutputBytes,
-                "max_ascii_grapheme_bytes" => AsciiResourceLimitId::MaxGraphemeBytes,
-                "max_ascii_nesting_depth" => AsciiResourceLimitId::MaxNestingDepth,
-                other => panic!("unknown ASCII resource boundary {other}"),
-            };
-            assert_headless_ascii_exact_boundary(limit, case.expected.headless_ascii, &case.source);
-        }
-    }
-
-    #[test]
-    fn headless_ascii_error_does_not_echo_undetected_source_or_terminal_controls() {
-        let source = "not-a-diagram\u{1b}]8;;https://example.invalid\u{7}link";
-
-        let error = HeadlessAsciiRenderer::new()
-            .render_ascii_sync(source)
-            .expect_err("source should not detect as Mermaid");
-        let message = error.to_string();
-
-        assert_eq!(message, "No Mermaid diagram type detected");
-        assert!(!message.contains(source));
-        assert!(!message.contains('\u{1b}'));
-        assert!(!message.contains('\u{7}'));
-    }
-
-    #[test]
-    fn headless_ascii_error_debug_and_source_do_not_bypass_terminal_safety() {
-        let error = HeadlessAsciiError::from(merman_core::Error::diagram_parse_fallback(
+    fn diagnostic_debug_and_source_do_not_bypass_terminal_safety() {
+        let error = AsciiDiagnostic::from(merman_core::Error::diagram_parse_fallback(
             "flow\u{1b}",
             format!("bad\u{7}{}", "\u{301}".repeat(20_000)),
         ));
@@ -599,12 +303,12 @@ mod headless_ascii_renderer_tests {
     }
 
     #[test]
-    fn headless_ascii_error_preserves_bounded_structured_parse_details() {
+    fn diagnostic_preserves_bounded_structured_parse_details() {
         let span = merman_core::SourceSpan::new(4, 9);
         let diagnostic = merman_core::ParseDiagnostic::new("bad input")
             .with_span(span, merman_core::ParseDiagnosticSpanKind::Exact)
             .with_code("merman.test\u{1b}");
-        let error = HeadlessAsciiError::from(merman_core::Error::diagram_parse_diagnostic(
+        let error = AsciiDiagnostic::from(merman_core::Error::diagram_parse_diagnostic(
             "flow\u{7}",
             diagnostic,
         ));
@@ -624,10 +328,10 @@ mod headless_ascii_renderer_tests {
     }
 
     #[test]
-    fn headless_ascii_error_classifies_renderer_failures_without_unsafe_text() {
+    fn diagnostic_classifies_target_failures_without_unsafe_text() {
         let cases = [
             (
-                HeadlessAsciiError::from(merman_ascii::AsciiError::InvalidOption {
+                AsciiDiagnostic::from(merman_ascii::AsciiError::InvalidOption {
                     field: "box_border_padding",
                     message: "must be positive",
                 }),
@@ -636,7 +340,7 @@ mod headless_ascii_renderer_tests {
                 None,
             ),
             (
-                HeadlessAsciiError::from(merman_ascii::AsciiError::UnsupportedDiagram {
+                AsciiDiagnostic::from(merman_ascii::AsciiError::UnsupportedDiagram {
                     diagram_type: "radar\u{1b}".to_string(),
                 }),
                 "merman.ascii.unsupported_diagram",
@@ -644,7 +348,7 @@ mod headless_ascii_renderer_tests {
                 Some("radar\\u{1B}"),
             ),
             (
-                HeadlessAsciiError::from(merman_ascii::AsciiError::UnsupportedFeature {
+                AsciiDiagnostic::from(merman_ascii::AsciiError::UnsupportedFeature {
                     diagram_type: "flowchart",
                     feature: "missing endpoint nodes",
                 }),
@@ -665,144 +369,5 @@ mod headless_ascii_renderer_tests {
             assert_eq!(details.field.as_deref(), field);
             assert_eq!(details.diagram_type.as_deref(), diagram_type);
         }
-    }
-
-    #[test]
-    fn headless_ascii_renderer_fixed_time_controls_semantic_parse() {
-        let today = merman_core::time::CivilDate::new(2026, 2, 15).expect("valid fixed today");
-        let policy = merman_core::runtime::RuntimePolicy::deterministic()
-            .try_with_fixed_local_offset_minutes(0)
-            .expect("valid UTC offset")
-            .with_fixed_today(Some(today));
-        let renderer = HeadlessAsciiRenderer::new().with_runtime_policy(policy);
-        let parsed = renderer
-            .parse_diagram_sync(
-                r#"gantt
-dateFormat MM-DD
-section Demo
-Missing year: id1,03-01,1d
-Missing ref: id2,after missing,1d
-"#,
-            )
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(
-            task_by_id(&parsed.model, "id1")["startTime"].as_i64(),
-            Some(1_772_323_200_000)
-        );
-        assert_eq!(
-            task_by_id(&parsed.model, "id2")["startTime"].as_i64(),
-            Some(1_771_113_600_000)
-        );
-    }
-
-    #[test]
-    fn headless_ascii_renderer_fixed_local_offset_controls_gantt_render_dates() {
-        let policy = merman_core::runtime::RuntimePolicy::deterministic()
-            .try_with_fixed_local_offset_minutes(14 * 60)
-            .expect("valid fixed offset");
-        let renderer = HeadlessAsciiRenderer::new()
-            .with_strict_parsing()
-            .with_runtime_policy(policy);
-
-        let rendered = renderer
-            .render_ascii_sync(
-                r#"gantt
-dateFormat YYYY-MM-DD
-section Demo
-Task: task1, 2026-01-01, 1d
-"#,
-            )
-            .unwrap()
-            .unwrap();
-
-        assert!(rendered.contains("task(bytes=4)=\"Task\""), "{rendered}");
-        assert!(rendered.contains("id(bytes=5)=\"task1\""), "{rendered}");
-        assert!(rendered.contains("range=2026-01-01 ->"), "{rendered}");
-        assert!(rendered.contains("2026-01-02"), "{rendered}");
-    }
-
-    #[test]
-    fn headless_ascii_renderer_owns_source_and_model_resource_checks() {
-        let resources = merman_core::resources::InputResourcePolicy::for_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
-        )
-        .with_limit(
-            merman_core::resources::InputResourceLimitId::MaxModelItems,
-            1,
-        )
-        .unwrap();
-        let renderer = HeadlessAsciiRenderer::new().with_resource_policy(resources);
-
-        let error = renderer
-            .render_ascii_sync("flowchart TD\nA --> B")
-            .unwrap_err();
-        assert!(matches!(error, HeadlessAsciiError::Resource(_)));
-    }
-
-    #[test]
-    fn headless_ascii_renderer_resource_profile_applies_ascii_grid_budget() {
-        let constrained = HeadlessAsciiRenderer::new()
-            .with_resource_profile(merman_core::resources::ResourceProfile::Constrained);
-        assert_eq!(
-            constrained
-                .ascii
-                .resources
-                .value(AsciiResourceLimitId::MaxGridCells),
-            Some(125_000)
-        );
-
-        let trusted = HeadlessAsciiRenderer::new()
-            .with_resource_profile(merman_core::resources::ResourceProfile::TrustedNative);
-        assert_eq!(
-            trusted
-                .ascii
-                .resources
-                .value(AsciiResourceLimitId::MaxGridCells),
-            Some(1_000_000)
-        );
-
-        let unbounded = HeadlessAsciiRenderer::new().with_resource_profile(
-            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
-        );
-        assert_eq!(
-            unbounded
-                .ascii
-                .resources
-                .value(AsciiResourceLimitId::MaxGridCells),
-            None
-        );
-    }
-
-    #[test]
-    fn ascii_options_and_resource_profile_are_order_independent() {
-        let ascii = AsciiRenderOptions::ascii()
-            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 42)
-            .expect("valid ASCII override");
-        let profile = merman_core::resources::ResourceProfile::Constrained;
-
-        let profile_then_options = HeadlessAsciiRenderer::new()
-            .with_resource_profile(profile)
-            .with_ascii_options(ascii);
-        let options_then_profile = HeadlessAsciiRenderer::new()
-            .with_ascii_options(ascii)
-            .with_resource_profile(profile);
-
-        assert_eq!(profile_then_options.ascii, options_then_profile.ascii);
-        assert_eq!(
-            profile_then_options
-                .ascii
-                .resources
-                .value(AsciiResourceLimitId::MaxGridCells),
-            Some(42)
-        );
-        assert_eq!(
-            profile_then_options
-                .ascii
-                .resources
-                .value(AsciiResourceLimitId::MaxOutputBytes),
-            Some(8 * 1024 * 1024)
-        );
     }
 }

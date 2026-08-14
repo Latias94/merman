@@ -1,4 +1,5 @@
 use super::*;
+use merman_core::{CancelReason, OperationControl, OperationPhase};
 
 #[test]
 fn relation_components_split_disconnected_relation_subgraphs() {
@@ -14,8 +15,7 @@ fn relation_components_split_disconnected_relation_subgraphs() {
         LayeredRelationEdge::new("c", "d", 0, 0),
     ];
 
-    let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let components =
         relation_components(&boxes, &edges, &mut resources).expect("components should split");
     let component_box_ids = components
@@ -60,7 +60,7 @@ fn disconnected_component_rendering_borrows_non_clone_relations() {
         },
     ];
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let adapter = TestRelationAdapter {
         summary_reason: Cell::new(None),
         overlap: TestRelationOverlap::None,
@@ -103,17 +103,61 @@ fn render_layered_relation_component_propagates_grid_resource_errors() {
         overlap: TestRelationOverlap::None,
     };
 
-    let options = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
+    let options = AsciiRenderOptions::ascii();
+    let policy = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
         .expect("test resource limit should be valid");
-    let error = render_layered_relation_component(&boxes, &relations, &options, 1, &adapter)
-        .expect_err("grid resource errors must not become summary fallback");
+    let error =
+        render_layered_relation_component(&boxes, &relations, &options, policy, 1, &adapter)
+            .expect_err("grid resource errors must not become summary fallback");
 
     assert!(matches!(
         error,
         AsciiError::ResourceLimitExceeded(details)
             if details.limit == AsciiResourceLimitId::MaxGridCells
     ));
+    assert_eq!(adapter.summary_reason.get(), None);
+}
+
+#[test]
+fn cancelled_edge_admission_precedes_work_limit_without_ledger_pollution() {
+    let boxes = vec![
+        RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+        RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+    ];
+    let relations = vec![("a", "b"), ("b", "c")];
+    let policy = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+        .expect("test work limit should be valid");
+    let mut resources = test_resources(policy);
+    let control = OperationControl::new();
+    control.cancel();
+    let adapter = TestRelationAdapter {
+        summary_reason: Cell::new(None),
+        overlap: TestRelationOverlap::None,
+    };
+    let mut deferred = DeferredTextRegistry::new();
+
+    let error = render_relation_component_lines_with_execution(
+        &boxes,
+        &relations,
+        &AsciiRenderOptions::ascii(),
+        &mut resources,
+        &adapter,
+        &mut deferred,
+        AsciiExecution::new(&control, &policy),
+    )
+    .expect_err("cancellation must win over the first edge-work charge");
+
+    assert!(matches!(
+        error,
+        AsciiError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == CancelReason::Requested
+    ));
+    assert_eq!(resources.layout_work_used(), 0);
+    assert_eq!(resources.document_cells_used(), 0);
     assert_eq!(adapter.summary_reason.get(), None);
 }
 
@@ -133,6 +177,7 @@ fn render_layered_relation_component_uses_summary_when_route_path_overlaps_box()
         &boxes,
         &relations,
         &AsciiRenderOptions::ascii(),
+        AsciiResourcePolicy::default(),
         1,
         &adapter,
     )
@@ -162,6 +207,7 @@ fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
         &boxes,
         &relations,
         &AsciiRenderOptions::ascii(),
+        AsciiResourcePolicy::default(),
         1,
         &adapter,
     )
@@ -179,7 +225,7 @@ fn strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_ce
     let boxes = strict_k2_2_boxes();
     let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
     let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let adapter = TestRelationAdapter {
         summary_reason: Cell::new(None),
         overlap: TestRelationOverlap::Overlay,
@@ -220,7 +266,7 @@ fn strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_ce
 
 #[test]
 fn pairwise_validation_work_uses_the_exact_linear_prefix_formula() {
-    let resources = ResourceContext::new(AsciiRenderOptions::ascii().resources);
+    let resources = ResourceContext::new(AsciiResourcePolicy::default());
 
     let planar = measure_pairwise_validation_work([(2, 1), (3, 2), (5, 4)], &resources, true)
         .expect("fixed pairwise work should fit");
@@ -279,7 +325,7 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
     };
     let relation_refs = relations.iter().collect::<Vec<_>>();
 
-    let mut measured_resources = test_resources(&options);
+    let mut measured_resources = test_resources(AsciiResourcePolicy::default());
     let measured_scene = build_scene(&mut measured_resources);
     let work_before = measured_resources.layout_work_used();
     let (plans, _) = plan_layered_route_batch(
@@ -295,13 +341,13 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
         .checked_sub(work_before)
         .expect("route work should be monotonic");
 
-    let exact_options = AsciiRenderOptions::ascii()
-        .with_resource_limit(
+    let exact_policy = AsciiResourcePolicy::default()
+        .with_limit(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             work_before + route_work,
         )
         .expect("exact work limit should be valid");
-    let mut exact_resources = test_resources(&exact_options);
+    let mut exact_resources = test_resources(exact_policy);
     let exact_scene = build_scene(&mut exact_resources);
     let exact_before = exact_resources.layout_work_used();
     assert_eq!(exact_before, work_before);
@@ -311,13 +357,13 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
     assert_eq!(exact_plans.len(), 4);
     assert_eq!(exact_resources.layout_work_used(), work_before + route_work);
 
-    let below_options = AsciiRenderOptions::ascii()
-        .with_resource_limit(
+    let below_policy = AsciiResourcePolicy::default()
+        .with_limit(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             work_before + route_work - 1,
         )
         .expect("N-1 work limit should be valid");
-    let mut below_resources = test_resources(&below_options);
+    let mut below_resources = test_resources(below_policy);
     let below_scene = build_scene(&mut below_resources);
     let below_before = below_resources.layout_work_used();
     assert_eq!(below_before, work_before);

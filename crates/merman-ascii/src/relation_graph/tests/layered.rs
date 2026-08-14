@@ -10,15 +10,14 @@ fn layered_relation_gap_grows_with_label_line_count() {
     let one_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 1)];
     let two_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 2)];
 
-    let options = AsciiRenderOptions::ascii();
     let box_refs = boxes.iter().collect::<Vec<_>>();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let no_label_plan = plan_layered_relation_boxes(&box_refs, &no_label_edges, 1, &mut resources)
         .expect("unlabeled layered relation should plan");
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let one_line_plan = plan_layered_relation_boxes(&box_refs, &one_line_edges, 1, &mut resources)
         .expect("single-line labeled relation should plan");
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let two_line_plan = plan_layered_relation_boxes(&box_refs, &two_line_edges, 1, &mut resources)
         .expect("multiline labeled relation should plan");
 
@@ -40,9 +39,8 @@ fn layered_relation_plan_reserves_width_for_reverse_spanning_edges() {
         LayeredRelationEdge::new("c", "a", 0, 0),
     ];
 
-    let options = AsciiRenderOptions::ascii();
     let box_refs = boxes.iter().collect::<Vec<_>>();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let plan = plan_layered_relation_boxes(&box_refs, &edges, 1, &mut resources)
         .expect("cyclic plan should render");
 
@@ -60,9 +58,8 @@ fn layered_relation_plan_reserves_width_for_reverse_parallel_lanes() {
         LayeredRelationEdge::new("b", "a", 0, 0),
     ];
 
-    let options = AsciiRenderOptions::ascii();
     let box_refs = boxes.iter().collect::<Vec<_>>();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let plan = plan_layered_relation_boxes(&box_refs, &edges, 1, &mut resources)
         .expect("bidirectional plan should render");
 
@@ -117,8 +114,7 @@ fn strict_k2_2_geometries(
 fn strict_k2_2_uses_a_direction_independent_cycle_with_four_disjoint_routes() {
     let boxes = strict_k2_2_boxes();
     let edges = strict_k2_2_edges([("a", "c"), ("d", "a"), ("c", "b"), ("b", "d")]);
-    let options = AsciiRenderOptions::ascii();
-    let mut resources = test_resources(&options);
+    let mut resources = test_resources(AsciiResourcePolicy::default());
     let scene = strict_k2_2_scene(&boxes, edges, &mut resources);
 
     assert!(scene.is_planar_k2_2());
@@ -161,14 +157,13 @@ fn strict_k2_2_uses_a_direction_independent_cycle_with_four_disjoint_routes() {
 #[test]
 fn strict_k2_2_geometry_is_stable_when_declarations_are_reordered() {
     let boxes = strict_k2_2_boxes();
-    let options = AsciiRenderOptions::ascii();
-    let mut first_resources = test_resources(&options);
+    let mut first_resources = test_resources(AsciiResourcePolicy::default());
     let first = strict_k2_2_scene(
         &boxes,
         strict_k2_2_edges([("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")]),
         &mut first_resources,
     );
-    let mut second_resources = test_resources(&options);
+    let mut second_resources = test_resources(AsciiResourcePolicy::default());
     let second = strict_k2_2_scene(
         &boxes,
         strict_k2_2_edges([("d", "b"), ("c", "b"), ("d", "a"), ("c", "a")]),
@@ -195,8 +190,7 @@ fn layered_relation_route_plan_draws_route_and_overlays() {
         PlacedRelationGraphBox::for_test("top", &top_box, 0, 0),
         PlacedRelationGraphBox::for_test("bottom", &bottom_box, 0, 4),
     ];
-    let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let geometry = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -268,8 +262,7 @@ fn layered_relation_route_label_y_follows_source_to_target_direction() {
         PlacedRelationGraphBox::for_test("bottom", &bottom_box, 0, 10),
     ];
 
-    let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let downward = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -281,7 +274,7 @@ fn layered_relation_route_label_y_follows_source_to_target_direction() {
         &resources,
     )
     .expect("downward route should fit");
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let upward = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -307,8 +300,7 @@ fn layered_relation_route_profile_reserves_rows_for_multiline_endpoint_labels() 
         PlacedRelationGraphBox::for_test("bottom", &bottom_box, 0, 10),
     ];
 
-    let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let geometry = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -338,8 +330,7 @@ fn layered_relation_route_plan_avoids_intermediate_boxes() {
         PlacedRelationGraphBox::for_test("bottom", &bottom_box, 0, 10),
     ];
 
-    let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let geometry = plan_layered_relation_route(
         LayeredRelationRouteRequest::new(
             &placed,
@@ -372,8 +363,7 @@ fn layered_relation_route_uses_right_exterior_when_left_has_no_margin() {
         PlacedRelationGraphBox::for_test("bottom", &bottom_box, 44, 10),
     ];
 
-    let options = AsciiRenderOptions::ascii();
-    let resources = test_resources(&options);
+    let resources = test_resources(AsciiResourcePolicy::default());
     let lane_offset = spanning_lane_offset_around_intermediate_boxes(
         &placed, &placed[0], &placed[3], 0, &resources,
     )

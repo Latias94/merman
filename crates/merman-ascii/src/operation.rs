@@ -5,8 +5,10 @@
 //! ASCII layout and output resource policy.
 
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
 use merman_core::{OperationControl, OperationPhase};
+
+const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 
 /// Narrow operation projection consumed by the model-to-text backend.
 #[derive(Debug, Clone, Copy)]
@@ -24,7 +26,8 @@ impl<'a> AsciiExecution<'a> {
         }
     }
 
-    /// Creates the execution projection used by the direct typed-model convenience entrypoint.
+    /// Creates an uncontrolled execution projection for crate-local unit tests.
+    #[cfg(test)]
     pub const fn standalone(resources: &'a AsciiResourcePolicy) -> Self {
         Self {
             control: None,
@@ -36,11 +39,36 @@ impl<'a> AsciiExecution<'a> {
         self.resources
     }
 
+    pub(crate) fn cloned_control(self) -> Option<OperationControl> {
+        self.control.cloned()
+    }
+
+    /// Creates a ledger-sharing resource view for one operation phase.
+    pub(crate) fn resource_context(
+        self,
+        resources: &ResourceContext,
+        phase: OperationPhase,
+    ) -> ResourceContext {
+        debug_assert_eq!(resources.policy(), *self.resources);
+        match self.cloned_control() {
+            Some(control) => resources.controlled(control, phase),
+            None => resources.clone(),
+        }
+    }
+
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
         match self.control {
             Some(control) => control.checkpoint_at(phase).map_err(AsciiError::Cancelled),
             None => Ok(()),
         }
+    }
+
+    /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.
+    pub fn checkpoint_loop(self, phase: OperationPhase, iteration: usize) -> Result<()> {
+        if iteration.is_multiple_of(COOPERATIVE_CHECKPOINT_INTERVAL) {
+            self.checkpoint(phase)?;
+        }
+        Ok(())
     }
 
     /// Checks and admits a target-local canvas allocation before it is materialized.

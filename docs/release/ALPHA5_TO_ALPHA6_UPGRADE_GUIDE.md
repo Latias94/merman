@@ -11,9 +11,11 @@ or WASM artifact; versions from alpha.5 and alpha.6 are not wire-compatible.
 ## Rust ASCII API
 
 - `AsciiRenderOptions::max_grid_cells` and `with_max_grid_cells(...)` are removed. Select an
-  `AsciiResourcePolicy` with `with_resource_policy(...)` or `with_resource_profile(...)`. To replace
-  the old builder directly, use
-  `with_resource_limit(AsciiResourceLimitId::MaxGridCells, value)?`.
+  `AsciiResourcePolicy` independently from `AsciiRenderOptions`. Facade users set
+  `AsciiRequest::resources`; direct typed-model users pass the policy as the fourth argument to
+  `AsciiRenderer::render_model`. Select a profile with `AsciiResourcePolicy::for_profile(...)`; to
+  replace the old builder directly, use
+  `policy.with_limit(AsciiResourceLimitId::MaxGridCells, value)?`.
 - The policy now owns independent limits for grid cells, layout work, document cells, encoded
   output bytes, grapheme bytes, and nesting depth. A grid limit is not a proxy for later phases.
 - `AsciiError::RenderLimitExceeded { actual, limit }` is replaced by
@@ -22,8 +24,13 @@ or WASM artifact; versions from alpha.5 and alpha.6 are not wire-compatible.
   allocation failures use `AsciiError::AllocationFailed`.
 - `AsciiResourceLimitDescriptor::phase` is now `AsciiResourceLimitPhase`, and every descriptor has
   a typed `id`. Use `phase.as_str()` and `stable_id` only at display or serialization boundaries.
-- `HeadlessAsciiError` no longer exposes authored text through an error source chain. Match the
-  public variant and use `terminal_diagnostic_details()` for safe structured diagnostics.
+- Source-to-output ASCII rendering now uses `Renderer` with `RenderRequest::ascii`. The former
+  `HeadlessAsciiRenderer`, source helpers, and per-family pass-throughs are removed. Hosts that
+  already own a typed model may use `AsciiRenderer::render_model` only with a caller-owned
+  `OperationControl`, `OperationContext`, and `AsciiResourcePolicy`.
+- `AsciiDiagnostic` is the bounded terminal-display projection for parse, runtime-policy, and
+  target errors. It does not expose authored text through an error source chain; use
+  `terminal_diagnostic_details()` for safe structured diagnostics.
 - `AsciiRenderOptions` now carries `terminal_width_profile`. Use its constructors and builders so
   Unicode and CJK width behavior remains explicit.
 - Ordinary Flowchart node labels now wrap before layout at `40` terminal display cells by default.

@@ -1,6 +1,8 @@
+mod support;
+
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, render_model, render_model_with_operation,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb,
 };
 use merman_core::diagrams::xychart::{
     XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
@@ -8,21 +10,42 @@ use merman_core::diagrams::xychart::{
 };
 use merman_core::{Engine, OperationControl, ParseOptions, RenderSemanticModel};
 use std::path::Path;
+use support::{render_controlled_model, render_model_with_resources};
 
 fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
+    render_xychart_with_resources(input, options, AsciiResourcePolicy::default())
+}
+
+fn render_xychart_with_resources(
+    input: &str,
+    options: &AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
+) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("xychart should parse")
         .expect("xychart should be detected");
 
-    render_model(parsed.model(), options)
+    render_model_with_resources(parsed.model(), options, resources)
 }
 
 fn render_typed_xychart(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> merman_ascii::Result<String> {
-    render_model(&RenderSemanticModel::XyChart(model.clone()), options)
+    render_typed_xychart_with_resources(model, options, AsciiResourcePolicy::default())
+}
+
+fn render_typed_xychart_with_resources(
+    model: &XyChartDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    resources: AsciiResourcePolicy,
+) -> merman_ascii::Result<String> {
+    render_model_with_resources(
+        &RenderSemanticModel::XyChart(model.clone()),
+        options,
+        resources,
+    )
 }
 
 fn render_xychart_with_grid_limit(
@@ -42,7 +65,7 @@ fn render_xychart_with_grid_limit(
         .with_limit(AsciiResourceLimitId::MaxGridCells, max_grid_cells)
         .expect("valid grid limit");
 
-    render_model_with_operation(parsed.model(), options, &control, &context, resources)
+    render_controlled_model(parsed.model(), options, &control, &context, resources)
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {
@@ -188,8 +211,8 @@ bar [2, 5, 8]
     assert_eq!(
         strip_ansi(&rendered),
         concat!(
-            "Sales\n",
-            "y: Revenue\n",
+            "titleDisplay: chart(bytes=5)=\"Sales\"\n",
+            "titleDisplay: yAxis(bytes=7)=\"Revenue\"\n",
             "10 +\n",
             " 8 +        ###\n",
             " 6 +    ### ###\n",
@@ -197,7 +220,7 @@ bar [2, 5, 8]
             " 2 +### ### ###\n",
             " 0 +-+---+---+-\n",
             "    Jan Feb Mar\n",
-            "x: Month\n",
+            "titleDisplay: xAxis(bytes=5)=\"Month\"\n",
         )
     );
     for expected_code in [
@@ -285,8 +308,8 @@ bar [2, 5, 8]
     assert_eq!(
         rendered,
         concat!(
-            "Sales\n",
-            "y: Revenue\n",
+            "titleDisplay: chart(bytes=5)=\"Sales\"\n",
+            "titleDisplay: yAxis(bytes=7)=\"Revenue\"\n",
             "10 +\n",
             " 8 +        ###\n",
             " 6 +    ### ###\n",
@@ -294,7 +317,7 @@ bar [2, 5, 8]
             " 2 +### ### ###\n",
             " 0 +-+---+---+-\n",
             "    Jan Feb Mar\n",
-            "x: Month\n",
+            "titleDisplay: xAxis(bytes=5)=\"Month\"\n",
         )
     );
 }
@@ -855,19 +878,20 @@ fn xychart_empty_projection_obeys_exact_output_byte_budget() {
     );
     let rendered = render_xychart(input, &AsciiRenderOptions::ascii())
         .expect("empty XYChart should render under the default budget");
-    let exact = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
+    let exact = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len())
         .expect("valid exact output-byte limit");
 
     assert_eq!(
-        render_xychart(input, &exact).expect("exact empty-chart byte budget should render"),
+        render_xychart_with_resources(input, &AsciiRenderOptions::ascii(), exact)
+            .expect("exact empty-chart byte budget should render"),
         rendered
     );
 
-    let below = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
+    let below = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxOutputBytes, rendered.len() - 1)
         .expect("valid N-1 output-byte limit");
-    let error = render_xychart(input, &below)
+    let error = render_xychart_with_resources(input, &AsciiRenderOptions::ascii(), below)
         .expect_err("N-1 empty-chart byte budget should reject the final document");
     let AsciiError::ResourceLimitExceeded(details) = error else {
         panic!("expected output-byte resource error, got {error:?}");
@@ -888,19 +912,20 @@ fn xychart_empty_projection_obeys_exact_document_cell_budget() {
     let rendered = render_xychart(input, &AsciiRenderOptions::ascii())
         .expect("empty XYChart should render under the default budget");
     let exact_cells = rendered.lines().map(str::len).sum::<usize>();
-    let exact = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells)
+    let exact = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells)
         .expect("valid exact document-cell limit");
 
     assert_eq!(
-        render_xychart(input, &exact).expect("exact empty-chart cell budget should render"),
+        render_xychart_with_resources(input, &AsciiRenderOptions::ascii(), exact)
+            .expect("exact empty-chart cell budget should render"),
         rendered
     );
 
-    let below = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1)
+    let below = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1)
         .expect("valid N-1 document-cell limit");
-    let error = render_xychart(input, &below)
+    let error = render_xychart_with_resources(input, &AsciiRenderOptions::ascii(), below)
         .expect_err("N-1 empty-chart cell budget should reject the document");
     let AsciiError::ResourceLimitExceeded(details) = error else {
         panic!("expected document-cell resource error, got {error:?}");
@@ -930,20 +955,20 @@ fn xychart_empty_projection_enforces_authored_grapheme_budget() {
         plots: Vec::new(),
         display: XyChartDisplayPolicy::default(),
     };
-    let exact = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len())
+    let exact = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len())
         .expect("valid exact grapheme-byte limit");
 
     assert!(
-        render_typed_xychart(&model, &exact)
+        render_typed_xychart_with_resources(&model, &AsciiRenderOptions::ascii(), exact)
             .expect("exact empty-chart grapheme budget should render")
             .contains(grapheme)
     );
 
-    let below = AsciiRenderOptions::ascii()
-        .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1)
+    let below = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1)
         .expect("valid N-1 grapheme-byte limit");
-    let error = render_typed_xychart(&model, &below)
+    let error = render_typed_xychart_with_resources(&model, &AsciiRenderOptions::ascii(), below)
         .expect_err("N-1 empty-chart grapheme budget should reject authored text");
     let AsciiError::ResourceLimitExceeded(details) = error else {
         panic!("expected grapheme resource error, got {error:?}");
@@ -1015,8 +1040,8 @@ fn xychart_local_semantic_fixture_covers_horizontal_mixed_plot_with_cjk_labels()
         );
     }
     assert!(
-        first_line_index_containing(&rendered, "营收")
-            < first_line_index_containing(&rendered, "y: 分数"),
+        first_line_index_containing(&rendered, r#"titleDisplay: chart(bytes=6)="营收""#,)
+            < first_line_index_containing(&rendered, r#"titleDisplay: yAxis(bytes=6)="分数""#,),
         "title should render above the axis title:\n{rendered}"
     );
     assert!(
@@ -1379,6 +1404,213 @@ fn xychart_exact_disclosure_quotes_control_and_field_delimiters() {
 }
 
 #[test]
+fn xychart_direct_model_title_owners_prevent_chart_axis_spoofing() {
+    let render = |chart_title: Option<&str>, y_title: &str, show_chart: bool, show_y: bool| {
+        let mut model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![5.0],
+                data: vec![("A".to_string(), Some(5.0))],
+                point_labels: Vec::new(),
+            }],
+        );
+        model.title = chart_title.map(str::to_string);
+        model.y_axis = XyChartAxisRenderModel::Linear {
+            title: y_title.to_string(),
+            min: Some(0.0),
+            max: Some(10.0),
+        };
+        model.display.show_title = show_chart;
+        model.display.y_axis.show_title = show_y;
+        render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("owned title disclosure should render")
+    };
+
+    let chart_owned = render(Some("y: Y"), "", true, false);
+    let y_axis_owned = render(None, "Y", false, true);
+
+    assert_ne!(
+        chart_owned, y_axis_owned,
+        "a chart title must not impersonate a renderer-owned y-axis title row"
+    );
+    assert!(
+        chart_owned
+            .lines()
+            .any(|line| line == r#"titleDisplay: chart(bytes=4)="y: Y""#),
+        "chart title lost its owner or UTF-8 byte frame:\n{chart_owned}"
+    );
+    assert!(
+        y_axis_owned
+            .lines()
+            .any(|line| line == r#"titleDisplay: yAxis(bytes=1)="Y""#),
+        "y-axis title lost its owner or UTF-8 byte frame:\n{y_axis_owned}"
+    );
+    assert!(
+        !chart_owned.lines().any(|line| line == "y: Y"),
+        "authored chart text must never be emitted as an unframed owned row:\n{chart_owned}"
+    );
+
+    let authored_owned_row = render(Some(r#"titleDisplay: yAxis(bytes=1)="Y""#), "", true, false);
+    assert!(
+        authored_owned_row
+            .contains(r#"titleDisplay: chart(bytes=32)="titleDisplay: yAxis(bytes=1)=\"Y\"""#),
+        "renderer-like title text must remain a chart-owned payload without prefix filtering:\n\
+         {authored_owned_row}"
+    );
+}
+
+#[test]
+fn xychart_parser_title_owners_prevent_chart_axis_spoofing() {
+    let chart_owned = render_xychart(
+        concat!(
+            "xychart\n",
+            "title \"y: Y\"\n",
+            "x-axis [A]\n",
+            "y-axis 0 --> 10\n",
+            "line [5]\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parser chart-title fixture should render");
+    let y_axis_owned = render_xychart(
+        concat!(
+            "xychart\n",
+            "x-axis [A]\n",
+            "y-axis Y 0 --> 10\n",
+            "line [5]\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parser y-axis-title fixture should render");
+
+    assert_ne!(
+        chart_owned, y_axis_owned,
+        "parser-produced chart and y-axis titles must retain distinct owners"
+    );
+    assert!(
+        chart_owned.contains(r#"titleDisplay: chart(bytes=4)="y: Y""#),
+        "parser chart title lost its owner frame:\n{chart_owned}"
+    );
+    assert!(
+        y_axis_owned.contains(r#"titleDisplay: yAxis(bytes=1)="Y""#),
+        "parser y-axis title lost its owner frame:\n{y_axis_owned}"
+    );
+}
+
+#[test]
+fn xychart_direct_model_title_frames_preserve_trim_and_esc() {
+    let render = |chart_title: &str, x_title: &str, y_title: &str| {
+        let mut model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: x_title.to_string(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![5.0],
+                data: vec![("A".to_string(), Some(5.0))],
+                point_labels: Vec::new(),
+            }],
+        );
+        model.title = Some(chart_title.to_string());
+        model.y_axis = XyChartAxisRenderModel::Linear {
+            title: y_title.to_string(),
+            min: Some(0.0),
+            max: Some(10.0),
+        };
+        model.display.show_title = true;
+        model.display.x_axis.show_title = true;
+        model.display.y_axis.show_title = true;
+        render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("owned title frames should render")
+    };
+
+    let control_and_left_trim = render("\u{1b}", " X", "Y ");
+    let authored_escape_and_right_trim = render("\\u{1B}", "X ", " Y");
+
+    assert_ne!(
+        control_and_left_trim, authored_escape_and_right_trim,
+        "distinct authored titles must not collapse after terminal escaping"
+    );
+    for expected in [
+        r#"titleDisplay: chart(bytes=1)="\u{1B}""#,
+        r#"titleDisplay: xAxis(bytes=2)=" X""#,
+        r#"titleDisplay: yAxis(bytes=2)="Y ""#,
+    ] {
+        assert!(
+            control_and_left_trim.contains(expected),
+            "missing exact owned title frame {expected:?}:\n{control_and_left_trim}"
+        );
+    }
+    for expected in [
+        r#"titleDisplay: chart(bytes=6)="\\u{1B}""#,
+        r#"titleDisplay: xAxis(bytes=2)="X ""#,
+        r#"titleDisplay: yAxis(bytes=2)=" Y""#,
+    ] {
+        assert!(
+            authored_escape_and_right_trim.contains(expected),
+            "missing exact authored escape frame {expected:?}:\n{authored_escape_and_right_trim}"
+        );
+    }
+}
+
+#[test]
+fn xychart_direct_model_title_frames_distinguish_lf_from_literal_escape() {
+    let render = |chart_title: &str| {
+        let mut model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![5.0],
+                data: vec![("A".to_string(), Some(5.0))],
+                point_labels: Vec::new(),
+            }],
+        );
+        model.title = Some(chart_title.to_string());
+        model.display.show_title = true;
+        model.display.x_axis.show_title = false;
+        model.display.y_axis.show_title = false;
+        render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("owned title fixture should render")
+    };
+
+    let structural_lf = render("A\nB");
+    let authored_escape = render(r"A\nB");
+
+    assert_ne!(
+        structural_lf, authored_escape,
+        "a structural line break must not collapse with authored escape text"
+    );
+    assert!(
+        structural_lf.contains(r#"titleDisplay: chart(bytes=3)="A\nB""#),
+        "structural LF must retain its source byte length:\n{structural_lf}"
+    );
+    assert!(
+        authored_escape.contains(r#"titleDisplay: chart(bytes=4)="A\\nB""#),
+        "literal escape text must remain distinguishable from LF:\n{authored_escape}"
+    );
+}
+
+#[test]
 fn xychart_single_series_title_remains_visible() {
     let render = |title: Option<&str>| {
         let model = typed_xychart_model(
@@ -1621,11 +1853,12 @@ fn xychart_line_topology_temporary_extent_is_budgeted() {
     );
     let options = AsciiRenderOptions::ascii()
         .with_xychart_vertical_plot_height(3)
-        .with_xychart_category_band_width(3)
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 41)
+        .with_xychart_category_band_width(3);
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, 41)
         .expect("valid grid limit");
 
-    let error = render_typed_xychart(&model, &options)
+    let error = render_typed_xychart_with_resources(&model, &options, resources)
         .expect_err("plot cells plus the line-topology mask must exceed 41 cells");
     let AsciiError::ResourceLimitExceeded(details) = error else {
         panic!("expected resource-limit error, got {error:?}");
@@ -1703,12 +1936,12 @@ fn xychart_grouped_horizontal_extent_is_budgeted_before_allocation() {
             },
         ],
     );
-    let options = AsciiRenderOptions::ascii()
-        .with_xychart_horizontal_plot_width(10)
-        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 39)
+    let options = AsciiRenderOptions::ascii().with_xychart_horizontal_plot_width(10);
+    let resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, 39)
         .expect("valid grid limit");
 
-    let error = render_typed_xychart(&model, &options)
+    let error = render_typed_xychart_with_resources(&model, &options, resources)
         .expect_err("the four-by-ten grouped plot must exceed 39 grid cells");
     let AsciiError::ResourceLimitExceeded(details) = error else {
         panic!("expected resource-limit error, got {error:?}");

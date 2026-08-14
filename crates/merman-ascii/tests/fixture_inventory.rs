@@ -1,12 +1,15 @@
+mod support;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_ascii::AsciiRenderOptions;
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::sequence::SequenceMessageKind;
 use merman_core::{Engine, ParseOptions};
 use sha2::{Digest, Sha256};
+use support::render_model;
 
 const EXPECTED_FIXTURE_COUNTS: &[(&str, usize)] = &[
     ("ascii", 54),

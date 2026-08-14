@@ -1,28 +1,29 @@
 use super::{
-    CLASS_LEVEL_HORIZONTAL_GAP, ClassCharset, ClassDirection, ClassNoteIndex, RenderedClassBox,
-    RenderedClassBoxIndex, external_namespace_note_summary_rows, grid_overflow,
+    CLASS_LEVEL_HORIZONTAL_GAP, ClassDirection, ClassNoteIndex, ClassRenderSettings,
+    RenderedClassBox, RenderedClassBoxIndex, external_namespace_note_summary_rows, grid_overflow,
     layout_allocation_failed, nesting_overflow, note_relation_layouts_for_notes,
     relation_endpoint_id, relation_layout, render_class_box, render_class_component_lines,
-    render_class_document_lines, render_horizontal_class_component_lines, render_interface_box,
-    render_note_box, work_overflow,
+    render_class_document_lines_with_execution, render_horizontal_class_component_lines,
+    render_interface_box, render_note_box, work_overflow,
 };
 use crate::color::AsciiColorRole;
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::operation::AsciiExecution;
+use crate::options::TerminalWidthProfile;
 use crate::relation_graph::{self, RelationGraphBox, RelationGraphBoxStyle, RelationGraphLine};
 use crate::resource::ResourceContext;
 use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry, terminal_text_is_blank};
 use crate::{AsciiError, Result};
+use merman_core::OperationPhase;
 use merman_core::models::class_diagram::{ClassDiagram, ClassNode, Namespace};
 use std::collections::{HashMap, HashSet};
 
 struct NamespaceRenderContext<'model, 'render> {
     model: &'model ClassDiagram,
-    options: &'render AsciiRenderOptions,
-    charset: ClassCharset,
-    direction: ClassDirection,
+    settings: ClassRenderSettings<'render>,
     namespace_facade_aliases: &'model HashMap<String, String>,
     scope_index: &'render NamespaceScopeIndex<'model>,
     note_by_id: ClassNoteIndex<'model>,
+    execution: Option<AsciiExecution<'render>>,
 }
 
 #[derive(Debug)]
@@ -44,9 +45,10 @@ impl<'a> NamespaceScopeIndex<'a> {
         model: &'a ClassDiagram,
         namespace_facade_aliases: &HashMap<String, String>,
         resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
     ) -> Result<Self> {
         resources.transaction(|resources| {
-            Self::new_in_transaction(model, namespace_facade_aliases, resources)
+            Self::new_in_transaction(model, namespace_facade_aliases, resources, execution)
         })
     }
 
@@ -54,7 +56,9 @@ impl<'a> NamespaceScopeIndex<'a> {
         model: &'a ClassDiagram,
         namespace_facade_aliases: &HashMap<String, String>,
         resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
     ) -> Result<Self> {
+        checkpoint_layout(execution)?;
         let namespace_capacity = model.namespaces.len();
         let endpoint_capacity = model
             .classes
@@ -85,6 +89,7 @@ impl<'a> NamespaceScopeIndex<'a> {
             .try_reserve(namespace_capacity)
             .map_err(|_| layout_allocation_failed())?;
         for namespace in model.namespaces.values() {
+            checkpoint_layout(execution)?;
             namespace_parent.insert(namespace.id.as_str(), namespace.parent.as_deref());
         }
         let mut namespace_route_id = HashMap::new();
@@ -92,6 +97,7 @@ impl<'a> NamespaceScopeIndex<'a> {
             .try_reserve(namespace_capacity)
             .map_err(|_| layout_allocation_failed())?;
         for namespace in model.namespaces.values() {
+            checkpoint_layout(execution)?;
             namespace_route_id.insert(namespace.id.as_str(), namespace.dom_id.as_str());
         }
 
@@ -100,9 +106,11 @@ impl<'a> NamespaceScopeIndex<'a> {
             .try_reserve(endpoint_capacity)
             .map_err(|_| layout_allocation_failed())?;
         for class in model.classes.values() {
+            checkpoint_layout(execution)?;
             endpoint_owner.insert(class.id.as_str(), class.parent.as_deref());
         }
         for interface in &model.interfaces {
+            checkpoint_layout(execution)?;
             endpoint_owner.insert(interface.id.as_str(), None);
         }
 
@@ -111,6 +119,7 @@ impl<'a> NamespaceScopeIndex<'a> {
             .try_reserve_exact(model.relations.len())
             .map_err(|_| layout_allocation_failed())?;
         for relation in &model.relations {
+            checkpoint_layout(execution)?;
             let left = relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str());
             let right = relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str());
             relation_scope.push(Self::least_common_scope(
@@ -118,6 +127,7 @@ impl<'a> NamespaceScopeIndex<'a> {
                 endpoint_owner.get(right).copied().flatten(),
                 &namespace_parent,
                 scope_walk_bound,
+                execution,
             )?);
         }
 
@@ -134,22 +144,26 @@ impl<'a> NamespaceScopeIndex<'a> {
         right: Option<&'a str>,
         parent: &HashMap<&'a str, Option<&'a str>>,
         max_hops: usize,
+        execution: Option<AsciiExecution<'_>>,
     ) -> Result<Option<&'a str>> {
         let mut left = left;
         let mut right = right;
-        let mut left_depth = Self::scope_depth(left, parent, max_hops)?;
-        let mut right_depth = Self::scope_depth(right, parent, max_hops)?;
+        let mut left_depth = Self::scope_depth(left, parent, max_hops, execution)?;
+        let mut right_depth = Self::scope_depth(right, parent, max_hops, execution)?;
 
         while left_depth > right_depth {
+            checkpoint_layout(execution)?;
             left = Self::parent_scope(left, parent)?;
             left_depth -= 1;
         }
         while right_depth > left_depth {
+            checkpoint_layout(execution)?;
             right = Self::parent_scope(right, parent)?;
             right_depth -= 1;
         }
 
         for _ in 0..max_hops {
+            checkpoint_layout(execution)?;
             if left == right {
                 return Ok(left);
             }
@@ -163,8 +177,10 @@ impl<'a> NamespaceScopeIndex<'a> {
         mut scope: Option<&'a str>,
         parent: &HashMap<&'a str, Option<&'a str>>,
         max_hops: usize,
+        execution: Option<AsciiExecution<'_>>,
     ) -> Result<usize> {
         for depth in 0..max_hops {
+            checkpoint_layout(execution)?;
             let Some(namespace) = scope else {
                 return Ok(depth);
             };
@@ -198,7 +214,9 @@ impl<'a> NamespaceScopeIndex<'a> {
         endpoint_id: &'a str,
         scope: Option<&'a str>,
         resources: &ResourceContext,
+        execution: Option<AsciiExecution<'_>>,
     ) -> Result<ScopedEndpoint<'a>> {
+        checkpoint_layout(execution)?;
         resources.charge_layout_work(1)?;
         let owner = self.endpoint_owner.get(endpoint_id).copied().flatten();
         let Some(owner) = owner else {
@@ -216,6 +234,7 @@ impl<'a> NamespaceScopeIndex<'a> {
 
         let mut child = owner;
         while self.namespace_parent.get(child).copied().flatten() != scope {
+            checkpoint_layout(execution)?;
             resources.charge_layout_work(1)?;
             child = self
                 .namespace_parent
@@ -242,10 +261,12 @@ fn route_layout_for_scope<'a>(
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<super::RelationLayout<'a>> {
     resources.transaction(|resources| {
-        let top = scope_index.endpoint_for_scope(layout.top_id, scope, resources)?;
-        let bottom = scope_index.endpoint_for_scope(layout.bottom_id, scope, resources)?;
+        let top = scope_index.endpoint_for_scope(layout.top_id, scope, resources, execution)?;
+        let bottom =
+            scope_index.endpoint_for_scope(layout.bottom_id, scope, resources, execution)?;
         layout.with_route_endpoints(
             super::RelationRouteEndpoints {
                 top_id: top.route_id,
@@ -369,23 +390,23 @@ fn inconsistent_class_namespace_ownership() -> AsciiError {
 
 pub(super) fn render_namespaced_class_diagram<'a>(
     model: &'a ClassDiagram,
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-    direction: ClassDirection,
+    settings: ClassRenderSettings<'_>,
     namespace_facade_aliases: &'a HashMap<String, String>,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<String> {
-    let scope_index = NamespaceScopeIndex::new(model, namespace_facade_aliases, resources)?;
+    checkpoint_layout(execution)?;
+    let scope_index =
+        NamespaceScopeIndex::new(model, namespace_facade_aliases, resources, execution)?;
     let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
     let context = NamespaceRenderContext {
         model,
-        options,
-        charset,
-        direction,
+        settings,
         namespace_facade_aliases,
         scope_index: &scope_index,
         note_by_id,
+        execution,
     };
     let boxes = render_namespaced_class_boxes(&context, deferred_text, resources)?;
     let mut external_layouts = Vec::new();
@@ -393,6 +414,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
         .try_reserve_exact(model.relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for (relation_index, relation) in model.relations.iter().enumerate() {
+        checkpoint_layout(execution)?;
         if scope_index.scope_for_relation(relation_index).is_some() {
             continue;
         }
@@ -400,7 +422,7 @@ pub(super) fn render_namespaced_class_diagram<'a>(
             model,
             relation,
             namespace_facade_aliases,
-            options.terminal_width_profile,
+            settings.options.terminal_width_profile,
             deferred_text,
             resources,
         )?;
@@ -408,84 +430,114 @@ pub(super) fn render_namespaced_class_diagram<'a>(
             layout,
             None,
             &scope_index,
-            options.terminal_width_profile,
+            settings.options.terminal_width_profile,
             deferred_text,
             resources,
+            execution,
         )?);
     }
     for layout in &mut external_layouts {
-        layout.apply_direction(direction);
+        checkpoint_layout(execution)?;
+        layout.apply_direction(settings.direction);
     }
     let summary_rows = external_namespace_note_summary_rows(
         model,
         namespace_facade_aliases,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
         deferred_text,
         resources,
     )?;
 
     if summary_rows.is_empty() && external_layouts.is_empty() {
-        if direction.is_horizontal() {
+        if settings.direction.is_horizontal() {
             let lines = relation_graph::render_horizontal_box_strip_lines(
                 &boxes,
-                direction.horizontal_direction(),
+                settings.direction.horizontal_direction(),
                 CLASS_LEVEL_HORIZONTAL_GAP,
-                options.terminal_width_profile,
+                settings.options.terminal_width_profile,
                 resources,
             )?;
-            return render_class_document_lines(lines, options, resources, deferred_text);
+            return render_class_document_lines_with_execution(
+                lines,
+                settings.options,
+                resources,
+                deferred_text,
+                execution,
+            );
         }
-        if direction.is_reversed() {
+        if settings.direction.is_reversed() {
             let lines = relation_graph::stacked_box_lines_ordered(
                 &boxes,
-                options.terminal_width_profile,
+                settings.options.terminal_width_profile,
                 true,
                 resources,
             )?;
-            return render_class_document_lines(lines, options, resources, deferred_text);
+            return render_class_document_lines_with_execution(
+                lines,
+                settings.options,
+                resources,
+                deferred_text,
+                execution,
+            );
         }
-        return relation_graph::render_stacked_boxes_with_deferred_options(
-            &boxes,
-            options,
-            resources,
-            deferred_text,
-        );
+        return match execution {
+            Some(execution) => {
+                relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
+                    &boxes,
+                    settings.options,
+                    resources,
+                    deferred_text,
+                    execution,
+                )
+            }
+            None => relation_graph::render_stacked_boxes_with_deferred_options(
+                &boxes,
+                settings.options,
+                resources,
+                deferred_text,
+            ),
+        };
     }
 
     let box_by_id = RenderedClassBoxIndex::new(&boxes, resources)?;
-    let routed_lines = if direction.is_horizontal() {
+    let routed_lines = if settings.direction.is_horizontal() {
         render_horizontal_class_component_lines(
             &boxes,
             &external_layouts,
-            direction,
-            options,
-            charset,
+            settings,
             resources,
             deferred_text,
+            execution,
         )?
     } else {
         render_class_component_lines(
             &boxes,
             &box_by_id,
             &external_layouts,
-            options,
-            charset,
+            settings,
             resources,
             deferred_text,
+            execution,
         )?
     };
 
     if summary_rows.is_empty() {
-        return render_class_document_lines(routed_lines, options, resources, deferred_text);
+        return render_class_document_lines_with_execution(
+            routed_lines,
+            settings.options,
+            resources,
+            deferred_text,
+            execution,
+        );
     }
 
     let routed_box = RelationGraphBox::from_rendered_lines(
         "namespace::root-relations".to_string(),
         routed_lines,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
         resources,
     )?;
-    if direction.is_horizontal() {
+    if settings.direction.is_horizontal() {
         let gap = CLASS_LEVEL_HORIZONTAL_GAP;
         let base_extent = relation_graph::horizontal_box_strip_extent(
             std::slice::from_ref(&routed_box),
@@ -496,56 +548,74 @@ pub(super) fn render_namespaced_class_diagram<'a>(
             base_extent,
             &summary_rows,
             None,
-            options,
+            settings.options,
             resources,
             |resources| {
                 relation_graph::render_horizontal_box_strip_lines(
                     std::slice::from_ref(&routed_box),
-                    direction.horizontal_direction(),
+                    settings.direction.horizontal_direction(),
                     gap,
-                    options.terminal_width_profile,
+                    settings.options.terminal_width_profile,
                     resources,
                 )
             },
         )?;
-        return render_class_document_lines(lines, options, resources, deferred_text);
+        return render_class_document_lines_with_execution(
+            lines,
+            settings.options,
+            resources,
+            deferred_text,
+            execution,
+        );
     }
-    if direction.is_reversed() {
+    if settings.direction.is_reversed() {
         let base_extent =
             relation_graph::stacked_box_extent(std::slice::from_ref(&routed_box), resources)?;
         let lines = relation_graph::render_relation_document_with_summary(
             base_extent,
             &summary_rows,
             None,
-            options,
+            settings.options,
             resources,
             |resources| {
                 relation_graph::stacked_box_lines_ordered(
                     std::slice::from_ref(&routed_box),
-                    options.terminal_width_profile,
+                    settings.options.terminal_width_profile,
                     true,
                     resources,
                 )
             },
         )?;
-        return render_class_document_lines(lines, options, resources, deferred_text);
+        return render_class_document_lines_with_execution(
+            lines,
+            settings.options,
+            resources,
+            deferred_text,
+            execution,
+        );
     }
 
     let lines = relation_graph::render_relation_document_with_summary(
         relation_graph::stacked_box_extent(std::slice::from_ref(&routed_box), resources)?,
         &summary_rows,
         None,
-        options,
+        settings.options,
         resources,
         |resources| {
             relation_graph::stacked_box_lines(
                 std::slice::from_ref(&routed_box),
-                options.terminal_width_profile,
+                settings.options.terminal_width_profile,
                 resources,
             )
         },
     )?;
-    render_class_document_lines(lines, options, resources, deferred_text)
+    render_class_document_lines_with_execution(
+        lines,
+        settings.options,
+        resources,
+        deferred_text,
+        execution,
+    )
 }
 fn render_namespaced_class_boxes<'a>(
     context: &NamespaceRenderContext<'a, '_>,
@@ -579,6 +649,7 @@ fn render_namespaced_class_boxes<'a>(
         .values()
         .filter(|namespace| namespace.parent.is_none())
     {
+        checkpoint_layout(context.execution)?;
         boxes.push(render_namespace_box(
             context,
             namespace,
@@ -591,6 +662,7 @@ fn render_namespaced_class_boxes<'a>(
     }
 
     for namespace in context.model.namespaces.values() {
+        checkpoint_layout(context.execution)?;
         if !rendered_namespace_ids.contains(namespace.id.as_str()) {
             boxes.push(render_namespace_box(
                 context,
@@ -613,19 +685,21 @@ fn render_namespaced_class_boxes<'a>(
                 .as_ref()
                 .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
     }) {
+        checkpoint_layout(context.execution)?;
         boxes.push(render_class_box(
             class,
-            context.options,
-            context.charset,
+            context.settings.options,
+            context.settings.charset,
             deferred_text,
             resources,
         )?);
     }
     for interface in &context.model.interfaces {
+        checkpoint_layout(context.execution)?;
         boxes.push(render_interface_box(
             interface,
-            context.options,
-            context.charset,
+            context.settings.options,
+            context.settings.charset,
             deferred_text,
             resources,
         )?);
@@ -635,10 +709,11 @@ fn render_namespaced_class_boxes<'a>(
             .as_ref()
             .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
     }) {
+        checkpoint_layout(context.execution)?;
         boxes.push(render_note_box(
             note,
-            context.options,
-            context.charset,
+            context.settings.options,
+            context.settings.charset,
             deferred_text,
             resources,
         )?);
@@ -656,6 +731,7 @@ fn render_namespace_box<'model>(
     deferred_text: &mut DeferredTextRegistry<'model>,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
+    checkpoint_layout(context.execution)?;
     resources.check_nesting_depth(depth)?;
     resources.charge_layout_work(context.model.namespaces.len().max(1))?;
     if !visiting_namespace_ids.insert(namespace.id.clone()) {
@@ -683,6 +759,7 @@ fn render_namespace_box<'model>(
         .values()
         .filter(|child| child.parent.as_deref() == Some(namespace.id.as_str()))
     {
+        checkpoint_layout(context.execution)?;
         children.push(render_namespace_box(
             context,
             child,
@@ -706,6 +783,7 @@ fn render_namespace_box<'model>(
         .try_reserve_exact(direct_box_capacity)
         .map_err(|_| layout_allocation_failed())?;
     for class_id in &namespace.class_ids {
+        checkpoint_layout(context.execution)?;
         if let Some(class) = context.model.classes.get(class_id)
             && !context
                 .namespace_facade_aliases
@@ -713,8 +791,8 @@ fn render_namespace_box<'model>(
         {
             direct_boxes.push(render_class_box(
                 class,
-                context.options,
-                context.charset,
+                context.settings.options,
+                context.settings.charset,
                 deferred_text,
                 resources,
             )?);
@@ -722,11 +800,12 @@ fn render_namespace_box<'model>(
     }
 
     for note_id in &namespace.note_ids {
+        checkpoint_layout(context.execution)?;
         if let Some(note) = context.note_by_id.get(note_id, resources)? {
             direct_boxes.push(render_note_box(
                 note,
-                context.options,
-                context.charset,
+                context.settings.options,
+                context.settings.charset,
                 deferred_text,
                 resources,
             )?);
@@ -743,6 +822,7 @@ fn render_namespace_box<'model>(
         .try_reserve_exact(direct_layout_capacity)
         .map_err(|_| layout_allocation_failed())?;
     for (relation_index, relation) in context.model.relations.iter().enumerate() {
+        checkpoint_layout(context.execution)?;
         if context.scope_index.scope_for_relation(relation_index) != Some(namespace.id.as_str()) {
             continue;
         }
@@ -750,7 +830,7 @@ fn render_namespace_box<'model>(
             context.model,
             relation,
             context.namespace_facade_aliases,
-            context.options.terminal_width_profile,
+            context.settings.options.terminal_width_profile,
             deferred_text,
             resources,
         )?;
@@ -758,9 +838,10 @@ fn render_namespace_box<'model>(
             layout,
             Some(namespace.id.as_str()),
             context.scope_index,
-            context.options.terminal_width_profile,
+            context.settings.options.terminal_width_profile,
             deferred_text,
             resources,
+            context.execution,
         )?);
     }
 
@@ -785,37 +866,37 @@ fn render_namespace_box<'model>(
         resources,
     )?);
     for layout in &mut direct_layouts {
-        layout.apply_direction(context.direction);
+        checkpoint_layout(context.execution)?;
+        layout.apply_direction(context.settings.direction);
     }
 
     if direct_layouts.is_empty() {
         children.extend(direct_boxes);
     } else {
-        let component_lines = if context.direction.is_horizontal() {
+        let component_lines = if context.settings.direction.is_horizontal() {
             render_horizontal_class_component_lines(
                 &scope_boxes,
                 &direct_layouts,
-                context.direction,
-                context.options,
-                context.charset,
+                context.settings,
                 resources,
                 deferred_text,
+                context.execution,
             )?
         } else {
             render_class_component_lines(
                 &scope_boxes,
                 &box_by_id,
                 &direct_layouts,
-                context.options,
-                context.charset,
+                context.settings,
                 resources,
                 deferred_text,
+                context.execution,
             )?
         };
         let relation_component = RelationGraphBox::from_rendered_lines(
             format!("{}::relations", namespace.id),
             component_lines,
-            context.options.terminal_width_profile,
+            context.settings.options.terminal_width_profile,
             resources,
         )?;
         children.clear();
@@ -826,48 +907,50 @@ fn render_namespace_box<'model>(
     render_namespace_container_box(
         namespace,
         children,
-        context.options,
-        context.charset,
-        context.direction,
+        context.settings,
         deferred_text,
         resources,
+        context.execution,
     )
 }
 
 pub(super) fn render_namespace_container_box<'a>(
     namespace: &'a Namespace,
     mut children: Vec<RenderedClassBox>,
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-    direction: ClassDirection,
+    settings: ClassRenderSettings<'_>,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &mut ResourceContext,
+    execution: Option<AsciiExecution<'_>>,
 ) -> Result<RenderedClassBox> {
-    if direction.is_horizontal() && children.len() > 1 {
+    checkpoint_layout(execution)?;
+    if settings.direction.is_horizontal() && children.len() > 1 {
         let lines = relation_graph::render_horizontal_box_strip_lines(
             &children,
-            direction.horizontal_direction(),
+            settings.direction.horizontal_direction(),
             CLASS_LEVEL_HORIZONTAL_GAP,
-            options.terminal_width_profile,
+            settings.options.terminal_width_profile,
             resources,
         )?;
         let contents = RelationGraphBox::from_rendered_lines(
             format!("{}::contents", namespace.id),
             lines,
-            options.terminal_width_profile,
+            settings.options.terminal_width_profile,
             resources,
         )?;
         children.clear();
         children.push(contents);
-    } else if direction == ClassDirection::BottomUp {
+    } else if settings.direction == ClassDirection::BottomUp {
         children.reverse();
     }
 
     let raw_title = namespace_title(namespace, resources)?;
     let title_plan = ComposedTextPlan::try_new_html_decoded(raw_title, resources)?;
-    let title =
-        deferred_text.try_register(title_plan, options.terminal_width_profile, resources)?;
-    let inner_gap = options.box_border_padding;
+    let title = deferred_text.try_register(
+        title_plan,
+        settings.options.terminal_width_profile,
+        resources,
+    )?;
+    let inner_gap = settings.options.box_border_padding;
     let inner_width = children
         .iter()
         .map(RelationGraphBox::width)
@@ -876,7 +959,7 @@ pub(super) fn render_namespace_container_box<'a>(
         .max(title.width());
     let content_width = resources.checked_grid_add(
         inner_width,
-        resources.checked_grid_mul(options.box_border_padding, 2)?,
+        resources.checked_grid_mul(settings.options.box_border_padding, 2)?,
     )?;
     let child_rows = children.iter().try_fold(0usize, |height, child| {
         resources.checked_grid_add(height, child.height())
@@ -892,14 +975,14 @@ pub(super) fn render_namespace_container_box<'a>(
     let extent = resources.grid_extent(width, height)?;
     resources.charge_layout_work(extent.cells())?;
     let style = RelationGraphBoxStyle {
-        top_left: charset.top_left,
-        top_right: charset.top_right,
-        bottom_left: charset.bottom_left,
-        bottom_right: charset.bottom_right,
-        horizontal: charset.horizontal,
-        vertical: charset.vertical,
-        separator_left: charset.separator_left,
-        separator_right: charset.separator_right,
+        top_left: settings.charset.top_left,
+        top_right: settings.charset.top_right,
+        bottom_left: settings.charset.bottom_left,
+        bottom_right: settings.charset.bottom_right,
+        horizontal: settings.charset.horizontal,
+        vertical: settings.charset.vertical,
+        separator_left: settings.charset.separator_left,
+        separator_right: settings.charset.separator_right,
         border_role: AsciiColorRole::GroupBorder,
         text_role: AsciiColorRole::Text,
     };
@@ -913,15 +996,15 @@ pub(super) fn render_namespace_container_box<'a>(
         style.horizontal,
         content_width,
         style.border_role,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
         resources,
     )?);
     lines.push(RelationGraphLine::deferred_box_content(
         &title,
         content_width,
-        options.box_border_padding,
+        settings.options.box_border_padding,
         style,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
         resources,
     )?);
     lines.push(RelationGraphLine::try_box_border(
@@ -930,17 +1013,18 @@ pub(super) fn render_namespace_container_box<'a>(
         style.horizontal,
         content_width,
         style.border_role,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
         resources,
     )?);
 
     for (child_index, child) in children.iter().enumerate() {
+        checkpoint_layout(execution)?;
         if child_index > 0 {
             lines.push(namespace_empty_content_line(
                 content_width,
                 style.vertical,
                 style.border_role,
-                options.terminal_width_profile,
+                settings.options.terminal_width_profile,
                 resources,
             )?);
         }
@@ -959,7 +1043,7 @@ pub(super) fn render_namespace_container_box<'a>(
             content_width,
             style.vertical,
             style.border_role,
-            options.terminal_width_profile,
+            settings.options.terminal_width_profile,
             resources,
         )?);
     }
@@ -970,7 +1054,7 @@ pub(super) fn render_namespace_container_box<'a>(
         style.horizontal,
         content_width,
         style.border_role,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
         resources,
     )?);
 
@@ -978,7 +1062,7 @@ pub(super) fn render_namespace_container_box<'a>(
         namespace.dom_id.clone(),
         lines,
         width,
-        options.terminal_width_profile,
+        settings.options.terminal_width_profile,
     ))
 }
 
@@ -1062,6 +1146,13 @@ fn namespace_title<'a>(namespace: &'a Namespace, resources: &ResourceContext) ->
     }
 }
 
+fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
+    if let Some(execution) = execution {
+        execution.checkpoint(OperationPhase::Layout)?;
+    }
+    Ok(())
+}
+
 pub(super) fn namespace_facade_aliases(model: &ClassDiagram) -> Result<HashMap<String, String>> {
     let mut aliases = HashMap::new();
     aliases
@@ -1135,7 +1226,7 @@ mod tests {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let measured = ResourceContext::new(unbounded);
-        NamespaceScopeIndex::new(&model, &aliases, &measured)
+        NamespaceScopeIndex::new(&model, &aliases, &measured, None)
             .expect("unbounded namespace index should build");
         let exact_work = measured.layout_work_used();
         assert!(exact_work > 1);
@@ -1144,7 +1235,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact namespace-index work limit should be valid");
         let exact = ResourceContext::new(exact_policy);
-        NamespaceScopeIndex::new(&model, &aliases, &exact)
+        NamespaceScopeIndex::new(&model, &aliases, &exact, None)
             .expect("exact namespace-index work should build");
         assert_eq!(exact.layout_work_used(), exact_work);
 
@@ -1156,7 +1247,7 @@ mod tests {
             .charge_layout_work(1)
             .expect("test checkpoint should be admitted");
         let checkpoint = below.layout_work_used();
-        let error = NamespaceScopeIndex::new(&model, &aliases, &below)
+        let error = NamespaceScopeIndex::new(&model, &aliases, &below, None)
             .expect_err("max-minus-one namespace-index work must reject");
         assert!(matches!(
             error,
@@ -1188,7 +1279,7 @@ mod tests {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
 
-        let error = NamespaceScopeIndex::new(&model, &aliases, &resources)
+        let error = NamespaceScopeIndex::new(&model, &aliases, &resources, None)
             .expect_err("cyclic namespace parents must reject while building the scope index");
         assert!(matches!(
             error,

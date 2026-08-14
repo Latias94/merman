@@ -45,7 +45,7 @@ pub(super) fn render_tree_view_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let mut document = BudgetedTextDocument::new(options, *execution.resources());
     validate_tree_view_model(&model.root, document.resources_mut())?;
     let chars = TreeViewChars::from_options(options);
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
@@ -123,7 +123,7 @@ pub(super) fn render_tree_view_diagram(
         }
     }
 
-    document.finish(options)
+    document.finish()
 }
 
 fn validate_tree_view_model(
@@ -291,20 +291,20 @@ mod tests {
         }
     }
 
-    fn options_with_nesting_limit(limit: usize) -> AsciiRenderOptions {
-        let resources = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    fn policy_with_nesting_limit(limit: usize) -> AsciiResourcePolicy {
+        AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxNestingDepth, limit)
-            .expect("positive nesting limit");
-        AsciiRenderOptions::ascii().with_resource_policy(resources)
+            .expect("positive nesting limit")
     }
 
     #[test]
     fn tree_view_accepts_exact_nesting_limit() {
-        let options = options_with_nesting_limit(DEEP_NESTING);
+        let options = AsciiRenderOptions::ascii();
+        let resources = policy_with_nesting_limit(DEEP_NESTING);
         let rendered = render_tree_view_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&options.resources),
+            AsciiExecution::standalone(&resources),
         )
         .expect("deep nesting equal to the limit should render iteratively");
 
@@ -313,11 +313,12 @@ mod tests {
 
     #[test]
     fn tree_view_rejects_limit_minus_one_before_descending() {
-        let options = options_with_nesting_limit(DEEP_NESTING - 1);
+        let options = AsciiRenderOptions::ascii();
+        let resources = policy_with_nesting_limit(DEEP_NESTING - 1);
         let error = render_tree_view_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&options.resources),
+            AsciiExecution::standalone(&resources),
         )
         .expect_err("deep nesting above the limit should fail before the final descent");
 
@@ -342,12 +343,10 @@ mod tests {
         };
 
         let options = AsciiRenderOptions::ascii();
-        let error = render_tree_view_diagram(
-            &model,
-            &options,
-            AsciiExecution::standalone(&options.resources),
-        )
-        .expect_err("duplicate public node identities must not be rendered ambiguously");
+        let resources = AsciiResourcePolicy::default();
+        let error =
+            render_tree_view_diagram(&model, &options, AsciiExecution::standalone(&resources))
+                .expect_err("duplicate public node identities must not be rendered ambiguously");
 
         assert_eq!(
             error,

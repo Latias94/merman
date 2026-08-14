@@ -166,6 +166,7 @@ impl RouteScene {
         self.planned_cell_count
     }
 
+    #[cfg(test)]
     pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
         for route in &self.routes {
             route.paint_body(drawing)?;
@@ -192,6 +193,7 @@ impl RouteScene {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) fn draw_labels(
         &self,
         canvas: &mut RawCanvas,
@@ -269,6 +271,7 @@ impl RouteLabelTransform {
     }
 }
 
+#[cfg(test)]
 pub(super) fn prepare_route_scene_with_resources<'a>(
     graph: &AsciiGraph,
     graph_layout: &GraphLayout,
@@ -336,8 +339,12 @@ fn prepare_route_scene_inner<'a>(
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
 
-    let mut occupancy =
-        SceneOccupancy::try_new_for_routes(graph_layout, canonical_edges.len(), resources)?;
+    let mut occupancy = SceneOccupancy::try_new_for_routes_with_execution(
+        graph_layout,
+        canonical_edges.len(),
+        resources,
+        execution,
+    )?;
 
     for (edge_index, edge) in canonical_edges.iter().enumerate() {
         if let Some(execution) = execution {
@@ -373,6 +380,7 @@ fn prepare_route_scene_inner<'a>(
             topology.as_ref(),
             label_plans.descriptor(edge_index),
             resources,
+            execution,
         )? {
             EdgeRouteCandidates::Routed(candidates) => candidates,
             EdgeRouteCandidates::Unsupported(route) => {
@@ -399,8 +407,14 @@ fn prepare_route_scene_inner<'a>(
             let plan = plan
                 .with_marker_requests(edge.start_marker, edge.end_marker, graph.diagram_type())?
                 .with_style(edge.style);
-            let Some(score) =
-                occupancy.score_route(&routes, &plan, &owner, resources, graph.diagram_type())?
+            let Some(score) = occupancy.score_route_with_execution(
+                &routes,
+                &plan,
+                &owner,
+                resources,
+                graph.diagram_type(),
+                execution,
+            )?
             else {
                 continue;
             };
