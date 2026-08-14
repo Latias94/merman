@@ -1,0 +1,25 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH MERMAN-CLI-RUSTDOC 1 2026-07-29 "Merman 0.8.0-alpha.5" "Merman CLI Manual"
+.SH NAME
+merman\-cli\-rustdoc \- Build or check committed static Mermaid fragments for Rustdoc
+.SH SYNOPSIS
+\fBmerman\-cli rustdoc\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Build or check committed static Mermaid fragments for Rustdoc
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+merman\-cli\-rustdoc\-build(1)
+Build the complete managed Rustdoc fragment bundle
+.TP
+merman\-cli\-rustdoc\-check(1)
+Check the managed Rustdoc fragment bundle without writing
+.SH VERSION
+v0.8.0\-alpha.5

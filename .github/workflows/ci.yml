@@ -468,6 +468,10 @@ jobs:
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --test markdown_cli --cargo-quiet
 
+      - name: Check committed Rustdoc fragments before documentation
+        if: matrix.parity
+        run: cargo run --locked -p merman-cli -- rustdoc check --config crates/merman/merman-rustdoc.toml --quiet
+
       - name: Test architecture compile-fail contracts
         if: matrix.parity
         run: |

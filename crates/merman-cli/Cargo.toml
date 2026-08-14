@@ -124,7 +124,7 @@ rustdoc = [
     "layout-cytoscape",
     "layout-elk",
     "math",
-    "dep:roxmltree",
+    "dep:merman-render",
     "dep:sha2",
     "dep:toml",
 ]
@@ -141,7 +141,6 @@ merman-analysis = { workspace = true, optional = true, default-features = false 
 merman-render = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
-roxmltree = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 same-file = { workspace = true, optional = true }
@@ -332,4 +331,8 @@ required-features = ["math"]
 
 [[test]]
 name = "rustdoc_cli"
+required-features = ["rustdoc"]
+
+[[test]]
+name = "rustdoc_package"
 required-features = ["rustdoc"]

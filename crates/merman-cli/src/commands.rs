@@ -68,6 +68,8 @@ pub(crate) fn run(
     context: &mut ExecutionContext,
 ) -> Result<i32, CliError> {
     let (invocation, publications) = preflight.into_parts();
+    #[cfg(feature = "rustdoc")]
+    let mut publications = publications;
     #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
     let _ = &publications;
     let exit_code = match invocation {
@@ -137,13 +139,19 @@ pub(crate) fn run(
         #[cfg(feature = "rustdoc")]
         ResolvedInvocation::Rustdoc(args) => {
             let action = args.action;
-            let _quiet = args.quiet;
+            let quiet = args.quiet;
+            let resources = args.resources;
             let config = args.into_config()?;
-            return Err(CliError::Internal(format!(
-                "rustdoc {} execution is not implemented; configuration {} passed preflight",
-                action.as_str(),
-                crate::error::safe_path(config.path())
-            )));
+            match action {
+                crate::invocation::RustdocAction::Check => {
+                    crate::rustdoc::check(&config, &resources, &context.stderr, quiet)?;
+                    0
+                }
+                crate::invocation::RustdocAction::Build => {
+                    crate::rustdoc::build(&config, &resources, &mut publications, context, quiet)?;
+                    0
+                }
+            }
         }
         #[cfg(feature = "shell-completions")]
         ResolvedInvocation::Completion(args) => {

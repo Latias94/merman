@@ -39,6 +39,46 @@ _arguments "${_arguments_options[@]}" : \
 '--version[Print version]' \
 && ret=0
 ;;
+(rustdoc)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_merman-cli__subcmd__rustdoc_commands" \
+"*::: :->rustdoc" \
+&& ret=0
+
+    case $state in
+    (rustdoc)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:merman-cli-rustdoc-command-$line[1]:"
+        case $line[1] in
+            (build)
+_arguments "${_arguments_options[@]}" : \
+'--config=[Rustdoc fragment configuration file]:PATH:_files' \
+'--quiet[Suppress non-error progress output]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+'--config=[Rustdoc fragment configuration file]:PATH:_files' \
+'--quiet[Suppress non-error progress output]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (capabilities)
 _arguments "${_arguments_options[@]}" : \
 '--json[Emit the machine-readable capability document]' \
@@ -438,6 +478,7 @@ esac
 _merman-cli_commands() {
     local commands; commands=(
 'lint-rules:List lint rule metadata' \
+'rustdoc:Build or check committed static Mermaid fragments for Rustdoc' \
 'capabilities:Print the compiled capabilities from the canonical capability descriptor' \
 'detect:Detect the Mermaid diagram type' \
 'parse:Parse Mermaid source and print the semantic JSON model' \
@@ -505,6 +546,24 @@ _merman-cli__subcmd__parse_commands() {
 _merman-cli__subcmd__render_commands() {
     local commands; commands=()
     _describe -t commands 'merman-cli render commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__rustdoc_commands] )) ||
+_merman-cli__subcmd__rustdoc_commands() {
+    local commands; commands=(
+'build:Build the complete managed Rustdoc fragment bundle' \
+'check:Check the managed Rustdoc fragment bundle without writing' \
+    )
+    _describe -t commands 'merman-cli rustdoc commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__rustdoc__subcmd__build_commands] )) ||
+_merman-cli__subcmd__rustdoc__subcmd__build_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli rustdoc build commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__rustdoc__subcmd__check_commands] )) ||
+_merman-cli__subcmd__rustdoc__subcmd__check_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli rustdoc check commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_merman-cli" ]; then

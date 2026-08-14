@@ -47,7 +47,18 @@ fn generation_owner(
 }
 
 fn existing_generation(path: &Path) -> TargetGeneration {
-    TargetGeneration::Existing(Arc::new(same_file::Handle::from_path(path).unwrap()))
+    TargetGeneration::Existing {
+        identity: Arc::new(same_file::Handle::from_path(path).unwrap()),
+        content: None,
+    }
+}
+
+#[cfg(feature = "rustdoc")]
+fn content_pinned_generation(path: &Path) -> TargetGeneration {
+    use sha2::{Digest as _, Sha256};
+
+    let digest: [u8; 32] = Sha256::digest(std::fs::read(path).unwrap()).into();
+    existing_generation(path).pin_content(std::fs::metadata(path).unwrap().len(), digest)
 }
 
 #[cfg(unix)]
@@ -203,6 +214,87 @@ fn transaction_plan_indexes_every_target_across_representative_cardinalities() {
 }
 
 #[test]
+fn oversized_transaction_plan_fails_before_creating_transaction_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    #[cfg(windows)]
+    let component_bytes = 1_800;
+    #[cfg(not(windows))]
+    let component_bytes = 3_800;
+    let mut entries = (0..200)
+        .map(|index| {
+            let name = format!("{index:03}-{}", "x".repeat(component_bytes));
+            let target = RelativeTarget::from_components(
+                vec![std::ffi::OsString::from(name)],
+                Path::new(TRANSACTION_DIR_NAME),
+            )
+            .unwrap();
+            TransactionEntryPlan::write(TransactionRole::Artifact, target)
+        })
+        .collect::<Vec<_>>();
+    entries.push(TransactionEntryPlan::write(
+        TransactionRole::Manifest,
+        relative(temp.path(), ".merman-manifest.json"),
+    ));
+    let plan = TransactionPlan::new(entries).unwrap();
+
+    let error = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(plan)
+        .err()
+        .expect("oversized journal must fail");
+
+    assert!(
+        error.to_string().contains("hard state-size limit"),
+        "{error}"
+    );
+    assert!(
+        !temp.path().join(TRANSACTION_DIR_NAME).exists(),
+        "journal capacity must be checked before transaction evidence is created"
+    );
+}
+
+#[test]
+fn journal_capacity_models_the_largest_platform_prior_encoding() {
+    let target = RelativeTarget::from_components(
+        vec![std::ffi::OsString::from("artifact.svg")],
+        Path::new(TRANSACTION_DIR_NAME),
+    )
+    .unwrap();
+    let owner = GenerationOwner::test_fixture();
+    let state = |prior, prior_mode| JournalState {
+        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+        owner: owner.clone(),
+        sequence: u64::MAX,
+        phase: JournalPhase::RollingBack,
+        next_index: 1,
+        entries: vec![JournalEntry {
+            role: TransactionRole::Manifest,
+            operation: TransactionOperation::Write,
+            target: target.clone(),
+            prior,
+            prior_mode,
+        }],
+    };
+    let mut maximum = state(PriorState::Unknown, None);
+    maximize_prior_encoding(&mut maximum.entries[0]);
+    let maximum = maximum.encode(Path::new(TRANSACTION_DIR_NAME)).unwrap();
+    #[cfg(unix)]
+    let present_mode = Some(0o777);
+    #[cfg(not(unix))]
+    let present_mode = None;
+    let present = state(PriorState::Present, present_mode)
+        .encode(Path::new(TRANSACTION_DIR_NAME))
+        .unwrap();
+
+    assert!(
+        maximum.len() >= present.len(),
+        "capacity preflight must use an encoding at least as large as a present prior file: maximum={}, present={}",
+        maximum.len(),
+        present.len()
+    );
+}
+
+#[test]
 fn stage_target_lookup_count_is_one_per_request_at_scale() {
     for target_count in [1_usize, 16, 64, 256] {
         let temp = tempfile::tempdir().unwrap();
@@ -321,7 +413,7 @@ fn generation_manifest_limits_apply_before_allocation_and_after_encoding() {
         "svg",
     );
     let artifacts = (1..=1_000)
-        .map(|index| owner.namespace().target(index).unwrap())
+        .map(|index| owner.namespace().unwrap().target(index).unwrap())
         .collect::<Vec<_>>();
     let manifest = GenerationManifest::new(
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -354,10 +446,10 @@ fn generation_manifest_accepts_only_its_exact_contiguous_namespace() {
     let document = relative(&root, "document.md");
     let owner = generation_owner(&root, &document, &root, "diagram", "svg");
     let cases = [
-        vec![owner.namespace().target(2).unwrap()],
+        vec![owner.namespace().unwrap().target(2).unwrap()],
         vec![
-            owner.namespace().target(1).unwrap(),
-            owner.namespace().target(3).unwrap(),
+            owner.namespace().unwrap().target(1).unwrap(),
+            owner.namespace().unwrap().target(3).unwrap(),
         ],
         vec![relative(&root, "diagram-01.svg")],
         vec![relative(&root, "other-1.svg")],
@@ -495,6 +587,88 @@ fn target_replaced_after_existing_generation_approval_is_rejected_before_ready()
     assert_eq!(read(&manifest_path), b"approved generation");
     drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
     assert_eq!(read(&manifest_path), b"approved generation");
+}
+
+#[cfg(feature = "rustdoc")]
+#[test]
+fn same_inode_content_change_after_approval_is_rejected_before_backup() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    std::fs::write(&manifest_path, b"approved generation").unwrap();
+    let approved_generation = content_pinned_generation(&manifest_path);
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )
+            .expect_generation(approved_generation)])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"our generation").unwrap();
+
+    std::fs::write(&manifest_path, b"concurrent generation").unwrap();
+    let error = match staging.ready() {
+        Ok(_) => panic!("same-inode content replacement must be rejected before backup"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, TransactionError::InvalidState { .. }));
+    assert_eq!(read(&manifest_path), b"concurrent generation");
+    drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+    assert_eq!(read(&manifest_path), b"concurrent generation");
+}
+
+#[cfg(feature = "rustdoc")]
+#[test]
+fn content_pinned_backup_never_copies_beyond_the_approved_length() {
+    use std::io::Write as _;
+
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    let approved = b"approved generation";
+    std::fs::write(&manifest_path, approved).unwrap();
+    let approved_generation = content_pinned_generation(&manifest_path);
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )
+            .expect_generation(approved_generation)])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"our generation").unwrap();
+
+    let mut target = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&manifest_path)
+        .unwrap();
+    target.write_all(&vec![b'x'; 1024 * 1024]).unwrap();
+    target.sync_all().unwrap();
+
+    let error = match staging.ready() {
+        Ok(_) => panic!("same-inode append must invalidate approved content"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, TransactionError::InvalidState { .. }));
+    let backup = temp.path().join(TRANSACTION_DIR_NAME).join("old-00000000");
+    assert!(
+        std::fs::metadata(&backup).unwrap().len() <= approved.len() as u64,
+        "content-pinned backup copied bytes beyond the approved generation"
+    );
+    drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+    assert_eq!(
+        std::fs::metadata(&manifest_path).unwrap().len(),
+        approved.len() as u64 + 1024 * 1024
+    );
 }
 
 #[cfg(unix)]
@@ -1055,6 +1229,43 @@ fn failures_before_and_after_every_commit_action_restore_the_old_generation() {
 }
 
 #[test]
+fn commit_point_precondition_failure_restores_every_published_target() {
+    let temp = tempfile::tempdir().unwrap();
+    seed_standard_old_generation(temp.path());
+    let source = temp.path().join("source.md");
+    std::fs::write(&source, b"approved source").unwrap();
+    let changed_source = source.clone();
+    let hook = CheckpointHook::new(move |checkpoint| {
+        if checkpoint == (Checkpoint::CommitBefore { index: 3 }) {
+            std::fs::write(&changed_source, b"concurrent source").unwrap();
+        }
+        Ok(())
+    });
+    let targets = Targets::under(temp.path());
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+        .unwrap()
+        .begin(targets.standard_plan())
+        .unwrap();
+    stage_standard_new_generation(&mut staging, &targets);
+    let mut validate = || {
+        (read(&source) == b"approved source")
+            .then_some(())
+            .ok_or_else(|| "declared input changed before the commit point".to_string())
+    };
+
+    let error = staging
+        .ready()
+        .unwrap()
+        .commit_with_precommit_validation(&mut validate)
+        .unwrap_err();
+
+    assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+    assert_standard_old_generation(temp.path());
+    assert_eq!(read(&source), b"concurrent source");
+    assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+}
+
+#[test]
 fn abrupt_termination_at_every_commit_boundary_recovers_by_observed_generation() {
     for index in 0..4 {
         for after in [false, true] {
@@ -1143,7 +1354,13 @@ fn an_ambiguous_commit_point_rolls_back_an_incomplete_generation() {
 #[test]
 fn a_generation_whose_old_and_new_bytes_are_identical_can_commit() {
     let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join(".merman-manifest.json"), b"same").unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    std::fs::write(&manifest_path, b"same").unwrap();
+    let identity = same_file::Handle::from_path(&manifest_path).unwrap();
+    let modified = std::fs::metadata(&manifest_path)
+        .unwrap()
+        .modified()
+        .unwrap();
     let manifest = relative(temp.path(), ".merman-manifest.json");
     let mut staging = LockedRecoveredRoot::acquire(temp.path())
         .unwrap()
@@ -1157,7 +1374,20 @@ fn a_generation_whose_old_and_new_bytes_are_identical_can_commit() {
         .unwrap();
     staging.stage_bytes(&manifest, b"same").unwrap();
     staging.ready().unwrap().commit().unwrap();
-    assert_eq!(read(temp.path().join(".merman-manifest.json")), b"same");
+    assert_eq!(read(&manifest_path), b"same");
+    assert_eq!(
+        same_file::Handle::from_path(&manifest_path).unwrap(),
+        identity,
+        "an identical transaction write must preserve the target identity"
+    );
+    assert_eq!(
+        std::fs::metadata(&manifest_path)
+            .unwrap()
+            .modified()
+            .unwrap(),
+        modified,
+        "an identical transaction write must preserve the target mtime"
+    );
     assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
 }
 

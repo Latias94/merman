@@ -11,6 +11,11 @@ mod descriptor {
     include!("generated/capability_surface.rs");
 }
 
+#[cfg(feature = "rustdoc")]
+pub(crate) const fn capability_descriptor_digest() -> &'static str {
+    descriptor::CAPABILITY_DESCRIPTOR_DIGEST
+}
+
 #[derive(Serialize)]
 struct CapabilityDocument<'a> {
     schema_version: u32,

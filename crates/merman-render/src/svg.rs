@@ -30,5 +30,6 @@ pub use pipeline::{
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg,
+    SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg, rebase_svg_ids,
+    validate_rustdoc_admission_svg, validate_rustdoc_static_svg,
 };

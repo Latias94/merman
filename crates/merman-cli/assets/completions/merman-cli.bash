@@ -49,6 +49,15 @@ _merman-cli() {
             merman__cli,render)
                 cmd="merman__cli__subcmd__render"
                 ;;
+            merman__cli,rustdoc)
+                cmd="merman__cli__subcmd__rustdoc"
+                ;;
+            merman__cli__subcmd__rustdoc,build)
+                cmd="merman__cli__subcmd__rustdoc__subcmd__build"
+                ;;
+            merman__cli__subcmd__rustdoc,check)
+                cmd="merman__cli__subcmd__rustdoc__subcmd__check"
+                ;;
             *)
                 ;;
         esac
@@ -56,7 +65,7 @@ _merman-cli() {
 
     case "${cmd}" in
         merman__cli)
-            opts="-h -V --help --version lint-rules capabilities detect parse render batch lint fix completion layout mmdc"
+            opts="-h -V --help --version lint-rules rustdoc capabilities detect parse render batch lint fix completion layout mmdc"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1421,6 +1430,78 @@ _merman-cli() {
                     ;;
                 --resource-limit)
                     COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__rustdoc)
+            opts="-h -V --help --version build check"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__rustdoc__subcmd__build)
+            opts="-h -V --config --quiet --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --config)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__rustdoc__subcmd__check)
+            opts="-h -V --config --quiet --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --config)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
                     return 0
                     ;;
                 *)

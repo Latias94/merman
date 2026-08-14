@@ -22,6 +22,18 @@ SUPPORT_ASSETS_SINCE = "0.8.0"
 
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
+    def test_contract_four_adds_the_rustdoc_command_and_manpages(self) -> None:
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 4)
+        self.assertIn("rustdoc", verifier.COMMANDS)
+        self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
+        self.assertTrue(
+            {
+                "merman-cli-rustdoc.1",
+                "merman-cli-rustdoc-build.1",
+                "merman-cli-rustdoc-check.1",
+            }.issubset(verifier.MANPAGE_NAMES)
+        )
+
     def test_versions_before_threshold_keep_the_binary_only_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -218,9 +230,9 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_all_twelve_man_pages_are_required(self) -> None:
+    def test_all_fifteen_man_pages_are_required(self) -> None:
         with self.installation_fixture() as fixture:
-            (fixture.prefix / "share/man/man1/merman-cli-render.1").unlink()
+            (fixture.prefix / "share/man/man1/merman-cli-rustdoc-check.1").unlink()
             with self.assertRaisesRegex(
                 verifier.HomebrewVerificationError,
                 "man page set differs",

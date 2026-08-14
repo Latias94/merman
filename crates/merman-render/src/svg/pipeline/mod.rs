@@ -3,20 +3,83 @@ mod context;
 mod final_validation;
 mod policy;
 mod preset;
+mod static_validation;
 
-pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
     ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
+pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub(crate) use final_validation::validate_well_formed_svg;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
 
+pub(crate) fn is_css_value_attribute(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "style"
+            | "background"
+            | "background-image"
+            | "fill"
+            | "stroke"
+            | "filter"
+            | "clip-path"
+            | "mask"
+            | "marker"
+            | "marker-start"
+            | "marker-mid"
+            | "marker-end"
+            | "cursor"
+            | "color-profile"
+    )
+}
+
+pub(crate) fn is_svg_idref_attribute(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "aria-activedescendant"
+            | "aria-controls"
+            | "aria-describedby"
+            | "aria-details"
+            | "aria-errormessage"
+            | "aria-flowto"
+            | "aria-labelledby"
+            | "aria-owns"
+    )
+}
+
+/// Internal cross-crate adapter for rebasing ids in Merman-produced SVG.
+#[doc(hidden)]
+pub fn rebase_svg_ids(
+    svg: &str,
+    prefix: impl Into<String>,
+    session: &RenderSession,
+) -> Result<String> {
+    SvgPipeline::parity()
+        .with_postprocessor(RebaseSvgIdsPostprocessor::new(prefix))
+        .process_to_string(svg, session)
+}
+
+/// Validates sanitized SVG for Merman's Rustdoc known-host embedding policy.
+///
+/// This policy permits ordinary navigation links and same-document fragment references. It is not
+/// a general DOM-mount admission contract: the host must not inject or inherit a `<base>` URL that
+/// changes how fragment-only references resolve.
+#[doc(hidden)]
+pub fn validate_rustdoc_static_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+    static_validation::validate_rustdoc_static_svg(svg, limits)
+}
+
+/// Validates renderer output before Rustdoc fallback and compatibility transformations.
+#[doc(hidden)]
+pub fn validate_rustdoc_admission_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+    static_validation::validate_rustdoc_admission_svg(svg, limits)
+}
+
 use crate::environment::RenderSession;
-use crate::resources::ResourceLimitPhase;
+use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use std::borrow::Cow;

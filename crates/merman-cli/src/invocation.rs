@@ -96,16 +96,6 @@ pub(crate) enum RustdocAction {
 }
 
 #[cfg(feature = "rustdoc")]
-impl RustdocAction {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Build => "build",
-            Self::Check => "check",
-        }
-    }
-}
-
-#[cfg(feature = "rustdoc")]
 #[derive(Debug)]
 pub(crate) struct ResolvedRustdoc {
     pub(crate) action: RustdocAction,

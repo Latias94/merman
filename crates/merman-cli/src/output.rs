@@ -181,6 +181,25 @@ impl PublicationGuards {
             }));
     }
 
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn protect_rustdoc_input(
+        &mut self,
+        path: &Path,
+        identity: &Arc<same_file::Handle>,
+    ) -> Result<(), CliError> {
+        if self
+            .protected
+            .iter()
+            .any(|input| input.canonical == path && *input.identity == **identity)
+        {
+            return Ok(());
+        }
+        let cwd = self.working_directory()?.to_path_buf();
+        let input = ProtectedInput::protect_acquired("Rustdoc include", path, identity, &cwd)?;
+        self.protect(&[input]);
+        Ok(())
+    }
+
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     pub(crate) fn verify(&self) -> Result<(), CliError> {
         for input in &self.protected {
@@ -563,7 +582,7 @@ fn preflight_rustdoc(
     publications: &mut PublicationGuards,
 ) -> Result<(), CliError> {
     args.anchor_config(cwd);
-    let config = crate::rustdoc::config::load(args.requested_config()?, &args.resources)?;
+    let mut config = crate::rustdoc::config::load(args.requested_config()?, &args.resources)?;
     let mut inputs = Vec::with_capacity(config.fragments().len() + 1);
     verify_rustdoc_identity(config.root(), config.root_identity(), "configuration root")?;
     inputs.push(ProtectedInput::protect_acquired(
@@ -581,6 +600,7 @@ fn preflight_rustdoc(
         )?);
     }
 
+    reject_rustdoc_output_symlink_components(config.root(), config.output_root())?;
     let output_root = prospective_directory(
         config.output_root(),
         config.output_root(),
@@ -604,15 +624,63 @@ fn preflight_rustdoc(
         }
     }
 
+    // The filesystem may canonicalize an existing ancestor to a different spelling, notably on
+    // case-insensitive filesystems. Every later target and transaction comparison must use the
+    // exact root approved by preflight.
+    config.adopt_approved_output_root(output_root.expected.clone());
+
     for fragment in config.fragments() {
         let output = fragment.output(config.output_root());
         let target = preflight_file_target(&output, cwd, &inputs, MissingParent::Allow)?;
         require_transaction_descendant(&output_root, &target.parent, &output)?;
         publications.approve_exact(target)?;
     }
+    let receipt = config.receipt_path();
+    let target = preflight_file_target(&receipt, cwd, &inputs, MissingParent::Allow)?;
+    require_transaction_descendant(&output_root, &target.parent, &receipt)?;
+    publications.approve_exact(target)?;
     publications.approve_transaction_root(output_root)?;
     publications.protect(&inputs);
     args.prepare_config(config)
+}
+
+#[cfg(feature = "rustdoc")]
+fn reject_rustdoc_output_symlink_components(
+    root: &Path,
+    output_root: &Path,
+) -> Result<(), CliError> {
+    let relative = output_root.strip_prefix(root).map_err(|_| {
+        CliError::InvalidOutput(format!(
+            "managed Rustdoc output root {} escapes configuration root {}",
+            safe_path(output_root),
+            safe_path(root)
+        ))
+    })?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(CliError::InvalidOutput(format!(
+                    "managed Rustdoc output root {} contains symlink component {}",
+                    safe_path(output_root),
+                    safe_path(&current)
+                )));
+            }
+            Ok(metadata) if current != output_root && !metadata.is_dir() => {
+                return Err(CliError::InvalidOutput(format!(
+                    "managed Rustdoc output ancestor {} is not a directory",
+                    safe_path(&current)
+                )));
+            }
+            Ok(_) => {}
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => break,
+            Err(source) => {
+                return Err(CliError::file(FileOperation::Inspect, &current, source));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(feature = "rustdoc")]
@@ -1873,6 +1941,17 @@ pub(crate) trait PublicationBackend {
         ready.commit().map_err(Into::into)
     }
 
+    #[cfg(feature = "rustdoc")]
+    fn commit_transaction_verified(
+        &mut self,
+        ready: crate::transaction::ReadyTransaction,
+        verify: &mut dyn FnMut() -> Result<(), CliError>,
+    ) -> Result<(), CliError> {
+        ready
+            .commit_with_precommit_validation(&mut || verify().map_err(|error| error.to_string()))
+            .map_err(Into::into)
+    }
+
     #[cfg(feature = "markdown")]
     fn abort_transaction(
         &mut self,
@@ -1898,7 +1977,7 @@ impl AcquiredTransaction {
         &self.root
     }
 
-    pub(crate) fn approve_native_stale_artifact(
+    pub(crate) fn approve_stale_artifact(
         &self,
         publications: &PublicationGuards,
         target: &crate::transaction::RelativeTarget,
@@ -1906,8 +1985,7 @@ impl AcquiredTransaction {
         publications.verify()?;
         let root_guard = publications.transaction_root.as_ref().ok_or_else(|| {
             CliError::InvalidOutput(
-                "native Markdown cleanup has no transaction root approved by local preflight"
-                    .to_string(),
+                "managed cleanup has no transaction root approved by local preflight".to_string(),
             )
         })?;
         if root_guard.expected != self.root {
@@ -1918,7 +1996,7 @@ impl AcquiredTransaction {
         let requested = target.to_path(&self.root)?;
         if requested.parent() != Some(self.root.as_path()) {
             return Err(CliError::InvalidOutput(format!(
-                "manifest-owned stale artifact {} is not a direct child of native batch root {}",
+                "generation-owned stale artifact {} is not a direct child of transaction root {}",
                 safe_path(&requested),
                 safe_path(&self.root)
             )));
@@ -1941,7 +2019,7 @@ impl AcquiredTransaction {
                     .is_some_and(|identity| **identity == *input.identity);
             if aliases_input {
                 return Err(CliError::InvalidOutput(format!(
-                    "manifest-owned stale artifact {} aliases protected {} {}",
+                    "generation-owned stale artifact {} aliases protected {} {}",
                     safe_path(&requested),
                     input.role,
                     safe_path(&input.requested)
@@ -1952,7 +2030,7 @@ impl AcquiredTransaction {
 
         let file_name = requested.file_name().ok_or_else(|| {
             CliError::InvalidOutput(format!(
-                "manifest-owned stale artifact {} must name a file",
+                "generation-owned stale artifact {} must name a file",
                 safe_path(&requested)
             ))
         })?;
@@ -2340,9 +2418,10 @@ mod tests {
         assert_eq!(approved, numbered);
         assert_eq!(
             generation,
-            crate::transaction::TargetGeneration::Existing(Arc::new(
-                same_file::Handle::from_path(&numbered).unwrap()
-            ))
+            crate::transaction::TargetGeneration::Existing {
+                identity: Arc::new(same_file::Handle::from_path(&numbered).unwrap()),
+                content: None,
+            }
         );
     }
 

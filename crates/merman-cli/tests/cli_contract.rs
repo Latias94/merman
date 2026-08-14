@@ -32,7 +32,6 @@ fn compiled_help_and_version_are_available() {
             "mmdc",
             "lint",
             "fix",
-            "rustdoc",
             "capabilities",
             "detect",
             "parse",
@@ -42,6 +41,16 @@ fn compiled_help_and_version_are_available() {
                 "compiled help should expose {command}:\n{stdout}"
             );
         }
+        #[cfg(feature = "rustdoc")]
+        assert!(
+            stdout.contains("rustdoc"),
+            "compiled help should expose rustdoc:\n{stdout}"
+        );
+        #[cfg(not(feature = "rustdoc"))]
+        assert!(
+            !stdout.contains("rustdoc"),
+            "a build without the rustdoc feature must not advertise rustdoc:\n{stdout}"
+        );
     }
 
     let output = Command::new(exe)
@@ -127,7 +136,6 @@ fn root_help_groups_commands_by_user_task() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     for heading in [
         "Native rendering:",
-        "Documentation:",
         "Analysis:",
         "Compatibility:",
         "Capabilities and tooling:",
@@ -137,6 +145,16 @@ fn root_help_groups_commands_by_user_task() {
             "root help should group commands under `{heading}`:\n{stdout}"
         );
     }
+    #[cfg(feature = "rustdoc")]
+    assert!(
+        stdout.contains("Documentation:"),
+        "root help should group the compiled Rustdoc command:\n{stdout}"
+    );
+    #[cfg(not(feature = "rustdoc"))]
+    assert!(
+        !stdout.contains("Documentation:"),
+        "root help must omit an empty Documentation group:\n{stdout}"
+    );
     for flag in ["--input", "--output", "--outputFormat", "--pdfFit"] {
         assert!(
             !stdout.contains(flag),
@@ -983,19 +1001,22 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         command_ids.windows(2).all(|pair| pair[0] < pair[1]),
         "command ids must be sorted and unique: {command_ids:?}"
     );
-    for command in [
-        "batch",
-        "capabilities",
-        "completion",
-        "mmdc",
-        "render",
-        "rustdoc",
-    ] {
+    for command in ["batch", "capabilities", "completion", "mmdc", "render"] {
         assert!(
             command_ids.contains(&command),
             "missing compiled command {command}: {payload}"
         );
     }
+    #[cfg(feature = "rustdoc")]
+    assert!(
+        command_ids.contains(&"rustdoc"),
+        "missing compiled rustdoc command"
+    );
+    #[cfg(not(feature = "rustdoc"))]
+    assert!(
+        !command_ids.contains(&"rustdoc"),
+        "a build without the rustdoc feature must not report rustdoc"
+    );
 
     let capabilities = payload["capabilities"]
         .as_array()

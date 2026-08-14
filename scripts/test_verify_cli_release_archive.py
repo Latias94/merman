@@ -50,6 +50,7 @@ CLI_RELEASE_COMMANDS = [
     "mmdc",
     "parse",
     "render",
+    "rustdoc",
 ]
 SOURCE_ASSET_PATHS = (
     "assets/completions/_merman-cli",
@@ -58,6 +59,9 @@ SOURCE_ASSET_PATHS = (
     "assets/completions/merman-cli.fish",
     "assets/completions/merman-cli.ps1",
     "assets/man/merman-cli-render.1",
+    "assets/man/merman-cli-rustdoc-build.1",
+    "assets/man/merman-cli-rustdoc-check.1",
+    "assets/man/merman-cli-rustdoc.1",
     "assets/man/merman-cli.1",
 )
 VALID_PNG = (
@@ -221,7 +225,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 3,
+        "cli_contract_version": 4,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],

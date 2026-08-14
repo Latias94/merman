@@ -74,6 +74,12 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) quiet: bool,
 }
 
+#[cfg(feature = "rustdoc")]
+pub(crate) struct PreparedRustdocRenderers {
+    pub(crate) light: PreparedGraphicalRender,
+    pub(crate) dark: PreparedGraphicalRender,
+}
+
 #[cfg(feature = "svg")]
 pub(super) enum PreparedGraphicalSource {
     Mermaid(Box<crate::config::ConfiguredRenderer>),
@@ -519,6 +525,51 @@ pub(crate) fn prepare_graphical_output(
             quiet: common.quiet,
         },
     ))
+}
+
+#[cfg(feature = "rustdoc")]
+pub(crate) fn prepare_rustdoc_renderers(
+    resources: &ResolvedResourcePolicy,
+) -> Result<PreparedRustdocRenderers, CliError> {
+    Ok(PreparedRustdocRenderers {
+        light: prepare_rustdoc_renderer("default", resources)?,
+        dark: prepare_rustdoc_renderer("dark", resources)?,
+    })
+}
+
+#[cfg(feature = "rustdoc")]
+fn prepare_rustdoc_renderer(
+    theme: &str,
+    resources: &ResolvedResourcePolicy,
+) -> Result<PreparedGraphicalRender, CliError> {
+    let parse = crate::invocation::ResolvedParseOptions {
+        suppress_errors: false,
+        config_file: None,
+        theme: Some(theme.to_string()),
+        runtime: crate::invocation::ResolvedRuntimeOptions {
+            runtime_policy: merman::runtime::RuntimePolicy::deterministic(),
+        },
+    };
+    let render = crate::invocation::ResolvedRenderOptions {
+        presentation_profile: None,
+        text_measurer: crate::cli::TextMeasurerKind::Vendored,
+        math_renderer: Some(crate::cli::MathRendererKind::Ratex),
+        container_width: None,
+        container_height: None,
+        svg_id: Some("merman-rustdoc".to_string()),
+        hand_drawn_seed: None,
+    };
+    let renderer = crate::config::renderer_for_resolved(&parse, &render, None, resources)?;
+    // Rustdoc admission must inspect raw renderer output before any lossy compatibility pass.
+    let pipeline = SvgPipeline::parity();
+    Ok(PreparedGraphicalRender {
+        source: PreparedGraphicalSource::Mermaid(Box::new(renderer)),
+        pipeline,
+        output: PreparedGraphicalOutput::Svg,
+        admission: BackendAdmission::for_svg(resources)?,
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        quiet: true,
+    })
 }
 
 fn read_resolved_input(

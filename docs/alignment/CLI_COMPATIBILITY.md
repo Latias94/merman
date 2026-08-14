@@ -152,7 +152,7 @@ The compatibility version is generated from `tools/upstreams/MERMAID_REFERENCE_B
 merman-cli capabilities --json
 ```
 
-The JSON document uses capability schema 2 and current CLI contract 3. It includes the Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output sets, and the canonical descriptor digest. The CLI contract version tracks native command behavior independently from this pinned compatibility baseline. An `mmdc` behavior change requires a Mermaid baseline alignment, updated tests, this register, and a migration note. Merman does not silently follow the latest npm release.
+The JSON document uses capability schema 2 and current CLI contract 4. It includes the Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output sets, and the canonical descriptor digest. The CLI contract version tracks native command behavior independently from this pinned compatibility baseline. An `mmdc` behavior change requires a Mermaid baseline alignment, updated tests, this register, and a migration note. Merman does not silently follow the latest npm release.
 
 ## Verification
 

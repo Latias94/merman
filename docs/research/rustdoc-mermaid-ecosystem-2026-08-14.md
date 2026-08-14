@@ -6,10 +6,12 @@
 
 **Registry snapshot:** 2026-08-14T04:32:39Z
 
-**Decision:** refactor the Rustdoc integration and distribution boundary before a stable release;
-first validate a thin proc-macro host backed by a release-built embedded Merman WASM guest. Keep
-checked SVG sidecars as the zero-dependency fallback, and do not make browser-side Mermaid.js the
-primary product.
+**Decision (updated by U7):** ship and retain two explicit Rustdoc paths: CLI pre-generation with
+checked static fragments, and the native `merman-rustdoc` macro for users who explicitly choose
+one-step in-process rendering. The bounded full-capability WASM spike cleared closure, package-size,
+parity, sandbox, reproducibility, and offline-package gates, but its warm render median was
+`28.101x` the native oracle, against the frozen `<=2x` gate. WASM is therefore future-only, not a
+current backend, feature, or fallback. Browser-side Mermaid.js remains outside the primary product.
 
 ## Executive decision
 
@@ -33,27 +35,28 @@ markers. They are dependency-closure proxies, not clean-build time, peak-memory,
 measurements. Even so, reducing 168 normal packages to 112 does not turn an in-process renderer
 into a lightweight documentation annotation.
 
-The preferred long-term product is two explicit lanes:
+The current product is two explicit paths:
 
-1. **Embedded static lane (recommended default if the spike clears its gates):** keep the current
-   attribute interface, but replace the native renderer dependency with a release-built pure-WASM
-   Merman guest executed by a small `wasmi` host. The renderer is compiled once by Merman's release
-   process rather than in every consuming Cargo graph.
-2. **Thin, checked-sidecar lane (strict zero-dependency option):** an external Merman tool renders
-   declared `.mmd` inputs to committed light/dark SVG sidecars and a receipt. A separately published
-   normal library, called `merman-rustdoc-sidecar` in this report, provides zero-dependency
-   declarative macros that embed those SVGs in Rustdoc. Ordinary builds and docs.rs do not compile
-   or execute the renderer.
+1. **CLI pre-generation (recommended cheap path):** `merman-cli rustdoc build/check` renders
+   declared inputs to checked static fragments and receipts before `cargo doc`. Ordinary consumer
+   builds and Rustdoc do not compile or execute the renderer.
+2. **Native macro (explicit one-step path):** retain `merman-rustdoc` for users who deliberately
+   accept its host renderer closure in exchange for in-process fence and attribute expansion.
 
-An optional `cargo merman-doc` HTML postprocessor can support inline fences for local and CI-hosted
+The embedded WASM host/guest remains a possible future internal implementation of the second path,
+not a third user-visible mode. U7 did not justify shipping it: the measured interpreter path was
+far outside the frozen latency budget even though the other gates passed.
+
+An optional explicit HTML postprocessor can support inline fences for local and CI-hosted
 documentation without putting Merman in the consuming crate's graph. It cannot be the sole docs.rs
 solution because docs.rs metadata cannot run a Cargo subcommand.
 
 This is a fearless refactor of the integration boundary, not a retreat to a weaker renderer. The
 current crate has a defensible and uncommon advantage: it produces deterministic, sanitized,
-build-time SVG without Node.js, a browser, runtime JavaScript, or a network fetch. The embedded
-guest attempts to preserve that advantage and the current user interface; sidecars remain the
-honest fallback if interpreter latency, memory, or package size does not clear a preregistered bar.
+build-time SVG without Node.js, a browser, runtime JavaScript, or a network fetch. The CLI path
+preserves that contract without imposing the renderer on documentation builds, while the native
+macro keeps the one-step experience explicit. A future WASM attempt must clear the same frozen
+measurement gates before it can replace either shipped path.
 
 ## Scope and evidence boundary
 
@@ -364,9 +367,9 @@ selected consumer the full implementation cost to obtain that advantage.
 | Rustdoc `--html-*` injection | None | No | Can inject through args | Setup and unstable selectors/assets | Useful explicit web mode |
 | Move renderer to `build.rs`/build-dependency | High whenever selected | Yes | Possible | Same closure, broader build-script execution | Reject |
 | Thin proc macro spawning an installed renderer | Low Cargo closure | Yes | Tool unavailable | Non-hermetic builds and PATH/version failures | Reject as default |
-| Thin proc macro + embedded pure-WASM Merman guest | Estimated low host closure | Yes | Self-contained | Interpreter latency, guest size, release provenance | Preferred measured spike |
+| Thin proc macro + embedded pure-WASM Merman guest | Measured low host closure | Yes | Self-contained | Interpreter latency and font-policy provenance | Future-only; U7 latency FAIL at `28.101420x` |
 | Postprocess `target/doc` with external Merman | Tool installed once | Yes | Cannot run custom subcommand | Rustdoc DOM drift | Good local/CI lane |
-| Checked SVG sidecars + zero-dependency macro | Tiny | Yes | Works with packaged files | Generated-file freshness and diffs | Zero-dependency fallback |
+| CLI-generated checked fragments and receipts | None attributable during consumer docs | Yes | Works with packaged files | Generated-file freshness and diffs | Chosen cheap path |
 | Client-side Merman WASM | Low Rust closure | No | Asset/JS integration required | Large runtime asset and async failure surface | Not needed for Rustdoc |
 
 ### Why `build.rs` is not a fix
@@ -388,7 +391,7 @@ limits RAM and Rustdoc time, and makes most source directories read-only
 unlisted `cargo merman-doc` workflow on behalf of a crate. A pre-generated artifact included in the
 published package, or the existing in-process macro dependency, is required.
 
-## Preferred target architecture: embedded static guest
+## Future-only candidate architecture: embedded static guest
 
 The repository already builds a pure-WASM Typst renderer and exercises its closed import/export
 surface through `wasmi` ([Typst guest smoke](../../crates/xtask/src/cmd/typst_plugin_smoke.rs),
@@ -433,8 +436,8 @@ same host and fixtures:
 
 - unique normal + build package closure, with a target of at most 30 for the host;
 - clean and warm `cargo doc` wall time, peak RSS, and target-directory growth;
-- raw/compressed guest and final `.crate` size, with publication rejected if the actual packaged
-  archive exceeds crates.io's current 10 MB limit
+- raw/compressed guest and final `.crate` size, with the U7 candidate rejected at `>=8 MiB`, a
+  stricter planning gate than crates.io's current 10 MB limit
   ([Cargo publishing](https://doc.rust-lang.org/cargo/reference/publishing.html#packaging-a-crate));
 - normalized SVG DOM and representative screenshot parity across ordinary, Cytoscape, ELK, and
   math diagrams;
@@ -443,47 +446,432 @@ same host and fixtures:
 - ABI mismatch, corrupt guest, trap, fuel exhaustion, memory limit, oversized output, and unsafe
   SVG failures.
 
-The numeric package-closure target is a proposal, not measured evidence. Package size is already a
-material risk: the repository's current Typst release measurement records a 9,893,522-byte
-optimized/stripped WASM and a 3,791,109-byte gzip form
-([WASM size budgets](../release/WASM_SIZE_BUDGETS.json)). A full Rustdoc guest may differ, and gzip
-size is not a substitute for measuring Cargo's final `.crate` archive. If the guest exceeds the
-registry limit or misses the agreed latency, memory, or package-size bars after one bounded
-optimization pass, stop and adopt checked sidecars instead of weakening the static contract.
+The package-closure and package-size values above were proposals when this research was first
+written. U7 froze them at `<=30` unique normal-plus-build host packages and `<8 MiB` for the final
+`.crate`, then measured them as recorded below. Package size was a material risk: the repository's
+Typst release measurement records a 9,893,522-byte optimized/stripped WASM and a 3,791,109-byte
+gzip form ([WASM size budgets](../release/WASM_SIZE_BUDGETS.json)). Gzip size is not a substitute
+for measuring Cargo's final `.crate` archive.
 
-## Fallback target architecture: checked sidecars
+### U7 bounded full-capability WASM spike
 
-### Product lanes
+**Verdict:** `REJECT` for the current refactor and keep WASM future-only. The candidate passed every
+frozen correctness, closure, size, isolation, package-shape, and reproducibility check, but failed
+the warm-render admission gate by a wide margin: `35,744,416 ns / 1,271,979 ns = 28.101420x`, where
+the preregistered maximum was `2.0x`. No gate was changed after observing the result.
 
-Use these as working package names; the behavioral boundaries matter more than the final names.
+This was a disposable feasibility harness, not product implementation. It used the existing Typst
+minimal-protocol transport idea but built a dedicated Rustdoc guest with `svg`, Cytoscape, ELK, and
+math enabled. The guest ABI was `rustdoc-wasm-spike-abi-1`; its reported capability string was
+`svg,layout-cytoscape,layout-elk,math,light-dark`. The host accepted exactly the two protocol
+function imports and applied ABI, fuel, memory, and output bounds. It did not reuse the constrained
+Typst policy guest.
+
+#### Frozen gate result
+
+| Frozen gate | Result | Evidence |
+| --- | --- | --- |
+| Dedicated full-capability pure guest | **PASS in the bounded experiment** | All five fixture families rendered; the final artifact imported only the two `typst_env` protocol functions. A temporary target-specific RaTeX font-discovery patch was required, as disclosed below. |
+| Host unique normal + build packages `<=30` | **PASS** | 19 normal packages and 19 normal-plus-build packages. |
+| Projected final `.crate` `<8 MiB` | **PASS** | Actual package-shaped archive: 4,542,972 bytes (`4.333 MiB`), 3,845,636 bytes below the frozen ceiling. |
+| Flowchart, sequence, architecture/Cytoscape, ELK, math, light/dark parity | **PASS** | 10/10 native/WASM outputs were byte-identical; every light/dark pair differed. |
+| Warm render `<=2x` native oracle | **FAIL** | Native median 1,271,979 ns; WASM median 35,744,416 ns; ratio `28.101420x`. |
+| Workloads 1/10/100 with wall time and peak RSS | **PASS: evidence complete** | Three process samples per lane and workload are below. No separate absolute RSS limit was preregistered; this row does not override the failed latency gate. |
+| Malformed source, ABI mismatch, forbidden import, trap, fuel, memory, output limits | **PASS** | Every negative probe failed closed with the expected diagnostic class. |
+| Repeated clean artifact hash | **PASS** | Raw and optimized/stripped artifacts were byte-identical across the two builds. |
+| Offline/read-only/no CLI/no build-time-generation package shape | **PASS** | Unpacked package and consumer were read-only; isolated offline `cargo doc` rendered SVG with no `merman` executable and no `build.rs`. |
+| No retained guest, harness, binary, or fallback feature | **PASS** | After evidence capture, the ignored experiment tree contained only the preregistered `experiment.yaml`; repository searches found no temporary implementation outside this report. |
+
+The single latency failure rejects the backend. Passing package size, parity, or sandbox checks does
+not compensate for it.
+
+#### Measurement identity and host
+
+The experiment began at `2026-08-14T11:45:13Z` from branch
+`refactor/rustdoc-cli-generation` at source revision
+`31cb42cf7ba22e3d400cee9bca6b2fcc2b3d80d0`. The working tree was already dirty and the branch was
+three commits ahead of `origin/main`; the SHA-256 of the initial porcelain status was
+`14433700f4ea0d17c414073dfadf7abc30c2c7b5229bfc16ae08f0ae66c27c70`. The experiment did not use
+the unrelated tracked edits as inputs.
+
+| Identity | Recorded value |
+| --- | --- |
+| Host | Mac16,7, Apple M4 Pro, arm64, 14 logical CPUs |
+| OS | macOS 26.5.1 build 25F80; Darwin 25.5.0 |
+| Physical memory | 51,539,607,552 bytes (48 GiB) |
+| Rust | `rustc 1.95.0 (59807616e 2026-04-14)`, LLVM 22.1.2 |
+| Cargo | `cargo 1.95.0 (f2d3ce0bd 2026-03-21)` |
+| Target/profile | installed `wasm32-unknown-unknown`; release, `opt-level="z"`, fat LTO, one codegen unit, panic abort |
+| WASM tools | `wasm-opt version 131`; `wasm-tools 1.253.0` |
+| Interpreter | locked `wasmi 1.1.0` |
+| Repository `Cargo.lock` SHA-256 | `ee22330d16c7bc79ad45121be6fe0c8bc2e789150372b4d7390a83d282ded7e2` |
+| Disposable experiment `Cargo.lock` SHA-256 | `f4f308da60a5b011ba1820eec486b52a7c00579725b01b48744b93dcf5ea5f9a` |
+
+Cargo builds were serialized with `CARGO_BUILD_JOBS=1` and excluded from render timings. Registry
+access was disabled after the disposable lockfile was established; measured build, tree, package,
+and documentation commands used `--locked --offline`.
+
+#### Artifact and package measurements
+
+The first unpatched full-capability guest compiled, but its math closure reached
+`ratex-unicode-font -> system-fonts -> web-sys` and introduced four wasm-bindgen/externref imports
+in addition to the two protocol imports. Exact `wasm-bindgen-cli 0.2.127` post-processing still left
+two JavaScript imports, so that artifact failed the pure import surface. The one permitted bounded
+optimization was a disposable target-specific patch to `ratex-unicode-font`: system-font and emoji
+discovery return `None` only on `wasm32`, while native behavior remains unchanged. This removed the
+browser imports without removing math. It is experimental evidence, not a product patch.
+
+| Artifact | Bytes | MiB | SHA-256 |
+| --- | ---: | ---: | --- |
+| Unpatched raw guest | 15,157,563 | 14.455 | `136cae7b1c59e18fbf4bcaefd4b76d06bf9cf63b79ec1f8ade68c2ce6e36262e` |
+| Unpatched raw, stripped | 14,929,745 | 14.238 | `ae7dd77d01688220d3b7fd282b77bf60069ee7158549f8e408897015d42b9d8b` |
+| Unpatched `wasm-opt -Oz` | 12,160,290 | 11.597 | `3dd86e291a1b3d680e7a8ce09ab58e2bea877288ed527d5d34b924dc4f2723db` |
+| Unpatched optimized, stripped | 11,932,472 | 11.380 | `0780c84af5c5f1783cfc3953ff7fcad90c28b8fb01743060a231d749bb24369d` |
+| Unpatched optimized, stripped, gzip `-9` | 4,573,263 | 4.361 | `ab5640bd0692cb1da46398714b662b046505066a3d6d74e3ecbff997bbe904be` |
+| Final pure guest, raw | 14,661,349 | 13.982 | `ae0ac2684bd39411d647b74f81bd2b74c2aaa5187b7e3599223665f1357fa2d0` |
+| Final pure guest, raw stripped | 13,096,286 | 12.490 | `9284094c42bcf984b4609a26e66a26cdfaa387b883432ed1f3c6dbddcbd20676` |
+| Final pure guest, `wasm-opt -Oz` | 11,786,621 | 11.241 | `a7098270c161dab8e53fad45d2c3e1e0212cdca49776f9f30ac2304924267496` |
+| Final pure guest, optimized and stripped | 11,786,391 | 11.240 | `b6f871067d6c3bd3062a893446be5cf3ec6abb7cd64081102b19839a25904bb5` |
+| Final pure guest, optimized/stripped, gzip `-9` | 4,529,699 | 4.320 | `7cef7063d211cfece8e843d68bd4fd9681416b7eecfa8062b97406220aac5508` |
+| Final candidate `.crate` | 4,542,972 | 4.333 | `8505970f170919e9c5ab78aa1f218e7b105698dbc893c47a7f5bd6cd63bfa3b8` |
+
+The `.crate` contained six files: `Cargo.lock`, normalized and original manifests, `README.md`,
+`assets/guest.wasm`, and `src/lib.rs`. Cargo reported 11.3 MiB unpacked and 4.3 MiB compressed. It
+contained no `build.rs` and did not generate or download the guest.
+
+The final guest had 93 initial memory pages and exactly these imports:
 
 ```text
-Declared .mmd files
-  -> cargo-merman-doc render/check
-       -> diagram.light.svg
-       -> diagram.dark.svg
-       -> diagram.merman.json (source/options/output hashes and versions)
-  -> merman-rustdoc-sidecar normal library (zero-dependency macro_rules)
-       -> #[doc = inline static SVG wrapper]
-       -> cargo doc / docs.rs
-
-Inline Mermaid fences requiring one-command local docs
-  -> cargo merman-doc build
-       -> cargo rustdoc
-       -> narrow HTML postprocessor
-       -> Merman static SVG
-
-Inline Mermaid fences requiring docs.rs build-time rendering
-  -> merman-rustdoc-native attribute proc macro
-       -> current Merman in-process renderer
+typst_env::wasm_minimal_protocol_send_result_to_host
+typst_env::wasm_minimal_protocol_write_args_to_buffer
 ```
 
-The sidecar package can be a normal, `no_std`, zero-dependency library with declarative macros
-similar in shape to `simple-mermaid`, but it should embed checked SVG rather than a script tag. It
-must be a different package from the embedded guest's procedural-macro host: a proc-macro crate
-cannot also serve as this ordinary declarative-macro facade
-([Rust Reference](https://doc.rust-lang.org/reference/procedural-macros.html)). For example, the
-user-facing shape could be:
+Its exports were `memory`, `abi_version`, `allocate_output`, `capabilities`, `fuel_probe`,
+`render_svg`, `trap_probe`, `__data_end`, and `__heap_base`.
+
+The candidate host's 19-package normal-plus-build closure was: `bitflags`, `itoa`, `libm`,
+`memchr`, `proc-macro2`, `quote`, `roxmltree`, `rustdoc-wasm-host-candidate`, `serde_core`,
+`serde_json`, `spin`, `syn`, `unicode-ident`, `wasmi`, `wasmi_collections`, `wasmi_core`,
+`wasmi_ir`, `wasmparser`, and `zmij`.
+
+#### Output parity
+
+The native oracle called the same `merman-bindings-core::render_svg` function with the same four
+capability features, sources, and serialized options as the guest. This is a render-backend oracle,
+not the existing Typst guest. All 10 comparisons passed exact `cmp`, which is stronger than the
+preregistered semantic/static-SVG requirement.
+
+| Fixture/theme | Bytes | Shared native/WASM SHA-256 |
+| --- | ---: | --- |
+| Flowchart/light | 13,978 | `32216aaab4d4f50275f9e37b1bcf9ba9f60d1919fc8e92a1e0a36ffffb288484` |
+| Flowchart/dark | 14,295 | `50bf771b1ce946ca1aa3d8680a44a2808553a42ff5225c76517d9bb1183f10e5` |
+| Sequence/light | 21,785 | `9434db9cb1e3080933e2c30fee2ce730af7244722b0ee5f140352ecd1ddc57e2` |
+| Sequence/dark | 21,949 | `b04632e68fc86ca69670f9e09504b511357a4621d0391ad76e9b45e6aba913d0` |
+| Architecture/Cytoscape/light | 5,906 | `f0ff23bfa27c66dbaa00b7934461310eba0499caefd065e1bb7e4abd6724d789` |
+| Architecture/Cytoscape/dark | 5,947 | `327de0dd6baaa1311de256cf0afb1edd83bee934e966a58b17a36a158bbc0eae` |
+| ELK/light | 10,523 | `6a28fa20842252a6bbbde868af551c7fa398f3d5dc47ec7872d7a747f9b30567` |
+| ELK/dark | 10,846 | `034f9d997074ef5202284477fecd2e752e69eebcf767b0c8a84233ecff1d7e09` |
+| Math/light | 18,293 | `62df352f7aecd89c6289f5bfc5a5e50ce2248d48cd4dcabfedcc6214005f2efc` |
+| Math/dark | 18,616 | `0908e6a07ab70bf9a989a2c533c3a8c2f79ea7ed6c07f312a05d43fcd6e79de1` |
+
+#### Warm-render timing
+
+Both release binaries were built before timing. Each lane performed three unrecorded warmups, then
+16 measured renders in AB/BA process order: native, WASM, WASM, native. Thus each lane has 32
+samples. The WASM lane reused one instantiated module/store and reset fuel per call; module compile
+and instantiation were outside the internal samples. Both lanes rendered the same built-in
+flowchart and options and produced 13,390-byte outputs.
+
+| Lane | Samples | Median | Mean | Min | Max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Native oracle | 32 | 1,271,979 ns | 1,329,792 ns | 1,173,459 ns | 1,799,459 ns |
+| `wasmi` guest | 32 | 35,744,416 ns | 35,796,139 ns | 34,955,375 ns | 36,928,292 ns |
+
+The raw native samples in nanoseconds were:
+
+```text
+1473417 1543916 1486500 1385166 1368459 1230667 1176958 1202500
+1188958 1208666 1173459 1217542 1799459 1480875 1451666 1265291
+1335583 1376792 1237208 1204833 1205583 1190584 1190958 1191375
+1490500 1212958 1553791 1278667 1502500 1406458 1314584 1207459
+```
+
+The raw WASM samples in nanoseconds were:
+
+```text
+35620750 34955375 35793833 35735083 35387959 36190500 36370000 36028167
+35443291 35559459 35581083 35743792 35153625 36151750 35799667 36705750
+35745041 35899000 36272500 35812209 36362959 35338666 36155708 36129459
+35544000 35500083 36928292 36033167 35522833 35291333 35623291 35097833
+```
+
+#### Workload wall time and RSS
+
+For each lane and count, three independent `/usr/bin/time -l` processes performed two internal
+warmups, then timed 1, 10, or 100 repeated renders in one persistent native process or WASM
+instance. `elapsed_ns` is the render loop only; `real` includes process startup and, for WASM,
+module compile/instantiation. Peak RSS is the maximum of the three macOS `maximum resident set
+size` samples. Cargo was not running.
+
+| Lane/count | Internal render ns, raw three samples | Median internal | Process `real`, raw seconds | Median `real` | Peak RSS |
+| --- | --- | ---: | --- | ---: | ---: |
+| Native/1 | 1,407,333; 1,265,875; 1,311,750 | 1,311,750 ns | 0.01; 0.01; 0.01 | 0.010 s | 21,725,184 B (20.719 MiB) |
+| Native/10 | 12,612,083; 12,505,458; 12,937,750 | 12,612,083 ns | 0.02; 0.02; 0.02 | 0.020 s | 21,921,792 B (20.906 MiB) |
+| Native/100 | 126,981,834; 126,822,958; 126,382,542 | 126,822,958 ns | 0.14; 0.13; 0.13 | 0.130 s | 21,954,560 B (20.938 MiB) |
+| WASM/1 | 35,796,000; 35,962,958; 35,630,541 | 35,796,000 ns | 0.45; 0.45; 0.45 | 0.450 s | 47,038,464 B (44.859 MiB) |
+| WASM/10 | 357,508,917; 355,699,833; 355,362,708 | 355,699,833 ns | 0.77; 0.77; 0.78 | 0.770 s | 47,104,000 B (44.922 MiB) |
+| WASM/100 | 3,550,173,167; 3,582,095,583; 3,608,067,875 | 3,582,095,583 ns | 3.97; 4.00; 4.03 | 4.000 s | 46,661,632 B (44.500 MiB) |
+
+RSS stayed flat across workload count in both lanes, but the WASM process peak was about 2.1 times
+the native peak. No absolute RSS threshold was preregistered, so this observation neither creates a
+new failure nor rescues the latency failure.
+
+#### Fail-closed and package-shape probes
+
+| Probe | Exact setting | Result |
+| --- | --- | --- |
+| Malformed source | `flowchart TD\n  A[unterminated` | Exit 1; `BindingError` / `ParseError`: unterminated node label. |
+| ABI mismatch | expected `rustdoc-wasm-spike-abi-999`; actual `rustdoc-wasm-spike-abi-1` | Exit 1 before render. |
+| Forbidden import | added `network::fetch` to the two allowed imports | Exit 1 before instantiation: expected 2 imports, found 3. |
+| Guest trap | exported `trap_probe` executes `unreachable` | Rejected as a WASM trap. |
+| Fuel exhaustion | 1,000 fuel units; unbounded `fuel_probe` | Rejected: all fuel consumed by WebAssembly. |
+| Memory limit | 67,108,864-byte cap; 134,217,728-byte request | Rejected: growth operation limited. |
+| Output limit | 65,536-byte cap; 1,048,576-byte request | Rejected with actual and maximum byte counts. |
+
+The package-shaped proc macro embedded the final guest, verified the ABI and two-import surface,
+executed the guest during Rustdoc, parsed the result as SVG, and generated
+`<div class="merman-rustdoc"><svg id="u7-package-smoke" ...>`. The unpacked candidate and consumer
+were both mode `dr-xr-xr-x`. In an isolated `PATH` containing only symlinks to the exact
+`cargo`/`rustc`/`rustdoc` toolchain plus `/usr/bin:/bin`, `command -v merman` returned exit 1.
+`CARGO_NET_OFFLINE=true cargo doc --locked --offline --no-deps` completed in 16.63 seconds and the
+HTML contained the `Offline` and `Read-only` labels. This proves the candidate used neither network,
+an external Merman CLI, writable source directories, nor build-time guest generation.
+
+#### Exact command ledger
+
+The commands below are the retained textual reproduction record. Their disposable `$WS` operands
+were intentionally deleted after measurement under KTD13.
+
+```bash
+ROOT="$(git rev-parse --show-toplevel)"
+SPIKE="$ROOT/target/bench/experiments/rustdoc-wasm-spike"
+WS="$SPIKE/workspace"
+export CARGO_BUILD_JOBS=1
+
+date -u '+%Y-%m-%dT%H:%M:%SZ'
+uname -a
+sw_vers
+system_profiler SPHardwareDataType
+sysctl -n hw.logicalcpu hw.memsize
+rustc -vV
+cargo -V
+rustup target list --installed
+wasm-opt --version
+wasm-tools --version
+git rev-parse HEAD
+git status --short --branch
+git status --porcelain=v1 | shasum -a 256
+shasum -a 256 "$ROOT/Cargo.lock"
+shasum -a 256 "$WS/Cargo.lock"
+
+cargo build --manifest-path "$WS/Cargo.toml" --locked --offline --release \
+  --target wasm32-unknown-unknown -p rustdoc-wasm-guest
+cp "$WS/target/wasm32-unknown-unknown/release/rustdoc_wasm_guest.wasm" \
+  "$WS/results/guest-patched-build1.raw.wasm"
+wasm-tools strip --all "$WS/results/guest-patched-build1.raw.wasm" \
+  -o "$WS/results/guest-patched-build1.raw-stripped.wasm"
+wasm-opt -Oz --enable-bulk-memory --enable-bulk-memory-opt --enable-multivalue \
+  --enable-mutable-globals --enable-nontrapping-float-to-int --enable-reference-types \
+  --enable-sign-ext "$WS/results/guest-patched-build1.raw.wasm" \
+  -o "$WS/results/guest-patched-build1.optimized.wasm"
+wasm-tools strip --all "$WS/results/guest-patched-build1.optimized.wasm" \
+  -o "$WS/results/guest-patched-build1.optimized-stripped.wasm"
+cp "$WS/results/guest-patched-build1.optimized-stripped.wasm" \
+  "$WS/results/guest-patched-build1.optimized-stripped-for-gzip.wasm"
+gzip -9 -f "$WS/results/guest-patched-build1.optimized-stripped-for-gzip.wasm"
+wc -c "$WS/results"/guest-patched-build1.*
+shasum -a 256 "$WS/results"/guest-patched-build1.*
+
+cargo build --manifest-path "$WS/Cargo.toml" --locked --offline --release \
+  -p rustdoc-wasm-host -p rustdoc-native-oracle
+HOST="$WS/target/release/rustdoc-wasm-host"
+NATIVE="$WS/target/release/rustdoc-native-oracle"
+GUEST="$WS/results/guest-patched-build1.optimized-stripped.wasm"
+
+"$HOST" surface "$GUEST"
+"$HOST" abi "$GUEST" rustdoc-wasm-spike-abi-1
+"$HOST" capabilities "$GUEST"
+wasm-tools print "$GUEST" \
+  | sed -n '/^[[:space:]]*(import/p;/^[[:space:]]*(export/p'
+
+for fixture in flowchart sequence architecture elk math; do
+  for theme in light dark; do
+    "$NATIVE" render "$WS/fixtures/$fixture.mmd" "$WS/options/$theme.json" \
+      "$WS/results/native-$fixture-$theme.svg"
+    "$HOST" render "$GUEST" "$WS/fixtures/$fixture.mmd" "$WS/options/$theme.json" \
+      "$WS/results/wasm-$fixture-$theme.svg"
+    cmp "$WS/results/native-$fixture-$theme.svg" \
+      "$WS/results/wasm-$fixture-$theme.svg"
+  done
+done
+
+"$NATIVE" bench 16 >"$WS/results/warm-native-a.txt"
+"$HOST" bench "$GUEST" 16 >"$WS/results/warm-wasm-a.txt"
+"$HOST" bench "$GUEST" 16 >"$WS/results/warm-wasm-b.txt"
+"$NATIVE" bench 16 >"$WS/results/warm-native-b.txt"
+
+for lane in native wasm; do
+  for count in 1 10 100; do
+    for sample in 1 2 3; do
+      if test "$lane" = native; then
+        /usr/bin/time -l -o "$WS/results/workload-$lane-$count-$sample.time" \
+          "$NATIVE" workload "$count" \
+          >"$WS/results/workload-$lane-$count-$sample.out"
+      else
+        /usr/bin/time -l -o "$WS/results/workload-$lane-$count-$sample.time" \
+          "$HOST" workload "$GUEST" "$count" \
+          >"$WS/results/workload-$lane-$count-$sample.out"
+      fi
+    done
+  done
+done
+
+"$HOST" render "$GUEST" "$WS/fixtures/malformed.mmd" "$WS/options/light.json" \
+  "$WS/results/should-not-exist.svg"
+"$HOST" abi "$GUEST" rustdoc-wasm-spike-abi-999
+wasm-tools parse "$WS/fixtures/forbidden-import.wat" \
+  -o "$WS/results/forbidden-import.wasm"
+"$HOST" surface "$WS/results/forbidden-import.wasm"
+"$HOST" trap "$GUEST"
+"$HOST" fuel "$GUEST"
+"$HOST" memory "$GUEST" 67108864 134217728
+"$HOST" output "$GUEST" 65536 1048576
+
+for edges in normal normal,build; do
+  cargo tree --locked --offline --manifest-path "$WS/Cargo.toml" \
+    -p rustdoc-wasm-host-candidate --edges "$edges" --prefix none --format '{p}' \
+    | sed 's/ (\*)$//' | sort -u \
+    | tee "$WS/results/host-${edges/,/-}-packages.txt" | wc -l
+done
+
+cp "$GUEST" "$WS/candidate/assets/guest.wasm"
+cargo package --locked --offline --allow-dirty --no-verify \
+  --manifest-path "$WS/candidate/Cargo.toml"
+CRATE="$WS/target/package/rustdoc-wasm-host-candidate-0.0.0.crate"
+wc -c "$CRATE"
+shasum -a 256 "$CRATE"
+tar -tzf "$CRATE"
+
+# After unpacking the .crate and creating the consumer, the package smoke ran:
+SMOKE="$WS/results/package-smoke"
+mkdir -p "$SMOKE/source" "$SMOKE/bin"
+tar -xzf "$CRATE" -C "$SMOKE/source"
+for tool in cargo rustc rustdoc; do
+  ln -s "$(rustup which "$tool")" "$SMOKE/bin/$tool"
+done
+chmod -R a-w "$SMOKE/source" "$SMOKE/consumer"
+stat -f '%Sp %N' "$SMOKE/source" "$SMOKE/consumer"
+! PATH="$SMOKE/bin:/usr/bin:/bin" command -v merman
+PATH="$SMOKE/bin:/usr/bin:/bin" CARGO_NET_OFFLINE=true \
+  CARGO_TARGET_DIR="$SMOKE/target" cargo doc --locked --offline --no-deps \
+  --manifest-path "$SMOKE/consumer/Cargo.toml"
+test ! -e "$SMOKE/source/rustdoc-wasm-host-candidate-0.0.0/build.rs"
+rg 'u7-package-smoke|Offline|Read-only' "$SMOKE/target/doc"
+
+# Reproducibility: record build 1, clean, repeat the exact guest build/optimization recipe,
+# and compare build 2.
+cargo clean --manifest-path "$WS/Cargo.toml"
+cmp "$WS/results/guest-patched-build1.raw.wasm" \
+  "$WS/results/guest-patched-build2.raw.wasm"
+cmp "$WS/results/guest-patched-build1.optimized-stripped.wasm" \
+  "$WS/results/guest-patched-build2.optimized-stripped.wasm"
+shasum -a 256 "$WS/results"/guest-patched-build{1,2}.{raw,optimized-stripped}.wasm
+```
+
+The clean removed 3,561 disposable files (1.4 GiB). Both raw builds had SHA-256
+`ae0ac2684bd39411d647b74f81bd2b74c2aaa5187b7e3599223665f1357fa2d0`; both optimized/stripped
+builds had SHA-256 `b6f871067d6c3bd3062a893446be5cf3ec6abb7cd64081102b19839a25904bb5`.
+
+The experiment has two unresolved productization gaps, neither hidden by a changed gate:
+
+- `wasmi` warm rendering is `28.101420x` native on this host, so the current interpreter strategy
+  is not viable for the plan.
+- The full math guest requires an intentionally designed, reviewed, and upstreamable WASM policy
+  for RaTeX system-font discovery. The disposable patch proved feasibility but is not shippable
+  provenance.
+
+Any future attempt must preregister and rerun the same gates, including the `<=2x` latency ceiling,
+instead of treating this artifact as an admitted backend.
+
+#### Cleanup proof
+
+KTD13 cleanup removed the disposable workspace, guest source, RaTeX patch, host/native/candidate
+harnesses, package smoke, measurements, SVGs, `.crate`, WASM files, tool installation, Cargo target,
+and binaries. The first recursive removal correctly encountered the deliberately read-only package
+smoke. Cleanup restored user write permission only on those two disposable read-only fixture trees,
+then repeated the same bounded removal. Nothing was restored or deleted outside the ignored spike
+directory.
+
+```bash
+find "$SPIKE" -mindepth 1 -maxdepth 1 ! -name experiment.yaml -print
+find "$SPIKE" -mindepth 1 -maxdepth 1 ! -name experiment.yaml \
+  -exec rm -rf -- {} +
+# The read-only package smoke rejected removal, so only those disposable trees were unlocked.
+chmod -R u+w \
+  "$WS/results/package-smoke/source" \
+  "$WS/results/package-smoke/consumer"
+find "$SPIKE" -mindepth 1 -maxdepth 1 ! -name experiment.yaml \
+  -exec rm -r -- {} +
+
+find "$SPIKE" -mindepth 1 -print | sort
+git check-ignore -v "$SPIKE/experiment.yaml"
+rg -n 'rustdoc-wasm-host-candidate|rustdoc-wasm-guest|rustdoc-native-oracle|rustdoc-wasm-spike-abi|guest-patched-build|u7-package-smoke' \
+  . --glob '!target/**' \
+  --glob '!docs/research/rustdoc-mermaid-ecosystem-2026-08-14.md'
+rg -n -i 'rustdoc[-_[:alnum:]]*wasm|wasm[-_[:alnum:]]*rustdoc' \
+  Cargo.toml crates scripts .github \
+  --glob 'Cargo.toml' --glob '*.rs' --glob '*.py' --glob '*.yml' --glob '*.yaml'
+find crates scripts .github -type f \
+  \( -name '*.wasm' -o -name '*rustdoc*wasm*' \) -print
+git status --short --untracked-files=all -- \
+  docs/research/rustdoc-mermaid-ecosystem-2026-08-14.md "$SPIKE"
+git status --porcelain=v1 | shasum -a 256
+git diff --check -- docs/research/rustdoc-mermaid-ecosystem-2026-08-14.md
+```
+
+The final `find` output contained only
+`target/bench/experiments/rustdoc-wasm-spike/experiment.yaml`; `git check-ignore` attributed it to
+the repository's `target/` rule. Both identifier searches and the product artifact search returned
+no match. Scoped `git status` listed only this research report, and the final whole-worktree
+porcelain-status SHA-256 was
+`05aa91e5a842cea87c70a70d6459f6f7c1c0ae8a9c1489976d7af1dfcc2294d8`. `git diff --check`
+returned no output.
+
+## Chosen static architecture: CLI-generated checked fragments
+
+### Shipped paths
+
+The refactor resolves the distribution boundary with two explicit paths rather than an automatic
+fallback chain:
+
+```text
+Cheap, explicit generation
+  -> merman-cli rustdoc build/check
+       -> checked static Rustdoc fragments and receipts
+       -> ordinary cargo doc / docs.rs consumes committed output
+
+One-step attribute expansion
+  -> retained merman-rustdoc proc macro
+       -> current native in-process renderer
+       -> consumer deliberately accepts that Cargo closure
+```
+
+The earlier research considered a separate `merman-rustdoc-sidecar` facade. It remains an optional
+future packaging choice, not the result selected by this refactor: the implemented cheap boundary
+is the existing CLI plus checked generated files. If a facade is later added, it can be a normal,
+`no_std`, zero-dependency library with declarative macros similar in shape to `simple-mermaid`, but
+it must embed checked SVG rather than a script tag. It must remain separate from a procedural-macro
+crate ([Rust Reference](https://doc.rust-lang.org/reference/procedural-macros.html)). For example:
 
 ```rust
 /// System architecture.
@@ -511,7 +899,7 @@ pipeline = "readable"
 features = ["layout-elk"]
 ```
 
-`cargo merman-doc render` updates declared outputs. `cargo merman-doc check` renders to temporary
+`merman-cli rustdoc build` updates declared outputs. `merman-cli rustdoc check` renders to temporary
 files and fails if source, receipt, or SVG hashes differ. The receipt should record at least:
 
 - source SHA-256;
@@ -523,48 +911,20 @@ files and fails if source, receipt, or SVG hashes differ. The receipt should rec
 This avoids maintaining an incomplete Rust parser in a release helper and makes packaging checks
 straightforward: every referenced sidecar and receipt must be included by `cargo package`.
 
-### Preserve the native proc macro as a separate premium capability
+### Retain the native proc macro as an explicit capability
 
-Move the current implementation to a companion proc-macro crate that is not an optional dependency
-of either lightweight package. A feature edge would recreate the original problem whenever a
-consumer runs `--all-features`: Cargo would select the optional native crate and compile its
-complete transitive closure even though `cfg(doc)` is false. The package boundary, not a
-disabled-by-default feature, is what keeps the sidecar lane cheap under every sidecar-package
-feature combination.
+Keep the current `merman-rustdoc` implementation for users who want high-fidelity inline expansion
+and knowingly accept its renderer closure. Do not add it as an optional dependency or fallback of
+the CLI-generated path. Such a feature edge would recreate the original problem whenever a
+consumer runs `--all-features`: Cargo would select the native proc macro and compile its complete
+transitive closure even when `cfg(doc)` is false.
 
-Suggested native companion policy:
-
-```toml
-[features]
-default = ["svg"]
-svg = [
-    "dep:merman",
-    "dep:proc-macro2",
-    "dep:quote",
-    "dep:roxmltree",
-    "dep:serde_json",
-    "dep:syn",
-    "merman/svg",
-]
-layout-cytoscape = ["svg", "merman/layout-cytoscape"]
-layout-elk = ["svg", "merman/layout-elk"]
-math = ["svg", "merman/math"]
-complete-svg = ["layout-cytoscape", "layout-elk", "math"]
-```
-
-The sidecar package should expose only checked-sidecar inclusion APIs. Its
-`cargo tree -p merman-rustdoc-sidecar --all-features` output must therefore remain renderer-free.
-The embedded `merman-rustdoc` host likewise must have no dependency edge to the native companion.
-Users who deliberately choose the native companion can still gate that dependency in their own
-crate, but
-their own `--all-features` run will predictably pay the renderer cost. That trade is explicit and
-cannot be hidden by Cargo features.
-
-This makes the cheap contract the default without deleting the high-fidelity inline experience.
-Because `merman-rustdoc` is still in an alpha release line and has 242 total registry downloads at
-the snapshot, the compatibility change is better made now than after a stable contract. The
-download count does not prove the number of affected users, so migration documentation and a
-deprecation interval are still required.
+This makes the cheap contract explicit without deleting the one-step experience. Documentation
+must state that consumers which add and feature-gate `merman-rustdoc` will pay its build cost in
+their own `--all-features` jobs. Because the crate is still in an alpha release line and had 242
+total registry downloads at the snapshot, this boundary is better clarified before stable. The
+download count does not prove the number of affected users, so migration documentation remains
+required.
 
 ### Reuse code only where ownership is real
 
@@ -579,122 +939,53 @@ large `merman-rustdoc-core` abstraction. Extract only stable, shared units:
 The HTML postprocessor and Rust source attribute transformer process different representations and
 should not be forced behind one generic rewriting framework.
 
-## Preferred migration path
+## Resolved migration path
 
-### Phase 0: measure before changing defaults
+U7 settles the earlier migration fork. The measured path is:
 
-Create a tiny published-crate-shaped fixture and record clean, same-host runs for:
-
-- no Mermaid integration;
-- `simple-mermaid` 0.2.0;
-- Aquamarine 0.6.0;
-- current `merman-rustdoc` `svg`;
-- current default complete SVG; and
-- the proposed embedded guest and sidecar macro.
-
-Measure wall time, peak RSS, target-directory growth, downloaded crate bytes, and unique
-normal/build packages. Run sequentially with an isolated Cargo home/target per cold sample and a
-separate warm-cache lane. Do not publish closure counts as compile-time measurements.
-
-### Phase 1: bounded embedded-guest spike
-
-1. Add a non-published dedicated Rustdoc guest with an exact full-capability artifact recipe.
-2. Exercise it through `wasmi` in an xtask smoke before changing the public proc macro.
-3. Measure the admission gates above against current `svg` and complete-SVG native baselines.
-4. Add a troubleshooting section explaining `cfg_attr(doc)`, `--all-features`, and Cargo feature
-   unification.
-5. Add locked closure receipts using a script that strips Cargo's repeated `(*)` markers.
-
-If a release must ship before the spike completes, changing the native default from `complete-svg`
-to `svg` is an acceptable breaking-alpha mitigation, but it is not completion of the architecture
-work and it reduces out-of-box diagram capability.
-
-### Phase 2: switch the existing host behind its current interface
-
-1. Replace `HeadlessMermaidRenderer` with an internal embedded-guest adapter.
-2. Preserve current fences, includes, options, diagnostics, wrappers, and host SVG validation.
-3. Reuse one initialized guest per proc-macro process and cache repeated requests in memory.
-4. Delete the host's `merman` dependency and renderer capability features; do not keep a native
-   fallback feature.
-5. Add package extraction and offline `cargo doc` tests against the exact `.crate` candidate.
-
-### Phase 3: align architecture and release ownership
-
-1. Supersede ADR-0076 only where it requires Rustdoc to mirror the facade's `complete-svg`
-   features.
-2. Split the artifact profile into a release-built guest and a lightweight proc-macro host.
-3. Extend legal, provenance, size, ABI, and dependency-closure gates to the embedded guest.
-4. Test current options and all admitted diagram/layout/math behavior through the guest.
-5. Remove any temporary native companion after its announced transition window.
-
-### Phase 4: add checked sidecars if users need a strict zero-dependency lane
-
-1. Add the zero-dependency fixed/pair SVG macros in the separate normal-library package
-   `merman-rustdoc-sidecar`; do not add them as a feature of the proc-macro host.
-2. Add manifest-driven `render` and `check` commands to a documentation-focused binary, reusing the
-   existing Merman render API rather than duplicating it.
-3. Emit deterministic receipts and validate SVG with the same strict policy as the proc macro.
-4. Add `cargo package --list` and unpacked-package tests that prove every referenced artifact ships.
-5. Dogfood the path in Merman's own public Rustdoc.
-
-### Phase 5: optional HTML postprocessor
-
-Add this only after the embedded path or its sidecar fallback is stable. The command should:
-
-1. invoke `cargo rustdoc` for one selected package/target;
-2. transform only well-formed Rustdoc Mermaid code blocks;
-3. preserve the original block or fail according to an explicit policy;
-4. write atomically; and
-5. test selectors against the project's MSRV, current stable, and docs.rs nightly Rustdoc outputs.
-
-Rustdoc's HTML DOM is not a versioned public API. The postprocessor must fail visibly when the
-expected shape changes; it must not perform a broad regex replacement across generated HTML.
-
-### Phase 6: settle recommendations before stable
-
-Make the embedded guest the README default only if it cleared the preregistered gates. Otherwise,
-make checked sidecars the default and explain why the guest was rejected. Keep browser JavaScript
-as an optional interoperability mode, not a fallback that silently changes security or
-determinism.
+1. Make `merman-cli rustdoc build/check` the explicit low-cost workflow, with deterministic checked
+   fragments, receipts, package verification, and no renderer in ordinary consumer documentation
+   builds.
+2. Retain `merman-rustdoc` as the explicit native one-step workflow. Keep its high-fidelity
+   behavior rather than hiding its closure behind misleading `cfg_attr(doc)` guidance.
+3. Do not add a WASM backend, fallback feature, embedded artifact, build-time generator, or release
+   ownership machinery in this refactor. U7 failed the `<=2x` warm-render gate at `28.101420x`.
+4. Keep browser JavaScript and Rustdoc HTML post-processing optional and explicit; neither silently
+   substitutes for the deterministic static contract.
+5. Revisit WASM only as a new preregistered experiment after interpreter performance and the RaTeX
+   WASM font-discovery policy materially change enough to justify a new run. Rerun all U7 gates
+   without relaxing them.
 
 ## Acceptance criteria
 
 The refactor is complete only when all of the following hold:
 
-- If the embedded lane ships, its proc-macro host graph contains no `merman`, `merman-core`, or
-  `merman-render` package.
-- If the embedded lane ships, the exact guest and host clear the agreed closure, time, RSS, disk,
-  package-size, and output-equivalence gates, and the actual `.crate` candidate remains below
-  crates.io's current 10 MB limit.
-- A sidecar consumer, if shipped, has no Merman package in its normal Cargo graph.
-- If the embedded lane ships, docs.rs can render its fixture with network blocked and source
-  directories read-only.
-- If sidecars ship, docs.rs can render their fixture without a custom Cargo subcommand,
-  `cargo merman-doc check` detects stale inputs or outputs, and generated SVG passes the same strict
-  policy as the proc macro.
-- Light/dark switching works without JavaScript and without duplicate DOM ids.
-- If the embedded lane ships, it preserves inline fences, `include_mmd!`, failure policies, source
-  details, theme behavior, and the three SVG pipelines.
-- Closure, cold-build, warm-build, peak-memory, and artifact-size reports compare the old and new
-  lanes without sharing target directories between cold samples.
-- `cargo package` integration tests prove that sidecars and receipts used by Rustdoc are published.
-- The sidecar package's `--all-features` graph remains renderer-free, and neither lightweight
-  package depends on `merman-rustdoc-native`; documentation separately states that a
-  consumer which adds and feature-gates `merman-rustdoc-native` will compile it in that consumer's
-  own `--all-features` jobs.
+- `merman-cli rustdoc build/check` owns deterministic generation and stale-output detection, and
+  package tests prove that every referenced generated fragment and receipt ships.
+- The checked-fragment consumer path has no attributable Merman renderer closure during ordinary
+  `cargo doc` or docs.rs execution.
+- Generated light/dark static output works without JavaScript and without duplicate DOM ids, and
+  passes the same strict SVG policy as the native path.
+- `merman-rustdoc` remains a separate, explicit native dependency; documentation accurately
+  explains Cargo feature selection, `cfg_attr(doc)`, and the cost of consumer `--all-features`.
+- No WASM guest, host harness, embedded artifact, fallback feature, or build-time guest generation
+  remains in the product after U7.
+- If WASM is proposed again, the exact candidate must pass the frozen closure, `<8 MiB` package,
+  parity, latency, resource, sandbox, reproducibility, and offline/read-only package gates before
+  any default or distribution decision changes.
 
 ## Risks and controls
 
 | Risk | Control |
 | --- | --- |
-| Checked SVG becomes stale | Mandatory receipt plus `cargo merman-doc check` in CI and release preflight |
+| Checked SVG becomes stale | Mandatory receipt plus `merman-cli rustdoc check` in CI and release preflight |
 | Generated files create noisy reviews | Stable serialization, deterministic ids, one source/output mapping per manifest entry |
-| Sidecars increase repository/package size | Measure light/dark pairs; permit fixed-theme single SVG where appropriate |
+| Generated fragments increase repository/package size | Measure light/dark pairs; permit fixed-theme single SVG where appropriate |
 | Unsafe SVG is committed | Strict validation at generation and check time; fail closed by default |
 | Tool and crate versions drift | Record exact tool/Merman/baseline in receipt and verify it |
 | External tool is missing locally | Clear install command; checked files keep ordinary builds and docs.rs independent |
-| Postprocessor breaks on Rustdoc HTML change | Narrow structured HTML parser, toolchain matrix, visible failure, sidecar fallback |
-| Embedded guest is slow, memory-heavy, or makes the `.crate` exceed 10 MB | Preregistered benchmark and package gates, then a bounded sidecar fallback |
+| Postprocessor breaks on Rustdoc HTML change | Narrow structured HTML parser, toolchain matrix, visible failure, checked-fragment path |
+| A future embedded guest is slow, memory-heavy, or makes the `.crate` reach 8 MiB | Reuse the frozen U7 gates; do not ship or weaken the static contract on failure |
 | Guest artifact drifts from source | Exact artifact recipe, ABI/hash manifest, reproducibility and package smoke |
 | Native renderer is accidentally pulled into a lightweight package | No dependency edge between packages; `--all-features` closure checks |
 | Default-feature change surprises alpha users | Prerelease migration guide and one release of targeted diagnostics |
@@ -720,21 +1011,19 @@ The refactor is complete only when all of the following hold:
 
 ## Final recommendation
 
-Proceed with the refactor before stable release. The current `merman-rustdoc` implementation is a
-good high-fidelity integration built on the wrong default distribution boundary. Keep its renderer,
-sanitization, deterministic themes, failure policy, and source-backed Mermaid behavior. Stop making
-that renderer an implicit cost of the default Rustdoc helper.
+Proceed with the dual explicit paths selected by the refactor. Use `merman-cli rustdoc build/check`
+for deterministic checked static documentation without an attributable renderer closure in the
+consumer's documentation build. Retain `merman-rustdoc` for users who explicitly prefer one-step
+native expansion and accept its build cost. Keep both paths JavaScript-free, offline-capable, and
+strictly validated.
 
-The first strategic change should be a bounded embedded-guest spike, because it is the strongest
-candidate for preserving the current one-command attribute experience, docs.rs compatibility,
-and Merman's deterministic static contract while removing the native renderer from consumer Cargo
-graphs. If the spike clears its measured gates, replace the current backend and delete the host
-renderer features. If it does not, adopt checked SVG sidecars plus the separate zero-dependency
-`merman-rustdoc-sidecar` package backed by an external `render/check` tool. Do not retain a heavy
-feature edge or fall back silently to browser JavaScript.
+Do not ship the U7 WASM design now. Its 19-package host, 4.333 MiB `.crate`, exact 10/10 output
+parity, fail-closed sandbox, repeatable artifact hash, and offline/read-only package smoke are
+promising future evidence, but the decisive measured result is the failed `<=2x` latency gate:
+`28.101420x` native. The temporary RaTeX WASM font-discovery patch is also not product provenance.
+No embedded guest, fallback feature, or build-time artifact generator should remain from the
+experiment.
 
-This gives Merman a stronger position than Aquamarine rather than merely a heavier imitation of it:
-the normal path remains deterministic, offline, JavaScript-free Rustdoc. If the embedded guest is
-admitted, the expensive renderer is compiled once as a governed release artifact instead of once
-per consuming workspace. If it is rejected, sidecar consumers receive governed static artifacts
-while rendering remains in an explicit external tool.
+This keeps Merman's advantage over browser-only integrations without hiding costs: the cheap path
+uses governed static output, the one-step path is explicitly native, and a future WASM proposal
+must earn admission by passing the same frozen gates rather than by weakening them.

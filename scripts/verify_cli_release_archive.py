@@ -85,7 +85,7 @@ __all__ = (
 
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
-CLI_CONTRACT_VERSION = 3
+CLI_CONTRACT_VERSION = 4
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_START = b"\xff\xd8"
@@ -532,6 +532,7 @@ def _cli_release_commands(runtime_ids: list[str]) -> list[str]:
     for capability, gated_commands in (
         ("analysis", ("fix", "lint", "lint-rules")),
         ("markdown", ("batch",)),
+        ("rustdoc", ("rustdoc",)),
         ("shell-completions", ("completion",)),
         ("svg", ("layout", "mmdc")),
     ):

@@ -20,7 +20,7 @@ from typing import Literal, TypeAlias
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v1.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 3
+CLI_CONTRACT_VERSION = 4
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",
@@ -34,6 +34,7 @@ COMMANDS = (
     "mmdc",
     "parse",
     "render",
+    "rustdoc",
 )
 HOMEBREW_COMPLETION_PATHS = {
     "bash": Path("etc/bash_completion.d/merman-cli"),
@@ -64,6 +65,9 @@ MANPAGE_NAMES = (
     "merman-cli-mmdc.1",
     "merman-cli-parse.1",
     "merman-cli-render.1",
+    "merman-cli-rustdoc-build.1",
+    "merman-cli-rustdoc-check.1",
+    "merman-cli-rustdoc.1",
     "merman-cli.1",
 )
 RUNTIME_TIMEOUT_SECONDS = 30
@@ -285,7 +289,9 @@ def _verify_capabilities(
     except (KeyError, TypeError) as error:
         raise CliInstallationError("cli-release expected surface is incomplete") from error
     if _string_set(document.get("commands"), "installed commands") != set(COMMANDS):
-        raise CliInstallationError("installed command set differs from CLI contract 3")
+        raise CliInstallationError(
+            f"installed command set differs from CLI contract {CLI_CONTRACT_VERSION}"
+        )
     if _id_set(document.get("capabilities"), "installed capabilities") != expected_capabilities:
         raise CliInstallationError(
             "installed capability set differs from cli-release"
@@ -364,7 +370,7 @@ def verify_cli_installation(
             installed_manpages[name] = path
     if set(installed_manpages) != set(MANPAGE_NAMES):
         raise CliInstallationError(
-            "installed man page set differs from CLI contract 3: "
+            f"installed man page set differs from CLI contract {CLI_CONTRACT_VERSION}: "
             f"expected {sorted(MANPAGE_NAMES)}, got {sorted(installed_manpages)}"
         )
     for name in MANPAGE_NAMES:
