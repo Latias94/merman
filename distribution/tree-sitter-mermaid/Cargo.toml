@@ -24,6 +24,8 @@ include = [
     "/Cargo.toml",
     "/LICENSE",
     "/README.md",
+    "/THIRD_PARTY_LICENSES/**",
+    "/THIRD_PARTY_NOTICES.md",
     "/package.json",
     "/package-lock.json",
     "/tree-sitter.json",
@@ -40,3 +42,6 @@ language-abi = 14
 node-schema-version = 1
 query-schema-version = 1
 release-state = "dry-run-only"
+
+[package.metadata.merman-legal]
+third-party-bundle = true

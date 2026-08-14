@@ -78,9 +78,11 @@ under `contracts/editor-language/` therefore select both owners. Other shared au
 unknown paths fail broad instead of guessing a narrow consumer set.
 
 The independently versioned Tree-sitter language distribution has its own `grammar` owner. Changes
-under `distribution/tree-sitter-mermaid/` select that owner; package manifests, lockfiles, and
-provenance also select `security`. Changes to the composed contract under `contracts/tree-sitter/`
-select `grammar` and `hygiene`. Workspace manifests, shared fixtures, and pinned upstream sources
+under `distribution/tree-sitter-mermaid/` select that owner and `hygiene`; npm manifests and
+lockfiles also select `npm` and `security`, while Cargo manifests and provenance also select
+`security`. Package license and third-party notice changes also select `security`. Changes to the
+composed contract under `contracts/tree-sitter/` select `grammar` and
+`hygiene`. Workspace manifests, shared fixtures, and pinned upstream sources
 remain shared authorities and therefore select every owner. The grammar workflow verifies the
 35-family catalog projection, Rust package tests, production dependency isolation, legal inventory,
 and Cargo/npm package assembly. A planned family is metadata only: it cannot advertise a support

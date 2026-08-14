@@ -25,7 +25,7 @@
       "repository": "https://github.com/Latias94/merman.git",
       "ref": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
       "commit": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
-      "usage": "Public family catalog, suggested authoring headers, strict-valid fixtures, and semantic-only conformance evidence",
+      "usage": "Public family catalog, authoring-header suggestions, strict-valid fixtures, and semantic-only conformance evidence",
       "license": "MIT OR Apache-2.0"
     },
     {
@@ -36,7 +36,8 @@
       "ref": "mermaid@11.16.1",
       "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
       "usage": "Accepted source syntax and source-backed grammar translation",
-      "license": "MIT"
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-mermaid-mermaid-baseline"
     },
     {
       "id": "zenuml-core",
@@ -46,7 +47,8 @@
       "ref": "v3.50.1",
       "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
       "usage": "ZenUML source syntax and companion behavior",
-      "license": "MIT"
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-mermaid-zenuml-baseline"
     },
     {
       "id": "pappasam-tree-sitter-mermaid",
@@ -56,7 +58,8 @@
       "ref": "main",
       "commit": "1a11e2d8cf11afcfdb768f537c1a9bde294c24f9",
       "usage": "MIT-licensed grammar seed; copied rules must retain path-level attribution",
-      "license": "MIT"
+      "license": "MIT",
+      "legalComponentId": "pappasam-tree-sitter-mermaid"
     },
     {
       "id": "monaqa-tree-sitter-mermaid",
@@ -66,7 +69,8 @@
       "ref": "master",
       "commit": "90ae195b31933ceb9d079abfa8a3ad0a36fee4cc",
       "usage": "Existing editor ecosystem compatibility baseline, not CST schema authority",
-      "license": "MIT"
+      "license": "MIT",
+      "legalComponentId": "monaqa-tree-sitter-mermaid"
     },
     {
       "id": "singularity-tree-sitter-mermaid",
@@ -76,7 +80,8 @@
       "ref": "main",
       "commit": "f5ac2752fbf0f74f9c836014b87e511303d2abae",
       "usage": "Additional grammar and query behavior reference",
-      "license": "MIT"
+      "license": "MIT",
+      "legalComponentId": "singularity-tree-sitter-mermaid"
     }
   ]
 }

@@ -130,6 +130,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             "npm pack ./distribution/tree-sitter-mermaid --dry-run --json",
             workflow,
         )
+        self.assertIn('record.get("name") != "tree-sitter-mermaid"', workflow)
+        self.assertIn('record.get("version") != expected_version', workflow)
+        self.assertIn('"THIRD_PARTY_NOTICES.md"', workflow)
+        self.assertIn("npm package omits legal files", workflow)
 
     def test_tree_sitter_owner_runs_its_complete_package_gate(self) -> None:
         ci = read(CI_WORKFLOW)
@@ -139,6 +143,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("cargo fmt --all -- --check", workflow)
         self.assertIn("cargo clippy --locked -p tree-sitter-mermaid -p xtask", workflow)
         self.assertIn("cargo nextest run --locked -p tree-sitter-mermaid", workflow)
+        self.assertIn(
+            "cargo nextest run --locked -p xtask tree_sitter_mermaid",
+            workflow,
+        )
         self.assertIn("npm test --prefix distribution/tree-sitter-mermaid", workflow)
         self.assertIn("cargo package --locked -p tree-sitter-mermaid", workflow)
         self.assertIn(

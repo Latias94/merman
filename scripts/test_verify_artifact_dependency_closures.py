@@ -249,9 +249,6 @@ class VerificationCaseTests(unittest.TestCase):
     def test_repository_cases_cover_governed_profiles_and_declared_targets(self) -> None:
         profiles = load_artifact_profiles()
         cases = load_verification_cases()
-        governed_profiles = {
-            claim.profile_id for claim in SEMANTIC_CLAIMS
-        } | NATIVE_BINDING_PROFILE_IDS
         expected_targets = {
             profile.profile_id: (
                 (HOST_CLOSURE_REFERENCE_TARGET,)
@@ -259,7 +256,6 @@ class VerificationCaseTests(unittest.TestCase):
                 else profile.cargo.build_targets
             )
             for profile in profiles
-            if profile.profile_id in governed_profiles
         }
         actual_targets: dict[str, list[str]] = {}
         for current in cases:
@@ -328,14 +324,14 @@ class VerificationCaseTests(unittest.TestCase):
             ),
         )
 
-    def test_only_semantic_and_native_binding_profiles_have_cases(self) -> None:
+    def test_every_artifact_profile_has_a_tree_sitter_exclusion_case(self) -> None:
         cases = load_verification_cases()
+        profiles = load_artifact_profiles()
         semantic_profiles = {claim.profile_id for claim in SEMANTIC_CLAIMS}
-        governed_profiles = semantic_profiles | NATIVE_BINDING_PROFILE_IDS
 
         self.assertEqual(
             {current.recipe.profile_id for current in cases},
-            governed_profiles,
+            {profile.profile_id for profile in profiles},
         )
 
         for current in cases:
@@ -353,6 +349,11 @@ class VerificationCaseTests(unittest.TestCase):
                     self.assertEqual(
                         current.claim.required_packages,
                         (current.recipe.package,),
+                    )
+                elif current.recipe.profile_id not in semantic_profiles:
+                    self.assertEqual(
+                        current.claim.forbidden_packages,
+                        TREE_SITTER_FORBIDDEN_PACKAGES,
                     )
 
     def test_native_binding_profiles_share_one_dependency_denylist(self) -> None:

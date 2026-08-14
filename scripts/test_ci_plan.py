@@ -95,7 +95,8 @@ class PlannerTests(unittest.TestCase):
     def test_owner_local_changes_select_their_narrow_jobs(self) -> None:
         fixtures = {
             "distribution/tree-sitter-mermaid/queries/portable/highlights.scm": {
-                "grammar"
+                "grammar",
+                "hygiene",
             },
             "platforms/web/src/index.ts": {"hygiene", "npm", "web"},
             "platforms/node/package-lock.json": {"core", "hygiene", "node", "npm", "security"},
@@ -135,6 +136,49 @@ class PlannerTests(unittest.TestCase):
 
         selected = {name for name, enabled in plan["owners"].items() if enabled}
         self.assertEqual(selected, {"grammar", "hygiene"})
+
+    def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
+        fixtures = {
+            "distribution/tree-sitter-mermaid/Cargo.toml": {
+                "grammar",
+                "hygiene",
+                "security",
+            },
+            "distribution/tree-sitter-mermaid/package-lock.json": {
+                "grammar",
+                "hygiene",
+                "npm",
+                "security",
+            },
+            "distribution/tree-sitter-mermaid/THIRD_PARTY_LICENSES/mermaid/LICENSE": {
+                "grammar",
+                "hygiene",
+                "security",
+            },
+        }
+        for path, expected in fixtures.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {
+                    name for name, enabled in plan["owners"].items() if enabled
+                }
+                self.assertEqual(selected, expected)
+
+    def test_tree_sitter_legal_authority_selects_its_consumers(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(
+                b"M\0docs/release/THIRD_PARTY_COMPONENTS.json\0"
+            ),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        selected = {name for name, enabled in plan["owners"].items() if enabled}
+        self.assertEqual(selected, {"grammar", "hygiene", "security"})
 
     def test_unknown_grammar_path_fails_broad(self) -> None:
         plan = plan_changes(

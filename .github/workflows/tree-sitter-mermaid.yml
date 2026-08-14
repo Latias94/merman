@@ -37,6 +37,7 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --locked -p tree-sitter-mermaid -p xtask --all-targets -- -D warnings
           cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
+          cargo nextest run --locked -p xtask tree_sitter_mermaid --no-fail-fast
           cargo run --locked -p xtask -- verify-tree-sitter-mermaid
           npm test --prefix distribution/tree-sitter-mermaid
           python3 scripts/verify_artifact_dependency_closures.py --representative-targets

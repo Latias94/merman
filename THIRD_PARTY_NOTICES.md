@@ -51,13 +51,13 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
 The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.
 
-Components: `mermaid`, `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `zenuml-core`.
+Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
 
 ### `typst-publish`
 
@@ -366,8 +366,8 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
-- Artifact scopes: `ascii-render`, `cli-default`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `source-archive`, `tree-sitter-mermaid-source`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `distribution/tree-sitter-mermaid`, `fixtures`
+- Artifact scopes: `ascii-render`, `cli-default`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
+- Local evidence: `crates/merman-core/src`, `crates/merman-render/src`, `crates/merman-render/src/svg/parity/architecture/icons.rs`, `fixtures`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
 
@@ -516,6 +516,38 @@ The language package retains this implementation as an additional behavior refer
 - Legal files:
   - [`THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE) (license, SHA-256 `601f9a3a5d582af11bd0386a3352435f8765b1d35bee882e5dc7ebb29cf3b540`)
 
+### Mermaid (tree-sitter-mermaid baseline) (`tree-sitter-mermaid-mermaid-baseline`)
+
+The language package translates the exact Mermaid 11.16.1 syntax baseline recorded in its immutable package provenance; this component intentionally does not move with the repository baseline.
+
+- Version: `11.16.1`
+- Source: <https://github.com/mermaid-js/mermaid.git>
+- Source ref: `mermaid@11.16.1`
+- Source commit: `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
+- Source path: `packages/mermaid`
+- Relationship: `behavior-reference`, `translated`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/mermaid/LICENSE`](THIRD_PARTY_LICENSES/mermaid/LICENSE) (license, SHA-256 `ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80`)
+
+### ZenUML Core (tree-sitter-mermaid baseline) (`tree-sitter-mermaid-zenuml-baseline`)
+
+The language package follows the exact ZenUML Core 3.50.1 companion baseline recorded in its immutable package provenance; this component intentionally does not move with the repository baseline.
+
+- Version: `3.50.1`
+- Source: <https://github.com/mermaid-js/zenuml-core.git>
+- Source ref: `v3.50.1`
+- Source commit: `38404ccc14243ed54ab45b804b2eb6f2ca73af36`
+- Source path: `.`
+- Relationship: `behavior-reference`, `translated`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/zenuml-core/LICENSE`](THIRD_PARTY_LICENSES/zenuml-core/LICENSE) (license, SHA-256 `d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978`)
+
 ### @upsetjs/venn.js (`venn-js`)
 
 The Venn family uses a modified Rust translation of the venn.js geometry and layout kernel.
@@ -559,8 +591,8 @@ Merman's ZenUML grammar, model, renderer, emoji/icon data, and behavior probes f
 - Source path: `.`
 - Relationship: `behavior-reference`, `copied`, `modified`, `translated`
 - License expression: `MIT`
-- Artifact scopes: `cli-default`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `source-archive`, `tree-sitter-mermaid-source`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
-- Local evidence: `crates/merman-core/src/diagrams/zenuml`, `crates/merman-render/assets/zenuml`, `crates/merman-render/src/zenuml.rs`, `distribution/tree-sitter-mermaid`
+- Artifact scopes: `cli-default`, `elk-render`, `playground-reference`, `ratex-render`, `rust-render-base`, `source-archive`, `typst-publish`, `web-analysis`, `web-ascii`, `web-editor`, `web-full`, `web-render`
+- Local evidence: `crates/merman-core/src/diagrams/zenuml`, `crates/merman-render/assets/zenuml`, `crates/merman-render/src/zenuml.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/zenuml-core/LICENSE`](THIRD_PARTY_LICENSES/zenuml-core/LICENSE) (license, SHA-256 `d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978`)
 

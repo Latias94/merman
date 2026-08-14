@@ -7,6 +7,10 @@
 
 pub use tree_sitter::Language;
 
+/// Independently versioned language package release.
+pub const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Tree-sitter language symbol used by generated bindings.
+pub const LANGUAGE_SYMBOL: &str = "mermaid";
 /// Tree-sitter generated language ABI selected by this package.
 pub const LANGUAGE_ABI: u32 = 14;
 /// Experimental public CST schema version.

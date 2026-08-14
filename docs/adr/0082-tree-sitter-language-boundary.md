@@ -39,7 +39,7 @@ The following ownership rules are mandatory:
   order, IR, diagnostics, navigation identity, and refactoring safety.
 - The Tree-sitter package owns named CST nodes and fields, family root nodes, recovery nodes,
   portable queries, editor query adapters, generated parsers, bindings, WASM, and package metadata.
-- Merman's public family IDs, internal variants, and suggested authoring headers are projected
+- Merman's public family IDs, internal variants, and authoring-header suggestions are projected
   read-only from the existing family catalog. Complete accepted syntax remains source-backed by the
   pinned Mermaid and ZenUML authorities. The package stores only foreign-key IDs plus its own roots,
   maturity, evidence, and query applicability. A deterministic composed contract binds both

@@ -342,7 +342,7 @@ def load_verification_cases(
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
     semantic_claims: Sequence[ClosureClaim] = SEMANTIC_CLAIMS,
 ) -> tuple[VerificationCase, ...]:
-    """Join descriptor-owned recipes with semantic runtime-closure checks."""
+    """Join every descriptor recipe with semantic and universal closure checks."""
     try:
         profiles = load_artifact_profiles(descriptor_path)
     except ArtifactProfileError as error:
@@ -382,7 +382,12 @@ def load_verification_cases(
                 forbidden_packages=NATIVE_BINDING_FORBIDDEN_PACKAGES,
             )
         if claim is None:
-            continue
+            claim = ClosureClaim(
+                claim_id=f"{profile_id}-tree-sitter-production-boundary",
+                profile_id=profile_id,
+                required_packages=(recipe.package,),
+                forbidden_packages=TREE_SITTER_FORBIDDEN_PACKAGES,
+            )
         if recipe.package not in claim.required_packages:
             raise ClosureVerificationError(
                 f"semantic claim {claim.claim_id!r} must require descriptor root "

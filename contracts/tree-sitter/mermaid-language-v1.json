@@ -28,8 +28,9 @@
         "repository": "https://github.com/Latias94/merman.git",
         "ref": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
         "commit": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
-        "usage": "Public family catalog, suggested authoring headers, strict-valid fixtures, and semantic-only conformance evidence",
-        "license": "MIT OR Apache-2.0"
+        "usage": "Public family catalog, authoring-header suggestions, strict-valid fixtures, and semantic-only conformance evidence",
+        "license": "MIT OR Apache-2.0",
+        "legalComponentId": null
       },
       {
         "id": "mermaid",
@@ -39,7 +40,8 @@
         "ref": "mermaid@11.16.1",
         "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
         "usage": "Accepted source syntax and source-backed grammar translation",
-        "license": "MIT"
+        "license": "MIT",
+        "legalComponentId": "tree-sitter-mermaid-mermaid-baseline"
       },
       {
         "id": "zenuml-core",
@@ -49,7 +51,8 @@
         "ref": "v3.50.1",
         "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
         "usage": "ZenUML source syntax and companion behavior",
-        "license": "MIT"
+        "license": "MIT",
+        "legalComponentId": "tree-sitter-mermaid-zenuml-baseline"
       },
       {
         "id": "pappasam-tree-sitter-mermaid",
@@ -59,7 +62,8 @@
         "ref": "main",
         "commit": "1a11e2d8cf11afcfdb768f537c1a9bde294c24f9",
         "usage": "MIT-licensed grammar seed; copied rules must retain path-level attribution",
-        "license": "MIT"
+        "license": "MIT",
+        "legalComponentId": "pappasam-tree-sitter-mermaid"
       },
       {
         "id": "monaqa-tree-sitter-mermaid",
@@ -69,7 +73,8 @@
         "ref": "master",
         "commit": "90ae195b31933ceb9d079abfa8a3ad0a36fee4cc",
         "usage": "Existing editor ecosystem compatibility baseline, not CST schema authority",
-        "license": "MIT"
+        "license": "MIT",
+        "legalComponentId": "monaqa-tree-sitter-mermaid"
       },
       {
         "id": "singularity-tree-sitter-mermaid",
@@ -79,7 +84,8 @@
         "ref": "main",
         "commit": "f5ac2752fbf0f74f9c836014b87e511303d2abae",
         "usage": "Additional grammar and query behavior reference",
-        "license": "MIT"
+        "license": "MIT",
+        "legalComponentId": "singularity-tree-sitter-mermaid"
       }
     ]
   },
@@ -103,7 +109,7 @@
     ]
   },
   "authorities": {
-    "mermanFamilyCatalogSha256": "c36bb7e8096e62785ab80a5bb6c1504652736c22832addc4cce6cdd580c554a6",
+    "mermanFamilyCatalogSha256": "744d1d749c665cf4e52f3fa2a5e381e953e1bc585274418e52382e5c1ab7635d",
     "grammarSupportSha256": "31516e7cb403eb363bab8439b4fff47ca637ccb35b2de4e4e22cfe241bcaecbd",
     "publicFamilyCount": 35
   },
@@ -130,7 +136,7 @@
       "internalVariants": [
         "architecture"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "architecture-beta"
       ],
       "rootNode": "architecture_diagram",
@@ -145,7 +151,7 @@
       "internalVariants": [
         "block"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "block-beta"
       ],
       "rootNode": "block_diagram",
@@ -160,7 +166,7 @@
       "internalVariants": [
         "c4"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "C4Context",
         "C4Container",
         "C4Component",
@@ -180,7 +186,7 @@
         "classDiagram",
         "class"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "classDiagram",
         "classDiagram-v2"
       ],
@@ -196,7 +202,7 @@
       "internalVariants": [
         "cynefin"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "cynefin-beta"
       ],
       "rootNode": "cynefin_diagram",
@@ -212,7 +218,7 @@
         "er",
         "erDiagram"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "erDiagram"
       ],
       "rootNode": "entity_relationship_diagram",
@@ -227,7 +233,7 @@
       "internalVariants": [
         "eventmodeling"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "eventmodeling"
       ],
       "rootNode": "event_modeling_diagram",
@@ -244,7 +250,7 @@
         "flowchart-v2",
         "flowchart"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "flowchart TD",
         "graph TD",
         "flowchart-elk TD"
@@ -261,7 +267,7 @@
       "internalVariants": [
         "gantt"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "gantt"
       ],
       "rootNode": "gantt_diagram",
@@ -276,7 +282,7 @@
       "internalVariants": [
         "gitGraph"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "gitGraph"
       ],
       "rootNode": "git_graph_diagram",
@@ -291,7 +297,7 @@
       "internalVariants": [
         "info"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "info"
       ],
       "rootNode": "info_diagram",
@@ -306,7 +312,7 @@
       "internalVariants": [
         "ishikawa"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "ishikawa-beta"
       ],
       "rootNode": "ishikawa_diagram",
@@ -321,7 +327,7 @@
       "internalVariants": [
         "journey"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "journey"
       ],
       "rootNode": "journey_diagram",
@@ -336,7 +342,7 @@
       "internalVariants": [
         "kanban"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "kanban"
       ],
       "rootNode": "kanban_diagram",
@@ -351,7 +357,7 @@
       "internalVariants": [
         "mindmap"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "mindmap"
       ],
       "rootNode": "mindmap_diagram",
@@ -366,7 +372,7 @@
       "internalVariants": [
         "packet"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "packet",
         "packet-beta"
       ],
@@ -382,7 +388,7 @@
       "internalVariants": [
         "pie"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "pie"
       ],
       "rootNode": "pie_diagram",
@@ -397,7 +403,7 @@
       "internalVariants": [
         "quadrantChart"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "quadrantChart"
       ],
       "rootNode": "quadrant_chart_diagram",
@@ -412,7 +418,7 @@
       "internalVariants": [
         "radar"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "radar-beta"
       ],
       "rootNode": "radar_diagram",
@@ -427,7 +433,7 @@
       "internalVariants": [
         "railroad"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "railroad-beta"
       ],
       "rootNode": "railroad_diagram",
@@ -442,7 +448,7 @@
       "internalVariants": [
         "railroadAbnf"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "railroad-abnf-beta"
       ],
       "rootNode": "railroad_abnf_diagram",
@@ -457,7 +463,7 @@
       "internalVariants": [
         "railroadEbnf"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "railroad-ebnf-beta"
       ],
       "rootNode": "railroad_ebnf_diagram",
@@ -472,7 +478,7 @@
       "internalVariants": [
         "railroadPeg"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "railroad-peg-beta"
       ],
       "rootNode": "railroad_peg_diagram",
@@ -487,7 +493,7 @@
       "internalVariants": [
         "requirement"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "requirementDiagram"
       ],
       "rootNode": "requirement_diagram",
@@ -502,7 +508,7 @@
       "internalVariants": [
         "sankey"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "sankey"
       ],
       "rootNode": "sankey_diagram",
@@ -517,7 +523,7 @@
       "internalVariants": [
         "sequence"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "sequenceDiagram"
       ],
       "rootNode": "sequence_diagram",
@@ -533,7 +539,7 @@
         "stateDiagram",
         "state"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "stateDiagram-v2",
         "stateDiagram"
       ],
@@ -549,7 +555,7 @@
       "internalVariants": [
         "swimlane"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "swimlane-beta"
       ],
       "rootNode": "swimlane_diagram",
@@ -564,7 +570,7 @@
       "internalVariants": [
         "timeline"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "timeline"
       ],
       "rootNode": "timeline_diagram",
@@ -579,7 +585,7 @@
       "internalVariants": [
         "treeView"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "treeView-beta"
       ],
       "rootNode": "tree_view_diagram",
@@ -594,7 +600,7 @@
       "internalVariants": [
         "treemap"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "treemap-beta"
       ],
       "rootNode": "treemap_diagram",
@@ -609,7 +615,7 @@
       "internalVariants": [
         "venn"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "venn-beta"
       ],
       "rootNode": "venn_diagram",
@@ -624,7 +630,7 @@
       "internalVariants": [
         "wardley"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "wardley-beta"
       ],
       "rootNode": "wardley_diagram",
@@ -639,7 +645,7 @@
       "internalVariants": [
         "xychart"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "xychart",
         "xychart-beta"
       ],
@@ -655,7 +661,7 @@
       "internalVariants": [
         "zenuml"
       ],
-      "authoringHeaders": [
+      "authoringHeaderSuggestions": [
         "zenuml"
       ],
       "rootNode": "zenuml_diagram",

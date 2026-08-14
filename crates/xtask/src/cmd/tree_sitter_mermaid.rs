@@ -7,7 +7,11 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
+use tree_sitter_mermaid::{
+    LANGUAGE_ABI, LANGUAGE_SYMBOL, NODE_SCHEMA_VERSION, PACKAGE_VERSION, QUERY_SCHEMA_VERSION,
+    TREE_SITTER_RUST_RUNTIME_VERSION,
+};
 
 const PACKAGE_ROOT: &str = "distribution/tree-sitter-mermaid";
 const SUPPORT_PATH: &str = "distribution/tree-sitter-mermaid/metadata/support.json";
@@ -15,13 +19,14 @@ const PROVENANCE_PATH: &str = "distribution/tree-sitter-mermaid/metadata/provena
 const SCHEMA_PATH: &str = "distribution/tree-sitter-mermaid/metadata/schema-version.json";
 const CONTRACT_PATH: &str = "contracts/tree-sitter/mermaid-language-v1.json";
 const UPSTREAM_LOCK_PATH: &str = "tools/upstreams/REPOS.lock.json";
+const THIRD_PARTY_COMPONENTS_PATH: &str = "docs/release/THIRD_PARTY_COMPONENTS.json";
 const PUBLIC_FAMILY_COUNT: usize = 35;
-const PACKAGE_VERSION: &str = "0.1.0";
 const TREE_SITTER_CLI_VERSION: &str = "0.26.12";
-const TREE_SITTER_RUST_VERSION: &str = "0.26.12";
 const TREE_SITTER_NODE_VERSION: &str = "0.25.1";
 const TREE_SITTER_WEB_VERSION: &str = "0.26.12";
-const LANGUAGE_ABI: u32 = 14;
+const MERMAN_ORACLE_VERSION: &str = "0.8.0-alpha.5";
+const MERMAN_ORACLE_COMMIT: &str = "e4d3169a614f4eca3e4897fe9ee1fd578136db92";
+const TIER_CLAIMS_ENABLED: bool = false;
 const QUERY_PROFILES: [&str; 4] = ["portable", "neovim", "helix", "zed"];
 const QUERY_SURFACES: [&str; 9] = [
     "highlights",
@@ -33,6 +38,45 @@ const QUERY_SURFACES: [&str; 9] = [
     "brackets",
     "outline",
     "textobjects",
+];
+const EVIDENCE_KINDS: [&str; 10] = [
+    "binding",
+    "conformance",
+    "corpus",
+    "fuzz",
+    "header",
+    "incremental",
+    "metrics",
+    "node-schema",
+    "query",
+    "recovery",
+];
+const PACKAGE_LICENSE_COPIES: [(&str, &str, &str); 5] = [
+    (
+        "mermaid",
+        "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+        "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+    ),
+    (
+        "zenuml-core",
+        "THIRD_PARTY_LICENSES/zenuml-core/LICENSE",
+        "THIRD_PARTY_LICENSES/zenuml-core/LICENSE",
+    ),
+    (
+        "pappasam-tree-sitter-mermaid",
+        "THIRD_PARTY_LICENSES/tree-sitter-mermaid-pappasam/LICENSE",
+        "THIRD_PARTY_LICENSES/pappasam-tree-sitter-mermaid/LICENSE",
+    ),
+    (
+        "monaqa-tree-sitter-mermaid",
+        "THIRD_PARTY_LICENSES/tree-sitter-mermaid-monaqa/LICENSE",
+        "THIRD_PARTY_LICENSES/monaqa-tree-sitter-mermaid/LICENSE",
+    ),
+    (
+        "singularity-tree-sitter-mermaid",
+        "THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE",
+        "THIRD_PARTY_LICENSES/singularity-tree-sitter-mermaid/LICENSE",
+    ),
 ];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -143,6 +187,8 @@ struct SourceIdentity {
     commit: String,
     usage: String,
     license: String,
+    #[serde(default)]
+    legal_component_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -169,15 +215,37 @@ struct CompatiblePair {
     queries: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RepositoryLock {
     repos: BTreeMap<String, RepositoryLockEntry>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RepositoryLockEntry {
+    url: String,
+    r#ref: String,
+    commit: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ThirdPartyContract {
+    components: Vec<ThirdPartyComponent>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ThirdPartyComponent {
+    id: String,
+    version: String,
+    source: ThirdPartySource,
+    local_paths: Vec<String>,
+    license_expression: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ThirdPartySource {
+    repository: String,
     r#ref: String,
     commit: String,
 }
@@ -188,7 +256,7 @@ struct CoreFamilyProjection {
     public_id: String,
     logical_family_kind: String,
     internal_variants: Vec<String>,
-    authoring_headers: Vec<String>,
+    authoring_header_suggestions: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,7 +286,7 @@ struct ContractFamily {
     public_id: String,
     logical_family_kind: String,
     internal_variants: Vec<String>,
-    authoring_headers: Vec<String>,
+    authoring_header_suggestions: Vec<String>,
     root_node: String,
     lifecycle: String,
     support_tier: Option<String>,
@@ -284,7 +352,7 @@ fn core_family_projection() -> Result<Vec<CoreFamilyProjection>, String> {
                 public_id: (*public_id).to_string(),
                 logical_family_kind: String::new(),
                 internal_variants: Vec::new(),
-                authoring_headers: Vec::new(),
+                authoring_header_suggestions: Vec::new(),
             },
         );
     }
@@ -318,7 +386,7 @@ fn core_family_projection() -> Result<Vec<CoreFamilyProjection>, String> {
         families
             .get_mut(public_id)
             .expect("header owner is a public family")
-            .authoring_headers
+            .authoring_header_suggestions
             .push(header.label.to_string());
     }
 
@@ -332,7 +400,7 @@ fn core_family_projection() -> Result<Vec<CoreFamilyProjection>, String> {
                 Err(format!(
                     "public family {public_id} has no catalog-owned variant"
                 ))
-            } else if family.authoring_headers.is_empty() {
+            } else if family.authoring_header_suggestions.is_empty() {
                 Err(format!(
                     "public family {public_id} has no catalog-owned authoring header"
                 ))
@@ -344,6 +412,7 @@ fn core_family_projection() -> Result<Vec<CoreFamilyProjection>, String> {
 }
 
 fn validate_support(
+    root: &Path,
     support: &SupportMetadata,
     core: &[CoreFamilyProjection],
 ) -> Result<(), String> {
@@ -383,7 +452,7 @@ fn validate_support(
                 family.public_id, family.root_node
             ));
         }
-        validate_family_support(family)?;
+        validate_family_support(root, family)?;
     }
     let missing = expected.difference(&actual).copied().collect::<Vec<_>>();
     let unexpected = actual.difference(&expected).copied().collect::<Vec<_>>();
@@ -411,7 +480,7 @@ fn valid_root_node(value: &str) -> bool {
         && !value.contains("__")
 }
 
-fn validate_family_support(family: &FamilySupport) -> Result<(), String> {
+fn validate_family_support(root: &Path, family: &FamilySupport) -> Result<(), String> {
     let tier_rank = match family.support_tier.as_deref() {
         None => 0,
         Some("recognized") => 1,
@@ -440,18 +509,96 @@ fn validate_family_support(family: &FamilySupport) -> Result<(), String> {
             ));
         }
     }
+    if tier_rank == 0 {
+        if !family.evidence.is_empty() || !family.query_applicability.is_empty() {
+            return Err(format!(
+                "planned family {} must not publish evidence or query claims",
+                family.public_id
+            ));
+        }
+        return Ok(());
+    }
+    if !TIER_CLAIMS_ENABLED {
+        return Err(format!(
+            "family {} cannot claim a support tier before typed gate receipts are admitted",
+            family.public_id
+        ));
+    }
     if tier_rank > 0 && family.evidence.is_empty() {
         return Err(format!(
             "family {} claims support without evidence",
             family.public_id
         ));
     }
-    validate_evidence(family)?;
-    validate_query_applicability(family, tier_rank >= 3)
+    let evidence_kinds = validate_evidence(root, family)?;
+    validate_required_evidence(family, tier_rank, &evidence_kinds)?;
+    validate_query_applicability(family, tier_rank >= 3, &evidence_kinds)
 }
 
-fn validate_evidence(family: &FamilySupport) -> Result<(), String> {
+fn package_evidence_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let relative_path = Path::new(relative);
+    if relative.is_empty()
+        || relative_path.is_absolute()
+        || !relative_path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return Err(format!(
+            "evidence path {relative:?} is not a normalized package path"
+        ));
+    }
+    let package_root = root
+        .join(PACKAGE_ROOT)
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve package root: {error}"))?;
+    let path = package_root.join(relative_path);
+    let resolved = path
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve evidence path {relative:?}: {error}"))?;
+    if !resolved.starts_with(&package_root) || !resolved.is_file() {
+        return Err(format!(
+            "evidence path {relative:?} must resolve to a file inside the language package"
+        ));
+    }
+    Ok(resolved)
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path)
+        .map_err(|error| format!("failed to read evidence {}: {error}", path.display()))?;
+    let mut rendered = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        write!(&mut rendered, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    Ok(rendered)
+}
+
+fn evidence_path_matches_kind(kind: &str, path: &str) -> bool {
+    let under = |prefix: &str| path.starts_with(prefix) && path.len() > prefix.len();
+    match kind {
+        "binding" => under("test/bindings/") || path == "metadata/artifact-receipt.json",
+        "conformance" => under("test/conformance/"),
+        "corpus" | "header" => under("test/corpus/") && path.ends_with(".txt"),
+        "fuzz" => under("fuzz/corpus/"),
+        "incremental" => under("test/edits/") && path.ends_with(".json"),
+        "metrics" => under("metadata/metrics/") && path.ends_with(".json"),
+        "node-schema" => {
+            path == "src/node-types.json" || (under("test/schema/") && path.ends_with(".json"))
+        }
+        "query" => under("test/queries/"),
+        "recovery" => {
+            (under("test/corpus/") && path.ends_with(".txt")) || under("test/adversarial/")
+        }
+        _ => false,
+    }
+}
+
+fn validate_evidence(
+    root: &Path,
+    family: &FamilySupport,
+) -> Result<BTreeMap<String, String>, String> {
     let mut ids = BTreeSet::new();
+    let mut kinds = BTreeMap::new();
     for evidence in &family.evidence {
         if evidence.id.trim().is_empty()
             || evidence.kind.trim().is_empty()
@@ -468,19 +615,89 @@ fn validate_evidence(family: &FamilySupport) -> Result<(), String> {
                 family.public_id, evidence.id
             ));
         }
+        if !EVIDENCE_KINDS.contains(&evidence.kind.as_str()) {
+            return Err(format!(
+                "family {} evidence {} has unknown kind {:?}",
+                family.public_id, evidence.id, evidence.kind
+            ));
+        }
+        if !evidence_path_matches_kind(&evidence.kind, &evidence.path) {
+            return Err(format!(
+                "family {} evidence {} kind {:?} must use its runner-owned path",
+                family.public_id, evidence.id, evidence.kind
+            ));
+        }
         if evidence.sha256.len() != 64
-            || !evidence.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !evidence
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {
             return Err(format!(
                 "family {} evidence {} has an invalid SHA-256",
                 family.public_id, evidence.id
             ));
         }
+        let path = package_evidence_path(root, &evidence.path)?;
+        let actual = sha256_file(&path)?;
+        if actual != evidence.sha256 {
+            return Err(format!(
+                "family {} evidence {} digest drifted: expected {}, actual {actual}",
+                family.public_id, evidence.id, evidence.sha256
+            ));
+        }
+        kinds.insert(evidence.id.clone(), evidence.kind.clone());
+    }
+    Ok(kinds)
+}
+
+fn validate_required_evidence(
+    family: &FamilySupport,
+    tier_rank: u8,
+    evidence_kinds: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let required: &[&str] = match tier_rank {
+        0 => &[],
+        1 => &["header"],
+        2 => &["header", "corpus", "recovery", "incremental", "node-schema"],
+        3 => &[
+            "header",
+            "corpus",
+            "recovery",
+            "incremental",
+            "node-schema",
+            "query",
+        ],
+        4 => &[
+            "header",
+            "corpus",
+            "recovery",
+            "incremental",
+            "node-schema",
+            "query",
+            "conformance",
+            "binding",
+            "fuzz",
+            "metrics",
+        ],
+        _ => unreachable!("support tier rank is validated above"),
+    };
+    for kind in required {
+        if !evidence_kinds.values().any(|actual| actual == kind) {
+            return Err(format!(
+                "family {} support tier lacks {kind} evidence",
+                family.public_id
+            ));
+        }
     }
     Ok(())
 }
 
-fn validate_query_applicability(family: &FamilySupport, complete: bool) -> Result<(), String> {
+fn validate_query_applicability(
+    family: &FamilySupport,
+    complete: bool,
+    evidence_kinds: &BTreeMap<String, String>,
+) -> Result<(), String> {
     let known_profiles = QUERY_PROFILES.into_iter().collect::<BTreeSet<_>>();
     let known_surfaces = QUERY_SURFACES.into_iter().collect::<BTreeSet<_>>();
     for (profile, surfaces) in &family.query_applicability {
@@ -510,7 +727,16 @@ fn validate_query_applicability(family: &FamilySupport, complete: bool) -> Resul
                         family.public_id
                     ));
                 }
-                "asserted" => {}
+                "asserted" => {
+                    for evidence_id in &applicability.evidence {
+                        if evidence_kinds.get(evidence_id).map(String::as_str) != Some("query") {
+                            return Err(format!(
+                                "family {} {profile}/{surface} references unverified query evidence {evidence_id}",
+                                family.public_id
+                            ));
+                        }
+                    }
+                }
                 "not_applicable"
                     if applicability
                         .rationale
@@ -594,15 +820,17 @@ fn validate_provenance(provenance: &ProvenanceMetadata) -> Result<(), String> {
         || provenance.package.name != "tree-sitter-mermaid"
         || provenance.package.version != PACKAGE_VERSION
         || provenance.package.release_state != "dry-run-only"
-        || provenance.language.symbol != "mermaid"
+        || provenance.language.symbol != LANGUAGE_SYMBOL
         || provenance.language.abi != LANGUAGE_ABI
+        || provenance.language.cst_schema_version != NODE_SCHEMA_VERSION
+        || provenance.language.query_schema_version != QUERY_SCHEMA_VERSION
     {
         return Err(
             "package or language identity does not match the admitted bootstrap".to_string(),
         );
     }
     if provenance.toolchain.tree_sitter_cli != TREE_SITTER_CLI_VERSION
-        || provenance.toolchain.rust_runtime != TREE_SITTER_RUST_VERSION
+        || provenance.toolchain.rust_runtime != TREE_SITTER_RUST_RUNTIME_VERSION
         || provenance.toolchain.node_runtime != TREE_SITTER_NODE_VERSION
         || provenance.toolchain.web_runtime != TREE_SITTER_WEB_VERSION
     {
@@ -630,7 +858,10 @@ fn validate_provenance(provenance: &ProvenanceMetadata) -> Result<(), String> {
     }
     for source in &provenance.sources {
         if source.commit.len() != 40
-            || !source.commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !source
+                .commit
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
             || !source.repository.starts_with("https://")
             || source.r#ref.trim().is_empty()
             || source.kind.trim().is_empty()
@@ -641,6 +872,142 @@ fn validate_provenance(provenance: &ProvenanceMetadata) -> Result<(), String> {
             return Err(format!("provenance source {} is incomplete", source.id));
         }
     }
+    let merman = provenance
+        .sources
+        .iter()
+        .find(|source| source.id == "merman-oracle")
+        .expect("the exact provenance source set was validated above");
+    if merman.kind != "one-way-conformance-oracle"
+        || merman.version != MERMAN_ORACLE_VERSION
+        || merman.repository != "https://github.com/Latias94/merman.git"
+        || merman.r#ref != MERMAN_ORACLE_COMMIT
+        || merman.commit != MERMAN_ORACLE_COMMIT
+        || merman.license != "MIT OR Apache-2.0"
+        || merman.legal_component_id.is_some()
+    {
+        return Err("Merman oracle provenance identity drifted".to_string());
+    }
+    Ok(())
+}
+
+fn validate_external_sources(
+    provenance: &ProvenanceMetadata,
+    lock: &RepositoryLock,
+    legal: &ThirdPartyContract,
+) -> Result<(), String> {
+    for (source_id, expected_kind, expected_license, revision_may_drift) in [
+        ("mermaid", "syntax-authority", "MIT", true),
+        ("zenuml-core", "companion-syntax-authority", "MIT", true),
+        (
+            "pappasam-tree-sitter-mermaid",
+            "implementation-seed",
+            "MIT",
+            false,
+        ),
+        (
+            "monaqa-tree-sitter-mermaid",
+            "downstream-compatibility-reference",
+            "MIT",
+            false,
+        ),
+        (
+            "singularity-tree-sitter-mermaid",
+            "behavior-reference",
+            "MIT",
+            false,
+        ),
+    ] {
+        let source = provenance
+            .sources
+            .iter()
+            .find(|source| source.id == source_id)
+            .expect("the exact provenance source set was validated above");
+        let locked = lock
+            .repos
+            .get(source_id)
+            .ok_or_else(|| format!("repository lock lacks {source_id}"))?;
+        if source.kind != expected_kind
+            || source.license != expected_license
+            || source.repository != locked.url
+        {
+            return Err(format!(
+                "provenance source {source_id} identity differs from its repository lock"
+            ));
+        }
+        if !revision_may_drift && (source.r#ref != locked.r#ref || source.commit != locked.commit) {
+            return Err(format!(
+                "provenance source {source_id} revision differs from its repository lock"
+            ));
+        }
+
+        let legal_id = source
+            .legal_component_id
+            .as_deref()
+            .ok_or_else(|| format!("provenance source {source_id} lacks a legal component"))?;
+        let component = legal
+            .components
+            .iter()
+            .find(|component| component.id == legal_id)
+            .ok_or_else(|| format!("third-party contract lacks component {legal_id}"))?;
+        if component.version != source.version
+            || component.source.repository != source.repository
+            || component.source.r#ref != source.r#ref
+            || component.source.commit != source.commit
+            || component.license_expression != source.license
+            || !component
+                .local_paths
+                .iter()
+                .any(|path| path == PACKAGE_ROOT)
+        {
+            return Err(format!(
+                "provenance source {source_id} differs from legal component {legal_id}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_package_legal_bundle(
+    root: &Path,
+    provenance: &ProvenanceMetadata,
+) -> Result<(), String> {
+    let notice_path = root.join(PACKAGE_ROOT).join("THIRD_PARTY_NOTICES.md");
+    let notice = fs::read_to_string(&notice_path)
+        .map_err(|error| format!("failed to read {}: {error}", notice_path.display()))?;
+    for (source_id, repository_path, package_path) in PACKAGE_LICENSE_COPIES {
+        let source = provenance
+            .sources
+            .iter()
+            .find(|source| source.id == source_id)
+            .expect("the exact provenance source set was validated above");
+        if !notice.contains(&source.repository)
+            || !notice.contains(&source.commit)
+            || !notice.contains(package_path)
+        {
+            return Err(format!(
+                "package third-party notice lacks exact {source_id} provenance"
+            ));
+        }
+        let repository_license = root.join(repository_path);
+        let package_license = root.join(PACKAGE_ROOT).join(package_path);
+        let repository_bytes = fs::read(&repository_license).map_err(|error| {
+            format!(
+                "failed to read repository license {}: {error}",
+                repository_license.display()
+            )
+        })?;
+        let package_bytes = fs::read(&package_license).map_err(|error| {
+            format!(
+                "failed to read package license {}: {error}",
+                package_license.display()
+            )
+        })?;
+        if repository_bytes != package_bytes {
+            return Err(format!(
+                "package license copy for {source_id} differs from legal authority"
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -649,18 +1016,20 @@ fn validate_baselines(
     provenance: &ProvenanceMetadata,
     lock: &RepositoryLock,
 ) -> Result<(), String> {
-    for (label, selected, lock_id, source_id) in [
+    for (label, selected, lock_id, source_id, alignment) in [
         (
             "Mermaid",
             &support.selected_baselines.mermaid,
             "mermaid",
             "mermaid",
+            support.repository_alignment.mermaid.as_str(),
         ),
         (
             "ZenUML",
             &support.selected_baselines.zenuml,
             "zenuml-core",
             "zenuml-core",
+            support.repository_alignment.zenuml.as_str(),
         ),
     ] {
         let locked = lock
@@ -672,14 +1041,23 @@ fn validate_baselines(
             .iter()
             .find(|source| source.id == source_id)
             .ok_or_else(|| format!("provenance lacks {source_id}"))?;
-        if selected.r#ref != locked.r#ref
-            || selected.commit != locked.commit
-            || selected.r#ref != source.r#ref
+        if selected.r#ref != source.r#ref
             || selected.commit != source.commit
             || selected.version != source.version
         {
             return Err(format!(
-                "{label} identity drifted across support/provenance/lock"
+                "{label} identity drifted across support/provenance"
+            ));
+        }
+        let expected_alignment =
+            if selected.r#ref == locked.r#ref && selected.commit == locked.commit {
+                "aligned"
+            } else {
+                "drifted"
+            };
+        if alignment != expected_alignment {
+            return Err(format!(
+                "{label} repository alignment must be {expected_alignment:?}, got {alignment:?}"
             ));
         }
     }
@@ -692,6 +1070,30 @@ fn toml_string<'a>(value: &'a toml::Value, path: &[&str]) -> Option<&'a str> {
         current = current.get(*component)?;
     }
     current.as_str()
+}
+
+fn toml_integer(value: &toml::Value, path: &[&str]) -> Option<i64> {
+    let mut current = value;
+    for component in path {
+        current = current.get(*component)?;
+    }
+    current.as_integer()
+}
+
+fn toml_bool(value: &toml::Value, path: &[&str]) -> Option<bool> {
+    let mut current = value;
+    for component in path {
+        current = current.get(*component)?;
+    }
+    current.as_bool()
+}
+
+fn json_string_array(value: Option<&serde_json::Value>) -> Option<Vec<&str>> {
+    value?
+        .as_array()?
+        .iter()
+        .map(serde_json::Value::as_str)
+        .collect()
 }
 
 fn validate_package_manifests(root: &Path) -> Result<(), String> {
@@ -711,6 +1113,7 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
         })?;
     if toml_string(&package_manifest, &["package", "name"]) != Some("tree-sitter-mermaid")
         || toml_string(&package_manifest, &["package", "version"]) != Some(PACKAGE_VERSION)
+        || toml_string(&package_manifest, &["package", "license"]) != Some("MIT")
         || package_manifest
             .get("package")
             .and_then(|package| package.get("publish"))
@@ -720,8 +1123,46 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
             &package_manifest,
             &["dependencies", "tree-sitter", "version"],
         ) != Some("=0.26.12")
+        || toml_integer(
+            &package_manifest,
+            &["package", "metadata", "tree-sitter-mermaid", "language-abi"],
+        ) != Some(i64::from(LANGUAGE_ABI))
+        || toml_integer(
+            &package_manifest,
+            &[
+                "package",
+                "metadata",
+                "tree-sitter-mermaid",
+                "node-schema-version",
+            ],
+        ) != Some(i64::from(NODE_SCHEMA_VERSION))
+        || toml_integer(
+            &package_manifest,
+            &[
+                "package",
+                "metadata",
+                "tree-sitter-mermaid",
+                "query-schema-version",
+            ],
+        ) != Some(i64::from(QUERY_SCHEMA_VERSION))
+        || toml_string(
+            &package_manifest,
+            &[
+                "package",
+                "metadata",
+                "tree-sitter-mermaid",
+                "release-state",
+            ],
+        ) != Some("dry-run-only")
+        || toml_bool(
+            &package_manifest,
+            &["package", "metadata", "merman-legal", "third-party-bundle"],
+        ) != Some(true)
     {
-        return Err("Cargo package identity, runtime pin, or dry-run boundary drifted".to_string());
+        return Err(
+            "Cargo package identity, runtime pin, legal bundle, or dry-run boundary drifted"
+                .to_string(),
+        );
     }
 
     let root_manifest_path = root.join("Cargo.toml");
@@ -772,14 +1213,34 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
             return Err(format!("npm package does not pin {name} {version}"));
         }
     }
-    if package_json
-        .get("version")
-        .and_then(serde_json::Value::as_str)
-        != Some(PACKAGE_VERSION)
+    let npm_language = package_json
+        .get("tree-sitter")
+        .and_then(serde_json::Value::as_array)
+        .filter(|languages| languages.len() == 1)
+        .and_then(|languages| languages.first())
+        .ok_or_else(|| "npm package must register exactly one Tree-sitter language".to_string())?;
+    if package_json.get("name").and_then(serde_json::Value::as_str) != Some("tree-sitter-mermaid")
+        || package_json
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            != Some(PACKAGE_VERSION)
+        || package_json
+            .get("license")
+            .and_then(serde_json::Value::as_str)
+            != Some("MIT")
         || package_json
             .get("private")
             .and_then(serde_json::Value::as_bool)
             != Some(true)
+        || npm_language
+            .get("scope")
+            .and_then(serde_json::Value::as_str)
+            != Some("source.mermaid")
+        || json_string_array(npm_language.get("file-types")) != Some(vec!["mmd", "mermaid"])
+        || npm_language
+            .get("injection-regex")
+            .and_then(serde_json::Value::as_str)
+            != Some("^(mermaid|mmd)$")
     {
         return Err("npm package identity or dry-run boundary drifted".to_string());
     }
@@ -787,9 +1248,17 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
     let package_lock: serde_json::Value =
         read_json(root, &format!("{PACKAGE_ROOT}/package-lock.json"))?;
     if package_lock
-        .pointer("/packages//version")
+        .pointer("/packages//name")
         .and_then(serde_json::Value::as_str)
-        != Some(PACKAGE_VERSION)
+        != Some("tree-sitter-mermaid")
+        || package_lock
+            .pointer("/packages//version")
+            .and_then(serde_json::Value::as_str)
+            != Some(PACKAGE_VERSION)
+        || package_lock
+            .pointer("/packages//license")
+            .and_then(serde_json::Value::as_str)
+            != Some("MIT")
     {
         return Err("npm package lock root version drifted".to_string());
     }
@@ -810,12 +1279,31 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
 
     let tree_sitter_json: serde_json::Value =
         read_json(root, &format!("{PACKAGE_ROOT}/tree-sitter.json"))?;
-    if tree_sitter_json
-        .pointer("/metadata/version")
-        .and_then(serde_json::Value::as_str)
-        != Some(PACKAGE_VERSION)
+    let grammar = tree_sitter_json
+        .get("grammars")
+        .and_then(serde_json::Value::as_array)
+        .filter(|grammars| grammars.len() == 1)
+        .and_then(|grammars| grammars.first())
+        .ok_or_else(|| "tree-sitter.json must declare exactly one grammar".to_string())?;
+    if grammar.get("name").and_then(serde_json::Value::as_str) != Some(LANGUAGE_SYMBOL)
+        || grammar.get("camelcase").and_then(serde_json::Value::as_str) != Some("Mermaid")
+        || grammar.get("scope").and_then(serde_json::Value::as_str) != Some("source.mermaid")
+        || grammar.get("path").and_then(serde_json::Value::as_str) != Some(".")
+        || json_string_array(grammar.get("file-types")) != Some(vec!["mmd", "mermaid"])
+        || grammar
+            .get("injection-regex")
+            .and_then(serde_json::Value::as_str)
+            != Some("^(mermaid|mmd)$")
+        || tree_sitter_json
+            .pointer("/metadata/version")
+            .and_then(serde_json::Value::as_str)
+            != Some(PACKAGE_VERSION)
+        || tree_sitter_json
+            .pointer("/metadata/license")
+            .and_then(serde_json::Value::as_str)
+            != Some("MIT")
     {
-        return Err("tree-sitter.json package version drifted".to_string());
+        return Err("tree-sitter.json language or package identity drifted".to_string());
     }
     let license = fs::read_to_string(root.join(PACKAGE_ROOT).join("LICENSE"))
         .map_err(|error| format!("failed to read package LICENSE: {error}"))?;
@@ -833,10 +1321,13 @@ fn build_contract(root: &Path) -> Result<LanguageContract, String> {
     let provenance: ProvenanceMetadata = read_json(root, PROVENANCE_PATH)?;
     let schemas: SchemaMetadata = read_json(root, SCHEMA_PATH)?;
     let upstream_lock: RepositoryLock = read_json(root, UPSTREAM_LOCK_PATH)?;
+    let legal: ThirdPartyContract = read_json(root, THIRD_PARTY_COMPONENTS_PATH)?;
     let core = core_family_projection()?;
-    validate_support(&support, &core)?;
+    validate_support(root, &support, &core)?;
     validate_provenance(&provenance)?;
     validate_schemas(&schemas, &provenance)?;
+    validate_external_sources(&provenance, &upstream_lock, &legal)?;
+    validate_package_legal_bundle(root, &provenance)?;
     validate_baselines(&support, &provenance, &upstream_lock)?;
     validate_package_manifests(root)?;
 
@@ -857,7 +1348,7 @@ fn build_contract(root: &Path) -> Result<LanguageContract, String> {
                 public_id: family.public_id,
                 logical_family_kind: family.logical_family_kind,
                 internal_variants: family.internal_variants,
-                authoring_headers: family.authoring_headers,
+                authoring_header_suggestions: family.authoring_header_suggestions,
                 root_node: support.root_node,
                 lifecycle: support.lifecycle,
                 support_tier: support.support_tier,
@@ -937,11 +1428,18 @@ mod tests {
         )
     }
 
+    fn validate_repository_support(
+        support: &SupportMetadata,
+        core: &[CoreFamilyProjection],
+    ) -> Result<(), String> {
+        validate_support(&crate::cmd::workspace_root(), support, core)
+    }
+
     #[test]
     fn support_metadata_matches_exact_public_catalog_without_claiming_support() {
         let (support, core) = repository_inputs();
 
-        validate_support(&support, &core).expect("valid support metadata");
+        validate_repository_support(&support, &core).expect("valid support metadata");
         assert_eq!(support.families.len(), PUBLIC_FAMILY_COUNT);
         assert!(support.families.iter().all(|family| {
             family.lifecycle == "planned"
@@ -958,7 +1456,7 @@ mod tests {
         let mut duplicate = support.clone();
         duplicate.families[1].public_id = duplicate.families[0].public_id.clone();
         assert!(
-            validate_support(&duplicate, &core)
+            validate_repository_support(&duplicate, &core)
                 .unwrap_err()
                 .contains("duplicate")
         );
@@ -966,27 +1464,27 @@ mod tests {
         let mut missing = support.clone();
         missing.families.pop();
         assert!(
-            validate_support(&missing, &core)
+            validate_repository_support(&missing, &core)
                 .unwrap_err()
                 .contains("missing=")
         );
 
         let mut internal = support;
         internal.families[0].public_id = "flowchart-v2".to_string();
-        let error = validate_support(&internal, &core).unwrap_err();
+        let error = validate_repository_support(&internal, &core).unwrap_err();
         assert!(error.contains("unexpected="));
         assert!(error.contains("flowchart-v2"));
     }
 
     #[test]
-    fn unknown_tier_and_unproved_query_claim_are_rejected() {
+    fn unknown_tier_and_planned_query_claim_are_rejected() {
         let (support, core) = repository_inputs();
 
         let mut tier = support.clone();
         tier.families[0].lifecycle = "active".to_string();
         tier.families[0].support_tier = Some("complete-ish".to_string());
         assert!(
-            validate_support(&tier, &core)
+            validate_repository_support(&tier, &core)
                 .unwrap_err()
                 .contains("unknown support tier")
         );
@@ -1004,9 +1502,9 @@ mod tests {
             )]),
         );
         assert!(
-            validate_support(&query, &core)
+            validate_repository_support(&query, &core)
                 .unwrap_err()
-                .contains("without applicability evidence")
+                .contains("planned family")
         );
     }
 
@@ -1022,6 +1520,208 @@ mod tests {
             validate_baselines(&support, &provenance, &lock)
                 .unwrap_err()
                 .contains("Mermaid identity drifted")
+        );
+    }
+
+    #[test]
+    fn repository_lock_drift_requires_alignment_without_rewriting_support_tiers() {
+        let root = crate::cmd::workspace_root();
+        let (mut support, _core) = repository_inputs();
+        let provenance: ProvenanceMetadata = read_json(&root, PROVENANCE_PATH).expect("provenance");
+        let mut lock: RepositoryLock = read_json(&root, UPSTREAM_LOCK_PATH).expect("upstream lock");
+        let legal: ThirdPartyContract =
+            read_json(&root, THIRD_PARTY_COMPONENTS_PATH).expect("third-party contract");
+        let tiers = support
+            .families
+            .iter()
+            .map(|family| family.support_tier.clone())
+            .collect::<Vec<_>>();
+        lock.repos
+            .get_mut("mermaid")
+            .expect("Mermaid repository lock")
+            .commit = "1".repeat(40);
+
+        validate_external_sources(&provenance, &lock, &legal)
+            .expect("selected baseline may trail the repository lock");
+        assert!(
+            validate_baselines(&support, &provenance, &lock)
+                .unwrap_err()
+                .contains("alignment must be \"drifted\"")
+        );
+        support.repository_alignment.mermaid = "drifted".to_string();
+        validate_baselines(&support, &provenance, &lock).expect("explicit drift alignment");
+        assert_eq!(
+            support
+                .families
+                .iter()
+                .map(|family| family.support_tier.clone())
+                .collect::<Vec<_>>(),
+            tiers
+        );
+    }
+
+    #[test]
+    fn external_source_revisions_and_legal_components_are_verified() {
+        let root = crate::cmd::workspace_root();
+        let provenance: ProvenanceMetadata = read_json(&root, PROVENANCE_PATH).expect("provenance");
+        let lock: RepositoryLock = read_json(&root, UPSTREAM_LOCK_PATH).expect("upstream lock");
+        let legal: ThirdPartyContract =
+            read_json(&root, THIRD_PARTY_COMPONENTS_PATH).expect("third-party contract");
+
+        let mut wrong_revision = provenance.clone();
+        wrong_revision
+            .sources
+            .iter_mut()
+            .find(|source| source.id == "pappasam-tree-sitter-mermaid")
+            .expect("pappasam provenance")
+            .commit = "2".repeat(40);
+        assert!(
+            validate_external_sources(&wrong_revision, &lock, &legal)
+                .unwrap_err()
+                .contains("revision differs")
+        );
+
+        let mut wrong_legal = legal;
+        wrong_legal
+            .components
+            .iter_mut()
+            .find(|component| component.id == "pappasam-tree-sitter-mermaid")
+            .expect("pappasam legal component")
+            .license_expression = "Apache-2.0".to_string();
+        assert!(
+            validate_external_sources(&provenance, &lock, &wrong_legal)
+                .unwrap_err()
+                .contains("differs from legal component")
+        );
+    }
+
+    #[test]
+    fn merman_oracle_identity_is_pinned_to_the_selected_catalog() {
+        let root = crate::cmd::workspace_root();
+        let mut provenance: ProvenanceMetadata =
+            read_json(&root, PROVENANCE_PATH).expect("provenance");
+        let oracle = provenance
+            .sources
+            .iter_mut()
+            .find(|source| source.id == "merman-oracle")
+            .expect("Merman oracle");
+        oracle.r#ref = "3".repeat(40);
+        oracle.commit = oracle.r#ref.clone();
+
+        assert!(
+            validate_provenance(&provenance)
+                .unwrap_err()
+                .contains("Merman oracle provenance identity drifted")
+        );
+    }
+
+    #[test]
+    fn package_legal_bundle_matches_provenance_and_repository_licenses() {
+        let root = crate::cmd::workspace_root();
+        let provenance: ProvenanceMetadata = read_json(&root, PROVENANCE_PATH).expect("provenance");
+        let temporary = tempfile::tempdir().expect("temporary repository");
+        let mut notice = String::new();
+        for (source_id, repository_path, package_path) in PACKAGE_LICENSE_COPIES {
+            let source = provenance
+                .sources
+                .iter()
+                .find(|source| source.id == source_id)
+                .expect("source identity");
+            writeln!(
+                notice,
+                "{} {} {package_path}",
+                source.repository, source.commit
+            )
+            .expect("notice buffer");
+            for path in [
+                temporary.path().join(repository_path),
+                temporary.path().join(PACKAGE_ROOT).join(package_path),
+            ] {
+                fs::create_dir_all(path.parent().expect("license parent"))
+                    .expect("license directory");
+                fs::write(path, format!("{source_id} license\n")).expect("license copy");
+            }
+        }
+        let notice_path = temporary
+            .path()
+            .join(PACKAGE_ROOT)
+            .join("THIRD_PARTY_NOTICES.md");
+        fs::write(&notice_path, notice).expect("package notice");
+
+        validate_package_legal_bundle(temporary.path(), &provenance).expect("valid legal bundle");
+        let (_, _, package_path) = PACKAGE_LICENSE_COPIES[0];
+        fs::write(
+            temporary.path().join(PACKAGE_ROOT).join(package_path),
+            "drifted license\n",
+        )
+        .expect("drifted package license");
+        assert!(
+            validate_package_legal_bundle(temporary.path(), &provenance)
+                .unwrap_err()
+                .contains("differs from legal authority")
+        );
+    }
+
+    #[test]
+    fn support_evidence_must_resolve_match_bytes_and_back_query_claims() {
+        let temporary = tempfile::tempdir().expect("temporary repository");
+        let evidence_dir = temporary.path().join(PACKAGE_ROOT).join("test/corpus");
+        fs::create_dir_all(&evidence_dir).expect("evidence directory");
+        let evidence_path = evidence_dir.join("header.txt");
+        fs::write(&evidence_path, "flowchart TD\n").expect("evidence fixture");
+
+        let (mut support, core) = repository_inputs();
+        support.families[0].evidence.push(FamilyEvidence {
+            id: "header-proof".to_string(),
+            kind: "header".to_string(),
+            path: "test/corpus/header.txt".to_string(),
+            sha256: sha256_file(&evidence_path).expect("fixture digest"),
+        });
+        let error = validate_support(temporary.path(), &support, &core).unwrap_err();
+        assert!(error.contains("planned family"));
+
+        support.families[0].lifecycle = "active".to_string();
+        support.families[0].support_tier = Some("recognized".to_string());
+        let error = validate_support(temporary.path(), &support, &core).unwrap_err();
+        assert!(error.contains("before typed gate receipts are admitted"));
+
+        validate_evidence(temporary.path(), &support.families[0])
+            .expect("well-formed inactive evidence");
+
+        support.families[0].evidence[0].sha256 = "0".repeat(64);
+        assert!(
+            validate_evidence(temporary.path(), &support.families[0])
+                .unwrap_err()
+                .contains("digest drifted")
+        );
+        support.families[0].evidence[0].sha256 =
+            sha256_file(&evidence_path).expect("fixture digest");
+        support.families[0].evidence[0].kind = "query".to_string();
+        assert!(
+            validate_evidence(temporary.path(), &support.families[0])
+                .unwrap_err()
+                .contains("runner-owned path")
+        );
+        support.families[0].evidence[0].kind = "header".to_string();
+        support.families[0].query_applicability.insert(
+            "portable".to_string(),
+            BTreeMap::from([(
+                "highlights".to_string(),
+                QueryApplicability {
+                    status: "asserted".to_string(),
+                    evidence: vec!["header-proof".to_string()],
+                    rationale: None,
+                },
+            )]),
+        );
+        assert!(
+            validate_query_applicability(
+                &support.families[0],
+                false,
+                &BTreeMap::from([("header-proof".to_string(), "header".to_string())]),
+            )
+            .unwrap_err()
+            .contains("unverified query evidence")
         );
     }
 

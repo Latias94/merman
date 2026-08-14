@@ -298,9 +298,15 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
 
     if path.startswith("distribution/tree-sitter-mermaid/"):
-        owners = {"grammar"}
-        if path.endswith(("Cargo.toml", "package.json", "package-lock.json")) or path.startswith(
-            "distribution/tree-sitter-mermaid/metadata/provenance"
+        owners = {"grammar", "hygiene"}
+        if path.endswith(("package.json", "package-lock.json")):
+            owners.update({"npm", "security"})
+        elif (
+            path.endswith("Cargo.toml")
+            or path.endswith("/LICENSE")
+            or "/THIRD_PARTY_LICENSES/" in path
+            or path.endswith("/THIRD_PARTY_NOTICES.md")
+            or path.startswith("distribution/tree-sitter-mermaid/metadata/provenance")
         ):
             owners.add("security")
         return frozenset(owners), f"Tree-sitter Mermaid owner changed: {path}", False
@@ -314,6 +320,13 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         return (
             frozenset({"grammar", "hygiene"}),
             f"Tree-sitter Mermaid contract changed: {path}",
+            False,
+        )
+
+    if path == "docs/release/THIRD_PARTY_COMPONENTS.json":
+        return (
+            frozenset({"grammar", "hygiene", "security"}),
+            f"Tree-sitter Mermaid legal authority changed: {path}",
             False,
         )
 

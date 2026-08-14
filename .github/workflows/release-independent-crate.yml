@@ -127,9 +127,40 @@ jobs:
           if [[ "$PUBLISH_ADMITTED" == "true" ]]; then
             env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE" --locked --dry-run --registry crates-io
           else
+            cargo run --locked -p xtask -- verify-tree-sitter-mermaid
             cargo package --locked -p "$PACKAGE"
             npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
-            npm pack ./distribution/tree-sitter-mermaid --dry-run --json
+            npm_pack_json="$(npm pack ./distribution/tree-sitter-mermaid --dry-run --json)"
+            NPM_PACK_JSON="$npm_pack_json" EXPECTED_VERSION="$VERSION" python3 - <<'PY'
+          import json
+          import os
+
+          records = json.loads(os.environ["NPM_PACK_JSON"])
+          expected_version = os.environ["EXPECTED_VERSION"]
+          if len(records) != 1:
+              raise SystemExit("npm pack must report exactly one package")
+          record = records[0]
+          if record.get("name") != "tree-sitter-mermaid":
+              raise SystemExit(f"unexpected npm package name: {record.get('name')!r}")
+          if record.get("version") != expected_version:
+              raise SystemExit(
+                  f"npm package version {record.get('version')!r} does not match {expected_version!r}"
+              )
+          packaged_paths = {item.get("path") for item in record.get("files", [])}
+          required_legal_paths = {
+              "LICENSE",
+              "THIRD_PARTY_NOTICES.md",
+              "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+              "THIRD_PARTY_LICENSES/zenuml-core/LICENSE",
+              "THIRD_PARTY_LICENSES/pappasam-tree-sitter-mermaid/LICENSE",
+              "THIRD_PARTY_LICENSES/monaqa-tree-sitter-mermaid/LICENSE",
+              "THIRD_PARTY_LICENSES/singularity-tree-sitter-mermaid/LICENSE",
+          }
+          missing = sorted(required_legal_paths - packaged_paths)
+          if missing:
+              raise SystemExit(f"npm package omits legal files: {', '.join(missing)}")
+          PY
+            printf '%s\n' "$npm_pack_json"
           fi
 
   publish:

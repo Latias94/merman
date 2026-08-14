@@ -162,11 +162,11 @@
       "description": "The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.",
       "extends": [],
       "components": [
-        "mermaid",
         "monaqa-tree-sitter-mermaid",
         "pappasam-tree-sitter-mermaid",
         "singularity-tree-sitter-mermaid",
-        "zenuml-core"
+        "tree-sitter-mermaid-mermaid-baseline",
+        "tree-sitter-mermaid-zenuml-baseline"
       ]
     },
     {
@@ -629,7 +629,6 @@
         "crates/merman-core/src",
         "crates/merman-render/src",
         "crates/merman-render/src/svg/parity/architecture/icons.rs",
-        "distribution/tree-sitter-mermaid",
         "fixtures"
       ],
       "license_expression": "MIT",
@@ -887,6 +886,68 @@
       "notice": "The Typst WASM transport links wasm-minimal-protocol; its upstream license file is the Unlicense text."
     },
     {
+      "id": "tree-sitter-mermaid-mermaid-baseline",
+      "name": "Mermaid (tree-sitter-mermaid baseline)",
+      "version": "11.16.1",
+      "source": {
+        "repository": "https://github.com/mermaid-js/mermaid.git",
+        "ref": "mermaid@11.16.1",
+        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+        "path": "packages/mermaid"
+      },
+      "relationships": ["behavior-reference", "translated"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
+          "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/7ecca0cd7f1658ef74f4e7e91f925724ef403bbf/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
+          "sha256": "72104210a9fcb10e6a6fb07aad509ca64cf1ce4dd8c872d7b664c220d1944cee"
+        }
+      ],
+      "notice": "The language package translates the exact Mermaid 11.16.1 syntax baseline recorded in its immutable package provenance; this component intentionally does not move with the repository baseline."
+    },
+    {
+      "id": "tree-sitter-mermaid-zenuml-baseline",
+      "name": "ZenUML Core (tree-sitter-mermaid baseline)",
+      "version": "3.50.1",
+      "source": {
+        "repository": "https://github.com/mermaid-js/zenuml-core.git",
+        "ref": "v3.50.1",
+        "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+        "path": "."
+      },
+      "relationships": ["behavior-reference", "translated"],
+      "local_paths": ["distribution/tree-sitter-mermaid"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/zenuml-core/LICENSE",
+          "sha256": "d4a77cbf1dc0975cd4be7266972dc6d3a6c6d68d43235384d6e4b6f12934e978",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/zenuml-core/38404ccc14243ed54ab45b804b2eb6f2ca73af36/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
+          "sha256": "72104210a9fcb10e6a6fb07aad509ca64cf1ce4dd8c872d7b664c220d1944cee"
+        }
+      ],
+      "notice": "The language package follows the exact ZenUML Core 3.50.1 companion baseline recorded in its immutable package provenance; this component intentionally does not move with the repository baseline."
+    },
+    {
       "id": "monaqa-tree-sitter-mermaid",
       "name": "monaqa/tree-sitter-mermaid",
       "version": "0.0.2",
@@ -981,8 +1042,7 @@
       "local_paths": [
         "crates/merman-core/src/diagrams/zenuml",
         "crates/merman-render/assets/zenuml",
-        "crates/merman-render/src/zenuml.rs",
-        "distribution/tree-sitter-mermaid"
+        "crates/merman-render/src/zenuml.rs"
       ],
       "license_expression": "MIT",
       "license_files": [
