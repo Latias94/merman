@@ -158,6 +158,7 @@ export const packageStableValueExportNames = [
   "isBindingStatusCodeName",
   "isBindingErrorPayload",
   "normalizeThemeName",
+  "tryAsKnownDiagramType",
   "encodeOptions",
   ...resourceContractValueExportNames,
 ];

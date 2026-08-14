@@ -29,8 +29,8 @@ import {
 } from "./generated/resource-contract.js";
 
 import {
-  isDiagramType,
   isThemeName,
+  tryAsKnownDiagramType,
 } from "./public-catalog.js";
 import type {
   DiagramFamilyCapability,
@@ -179,7 +179,12 @@ export function themeCatalog(): ThemeCatalog {
 
 export function supportedDiagrams(): DiagramType[] {
   const state = currentRuntimeState();
-  state.supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
+  state.supportedDiagramsCache ??= getMerman()
+    .supportedDiagrams()
+    .map((diagram) =>
+      tryAsKnownDiagramType(assertStringField(diagram, "diagram type"))
+    )
+    .filter((diagram): diagram is DiagramType => diagram !== null);
   return [...state.supportedDiagramsCache];
 }
 
@@ -275,13 +280,6 @@ export function withResourceOptions<T extends CommonBindingOptions>(
   return result as T;
 }
 
-function assertDiagramType(diagram: string): DiagramType {
-  if (isDiagramType(diagram)) {
-    return diagram;
-  }
-  throw new Error(`Merman WASM returned unknown diagram type: ${diagram}`);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -300,9 +298,7 @@ function normalizeDiagramFamilyCapability(
     throw new Error("Merman WASM returned an invalid diagram family capability.");
   }
   const metadataId =
-    capability.metadata_id === undefined || capability.metadata_id === null
-      ? null
-      : assertDiagramType(String(capability.metadata_id));
+    assertNullableStringField(capability.metadata_id, "diagram metadata id");
   return {
     diagram_type: capability.diagram_type,
     family_id: assertStringField(capability.family_id, "diagram family id"),

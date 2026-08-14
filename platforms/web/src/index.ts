@@ -15,6 +15,7 @@ export {
   isDiagramType,
   isThemeName,
   normalizeThemeName,
+  tryAsKnownDiagramType,
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
 export type * from "./public-types.js";

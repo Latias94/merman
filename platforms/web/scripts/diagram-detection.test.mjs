@@ -7,6 +7,7 @@ const capabilities = [
   capability("flowchart-v2", "flowchart", "flowchart"),
   capability("gitGraph", "gitGraph", "gitgraph"),
   capability("railroad-abnf", "railroad", "railroadAbnf"),
+  capability("future-syntax", "future-family", "futureDiagram"),
   capability("error", "error", null),
   capability("ambiguous", "flowchart", "flowchart"),
   capability("ambiguous", "gitGraph", "gitgraph"),
@@ -29,6 +30,9 @@ await webApi.initMerman({
     diagramFamilyCapabilities() {
       return capabilities;
     },
+    supportedDiagrams() {
+      return ["flowchart", "futureDiagram"];
+    },
   }),
 });
 
@@ -49,6 +53,26 @@ test("detectDiagramFacts projects raw parser ids through canonical metadata ids"
     diagramType: "railroadAbnf",
     syntaxId: "railroad-abnf",
     effectiveLayoutId: "dagre",
+  });
+});
+
+test("diagram family capabilities preserve unknown additive metadata ids", () => {
+  const futureCapability = webApi
+    .diagramFamilyCapabilities()
+    .find((capability) => capability.family_id === "future-family");
+
+  assert.equal(futureCapability?.metadata_id, "futureDiagram");
+  assert.equal(webApi.tryAsKnownDiagramType(futureCapability?.metadata_id), null);
+  assert.equal(webApi.tryAsKnownDiagramType("flowchart"), "flowchart");
+  assert.deepEqual(webApi.supportedDiagrams(), ["flowchart"]);
+
+  analysisResult = facts("future-syntax", "dagre", "parsed");
+  assert.deepEqual(webApi.detectDiagramFacts("future-syntax\nvalue"), {
+    status: "unavailable",
+    validity: "unknown",
+    diagramType: null,
+    syntaxId: null,
+    effectiveLayoutId: null,
   });
 });
 

@@ -50,6 +50,9 @@ export type ThemeName = (typeof SUPPORTED_THEMES)[number];
 
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
+/** An opaque diagram metadata identifier reported by the loaded artifact. */
+export type DiagramMetadataId = string;
+
 export const SUPPORTED_ASCII_DIAGRAMS = [
   "class",
   "er",
@@ -144,7 +147,8 @@ export interface TextMeasurementCapabilities {
 export interface DiagramFamilyCapability {
   diagram_type: string;
   family_id: string;
-  metadata_id: DiagramType | null;
+  /** Open wire ID; use `tryAsKnownDiagramType()` before current-package execution. */
+  metadata_id: DiagramMetadataId | null;
   has_detector: boolean;
   has_semantic_parser: boolean;
   has_editor_parser: boolean;
@@ -240,6 +244,15 @@ export function isThemeName(theme: string): theme is ThemeName {
 
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
+}
+
+/** Projects an open metadata identifier into the diagram vocabulary known by this package. */
+export function tryAsKnownDiagramType(
+  metadataId: DiagramMetadataId | null | undefined
+): DiagramType | null {
+  return metadataId !== null && metadataId !== undefined && isDiagramType(metadataId)
+    ? metadataId
+    : null;
 }
 
 export function isAsciiDiagramType(
