@@ -2,6 +2,8 @@ use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::input::InputLimit;
 use crate::io::read_named_text_file;
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use crate::io::read_named_text_file_controlled;
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
@@ -147,6 +149,7 @@ pub(crate) fn site_config_for(
         parse.theme.as_deref(),
         parse.config_file.as_deref(),
         resources,
+        |path, limit| read_named_text_file(path, "configuration file", limit),
     )
 }
 
@@ -154,11 +157,13 @@ pub(crate) fn site_config_for(
 pub(crate) fn site_config_for_resolved(
     parse: &ResolvedParseOptions,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<MermaidConfig, CliError> {
     site_config_from_parts(
         parse.theme.as_deref(),
         parse.config_file.as_deref(),
         resources,
+        |path, limit| read_named_text_file_controlled(path, "configuration file", limit, control),
     )
 }
 
@@ -166,6 +171,7 @@ fn site_config_from_parts(
     theme: Option<&str>,
     config_file: Option<&Path>,
     resources: &ResolvedResourcePolicy,
+    mut read_config: impl FnMut(&Path, InputLimit) -> Result<String, CliError>,
 ) -> Result<MermaidConfig, CliError> {
     let mut cfg = MermaidConfig::empty_object();
 
@@ -174,14 +180,11 @@ fn site_config_from_parts(
     }
 
     if let Some(path) = config_file {
-        let text = read_named_text_file(
-            path,
-            "configuration file",
-            InputLimit::new(
-                crate::resources::CliResourceLimitId::MaxConfigBytes.as_str(),
-                resources.files().config_bytes,
-            ),
-        )?;
+        let limit = InputLimit::new(
+            crate::resources::CliResourceLimitId::MaxConfigBytes.as_str(),
+            resources.files().config_bytes,
+        );
+        let text = read_config(path, limit)?;
         let value: Value = serde_json::from_str(&text).map_err(|error| {
             CliError::InvalidInput(format!(
                 "JSON error while parsing configuration file {}: {error}",
@@ -237,9 +240,10 @@ pub(crate) fn renderer_for_resolved(
     render: &ResolvedRenderOptions,
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let site_config = site_config_for_resolved(parse, resources)?;
+    let site_config = site_config_for_resolved(parse, resources, control)?;
     renderer_from_config(
         runtime,
         site_config,
@@ -356,9 +360,10 @@ fn renderer_from_config(
 pub(crate) fn ascii_renderer_for_resolved(
     parse: &ResolvedParseOptions,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
-    let site_config = site_config_for_resolved(parse, resources)?;
+    let site_config = site_config_for_resolved(parse, resources, control)?;
     let renderer = merman::Renderer::new()
         .with_engine(engine_from_config(runtime, site_config))
         .with_parse_options(parse_options_for_resolved(parse))

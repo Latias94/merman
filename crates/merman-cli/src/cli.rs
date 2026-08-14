@@ -101,6 +101,22 @@ impl Default for ResourceCliArgs {
     }
 }
 
+#[cfg(any(feature = "svg", feature = "ascii"))]
+#[derive(Debug, Clone, Copy, ClapArgs, Default)]
+pub(crate) struct OperationCliArgs {
+    /// Cancel the complete render operation after this many milliseconds.
+    ///
+    /// The deadline starts before input acquisition and covers rendering and publication. Zero
+    /// cancels at the first cooperative checkpoint.
+    #[arg(
+        long = "operation-timeout-ms",
+        value_name = "MILLISECONDS",
+        help_heading = "Operation control",
+        hide_short_help = true
+    )]
+    pub(crate) timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct DetectResourceCliArgs {
     /// Resource policy used to bound source acquisition.
@@ -433,6 +449,9 @@ pub(crate) struct RenderArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "markdown")]
@@ -474,6 +493,9 @@ pub(crate) struct BatchArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "shell-completions")]
@@ -988,6 +1010,9 @@ pub(crate) struct MmdcArgs {
 
     #[command(flatten)]
     pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]

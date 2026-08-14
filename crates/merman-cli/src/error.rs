@@ -57,6 +57,32 @@ enum ErrorCategory {
     Operational,
 }
 
+#[cfg(feature = "ascii")]
+#[derive(Debug)]
+pub(crate) struct AsciiResourceError {
+    details: merman::render::ResourceLimitExceeded,
+    profile: merman::resources::ResourceProfile,
+}
+
+#[cfg(feature = "ascii")]
+impl std::fmt::Display for AsciiResourceError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "ASCII resource limit `{}` exceeded during `{}`: actual {}, maximum {} (profile `{}`)",
+            self.details.id,
+            self.details.phase,
+            self.details.actual,
+            self.details.maximum,
+            self.profile.id(),
+        )?;
+        if self.details.cause == merman::render::ResourceLimitCause::ArithmeticOverflow {
+            write!(formatter, " (cause `{}`)", self.details.cause)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CliError {
     #[error("I/O error: {0}")]
@@ -66,6 +92,12 @@ pub(crate) enum CliError {
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     Render(#[from] merman::RenderError),
+    #[cfg(feature = "ascii")]
+    #[error("{0}")]
+    Ascii(merman::ascii::AsciiDiagnostic),
+    #[cfg(feature = "ascii")]
+    #[error("{0}")]
+    AsciiResource(AsciiResourceError),
     #[cfg(feature = "network-icons")]
     #[error("{0}")]
     Network(#[from] crate::network::NetworkError),
@@ -131,6 +163,14 @@ pub(crate) enum CliError {
 }
 
 impl CliError {
+    #[cfg(feature = "ascii")]
+    pub(crate) fn ascii_resource(
+        details: merman::render::ResourceLimitExceeded,
+        profile: merman::resources::ResourceProfile,
+    ) -> Self {
+        Self::AsciiResource(AsciiResourceError { details, profile })
+    }
+
     pub(crate) fn primary_input(error: InputReadError) -> Self {
         Self::Input {
             role: InputRole::Primary,
@@ -229,6 +269,8 @@ impl CliError {
             Self::Network(_) => ErrorCategory::Usage,
             Self::BrokenStdoutPipe => ErrorCategory::Success,
             Self::Mermaid(_) | Self::NoDiagram => ErrorCategory::Content,
+            #[cfg(feature = "ascii")]
+            Self::Ascii(_) | Self::AsciiResource(_) => ErrorCategory::Content,
             #[cfg(any(test, feature = "svg", feature = "ascii"))]
             Self::Resource(_) => ErrorCategory::Content,
             #[cfg(any(feature = "svg", feature = "ascii"))]

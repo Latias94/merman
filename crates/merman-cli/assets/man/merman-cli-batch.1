@@ -4,7 +4,7 @@
 .SH NAME
 merman\-cli\-batch \- Render every Mermaid diagram in one Markdown document
 .SH SYNOPSIS
-\fBmerman\-cli batch\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-o\fR|\fB\-\-output\-dir\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-presentation\-profile\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli batch\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-o\fR|\fB\-\-output\-dir\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-presentation\-profile\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Render every Mermaid diagram in one Markdown document
 .SH OPTIONS
@@ -263,6 +263,12 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH "OPERATION CONTROL"
+.TP
+\fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
+Cancel the complete render operation after this many milliseconds.
+
+The deadline starts before input acquisition and covers rendering and publication. Zero cancels at the first cooperative checkpoint.
 .SH EXTRA
 Examples:
   merman\-cli batch README.md

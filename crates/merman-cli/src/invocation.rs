@@ -41,6 +41,8 @@ use std::collections::BTreeSet;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub(crate) struct InvocationFacts {
@@ -309,6 +311,7 @@ pub(crate) struct ResolvedEmbeddedImageOptions {
 #[derive(Debug)]
 pub(crate) struct ResolvedRenderCommon {
     pub(crate) cwd: PathBuf,
+    pub(crate) operation_timeout: Option<Duration>,
     pub(crate) parse: ResolvedParseOptions,
     #[cfg(feature = "svg")]
     pub(crate) render: ResolvedRenderOptions,
@@ -695,6 +698,7 @@ fn normalize_render(
     let output = resolved_native_output(format, destination, &args.options, facts)?;
     let common = resolve_native_common(
         args.options.graphical,
+        args.operation,
         runtime_policy,
         resources,
         working_directory(facts)?,
@@ -783,6 +787,7 @@ fn normalize_batch(
     let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
     let common = resolve_native_common(
         args.options.graphical,
+        args.operation,
         runtime_policy,
         resources,
         working_directory(facts)?,
@@ -891,15 +896,35 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     } else {
         1
     };
-    let common = resolve_mmdc_common(
-        parse,
-        runtime_policy,
-        render,
-        &args,
-        output_is_stdout,
+    let common = ResolvedRenderCommon {
+        cwd: working_directory(facts)?.to_path_buf(),
+        operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
+        parse: resolve_parse_options(parse, runtime_policy),
+        render: resolve_render_options(render),
         resources,
-        working_directory(facts)?,
-    );
+        background: Some(
+            args.background_color
+                .clone()
+                .unwrap_or_else(|| "white".to_string()),
+        ),
+        css_file: args.css_file.clone(),
+        #[cfg(any(
+            feature = "markdown",
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf"
+        ))]
+        quiet: args.quiet || output_is_stdout,
+        #[cfg(feature = "icons")]
+        icons: ResolvedIconSources {
+            packages: args.icons.icon_packs.clone(),
+            named_sources: args.icons.icon_packs_names_and_urls.clone(),
+            #[cfg(feature = "network-icons")]
+            allow_network: args.icons.allow_network,
+            #[cfg(feature = "network-icons")]
+            allow_private_network: args.icons.allow_private_network,
+        },
+    };
     let compatibility = MmdcCompatibilityInputs {
         puppeteer_config_file: args.puppeteer_config_file.clone(),
         #[cfg(feature = "markdown")]
@@ -1307,6 +1332,7 @@ fn resolve_mmdc_pdf_fit_width(args: &MmdcArgs) -> Result<Option<f32>, CliError> 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_native_common(
     options: crate::cli::GraphicalRenderCliArgs,
+    operation: crate::cli::OperationCliArgs,
     runtime_policy: RuntimePolicy,
     resources: ResolvedResourcePolicy,
     cwd: &Path,
@@ -1332,6 +1358,7 @@ fn resolve_native_common(
     } = options;
     ResolvedRenderCommon {
         cwd: cwd.to_path_buf(),
+        operation_timeout: operation.timeout_ms.map(Duration::from_millis),
         parse: resolve_parse_options(parse, runtime_policy),
         #[cfg(feature = "svg")]
         render: resolve_render_options(render),
@@ -1355,46 +1382,6 @@ fn resolve_native_common(
             allow_network: icons.allow_network,
             #[cfg(feature = "network-icons")]
             allow_private_network: icons.allow_private_network,
-        },
-    }
-}
-
-#[cfg(feature = "svg")]
-fn resolve_mmdc_common(
-    parse: ParseCliArgs,
-    runtime_policy: RuntimePolicy,
-    render: RenderCliArgs,
-    args: &MmdcArgs,
-    _output_is_stdout: bool,
-    resources: ResolvedResourcePolicy,
-    cwd: &Path,
-) -> ResolvedRenderCommon {
-    ResolvedRenderCommon {
-        cwd: cwd.to_path_buf(),
-        parse: resolve_parse_options(parse, runtime_policy),
-        render: resolve_render_options(render),
-        resources,
-        background: Some(
-            args.background_color
-                .clone()
-                .unwrap_or_else(|| "white".to_string()),
-        ),
-        css_file: args.css_file.clone(),
-        #[cfg(any(
-            feature = "markdown",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
-        quiet: args.quiet || _output_is_stdout,
-        #[cfg(feature = "icons")]
-        icons: ResolvedIconSources {
-            packages: args.icons.icon_packs.clone(),
-            named_sources: args.icons.icon_packs_names_and_urls.clone(),
-            #[cfg(feature = "network-icons")]
-            allow_network: args.icons.allow_network,
-            #[cfg(feature = "network-icons")]
-            allow_private_network: args.icons.allow_private_network,
         },
     }
 }
@@ -2080,6 +2067,76 @@ mod tests {
                 .input_policy()
                 .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
             Some(31)
+        );
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[test]
+    fn render_resolves_the_host_operation_timeout() {
+        let cli =
+            Cli::try_parse_from(["merman-cli", "render", "-", "--operation-timeout-ms", "37"])
+                .expect("parse operation timeout");
+
+        let ResolvedInvocation::Render(resolved) =
+            resolve(cli, &facts(false)).expect("resolve operation timeout")
+        else {
+            panic!("expected render invocation");
+        };
+
+        assert_eq!(
+            resolved.common.operation_timeout,
+            Some(Duration::from_millis(37))
+        );
+    }
+
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn batch_resolves_one_deadline_for_the_complete_generation() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "batch",
+            "input.md",
+            "--operation-timeout-ms",
+            "41",
+        ])
+        .expect("parse batch operation timeout");
+
+        let ResolvedInvocation::Batch(resolved) =
+            resolve(cli, &facts(false)).expect("resolve batch operation timeout")
+        else {
+            panic!("expected batch invocation");
+        };
+
+        assert_eq!(
+            resolved.common.operation_timeout,
+            Some(Duration::from_millis(41))
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn mmdc_resolves_the_same_host_operation_timeout() {
+        let cli = Cli::try_parse_from([
+            "merman-cli",
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--operation-timeout-ms",
+            "43",
+        ])
+        .expect("parse mmdc operation timeout");
+
+        let ResolvedInvocation::Mmdc(resolved) =
+            resolve(cli, &facts(false)).expect("resolve mmdc operation timeout")
+        else {
+            panic!("expected mmdc invocation");
+        };
+
+        assert_eq!(
+            resolved.common.operation_timeout,
+            Some(Duration::from_millis(43))
         );
     }
 

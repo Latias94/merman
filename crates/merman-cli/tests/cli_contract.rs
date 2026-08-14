@@ -168,12 +168,183 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         "--iconPacks",
         "--iconPacksNamesAndUrls",
         "--presentation-profile",
+        "--operation-timeout-ms",
     ] {
         assert!(
             stdout.contains(flag),
             "mmdc help should expose compatibility option {flag}:\n{stdout}"
         );
     }
+}
+
+#[test]
+fn zero_operation_timeout_returns_structured_cancellation_without_output() {
+    for (args, input) in [
+        (
+            vec!["render", "-", "--operation-timeout-ms", "0"],
+            "flowchart LR\nA-->B\n",
+        ),
+        (
+            vec!["mmdc", "-i", "-", "-o", "-", "--operation-timeout-ms", "0"],
+            "flowchart LR\nA-->B\n",
+        ),
+    ] {
+        let output = run_with_stdin(&args, input);
+        assert_eq!(support::exit_code(output.status), 1, "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?} wrote a partial payload");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("operation cancelled during admission: deadline_exceeded"),
+            "unexpected cancellation for {args:?}:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn operation_deadline_interrupts_an_open_stdin_pipe() {
+    let output = support::run_before_stdin_close_in_dir(
+        &["render", "-", "--operation-timeout-ms", "20"],
+        None,
+        Duration::from_secs(2),
+    );
+
+    assert_eq!(support::exit_code(output.status), 1);
+    assert!(
+        output.stdout.is_empty(),
+        "deadline cancellation must not publish a payload"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("operation cancelled during admission: deadline_exceeded"),
+        "unexpected cancellation:\n{stderr}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn sigint_requests_cooperative_cancellation_before_publication() {
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::Stdio;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Instant;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let output_path = tmp.path().join("out.svg");
+    let mut child = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .arg("mmdc")
+        .arg("-o")
+        .arg(&output_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn controlled CLI");
+
+    let stderr = child.stderr.take().expect("stderr pipe");
+    let (ready_sender, ready_receiver) = mpsc::channel();
+    let stderr_reader = thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut text = String::new();
+        let first_line = reader.read_line(&mut text).map(|_| text.clone());
+        let _ = ready_sender.send(first_line);
+        let _ = reader.read_to_string(&mut text);
+        text
+    });
+
+    let first_line = match ready_receiver.recv_timeout(Duration::from_secs(2)) {
+        Ok(first_line) => first_line.expect("read readiness warning"),
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stderr_reader.join();
+            panic!("CLI did not reach controlled input acquisition: {error}");
+        }
+    };
+    assert!(
+        first_line.contains("No input file specified"),
+        "unexpected readiness warning: {first_line:?}"
+    );
+
+    let child_pid = libc::pid_t::try_from(child.id()).expect("child pid should fit pid_t");
+    // SAFETY: `child_pid` names the live child process and SIGINT is a valid signal number.
+    let signal_result = unsafe { libc::kill(child_pid, libc::SIGINT) };
+    assert_eq!(signal_result, 0, "send SIGINT to controlled CLI");
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if child.try_wait().expect("poll controlled CLI").is_some() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill blocked controlled CLI");
+            let _ = child.wait();
+            let stderr = stderr_reader.join().expect("join stderr reader");
+            panic!("SIGINT did not interrupt the open stdin pipe:\n{stderr}");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    let output = child.wait_with_output().expect("wait for controlled CLI");
+    let stderr = stderr_reader.join().expect("join stderr reader");
+    assert_eq!(support::exit_code(output.status), 1, "stderr:\n{stderr}");
+    assert!(output.stdout.is_empty(), "SIGINT must not emit a payload");
+    assert!(
+        !output_path.exists(),
+        "SIGINT must be observed before atomic publication"
+    );
+    assert!(
+        stderr.contains("operation cancelled during") && stderr.contains(": requested"),
+        "SIGINT must retain structured cancellation details:\n{stderr}"
+    );
+}
+
+#[test]
+fn batch_zero_deadline_precedes_numbered_preflight_and_preserves_existing_output() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let generated = tmp.path().join("generated");
+    fs::create_dir(&generated).expect("create existing output directory");
+    fs::write(generated.join("README.md"), "complete previous document")
+        .expect("write previous document");
+    fs::write(
+        generated.join(".merman-manifest.json"),
+        "complete previous manifest",
+    )
+    .expect("write previous manifest");
+    fs::create_dir(generated.join("README-1.svg")).expect("create invalid numbered output entry");
+
+    let output = support::run_with_stdin_in_dir(
+        &[
+            "batch",
+            "-",
+            "--stdin-file-name",
+            "README.md",
+            "--output-dir",
+            "generated",
+            "--operation-timeout-ms",
+            "0",
+        ],
+        "```mermaid\nflowchart LR\nA-->B\n```\n",
+        Some(tmp.path()),
+    );
+
+    assert_eq!(support::exit_code(output.status), 1);
+    assert!(output.stdout.is_empty(), "deadline must not write stdout");
+    assert_eq!(
+        fs::read_to_string(generated.join("README.md")).expect("read previous document"),
+        "complete previous document"
+    );
+    assert_eq!(
+        fs::read_to_string(generated.join(".merman-manifest.json"))
+            .expect("read previous manifest"),
+        "complete previous manifest"
+    );
+    assert!(generated.join("README-1.svg").is_dir());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("operation cancelled during admission: deadline_exceeded"),
+        "unexpected cancellation:\n{stderr}"
+    );
 }
 
 #[test]

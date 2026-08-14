@@ -12,7 +12,7 @@ pub(crate) use execute::execute_render;
 #[cfg(feature = "icons")]
 pub(crate) use icons::{resolve_local_icon_paths, validate_icon_source_count};
 #[cfg(feature = "markdown")]
-pub(crate) use markdown_export::render_charts as render_markdown_charts;
+pub(crate) use markdown_export::{MarkdownRenderContext, render_charts as render_markdown_charts};
 #[cfg(feature = "svg")]
 pub(crate) use prepare::prepare_render_for_mmdc;
 pub(crate) use prepare::prepare_render_for_native;

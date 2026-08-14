@@ -19,23 +19,21 @@ pub(crate) fn execute_render(
         PreparedWorkflow::Single(single) => {
             let artifact = match &single.output {
                 #[cfg(feature = "ascii")]
-                PreparedSingleOutput::Text {
-                    renderer,
-                    options,
-                    resources,
-                    admission,
-                    ..
-                } => {
-                    let permit = admission.acquire_controlled(&single.control)?;
+                PreparedSingleOutput::Text(text) => {
+                    let permit = text.admission.acquire_controlled(&single.control)?;
                     let request = merman::AsciiRequest {
-                        options: *options,
-                        resources: *resources,
+                        options: text.options,
+                        resources: text.resources,
                     };
-                    let output = renderer.renderer.render(renderer.request(
-                        &single.source,
-                        merman::RenderTarget::Ascii(request),
-                        single.control.clone(),
-                    ))?;
+                    let output = text
+                        .renderer
+                        .renderer
+                        .render(text.renderer.request(
+                            &single.source,
+                            merman::RenderTarget::Ascii(request),
+                            single.control.clone(),
+                        ))
+                        .map_err(|error| map_ascii_render_error(error, text.resources))?;
                     let merman::RenderOutput::Ascii(Some(rendered)) = output else {
                         return Err(CliError::NoDiagram);
                     };
@@ -48,13 +46,14 @@ pub(crate) fn execute_render(
             };
             let destination = match &single.output {
                 #[cfg(feature = "ascii")]
-                PreparedSingleOutput::Text { destination, .. } => destination,
+                PreparedSingleOutput::Text(text) => &text.destination,
                 #[cfg(feature = "svg")]
                 PreparedSingleOutput::Graphical { destination, .. } => destination,
             };
             write_output(
                 destination,
                 &artifact.bytes,
+                &single.control,
                 &single.publications,
                 &context.stdout,
                 context.publication.as_mut(),
@@ -62,6 +61,31 @@ pub(crate) fn execute_render(
         }
         #[cfg(feature = "markdown")]
         PreparedWorkflow::Markdown(batch) => crate::batch::execute(*batch, context),
+    }
+}
+
+#[cfg(feature = "ascii")]
+fn map_ascii_render_error(
+    error: merman::RenderError,
+    resources: merman::ascii::AsciiResourcePolicy,
+) -> CliError {
+    match error {
+        merman::RenderError::Parse(error) => {
+            CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
+        }
+        merman::RenderError::Ascii(error) => {
+            CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
+        }
+        merman::RenderError::RuntimePolicy(error) => {
+            CliError::Ascii(merman::ascii::AsciiDiagnostic::from(error))
+        }
+        merman::RenderError::ResourceLimitExceeded(error) => {
+            if merman::ascii::AsciiResourceLimitId::from_stable_id(error.id).is_none() {
+                return CliError::Render(merman::RenderError::ResourceLimitExceeded(error));
+            }
+            CliError::ascii_resource(error, resources.profile())
+        }
+        other => CliError::Render(other),
     }
 }
 
@@ -310,6 +334,7 @@ impl ExecutedArtifact {
         self,
         slot: crate::transaction::StageSlot,
         staged_bytes: &std::sync::Mutex<CheckedBytes>,
+        control: &merman::OperationControl,
     ) -> Result<ExecutedMetadata, CliError> {
         // Until this charge succeeds, the bytes remain backend working memory
         // covered by the live permit rather than staged publication memory.
@@ -319,7 +344,7 @@ impl ExecutedArtifact {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .try_add(bytes)?;
-        slot.write_bytes(&self.bytes)?;
+        slot.write_bytes_controlled(&self.bytes, control)?;
         Ok(ExecutedMetadata {
             title: self.title,
             desc: self.desc,

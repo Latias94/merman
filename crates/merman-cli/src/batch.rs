@@ -4,7 +4,7 @@ use crate::markdown::{
     self, MarkdownChart, MarkdownChartLimitExceeded, MarkdownImage, NumberedOutputNamespace,
 };
 use crate::output::{AcquiredTransaction, PublicationGuards};
-use crate::render::render_markdown_charts;
+use crate::render::{MarkdownRenderContext, render_markdown_charts};
 use crate::resources::{ByteLedgerKind, CheckedBytes, CountLedgerKind, ResolvedResourcePolicy};
 use crate::runtime::{ExecutionContext, SharedWriter};
 use crate::transaction::{
@@ -60,6 +60,7 @@ pub(crate) struct PreparedBatch {
     pub(crate) transaction_root: PathBuf,
     pub(crate) artefacts: Option<PathBuf>,
     pub(crate) publications: PublicationGuards,
+    pub(crate) control: merman::OperationControl,
     #[cfg(feature = "parallel-markdown")]
     pub(crate) jobs: usize,
     pub(crate) quiet: bool,
@@ -98,6 +99,11 @@ struct StageSlots {
     document: Option<StageSlot>,
 }
 
+struct GenerationMetadataSlots {
+    manifest: StageSlot,
+    document: Option<StageSlot>,
+}
+
 enum ValidatedPreviousGeneration {
     Native { stale: Vec<RelativeTarget> },
     Strict,
@@ -125,12 +131,15 @@ pub(crate) fn execute(
         transaction_root,
         artefacts,
         publications,
+        control,
         #[cfg(feature = "parallel-markdown")]
         jobs,
         quiet,
     } = prepared;
+    crate::operation::checkpoint(&control, merman::OperationPhase::Admission)?;
     let resources = common.resources;
     let charts = scan_charts(dialect.scanner(), &source, &resources)?;
+    crate::operation::checkpoint(&control, merman::OperationPhase::Semantic)?;
     let mut requested = RequestedLayout::resolve(
         dialect,
         &common.cwd,
@@ -149,6 +158,7 @@ pub(crate) fn execute(
             common,
             false,
             matches!(dialect, BatchDialect::Mmdc11_16_0),
+            &control,
             #[cfg(feature = "network-icons")]
             context.network.as_mut(),
         )?;
@@ -158,6 +168,7 @@ pub(crate) fn execute(
     // This is the first filesystem mutation in the batch path. Source
     // acquisition, scanning, renderer preparation, target expansion, and
     // strict containment have already completed.
+    crate::operation::checkpoint(&control, merman::OperationPhase::Emit)?;
     let acquired = context.publication.acquire_transaction(&publications)?;
     let approved_root_path = acquired.root().to_path_buf();
 
@@ -218,17 +229,23 @@ pub(crate) fn execute(
     let staged_bytes = Mutex::new(resources.checked_bytes(ByteLedgerKind::StagedOutput));
 
     let urls = std::mem::take(&mut requested.urls);
+    if let Err(error) = crate::operation::checkpoint(&control, merman::OperationPhase::Layout) {
+        drop(manifest_slot);
+        drop(document_slot);
+        return abort_staging(context, staging, error);
+    }
     let images = match renderer.as_ref() {
-        Some(renderer) => render_markdown_charts(
-            renderer,
-            &charts,
-            artifact_slots,
-            urls,
-            &staged_bytes,
-            &context.stderr,
-            #[cfg(feature = "parallel-markdown")]
-            jobs,
-        ),
+        Some(renderer) => {
+            let render_context = MarkdownRenderContext::new(
+                renderer,
+                &control,
+                &staged_bytes,
+                &context.stderr,
+                #[cfg(feature = "parallel-markdown")]
+                jobs,
+            );
+            render_markdown_charts(&render_context, &charts, artifact_slots, urls)
+        }
         None => Ok(Vec::new()),
     };
     let images = match images {
@@ -240,18 +257,31 @@ pub(crate) fn execute(
         }
     };
 
+    if let Err(error) = crate::operation::checkpoint(&control, merman::OperationPhase::Emit) {
+        drop(manifest_slot);
+        drop(document_slot);
+        return abort_staging(context, staging, error);
+    }
     if let Err(error) = stage_generation_metadata(
         &source,
         &charts,
         &images,
-        manifest_slot,
-        document_slot,
+        GenerationMetadataSlots {
+            manifest: manifest_slot,
+            document: document_slot,
+        },
         &manifest_bytes,
         &staged_bytes,
+        &control,
     ) {
         return abort_staging(context, staging, error);
     }
 
+    if let Err(error) = crate::operation::checkpoint(&control, merman::OperationPhase::Emit) {
+        return abort_staging(context, staging, error);
+    }
+    // This is the final recoverable cancellation boundary. Once readiness starts, the durable
+    // commit state machine must finish or use its existing rollback/recovery protocol.
     let ready = context.publication.ready_transaction(staging)?;
     context.publication.commit_transaction(ready)?;
     report_chart_count(quiet, charts.len(), &context.stderr);
@@ -664,18 +694,18 @@ fn stage_generation_metadata(
     source: &str,
     charts: &[MarkdownChart<'_>],
     images: &[MarkdownImage],
-    manifest_slot: StageSlot,
-    document_slot: Option<StageSlot>,
+    slots: GenerationMetadataSlots,
     manifest_bytes: &[u8],
     staged_bytes: &Mutex<CheckedBytes>,
+    control: &merman::OperationControl,
 ) -> Result<(), CliError> {
-    charge_and_stage(manifest_slot, manifest_bytes, staged_bytes)?;
-    if let Some(document_slot) = document_slot {
+    charge_and_stage(slots.manifest, manifest_bytes, staged_bytes, control)?;
+    if let Some(document_slot) = slots.document {
         let rewritten_len = markdown::rewritten_markdown_len(source, charts, images)?;
         charge_staged_bytes(staged_bytes, rewritten_len)?;
         let rewritten =
             markdown::replace_known_charts_with_images(source, charts, images, rewritten_len);
-        document_slot.write_bytes(rewritten.as_bytes())?;
+        document_slot.write_bytes_controlled(rewritten.as_bytes(), control)?;
     }
     Ok(())
 }
@@ -684,9 +714,10 @@ fn charge_and_stage(
     slot: StageSlot,
     bytes: &[u8],
     staged_bytes: &Mutex<CheckedBytes>,
+    control: &merman::OperationControl,
 ) -> Result<(), CliError> {
     charge_staged_bytes(staged_bytes, bytes.len())?;
-    slot.write_bytes(bytes)?;
+    slot.write_bytes_controlled(bytes, control)?;
     Ok(())
 }
 

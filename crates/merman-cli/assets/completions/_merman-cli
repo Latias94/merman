@@ -148,6 +148,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--operation-timeout-ms=[Cancel the complete render operation after this many milliseconds]:MILLISECONDS:_default' \
 '-q[Suppress non-error log output]' \
 '--quiet[Suppress non-error log output]' \
 '(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable raster size limits. Use only for trusted oversized exports]' \
@@ -221,6 +222,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--operation-timeout-ms=[Cancel the complete render operation after this many milliseconds]:MILLISECONDS:_default' \
 '-q[Suppress non-error log output]' \
 '--quiet[Suppress non-error log output]' \
 '(--raster-max-width --raster-max-height --raster-max-pixels)--raster-unbounded[Disable raster size limits. Use only for trusted oversized exports]' \
@@ -410,6 +412,7 @@ constrained\:"Constrained rendering for untrusted or publicly submitted document
 trusted-native\:"Local CLI and controlled native batch rendering"
 unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--operation-timeout-ms=[Cancel the complete render operation after this many milliseconds]:MILLISECONDS:_default' \
 '-f[Scale PDF to fit chart. Accepted for mmdc compatibility]' \
 '--pdfFit[Scale PDF to fit chart. Accepted for mmdc compatibility]' \
 '-q[Suppress non-error log output]' \

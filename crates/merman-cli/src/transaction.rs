@@ -1,5 +1,7 @@
 mod format;
 
+use crate::error::CliError;
+
 pub(crate) use format::{
     ArtifactNamespace, GenerationDialect, GenerationManifest, GenerationOwner, RelativeTarget,
     TransactionOperation, TransactionRole,
@@ -565,26 +567,76 @@ pub(crate) struct StageSlot {
 }
 
 impl StageSlot {
+    #[cfg(test)]
     pub(crate) fn write_bytes(self, bytes: &[u8]) -> Result<(), TransactionError> {
+        match self.write_bytes_inner(bytes, || Ok::<(), std::convert::Infallible>(())) {
+            Ok(()) => Ok(()),
+            Err(StageWriteError::Transaction(error)) => Err(error),
+            Err(StageWriteError::Control(error)) => match error {},
+        }
+    }
+
+    pub(crate) fn write_bytes_controlled(
+        self,
+        bytes: &[u8],
+        control: &merman::OperationControl,
+    ) -> Result<(), CliError> {
+        self.write_bytes_inner(bytes, || {
+            crate::operation::checkpoint(control, merman::OperationPhase::Emit)
+        })
+        .map_err(|error| match error {
+            StageWriteError::Transaction(error) => CliError::Transaction(error),
+            StageWriteError::Control(error) => error,
+        })
+    }
+
+    fn write_bytes_inner<E>(
+        self,
+        bytes: &[u8],
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<(), StageWriteError<E>> {
         verify_private_directory(&self.transaction_dir, &self.transaction_identity)?;
         let mut file = create_private_file(&self.path)?;
-        file.write_all(bytes).map_err(|source| {
-            TransactionError::operational("write transaction stage", &self.path, source)
-        })?;
+        for chunk in bytes.chunks(crate::input::IO_CHUNK_BYTES) {
+            checkpoint().map_err(StageWriteError::Control)?;
+            file.write_all(chunk).map_err(|source| {
+                StageWriteError::Transaction(TransactionError::operational(
+                    "write transaction stage",
+                    &self.path,
+                    source,
+                ))
+            })?;
+        }
+        checkpoint().map_err(StageWriteError::Control)?;
         file.sync_all().map_err(|source| {
-            TransactionError::operational("sync transaction stage", &self.path, source)
+            StageWriteError::Transaction(TransactionError::operational(
+                "sync transaction stage",
+                &self.path,
+                source,
+            ))
         })?;
-        sync_directory(&self.transaction_dir)?;
+        sync_directory(&self.transaction_dir).map_err(StageWriteError::Transaction)?;
         self.checkpoint
             .run(Checkpoint::StageAfter { index: self.index })
             .map_err(|source| {
-                TransactionError::operational(
+                StageWriteError::Transaction(TransactionError::operational(
                     "run transaction checkpoint",
                     &self.transaction_dir,
                     source,
-                )
+                ))
             })?;
         Ok(())
+    }
+}
+
+enum StageWriteError<E> {
+    Transaction(TransactionError),
+    Control(E),
+}
+
+impl<E> From<TransactionError> for StageWriteError<E> {
+    fn from(error: TransactionError) -> Self {
+        Self::Transaction(error)
     }
 }
 

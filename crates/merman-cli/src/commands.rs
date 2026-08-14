@@ -65,6 +65,7 @@ struct ParseOut<'a> {
 
 pub(crate) fn run(
     preflight: LocalPreflight,
+    #[cfg(any(feature = "svg", feature = "ascii"))] operation_control: &merman::OperationControl,
     context: &mut ExecutionContext,
 ) -> Result<i32, CliError> {
     let (invocation, publications) = preflight.into_parts();
@@ -102,6 +103,7 @@ pub(crate) fn run(
             let prepared = prepare_render_for_native(
                 args,
                 publications,
+                operation_control.clone(),
                 context.stdin.as_mut(),
                 &context.stderr,
                 #[cfg(feature = "network-icons")]
@@ -115,6 +117,7 @@ pub(crate) fn run(
             let prepared = prepare_render_for_batch(
                 args,
                 publications,
+                operation_control.clone(),
                 context.stdin.as_mut(),
                 &context.stderr,
             )?;
@@ -126,6 +129,7 @@ pub(crate) fn run(
             let prepared = prepare_render_for_mmdc(
                 args,
                 publications,
+                operation_control.clone(),
                 context.stdin.as_mut(),
                 &context.stderr,
                 #[cfg(feature = "network-icons")]

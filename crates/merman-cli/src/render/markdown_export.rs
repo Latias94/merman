@@ -10,22 +10,47 @@ use merman::OperationControl;
 use rayon::prelude::*;
 use std::sync::Mutex;
 
+pub(crate) struct MarkdownRenderContext<'a> {
+    renderer: &'a PreparedGraphicalRender,
+    control: &'a OperationControl,
+    staged_bytes: &'a Mutex<CheckedBytes>,
+    stderr: &'a SharedWriter,
+    #[cfg(feature = "parallel-markdown")]
+    jobs: usize,
+}
+
+impl<'a> MarkdownRenderContext<'a> {
+    pub(crate) fn new(
+        renderer: &'a PreparedGraphicalRender,
+        control: &'a OperationControl,
+        staged_bytes: &'a Mutex<CheckedBytes>,
+        stderr: &'a SharedWriter,
+        #[cfg(feature = "parallel-markdown")] jobs: usize,
+    ) -> Self {
+        Self {
+            renderer,
+            control,
+            staged_bytes,
+            stderr,
+            #[cfg(feature = "parallel-markdown")]
+            jobs,
+        }
+    }
+}
+
 pub(crate) fn render_charts(
-    renderer: &PreparedGraphicalRender,
+    context: &MarkdownRenderContext<'_>,
     charts: &[MarkdownChart<'_>],
     slots: Vec<StageSlot>,
     urls: Vec<String>,
-    staged_bytes: &Mutex<CheckedBytes>,
-    stderr: &SharedWriter,
-    #[cfg(feature = "parallel-markdown")] jobs: usize,
 ) -> Result<Vec<MarkdownImage>, CliError> {
     debug_assert_eq!(charts.len(), slots.len());
     debug_assert_eq!(charts.len(), urls.len());
 
     #[cfg(feature = "parallel-markdown")]
-    if charts.len() > 1 && jobs > 1 {
+    if charts.len() > 1 && context.jobs > 1 {
         let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(jobs)
+            .num_threads(context.jobs)
             .build()
             .map_err(|error| {
                 CliError::InvalidInput(format!("failed to configure Markdown render jobs: {error}"))
@@ -37,15 +62,7 @@ pub(crate) fn render_charts(
                 .zip(urls.into_par_iter())
                 .enumerate()
                 .map(|(index, ((chart, slot), url))| {
-                    render_chart(
-                        renderer,
-                        chart,
-                        slot,
-                        url,
-                        staged_bytes,
-                        stderr,
-                        chart_number(index),
-                    )
+                    render_chart(context, chart, slot, url, chart_number(index))
                 })
                 .collect::<Vec<_>>()
         });
@@ -58,32 +75,29 @@ pub(crate) fn render_charts(
         .zip(urls)
         .enumerate()
         .map(|(index, ((chart, slot), url))| {
-            render_chart(
-                renderer,
-                chart,
-                slot,
-                url,
-                staged_bytes,
-                stderr,
-                chart_number(index),
-            )
+            render_chart(context, chart, slot, url, chart_number(index))
         })
         .collect()
 }
 
 fn render_chart(
-    renderer: &PreparedGraphicalRender,
+    context: &MarkdownRenderContext<'_>,
     chart: &MarkdownChart<'_>,
     slot: StageSlot,
     url: String,
-    staged_bytes: &Mutex<CheckedBytes>,
-    stderr: &SharedWriter,
     chart_index: u64,
 ) -> Result<MarkdownImage, CliError> {
     let rendered = (|| {
-        let control = OperationControl::new();
-        let artifact = execute_graphical(renderer, chart.definition(), &control, stderr)?;
-        let ExecutedMetadata { title, desc } = artifact.stage_into(slot, staged_bytes)?;
+        crate::operation::checkpoint(context.control, merman::OperationPhase::Layout)?;
+        let artifact = execute_graphical(
+            context.renderer,
+            chart.definition(),
+            context.control,
+            context.stderr,
+        )?;
+        crate::operation::checkpoint(context.control, merman::OperationPhase::Emit)?;
+        let ExecutedMetadata { title, desc } =
+            artifact.stage_into(slot, context.staged_bytes, context.control)?;
         Ok(MarkdownImage {
             url,
             title,
