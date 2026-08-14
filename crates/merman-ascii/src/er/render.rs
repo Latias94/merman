@@ -162,7 +162,7 @@ pub(crate) fn render_er_diagram_with_execution(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    execution.checkpoint(merman_core::OperationPhase::Layout)?;
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     render_er_diagram_impl(model, options, execution)
 }
 
@@ -174,8 +174,6 @@ fn render_er_diagram_impl(
     let base_resources = ResourceContext::new(*execution.resources());
     let mut resources =
         execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
-    let execution_context = execution;
-    let execution = Some(execution);
     if model.entities.is_empty() {
         if !model.relationships.is_empty() {
             return Err(AsciiError::UnsupportedFeature {
@@ -186,20 +184,20 @@ fn render_er_diagram_impl(
         return Ok(String::new());
     }
 
-    checkpoint(execution, merman_core::OperationPhase::Semantic)?;
+    execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
     validate_unique_er_entity_ids(model, &mut resources)?;
     let charset = ErCharset::for_options(options);
     let direction = ErDirection::try_from_model(&model.direction)?;
-    resources = execution_context.resource_context(&resources, merman_core::OperationPhase::Layout);
+    resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
     let mut deferred_text = DeferredTextRegistry::new();
     let mut boxes = Vec::new();
     boxes
         .try_reserve_exact(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
     for entity in model.entities.values() {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_entity_box(
             entity,
             options,
@@ -217,7 +215,7 @@ fn render_er_diagram_impl(
                 options.terminal_width_profile,
                 &resources,
             )?;
-            return render_er_document_lines_with_execution(
+            return render_er_document_lines(
                 lines,
                 options,
                 &mut resources,
@@ -232,7 +230,7 @@ fn render_er_diagram_impl(
                 true,
                 &mut resources,
             )?;
-            return render_er_document_lines_with_execution(
+            return render_er_document_lines(
                 lines,
                 options,
                 &mut resources,
@@ -240,23 +238,13 @@ fn render_er_diagram_impl(
                 execution,
             );
         }
-        return match execution {
-            Some(execution) => {
-                relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
-                    &boxes,
-                    options,
-                    &mut resources,
-                    &deferred_text,
-                    execution,
-                )
-            }
-            None => relation_graph::render_stacked_boxes_with_deferred_options(
-                &boxes,
-                options,
-                &mut resources,
-                &deferred_text,
-            ),
-        };
+        return relation_graph::render_stacked_boxes_with_deferred_options_with_execution(
+            &boxes,
+            options,
+            &mut resources,
+            &deferred_text,
+            execution,
+        );
     }
 
     let entity_identities = er_entity_identities(model, &resources)?;
@@ -274,15 +262,8 @@ fn render_er_diagram_impl(
         &mut deferred_text,
         execution,
     )?;
-    checkpoint(execution, merman_core::OperationPhase::Emit)?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     Ok(rendered)
-}
-
-fn checkpoint(
-    execution: Option<AsciiExecution<'_>>,
-    phase: merman_core::OperationPhase,
-) -> Result<()> {
-    execution.map_or(Ok(()), |execution| execution.checkpoint(phase))
 }
 
 fn validate_unique_er_entity_ids(
@@ -330,14 +311,14 @@ fn render_er_components<'model>(
     context: &ErRenderContext<'_, 'model>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'model>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let mut layouts = Vec::new();
     layouts
         .try_reserve_exact(relationships.len())
         .map_err(|_| layout_allocation_failed())?;
     for relationship in relationships {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         let mut layout = ErRelationLayout {
             relationship,
             top_id: relationship.entity_a.as_str(),
@@ -369,8 +350,9 @@ fn render_er_components<'model>(
             &adapter,
             resources,
             deferred_text,
+            execution,
         )?;
-        return render_er_document_lines_with_execution(
+        return render_er_document_lines(
             lines,
             context.options,
             resources,
@@ -378,25 +360,15 @@ fn render_er_components<'model>(
             execution,
         );
     }
-    match execution {
-        Some(execution) => relation_graph::render_relation_components_with_deferred_with_execution(
-            boxes,
-            &layouts,
-            context.options,
-            resources,
-            &adapter,
-            deferred_text,
-            execution,
-        ),
-        None => relation_graph::render_relation_components_with_deferred(
-            boxes,
-            &layouts,
-            context.options,
-            resources,
-            &adapter,
-            deferred_text,
-        ),
-    }
+    relation_graph::render_relation_components_with_deferred_with_execution(
+        boxes,
+        &layouts,
+        context.options,
+        resources,
+        &adapter,
+        deferred_text,
+        execution,
+    )
 }
 
 fn render_entity_box<'a>(
@@ -567,27 +539,15 @@ fn render_er_document_lines(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     deferred_text: &DeferredTextRegistry<'_>,
+    execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    relation_graph::render_lines_with_deferred_options(&lines, options, resources, deferred_text)
-}
-
-fn render_er_document_lines_with_execution(
-    lines: Vec<RelationGraphLine>,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    deferred_text: &DeferredTextRegistry<'_>,
-    execution: Option<AsciiExecution<'_>>,
-) -> Result<String> {
-    match execution {
-        Some(execution) => relation_graph::render_lines_with_deferred_options_with_execution(
-            &lines,
-            options,
-            resources,
-            deferred_text,
-            execution,
-        ),
-        None => render_er_document_lines(lines, options, resources, deferred_text),
-    }
+    relation_graph::render_lines_with_deferred_options_with_execution(
+        &lines,
+        options,
+        resources,
+        deferred_text,
+        execution,
+    )
 }
 
 fn render_horizontal_er_component_lines<'adapter, 'model>(
@@ -598,8 +558,9 @@ fn render_horizontal_er_component_lines<'adapter, 'model>(
     adapter: &ErRelationComponentAdapter<'adapter, 'model>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'model>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<RelationGraphLine>> {
-    relation_graph::render_horizontal_relation_components(
+    relation_graph::render_horizontal_relation_components_with_execution(
         boxes,
         layouts,
         direction.horizontal_direction(),
@@ -607,6 +568,7 @@ fn render_horizontal_er_component_lines<'adapter, 'model>(
         resources,
         adapter,
         deferred_text,
+        execution,
     )
 }
 
@@ -1465,6 +1427,7 @@ mod tests {
     use crate::color::AsciiColorMode;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
@@ -1485,6 +1448,34 @@ mod tests {
 
     fn unbounded_policy() -> AsciiResourcePolicy {
         AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+    }
+
+    fn horizontal_control_model() -> ErDiagramRenderModel {
+        let mut model = ErDiagramRenderModel {
+            direction: "LR".to_string(),
+            ..ErDiagramRenderModel::default()
+        };
+        for id in ["A", "B"] {
+            model.entities.insert(
+                id.to_string(),
+                ErEntityRenderModel {
+                    id: id.to_string(),
+                    label: id.to_string(),
+                    ..ErEntityRenderModel::default()
+                },
+            );
+        }
+        model.relationships.push(ErRelationshipRenderModel {
+            entity_a: "A".to_string(),
+            role_a: "owns".to_string(),
+            entity_b: "B".to_string(),
+            rel_spec: merman_core::diagrams::er::ErRelSpecRenderModel {
+                card_a: "ONLY_ONE".to_string(),
+                card_b: "ZERO_OR_MORE".to_string(),
+                rel_type: "IDENTIFYING".to_string(),
+            },
+        });
+        model
     }
 
     fn render_er_section_fixture(
@@ -1648,6 +1639,100 @@ mod tests {
             resources.document_cells_used(),
         );
         (result, before, after)
+    }
+
+    #[test]
+    fn horizontal_er_cancellation_wins_before_shared_work_ledger_mutation() {
+        const WORK_LIMIT: usize = 10_000;
+
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, WORK_LIMIT)
+            .expect("horizontal ER work limit should be valid");
+        let model = horizontal_control_model();
+        let options = AsciiRenderOptions::ascii();
+        let charset = ErCharset::for_options(&options);
+        let direction = ErDirection::try_from_model(&model.direction)
+            .expect("horizontal ER direction should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let mut deferred_text = DeferredTextRegistry::new();
+        let mut boxes = Vec::new();
+        for entity in model.entities.values() {
+            boxes.push(
+                render_entity_box(
+                    entity,
+                    &options,
+                    charset,
+                    &mut deferred_text,
+                    &mut resources,
+                )
+                .expect("horizontal ER entity should plan"),
+            );
+        }
+        let mut layouts = Vec::new();
+        for relationship in &model.relationships {
+            layouts.push(ErRelationLayout {
+                relationship,
+                top_id: relationship.entity_a.as_str(),
+                bottom_id: relationship.entity_b.as_str(),
+                top_cardinality: relationship.rel_spec.card_b.as_str(),
+                bottom_cardinality: relationship.rel_spec.card_a.as_str(),
+                label: RelationGraphLabel::try_new(
+                    &relationship.role_a,
+                    options.terminal_width_profile,
+                    &mut deferred_text,
+                    &resources,
+                )
+                .expect("horizontal ER label should plan"),
+            });
+        }
+        let entity_identities =
+            er_entity_identities(&model, &resources).expect("horizontal ER identities should plan");
+        let adapter = ErRelationComponentAdapter {
+            charset,
+            entity_identities: &entity_identities,
+            width_profile: options.terminal_width_profile,
+            direction,
+        };
+
+        let remaining = WORK_LIMIT
+            .checked_sub(resources.layout_work_used())
+            .expect("fixture planning should remain below the work limit");
+        resources
+            .charge_layout_work(remaining)
+            .expect("fixture should fill the work ledger exactly");
+        let before = (
+            resources.layout_work_used(),
+            resources.document_cells_used(),
+        );
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let error = render_horizontal_er_component_lines(
+            &boxes,
+            &layouts,
+            direction,
+            &options,
+            &adapter,
+            &mut resources,
+            &mut deferred_text,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("scheduled cancellation must precede horizontal ER work exhaustion");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(
+            (
+                resources.layout_work_used(),
+                resources.document_cells_used(),
+            ),
+            before,
+            "cancellation before the rejected charge must not mutate the shared ledgers"
+        );
     }
 
     #[test]
