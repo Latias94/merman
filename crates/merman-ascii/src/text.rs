@@ -2,11 +2,9 @@ use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 #[cfg(test)]
-use crate::resource::CheckedOutput;
-use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
-};
+use crate::resource::{AsciiResourcePolicy, CheckedOutput};
 use crate::safe_text::{
     DeferredTextLine, SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
     visit_quoted_terminal_text, visit_safe_line_graphemes,
@@ -21,6 +19,8 @@ use crate::terminal::{
 };
 
 pub(crate) type StyledCell = TerminalCell;
+
+const STYLED_LINE_PAINT_CHUNK: usize = 64;
 
 #[derive(Debug, Clone)]
 pub(crate) struct StyledLine {
@@ -94,6 +94,7 @@ impl StyledLine {
             .expect("test terminal line should fit the unbounded resource policy")
     }
 
+    #[cfg(test)]
     pub(crate) fn try_blank_with_policy(
         width: usize,
         width_profile: TerminalWidthProfile,
@@ -108,19 +109,36 @@ impl StyledLine {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> Result<Self> {
-        let line_resources = resources.clone();
-        line_resources.charge_document_cells(width)?;
-        resources.check(AsciiResourceLimitId::MaxGridCells, width)?;
-        let mut cells = Vec::new();
-        cells
-            .try_reserve_exact(width)
-            .map_err(|_| document_allocation_failed())?;
-        cells.resize(width, StyledCell::blank());
-        Ok(Self {
-            cells,
-            arena: GlyphArena::default(),
-            width_profile,
-            resources: line_resources,
+        Self::try_blank_with_resources_and_checkpoint(width, width_profile, resources, || Ok(()))
+    }
+
+    pub(crate) fn try_blank_with_resources_and_checkpoint(
+        width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
+        resources.transaction(|resources| {
+            resources.check_usage(0, width)?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, width)?;
+            let mut cells = Vec::new();
+            cells
+                .try_reserve_exact(width)
+                .map_err(|_| document_allocation_failed())?;
+            let mut remaining = width;
+            while remaining > 0 {
+                checkpoint()?;
+                let chunk = remaining.min(STYLED_LINE_PAINT_CHUNK);
+                cells.extend(std::iter::repeat_n(StyledCell::blank(), chunk));
+                remaining -= chunk;
+            }
+            resources.charge_usage(0, width)?;
+            Ok(Self {
+                cells,
+                arena: GlyphArena::default(),
+                width_profile,
+                resources: resources.clone(),
+            })
         })
     }
 
@@ -241,22 +259,18 @@ impl StyledLine {
             .expect("test terminal padding should fit the unbounded resource policy");
     }
 
+    #[cfg(test)]
     pub(crate) fn try_pad_to(&mut self, width: usize) -> Result<()> {
+        self.try_pad_to_with_checkpoint(width, || Ok(()))
+    }
+
+    pub(crate) fn try_pad_to_with_checkpoint(
+        &mut self,
+        width: usize,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
         if self.cells.len() < width {
-            let delta = width - self.cells.len();
-            if let Err(error) = self.resources.charge_document_cells(delta) {
-                return self.record_error(error);
-            }
-            if let Err(error) = self
-                .resources
-                .check(AsciiResourceLimitId::MaxGridCells, width)
-            {
-                return self.record_error(error);
-            }
-            if self.cells.try_reserve(width - self.cells.len()).is_err() {
-                return self.record_error(document_allocation_failed());
-            }
-            self.cells.resize(width, StyledCell::blank());
+            return self.try_push_spaces_with_checkpoint(width - self.cells.len(), checkpoint);
         }
         Ok(())
     }
@@ -289,24 +303,42 @@ impl StyledLine {
     }
 
     pub(crate) fn try_push_spaces(&mut self, count: usize) -> Result<()> {
+        self.try_push_spaces_with_checkpoint(count, || Ok(()))
+    }
+
+    pub(crate) fn try_push_spaces_with_checkpoint(
+        &mut self,
+        count: usize,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
         let Some(final_len) = self.cells.len().checked_add(count) else {
             return self.record_error(document_allocation_failed());
         };
-        if let Err(error) = self.resources.charge_document_cells(count) {
-            return self.record_error(error);
+        let initial_len = self.cells.len();
+        let resources = self.resources.clone();
+        let result = resources.transaction(|resources| {
+            resources.check_usage(0, count)?;
+            resources.check(AsciiResourceLimitId::MaxGridCells, final_len)?;
+            self.cells
+                .try_reserve(count)
+                .map_err(|_| document_allocation_failed())?;
+            let mut remaining = count;
+            while remaining > 0 {
+                checkpoint()?;
+                let chunk = remaining.min(STYLED_LINE_PAINT_CHUNK);
+                self.cells
+                    .extend(std::iter::repeat_n(StyledCell::blank(), chunk));
+                remaining -= chunk;
+            }
+            resources.charge_usage(0, count)
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.cells.truncate(initial_len);
+                self.record_error(error)
+            }
         }
-        if let Err(error) = self
-            .resources
-            .check(AsciiResourceLimitId::MaxGridCells, final_len)
-        {
-            return self.record_error(error);
-        }
-        if self.cells.try_reserve(count).is_err() {
-            return self.record_error(document_allocation_failed());
-        }
-        self.cells
-            .extend(std::iter::repeat_n(StyledCell::blank(), count));
-        Ok(())
     }
 
     pub(crate) fn try_push_line(&mut self, line: &StyledLine) -> Result<()> {
@@ -352,6 +384,15 @@ impl StyledLine {
     }
 
     pub(crate) fn try_push_role_text(&mut self, text: &str, role: AsciiColorRole) -> Result<()> {
+        self.try_push_role_text_with_checkpoint(text, role, || Ok(()))
+    }
+
+    pub(crate) fn try_push_role_text_with_checkpoint(
+        &mut self,
+        text: &str,
+        role: AsciiColorRole,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
         let style = CanvasStyle::foreground(CanvasColor::Role(role));
         let mut resources = self.resources.scoped();
         let result = visit_safe_line_graphemes(
@@ -359,6 +400,7 @@ impl StyledLine {
             text,
             self.width_profile,
             |grapheme, width| {
+                checkpoint()?;
                 self.try_push_measured_grapheme(grapheme, width, style)?;
                 Ok(true)
             },
@@ -498,10 +540,21 @@ impl StyledLine {
         text: &str,
         role: AsciiColorRole,
     ) -> Result<()> {
+        self.try_write_text_role_with_checkpoint(start, text, role, || Ok(()))
+    }
+
+    pub(crate) fn try_write_text_role_with_checkpoint(
+        &mut self,
+        start: usize,
+        text: &str,
+        role: AsciiColorRole,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
         let mut resources = self.resources.scoped();
         let mut write_width = 0usize;
         let measured =
             visit_safe_line_graphemes(&mut resources, text, self.width_profile, |_, width| {
+                checkpoint()?;
                 write_width = write_width
                     .checked_add(width)
                     .ok_or_else(document_allocation_failed)?;
@@ -520,6 +573,7 @@ impl StyledLine {
             text,
             self.width_profile,
             |grapheme, width| {
+                checkpoint()?;
                 if width == 0 {
                     return Ok(true);
                 }

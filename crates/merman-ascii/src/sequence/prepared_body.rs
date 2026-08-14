@@ -10,8 +10,9 @@ use super::model::{
 use super::notes::{PreparedNoteRows, ensure_note_actors_known, prepare_note_rows, render_note};
 use super::render::{SequenceChars, build_lifeline_line, retained_lifeline_width};
 use super::text::{
-    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, SequenceRowFootprint, blank_line,
-    padded_line, trim_right, validate_batch_lines,
+    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, SequenceRowFootprint,
+    blank_line_with_checkpoints, padded_line_with_checkpoints, trim_right,
+    validate_batch_lines_with_checkpoints,
 };
 use super::{SequenceActorRenderState, SequenceCheckpointCursor};
 use crate::color::AsciiColorRole;
@@ -99,6 +100,19 @@ enum SequencePreparedBatchKind<'diagram> {
 
 impl<'diagram> SequencePreparedBody<'diagram> {
     pub(super) fn new(
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        visible_actors: &[bool],
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        let transaction = resources.clone();
+        transaction.transaction(|_| {
+            Self::new_transactional(diagram, layout, visible_actors, resources, checkpoints)
+        })
+    }
+
+    fn new_transactional(
         diagram: &'diagram AsciiSequenceDiagram,
         layout: &SequenceLayout,
         visible_actors: &[bool],
@@ -349,7 +363,12 @@ impl<'diagram> SequencePreparedBody<'diagram> {
         self.footprints
             .try_reserve(footprints.len())
             .map_err(|_| allocation_failed())?;
-        reservation.commit_footprints(&mut self.extent, footprints, resources)?;
+        reservation.commit_footprints_with_checkpoints(
+            &mut self.extent,
+            footprints,
+            resources,
+            checkpoints,
+        )?;
         self.footprints.extend_from_slice(footprints);
         self.batches.push(SequencePreparedBatch { extent, kind });
         Ok(())
@@ -530,7 +549,7 @@ impl SequencePreparedBatch<'_> {
                 checkpoints,
             )?,
         };
-        validate_batch_lines(self.extent, &lines, resources)?;
+        validate_batch_lines_with_checkpoints(self.extent, &lines, resources, checkpoints)?;
         Ok(lines)
     }
 }
@@ -683,7 +702,8 @@ fn render_participant_box_rows(
     let resource_view: &ResourceContext = resources;
     for row in rows {
         checkpoints.tick()?;
-        let mut line = blank_line(0, layout.width_profile, resource_view)?;
+        let mut line =
+            blank_line_with_checkpoints(0, layout.width_profile, resource_view, checkpoints)?;
         for index in 0..participants.diagram.participants.len() {
             checkpoints.tick()?;
             if !visible_actors.get(index).copied().unwrap_or(true) {
@@ -691,7 +711,7 @@ fn render_participant_box_rows(
             }
             let left = participant_left(layout, index, resource_view)?;
             let needed = left.saturating_sub(line.len());
-            line.try_push_spaces(needed)?;
+            line.try_push_spaces_with_checkpoint(needed, || checkpoints.checkpoint())?;
             let segment = build_participant_box_row(
                 participants,
                 layout,
@@ -786,7 +806,8 @@ fn build_participant_box_row(
         .copied()
         .ok_or_else(|| unsupported("participant layout"))?;
     let total_width = resources.checked_grid_add(width, super::BOX_BORDER_WIDTH)?;
-    let mut line = blank_line(total_width, layout.width_profile, resources)?;
+    let mut line =
+        blank_line_with_checkpoints(total_width, layout.width_profile, resources, checkpoints)?;
     let center_offset = resources.checked_grid_add(width / 2, 1)?;
     let right = resources.checked_grid_add(width, 1)?;
     match row {
@@ -824,7 +845,12 @@ fn build_participant_box_row(
             line.try_set_role(0, chars.vertical, AsciiColorRole::SequenceFrame)?;
             if let Some(label) = row_label {
                 let label_start = resources.checked_grid_add(1, left_padding)?;
-                line.try_write_text_role(label_start, label, AsciiColorRole::Text)?;
+                line.try_write_text_role_with_checkpoint(
+                    label_start,
+                    label,
+                    AsciiColorRole::Text,
+                    || checkpoints.tick(),
+                )?;
             }
             line.try_set_role(right, chars.vertical, AsciiColorRole::SequenceFrame)?;
         }
@@ -892,7 +918,7 @@ fn render_lifecycle_participants(
             width = width.max(segment_right);
         }
         resources.grid_extent(width, 1)?;
-        let mut line = padded_line(
+        let mut line = padded_line_with_checkpoints(
             build_lifeline_line(
                 layout,
                 chars,
@@ -902,6 +928,7 @@ fn render_lifecycle_participants(
                 checkpoints,
             )?,
             width,
+            checkpoints,
         )?;
         for index in actor_indices {
             checkpoints.tick()?;

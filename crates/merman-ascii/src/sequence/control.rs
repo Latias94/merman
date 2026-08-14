@@ -169,7 +169,7 @@ impl<'a> SequenceControlTitlePlan<'a> {
         checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<String> {
         checkpoints.checkpoint()?;
-        let materialized = self.materialize_impl(|| {});
+        let materialized = self.materialize_impl(|| {}, || checkpoints.checkpoint());
         checkpoints.checkpoint()?;
         materialized
     }
@@ -183,14 +183,20 @@ impl<'a> SequenceControlTitlePlan<'a> {
     ) -> Result<String> {
         checkpoints.before_charge()?;
         resources.charge_layout_work(self.materialization_work_units(resources)?)?;
-        self.materialize_impl(before_materialize)
+        self.materialize_impl(before_materialize, || checkpoints.checkpoint())
     }
 
-    fn materialize_impl(self, before_materialize: impl FnOnce()) -> Result<String> {
+    fn materialize_impl(
+        self,
+        before_materialize: impl FnOnce(),
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<String> {
         before_materialize();
         let label = match self.label_plan {
             Some(plan) => {
-                let (mut lines, _) = plan.materialize_after_admission(self.label)?.into_parts();
+                let (mut lines, _) = plan
+                    .materialize_after_admission_with_checkpoint(self.label, &mut checkpoint)?
+                    .into_parts();
                 if lines.len() != 1 {
                     return Err(invalid_control_frame());
                 }
@@ -235,6 +241,25 @@ struct SequenceControlOutputAdmission {
 }
 
 pub(super) fn prepare_sequence_control_frames<'diagram>(
+    tree: SequenceControlFrameTree<'diagram>,
+    footprints: &[SequenceRowFootprint],
+    layout: &SequenceLayout,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Option<PreparedSequenceControlFrames<'diagram>>> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        prepare_sequence_control_frames_transactional(
+            tree,
+            footprints,
+            layout,
+            resources,
+            checkpoints,
+        )
+    })
+}
+
+fn prepare_sequence_control_frames_transactional<'diagram>(
     tree: SequenceControlFrameTree<'diagram>,
     footprints: &[SequenceRowFootprint],
     layout: &SequenceLayout,
@@ -580,11 +605,10 @@ impl SequenceControlOutputAdmission {
     fn add_line(&mut self, width: usize, resources: &ResourceContext) -> Result<()> {
         self.height = resources.checked_grid_add(self.height, 1)?;
         self.max_width = self.max_width.max(width);
-        self.document_cells = self.document_cells.checked_add(width).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
+        self.document_cells = self
+            .document_cells
+            .checked_add(width)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         self.work_units = resources.checked_work_add(self.work_units, width.max(1))?;
         Ok(())
     }
@@ -597,16 +621,13 @@ impl SequenceControlOutputAdmission {
     ) -> Result<()> {
         self.height = resources.checked_grid_add(self.height, height)?;
         self.max_width = self.max_width.max(width);
-        let cells = width.checked_mul(height).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
-        self.document_cells = self.document_cells.checked_add(cells).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
+        let cells = width
+            .checked_mul(height)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.document_cells = self
+            .document_cells
+            .checked_add(cells)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         let work = resources.checked_work_mul(width.max(1), height)?;
         self.work_units = resources.checked_work_add(self.work_units, work)?;
         Ok(())

@@ -79,7 +79,7 @@ fn try_build_normalized_label_lines_transactional(
         metrics.materialized_bytes,
     )?;
     resources.charge_usage(0, metrics.document_cells)?;
-    plan.materialize_with(raw, resources, before_materialize)
+    plan.materialize_with(raw, resources, before_materialize, || Ok(()))
         .map(Some)
 }
 
@@ -99,6 +99,15 @@ enum LabelToken<'a> {
 enum LabelOutputSegment<'a> {
     Segment(NormalizedSegment<'a>),
     LineBreak,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LabelReplay<'a> {
+    raw: &'a str,
+    selection: LabelSelection,
+    width_profile: TerminalWidthProfile,
+    break_policy: LabelBreakPolicy,
+    policy: AsciiResourcePolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,14 +327,30 @@ impl NormalizedLabelPlan {
         self.try_visit_row_metrics(raw, resources, |row| visit(row.width))
     }
 
+    #[cfg(test)]
     pub(crate) fn try_visit_row_metrics(
         self,
         raw: &str,
         resources: &ResourceContext,
         visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
     ) -> Result<()> {
+        self.try_visit_row_metrics_with_checkpoint(
+            raw,
+            resources,
+            || checkpoint_resources(resources),
+            visit,
+        )
+    }
+
+    pub(crate) fn try_visit_row_metrics_with_checkpoint(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+        visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
+    ) -> Result<()> {
         resources.transaction(|resources| {
-            self.try_visit_row_metrics_transactional(raw, resources, visit)
+            self.try_visit_row_metrics_transactional(raw, resources, &mut checkpoint, visit)
         })
     }
 
@@ -333,16 +358,20 @@ impl NormalizedLabelPlan {
         self,
         raw: &str,
         resources: &ResourceContext,
+        checkpoint: &mut impl FnMut() -> Result<()>,
         visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
     ) -> Result<()> {
         resources.charge_layout_work(self.replay_work_units)?;
         visit_label_row_metrics(
-            raw,
-            self.selection,
-            self.width_profile,
+            LabelReplay {
+                raw,
+                selection: self.selection,
+                width_profile: self.width_profile,
+                break_policy: self.break_policy,
+                policy: self.policy,
+            },
             self.wrap_width,
-            self.break_policy,
-            self.policy,
+            checkpoint,
             visit,
         )
     }
@@ -352,11 +381,28 @@ impl NormalizedLabelPlan {
         raw: &str,
         resources: &ResourceContext,
     ) -> Result<NormalizedLabelLines> {
-        self.materialize_with(raw, resources, || {})
+        self.materialize_with(raw, resources, || {}, || checkpoint_resources(resources))
+    }
+
+    pub(crate) fn materialize_with_checkpoint(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<NormalizedLabelLines> {
+        self.materialize_with(raw, resources, || {}, checkpoint)
     }
 
     pub(crate) fn materialize_after_admission(self, raw: &str) -> Result<NormalizedLabelLines> {
-        self.materialize_impl(raw, || {})
+        self.materialize_impl(raw, || {}, || Ok(()))
+    }
+
+    pub(crate) fn materialize_after_admission_with_checkpoint(
+        self,
+        raw: &str,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<NormalizedLabelLines> {
+        self.materialize_impl(raw, || {}, checkpoint)
     }
 
     pub(super) fn try_deferred_rows<'a>(
@@ -375,11 +421,12 @@ impl NormalizedLabelPlan {
                 .map_err(|_| document_allocation_error())?;
             let mut pieces = Vec::new();
             let mut row_width = 0usize;
-            visit_selected_label_output(
+            visit_selected_label_output_with_checkpoint(
                 raw,
                 self.selection,
                 self.break_policy,
                 self.policy,
+                &mut || checkpoint_resources(resources),
                 |_source, output| {
                     match output {
                         LabelOutputSegment::LineBreak => {
@@ -444,9 +491,10 @@ impl NormalizedLabelPlan {
         raw: &str,
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
+        mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<NormalizedLabelLines> {
         resources.transaction(|resources| {
-            self.materialize_with_transactional(raw, resources, before_materialize)
+            self.materialize_with_transactional(raw, resources, before_materialize, &mut checkpoint)
         })
     }
 
@@ -455,26 +503,31 @@ impl NormalizedLabelPlan {
         raw: &str,
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
+        checkpoint: &mut impl FnMut() -> Result<()>,
     ) -> Result<NormalizedLabelLines> {
         resources.charge_layout_work(self.replay_work_units)?;
-        self.materialize_impl(raw, before_materialize)
+        self.materialize_impl(raw, before_materialize, checkpoint)
     }
 
     fn materialize_impl(
         self,
         raw: &str,
         before_materialize: impl FnOnce(),
+        mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<NormalizedLabelLines> {
         before_materialize();
         let mut materialized = match self.wrap_width {
             Some(max_width) => materialize_wrapped_label(
-                raw,
-                self.selection,
-                self.width_profile,
+                LabelReplay {
+                    raw,
+                    selection: self.selection,
+                    width_profile: self.width_profile,
+                    break_policy: self.break_policy,
+                    policy: self.policy,
+                },
                 max_width,
-                self.break_policy,
-                self.policy,
                 self.output_metrics.line_count,
+                &mut checkpoint,
             )?,
             None => materialize_label(
                 raw,
@@ -483,6 +536,7 @@ impl NormalizedLabelPlan {
                 self.width_profile,
                 self.break_policy,
                 self.policy,
+                &mut checkpoint,
             )?,
         };
         if materialized.lines.is_empty()
@@ -507,7 +561,7 @@ impl NormalizedLabelPlan {
         resources: &ResourceContext,
         materialized: &std::cell::Cell<bool>,
     ) -> Result<NormalizedLabelLines> {
-        self.materialize_with(raw, resources, || materialized.set(true))
+        self.materialize_with(raw, resources, || materialized.set(true), || Ok(()))
     }
 }
 
@@ -572,6 +626,26 @@ pub(crate) fn try_plan_normalized_label_lines_with_policy(
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
 ) -> Result<Option<NormalizedLabelPlan>> {
+    try_plan_normalized_label_lines_with_policy_and_checkpoint(
+        raw,
+        width_profile,
+        trim,
+        wrap_width,
+        break_policy,
+        resources,
+        || checkpoint_resources(resources),
+    )
+}
+
+pub(crate) fn try_plan_normalized_label_lines_with_policy_and_checkpoint(
+    raw: &str,
+    width_profile: TerminalWidthProfile,
+    trim: bool,
+    wrap_width: Option<usize>,
+    break_policy: LabelBreakPolicy,
+    resources: &ResourceContext,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<Option<NormalizedLabelPlan>> {
     resources.transaction(|resources| {
         try_plan_normalized_label_lines_with_policy_transactional(
             raw,
@@ -580,6 +654,7 @@ pub(crate) fn try_plan_normalized_label_lines_with_policy(
             wrap_width,
             break_policy,
             resources,
+            &mut checkpoint,
         )
     })
 }
@@ -591,12 +666,23 @@ fn try_plan_normalized_label_lines_with_policy_transactional(
     wrap_width: Option<usize>,
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<Option<NormalizedLabelPlan>> {
-    let selection = match normalized_label_selection(raw, trim, break_policy, resources)? {
-        Some(selection) => selection,
-        None => return Ok(None),
-    };
-    let source_metrics = preflight_label(raw, selection, width_profile, break_policy, resources)?;
+    checkpoint()?;
+    let selection =
+        match normalized_label_selection(raw, trim, break_policy, resources, checkpoint)? {
+            Some(selection) => selection,
+            None => return Ok(None),
+        };
+    let source_metrics = preflight_label(
+        raw,
+        selection,
+        width_profile,
+        break_policy,
+        resources,
+        checkpoint,
+    )?;
+    checkpoint()?;
     let replay_work_units = resources.checked_work_add(
         raw.len().max(1),
         resources.checked_work_add(source_metrics.document_cells, source_metrics.line_count)?,
@@ -605,12 +691,15 @@ fn try_plan_normalized_label_lines_with_policy_transactional(
     let output_metrics = if let Some(max_width) = wrap_width {
         resources.charge_layout_work(replay_work_units)?;
         measure_label_output_metrics(
-            raw,
-            selection,
-            width_profile,
+            LabelReplay {
+                raw,
+                selection,
+                width_profile,
+                break_policy,
+                policy: resources.policy(),
+            },
             Some(max_width),
-            break_policy,
-            resources.policy(),
+            checkpoint,
         )?
     } else {
         source_metrics
@@ -649,11 +738,13 @@ fn try_measure_normalized_label_lines_transactional(
     trim: bool,
     resources: &ResourceContext,
 ) -> Result<Option<NormalizedLabelMetrics>> {
+    let mut checkpoint = || checkpoint_resources(resources);
     let selection = match normalized_label_selection(
         raw,
         trim,
         LabelBreakPolicy::MermaidLabelBreaks,
         resources,
+        &mut checkpoint,
     )? {
         Some(selection) => selection,
         None => return Ok(None),
@@ -664,6 +755,7 @@ fn try_measure_normalized_label_lines_transactional(
         width_profile,
         LabelBreakPolicy::MermaidLabelBreaks,
         resources,
+        &mut checkpoint,
     )?))
 }
 
@@ -672,6 +764,7 @@ fn normalized_label_selection(
     trim: bool,
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<Option<LabelSelection>> {
     if !trim {
         return Ok(Some(LabelSelection::All));
@@ -681,9 +774,14 @@ fn normalized_label_selection(
     let mut offset = 0usize;
     let mut start = None;
     let mut end = 0usize;
-    visit_label_tokens(raw, break_policy, |token| {
+    let mut scalar_iteration = 0usize;
+    visit_label_tokens(raw, break_policy, checkpoint, |token, checkpoint| {
         with_token_trim_text(token, |text| {
             for (relative, ch) in text.char_indices() {
+                if scalar_iteration.is_multiple_of(LABEL_TOKEN_CHECKPOINT_INTERVAL) {
+                    checkpoint()?;
+                }
+                scalar_iteration = scalar_iteration.wrapping_add(1);
                 if ch.is_whitespace() {
                     continue;
                 }
@@ -720,6 +818,7 @@ fn preflight_label(
     width_profile: TerminalWidthProfile,
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<NormalizedLabelMetrics> {
     resources.charge_layout_work(raw.len().max(1))?;
     let mut materialized_bytes = 0usize;
@@ -729,11 +828,12 @@ fn preflight_label(
     let mut max_width = 0usize;
     let policy = resources.policy();
 
-    visit_selected_label_output(
+    visit_selected_label_output_with_checkpoint(
         raw,
         selection,
         break_policy,
         policy,
+        checkpoint,
         |source_segment, output| {
             if let Some(source_segment) = source_segment {
                 source_segment.check_grapheme_budget(resources)?;
@@ -798,15 +898,17 @@ fn materialize_label(
     width_profile: TerminalWidthProfile,
     break_policy: LabelBreakPolicy,
     policy: AsciiResourcePolicy,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<MaterializedLabelRows> {
     let mut materialized = MaterializedLabelRows::try_new(metrics.line_count)?;
     let mut current = String::new();
     let mut current_width = 0usize;
-    visit_selected_label_output(
+    visit_selected_label_output_with_checkpoint(
         raw,
         selection,
         break_policy,
         policy,
+        checkpoint,
         |_source_segment, output| {
             match output {
                 LabelOutputSegment::LineBreak => {
@@ -840,73 +942,68 @@ fn materialize_label(
 }
 
 fn measure_label_output_metrics(
-    raw: &str,
-    selection: LabelSelection,
-    width_profile: TerminalWidthProfile,
+    replay: LabelReplay<'_>,
     wrap_width: Option<usize>,
-    break_policy: LabelBreakPolicy,
-    policy: AsciiResourcePolicy,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<NormalizedLabelMetrics> {
     let mut metrics = NormalizedLabelMetrics::EMPTY;
-    visit_label_row_metrics(
-        raw,
-        selection,
-        width_profile,
-        wrap_width,
-        break_policy,
-        policy,
-        |row| metrics.try_include_row(row, policy),
-    )?;
+    visit_label_row_metrics(replay, wrap_width, checkpoint, |row| {
+        metrics.try_include_row(row, replay.policy)
+    })?;
     Ok(metrics)
 }
 
 fn visit_label_row_metrics(
-    raw: &str,
-    selection: LabelSelection,
-    width_profile: TerminalWidthProfile,
+    replay: LabelReplay<'_>,
     wrap_width: Option<usize>,
-    break_policy: LabelBreakPolicy,
-    policy: AsciiResourcePolicy,
+    checkpoint: &mut impl FnMut() -> Result<()>,
     mut visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
 ) -> Result<()> {
     let Some(max_width) = wrap_width else {
         let mut line_width = 0usize;
         let mut retained_width = 0usize;
         let mut materialized_bytes = 0usize;
-        visit_selected_label_output(raw, selection, break_policy, policy, |_source, output| {
-            match output {
-                LabelOutputSegment::LineBreak => {
-                    visit(NormalizedLabelRowMetrics {
-                        width: line_width,
-                        retained_width,
-                        materialized_bytes,
-                    })?;
-                    line_width = 0;
-                    retained_width = 0;
-                    materialized_bytes = 0;
-                }
-                LabelOutputSegment::Segment(segment) => {
-                    let mut buffer = [0u8; 10];
-                    let text = segment.text(&mut buffer);
-                    materialized_bytes = checked_add_with_policy(
-                        policy,
-                        AsciiResourceLimitId::MaxOutputBytes,
-                        materialized_bytes,
-                        text.len(),
-                    )?;
-                    line_width = checked_add_with_policy(
-                        policy,
-                        AsciiResourceLimitId::MaxDocumentCells,
-                        line_width,
-                        segment.display_width(width_profile),
-                    )?;
-                    if text != " " {
-                        retained_width = line_width;
+        visit_selected_label_output_with_checkpoint(
+            replay.raw,
+            replay.selection,
+            replay.break_policy,
+            replay.policy,
+            checkpoint,
+            |_source, output| {
+                match output {
+                    LabelOutputSegment::LineBreak => {
+                        visit(NormalizedLabelRowMetrics {
+                            width: line_width,
+                            retained_width,
+                            materialized_bytes,
+                        })?;
+                        line_width = 0;
+                        retained_width = 0;
+                        materialized_bytes = 0;
+                    }
+                    LabelOutputSegment::Segment(segment) => {
+                        let mut buffer = [0u8; 10];
+                        let text = segment.text(&mut buffer);
+                        materialized_bytes = checked_add_with_policy(
+                            replay.policy,
+                            AsciiResourceLimitId::MaxOutputBytes,
+                            materialized_bytes,
+                            text.len(),
+                        )?;
+                        line_width = checked_add_with_policy(
+                            replay.policy,
+                            AsciiResourceLimitId::MaxDocumentCells,
+                            line_width,
+                            segment.display_width(replay.width_profile),
+                        )?;
+                        if text != " " {
+                            retained_width = line_width;
+                        }
                     }
                 }
-            }
-            Ok(())
-        })?;
+                Ok(())
+            },
+        )?;
         return visit(NormalizedLabelRowMetrics {
             width: line_width,
             retained_width,
@@ -915,15 +1012,12 @@ fn visit_label_row_metrics(
     };
 
     process_wrapped_label(
-        raw,
-        selection,
-        width_profile,
+        replay,
         max_width,
-        break_policy,
-        policy,
+        checkpoint,
         WrappedWidthSink {
             visit,
-            policy,
+            policy: replay.policy,
             word_bytes: 0,
             line_bytes: 0,
         },
@@ -1269,61 +1363,66 @@ impl WrappedLabelSink for MaterializedWrappedLabelSink {
 }
 
 fn process_wrapped_label<S>(
-    raw: &str,
-    selection: LabelSelection,
-    width_profile: TerminalWidthProfile,
+    replay: LabelReplay<'_>,
     max_width: usize,
-    break_policy: LabelBreakPolicy,
-    policy: AsciiResourcePolicy,
+    checkpoint: &mut impl FnMut() -> Result<()>,
     sink: S,
 ) -> Result<S::Output>
 where
     S: WrappedLabelSink,
 {
-    let mut wrapped =
-        WrappedLabelProcessor::new(max_width, width_profile, policy, break_policy, sink);
-    visit_selected_label_output(raw, selection, break_policy, policy, |_source, output| {
-        match output {
-            LabelOutputSegment::LineBreak => wrapped.finish_paragraph()?,
-            LabelOutputSegment::Segment(segment) => {
-                wrapped.push_segment(segment)?;
+    let mut wrapped = WrappedLabelProcessor::new(
+        max_width,
+        replay.width_profile,
+        replay.policy,
+        replay.break_policy,
+        sink,
+    );
+    visit_selected_label_output_with_checkpoint(
+        replay.raw,
+        replay.selection,
+        replay.break_policy,
+        replay.policy,
+        checkpoint,
+        |_source, output| {
+            match output {
+                LabelOutputSegment::LineBreak => wrapped.finish_paragraph()?,
+                LabelOutputSegment::Segment(segment) => {
+                    wrapped.push_segment(segment)?;
+                }
             }
-        }
-        Ok(())
-    })?;
+            Ok(())
+        },
+    )?;
     wrapped.finish()
 }
 
 fn materialize_wrapped_label(
-    raw: &str,
-    selection: LabelSelection,
-    width_profile: TerminalWidthProfile,
+    replay: LabelReplay<'_>,
     max_width: usize,
-    break_policy: LabelBreakPolicy,
-    policy: AsciiResourcePolicy,
     expected_lines: usize,
+    checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<MaterializedLabelRows> {
     process_wrapped_label(
-        raw,
-        selection,
-        width_profile,
+        replay,
         max_width,
-        break_policy,
-        policy,
-        MaterializedWrappedLabelSink::try_new(expected_lines, policy)?,
+        checkpoint,
+        MaterializedWrappedLabelSink::try_new(expected_lines, replay.policy)?,
     )
 }
 
-fn visit_selected_label_output(
+fn visit_selected_label_output_with_checkpoint(
     raw: &str,
     selection: LabelSelection,
     break_policy: LabelBreakPolicy,
     policy: AsciiResourcePolicy,
+    checkpoint: &mut impl FnMut() -> Result<()>,
     mut visit: impl FnMut(Option<NormalizedSegment<'_>>, LabelOutputSegment<'_>) -> Result<()>,
 ) -> Result<()> {
     let mut offset = 0usize;
-    visit_label_tokens(raw, break_policy, |token| {
+    visit_label_tokens(raw, break_policy, checkpoint, |token, checkpoint| {
         with_token_trim_text(token, |trim_text| {
+            checkpoint()?;
             let token_start = offset;
             let token_end = offset
                 .checked_add(trim_text.len())
@@ -1349,6 +1448,7 @@ fn visit_selected_label_output(
                 LabelToken::Segment(source_segment) => {
                     let selected = &trim_text[selected];
                     let mut emit = |segment: NormalizedSegment<'_>| {
+                        checkpoint()?;
                         let output = match (segment.kind, break_policy) {
                             (NormalizedSegmentKind::LineBreak, LabelBreakPolicy::VisibleLine) => {
                                 LabelOutputSegment::Segment(NormalizedSegment {
@@ -1372,25 +1472,46 @@ fn visit_selected_label_output(
     })
 }
 
-fn visit_label_tokens<E>(
+const LABEL_TOKEN_CHECKPOINT_INTERVAL: usize = 64;
+
+fn checkpoint_resources(resources: &ResourceContext) -> Result<()> {
+    resources.check(
+        AsciiResourceLimitId::MaxLayoutWorkUnits,
+        resources.layout_work_used(),
+    )
+}
+
+fn visit_label_tokens<F>(
     raw: &str,
     break_policy: LabelBreakPolicy,
-    mut visit: impl FnMut(LabelToken<'_>) -> std::result::Result<(), E>,
-) -> std::result::Result<(), E> {
+    checkpoint: &mut F,
+    mut visit: impl FnMut(LabelToken<'_>, &mut F) -> Result<()>,
+) -> Result<()>
+where
+    F: FnMut() -> Result<()>,
+{
     if !matches!(break_policy, LabelBreakPolicy::MermaidLabelBreaks) {
-        return visit_normalized_segments(raw, |segment| visit(LabelToken::Segment(segment)));
+        checkpoint()?;
+        return visit_normalized_segments(raw, |segment| {
+            visit(LabelToken::Segment(segment), checkpoint)
+        });
     }
 
     let mut chunk_start = 0usize;
     let mut index = 0usize;
+    let mut scalar_iteration = 0usize;
     while index < raw.len() {
+        if scalar_iteration.is_multiple_of(LABEL_TOKEN_CHECKPOINT_INTERVAL) {
+            checkpoint()?;
+        }
+        scalar_iteration = scalar_iteration.wrapping_add(1);
         let label_break_end =
             html_break_end(raw, index).or_else(|| mermaid_escaped_newline_end(raw, index));
         if let Some(end) = label_break_end {
             visit_normalized_segments(&raw[chunk_start..index], |segment| {
-                visit(LabelToken::Segment(segment))
+                visit(LabelToken::Segment(segment), checkpoint)
             })?;
-            visit(LabelToken::AuthoredBreak(&raw[index..end]))?;
+            visit(LabelToken::AuthoredBreak(&raw[index..end]), checkpoint)?;
             index = end;
             chunk_start = end;
             continue;
@@ -1402,7 +1523,7 @@ fn visit_label_tokens<E>(
         index += ch.len_utf8();
     }
     visit_normalized_segments(&raw[chunk_start..], |segment| {
-        visit(LabelToken::Segment(segment))
+        visit(LabelToken::Segment(segment), checkpoint)
     })
 }
 
@@ -1476,4 +1597,49 @@ pub(crate) fn try_build_normalized_label_lines_with_probe(
     try_build_normalized_label_lines_impl(raw, width_profile, trim, wrap_width, resources, || {
         materialized.set(true)
     })
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::operation::AsciiExecution;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn admitted_label_materialization_checks_cancellation_inside_the_replay() {
+        let raw = "A".repeat(128);
+        let policy = AsciiResourcePolicy::default();
+        let resources = ResourceContext::new(policy);
+        let plan = try_plan_normalized_label_lines_with_policy(
+            &raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            LabelBreakPolicy::VisibleLine,
+            &resources,
+        )
+        .expect("the label plan should fit")
+        .expect("non-trimmed text should retain a row");
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let execution = AsciiExecution::new(&control, &policy);
+        let checkpoints = Cell::new(0usize);
+        let error = plan
+            .materialize_after_admission_with_checkpoint(&raw, || {
+                checkpoints.set(checkpoints.get() + 1);
+                execution.checkpoint(OperationPhase::Layout)
+            })
+            .expect_err("materialization should stop during its replay pass");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(checkpoints.get(), 2);
+    }
 }

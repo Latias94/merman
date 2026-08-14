@@ -83,6 +83,7 @@ impl SequenceBatchExtent {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn from_line_lengths(
         materialized_width: usize,
         lengths: impl IntoIterator<Item = usize>,
@@ -91,6 +92,7 @@ impl SequenceBatchExtent {
         Self::try_from_line_lengths(materialized_width, lengths.into_iter().map(Ok), resources)
     }
 
+    #[cfg(test)]
     pub(super) fn try_from_line_lengths(
         materialized_width: usize,
         lengths: impl IntoIterator<Item = Result<usize>>,
@@ -98,6 +100,20 @@ impl SequenceBatchExtent {
     ) -> Result<Self> {
         let mut extent = Self::with_materialized_width(materialized_width);
         for length in lengths {
+            extent.try_push_line_length(length?, resources)?;
+        }
+        Ok(extent)
+    }
+
+    pub(super) fn try_from_line_lengths_with_checkpoints(
+        materialized_width: usize,
+        lengths: impl IntoIterator<Item = Result<usize>>,
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        let mut extent = Self::with_materialized_width(materialized_width);
+        for length in lengths {
+            checkpoints.tick()?;
             extent.try_push_line_length(length?, resources)?;
         }
         Ok(extent)
@@ -111,11 +127,10 @@ impl SequenceBatchExtent {
         self.height = resources.checked_grid_add(self.height, 1)?;
         self.retained_width = self.retained_width.max(length);
         self.materialized_width = self.materialized_width.max(length);
-        self.document_cells = self.document_cells.checked_add(length).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
+        self.document_cells = self
+            .document_cells
+            .checked_add(length)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         self.work_units = resources.checked_work_add(self.work_units, length.max(1))?;
         Ok(())
     }
@@ -126,11 +141,9 @@ impl SequenceBatchExtent {
         retained_width: usize,
         resources: &ResourceContext,
     ) -> Result<Self> {
-        let document_cells = retained_width.checked_mul(height).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
+        let document_cells = retained_width
+            .checked_mul(height)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         let work_units = resources.checked_work_mul(retained_width.max(1), height)?;
         Ok(Self {
             height,
@@ -177,14 +190,8 @@ impl SequenceExtentLedger {
         let document_cells = self
             .document_cells
             .checked_add(batch.document_cells)
-            .ok_or_else(|| {
-                resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        resources
-            .policy()
-            .check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        resources.check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
         resources.charge_layout_work(batch.work_units)?;
 
         Ok(SequenceExtentReservation {
@@ -215,17 +222,19 @@ pub(super) struct SequenceExtentReservation {
 }
 
 impl SequenceExtentReservation {
-    pub(super) fn commit_footprints(
+    pub(super) fn commit_footprints_with_checkpoints(
         self,
         ledger: &mut SequenceExtentLedger,
         footprints: &[SequenceRowFootprint],
         resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<()> {
-        validate_batch_footprints(self.batch, footprints, resources)?;
+        validate_batch_footprints_with_checkpoints(self.batch, footprints, resources, checkpoints)?;
         *ledger = self.next;
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) fn commit(
         self,
         ledger: &mut SequenceExtentLedger,
@@ -237,54 +246,61 @@ impl SequenceExtentReservation {
             lines.iter().map(SequenceLine::len),
             resources,
         )?;
-        if actual.height != self.batch.height
-            || actual.retained_width != self.batch.retained_width
-            || actual.document_cells != self.batch.document_cells
-            || actual.work_units != self.batch.work_units
-        {
-            return Err(invalid_extent_plan());
-        }
+        validate_batch_extent(self.batch, actual)?;
+        *ledger = self.next;
+        Ok(())
+    }
+
+    pub(super) fn commit_with_checkpoints(
+        self,
+        ledger: &mut SequenceExtentLedger,
+        lines: &[SequenceLine],
+        resources: &ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<()> {
+        validate_batch_lines_with_checkpoints(self.batch, lines, resources, checkpoints)?;
         *ledger = self.next;
         Ok(())
     }
 }
 
-pub(super) fn validate_batch_lines(
+pub(super) fn validate_batch_lines_with_checkpoints(
     batch: SequenceBatchExtent,
     lines: &[SequenceLine],
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
-    let actual = SequenceBatchExtent::from_line_lengths(
+    let actual = SequenceBatchExtent::try_from_line_lengths_with_checkpoints(
         batch.materialized_width,
-        lines.iter().map(SequenceLine::len),
+        lines.iter().map(|line| Ok(line.len())),
         resources,
+        checkpoints,
     )?;
-    if actual.height != batch.height
-        || actual.retained_width != batch.retained_width
-        || actual.document_cells != batch.document_cells
-        || actual.work_units != batch.work_units
-    {
-        return Err(invalid_extent_plan());
-    }
-    Ok(())
+    validate_batch_extent(batch, actual)
 }
 
-pub(super) fn validate_batch_footprints(
+pub(super) fn validate_batch_footprints_with_checkpoints(
     batch: SequenceBatchExtent,
     footprints: &[SequenceRowFootprint],
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
-    let actual = SequenceBatchExtent::from_line_lengths(
+    let actual = SequenceBatchExtent::try_from_line_lengths_with_checkpoints(
         batch.materialized_width,
         footprints
             .iter()
-            .map(|footprint| footprint.retained_width()),
+            .map(|footprint| Ok(footprint.retained_width())),
         resources,
+        checkpoints,
     )?;
-    if actual.height != batch.height
-        || actual.retained_width != batch.retained_width
-        || actual.document_cells != batch.document_cells
-        || actual.work_units != batch.work_units
+    validate_batch_extent(batch, actual)
+}
+
+fn validate_batch_extent(expected: SequenceBatchExtent, actual: SequenceBatchExtent) -> Result<()> {
+    if actual.height != expected.height
+        || actual.retained_width != expected.retained_width
+        || actual.document_cells != expected.document_cells
+        || actual.work_units != expected.work_units
     {
         return Err(invalid_extent_plan());
     }
@@ -298,12 +314,31 @@ fn invalid_extent_plan() -> AsciiError {
     }
 }
 
+#[cfg(test)]
 pub(super) fn blank_line(
     width: usize,
     width_profile: crate::options::TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<SequenceLine> {
     SequenceLine::try_blank_with_policy(width, width_profile, resources.policy())
+}
+
+pub(super) fn blank_line_with_checkpoints(
+    width: usize,
+    width_profile: crate::options::TerminalWidthProfile,
+    resources: &ResourceContext,
+    checkpoints: &SequenceCheckpointCursor<'_>,
+) -> Result<SequenceLine> {
+    let line_base = ResourceContext::new(resources.policy());
+    let line_resources = checkpoints
+        .execution()
+        .resource_context(&line_base, merman_core::OperationPhase::Layout);
+    SequenceLine::try_blank_with_resources_and_checkpoint(
+        width,
+        width_profile,
+        &line_resources,
+        || checkpoints.checkpoint(),
+    )
 }
 
 pub(super) fn charge_text_work(
@@ -326,8 +361,12 @@ pub(super) fn charge_text_work(
     Ok(())
 }
 
-pub(super) fn padded_line(mut line: SequenceLine, width: usize) -> Result<SequenceLine> {
-    line.try_pad_to(width)?;
+pub(super) fn padded_line_with_checkpoints(
+    mut line: SequenceLine,
+    width: usize,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceLine> {
+    line.try_pad_to_with_checkpoint(width, || checkpoints.tick())?;
     Ok(line)
 }
 
@@ -336,8 +375,9 @@ pub(super) fn write_text_role(
     start: usize,
     text: &str,
     role: AsciiColorRole,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
-    line.try_write_text_role(start, text, role)
+    line.try_write_text_role_with_checkpoint(start, text, role, || checkpoints.tick())
 }
 
 pub(super) fn trim_right(line: SequenceLine) -> Result<SequenceLine> {
@@ -352,7 +392,7 @@ mod tests {
     use crate::operation::AsciiExecution;
     use crate::options::TerminalWidthProfile;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::OperationPhase;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn extent_ledger_accepts_exact_grid_and_document_limits() {
@@ -451,6 +491,121 @@ mod tests {
                     && details.actual == 180
                     && details.max == 100
         ));
+    }
+
+    #[test]
+    fn extent_replay_observes_layout_cancellation_before_committing_the_batch() {
+        const ROWS: usize = 65;
+        let policy = AsciiResourcePolicy::default();
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the pre-existing work debit should fit");
+        resources
+            .charge_document_cells(3)
+            .expect("the pre-existing document debit should fit");
+        let mut ledger = SequenceExtentLedger::default();
+        let batch = SequenceBatchExtent::uniform(ROWS, 1, 1, &resources)
+            .expect("the replay extent should fit");
+        let line_resources = ResourceContext::new(policy);
+        let lines = uniform_lines(ROWS, 1, &line_resources).expect("the replay rows should fit");
+
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let controlled_resources = execution.resource_context(&resources, OperationPhase::Layout);
+        let mut replay_checkpoints =
+            SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+        let error = controlled_resources
+            .transaction(|controlled_resources| {
+                let mut controlled_resources = controlled_resources.clone();
+                let reservation =
+                    ledger.reserve(batch, &mut controlled_resources, &replay_checkpoints)?;
+                control.cancel_after_checkpoints(1);
+                reservation.commit_with_checkpoints(
+                    &mut ledger,
+                    &lines,
+                    &controlled_resources,
+                    &mut replay_checkpoints,
+                )
+            })
+            .expect_err("the second extent pass should stop at its next cadence checkpoint");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(ledger.height(), 0);
+        assert_eq!(resources.layout_work_used(), 7);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn blank_line_initialization_cancels_between_paint_chunks() {
+        let policy = AsciiResourcePolicy::default();
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let execution = AsciiExecution::new(&control, &policy);
+        let checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+
+        let error = blank_line_with_checkpoints(
+            129,
+            TerminalWidthProfile::Unicode,
+            &resources,
+            &checkpoints,
+        )
+        .expect_err("the second blank-paint chunk should observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn styled_text_replay_cancels_after_painting_the_first_chunk() {
+        const WIDTH: usize = 128;
+        let policy = AsciiResourcePolicy::default();
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+        let mut line = blank_line_with_checkpoints(
+            WIDTH,
+            TerminalWidthProfile::Unicode,
+            &resources,
+            &checkpoints,
+        )
+        .expect("the paint target should fit");
+        let text = "A".repeat(WIDTH);
+        let callback_count = Cell::new(0usize);
+
+        let error = line
+            .try_write_text_role_with_checkpoint(0, &text, AsciiColorRole::Text, || {
+                let next = callback_count.get() + 1;
+                callback_count.set(next);
+                if next == WIDTH + 65 {
+                    control.cancel();
+                }
+                checkpoints.tick()
+            })
+            .expect_err("the second write-replay chunk should observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(line.get(0), Some('A'));
+        assert_eq!(line.get(63), Some('A'));
+        assert_eq!(line.get(64), Some(' '));
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]

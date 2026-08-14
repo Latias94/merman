@@ -18,7 +18,7 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::ResourceContext;
 use crate::safe_text::{
     LabelBreakPolicy, NormalizedLabelPlan, charge_text_layout,
-    try_plan_normalized_label_lines_with_policy,
+    try_plan_normalized_label_lines_with_policy_and_checkpoint,
 };
 use merman_core::OperationPhase;
 
@@ -29,6 +29,8 @@ pub(crate) use render::render_sequence_diagram_with_execution;
 struct SequenceCheckpointCursor<'a> {
     execution: AsciiExecution<'a>,
     phase: OperationPhase,
+    /// The counter is carried into the next phase so a pass cannot reset its cooperative cadence
+    /// when it moves from layout planning to output emission.
     iteration: usize,
 }
 
@@ -56,6 +58,14 @@ impl<'a> SequenceCheckpointCursor<'a> {
         }
     }
 
+    fn next_phase(&self, phase: OperationPhase) -> Self {
+        Self {
+            execution: self.execution,
+            phase,
+            iteration: self.iteration,
+        }
+    }
+
     fn tick(&mut self) -> Result<()> {
         let iteration = self.iteration;
         self.iteration = self.iteration.wrapping_add(1);
@@ -80,13 +90,11 @@ fn charge_sequence_projection_text(
     value: &str,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
-    execution.checkpoint(OperationPhase::Semantic)?;
-    let scratch = ResourceContext::new(resources.policy());
-    let charged = charge_text_layout(&scratch, value);
-    execution.checkpoint(OperationPhase::Semantic)?;
-    charged?;
-    execution.checkpoint(OperationPhase::Semantic)?;
-    resources.charge_layout_work(scratch.layout_work_used())
+    resources.transaction(|resources| {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        charge_text_layout(resources, value)?;
+        execution.checkpoint(OperationPhase::Semantic)
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -141,21 +149,20 @@ fn try_plan_sequence_label_impl(
     resources: &ResourceContext,
     mut checkpoint: impl FnMut() -> Result<()>,
 ) -> Result<Option<NormalizedLabelPlan>> {
-    checkpoint()?;
-    let scratch = ResourceContext::new(resources.policy());
-    let planned = try_plan_normalized_label_lines_with_policy(
-        raw,
-        width_profile,
-        trim,
-        wrap_width,
-        break_policy,
-        &scratch,
-    );
-    checkpoint()?;
-    let plan = planned?;
-    checkpoint()?;
-    resources.charge_layout_work(scratch.layout_work_used())?;
-    Ok(plan)
+    resources.transaction(|resources| {
+        checkpoint()?;
+        let plan = try_plan_normalized_label_lines_with_policy_and_checkpoint(
+            raw,
+            width_profile,
+            trim,
+            wrap_width,
+            break_policy,
+            resources,
+            &mut checkpoint,
+        )?;
+        checkpoint()?;
+        Ok(plan)
+    })
 }
 
 const BOX_PADDING_LEFT_RIGHT: usize = 2;
@@ -188,16 +195,14 @@ mod tests {
         let policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
             .expect("one work unit should be a valid limit");
-        let resources = ResourceContext::new(policy);
+        let base_resources = ResourceContext::new(policy);
         let control = OperationControl::new();
-        control.cancel_after_checkpoints(1);
+        control.cancel_after_checkpoints(3);
+        let execution = AsciiExecution::new(&control, &policy);
+        let resources = execution.resource_context(&base_resources, OperationPhase::Semantic);
 
-        let error = charge_sequence_projection_text(
-            &resources,
-            "AB",
-            AsciiExecution::new(&control, &policy),
-        )
-        .expect_err("the post-scan checkpoint should win over the scratch ceiling");
+        let error = charge_sequence_projection_text(&resources, "AB", execution)
+            .expect_err("inner semantic cancellation should win over the shared ceiling");
 
         assert!(matches!(
             error,
@@ -205,7 +210,35 @@ mod tests {
                 if cancelled.phase == OperationPhase::Semantic
                     && cancelled.reason == CancelReason::Requested
         ));
-        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(base_resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn projection_text_uses_the_shared_ledger_before_scanning_the_next_grapheme() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 10)
+            .expect("ten work units should be a valid limit")
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
+            .expect("one grapheme byte should be a valid limit");
+        let base_resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let resources = execution.resource_context(&base_resources, OperationPhase::Semantic);
+        resources
+            .charge_layout_work(9)
+            .expect("the shared ledger should start one unit below its ceiling");
+
+        let error = charge_sequence_projection_text(&resources, "Aé", execution)
+            .expect_err("the first grapheme should exhaust work before the second is inspected");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 11
+                    && details.max == 10
+        ));
+        assert_eq!(base_resources.layout_work_used(), 9);
     }
 
     #[test]
@@ -213,13 +246,12 @@ mod tests {
         let policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
             .expect("one work unit should be a valid limit");
-        let resources = ResourceContext::new(policy);
+        let base_resources = ResourceContext::new(policy);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
-        let checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::new(&control, &policy),
-            OperationPhase::Layout,
-        );
+        let execution = AsciiExecution::new(&control, &policy);
+        let resources = execution.resource_context(&base_resources, OperationPhase::Layout);
+        let checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
 
         let error = try_plan_sequence_label(
             "AB",
@@ -230,7 +262,7 @@ mod tests {
             &resources,
             &checkpoints,
         )
-        .expect_err("the post-plan checkpoint should win over the scratch ceiling");
+        .expect_err("layout cancellation should win over the shared ceiling");
 
         assert!(matches!(
             error,
@@ -238,7 +270,7 @@ mod tests {
                 if cancelled.phase == OperationPhase::Layout
                     && cancelled.reason == CancelReason::Requested
         ));
-        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(base_resources.layout_work_used(), 0);
     }
 
     #[test]
@@ -275,5 +307,68 @@ mod tests {
                     && cancelled.reason == CancelReason::Requested
         ));
         assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn phase_transition_preserves_the_monotonic_checkpoint_cadence() {
+        let policy = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let execution = AsciiExecution::new(&control, &policy);
+        let mut layout = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+
+        layout
+            .tick()
+            .expect("the first layout cadence checkpoint should succeed");
+        for _ in 1..64 {
+            layout
+                .tick()
+                .expect("intermediate layout ticks should not poll the control");
+        }
+
+        let mut emit = layout.next_phase(OperationPhase::Emit);
+        let error = emit
+            .tick()
+            .expect_err("emit must continue at iteration 64 instead of resetting to zero");
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn mermaid_label_scanner_cancels_without_an_authored_break() {
+        let raw = "A".repeat(256);
+        let policy = AsciiResourcePolicy::default();
+        let base_resources = ResourceContext::new(policy);
+        base_resources
+            .charge_layout_work(7)
+            .expect("the pre-existing work debit should fit");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(4);
+        let execution = AsciiExecution::new(&control, &policy);
+        let resources = execution.resource_context(&base_resources, OperationPhase::Layout);
+        let checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+
+        let error = try_plan_sequence_label(
+            &raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            LabelBreakPolicy::MermaidLabelBreaks,
+            &resources,
+            &checkpoints,
+        )
+        .expect_err("the scanner should stop inside a label without any authored break token");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(base_resources.layout_work_used(), 7);
     }
 }

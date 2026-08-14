@@ -8,7 +8,9 @@ use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifec
 use super::model::{AsciiSequenceDiagram, SequenceEvent};
 use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
 use super::render::SequenceChars;
-use super::text::{SequenceLine, blank_line, charge_text_work, trim_right};
+#[cfg(test)]
+use super::text::blank_line;
+use super::text::{SequenceLine, blank_line_with_checkpoints, charge_text_work, trim_right};
 use super::tree::{SequenceControl, SequenceVisit};
 use super::{SequenceActorRenderState, SequenceCheckpointCursor};
 use crate::color::AsciiColorMode;
@@ -18,6 +20,7 @@ use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
 use crate::terminal::{TerminalCellText, primary_width};
 use crate::text::display_width_with_profile;
+use merman_core::OperationPhase;
 
 #[derive(Debug)]
 struct SequenceRowPlanner<'diagram> {
@@ -491,16 +494,29 @@ impl SequenceRowPlan {
         chars: &SequenceChars,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
-        checkpoints: &mut SequenceCheckpointCursor<'_>,
+        layout_checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<String> {
         let mut lines = self.lines;
         if !diagram.boxes.is_empty() {
-            lines = render_sequence_boxes(lines, diagram, layout, chars, resources, checkpoints)?;
+            lines = render_sequence_boxes(
+                lines,
+                diagram,
+                layout,
+                chars,
+                resources,
+                layout_checkpoints,
+            )?;
         }
         if let Some(title) = diagram.title.as_deref() {
-            prepend_title_line(&mut lines, title, resources, checkpoints)?;
+            prepend_title_line(&mut lines, title, resources, layout_checkpoints)?;
         }
-        finish_sequence_lines(lines, options, resources, checkpoints)
+        // Box/title geometry, extent admission, and canvas construction are layout work.  Only
+        // after those complete do we bind the shared ledger to Emit for byte/document emission.
+        let mut emit_resources = layout_checkpoints
+            .execution()
+            .resource_context(resources, OperationPhase::Emit);
+        let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
+        finish_sequence_lines(lines, options, &mut emit_resources, &mut emit_checkpoints)
     }
 }
 
@@ -592,7 +608,7 @@ fn prepend_title_line(
     lines.try_reserve(1).map_err(|_| allocation_failed())?;
     lines.insert(
         0,
-        render_title_line(title, width, width_profile, resources)?,
+        render_title_line(title, width, width_profile, resources, checkpoints)?,
     );
     Ok(())
 }
@@ -602,11 +618,12 @@ fn render_title_line(
     width: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
     let title_width = display_width_with_profile(title, width_profile);
     let left = width.saturating_sub(title_width) / 2;
-    let mut line = blank_line(left, width_profile, resources)?;
-    line.try_push_role_text(title, AsciiColorRole::Text)?;
+    let mut line = blank_line_with_checkpoints(left, width_profile, resources, checkpoints)?;
+    line.try_push_role_text_with_checkpoint(title, AsciiColorRole::Text, || checkpoints.tick())?;
     trim_right(line)
 }
 
@@ -658,8 +675,8 @@ mod tests {
     use crate::sequence::layout::{calculate_layout, calculate_layout_with_resources};
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration, SequenceControlKind,
-        SequenceEvent, SequenceLineStyle, SequenceMessage, SequenceMessageDirection,
-        SequenceParticipant, SequenceParticipantLabel,
+        SequenceEvent, SequenceGroupBox, SequenceLineStyle, SequenceMessage,
+        SequenceMessageDirection, SequenceParticipant, SequenceParticipantLabel,
     };
     use crate::sequence::prepared_body::{lifeline_batch_extent, participant_box_batch_extent};
     use crate::sequence::text::{SequenceBatchExtent, SequenceExtentLedger};
@@ -1072,7 +1089,6 @@ mod tests {
             &mut layout_cursor,
         )
         .unwrap();
-        let mut emit_cursor = emit_checkpoints(&policy);
         let rendered = plan
             .render(
                 &diagram,
@@ -1080,7 +1096,7 @@ mod tests {
                 &ascii_chars(),
                 &options,
                 &mut resources,
-                &mut emit_cursor,
+                &mut layout_cursor,
             )
             .unwrap();
         let rendered = rendered.lines().map(str::to_string).collect::<Vec<_>>();
@@ -1113,7 +1129,6 @@ mod tests {
         )
         .unwrap();
 
-        let mut emit_cursor = emit_checkpoints(&policy);
         let rendered = plan
             .render(
                 &diagram,
@@ -1121,7 +1136,7 @@ mod tests {
                 &ascii_chars(),
                 &options,
                 &mut resources,
-                &mut emit_cursor,
+                &mut layout_cursor,
             )
             .unwrap();
 
@@ -1147,14 +1162,13 @@ mod tests {
         .unwrap();
         let before_finalization = resources.layout_work_used();
 
-        let mut emit_cursor = emit_checkpoints(&policy);
         plan.render(
             &diagram,
             &layout,
             &ascii_chars(),
             &options,
             &mut resources,
-            &mut emit_cursor,
+            &mut layout_cursor,
         )
         .unwrap();
 
@@ -1176,7 +1190,6 @@ mod tests {
             &mut exact_layout_checkpoints,
         )
         .unwrap();
-        let mut exact_emit_checkpoints = emit_checkpoints(&exact);
         exact_plan
             .render(
                 &diagram,
@@ -1184,7 +1197,7 @@ mod tests {
                 &ascii_chars(),
                 &options,
                 &mut exact_resources,
-                &mut exact_emit_checkpoints,
+                &mut exact_layout_checkpoints,
             )
             .unwrap();
         assert_eq!(exact_resources.layout_work_used(), total_work);
@@ -1207,7 +1220,6 @@ mod tests {
             &mut below_layout_checkpoints,
         )
         .unwrap();
-        let mut below_emit_checkpoints = emit_checkpoints(&below);
         let error = below_plan
             .render(
                 &diagram,
@@ -1215,7 +1227,7 @@ mod tests {
                 &ascii_chars(),
                 &options,
                 &mut below_resources,
-                &mut below_emit_checkpoints,
+                &mut below_layout_checkpoints,
             )
             .expect_err("finalization must observe prior layout work");
         assert!(matches!(
@@ -1319,6 +1331,55 @@ mod tests {
         assert_eq!(resources.layout_work_used(), 0);
     }
 
+    #[test]
+    fn box_geometry_cancellation_is_reported_as_layout_before_emit() {
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default();
+        let mut diagram = diagram(1);
+        diagram.boxes.push(SequenceGroupBox {
+            actor_indices: vec![0],
+            label: Some("group".to_string()),
+            background: None,
+            wrap: false,
+        });
+        let layout = calculate_layout(&diagram, &options, &policy)
+            .expect("the box fixture layout should fit");
+        let base_resources = ResourceContext::new(policy);
+        let lines = vec![
+            blank_line(
+                layout.total_width + 1,
+                layout.width_profile,
+                &base_resources,
+            )
+            .expect("the planned body line should fit"),
+        ];
+        let plan = SequenceRowPlan { lines };
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(0);
+        let execution = AsciiExecution::new(&control, &policy);
+        let mut layout_resources =
+            execution.resource_context(&base_resources, OperationPhase::Layout);
+        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+
+        let error = plan
+            .render(
+                &diagram,
+                &layout,
+                &ascii_chars(),
+                &options,
+                &mut layout_resources,
+                &mut checkpoints,
+            )
+            .expect_err("box geometry should observe layout cancellation before emission starts");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+    }
+
     fn finish_styled_test_lines(
         options: &AsciiRenderOptions,
         policy: &AsciiResourcePolicy,
@@ -1374,10 +1435,6 @@ mod tests {
 
     fn layout_checkpoints(policy: &AsciiResourcePolicy) -> SequenceCheckpointCursor<'_> {
         SequenceCheckpointCursor::new(AsciiExecution::standalone(policy), OperationPhase::Layout)
-    }
-
-    fn emit_checkpoints(policy: &AsciiResourcePolicy) -> SequenceCheckpointCursor<'_> {
-        SequenceCheckpointCursor::new(AsciiExecution::standalone(policy), OperationPhase::Emit)
     }
 
     fn ascii_chars() -> SequenceChars {

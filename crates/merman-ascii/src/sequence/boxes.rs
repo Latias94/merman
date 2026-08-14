@@ -11,8 +11,11 @@ use crate::text::{display_width_with_profile, truncate_display_width_with_profil
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
 use super::render::SequenceChars;
+#[cfg(test)]
+use super::text::blank_line;
 use super::text::{
-    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line, trim_right,
+    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line_with_checkpoints,
+    trim_right,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +72,20 @@ pub(super) fn render_sequence_boxes(
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<Vec<SequenceLine>> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        render_sequence_boxes_transactional(lines, diagram, layout, chars, resources, checkpoints)
+    })
+}
+
+fn render_sequence_boxes_transactional(
+    lines: Vec<SequenceLine>,
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<Vec<SequenceLine>> {
     let horizontal_padding = resources.checked_grid_mul(2, SEQUENCE_BOX_CONTENT_OFFSET)?;
     let mut content_width = 0;
     for line in &lines {
@@ -104,32 +121,39 @@ pub(super) fn render_sequence_boxes(
     canvas
         .try_reserve_exact(canvas_plan.height)
         .map_err(|_| allocation_failed())?;
-    canvas.push(blank_line(
+    canvas.push(blank_line_with_checkpoints(
         canvas_plan.width,
         layout.width_profile,
         resources,
+        checkpoints,
     )?);
     for _ in 0..canvas_plan.label_extra_rows {
         checkpoints.tick()?;
-        canvas.push(blank_line(
+        canvas.push(blank_line_with_checkpoints(
             canvas_plan.width,
             layout.width_profile,
             resources,
+            checkpoints,
         )?);
     }
     for line in lines {
         checkpoints.tick()?;
-        let mut row = blank_line(0, layout.width_profile, resources)?;
-        row.try_push_spaces(SEQUENCE_BOX_CONTENT_OFFSET)?;
+        let mut row = blank_line_with_checkpoints(0, layout.width_profile, resources, checkpoints)?;
+        row.try_push_spaces_with_checkpoint(SEQUENCE_BOX_CONTENT_OFFSET, || {
+            checkpoints.checkpoint()
+        })?;
         row.try_push_line(&line)?;
-        row.try_push_spaces(SEQUENCE_BOX_CONTENT_OFFSET)?;
-        row.try_pad_to(canvas_plan.width)?;
+        row.try_push_spaces_with_checkpoint(SEQUENCE_BOX_CONTENT_OFFSET, || {
+            checkpoints.checkpoint()
+        })?;
+        row.try_pad_to_with_checkpoint(canvas_plan.width, || checkpoints.checkpoint())?;
         canvas.push(row);
     }
-    canvas.push(blank_line(
+    canvas.push(blank_line_with_checkpoints(
         canvas_plan.width,
         layout.width_profile,
         resources,
+        checkpoints,
     )?);
 
     for sequence_box in boxes {
@@ -145,7 +169,12 @@ pub(super) fn render_sequence_boxes(
         checkpoints.tick()?;
         rendered.push(trim_right(row)?);
     }
-    output_reservation.commit(&mut output_extent, &rendered, resources)?;
+    output_reservation.commit_with_checkpoints(
+        &mut output_extent,
+        &rendered,
+        resources,
+        checkpoints,
+    )?;
     Ok(rendered)
 }
 
@@ -171,8 +200,14 @@ fn plan_sequence_box_canvas(
     resources.grid_extent(width, height)?;
     checkpoints.before_charge()?;
     charge_work_product(resources, width, height)?;
-    let output_batch =
-        planned_box_output_extent(lines, label_extra_rows, box_width, width, resources)?;
+    let output_batch = planned_box_output_extent(
+        lines,
+        label_extra_rows,
+        box_width,
+        width,
+        resources,
+        checkpoints,
+    )?;
     Ok(SequenceBoxCanvasPlan {
         label_extra_rows,
         width,
@@ -187,6 +222,7 @@ fn planned_box_output_extent(
     box_width: usize,
     materialized_width: usize,
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceBatchExtent> {
     let top_row_count = resources.checked_grid_add(label_extra_rows, 1)?;
     let top_and_label_rows = std::iter::repeat_n(box_width, top_row_count);
@@ -195,13 +231,14 @@ fn planned_box_output_extent(
             .checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, line.trimmed_len(false))
             .map(|content_width| content_width.max(box_width))
     });
-    SequenceBatchExtent::try_from_line_lengths(
+    SequenceBatchExtent::try_from_line_lengths_with_checkpoints(
         materialized_width,
         top_and_label_rows
             .map(Ok)
             .chain(content_rows)
             .chain(std::iter::once(Ok(box_width))),
         resources,
+        checkpoints,
     )
 }
 
@@ -413,7 +450,9 @@ fn draw_sequence_box(
 
     checkpoints.before_charge()?;
     let materialized = match (sequence_box.label, sequence_box.label_plan) {
-        (Some(label), Some(plan)) => plan.materialize(label, resources).map(Some),
+        (Some(label), Some(plan)) => plan
+            .materialize_with_checkpoint(label, resources, || checkpoints.checkpoint())
+            .map(Some),
         (None, None) => Ok(None),
         _ => return Err(invalid_box_geometry()),
     };
@@ -427,7 +466,7 @@ fn draw_sequence_box(
         let Some(row) = canvas.get_mut(line_index) else {
             break;
         };
-        draw_sequence_box_label(row, line, bounds, resources)?;
+        draw_sequence_box_label(row, line, bounds, resources, checkpoints)?;
     }
     Ok(())
 }
@@ -456,12 +495,15 @@ fn draw_sequence_box_label(
     label: &str,
     bounds: SequenceGroupBoxBounds,
     resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
     let label = padded_box_label(label, resources)?;
     let index = resources.checked_grid_add(bounds.left, SEQUENCE_BOX_LABEL_MARGIN)?;
     let available = bounds.right.saturating_sub(index);
     let label = truncate_display_width_with_profile(&label, available, row.width_profile());
-    row.try_write_text_role(index, &label, AsciiColorRole::Text)
+    row.try_write_text_role_with_checkpoint(index, &label, AsciiColorRole::Text, || {
+        checkpoints.tick()
+    })
 }
 
 fn padded_box_label(label: &str, resources: &ResourceContext) -> Result<String> {
@@ -572,11 +614,11 @@ mod tests {
             .try_set_role(3, 'x', AsciiColorRole::Text)
             .expect("the retained content should fit");
         let input = vec![input_row];
-        let batch = planned_box_output_extent(&input, 0, 3, 8, &resources)
+        let policy = resources.policy();
+        let mut checkpoints = layout_checkpoints(&policy);
+        let batch = planned_box_output_extent(&input, 0, 3, 8, &resources, &mut checkpoints)
             .expect("the trimmed output extent should be planned");
         let mut extent = SequenceExtentLedger::default();
-        let policy = resources.policy();
-        let checkpoints = layout_checkpoints(&policy);
         let reservation = extent
             .reserve(batch, &mut resources, &checkpoints)
             .expect("the padded output extent should be admitted");

@@ -4,7 +4,7 @@ use super::{
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::display_width_with_profile;
 
@@ -17,8 +17,8 @@ use super::render::{
     SequenceChars, build_lifeline_line, lifeline_char, lifeline_role, retained_lifeline_width,
 };
 use super::text::{
-    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, padded_line, trim_right,
-    validate_batch_footprints, write_text_role,
+    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, padded_line_with_checkpoints,
+    trim_right, validate_batch_footprints_with_checkpoints, write_text_role,
 };
 
 #[derive(Debug)]
@@ -130,8 +130,13 @@ impl SelfMessageGeometry {
         })
     }
 
-    fn pad_line(self, line: SequenceLine, needed: usize) -> Result<SequenceLine> {
-        padded_line(line, self.materialized_width.max(needed))
+    fn pad_line(
+        self,
+        line: SequenceLine,
+        needed: usize,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<SequenceLine> {
+        padded_line_with_checkpoints(line, self.materialized_width.max(needed), checkpoints)
     }
 }
 
@@ -185,6 +190,19 @@ pub(super) fn prepare_message_rows(
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedMessageRows> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        prepare_message_rows_transactional(message, layout, visible_actors, resources, checkpoints)
+    })
+}
+
+fn prepare_message_rows_transactional(
+    message: &SequenceMessage,
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<PreparedMessageRows> {
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
     let label_plan = message_label_plan(
@@ -221,24 +239,28 @@ pub(super) fn prepare_message_rows(
         .try_reserve_exact(row_count)
         .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
-        let visited = plan.try_visit_row_metrics(&message.label, resources, |row| {
-            checkpoints.tick()?;
-            let label_right = resources.checked_grid_add(start, row.retained_width)?;
-            let retained_width = lifeline_width.max(label_right);
-            extent.try_push_line_length(retained_width, resources)?;
-            footprints.push(if row.retained_width == 0 {
-                SequenceRowFootprint::lifeline(retained_width)
-            } else {
-                SequenceRowFootprint::with_content(
-                    retained_width,
-                    start,
-                    label_right
-                        .checked_sub(1)
-                        .ok_or_else(invalid_message_geometry)?,
-                )?
-            });
-            Ok(())
-        });
+        let visited = plan.try_visit_row_metrics_with_checkpoint(
+            &message.label,
+            resources,
+            || checkpoints.checkpoint(),
+            |row| {
+                let label_right = resources.checked_grid_add(start, row.retained_width)?;
+                let retained_width = lifeline_width.max(label_right);
+                extent.try_push_line_length(retained_width, resources)?;
+                footprints.push(if row.retained_width == 0 {
+                    SequenceRowFootprint::lifeline(retained_width)
+                } else {
+                    SequenceRowFootprint::with_content(
+                        retained_width,
+                        start,
+                        label_right
+                            .checked_sub(1)
+                            .ok_or_else(invalid_message_geometry)?,
+                    )?
+                });
+                Ok(())
+            },
+        );
         checkpoints.before_charge()?;
         visited?;
     }
@@ -248,7 +270,7 @@ pub(super) fn prepare_message_rows(
         from.min(to),
         from.max(to),
     )?);
-    validate_batch_footprints(extent, &footprints, resources)?;
+    validate_batch_footprints_with_checkpoints(extent, &footprints, resources, checkpoints)?;
 
     Ok(PreparedMessageRows {
         label_plan,
@@ -279,7 +301,10 @@ pub(super) fn render_message(
     let label_lines = match label_plan {
         Some(plan) => {
             checkpoints.checkpoint()?;
-            let materialized = plan.materialize_after_admission(&message.label);
+            let materialized = plan
+                .materialize_after_admission_with_checkpoint(&message.label, || {
+                    checkpoints.checkpoint()
+                });
             checkpoints.checkpoint()?;
             materialized?.into_parts().0
         }
@@ -301,7 +326,7 @@ pub(super) fn render_message(
         let label_right = resources.checked_grid_add(start, label_width)?;
         let width =
             resources.checked_grid_add(layout.total_width.max(label_right), LABEL_BUFFER_SPACE)?;
-        let mut line = padded_line(
+        let mut line = padded_line_with_checkpoints(
             build_lifeline_line(
                 layout,
                 chars,
@@ -311,8 +336,15 @@ pub(super) fn render_message(
                 checkpoints,
             )?,
             width,
+            checkpoints,
         )?;
-        write_text_role(&mut line, start, &label, AsciiColorRole::EdgeLabel)?;
+        write_text_role(
+            &mut line,
+            start,
+            &label,
+            AsciiColorRole::EdgeLabel,
+            checkpoints,
+        )?;
         lines.push(trim_right(line)?);
     }
 
@@ -426,6 +458,27 @@ pub(super) fn prepare_self_message_rows(
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedSelfMessageRows> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        prepare_self_message_rows_transactional(
+            message,
+            layout,
+            chars,
+            visible_actors,
+            resources,
+            checkpoints,
+        )
+    })
+}
+
+fn prepare_self_message_rows_transactional(
+    message: &SequenceMessage,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    visible_actors: &[bool],
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<PreparedSelfMessageRows> {
     let center = layout.participant_centers[message.from];
     let geometry = SelfMessageGeometry::try_new(message, layout, chars, resources)?;
     let label_wrap_width = resources.checked_grid_add(geometry.width, LABEL_BUFFER_SPACE)?;
@@ -462,24 +515,28 @@ pub(super) fn prepare_self_message_rows(
         .try_reserve_exact(row_count)
         .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
-        let visited = plan.try_visit_row_metrics(&message.label, resources, |row| {
-            checkpoints.tick()?;
-            let label_right = resources.checked_grid_add(start, row.retained_width)?;
-            let retained_width = lifeline_width.max(label_right);
-            extent.try_push_line_length(retained_width, resources)?;
-            footprints.push(if row.retained_width == 0 {
-                SequenceRowFootprint::lifeline(retained_width)
-            } else {
-                SequenceRowFootprint::with_content(
-                    retained_width,
-                    start,
-                    label_right
-                        .checked_sub(1)
-                        .ok_or_else(invalid_message_geometry)?,
-                )?
-            });
-            Ok(())
-        });
+        let visited = plan.try_visit_row_metrics_with_checkpoint(
+            &message.label,
+            resources,
+            || checkpoints.checkpoint(),
+            |row| {
+                let label_right = resources.checked_grid_add(start, row.retained_width)?;
+                let retained_width = lifeline_width.max(label_right);
+                extent.try_push_line_length(retained_width, resources)?;
+                footprints.push(if row.retained_width == 0 {
+                    SequenceRowFootprint::lifeline(retained_width)
+                } else {
+                    SequenceRowFootprint::with_content(
+                        retained_width,
+                        start,
+                        label_right
+                            .checked_sub(1)
+                            .ok_or_else(invalid_message_geometry)?,
+                    )?
+                });
+                Ok(())
+            },
+        );
         checkpoints.before_charge()?;
         visited?;
     }
@@ -492,7 +549,7 @@ pub(super) fn prepare_self_message_rows(
             geometry.loop_right,
         )?);
     }
-    validate_batch_footprints(extent, &footprints, resources)?;
+    validate_batch_footprints_with_checkpoints(extent, &footprints, resources, checkpoints)?;
 
     Ok(PreparedSelfMessageRows {
         label_plan,
@@ -525,7 +582,10 @@ pub(super) fn render_self_message(
     let label_lines = match label_plan {
         Some(plan) => {
             checkpoints.checkpoint()?;
-            let materialized = plan.materialize_after_admission(&message.label);
+            let materialized = plan
+                .materialize_after_admission_with_checkpoint(&message.label, || {
+                    checkpoints.checkpoint()
+                });
             checkpoints.checkpoint()?;
             materialized?.into_parts().0
         }
@@ -557,8 +617,15 @@ pub(super) fn render_self_message(
                 checkpoints,
             )?,
             needed,
+            checkpoints,
         )?;
-        write_text_role(&mut line, start, &label, AsciiColorRole::EdgeLabel)?;
+        write_text_role(
+            &mut line,
+            start,
+            &label,
+            AsciiColorRole::EdgeLabel,
+            checkpoints,
+        )?;
         lines.push(trim_right(line)?);
     }
 
@@ -572,6 +639,7 @@ pub(super) fn render_self_message(
             checkpoints,
         )?,
         geometry.loop_needed,
+        checkpoints,
     )?;
     let style = match message.style {
         SequenceLineStyle::Solid => chars.solid_line,
@@ -622,6 +690,7 @@ pub(super) fn render_self_message(
             checkpoints,
         )?,
         geometry.loop_needed,
+        checkpoints,
     )?;
     middle.try_set_role(
         geometry.loop_right,
@@ -640,6 +709,7 @@ pub(super) fn render_self_message(
             checkpoints,
         )?,
         geometry.loop_needed,
+        checkpoints,
     )?;
     if destroyed_actors.contains(&message.from) {
         bottom.try_set_role(center, chars.destroyed_mark, AsciiColorRole::EdgeArrow)?;
@@ -804,11 +874,7 @@ fn has_target_central_decoration(decoration: SequenceCentralDecoration) -> bool 
 }
 
 fn charge_row_work(resources: &mut ResourceContext, width: usize, height: usize) -> Result<()> {
-    let work = width.checked_mul(height).ok_or_else(|| {
-        resources
-            .policy()
-            .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-    })?;
+    let work = resources.checked_work_mul(width, height)?;
     resources.charge_layout_work(work)
 }
 
@@ -890,6 +956,7 @@ mod tests {
             .pad_line(
                 blank_line(6, layout.width_profile, &resources).unwrap(),
                 prepared.geometry.loop_needed,
+                &mut checkpoints,
             )
             .unwrap();
         assert_eq!(padded.len(), prepared.geometry.materialized_width);

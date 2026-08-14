@@ -3,7 +3,9 @@ use super::layout::{SequenceLayout, calculate_layout_with_resources};
 use super::model::{AsciiSequenceDiagram, SequenceArrowHead};
 use super::notes::apply_note_gutters;
 use super::plan::SequenceRowPlan;
-use super::text::{SequenceLine, blank_line, padded_line, trim_right};
+use super::text::{
+    SequenceLine, blank_line_with_checkpoints, padded_line_with_checkpoints, trim_right,
+};
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
@@ -226,27 +228,36 @@ fn render_sequence_diagram_inner(
 
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     debug_assert_eq!(resources.policy(), *execution.resources());
+    let mut layout_resources = execution.resource_context(resources, OperationPhase::Layout);
     let chars = SequenceChars::for_options(options);
     let mut layout_checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
-    let mut layout =
-        calculate_layout_with_resources(diagram, options, resources, &mut layout_checkpoints)?;
-    apply_note_gutters(diagram, &mut layout, resources, &mut layout_checkpoints)?;
+    let mut layout = calculate_layout_with_resources(
+        diagram,
+        options,
+        &mut layout_resources,
+        &mut layout_checkpoints,
+    )?;
+    apply_note_gutters(
+        diagram,
+        &mut layout,
+        &mut layout_resources,
+        &mut layout_checkpoints,
+    )?;
     let row_plan = SequenceRowPlan::build(
         diagram,
         &layout,
         &chars,
         options.sequence_mirror_actors,
-        resources,
+        &mut layout_resources,
         &mut layout_checkpoints,
     )?;
-    let mut emit_checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Emit);
     row_plan.render(
         diagram,
         &layout,
         &chars,
         options,
-        resources,
-        &mut emit_checkpoints,
+        &mut layout_resources,
+        &mut layout_checkpoints,
     )
 }
 
@@ -259,7 +270,8 @@ pub(super) fn build_lifeline_line(
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
     let width = resources.checked_grid_add(layout.total_width, 1)?;
-    let mut line = blank_line(width, layout.width_profile, resources)?;
+    let mut line =
+        blank_line_with_checkpoints(width, layout.width_profile, resources, checkpoints)?;
     for (index, center) in layout.participant_centers.iter().enumerate() {
         checkpoints.tick()?;
         if !visible_actors.get(index).copied().unwrap_or(true) {
@@ -320,7 +332,7 @@ pub(super) fn render_overlay_row(
     let needed = resources.checked_grid_add(left, overlay.len())?;
     let width = needed.max(resources.checked_grid_add(layout.total_width, 1)?);
     resources.grid_extent(width, 1)?;
-    let mut line = padded_line(
+    let mut line = padded_line_with_checkpoints(
         build_lifeline_line(
             layout,
             chars,
@@ -330,6 +342,7 @@ pub(super) fn render_overlay_row(
             checkpoints,
         )?,
         width,
+        checkpoints,
     )?;
     line.try_write_line(left, overlay)?;
     trim_right(line)

@@ -96,39 +96,42 @@ impl SequenceParticipantLabel {
         resources: &mut ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
-        let wrap_width = wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH);
-        let plan = try_plan_sequence_projection_label(
-            raw,
-            width_profile,
-            false,
-            wrap_width,
-            LabelBreakPolicy::MermaidLabelBreaks,
-            resources,
-            execution,
-        )?
-        .expect("non-trimmed labels always retain one row");
-        execution.checkpoint(OperationPhase::Semantic)?;
-        plan.check_materialization_limits(resources)?;
-        let metrics = plan.metrics();
-        execution.checkpoint(OperationPhase::Semantic)?;
-        resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
-        execution.checkpoint(OperationPhase::Semantic)?;
-        resources.check(
-            AsciiResourceLimitId::MaxDocumentCells,
-            metrics.document_cells,
-        )?;
-        execution.checkpoint(OperationPhase::Semantic)?;
-        resources.check(AsciiResourceLimitId::MaxOutputBytes, raw.len())?;
-        Ok(Self {
-            raw: try_clone_projection_string(raw, execution)?,
-            wrap_width,
-            width_profile,
-            metrics: SequenceParticipantLabelMetrics {
-                materialized_bytes: metrics.materialized_bytes,
-                document_cells: metrics.document_cells,
-                line_count: metrics.line_count,
-                max_width: metrics.max_width,
-            },
+        let transaction = resources.clone();
+        transaction.transaction(|_| {
+            let wrap_width = wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH);
+            let plan = try_plan_sequence_projection_label(
+                raw,
+                width_profile,
+                false,
+                wrap_width,
+                LabelBreakPolicy::MermaidLabelBreaks,
+                resources,
+                execution,
+            )?
+            .expect("non-trimmed labels always retain one row");
+            execution.checkpoint(OperationPhase::Semantic)?;
+            plan.check_materialization_limits(resources)?;
+            let metrics = plan.metrics();
+            execution.checkpoint(OperationPhase::Semantic)?;
+            resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
+            execution.checkpoint(OperationPhase::Semantic)?;
+            resources.check(
+                AsciiResourceLimitId::MaxDocumentCells,
+                metrics.document_cells,
+            )?;
+            execution.checkpoint(OperationPhase::Semantic)?;
+            resources.check(AsciiResourceLimitId::MaxOutputBytes, raw.len())?;
+            Ok(Self {
+                raw: try_clone_projection_string(raw, execution)?,
+                wrap_width,
+                width_profile,
+                metrics: SequenceParticipantLabelMetrics {
+                    materialized_bytes: metrics.materialized_bytes,
+                    document_cells: metrics.document_cells,
+                    line_count: metrics.line_count,
+                    max_width: metrics.max_width,
+                },
+            })
         })
     }
 
@@ -193,7 +196,11 @@ impl PreparedSequenceParticipantLabel<'_> {
         checkpoints: &SequenceCheckpointCursor<'_>,
     ) -> Result<MaterializedSequenceParticipantLabel> {
         checkpoints.checkpoint()?;
-        let materialized = self.plan.materialize_after_admission(&self.label.raw);
+        let materialized = self
+            .plan
+            .materialize_after_admission_with_checkpoint(&self.label.raw, || {
+                checkpoints.checkpoint()
+            });
         checkpoints.checkpoint()?;
         let (lines, width) = materialized?.into_parts();
         if lines.len() != self.label.metrics.line_count || width != self.label.metrics.max_width {
@@ -416,6 +423,12 @@ pub(crate) fn from_sequence_model(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiSequenceDiagram> {
+    // Keep one render-wide ledger while binding every semantic admission to the caller's
+    // operation.  The public facade creates the base ledger before entering this module; this
+    // view shares its counters, but makes every charge observe semantic cancellation.
+    let mut semantic_resources = execution.resource_context(resources, OperationPhase::Semantic);
+    let resources = &mut semantic_resources;
+
     preflight_sequence_projection(model, resources, execution)?;
     validate_supported_sequence_model(model, execution)?;
 
@@ -948,7 +961,7 @@ mod tests {
                 if cancelled.phase == OperationPhase::Semantic
                     && cancelled.reason == merman_core::CancelReason::Requested
         ));
-        assert_eq!(resources.layout_work_used(), 1);
+        assert_eq!(resources.layout_work_used(), 0);
     }
 
     #[test]
@@ -1000,5 +1013,41 @@ mod tests {
                     && details.actual == required_cells
                     && details.max == required_cells - 1
         ));
+    }
+
+    #[test]
+    fn participant_label_admission_restores_a_nonzero_shared_ledger() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
+            .expect("one grid cell should be a valid limit");
+        let base_resources = ResourceContext::new(policy);
+        base_resources
+            .charge_layout_work(5)
+            .expect("the pre-existing work debit should fit");
+        base_resources
+            .charge_document_cells(3)
+            .expect("the pre-existing document debit should fit");
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let mut resources = execution.resource_context(&base_resources, OperationPhase::Semantic);
+
+        let error = SequenceParticipantLabel::try_from_raw(
+            "AB",
+            false,
+            TerminalWidthProfile::Unicode,
+            &mut resources,
+            execution,
+        )
+        .expect_err("the post-plan grid admission should reject two cells");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 2
+                    && details.max == 1
+        ));
+        assert_eq!(base_resources.layout_work_used(), 5);
+        assert_eq!(base_resources.document_cells_used(), 3);
     }
 }

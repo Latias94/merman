@@ -9,7 +9,7 @@ use crate::resource::ResourceContext;
 use crate::sequence::SequenceCheckpointCursor;
 use crate::sequence::layout::SequenceLayout;
 use crate::sequence::render::SequenceChars;
-use crate::sequence::text::{SequenceLine, padded_line};
+use crate::sequence::text::{SequenceLine, padded_line_with_checkpoints};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SequenceControlBodyRow {
@@ -438,7 +438,7 @@ fn render_border_row(
     resources: &ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
-    let mut row = padded_line(base, plan.total_width)?;
+    let mut row = padded_line_with_checkpoints(base, plan.total_width, checkpoints)?;
     let left_index = plan.bounds.left();
     let right_index = plan.bounds.right();
     let frame_end = plan.bounds.right_exclusive(resources)?;
@@ -450,10 +450,11 @@ fn render_border_row(
     row.try_set_role(left_index, left, AsciiColorRole::SequenceFrame)?;
     row.try_set_role(right_index, right, AsciiColorRole::SequenceFrame)?;
     if let Some(label) = label {
-        row.try_write_text_role(
+        row.try_write_text_role_with_checkpoint(
             resources.checked_grid_add(left_index, 1)?,
             label,
             AsciiColorRole::Text,
+            || checkpoints.tick(),
         )?;
     }
     Ok(row)
@@ -467,7 +468,7 @@ fn render_content_row(
     resources: &ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
-    let mut row = padded_line(row, plan.total_width)?;
+    let mut row = padded_line_with_checkpoints(row, plan.total_width, checkpoints)?;
     let frame_end = plan.bounds.right_exclusive(resources)?;
     paint_row_background_if_unset(
         &mut row,

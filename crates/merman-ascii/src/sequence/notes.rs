@@ -6,7 +6,7 @@ use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 #[cfg(test)]
 use crate::operation::AsciiExecution;
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::display_width_with_profile;
 #[cfg(test)]
@@ -16,7 +16,8 @@ use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
 use super::render::{SequenceChars, render_overlay_row, retained_lifeline_width};
 use super::text::{
-    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, blank_line, validate_batch_footprints,
+    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, blank_line_with_checkpoints,
+    validate_batch_footprints_with_checkpoints,
 };
 
 #[derive(Debug)]
@@ -129,6 +130,19 @@ pub(super) fn prepare_note_rows(
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<PreparedNoteRows> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        prepare_note_rows_transactional(note, layout, visible_actors, resources, checkpoints)
+    })
+}
+
+fn prepare_note_rows_transactional(
+    note: &SequenceNote,
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<PreparedNoteRows> {
     let label_plan = note_label_plan(note, layout, resources, checkpoints)?;
     checkpoints.before_charge()?;
     label_plan.check_materialization_limits(resources)?;
@@ -196,7 +210,7 @@ pub(super) fn prepare_note_rows(
         .try_reserve_exact(row_count)
         .map_err(|_| allocation_failed())?;
     footprints.resize(row_count, footprint);
-    validate_batch_footprints(extent, &footprints, resources)?;
+    validate_batch_footprints_with_checkpoints(extent, &footprints, resources, checkpoints)?;
     Ok(PreparedNoteRows {
         label_plan,
         inner_width,
@@ -223,7 +237,8 @@ pub(super) fn render_note(
         footprints: _,
     } = prepared;
     checkpoints.checkpoint()?;
-    let materialized = label_plan.materialize_after_admission(&note.label);
+    let materialized = label_plan
+        .materialize_after_admission_with_checkpoint(&note.label, || checkpoints.checkpoint());
     checkpoints.checkpoint()?;
     let label_lines = materialized?.into_parts().0;
     let row_count = extent.height();
@@ -248,12 +263,14 @@ pub(super) fn render_note(
             .checked_sub(line_width)
             .ok_or_else(invalid_note_geometry)?
             / 2;
-        let mut row = blank_line(note_width, layout.width_profile, resources)?;
+        let mut row =
+            blank_line_with_checkpoints(note_width, layout.width_profile, resources, checkpoints)?;
         row.try_set_role(0, chars.vertical, AsciiColorRole::SequenceFrame)?;
-        row.try_write_text_role(
+        row.try_write_text_role_with_checkpoint(
             resources.checked_grid_add(1, left_padding)?,
             &line,
             AsciiColorRole::Text,
+            || checkpoints.tick(),
         )?;
         row.try_set_role(
             resources.checked_grid_add(inner_width, 1)?,
@@ -293,11 +310,7 @@ pub(super) fn render_note(
 }
 
 fn charge_note_work(resources: &mut ResourceContext, width: usize, height: usize) -> Result<()> {
-    let work = width.checked_mul(height).ok_or_else(|| {
-        resources
-            .policy()
-            .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-    })?;
+    let work = resources.checked_work_mul(width, height)?;
     resources.charge_layout_work(work)
 }
 
@@ -322,7 +335,7 @@ fn note_border_row(
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<SequenceLine> {
     let total_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
-    let mut row = blank_line(total_width, width_profile, resources)?;
+    let mut row = blank_line_with_checkpoints(total_width, width_profile, resources, checkpoints)?;
     row.try_set_role(0, left, AsciiColorRole::SequenceFrame)?;
     for x in 1..=inner_width {
         checkpoints.tick()?;
