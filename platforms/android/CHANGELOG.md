@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+### Added
+
+- Added `MermanOperationControl` with cross-thread cooperative cancellation, optional relative
+  timeouts, cancellation state inspection, and idempotent release. Both `Merman.execute` and
+  `MermanEngine.execute` retain their existing overloads and add controlled dispatch overloads.
+- Added structured `MermanCancelledDetails` projection for requested cancellation and deadline
+  expiry. Android JNI transport API 2 owns the opaque control-token registry and controlled native
+  method set.
+- Added lossless `MermanExactResourceErrorDetails` for the complete native unsigned 64-bit count
+  range. Existing `resourceDetails` remains available as a signed-`Long` compatibility projection;
+  migrate overflow-sensitive consumers to `exactResourceDetails`.
+
 ### Breaking changes
 
 - The default AAR now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. The generated helper methods remain stable; unavailable operations return typed missing-capability or unsupported-operation errors. Custom source builds may enable the omitted capabilities.

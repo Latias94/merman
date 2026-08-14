@@ -1,5 +1,6 @@
-# JNI registers one-shot methods on Merman and reusable methods on MermanEngine.
+# JNI registers one-shot, operation-control, and reusable-engine methods by exact class name.
 -keep class io.merman.Merman { *; }
+-keep class io.merman.MermanOperationControl { *; }
 -keep class io.merman.MermanEngine { *; }
 -keep class io.merman.MermanOperationResult { *; }
 -keep class io.merman.MermanException { *; }

@@ -2,6 +2,7 @@ package io.merman
 
 import org.json.JSONObject
 
+/** Compatibility projection for resource counts that fit a signed [Long]. */
 data class MermanResourceErrorDetails(
     val cause: String,
     val limitId: String,
@@ -9,6 +10,21 @@ data class MermanResourceErrorDetails(
     val actual: Long,
     val max: Long,
     val profile: String,
+)
+
+/** Lossless projection for native unsigned 64-bit resource counts. */
+data class MermanExactResourceErrorDetails(
+    val cause: String,
+    val limitId: String,
+    val phase: String,
+    val actual: String,
+    val max: String,
+    val profile: String,
+)
+
+private data class ParsedResourceErrorDetails(
+    val exact: MermanExactResourceErrorDetails,
+    val compatible: MermanResourceErrorDetails?,
 )
 
 data class MermanDiagnosticSpan(
@@ -28,6 +44,11 @@ data class MermanIconRegistryErrorDetails(
     val kindId: String,
     val packIndex: Long?,
     val registrationName: String?,
+)
+
+data class MermanCancelledDetails(
+    val reason: String,
+    val phase: String,
 )
 
 class MermanException private constructor(
@@ -54,12 +75,18 @@ class MermanException private constructor(
         ?.takeIf { it.has("capability_id") && !it.isNull("capability_id") }
         ?.optString("capability_id")
         ?.takeIf(String::isNotEmpty)
+    private val parsedResourceDetails: ParsedResourceErrorDetails? =
+        payload?.let(::parseResourceDetails)
+    val exactResourceDetails: MermanExactResourceErrorDetails? =
+        parsedResourceDetails?.exact ?: localResourceDetails?.toExactResourceDetails()
     val resourceDetails: MermanResourceErrorDetails? =
-        payload?.let(::parseResourceDetails) ?: localResourceDetails
+        parsedResourceDetails?.compatible ?: localResourceDetails
     val diagnosticDetails: MermanDiagnosticErrorDetails? =
         payload?.let(::parseDiagnosticDetails) ?: localDiagnosticDetails
     val iconRegistryDetails: MermanIconRegistryErrorDetails? =
         payload?.let(::parseIconRegistryDetails) ?: localIconRegistryDetails
+    val cancellationDetails: MermanCancelledDetails? =
+        payload?.let(::parseCancellationDetails)
 
     internal companion object {
         private const val INTERNAL_ERROR_CODE = 9
@@ -104,17 +131,62 @@ class MermanException private constructor(
         private fun parsePayload(message: String): JSONObject? =
             runCatching { JSONObject(message) }.getOrNull()
 
-        private fun parseResourceDetails(payload: JSONObject): MermanResourceErrorDetails? = runCatching {
-            val resource = payload.optJSONObject("details")?.optJSONObject("resource")
-                ?: return null
-            val cause = resource.getString("cause").takeIf(String::isNotEmpty) ?: return null
-            val limitId = resource.getString("limit_id").takeIf(String::isNotEmpty) ?: return null
-            val phase = resource.getString("phase").takeIf(String::isNotEmpty) ?: return null
-            val actual = resource.getLong("actual").takeIf { it >= 0 } ?: return null
-            val max = resource.getLong("max").takeIf { it >= 0 } ?: return null
-            val profile = resource.getString("profile").takeIf(String::isNotEmpty) ?: return null
-            MermanResourceErrorDetails(cause, limitId, phase, actual, max, profile)
-        }.getOrNull()
+        private fun parseResourceDetails(payload: JSONObject): ParsedResourceErrorDetails? =
+            runCatching {
+                val resource = payload.optJSONObject("details")?.optJSONObject("resource")
+                    ?: return null
+                val cause = resource.getString("cause").takeIf(String::isNotEmpty) ?: return null
+                val limitId = resource.getString("limit_id").takeIf(String::isNotEmpty) ?: return null
+                val phase = resource.getString("phase").takeIf(String::isNotEmpty) ?: return null
+                val actual = resource.unsignedDecimal("actual") ?: return null
+                val max = resource.unsignedDecimal("max") ?: return null
+                val profile = resource.getString("profile").takeIf(String::isNotEmpty) ?: return null
+                ParsedResourceErrorDetails(
+                    exact = MermanExactResourceErrorDetails(
+                        cause,
+                        limitId,
+                        phase,
+                        actual,
+                        max,
+                        profile,
+                    ),
+                    compatible = actual.toLongOrNull()?.let { actualLong ->
+                        max.toLongOrNull()?.let { maxLong ->
+                            MermanResourceErrorDetails(
+                                cause,
+                                limitId,
+                                phase,
+                                actualLong,
+                                maxLong,
+                                profile,
+                            )
+                        }
+                    },
+                )
+            }.getOrNull()
+
+        private fun JSONObject.unsignedDecimal(key: String): String? {
+            val decimal = when (val value = get(key)) {
+                is Byte, is Short, is Int, is Long -> value.toString()
+                is String -> value
+                else -> return null
+            }
+            if (decimal.isEmpty() || decimal.any { it !in '0'..'9' }) {
+                return null
+            }
+            return decimal.toULongOrNull()?.toString()
+        }
+
+        private fun MermanResourceErrorDetails.toExactResourceDetails():
+            MermanExactResourceErrorDetails =
+            MermanExactResourceErrorDetails(
+                cause = cause,
+                limitId = limitId,
+                phase = phase,
+                actual = actual.toString(),
+                max = max.toString(),
+                profile = profile,
+            )
 
         private fun parseDiagnosticDetails(payload: JSONObject): MermanDiagnosticErrorDetails? =
             runCatching {
@@ -166,6 +238,17 @@ class MermanException private constructor(
                     null
                 }
                 MermanIconRegistryErrorDetails(kindId, packIndex, registrationName)
+            }.getOrNull()
+
+        private fun parseCancellationDetails(payload: JSONObject): MermanCancelledDetails? =
+            runCatching {
+                val cancellation = payload.optJSONObject("details")?.optJSONObject("cancellation")
+                    ?: return null
+                val reason = cancellation.getString("reason")
+                    .takeIf(String::isNotEmpty) ?: return null
+                val phase = cancellation.getString("phase")
+                    .takeIf(String::isNotEmpty) ?: return null
+                MermanCancelledDetails(reason, phase)
             }.getOrNull()
     }
 }

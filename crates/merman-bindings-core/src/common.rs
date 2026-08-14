@@ -890,64 +890,76 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
     error_payload_json_bytes_with_details::<
         &BindingResourceErrorDetails,
         &BindingDiagnosticErrorDetails,
-    >(
+    >(ErrorPayloadInput {
         status,
-        BindingErrorKind::Generic,
-        None,
-        None,
-        None,
-        None,
-        None,
+        kind: BindingErrorKind::Generic,
+        capability_id: None,
+        resource: None,
+        diagnostic: None,
+        icon_registry: None,
+        cancellation: None,
         message,
-    )
+    })
 }
 
 pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
     let details = error.details.as_deref();
-    error_payload_json_bytes_with_details(
-        error.status(),
-        error.kind(),
-        error.capability_id(),
-        details.and_then(|details| details.resource.as_ref()),
-        details.and_then(|details| details.diagnostic.as_ref()),
-        details.and_then(|details| details.icon_registry.as_ref()),
-        details.and_then(|details| details.cancellation.as_ref()),
-        error.message(),
-    )
+    error_payload_json_bytes_with_details(ErrorPayloadInput {
+        status: error.status(),
+        kind: error.kind(),
+        capability_id: error.capability_id(),
+        resource: details.and_then(|details| details.resource.as_ref()),
+        diagnostic: details.and_then(|details| details.diagnostic.as_ref()),
+        icon_registry: details.and_then(|details| details.icon_registry.as_ref()),
+        cancellation: details.and_then(|details| details.cancellation.as_ref()),
+        message: error.message(),
+    })
 }
 
 /// Serializes a binding error for JavaScript transports without losing wide resource counts.
 #[doc(hidden)]
 pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
     let details = error.details.as_deref();
-    error_payload_json_bytes_with_details(
-        error.status(),
-        error.kind(),
-        error.capability_id(),
-        error
+    error_payload_json_bytes_with_details(ErrorPayloadInput {
+        status: error.status(),
+        kind: error.kind(),
+        capability_id: error.capability_id(),
+        resource: error
             .resource_details()
             .map(BindingResourceErrorDetails::js_safe_json),
-        details.and_then(|details| details.diagnostic.as_ref()),
-        details.and_then(|details| details.icon_registry.as_ref()),
-        details.and_then(|details| details.cancellation.as_ref()),
-        error.message(),
-    )
+        diagnostic: details.and_then(|details| details.diagnostic.as_ref()),
+        icon_registry: details.and_then(|details| details.icon_registry.as_ref()),
+        cancellation: details.and_then(|details| details.cancellation.as_ref()),
+        message: error.message(),
+    })
 }
 
-fn error_payload_json_bytes_with_details<R, D>(
+struct ErrorPayloadInput<'a, R, D> {
     status: BindingStatus,
     kind: BindingErrorKind,
-    capability_id: Option<&str>,
+    capability_id: Option<&'a str>,
     resource: Option<R>,
     diagnostic: Option<D>,
-    icon_registry: Option<&BindingIconRegistryErrorDetails>,
-    cancellation: Option<&BindingCancellationErrorDetails>,
-    message: &str,
-) -> Vec<u8>
+    icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
+    cancellation: Option<&'a BindingCancellationErrorDetails>,
+    message: &'a str,
+}
+
+fn error_payload_json_bytes_with_details<R, D>(input: ErrorPayloadInput<'_, R, D>) -> Vec<u8>
 where
     R: Serialize,
     D: Serialize,
 {
+    let ErrorPayloadInput {
+        status,
+        kind,
+        capability_id,
+        resource,
+        diagnostic,
+        icon_registry,
+        cancellation,
+        message,
+    } = input;
     let payload = ErrorPayload {
         version: BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,

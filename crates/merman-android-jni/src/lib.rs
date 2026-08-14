@@ -8,8 +8,12 @@
 //! generated operation vocabulary.
 
 mod artifact_contract;
+mod error;
+mod operation_control;
+mod token;
 
 use artifact_contract::android_artifact_contract;
+use error::binding_error_text;
 #[cfg(feature = "svg")]
 use jni::objects::Global;
 use jni::{
@@ -21,10 +25,12 @@ use jni::{
 };
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
-    BindingError, BindingOperationRequest, BindingOperationResult,
+    BindingError, BindingOperationRequest, BindingOperationResult, OperationControl,
+    OperationPhase,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{BindingIconRegistry, BindingStatus, IconPack, build_icon_registry};
+use operation_control::JniOperationControlRegistry;
 #[cfg(feature = "svg")]
 use std::cell::Cell;
 use std::{
@@ -33,8 +39,9 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, OnceLock},
 };
+use token::next_monotonic_jni_token;
 
-const ANDROID_TRANSPORT_API_VERSION: u32 = 1;
+const ANDROID_TRANSPORT_API_VERSION: u32 = 2;
 
 struct JniEngineState {
     engine: Mutex<Option<Arc<BindingEngine>>>,
@@ -69,7 +76,10 @@ impl JniEngineRegistry {
         &mut self,
         state: Arc<JniEngineState>,
     ) -> Result<jlong, (Box<BindingError>, Arc<JniEngineState>)> {
-        let token = match next_jni_engine_token(self.last_token) {
+        let token = match next_monotonic_jni_token(
+            self.last_token,
+            "Android engine token space is exhausted",
+        ) {
             Ok(token) => token,
             Err(error) => return Err((Box::new(error), state)),
         };
@@ -89,17 +99,7 @@ impl JniEngineRegistry {
 }
 
 static ENGINE_REGISTRY: OnceLock<Mutex<JniEngineRegistry>> = OnceLock::new();
-
-fn next_jni_engine_token(last_token: u64) -> Result<u64, BindingError> {
-    let token = if last_token == 0 {
-        Some(1)
-    } else {
-        last_token.checked_add(1)
-    };
-    token
-        .filter(|token| *token <= i64::MAX as u64)
-        .ok_or_else(|| BindingError::internal("Android engine token space is exhausted"))
-}
+static OPERATION_CONTROL_REGISTRY: OnceLock<Mutex<JniOperationControlRegistry>> = OnceLock::new();
 
 #[cfg(feature = "svg")]
 struct JniHostTextMeasurer {
@@ -366,7 +366,39 @@ const MERMAN_METHODS: &[NativeMethod] = &[
         ) -> io.merman.MermanOperationResult,
     },
     jni::native_method! {
+        static fn native_execute_controlled(
+            operation_id: java.lang.String,
+            source: java.lang.String,
+            options_json: java.lang.String,
+            uri: java.lang.String,
+            control_token: jlong,
+        ) -> io.merman.MermanOperationResult,
+        name = "nativeExecuteControlled",
+    },
+    jni::native_method! {
         static fn native_metadata_json(id: java.lang.String) -> java.lang.String,
+    },
+];
+
+const OPERATION_CONTROL_METHODS: &[NativeMethod] = &[
+    jni::native_method! {
+        static fn native_operation_control_new(
+            timeout_ms: jlong,
+            has_timeout_ms: jboolean,
+        ) -> jlong,
+        name = "nativeNew",
+    },
+    jni::native_method! {
+        static fn native_operation_control_cancel(token: jlong) -> void,
+        name = "nativeCancel",
+    },
+    jni::native_method! {
+        static fn native_operation_control_is_cancelled(token: jlong) -> jboolean,
+        name = "nativeIsCancelled",
+    },
+    jni::native_method! {
+        static fn native_operation_control_release(token: jlong) -> void,
+        name = "nativeRelease",
     },
 ];
 
@@ -394,12 +426,30 @@ const ENGINE_METHODS: &[NativeMethod] = &[
         ) -> io.merman.MermanOperationResult,
         name = "nativeExecute",
     },
+    jni::native_method! {
+        static fn native_engine_execute_controlled(
+            handle: jlong,
+            operation_id: java.lang.String,
+            source: java.lang.String,
+            options_json: java.lang.String,
+            uri: java.lang.String,
+            control_token: jlong,
+        ) -> io.merman.MermanOperationResult,
+        name = "nativeExecuteControlled",
+    },
 ];
 
 fn register_native_methods(env: &mut Env<'_>) -> JniResult<()> {
     let merman_class = env.find_class(jni::jni_str!("io/merman/Merman"))?;
     // Safety: `jni::native_method!` generates an ABI-checked wrapper for every descriptor.
     unsafe { env.register_native_methods(merman_class, MERMAN_METHODS)? };
+
+    let operation_control_class =
+        env.find_class(jni::jni_str!("io/merman/MermanOperationControl"))?;
+    // Safety: `jni::native_method!` generates an ABI-checked wrapper for every descriptor.
+    unsafe {
+        env.register_native_methods(operation_control_class, OPERATION_CONTROL_METHODS)?;
+    }
 
     let engine_class = env.find_class(jni::jni_str!("io/merman/MermanEngine"))?;
     // Safety: `jni::native_method!` generates an ABI-checked wrapper for every descriptor.
@@ -424,6 +474,39 @@ fn native_execute<'local>(
     options_json: JString<'local>,
     uri: JString<'local>,
 ) -> JniResult<JObject<'local>> {
+    native_execute_impl(env, operation_id, source, options_json, uri, None)
+}
+
+fn native_execute_controlled<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    operation_id: JString<'local>,
+    source: JString<'local>,
+    options_json: JString<'local>,
+    uri: JString<'local>,
+    control_token: jlong,
+) -> JniResult<JObject<'local>> {
+    let Some(operation_control) = preflight_operation_control(env, control_token) else {
+        return Ok(JObject::null());
+    };
+    native_execute_impl(
+        env,
+        operation_id,
+        source,
+        options_json,
+        uri,
+        Some(operation_control),
+    )
+}
+
+fn native_execute_impl<'local>(
+    env: &mut Env<'local>,
+    operation_id: JString<'local>,
+    source: JString<'local>,
+    options_json: JString<'local>,
+    uri: JString<'local>,
+    operation_control: Option<OperationControl>,
+) -> JniResult<JObject<'local>> {
     let Some(operation_id) = required_java_string(env, operation_id, "operationId") else {
         return Ok(JObject::null());
     };
@@ -436,14 +519,82 @@ fn native_execute<'local>(
     let Some(uri) = nullable_java_string(env, uri, "uri") else {
         return Ok(JObject::null());
     };
-    result_to_java_operation_result(
-        env,
-        android_artifact_contract().execute_once(
-            BindingOperationRequest::new(&operation_id, source.as_bytes())
-                .with_optional_uri(uri.as_deref().map(str::as_bytes))
-                .with_options_json(options_json.as_bytes()),
-        ),
-    )
+    let request = binding_operation_request(
+        &operation_id,
+        &source,
+        &options_json,
+        uri.as_deref(),
+        operation_control,
+    );
+    result_to_java_operation_result(env, android_artifact_contract().execute_once(request))
+}
+
+fn native_operation_control_new<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    timeout_ms: jlong,
+    has_timeout_ms: jboolean,
+) -> JniResult<jlong> {
+    let result = operation_control_timeout_ms(timeout_ms, has_timeout_ms).and_then(|timeout_ms| {
+        operation_control_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .issue(timeout_ms)
+    });
+    match result {
+        Ok(token) => Ok(token as jlong),
+        Err(error) => {
+            throw_merman_exception(env, binding_error_text(error));
+            Ok(0)
+        }
+    }
+}
+
+fn native_operation_control_cancel<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    token: jlong,
+) -> JniResult<()> {
+    match acquire_operation_control(token) {
+        Ok(control) => control.cancel(),
+        Err(error) => throw_merman_exception(env, binding_error_text(error)),
+    }
+    Ok(())
+}
+
+fn native_operation_control_is_cancelled<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    token: jlong,
+) -> JniResult<jboolean> {
+    match acquire_operation_control(token) {
+        Ok(control) => Ok(if control.is_cancelled() {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }),
+        Err(error) => {
+            throw_merman_exception(env, binding_error_text(error));
+            Ok(JNI_FALSE)
+        }
+    }
+}
+
+fn native_operation_control_release<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    token: jlong,
+) -> JniResult<()> {
+    let result = operation_control_token(token).and_then(|token| {
+        operation_control_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .release(token)
+    });
+    if let Err(error) = result {
+        throw_merman_exception(env, binding_error_text(error));
+    }
+    Ok(())
 }
 
 fn native_metadata_json<'local>(
@@ -580,6 +731,42 @@ fn native_engine_execute<'local>(
     options_json: JString<'local>,
     uri: JString<'local>,
 ) -> JniResult<JObject<'local>> {
+    native_engine_execute_impl(env, handle, operation_id, source, options_json, uri, None)
+}
+
+fn native_engine_execute_controlled<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    operation_id: JString<'local>,
+    source: JString<'local>,
+    options_json: JString<'local>,
+    uri: JString<'local>,
+    control_token: jlong,
+) -> JniResult<JObject<'local>> {
+    let Some(operation_control) = preflight_operation_control(env, control_token) else {
+        return Ok(JObject::null());
+    };
+    native_engine_execute_impl(
+        env,
+        handle,
+        operation_id,
+        source,
+        options_json,
+        uri,
+        Some(operation_control),
+    )
+}
+
+fn native_engine_execute_impl<'local>(
+    env: &mut Env<'local>,
+    handle: jlong,
+    operation_id: JString<'local>,
+    source: JString<'local>,
+    options_json: JString<'local>,
+    uri: JString<'local>,
+    operation_control: Option<OperationControl>,
+) -> JniResult<JObject<'local>> {
     let Some(token) = engine_token(env, handle) else {
         return Ok(JObject::null());
     };
@@ -606,17 +793,87 @@ fn native_engine_execute<'local>(
             let engine = state
                 .acquire_engine()
                 .ok_or_else(|| BindingError::invalid_argument("Merman engine is closed"))?;
-            engine.execute(
-                BindingOperationRequest::new(&operation_id, source.as_bytes())
-                    .with_optional_uri(uri.as_deref().map(str::as_bytes))
-                    .with_options_json(options_json.as_bytes()),
-            )
+            let request = binding_operation_request(
+                &operation_id,
+                &source,
+                &options_json,
+                uri.as_deref(),
+                operation_control,
+            );
+            engine.execute(request)
         });
     result_to_java_operation_result(env, result)
 }
 
+fn binding_operation_request<'a>(
+    operation_id: &'a str,
+    source: &'a str,
+    options_json: &'a str,
+    uri: Option<&'a str>,
+    operation_control: Option<OperationControl>,
+) -> BindingOperationRequest<'a> {
+    let request = BindingOperationRequest::new(operation_id, source.as_bytes())
+        .with_optional_uri(uri.map(str::as_bytes))
+        .with_options_json(options_json.as_bytes());
+    match operation_control {
+        Some(operation_control) => request.with_control(operation_control),
+        None => request,
+    }
+}
+
 fn engine_registry() -> &'static Mutex<JniEngineRegistry> {
     ENGINE_REGISTRY.get_or_init(|| Mutex::new(JniEngineRegistry::default()))
+}
+
+fn operation_control_registry() -> &'static Mutex<JniOperationControlRegistry> {
+    OPERATION_CONTROL_REGISTRY.get_or_init(|| Mutex::new(JniOperationControlRegistry::default()))
+}
+
+fn operation_control_timeout_ms(
+    timeout_ms: jlong,
+    has_timeout_ms: jboolean,
+) -> Result<Option<u64>, BindingError> {
+    match has_timeout_ms {
+        JNI_FALSE => Ok(None),
+        JNI_TRUE => u64::try_from(timeout_ms).map(Some).map_err(|_| {
+            BindingError::invalid_argument("operation-control timeoutMs must be non-negative")
+        }),
+        _ => Err(BindingError::invalid_argument(
+            "operation-control hasTimeoutMs must be a JNI boolean",
+        )),
+    }
+}
+
+fn operation_control_token(token: jlong) -> Result<u64, BindingError> {
+    jni_token(token).ok_or_else(|| {
+        BindingError::invalid_argument(
+            "operation-control token must be a positive opaque Android token",
+        )
+    })
+}
+
+fn acquire_operation_control(token: jlong) -> Result<OperationControl, BindingError> {
+    let token = operation_control_token(token)?;
+    operation_control_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .acquire(token)
+}
+
+fn preflight_operation_control(env: &mut Env<'_>, token: jlong) -> Option<OperationControl> {
+    let result = acquire_operation_control(token).and_then(|operation_control| {
+        operation_control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
+        Ok(operation_control)
+    });
+    match result {
+        Ok(operation_control) => Some(operation_control),
+        Err(error) => {
+            throw_merman_exception(env, binding_error_text(error));
+            None
+        }
+    }
 }
 
 fn jni_token(handle: jlong) -> Option<u64> {
@@ -1038,13 +1295,6 @@ fn result_to_java_string<'local>(
             Ok(JString::null())
         }
     }
-}
-
-fn binding_error_text(error: BindingError) -> String {
-    String::from_utf8(merman_bindings_core::binding_error_payload_json_bytes(
-        &error,
-    ))
-    .unwrap_or_else(|utf8_error| format!("native error was not UTF-8: {utf8_error}"))
 }
 
 fn throw_merman_exception(env: &mut Env<'_>, message: impl AsRef<str>) {

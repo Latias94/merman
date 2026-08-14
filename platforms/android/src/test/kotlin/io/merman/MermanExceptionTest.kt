@@ -23,6 +23,59 @@ class MermanExceptionTest {
             ),
             error.resourceDetails,
         )
+        assertEquals(
+            MermanExactResourceErrorDetails(
+                cause = "arithmetic_overflow",
+                limitId = "max_embedded_image_bytes",
+                phase = "embedded_image_decode",
+                actual = "5",
+                max = "4",
+                profile = "constrained",
+            ),
+            error.exactResourceDetails,
+        )
+    }
+
+    @Test
+    fun preservesUnsignedResourceCountsBeyondLongRange() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"arithmetic_overflow","limit_id":"max_layout_work_units","phase":"layout_model","actual":"18446744073709551615","max":"9223372036854775808","profile":"interactive"}},"message":"layout work accounting overflowed"}""",
+        )
+
+        assertEquals(
+            MermanExactResourceErrorDetails(
+                cause = "arithmetic_overflow",
+                limitId = "max_layout_work_units",
+                phase = "layout_model",
+                actual = "18446744073709551615",
+                max = "9223372036854775808",
+                profile = "interactive",
+            ),
+            error.exactResourceDetails,
+        )
+        assertNull(error.resourceDetails)
+    }
+
+    @Test
+    fun keepsLongCompatibilityForStringEncodedLongRangeCounts() {
+        val error = MermanException(
+            """{"details":{"resource":{"cause":"ceiling","limit_id":"max_layout_work_units","phase":"layout_model","actual":"9007199254740992","max":"9007199254740991","profile":"interactive"}}}""",
+        )
+
+        assertEquals("9007199254740992", error.exactResourceDetails?.actual)
+        assertEquals("9007199254740991", error.exactResourceDetails?.max)
+        assertEquals(9_007_199_254_740_992L, error.resourceDetails?.actual)
+        assertEquals(9_007_199_254_740_991L, error.resourceDetails?.max)
+    }
+
+    @Test
+    fun rejectsResourceCountsOutsideUnsignedLongRange() {
+        val error = MermanException(
+            """{"details":{"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":"18446744073709551616","max":"4","profile":"interactive"}}}""",
+        )
+
+        assertNull(error.exactResourceDetails)
+        assertNull(error.resourceDetails)
     }
 
     @Test
@@ -72,6 +125,28 @@ class MermanExceptionTest {
     }
 
     @Test
+    fun parsesStructuredCancellationFailureDetails() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":12,"code_name":"MERMAN_CANCELLED","kind":"generic","capability_id":null,"details":{"cancellation":{"reason":"deadline_exceeded","phase":"admission"}},"message":"operation cancelled"}""",
+        )
+
+        assertEquals(
+            MermanCancelledDetails(reason = "deadline_exceeded", phase = "admission"),
+            error.cancellationDetails,
+        )
+        assertNull(error.resourceDetails)
+    }
+
+    @Test
+    fun rejectsMalformedCancellationFailureDetails() {
+        val error = MermanException(
+            """{"details":{"cancellation":{"reason":"","phase":"admission"}}}""",
+        )
+
+        assertNull(error.cancellationDetails)
+    }
+
+    @Test
     fun iconPackSetFactoryHasNoNativeLifecycle() {
         val iconPackSet = MermanIconPackSet.fromPacks(
             listOf(MermanIconPack("""{"prefix":"test","icons":{}}""")),
@@ -103,6 +178,8 @@ class MermanExceptionTest {
         assertEquals(17L, error.resourceDetails?.actual)
         assertEquals(16L, error.resourceDetails?.max)
         assertEquals("constructor-fixed", error.resourceDetails?.profile)
+        assertEquals("17", error.exactResourceDetails?.actual)
+        assertEquals("16", error.exactResourceDetails?.max)
         assertEquals("resource_limit_exceeded", error.iconRegistryDetails?.kindId)
         assertNull(error.iconRegistryDetails?.packIndex)
     }
