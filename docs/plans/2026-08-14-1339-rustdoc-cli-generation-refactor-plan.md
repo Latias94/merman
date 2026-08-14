@@ -1,5 +1,5 @@
 ---
-title: "Rustdoc CLI Generation Refactor - Plan"
+title: "Rustdoc Dual-Path Integration Refactor - Plan"
 date: 2026-08-14
 type: refactor
 artifact_contract: ce-unified-plan/v1
@@ -9,23 +9,23 @@ execution: code
 deepened: 2026-08-14
 ---
 
-# Rustdoc CLI Generation Refactor - Plan
+# Rustdoc Dual-Path Integration Refactor - Plan
 
 ## Goal Capsule
 
-**Objective:** Move Rustdoc Mermaid rendering out of consumers' Cargo graphs and into a checked `merman-cli` generation workflow. Retire the native `merman-rustdoc` proc macro and its renderer feature surface.
+**Objective:** Add a checked `merman-cli` generation workflow that removes Rustdoc rendering from dependency-sensitive consumers' Cargo graphs while retaining `merman-rustdoc` as an independent one-step integration.
 
 **Authority order:** Product Requirements own observable behavior. Key Technical Decisions own implementation mechanisms. Implementation Units may refine neither without updating the owning ID.
 
 **Execution profile:** Execute in goal mode from an isolated worktree based on current `origin/main`. Use incremental Conventional Commits at coherent unit boundaries. The executor owns implementation, migration, verification, review fixes, cleanup, and final commits.
 
-**Stop conditions:** Do not declare completion while a consumer Rustdoc fixture still depends on `merman-rustdoc` or Merman renderer crates, while generated artifacts can be stale without `rustdoc check` failing, while partial publication can escape after an error, or while abandoned WASM experiment code remains in the product diff.
+**Stop conditions:** Do not declare completion while the generated-fragment consumer fixture depends on `merman-rustdoc` or Merman renderer crates, while generated artifacts can be stale without `rustdoc check` failing, while source Markdown or Mermaid files can be overwritten, while partial publication can escape after an error, while the retained proc macro is coupled to the CLI, or while abandoned WASM experiment code remains in the product diff.
 
 ## Product Contract
 
 ### Summary
 
-Add `merman-cli rustdoc build` and `merman-cli rustdoc check` to generate committed, self-contained Markdown fragments with inline static SVG. Rust crates consume those fragments through Rust's built-in `include_str!`. Remove the native Rustdoc proc macro, its renderer features, and governance that requires consumers to compile the complete SVG stack.
+Add `merman-cli rustdoc build` and `merman-cli rustdoc check` to generate committed, self-contained Markdown fragments with inline static SVG. Rust crates consume those fragments through Rust's built-in `include_str!`. Keep `merman-rustdoc` as a separate, explicit choice for authors who value one-step `cargo doc` over dependency cost; do not make either integration invoke, discover, or fall back to the other.
 
 ### Problem Frame
 
@@ -37,17 +37,18 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 
 ### Key Decisions
 
-- **Use checked CLI pre-generation as the primary Rustdoc product.** (session-settled: user-approved - chosen over an embedded WASM renderer as the default: it is the only route that removes the renderer and integration crate from the consumer Cargo graph.) Governs R1-R14.
-- **Allow a breaking retirement of the current proc-macro surface.** (session-settled: user-directed - chosen over compatibility shims: the user authorized fearless refactoring and deletion of obsolete code.) Governs R14-R16.
+- **Use checked CLI pre-generation as the zero-dependency Rustdoc path.** (session-settled: user-approved - it is the only route that removes the renderer and integration crate from that consumer's Cargo graph.) Governs R1-R14, R20.
+- **Retain `merman-rustdoc` as an independent one-step path.** (session-settled: user-updated - chosen so users can trade Cargo cost for automatic `cargo doc`; retention means product choice, not a CLI subprocess or fallback.) Governs R14-R16.
 - **Keep static, offline SVG as the product identity.** (session-settled: user-approved - chosen over browser Mermaid.js: browser execution would discard deterministic, no-JavaScript, and fail-early behavior.) Governs R4-R10.
-- **Treat WASM as a bounded evidence task, not a second backend.** (session-settled: user-approved - chosen over native/CLI/WASM fallback selection: multiple environment-dependent backends would recreate the ownership problem.) Governs R18.
+- **Treat WASM as a bounded evidence task for a later `merman-rustdoc` optimization.** (session-settled: user-updated - this plan records whether a lightweight one-step path is viable but does not ship an unproven backend.) Governs R18.
 
 ### Actors
 
 - A1. A crate author writes or updates external Rustdoc Markdown and runs the generator locally.
 - A2. CI runs `rustdoc check` and rejects missing, stale, tampered, or unsafe generated artifacts.
-- A3. Cargo and docs.rs consume committed fragments without invoking Merman, a proc macro, a build script, a browser, or an external command.
+- A3. Cargo and docs.rs consumers of the CLI path consume committed fragments without invoking Merman, a proc macro, a build script, a browser, or an external command.
 - A4. A Merman release maintainer updates capability recipes, generated CLI assets, documentation, and package checks when the Rustdoc workflow changes.
+- A5. A crate author may instead choose `merman-rustdoc` for one-step generation and knowingly accept its separately documented Cargo closure.
 
 ### Requirements
 
@@ -76,11 +77,13 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 #### Migration and governance
 
 - R14. The repository must migrate its Rustdoc examples to committed fragments consumed with `#[doc = include_str!(...)]` or `#![doc = include_str!(...)]`, and package tests must prove the fragments survive publication and offline docs.rs-shaped use.
-- R15. Remove the `merman-rustdoc` workspace package, dependency, proc-macro implementation, Cargo feature surface, tests, static artifact profile, CI recipe, and feature-matrix assumptions; replace their public guidance with the CLI workflow and a breaking migration note.
-- R16. Supersede only the Rustdoc-specific clauses of ADR-0076 while retaining its capability vocabulary and artifact-profile ownership for remaining products.
+- R15. Retain the `merman-rustdoc` package, tests, native renderer profile, and one-step attribute API as an explicitly separate integration; `merman-cli` must not depend on it, execute it, or inherit its native renderer feature recipe.
+- R16. Supersede only the Rustdoc-specific single-path assumption of ADR-0076 while retaining its capability vocabulary and artifact-profile ownership for both independently distributed integrations.
 - R17. The distributed CLI feature recipe, capabilities report, generated completions, man pages, README, and release validation must include the Rustdoc command and remain fresh.
 - R18. A dedicated WASM spike must measure a full Rustdoc guest against pre-registered closure, package-size, parity, latency, memory, sandbox, and offline-package gates; the spike must not become a product backend in this plan and all experimental code must be removed after evidence is recorded.
 - R19. Documentation must require each generated fragment to be included at most once on one rendered Rustdoc page because repeated inclusion would duplicate deterministic SVG DOM IDs.
+- R20. `rustdoc build` and `rustdoc check` must never modify declared Markdown, Mermaid, configuration, or include inputs. Build may mutate only the fixed managed output root; source history and successful generated-output rollback remain version-control responsibilities.
+- R21. The root, CLI, and `merman-rustdoc` documentation must cross-link both supported paths with runnable Cargo/Rust/CI examples and a decision table covering dependency closure, one-step ergonomics, generated-file ownership, docs.rs behavior, failure timing, and rollback.
 
 ### Success Criteria
 
@@ -89,7 +92,7 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 - SC3. Every stale, missing, extra-managed, and tampered fixture makes `rustdoc check` exit 1 without filesystem mutation.
 - SC4. A packaged fixture documents successfully from unpacked, read-only source with Cargo offline, no CLI on `PATH`, and no network.
 - SC5. The exact CLI distribution recipe passes 1, 10, and 100 diagram Rustdoc workloads without unbounded memory growth and within existing resource-policy limits.
-- SC6. The retired default Rustdoc closure changes from 168 normal packages and 173 normal-plus-build packages to zero attributable consumer packages.
+- SC6. The CLI consumer path changes the attributable Rustdoc closure from the measured native macro baseline of 168 normal packages and 173 normal-plus-build packages to zero; the retained macro closure remains separately measured and is not represented as fixed by this plan.
 - SC7. The WASM evidence records a reproducible verdict against pre-registered gates of host closure at or below 30 packages, final `.crate` projection below 8 MiB, full layout/math/theme parity, warm render no slower than 2x the native oracle, and bounded failure behavior; passing the gates is not required for this refactor, and any missed gate is recorded without retaining backend code.
 
 ### Key Flows
@@ -97,7 +100,7 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 - F1. **Build:** discover and parse config -> validate all paths and ownership -> acquire all sources/includes -> scan diagrams -> render and validate all variants -> construct deterministic fragments and receipt -> acquire publication lock -> revalidate source generations -> publish changed files with crash-recoverable transaction semantics -> report counts.
 - F2. **Check:** perform the same pure acquisition and render pipeline as F1 -> compare expected bytes and managed file set -> return 0 when current or 1 when stale -> perform no writes, lock recovery, or timestamp changes.
 - F3. **Cargo/docs.rs:** package committed config, sources, and generated fragments -> expand native `include_str!` once per fragment per page -> render Rustdoc HTML -> execute no Merman-specific code.
-- F4. **Migration:** externalize macro-owned docs -> generate fragments -> replace attributes with native includes -> remove dependency/features/docs.rs metadata -> run package and offline docs tests.
+- F4. **Adoption:** externalize selected macro-owned docs -> generate fragments -> replace those attributes with native includes -> remove the macro dependency only from that consumer -> run package and offline docs tests; other consumers may retain the one-step macro path.
 - F5. **WASM evidence:** build an isolated full-capability guest and minimal host harness -> measure registered gates -> record reproducible results -> remove harness and artifacts from the product tree.
 
 ### Acceptance Examples
@@ -107,7 +110,8 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 - AE3. Covers R11-R13. Given a valid prior receipt with fragments A and B, then config removes B, `build` transactionally updates the receipt and removes only managed B; after success or recovery the bundle is entirely old or entirely new, and an unrelated file beside B remains untouched.
 - AE4. Covers R12. Given a modified generated SVG with unchanged source hashes, `check` re-renders, detects the byte mismatch, exits 1, and leaves the modified file unchanged.
 - AE5. Covers R14. Given an unpacked crate with read-only source and no Merman binary, `cargo doc --offline --no-deps` succeeds because Rust only reads packaged fragments.
-- AE6. Covers R15. Given `cargo metadata` for the final workspace, no package, feature, artifact profile, or CI job named `merman-rustdoc` or `rustdoc-static-svg` remains.
+- AE6. Covers R15-R16. Given final workspace metadata and feature contracts, `merman-cli` and its Rustdoc feature have no dependency edge to `merman-rustdoc`, while the existing macro package and native artifact profile remain independently testable.
+- AE7. Covers R20-R21. Given the same diagram, documentation shows both the attribute-macro and checked-generation forms; running CLI build changes only the managed output root, and the source remains byte-identical.
 
 ### Scope Boundaries
 
@@ -116,22 +120,22 @@ In scope:
 - A first-class CLI Rustdoc generator and checker.
 - Portable receipt and managed transactional publication.
 - External Markdown/raw Mermaid input, local includes, inline dual-theme SVG, native Rust includes, migration, packaging, and release integration.
-- Removal of the existing proc macro and its obsolete policy surface.
-- A temporary, measured WASM feasibility experiment with mandatory cleanup.
+- Coexistence with the existing proc macro without a Cargo, runtime, fallback, or release-recipe coupling to the CLI path.
+- A temporary, measured WASM feasibility experiment for a later macro optimization, with mandatory cleanup.
 
 Out of scope:
 
 - Browser-side Mermaid.js, CDN loading, Rustdoc HTML post-processing, `build.rs` generation, proc-macro subprocess discovery, or automatic backend fallback.
 - Parsing arbitrary Rust source to discover doc comments or rewriting Rust source automatically.
 - A persistent render cache, daemon, public Rust library API for Rustdoc generation, or a published WASM Rustdoc backend.
-- Backward-compatible aliases for `scope`, `fail`, `sanitize`, `pipeline`, `theme`, or native proc-macro features.
+- Rewriting the retained proc macro to WASM or changing its existing attribute and native feature contract in this plan.
 
 ### Dependencies and Sources
 
 - `docs/research/merman-cli-rustdoc-architecture-2026-08-14.md` owns the CLI-first architecture and transaction analysis.
 - `docs/research/rustdoc-mermaid-ecosystem-2026-08-14.md` owns ecosystem, dependency-closure, docs.rs, and WASM evidence.
 - `crates/merman-cli/src/markdown.rs`, `render/execute.rs`, `batch.rs`, and `transaction.rs` provide the current scanner, in-memory renderer boundary, batch orchestration, and publication machinery.
-- `crates/merman-rustdoc/src/html.rs`, `svg.rs`, and `render.rs` provide behavior to migrate before deletion.
+- `crates/merman-rustdoc/src/html.rs`, `svg.rs`, and `render.rs` provide behavior to align through shared fixtures while remaining an independent integration.
 - `docs/adr/0076-capability-driven-feature-and-package-surfaces.md` contains the Rustdoc policy that R16 supersedes.
 - [The Rust Reference `doc` attribute](https://doc.rust-lang.org/reference/attributes.html#the-doc-attribute) defines native `include_str!` consumption.
 - [docs.rs build documentation](https://docs.rs/about/builds) defines the offline and mostly read-only hosted build boundary.
@@ -144,7 +148,7 @@ Out of scope:
 - KTD1. Implement Rustdoc generation as a private deep `rustdoc` module in `merman-cli`, not as a new public library crate and not as another `BatchDialect`. This reuses real internals while keeping Rustdoc's inline-fragment and portable-receipt contract local. Governs R2-R13.
 - KTD2. Add a positive `rustdoc` CLI Cargo feature that implies `markdown`, `svg`, both layout engines, math, TOML parsing, hashing, and XML validation; include it in the default, capability descriptor, `capabilities --json`, artifact profile, and cargo-dist recipes. The feature owns a real command surface under ADR-0076 rules. Governs R2, R5, R17.
 - KTD3. Use `merman-rustdoc.toml` schema 1 with `[[fragments]] id`, `source`, and optional `source_display = "hide" | "details"`. Output paths are fixed at `docs/generated/merman-rustdoc/<id>.md`; configuration cannot redirect writes outside the managed root. Governs R3, R9, R13.
-- KTD4. Keep rendering policy tool-owned: deterministic environment, `readable` pipeline, Rustdoc light/dark theme pair, complete layout/math capability, strict validation, and failure-as-error. Source-level Mermaid configuration remains available, but the removed macro policy matrix does not move into TOML. Governs R4-R6, R10, R15.
+- KTD4. Keep CLI rendering policy tool-owned: deterministic environment, `readable` semantics, Rustdoc light/dark theme pair, complete layout/math capability, strict validation, and failure-as-error. Source-level Mermaid configuration remains available, but the macro policy matrix does not move into TOML. Governs R4-R6, R10, R15.
 - KTD5. Extend the Markdown scanner with a replacement-neutral span API and recognize `include_mmd!` only as a complete directive line outside code fences. Keep batch image rewriting and Rustdoc inline rewriting as separate adapters over those spans. Governs R6, R9.
 - KTD6. Add an internal in-memory SVG result path to the existing prepared graphical renderer. Do not add a renderer trait while only the Merman adapter exists. Invocation-local deduplication keys on source plus effective render profile. Governs R5, R7, R8, R10.
 - KTD7. Rebase every SVG DOM ID and local reference with a prefix derived from fragment logical path, source digest, and same-source occurrence. Validate the rebased XML again before embedding. Governs R7-R9.
@@ -152,12 +156,13 @@ Out of scope:
 - KTD9. Deepen the existing transaction module only at publication primitives shared by batch and Rustdoc. Rustdoc owns receipt semantics and managed-set reconciliation; the transaction module owns locks, generation checks, staging, journal recovery, atomic replacement, and deterministic commit order. Governs R11-R13.
 - KTD10. Implement `check` by constructing the same expected bundle as `build` and comparing bytes. Do not trust receipt hashes as freshness evidence and do not acquire a mutating recovery path. Governs R8, R12.
 - KTD11. Publish receipt last inside the same transaction, preserve unchanged files, and authorize stale deletion only after parsing and validating the previous receipt against the fixed managed root. A missing receipt is stale state, while a malformed, unsupported, or transaction-inconsistent receipt is an operational error and grants no deletion authority. Governs R11-R13.
-- KTD12. Delete the proc macro in the same breaking refactor after the repository migration passes. Do not leave a thin macro, deprecation stub, native fallback, or compatibility feature in the workspace. (session-settled: user-directed - chosen over a staged compatibility period: the repository is pre-stable and the user authorized removal of obsolete architecture.) Governs R1, R14-R16.
-- KTD13. Run the WASM spike in a temporary or non-product harness and record commands, revisions, raw data, and the gate verdict in the research report. Regardless of verdict, remove harness code and generated artifacts from the final product diff; a future product decision requires a separate plan. Governs R18.
+- KTD12. Keep `merman-rustdoc` and `merman-cli rustdoc` as explicit peer products. Neither may depend on, spawn, discover, or automatically fall back to the other. Preserve the current native macro implementation in this plan; a later WASM rewrite must remove the native backend rather than add another consumer-selectable fallback. (session-settled: user-updated - chosen to expose both ergonomic and zero-dependency workflows.) Governs R1, R14-R16, R21.
+- KTD13. Run the WASM spike in a temporary or non-product harness and record commands, revisions, raw data, and the gate verdict in the research report. Regardless of verdict, remove harness code and generated artifacts from the final product diff; productizing a lightweight macro backend requires a separate follow-up plan. Governs R18.
 - KTD14. Add a focused ADR that supersedes ADR-0076 lines that couple Rustdoc to `complete-svg`; do not rewrite the historical ADR or weaken artifact-profile rules for other packages. Governs R16, R17.
 - KTD15. Treat rendered SVG as untrusted active content. Reject document types, `script`, `iframe`, `object`, `embed`, event attributes, external resource-bearing references, CSS imports, and non-local CSS URLs; sanitize safe HTML-label subtrees and validate the complete XML again after ID rebasing. Governs R4, R9.
 - KTD16. Resolve the config root canonically, approve every read and publication target through existing path and generation guards, and use same-file checks for aliases. `check` must return an operational error when an unfinished transaction journal exists instead of recovering or mutating it. Governs R9, R11-R13.
-- KTD17. Render Rustdoc diagrams sequentially in logical source order for the first release, even when `parallel-markdown` is compiled. Invocation-local deduplication may reuse completed bytes, but concurrency requires separate measured admission because each diagram produces two inline SVG variants. Governs R8, R10.
+- KTD17. Render CLI Rustdoc diagrams sequentially in logical source order for the first release, even when `parallel-markdown` is compiled. Invocation-local deduplication may reuse completed bytes, but concurrency requires separate measured admission because each diagram produces two inline SVG variants. Governs R8, R10.
+- KTD18. Treat declared inputs as immutable source-of-truth files. The pure bundle builder reads them, check compares without mutation, and build publishes only below the fixed managed root. A successful prior generated state is recovered through Git, while the crash journal restores only interrupted transactions. Governs R11-R13, R20.
 
 ### High-Level Technical Design
 
@@ -192,14 +197,14 @@ The pure bundle builder owns all fallible acquisition and rendering before publi
 1. Characterize behavior and add the new command/config model without touching the old macro.
 2. Build the pure fragment renderer and portable receipt.
 3. Integrate transactional `build` and non-mutating `check`.
-4. Migrate repository examples and add package/docs.rs-shaped tests.
-5. Remove the proc macro and obsolete governance in one coherent breaking commit.
-6. Run and clean up the WASM evidence task.
+4. Migrate representative repository examples and add package/docs.rs-shaped tests while retaining macro coverage.
+5. Document and govern both independent Rustdoc paths.
+6. Run and clean up the WASM evidence task for a later macro optimization.
 7. Regenerate distribution assets and run the complete quality tail.
 
 ### System-Wide Impact
 
-- **Cargo and packaging:** Removing a workspace member changes metadata, lockfile roots, release package ordering, dependency closure evidence, and links from package documentation. U6 owns the repository-wide removal search.
+- **Cargo and packaging:** The CLI gains a complete renderer-owned command while `merman-rustdoc` remains independently packaged. U6 verifies that their feature recipes and dependency edges do not merge.
 - **CLI contract:** A nested command changes help, completions, man pages, capabilities JSON, exact feature recipes, and release archives. U1 establishes the callable contract and U8 refreshes every generated projection.
 - **Documentation lifecycle:** Rustdoc source becomes a checked source/generated pair. CI must fail on drift before compiling docs, while docs.rs remains a pure consumer that cannot repair drift.
 - **Filesystem lifecycle:** Build adds a second production caller to the transaction engine with a different ownership manifest. KTD9 keeps portable Rustdoc receipt rules out of the native crash journal and batch namespace.
@@ -222,7 +227,7 @@ The pure bundle builder owns all fallible acquisition and rendering before publi
 - **Source races during publication:** KTD9 reuses generation evidence and revalidates acquired inputs after locking.
 - **Transaction over-generalization:** U4 may extract only primitives needed by two production callers; Rustdoc receipt semantics remain outside `transaction/format.rs`.
 - **Large generated diffs:** KTD6 performs invocation-local deduplication, KTD7 limits ID churn, and KTD11 skips unchanged writes. Persistent caching remains out of scope.
-- **Removal misses hidden release references:** U6 uses repository-wide name searches plus feature-matrix, artifact-profile, package, workflow, and release checks.
+- **Dual-path drift:** U6 cross-links both packages and keeps shared behavioral fixtures explicit without creating a Cargo dependency between the integrations.
 - **WASM experiment scope expansion:** KTD13 makes cleanup part of completion and forbids backend admission in this plan.
 
 ## Implementation Units
@@ -291,9 +296,9 @@ The pure bundle builder owns all fallible acquisition and rendering before publi
 
 **Verification:** `cargo nextest run -p merman-cli --features rustdoc transaction rustdoc`; existing batch transaction tests remain unchanged and green.
 
-### U5. Migrate Rustdoc consumers and prove package use
+### U5. Add a zero-dependency Rustdoc consumer and prove package use
 
-**Goal:** Make this repository consume its own generated fragments without the proc macro before deletion.
+**Goal:** Make a representative repository surface consume generated fragments while preserving the proc macro as a separately tested alternative.
 
 **Requirements:** R1, R14, R19.
 
@@ -301,31 +306,31 @@ The pure bundle builder owns all fallible acquisition and rendering before publi
 
 **Files:** `crates/merman/merman-rustdoc.toml`, `crates/merman/docs/rustdoc-src/**`, `crates/merman/docs/generated/merman-rustdoc/**`, `crates/merman/src/lib.rs`, `crates/merman/Cargo.toml`, `crates/merman-cli/tests/rustdoc_package.rs`, `.github/workflows/ci.yml`.
 
-**Approach:** Externalize current accepted examples and representative item/crate documentation. Generate and commit fragments. Replace macro attributes and docs-only dependencies with native `include_str!`. Add a fixture crate whose package contents are unpacked, made read-only, and documented offline without the CLI in `PATH`.
+**Approach:** Externalize representative item/crate documentation. Generate and commit fragments. Replace the selected consumer's macro attributes and docs-only dependency with native `include_str!`, while leaving dedicated `merman-rustdoc` examples and tests intact. Add a fixture crate whose package contents are unpacked, made read-only, and documented offline without the CLI in `PATH`. Snapshot declared sources before build and prove only the managed output root changes.
 
 **Test scenarios:** Crate-level and item-level docs; package include list; missing generated artifact; offline read-only source; `cargo doc --no-deps`; consumer dependency tree absence; generated raw HTML visible in Rustdoc; CI check-before-doc ordering.
 
 **Verification:** `merman-cli rustdoc check --config crates/merman/merman-rustdoc.toml`; `cargo package -p merman --list --allow-dirty`; packaged fixture `cargo doc --offline --no-deps`; exact `cargo tree --locked --edges normal,build` absence assertions.
 
-### U6. Remove the native proc macro and supersede obsolete governance
+### U6. Govern and document the independent Rustdoc paths
 
-**Goal:** Delete the architecture that caused the consumer dependency graph and remove every policy that can recreate it.
+**Goal:** Make the zero-dependency CLI workflow and one-step proc-macro workflow explicit, independently packaged choices with honest trade-offs.
 
-**Requirements:** R15-R17.
+**Requirements:** R15-R17, R20-R21.
 
 **Dependencies:** U5.
 
-**Files:** `crates/merman-rustdoc/**` (delete), root `Cargo.toml`, `Cargo.lock`, `capabilities/artifact-profiles-v1.json`, `capabilities/feature-surface-v1.json`, `capabilities/generated/feature-surface-v1.md`, `crates/merman-cli/src/generated/capability_surface.rs`, `crates/xtask/src/cmd/artifact_profiles.rs`, `crates/xtask/src/cmd/feature_matrix.rs`, `crates/merman-cli/tests/cli_contract.rs`, `crates/merman-cli/tests/profile_contract.rs`, `docs/security/RUSTSEC_EXCEPTIONS.json`, `scripts/sync-release-legal-materials.py`, `.github/workflows/ci.yml`, `docs/FEATURES.md`, `docs/release/PACKAGE_SURFACES.md`, `docs/adr/0076-capability-driven-feature-and-package-surfaces.md`, new `docs/adr/0082-rustdoc-checked-cli-generation.md`, `README.md`, `CHANGELOG.md`, relevant package READMEs and release docs.
+**Files:** root `README.md`, `crates/merman-cli/README.md`, `crates/merman-rustdoc/README.md`, `capabilities/artifact-profiles-v1.json`, `capabilities/feature-surface-v1.json`, `capabilities/generated/feature-surface-v1.md`, `crates/merman-cli/src/generated/capability_surface.rs`, `crates/xtask/src/cmd/artifact_profiles.rs`, `crates/xtask/src/cmd/feature_matrix.rs`, `crates/merman-cli/tests/cli_contract.rs`, `crates/merman-cli/tests/profile_contract.rs`, `.github/workflows/ci.yml`, `docs/FEATURES.md`, `docs/release/PACKAGE_SURFACES.md`, `docs/adr/0076-capability-driven-feature-and-package-surfaces.md`, new `docs/adr/0082-rustdoc-dual-path-integrations.md`, `CHANGELOG.md`, and relevant release docs.
 
-**Approach:** Remove the workspace member and dependency, all proc-macro source/tests/features, `rustdoc-static-svg`, exact feature-matrix contracts, and CI recipe. Add a focused ADR that supersedes only the Rustdoc coupling in ADR-0076. Document the breaking migration from macro options to external Markdown, fixed generator policy, and native includes.
+**Approach:** Keep the existing macro package, `rustdoc-static-svg` recipe, tests, and CI lane. Add a focused ADR that supersedes ADR-0076's single-path assumption and establishes independent ownership. Document both complete workflows and cross-link them from the root, CLI, and macro READMEs. Include equivalent diagram examples, a trade-off table, source immutability/rollback semantics, CI freshness guidance, and a non-breaking adoption mapping from macro attributes to external Markdown and native includes.
 
-**Test scenarios:** Workspace metadata contains no retired package; artifact-profile and feature-matrix validators accept the new CLI feature; no old macro invocation or option remains in non-historical docs; changelog names the breaking removal and migration; published CLI assets expose the command.
+**Test scenarios:** Workspace metadata retains both packages; `merman-cli` has no dependency on `merman-rustdoc`; artifact-profile and feature-matrix validators accept the new CLI feature while preserving the macro recipe; each README links the other path and shows runnable examples; published CLI assets expose the command; changelog describes the additive workflow and measured trade-offs without claiming the native macro closure was removed.
 
-**Verification:** `rg -n 'merman-rustdoc|rustdoc-static-svg|scope = "tree"|fail = "keep-source"'` reviewed to zero active-code/config hits; `cargo run -p xtask -- verify-feature-matrix --strict`; `cargo run -p xtask -- verify-artifact-profiles`; workspace nextest and doc checks.
+**Verification:** `cargo tree -p merman-cli --all-features --edges normal,build` contains no `merman-rustdoc`; `cargo run -p xtask -- verify-feature-matrix --strict`; `cargo run -p xtask -- verify-artifact-profiles`; focused macro tests plus workspace nextest and doc checks.
 
 ### U7. Run the bounded WASM Rustdoc feasibility spike and remove it
 
-**Goal:** Produce reproducible evidence for the rejected default without adding a second backend.
+**Goal:** Produce reproducible evidence for a later lightweight `merman-rustdoc` rewrite without adding an unproven backend now.
 
 **Requirements:** R18.
 
@@ -343,7 +348,7 @@ The pure bundle builder owns all fallible acquisition and rendering before publi
 
 **Goal:** Ship one coherent CLI-first surface with complete documentation and no experimental residue.
 
-**Requirements:** R1-R19.
+**Requirements:** R1-R21.
 
 **Dependencies:** U1-U7.
 
@@ -418,22 +423,23 @@ The tree output must satisfy R1. The unpacked fixture must be read-only, have no
 
 ### Review tail
 
-- Correctness review: expected-bundle comparison, stale ownership, source races, ID rewriting, and exit codes.
+- Correctness review: expected-bundle comparison, stale ownership, source immutability, source races, ID rewriting, and exit codes.
 - Security review: path containment, symlink races, receipt trust, raw HTML, SVG URLs, and resource amplification.
-- Maintainability review: private module depth, no fake renderer/filesystem traits, no duplicated batch dialect, and no transaction semantics leak.
+- Maintainability review: private module depth, no fake renderer/filesystem traits, no duplicated batch dialect, no transaction semantics leak, and no CLI/macro dependency or fallback coupling.
 - Testing review: assertions cover failures and mutation absence rather than only successful output snapshots.
-- Project-standards review: capability descriptors, ADR supersession, generated assets, package contents, and release commands agree.
+- Project-standards review: capability descriptors, ADR supersession, generated assets, package contents, release commands, and dual-path documentation agree.
 - Simplicity review: remove compatibility shims, unused policy knobs, experiment code, and premature persistent caching.
 
 ## Definition of Done
 
 ### Global
 
-- [ ] R1-R19 and SC1-SC7 are satisfied with recorded evidence.
-- [ ] `merman-cli rustdoc build/check` is the only active Merman Rustdoc integration path.
-- [ ] Rustdoc consumers use committed fragments through native `include_str!` and add zero attributable Cargo packages.
+- [ ] R1-R21 and SC1-SC7 are satisfied with recorded evidence.
+- [ ] `merman-cli rustdoc build/check` and `merman-rustdoc` are active, independent paths with no implicit invocation or fallback.
+- [ ] CLI-path Rustdoc consumers use committed fragments through native `include_str!` and add zero attributable Cargo packages.
 - [ ] Build/check publication is deterministic, bounded, strict, transactional, and covered for unhappy paths.
-- [ ] The proc-macro crate, native renderer features, obsolete tests, artifact profile, CI job, and feature-matrix policy are deleted.
+- [ ] Declared source/config/include files remain byte-identical across build and check; only the managed output root is mutable.
+- [ ] The retained proc-macro crate, native renderer profile, tests, and CI lane remain independently green and are not dependencies of the CLI path.
 - [ ] ADR, README, changelog, man pages, completions, capability projections, and package contents describe the same final surface.
 - [ ] The WASM experiment has a reproducible report and no retained product code or binary artifact.
 - [ ] All Verification Contract gates pass or an explicitly documented platform substitution provides equivalent evidence.
@@ -446,16 +452,18 @@ The tree output must satisfy R1. The unpacked fixture must be read-only, have no
 - [ ] U2 produces safe byte-stable fragments for the full representative corpus.
 - [ ] U3 detects every defined stale state without mutation.
 - [ ] U4 preserves transaction recovery, ownership, and unchanged mtimes.
-- [ ] U5 proves native package and offline Rustdoc consumption.
-- [ ] U6 removes every active dependency and governance edge to the proc macro.
+- [ ] U5 proves native package and offline Rustdoc consumption without mutating declared sources.
+- [ ] U6 proves independent package/governance edges and documents both workflows and trade-offs.
 - [ ] U7 records every gate and removes every experiment artifact.
 - [ ] U8 regenerates distribution surfaces and completes the full quality tail.
 
 ## Appendix
 
-### Breaking Migration Mapping
+### Optional CLI Adoption Mapping
 
-| Removed surface | Replacement |
+The macro API remains supported. Authors who choose the zero-dependency CLI path can translate it as follows:
+
+| Macro-path surface | CLI-path equivalent |
 | --- | --- |
 | `#[cfg_attr(doc, merman_rustdoc::merman)]` | `#[doc = include_str!("../docs/generated/merman-rustdoc/<id>.md")]` |
 | Mermaid fences inside Rust doc comments | Mermaid fences in declared external Markdown |
@@ -464,10 +472,10 @@ The tree output must satisfy R1. The unpacked fixture must be read-only, have no
 | `source = "details"` | Fragment `source_display = "details"` or an authored `<details>` block |
 | `pipeline` | Fixed tool-owned `readable` policy |
 | `theme` | Fixed Rustdoc light/dark output; source-level Mermaid config remains available |
-| `sanitize = "off"` | Removed; strict validation is mandatory |
-| `fail = "keep-source"` | Removed; generation fails and CI reports the source location |
-| `complete-svg`, `svg`, `layout-*`, `math` on `merman-rustdoc` | CLI distribution artifact owns complete render capabilities |
+| `sanitize = "off"` | CLI path always uses strict validation |
+| `fail = "keep-source"` | CLI generation fails and CI reports the source location |
+| `complete-svg`, `svg`, `layout-*`, `math` on `merman-rustdoc` | CLI binary owns complete render capabilities outside the consumer Cargo graph |
 
 ### Receipt Ownership Rules
 
-The fixed managed root contains fragment Markdown files and one receipt. A receipt can name only normalized direct managed paths produced from validated fragment IDs. The generator never follows a receipt path outside that root. A missing, malformed, unsupported, or internally inconsistent receipt grants no deletion authority. Build may replace known requested targets after normal publication approval, but it may delete stale targets only from a valid prior receipt. Check reports differences and never repairs them.
+The fixed managed root contains fragment Markdown files and one receipt. A receipt can name only normalized direct managed paths produced from validated fragment IDs. The generator never follows a receipt path outside that root. A missing, malformed, unsupported, or internally inconsistent receipt grants no deletion authority. Build may replace known requested targets after normal publication approval, but it may delete stale targets only from a valid prior receipt. Check reports differences and never repairs them. Neither command writes declared source, include, or configuration paths. Interrupted builds recover through the transaction journal; successful historical output rollback uses Git because the source-of-truth inputs remain intact.
