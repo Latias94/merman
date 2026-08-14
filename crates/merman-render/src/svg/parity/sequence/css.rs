@@ -68,7 +68,7 @@ pub(super) fn sequence_css_with_actor_theme(
 
     // Sequence styles.
     let actor_border = theme.actor_border.as_str();
-    let actor_fill = typed_actor_fill.unwrap_or(theme.actor_fill.as_str());
+    let actor_fill = theme.actor_fill.as_str();
     let stroke_width = theme.stroke_width.as_str();
     let drop_shadow = theme.drop_shadow.as_str();
     let note_border = theme.note_border.as_str();
@@ -204,6 +204,13 @@ pub(super) fn sequence_css_with_actor_theme(
         r#"#{} .actor-man circle,#{} line{{stroke:{};fill:{};stroke-width:2px;}}"#,
         id, id, actor_border, actor_fill
     );
+    if let Some(typed_actor_fill) = typed_actor_fill {
+        let _ = write!(
+            &mut out,
+            r#"#{} .actor{{fill:{};}}#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{fill:{};}}"#,
+            id, typed_actor_fill, id, id, id, id, typed_actor_fill
+        );
+    }
     if let Some(typed_actor_stroke) = typed_actor_stroke {
         let _ = write!(
             &mut out,
@@ -323,5 +330,25 @@ mod tests {
         assert!(!css.contains(r#"#seq line{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{stroke:#2563eb;"#));
+    }
+
+    #[test]
+    fn sequence_actor_fill_css_is_scoped_to_actor_owned_dom() {
+        let css = sequence_css_with_actor_theme(
+            "seq",
+            16.0,
+            &json!({"themeVariables": {"actorBkg": "#330000"}}),
+            Some("#dc2626"),
+            None,
+        );
+
+        assert!(css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#330000;"#));
+        assert!(css.contains(
+            r#"#seq .actor{fill:#dc2626;}#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{fill:#dc2626;}"#
+        ));
+        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#dc2626;"#));
+        assert!(!css.contains(r#"#seq line{fill:#dc2626;"#));
+        assert!(!css.contains(r#"#seq .messageLine0{fill:#dc2626;"#));
+        assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{fill:#dc2626;"#));
     }
 }

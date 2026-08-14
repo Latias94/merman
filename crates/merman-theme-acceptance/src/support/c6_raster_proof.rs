@@ -66,6 +66,19 @@ pub(crate) fn prove_brutalist_state_png(
     })
 }
 
+pub(crate) fn decode_bounded_png_artifact(
+    bytes: &[u8],
+    raster_plan: RasterPlan,
+) -> C6ProofResult<RasterImage> {
+    let raster = RasterImage::decode_png(bytes, raster_plan)?;
+    c6_ensure!(
+        "png-artifact",
+        raster.pixels.chunks_exact(4).any(|pixel| pixel[3] != 0),
+        "decoded PNG artifact is fully transparent"
+    );
+    Ok(raster)
+}
+
 pub(crate) fn prove_brutalist_state_jpeg(
     bytes: &[u8],
     raster_plan: RasterPlan,
@@ -562,7 +575,7 @@ fn number_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> C6ProofResult<
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct RasterImage {
+pub(crate) struct RasterImage {
     width: u32,
     height: u32,
     pixels: Vec<u8>,
@@ -742,6 +755,237 @@ impl RasterImage {
         let start = index.checked_mul(4)?;
         let pixel = self.pixels.get(start..start.checked_add(4)?)?;
         Some([pixel[0], pixel[1], pixel[2], pixel[3]])
+    }
+
+    pub(crate) const fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub(crate) fn count_opaque_pixels_near(&self, expected: [u8; 3], tolerance: u8) -> usize {
+        self.pixels
+            .chunks_exact(4)
+            .filter(|pixel| {
+                pixel[3] != 0
+                    && pixel[0].abs_diff(expected[0]) <= tolerance
+                    && pixel[1].abs_diff(expected[1]) <= tolerance
+                    && pixel[2].abs_diff(expected[2]) <= tolerance
+            })
+            .count()
+    }
+
+    pub(crate) fn count_opaque_pixels_near_in_svg_rect(
+        &self,
+        view_box: [f64; 4],
+        rect: [f64; 4],
+        expected: [u8; 3],
+        tolerance: u8,
+    ) -> Option<usize> {
+        let [view_left, view_top, view_width, view_height] = view_box;
+        let [rect_left, rect_top, rect_width, rect_height] = rect;
+        if !view_box.into_iter().chain(rect).all(f64::is_finite)
+            || view_width <= 0.0
+            || view_height <= 0.0
+            || rect_width <= 0.0
+            || rect_height <= 0.0
+            || self.width == 0
+            || self.height == 0
+        {
+            return None;
+        }
+
+        let rect_right = rect_left + rect_width;
+        let rect_bottom = rect_top + rect_height;
+        let width = f64::from(self.width);
+        let height = f64::from(self.height);
+        let mut count = 0usize;
+        for (index, pixel) in self.pixels.chunks_exact(4).enumerate() {
+            if pixel[3] == 0
+                || pixel[0].abs_diff(expected[0]) > tolerance
+                || pixel[1].abs_diff(expected[1]) > tolerance
+                || pixel[2].abs_diff(expected[2]) > tolerance
+            {
+                continue;
+            }
+            let index = u64::try_from(index).ok()?;
+            let x = u32::try_from(index % u64::from(self.width)).ok()?;
+            let y = u32::try_from(index / u64::from(self.width)).ok()?;
+            let svg_x = view_left + (f64::from(x) + 0.5) * view_width / width;
+            let svg_y = view_top + (f64::from(y) + 0.5) * view_height / height;
+            if svg_x >= rect_left
+                && svg_x <= rect_right
+                && svg_y >= rect_top
+                && svg_y <= rect_bottom
+            {
+                count += 1;
+            }
+        }
+        Some(count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn control_mask_background_counts(
+        &self,
+        control: &Self,
+        expected: [u8; 3],
+        tolerance: u8,
+        background: [u8; 4],
+        background_tolerance: u8,
+    ) -> Option<(usize, usize)> {
+        if self.dimensions() != control.dimensions() {
+            return None;
+        }
+
+        let mut control_pixels = 0usize;
+        let mut non_background_pixels = 0usize;
+        for (actual, control) in self
+            .pixels
+            .chunks_exact(4)
+            .zip(control.pixels.chunks_exact(4))
+        {
+            let matches_control = control[3] != 0
+                && control[0].abs_diff(expected[0]) <= tolerance
+                && control[1].abs_diff(expected[1]) <= tolerance
+                && control[2].abs_diff(expected[2]) <= tolerance;
+            if matches_control {
+                control_pixels += 1;
+                if actual[0].abs_diff(background[0]) > background_tolerance
+                    || actual[1].abs_diff(background[1]) > background_tolerance
+                    || actual[2].abs_diff(background[2]) > background_tolerance
+                    || actual[3].abs_diff(background[3]) > background_tolerance
+                {
+                    non_background_pixels += 1;
+                }
+            }
+        }
+        Some((control_pixels, non_background_pixels))
+    }
+
+    pub(crate) fn control_mask_alpha_counts_in_svg_rect(
+        &self,
+        control: &Self,
+        view_box: [f64; 4],
+        rect: [f64; 4],
+        expected: [u8; 3],
+        color_tolerance: u8,
+        transparent_alpha_tolerance: u8,
+    ) -> Option<(usize, usize)> {
+        if self.dimensions() != control.dimensions() {
+            return None;
+        }
+        let [view_left, view_top, view_width, view_height] = view_box;
+        let [rect_left, rect_top, rect_width, rect_height] = rect;
+        if !view_box.into_iter().chain(rect).all(f64::is_finite)
+            || view_width <= 0.0
+            || view_height <= 0.0
+            || rect_width <= 0.0
+            || rect_height <= 0.0
+            || self.width == 0
+            || self.height == 0
+        {
+            return None;
+        }
+
+        let rect_right = rect_left + rect_width;
+        let rect_bottom = rect_top + rect_height;
+        let width = f64::from(self.width);
+        let height = f64::from(self.height);
+        let mut control_pixels = 0usize;
+        let mut non_transparent_pixels = 0usize;
+        for (index, (actual, control)) in self
+            .pixels
+            .chunks_exact(4)
+            .zip(control.pixels.chunks_exact(4))
+            .enumerate()
+        {
+            let matches_control = control[3] != 0
+                && control[0].abs_diff(expected[0]) <= color_tolerance
+                && control[1].abs_diff(expected[1]) <= color_tolerance
+                && control[2].abs_diff(expected[2]) <= color_tolerance;
+            if !matches_control {
+                continue;
+            }
+            let index = u64::try_from(index).ok()?;
+            let x = u32::try_from(index % u64::from(self.width)).ok()?;
+            let y = u32::try_from(index / u64::from(self.width)).ok()?;
+            let svg_x = view_left + (f64::from(x) + 0.5) * view_width / width;
+            let svg_y = view_top + (f64::from(y) + 0.5) * view_height / height;
+            if svg_x >= rect_left
+                && svg_x <= rect_right
+                && svg_y >= rect_top
+                && svg_y <= rect_bottom
+            {
+                control_pixels += 1;
+                if actual[3] > transparent_alpha_tolerance {
+                    non_transparent_pixels += 1;
+                }
+            }
+        }
+        Some((control_pixels, non_transparent_pixels))
+    }
+
+    pub(crate) fn control_mask_color_counts_in_svg_rect(
+        &self,
+        control: &Self,
+        view_box: [f64; 4],
+        rect: [f64; 4],
+        control_match: ([u8; 3], u8),
+        expected_match: ([u8; 3], u8),
+    ) -> Option<(usize, usize)> {
+        if self.dimensions() != control.dimensions() {
+            return None;
+        }
+        let [view_left, view_top, view_width, view_height] = view_box;
+        let [rect_left, rect_top, rect_width, rect_height] = rect;
+        if !view_box.into_iter().chain(rect).all(f64::is_finite)
+            || view_width <= 0.0
+            || view_height <= 0.0
+            || rect_width <= 0.0
+            || rect_height <= 0.0
+            || self.width == 0
+            || self.height == 0
+        {
+            return None;
+        }
+
+        let rect_right = rect_left + rect_width;
+        let rect_bottom = rect_top + rect_height;
+        let width = f64::from(self.width);
+        let height = f64::from(self.height);
+        let (control_color, control_tolerance) = control_match;
+        let (expected_color, expected_tolerance) = expected_match;
+        let mut control_pixels = 0usize;
+        let mut expected_pixels = 0usize;
+        for (index, (actual, control)) in self
+            .pixels
+            .chunks_exact(4)
+            .zip(control.pixels.chunks_exact(4))
+            .enumerate()
+        {
+            let matches_control = control[3] != 0
+                && control[0].abs_diff(control_color[0]) <= control_tolerance
+                && control[1].abs_diff(control_color[1]) <= control_tolerance
+                && control[2].abs_diff(control_color[2]) <= control_tolerance;
+            if !matches_control {
+                continue;
+            }
+            let index = u64::try_from(index).ok()?;
+            let x = u32::try_from(index % u64::from(self.width)).ok()?;
+            let y = u32::try_from(index / u64::from(self.width)).ok()?;
+            let svg_x = view_left + (f64::from(x) + 0.5) * view_width / width;
+            let svg_y = view_top + (f64::from(y) + 0.5) * view_height / height;
+            if svg_x < rect_left || svg_x > rect_right || svg_y < rect_top || svg_y > rect_bottom {
+                continue;
+            }
+            control_pixels += 1;
+            if actual[3] > 2
+                && actual[0].abs_diff(expected_color[0]) <= expected_tolerance
+                && actual[1].abs_diff(expected_color[1]) <= expected_tolerance
+                && actual[2].abs_diff(expected_color[2]) <= expected_tolerance
+            {
+                expected_pixels += 1;
+            }
+        }
+        Some((control_pixels, expected_pixels))
     }
 }
 
@@ -1883,6 +2127,137 @@ mod tests {
 
     fn solid_raster_pixels(color: Rgb, pixel_count: usize) -> Vec<u8> {
         [color.red, color.green, color.blue, u8::MAX].repeat(pixel_count)
+    }
+
+    #[test]
+    fn control_mask_detects_non_background_replacements() {
+        let control = RasterImage {
+            width: 3,
+            height: 1,
+            pixels: vec![
+                0xdc,
+                0x26,
+                0x26,
+                u8::MAX,
+                0xdc,
+                0x26,
+                0x26,
+                u8::MAX,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        let transparent = RasterImage {
+            width: 3,
+            height: 1,
+            pixels: vec![
+                0xff,
+                0xff,
+                0xff,
+                u8::MAX,
+                0,
+                0,
+                0,
+                1,
+                0xff,
+                0xff,
+                0xff,
+                u8::MAX,
+            ],
+        };
+
+        assert_eq!(
+            transparent.control_mask_background_counts(
+                &control,
+                [0xdc, 0x26, 0x26],
+                0,
+                [0xff, 0xff, 0xff, u8::MAX],
+                0,
+            ),
+            Some((2, 1))
+        );
+    }
+
+    #[test]
+    fn local_control_mask_rejects_opaque_transparency_substitutes() {
+        let control = RasterImage {
+            width: 3,
+            height: 1,
+            pixels: vec![
+                0xdc,
+                0x26,
+                0x26,
+                u8::MAX,
+                0xdc,
+                0x26,
+                0x26,
+                u8::MAX,
+                0,
+                0,
+                0,
+                0,
+            ],
+        };
+        let transparent = RasterImage {
+            width: 3,
+            height: 1,
+            pixels: vec![0xfb, 0xbf, 0x24, u8::MAX, 0, 0, 0, 1, 0, 0, 0, 0],
+        };
+
+        assert_eq!(
+            transparent.control_mask_alpha_counts_in_svg_rect(
+                &control,
+                [0.0, 0.0, 3.0, 1.0],
+                [0.0, 0.0, 2.0, 1.0],
+                [0xdc, 0x26, 0x26],
+                0,
+                2,
+            ),
+            Some((2, 1))
+        );
+    }
+
+    #[test]
+    fn svg_rect_color_count_is_local_to_the_projected_region() {
+        let image = RasterImage {
+            width: 4,
+            height: 2,
+            pixels: vec![
+                0x33, 0x33, 0x33, 0xff, 0x33, 0x33, 0x33, 0xff, 0x33, 0x33, 0x33, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff,
+            ],
+        };
+
+        assert_eq!(
+            image.count_opaque_pixels_near_in_svg_rect(
+                [0.0, 0.0, 40.0, 20.0],
+                [0.0, 0.0, 20.0, 10.0],
+                [0x33, 0x33, 0x33],
+                0,
+            ),
+            Some(2)
+        );
+        assert_eq!(
+            image.count_opaque_pixels_near_in_svg_rect(
+                [0.0, 0.0, 40.0, 20.0],
+                [20.0, 0.0, 20.0, 10.0],
+                [0x33, 0x33, 0x33],
+                0,
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            image.count_opaque_pixels_near_in_svg_rect(
+                [0.0, 0.0, 0.0, 20.0],
+                [0.0, 0.0, 20.0, 10.0],
+                [0x33, 0x33, 0x33],
+                0,
+            ),
+            None
+        );
     }
 
     fn contract() -> BrutalistStateVisualContract {

@@ -52,6 +52,7 @@ pub mod svg;
 pub mod swimlane;
 pub mod text;
 mod theme;
+mod theme_route_cutover;
 pub mod timeline;
 pub mod tree_view;
 pub mod treemap;
@@ -76,6 +77,21 @@ pub mod __private {
         PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance, PreparedTextTerminalFace,
         PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
     };
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub use crate::theme_route_cutover::{
+        ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
+        ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjection,
+        ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
+        ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
+    };
+
+    /// Returns every currently typed route that replaces a concrete legacy bridge projection.
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub fn legacy_replacing_typed_theme_routes()
+    -> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
+        crate::diagram_theme::legacy_replacing_typed_routes()
+    }
 
     /// Coarse family-evidence state used by the workspace facade.
     ///

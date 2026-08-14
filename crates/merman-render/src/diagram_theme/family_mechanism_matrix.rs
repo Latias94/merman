@@ -1,4 +1,12 @@
 use crate::DiagramFamilyId;
+#[cfg(test)]
+use crate::theme_route_cutover::ThemeRouteCutoverProjection;
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use crate::theme_route_cutover::{
+    ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
+    ThemeRouteCutoverInventoryError, ThemeRouteCutoverProjectionSet, ThemeRouteCutoverSelector,
+    ThemeRouteCutoverValue,
+};
 
 use super::canvas::CanvasPaint;
 use super::resolved::ThemeTypographyProperty;
@@ -154,6 +162,94 @@ impl FamilyThemeRoute {
 
     pub(crate) const fn disposition(self) -> FamilyThemeDisposition {
         self.disposition
+    }
+}
+
+/// Returns every currently typed route that changes ownership of legacy bridge projections.
+///
+/// Direct-only routes such as radius, dasharray, or Flowchart ordinal palettes are deliberately
+/// absent because they never had an equivalent bridge projection to retire.
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+pub(crate) fn legacy_replacing_typed_routes()
+-> Result<Vec<ThemeRouteCutoverDescriptor>, ThemeRouteCutoverInventoryError> {
+    let mut routes = Vec::new();
+    for &family in DiagramFamilyId::all() {
+        for &target in ThemeTarget::ALL {
+            for (facet, channel) in [
+                (ThemeRouteCutoverFacet::Fill, PaintChannel::Fill),
+                (ThemeRouteCutoverFacet::Stroke, PaintChannel::Stroke),
+            ] {
+                for (value, paint_kind) in [
+                    (
+                        ThemeRouteCutoverValue::Transparent,
+                        FamilyThemePaintKind::Transparent,
+                    ),
+                    (ThemeRouteCutoverValue::Solid, FamilyThemePaintKind::Solid),
+                ] {
+                    let rule_facet = match facet {
+                        ThemeRouteCutoverFacet::Fill => FamilyThemeRuleFacet::Fill(paint_kind),
+                        ThemeRouteCutoverFacet::Stroke => FamilyThemeRuleFacet::Stroke(paint_kind),
+                    };
+                    let selector = FamilyThemeSelectorShape::Static { variant: None };
+                    if classify_rule_facet(family, target, selector, rule_facet)
+                        != FamilyThemeDisposition::TypedAdapter
+                        || !legacy_paint_supported(family, target, None, channel)
+                    {
+                        continue;
+                    }
+                    let projections =
+                        legacy_bridge_projections(family, target, facet).ok_or_else(|| {
+                            ThemeRouteCutoverInventoryError::missing_projections(
+                                family, target, facet,
+                            )
+                        })?;
+                    routes.push(ThemeRouteCutoverDescriptor::new(
+                        ThemeRouteCutoverId::new(
+                            family,
+                            target,
+                            ThemeRouteCutoverSelector::StaticUnqualified,
+                            facet,
+                            value,
+                        ),
+                        projections,
+                    ));
+                }
+            }
+        }
+    }
+    routes.sort_unstable();
+    Ok(routes)
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn legacy_bridge_projections(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    facet: ThemeRouteCutoverFacet,
+) -> Option<ThemeRouteCutoverProjectionSet> {
+    match (family, target, facet) {
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Node,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL),
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Node,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE),
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK),
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_FILL)
+        }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_STROKE)
+        }
+        _ => None,
     }
 }
 
@@ -498,12 +594,7 @@ fn classify_rule_facet(
     }
     if family == DiagramFamilyId::SEQUENCE
         && target == ThemeTarget::Actor
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
-        )
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -519,15 +610,26 @@ fn classify_rule_facet(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::Edge
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
-        )
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Node
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -546,11 +648,7 @@ fn classify_rule_facet(
         )
         && matches!(
             facet,
-            FamilyThemeRuleFacet::Fill(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            ) | FamilyThemeRuleFacet::Stroke(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            ) | FamilyThemeRuleFacet::StrokeWidth
+            FamilyThemeRuleFacet::StrokeWidth
                 | FamilyThemeRuleFacet::StrokeDasharray
                 | FamilyThemeRuleFacet::Radius
         )
@@ -864,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_own_default_scalar_node_paint_geometry_and_node_palette() {
+    fn flowchart_and_swimlane_keep_explicit_default_node_paint_in_compatibility() {
         let default_style = ThemeStylePatch {
             geometry: ThemeGeometryPatch {
                 radius: Specified::Value(8.0),
@@ -880,11 +978,24 @@ mod tests {
         let default_rule =
             ThemeRule::new(ThemeTarget::Node, default_style).with_variant(ThemeVariant::Default);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
-            assert!(
-                compile_rule_routes(family, 0, &default_rule)
-                    .iter()
-                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
-            );
+            let routes = compile_rule_routes(family, 0, &default_rule);
+            for route in routes {
+                let expected = match route.mechanism() {
+                    FamilyThemeMechanism::RuleFacet {
+                        facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+                        ..
+                    } => FamilyThemeDisposition::LegacyCompatibility,
+                    FamilyThemeMechanism::RuleFacet {
+                        facet:
+                            FamilyThemeRuleFacet::StrokeWidth
+                            | FamilyThemeRuleFacet::StrokeDasharray
+                            | FamilyThemeRuleFacet::Radius,
+                        ..
+                    } => FamilyThemeDisposition::TypedAdapter,
+                    mechanism => panic!("unexpected route {mechanism:?}"),
+                };
+                assert_eq!(route.disposition(), expected);
+            }
             assert_eq!(
                 compile_ordinal_palette_route(family, ThemeTarget::Node).disposition(),
                 FamilyThemeDisposition::TypedAdapter
@@ -974,7 +1085,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_own_static_default_scalar_edge_stroke_only() {
+    fn flowchart_and_swimlane_only_own_unqualified_scalar_edge_stroke() {
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             for variant in [None, Some(ThemeVariant::Default)] {
                 for paint in [
@@ -992,7 +1103,11 @@ mod tests {
                     assert_eq!(routes.len(), 1);
                     assert_eq!(
                         routes[0].disposition(),
-                        FamilyThemeDisposition::TypedAdapter
+                        if variant.is_none() {
+                            FamilyThemeDisposition::TypedAdapter
+                        } else {
+                            FamilyThemeDisposition::LegacyCompatibility
+                        }
                     );
                 }
             }
@@ -1191,9 +1306,203 @@ mod tests {
                 .iter()
                 .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
         );
+        let explicit_default = ThemeRule::new(
+            ThemeTarget::Actor,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#abcdef").expect("valid fill"))
+                .with_stroke(CanvasPaint::solid("#123456").expect("valid stroke")),
+        )
+        .with_variant(ThemeVariant::Default);
+        assert!(
+            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)
+                .iter()
+                .all(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
+        );
         assert_eq!(
             compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &gradient_rule)[0].disposition(),
             FamilyThemeDisposition::Unsupported
+        );
+    }
+
+    #[test]
+    fn legacy_replacing_typed_routes_are_derived_from_the_matrix() {
+        use ThemeRouteCutoverFacet::{Fill, Stroke};
+        use ThemeRouteCutoverValue::{Solid, Transparent};
+
+        let actual = legacy_replacing_typed_routes()
+            .expect("derive typed legacy-replacing routes")
+            .into_iter()
+            .map(|route| {
+                (
+                    route.family_id(),
+                    route.target(),
+                    route.facet(),
+                    route.value(),
+                    route
+                        .projections()
+                        .iter()
+                        .map(ThemeRouteCutoverProjection::contribution_id)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let expected = vec![
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Node,
+                Fill,
+                Transparent,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Node,
+                Fill,
+                Solid,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Node,
+                Stroke,
+                Transparent,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Node,
+                Stroke,
+                Solid,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Edge,
+                Stroke,
+                Transparent,
+                vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Edge,
+                Stroke,
+                Solid,
+                vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Actor,
+                Fill,
+                Transparent,
+                vec!["actor.fill"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Actor,
+                Fill,
+                Solid,
+                vec!["actor.fill"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Actor,
+                Stroke,
+                Transparent,
+                vec!["actor.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Actor,
+                Stroke,
+                Solid,
+                vec!["actor.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Node,
+                Fill,
+                Transparent,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Node,
+                Fill,
+                Solid,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Node,
+                Stroke,
+                Transparent,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Node,
+                Stroke,
+                Solid,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Edge,
+                Stroke,
+                Transparent,
+                vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Edge,
+                Stroke,
+                Solid,
+                vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+        ];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn legacy_replacing_typed_route_ids_are_unique() {
+        let routes = legacy_replacing_typed_routes().expect("derive typed legacy-replacing routes");
+        let ids = routes
+            .iter()
+            .map(|route| route.id())
+            .collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(ids.len(), routes.len());
+    }
+
+    #[test]
+    fn edge_cutover_replaces_stroke_and_retires_marker_fallback() {
+        let route = legacy_replacing_typed_routes()
+            .expect("derive typed legacy-replacing routes")
+            .into_iter()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::FLOWCHART
+                    && route.target() == ThemeTarget::Edge
+                    && route.facet() == ThemeRouteCutoverFacet::Stroke
+                    && route.value() == ThemeRouteCutoverValue::Solid
+            })
+            .expect("Flowchart Edge.stroke solid route");
+        let projections = route.projections().iter().collect::<Vec<_>>();
+
+        assert_eq!(
+            projections,
+            vec![
+                ThemeRouteCutoverProjection::EdgeStroke,
+                ThemeRouteCutoverProjection::MarkerPaintFromEdge,
+            ]
+        );
+        assert_eq!(
+            projections[0].action(),
+            crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(
+            projections[1].action(),
+            crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::RetireFallback
         );
     }
 

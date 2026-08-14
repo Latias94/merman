@@ -7,6 +7,20 @@
 //! use merman_theme_acceptance::C6CellReceipt;
 //! ```
 
+macro_rules! c6_ensure {
+    ($stage:expr, $condition:expr, $($arg:tt)+) => {
+        if !$condition {
+            return Err(C6ProofError::new($stage, format!($($arg)+)));
+        }
+    };
+}
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod cutover;
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod cutover_manifest;
+
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod observation;
 

@@ -94,6 +94,10 @@ impl C6RenderIdentity {
             operation_digest: sha256(value),
         }
     }
+
+    pub(crate) const fn operation_digest(&self) -> &[u8; 32] {
+        &self.operation_digest
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -764,6 +768,21 @@ pub enum C6RuntimeError {
     },
     #[error("C6 render group `{group}` was not referenced by any cell receipt")]
     UnreferencedRenderGroup { group: String },
+    #[error("C6 route cutover witness `{witness}` failed proof stage `{stage}`: {detail}")]
+    RouteCutoverProofFailed {
+        witness: String,
+        stage: &'static str,
+        detail: String,
+    },
+    #[error("the C6 route cutover runtime produced duplicate receipt `{route}`")]
+    DuplicateRouteCutoverReceipt { route: String },
+    #[error(
+        "C6 route cutover coverage differed from the typed legacy-replacing inventory; missing={missing:?}, unexpected={unexpected:?}"
+    )]
+    RouteCutoverCoverageMismatch {
+        missing: Vec<String>,
+        unexpected: Vec<String>,
+    },
 }
 
 fn lane_for_target(target: ExpectedOutputTarget) -> C6RenderLane {
@@ -976,11 +995,11 @@ fn parse_hex_digest(value: &str) -> Option<[u8; 32]> {
     Some(bytes)
 }
 
-fn sha256(bytes: impl AsRef<[u8]>) -> [u8; 32] {
+pub(crate) fn sha256(bytes: impl AsRef<[u8]>) -> [u8; 32] {
     Sha256::digest(bytes.as_ref()).into()
 }
 
-fn append_len_prefixed(output: &mut Vec<u8>, bytes: &[u8]) {
+pub(crate) fn append_len_prefixed(output: &mut Vec<u8>, bytes: &[u8]) {
     output.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
     output.extend_from_slice(bytes);
 }

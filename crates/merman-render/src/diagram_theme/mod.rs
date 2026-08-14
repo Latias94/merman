@@ -52,6 +52,8 @@ pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
 pub use effects::{
     DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
 };
+#[cfg(feature = "internal-theme-acceptance")]
+pub(crate) use family_mechanism_matrix::legacy_replacing_typed_routes;
 pub(crate) use family_mechanism_matrix::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
     FamilyThemeRuleFacet, FamilyThemeSelectorShape,

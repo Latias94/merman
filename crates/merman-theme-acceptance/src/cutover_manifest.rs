@@ -1,0 +1,549 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+use merman::DiagramFamilyId;
+use merman::svg::ThemeTarget;
+use merman_render::__private::{
+    ThemeRouteCutoverDescriptor, ThemeRouteCutoverFacet, ThemeRouteCutoverId,
+    ThemeRouteCutoverProjection, ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
+    ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
+};
+
+use crate::runner::{C6ProofError, C6ProofResult};
+
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 1;
+
+const PROJECTION_ACTIONS: [(
+    ThemeRouteCutoverProjection,
+    ThemeRouteCutoverProjectionAction,
+); 6] = [
+    (
+        ThemeRouteCutoverProjection::NodeFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::NodeStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::EdgeStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::MarkerPaintFromEdge,
+        ThemeRouteCutoverProjectionAction::RetireFallback,
+    ),
+    (
+        ThemeRouteCutoverProjection::ActorFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::ActorStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+];
+
+#[derive(Clone, Copy)]
+struct RouteAuthorization {
+    id: ThemeRouteCutoverId,
+    projections: &'static [ThemeRouteCutoverProjection],
+}
+
+impl RouteAuthorization {
+    const fn new(
+        family: DiagramFamilyId,
+        target: ThemeTarget,
+        facet: ThemeRouteCutoverFacet,
+        value: ThemeRouteCutoverValue,
+        projections: &'static [ThemeRouteCutoverProjection],
+    ) -> Self {
+        Self {
+            id: ThemeRouteCutoverId::new(
+                family,
+                target,
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                facet,
+                value,
+            ),
+            projections,
+        }
+    }
+}
+
+const NODE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::NodeFill];
+const NODE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::NodeStroke];
+const EDGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::EdgeStroke,
+    ThemeRouteCutoverProjection::MarkerPaintFromEdge,
+];
+const ACTOR_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ActorFill];
+const ACTOR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ActorStroke];
+
+#[derive(Clone, Copy)]
+struct RouteTombstone {
+    id: ThemeRouteCutoverId,
+    retired_in_version: u16,
+    reason: &'static str,
+}
+
+struct CutoverAuthorizationManifest<'a> {
+    version: u16,
+    active: &'a [RouteAuthorization],
+    tombstones: &'a [RouteTombstone],
+}
+
+const ACTIVE_ROUTES: [RouteAuthorization; 16] = [
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ACTOR_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ACTOR_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        ACTOR_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        ACTOR_STROKE_PROJECTIONS,
+    ),
+];
+
+const TOMBSTONES: [RouteTombstone; 0] = [];
+
+const MANIFEST: CutoverAuthorizationManifest<'static> = CutoverAuthorizationManifest {
+    version: CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
+    active: &ACTIVE_ROUTES,
+    tombstones: &TOMBSTONES,
+};
+
+const fn route(
+    family: DiagramFamilyId,
+    target: ThemeTarget,
+    facet: ThemeRouteCutoverFacet,
+    value: ThemeRouteCutoverValue,
+    projections: &'static [ThemeRouteCutoverProjection],
+) -> RouteAuthorization {
+    RouteAuthorization::new(family, target, facet, value, projections)
+}
+
+pub(super) fn authorize_cutover_routes(
+    inventory: Vec<ThemeRouteCutoverDescriptor>,
+) -> C6ProofResult<Vec<ThemeRouteCutoverDescriptor>> {
+    let entries = inventory
+        .iter()
+        .map(|route| (route.id(), route.projections()))
+        .collect::<Vec<_>>();
+    let authorized_ids = reconcile_manifest(&entries, &MANIFEST)?;
+    let mut routes = inventory
+        .into_iter()
+        .map(|route| (route.id(), route))
+        .collect::<BTreeMap<_, _>>();
+    authorized_ids
+        .into_iter()
+        .map(|id| {
+            routes.remove(&id).ok_or_else(|| {
+                C6ProofError::new(
+                    "route-manifest",
+                    format!(
+                        "authorized route {} disappeared during reconciliation",
+                        id_label(id)
+                    ),
+                )
+            })
+        })
+        .collect()
+}
+
+fn reconcile_manifest(
+    inventory: &[(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)],
+    manifest: &CutoverAuthorizationManifest<'_>,
+) -> C6ProofResult<Vec<ThemeRouteCutoverId>> {
+    c6_ensure!(
+        "route-manifest",
+        manifest.version == CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
+        "unsupported cutover authorization manifest version {}",
+        manifest.version
+    );
+    c6_ensure!(
+        "route-manifest",
+        manifest.tombstones.is_empty(),
+        "cutover tombstones require an explicit bridge-retirement verifier before admission"
+    );
+    validate_projection_actions(manifest, &PROJECTION_ACTIONS)?;
+
+    let inventory = collect_unique(
+        inventory
+            .iter()
+            .map(|(id, projections)| (*id, projections.iter().collect::<BTreeSet<_>>())),
+        "matrix inventory",
+    )?;
+    let active = collect_unique(
+        manifest.active.iter().map(|route| {
+            (
+                route.id,
+                route.projections.iter().copied().collect::<BTreeSet<_>>(),
+            )
+        }),
+        "authorization manifest",
+    )?;
+    c6_ensure!(
+        "route-manifest",
+        manifest.active.iter().all(|route| {
+            route
+                .projections
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .len()
+                == route.projections.len()
+        }),
+        "cutover authorization manifest contains duplicate projections"
+    );
+    let tombstones = manifest
+        .tombstones
+        .iter()
+        .map(|route| route.id)
+        .collect::<BTreeSet<_>>();
+    c6_ensure!(
+        "route-manifest",
+        tombstones.len() == manifest.tombstones.len(),
+        "cutover authorization manifest contains duplicate tombstones"
+    );
+    c6_ensure!(
+        "route-manifest",
+        active.keys().all(|id| !tombstones.contains(id)),
+        "one cutover route is both active and tombstoned"
+    );
+    for tombstone in manifest.tombstones {
+        c6_ensure!(
+            "route-manifest",
+            tombstone.retired_in_version > 0
+                && tombstone.retired_in_version <= manifest.version
+                && !tombstone.reason.trim().is_empty(),
+            "invalid cutover tombstone for {}",
+            id_label(tombstone.id)
+        );
+    }
+
+    let new_routes = inventory
+        .keys()
+        .filter(|id| !active.contains_key(id))
+        .copied()
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-manifest",
+        new_routes.is_empty(),
+        "matrix added unauthorized cutover routes: {}",
+        labels(&new_routes)
+    );
+    let removed_routes = active
+        .keys()
+        .filter(|id| !inventory.contains_key(id))
+        .copied()
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-manifest",
+        removed_routes.is_empty(),
+        "matrix silently removed authorized cutover routes: {}",
+        labels(&removed_routes)
+    );
+    let projection_drift = active
+        .iter()
+        .filter_map(|(id, expected)| {
+            inventory
+                .get(id)
+                .filter(|actual| *actual != expected)
+                .map(|_| *id)
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-manifest",
+        projection_drift.is_empty(),
+        "cutover projection obligations drifted for: {}",
+        labels(&projection_drift)
+    );
+
+    Ok(active.keys().copied().collect())
+}
+
+fn validate_projection_actions(
+    manifest: &CutoverAuthorizationManifest<'_>,
+    expected: &[(
+        ThemeRouteCutoverProjection,
+        ThemeRouteCutoverProjectionAction,
+    )],
+) -> C6ProofResult<()> {
+    let expected = expected.iter().copied().collect::<BTreeMap<_, _>>();
+    c6_ensure!(
+        "route-manifest",
+        expected.len() == PROJECTION_ACTIONS.len(),
+        "cutover authorization manifest contains duplicate projection actions"
+    );
+
+    for projection in manifest
+        .active
+        .iter()
+        .flat_map(|route| route.projections.iter().copied())
+        .collect::<BTreeSet<_>>()
+    {
+        let action = expected.get(&projection).copied().ok_or_else(|| {
+            C6ProofError::new(
+                "route-manifest",
+                format!(
+                    "cutover projection {} has no manifest-owned action",
+                    projection.contribution_id()
+                ),
+            )
+        })?;
+        c6_ensure!(
+            "route-manifest",
+            projection.action() == action,
+            "cutover projection {} action drifted from {} to {}",
+            projection.contribution_id(),
+            action.id(),
+            projection.action().id()
+        );
+    }
+    Ok(())
+}
+
+fn collect_unique(
+    entries: impl IntoIterator<Item = (ThemeRouteCutoverId, BTreeSet<ThemeRouteCutoverProjection>)>,
+    owner: &str,
+) -> C6ProofResult<BTreeMap<ThemeRouteCutoverId, BTreeSet<ThemeRouteCutoverProjection>>> {
+    let mut unique = BTreeMap::new();
+    for (id, projections) in entries {
+        c6_ensure!(
+            "route-manifest",
+            unique.insert(id, projections).is_none(),
+            "{owner} contains duplicate route {}",
+            id_label(id)
+        );
+    }
+    Ok(unique)
+}
+
+fn labels(ids: &[ThemeRouteCutoverId]) -> String {
+    ids.iter()
+        .copied()
+        .map(id_label)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn id_label(id: ThemeRouteCutoverId) -> String {
+    format!(
+        "{}/{}/{:?}/{:?}/{:?}",
+        id.family_id().as_str(),
+        id.target().id(),
+        id.selector(),
+        id.facet(),
+        id.value()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use merman::DiagramFamilyId;
+    use merman::svg::ThemeTarget;
+    use merman_render::__private::{
+        ThemeRouteCutoverFacet, ThemeRouteCutoverId, ThemeRouteCutoverProjection,
+        ThemeRouteCutoverProjectionAction, ThemeRouteCutoverProjectionSet,
+        ThemeRouteCutoverSelector, ThemeRouteCutoverValue, legacy_replacing_typed_theme_routes,
+    };
+
+    use super::{
+        ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CutoverAuthorizationManifest, MANIFEST,
+        PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone, authorize_cutover_routes,
+        reconcile_manifest, validate_projection_actions,
+    };
+
+    fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
+        legacy_replacing_typed_theme_routes()
+            .expect("derive current route inventory")
+            .into_iter()
+            .map(|route| (route.id(), route.projections()))
+            .collect()
+    }
+
+    #[test]
+    fn manifest_authorizes_the_exact_current_matrix_inventory() {
+        let routes = authorize_cutover_routes(
+            legacy_replacing_typed_theme_routes().expect("derive current route inventory"),
+        )
+        .expect("authorize current route inventory");
+
+        assert_eq!(routes.len(), ACTIVE_ROUTES.len());
+    }
+
+    #[test]
+    fn manifest_rejects_new_removed_or_projection_drifted_routes() {
+        let current = current_inventory();
+        let unknown = ThemeRouteCutoverId::new(
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverFacet::Fill,
+            ThemeRouteCutoverValue::Solid,
+        );
+        let mut added = current.clone();
+        added.push((unknown, ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL));
+        assert!(reconcile_manifest(&added, &MANIFEST).is_err());
+
+        assert!(reconcile_manifest(&current[1..], &MANIFEST).is_err());
+
+        let mut drifted = current;
+        drifted[0].1 = ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE;
+        assert!(reconcile_manifest(&drifted, &MANIFEST).is_err());
+    }
+
+    #[test]
+    fn manifest_rejects_duplicates_and_unverified_tombstones() {
+        let current = current_inventory();
+        let duplicate_active = [ACTIVE_ROUTES[0], ACTIVE_ROUTES[0]];
+        let duplicate_manifest = CutoverAuthorizationManifest {
+            version: 1,
+            active: &duplicate_active,
+            tombstones: &[],
+        };
+        assert!(reconcile_manifest(&current, &duplicate_manifest).is_err());
+
+        let tombstone = [RouteTombstone {
+            id: ACTIVE_ROUTES[0].id,
+            retired_in_version: 1,
+            reason: "test",
+        }];
+        let tombstoned_manifest = CutoverAuthorizationManifest {
+            version: 1,
+            active: &ACTIVE_ROUTES[1..],
+            tombstones: &tombstone,
+        };
+        assert!(reconcile_manifest(&current[1..], &tombstoned_manifest).is_err());
+    }
+
+    #[test]
+    fn manifest_rejects_projection_action_drift() {
+        let mut drifted = PROJECTION_ACTIONS;
+        let marker = drifted
+            .iter_mut()
+            .find(|(projection, _)| *projection == ThemeRouteCutoverProjection::MarkerPaintFromEdge)
+            .expect("marker projection action");
+        marker.1 = ThemeRouteCutoverProjectionAction::Replace;
+
+        assert!(validate_projection_actions(&MANIFEST, &drifted).is_err());
+    }
+
+    #[test]
+    fn route_authorization_constructor_is_const_usable() {
+        const ROUTE: RouteAuthorization = RouteAuthorization::new(
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Actor,
+            ThemeRouteCutoverFacet::Fill,
+            ThemeRouteCutoverValue::Solid,
+            ACTOR_FILL_PROJECTIONS,
+        );
+        assert_eq!(ROUTE.id.family_id(), DiagramFamilyId::SEQUENCE);
+    }
+}

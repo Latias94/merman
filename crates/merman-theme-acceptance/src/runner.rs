@@ -5,9 +5,9 @@ use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
     FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement, FontSource, FontStack,
-    OrdinalPalette, Specified, SvgPipeline, TextMeasurementSource, ThemeAssets, ThemeCapability,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, TypographySpec,
+    OrdinalPalette, RootThemeVerification, Specified, SvgPipeline, TextMeasurementSource,
+    ThemeAssets, ThemeCapability, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman::{
     DiagramFamilyId, Engine, JpegRequest, MermaidConfig, OperationControl, PdfRequest, PngRequest,
@@ -36,13 +36,13 @@ use crate::observation::{
 
 #[derive(Debug, thiserror::Error)]
 #[error("{stage}: {detail}")]
-pub(super) struct C6ProofError {
+pub(crate) struct C6ProofError {
     stage: &'static str,
     detail: String,
 }
 
 impl C6ProofError {
-    pub(super) fn new(stage: &'static str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(stage: &'static str, detail: impl Into<String>) -> Self {
         Self {
             stage,
             detail: detail.into(),
@@ -71,15 +71,33 @@ impl C6ProofError {
             detail: self.detail,
         }
     }
+
+    pub(crate) fn into_route_runtime(self, witness: impl Into<String>) -> C6RuntimeError {
+        C6RuntimeError::RouteCutoverProofFailed {
+            witness: witness.into(),
+            stage: self.stage,
+            detail: self.detail,
+        }
+    }
 }
 
-pub(super) type C6ProofResult<T> = Result<T, C6ProofError>;
+pub(crate) type C6ProofResult<T> = Result<T, C6ProofError>;
 
-macro_rules! c6_ensure {
-    ($stage:expr, $condition:expr, $($arg:tt)+) => {
-        if !$condition {
-            return Err(C6ProofError::new($stage, format!($($arg)+)));
-        }
+#[derive(Clone, Copy)]
+pub(crate) struct FamilyEvidenceRequirements {
+    require_prepared_text: bool,
+    require_root_theme: bool,
+}
+
+impl FamilyEvidenceRequirements {
+    const BRUTALIST_STATE: Self = Self {
+        require_prepared_text: true,
+        require_root_theme: true,
+    };
+
+    pub(crate) const ROUTE_CUTOVER: Self = Self {
+        require_prepared_text: false,
+        require_root_theme: false,
     };
 }
 
@@ -109,8 +127,9 @@ mod c6_pdf_proof;
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use c6_pdf_proof::prove_brutalist_state_pdf;
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use c6_raster_proof::{PngArtifactProof, prove_brutalist_state_jpeg, prove_brutalist_state_png};
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub(crate) use c6_raster_proof::{RasterImage as C6RasterImage, decode_bounded_png_artifact};
 
 const SHADOW_EFFECT_ID: &str = "c6-brutalist-state-shadow";
 const BRUTALIST_STATE_FIXTURE_ID: &str = "fixture-c6-brutalist-state";
@@ -287,6 +306,7 @@ fn run_enforced_c6_runtime_from_root(
 ) -> Result<C6ExecutionReport, C6RuntimeError> {
     let theme_catalog = ThemeFixtureCatalog::load(root)?;
     let acceptance = C6AcceptanceCatalog::load(&theme_catalog)?;
+    crate::cutover::run_route_cutover_witnesses()?;
     run_catalog(&theme_catalog, &acceptance)
 }
 
@@ -294,7 +314,7 @@ fn run_catalog(
     theme_catalog: &ThemeFixtureCatalog,
     acceptance: &C6AcceptanceCatalog,
 ) -> Result<C6ExecutionReport, C6RuntimeError> {
-    let plan = C6ExecutionPlan::from_catalog(&acceptance)?;
+    let plan = C6ExecutionPlan::from_catalog(acceptance)?;
     let expected_keys = acceptance
         .enforced_tranche()
         .cells()
@@ -456,7 +476,7 @@ fn execute_brutalist_state_group(
     prove_render_group(&group.key, prove_brutalist_state_capabilities(&theme))?;
 
     let renderer = brutalist_state_renderer();
-    let svg_request = brutalist_state_svg_request();
+    let svg_request = portable_svg_request();
     let svg_output = prove_render_group(
         &group.key,
         render_brutalist_state_svg(&renderer, &source, &theme, svg_request.clone()),
@@ -738,14 +758,29 @@ fn prove_brutalist_state_evidence(
     evidence: &RenderEvidence,
     theme: &DiagramTheme,
 ) -> C6ProofResult<crate::observation::C6RenderIdentity> {
+    prove_portable_family_evidence(
+        evidence,
+        theme,
+        DiagramFamilyId::STATE,
+        FamilyEvidenceRequirements::BRUTALIST_STATE,
+    )
+}
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub(crate) fn prove_portable_family_evidence(
+    evidence: &RenderEvidence,
+    theme: &DiagramTheme,
+    expected_family: DiagramFamilyId,
+    requirements: FamilyEvidenceRequirements,
+) -> C6ProofResult<crate::observation::C6RenderIdentity> {
     let family = evidence.family_report();
     let session = family.session_report();
     let summary = family_evidence(family);
     let recipe = theme.recipe_fingerprint();
     c6_ensure!(
         "render-family",
-        family.family_id() == DiagramFamilyId::STATE,
-        "expected State family, got {}",
+        family.family_id() == expected_family,
+        "expected {expected_family} family, got {}",
         family.family_id()
     );
     c6_ensure!(
@@ -761,11 +796,24 @@ fn prove_brutalist_state_evidence(
             == Some(recipe),
         "render evidence recipe report does not match the compiled theme"
     );
-    c6_ensure!(
-        "root-theme-report",
-        family.root_theme_report().is_verified(),
-        "root theme report is not verified"
-    );
+    let root_theme = family.root_theme_report();
+    if requirements.require_root_theme {
+        c6_ensure!(
+            "root-theme-report",
+            root_theme.is_verified(),
+            "root theme report is not verified"
+        );
+    } else {
+        c6_ensure!(
+            "root-theme-report",
+            matches!(
+                root_theme.verification(),
+                RootThemeVerification::Verified | RootThemeVerification::NotApplicable
+            ),
+            "root theme report is {:?}",
+            root_theme.verification()
+        );
+    }
     c6_ensure!(
         "theme-portability-requirement",
         session
@@ -805,18 +853,28 @@ fn prove_brutalist_state_evidence(
         !summary.output_mutated(),
         "family evidence was invalidated by an output mutation"
     );
-    let prepared_text = session.prepared_text_layout().ok_or_else(|| {
-        C6ProofError::new(
+    match session.prepared_text_layout() {
+        Some(prepared_text) if requirements.require_prepared_text => c6_ensure!(
             "render-font-source",
-            "render evidence did not retain prepared text layout evidence",
-        )
-    })?;
-    c6_ensure!(
-        "render-font-source",
-        prepared_text.used_font_sources() == [FontSource::Embedded],
-        "prepared text did not exclusively use embedded fonts: {:?}",
-        prepared_text.used_font_sources()
-    );
+            prepared_text.used_font_sources() == [FontSource::Embedded],
+            "prepared text did not exclusively use embedded fonts: {:?}",
+            prepared_text.used_font_sources()
+        ),
+        Some(prepared_text) => c6_ensure!(
+            "render-font-source",
+            prepared_text
+                .used_font_sources()
+                .iter()
+                .all(|source| *source == FontSource::Embedded),
+            "route witness prepared text consulted a non-embedded font source: {:?}",
+            prepared_text.used_font_sources()
+        ),
+        None => c6_ensure!(
+            "render-font-source",
+            !requirements.require_prepared_text,
+            "render evidence did not retain prepared text layout evidence"
+        ),
+    }
     let host_measurement_count = evidence
         .measurement()
         .entries()
@@ -1188,7 +1246,7 @@ fn brutalist_state_renderer() -> Renderer {
     )))
 }
 
-fn brutalist_state_svg_request() -> SvgRequest {
+pub(crate) fn portable_svg_request() -> SvgRequest {
     SvgRequest {
         environment: SvgEnvironment::deterministic()
             .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
@@ -1610,7 +1668,7 @@ fn prove_brutalist_state_svg(
     Ok(brutalist_state_applied_mechanisms())
 }
 
-fn class_contains(node: roxmltree::Node<'_, '_>, class_name: &str) -> bool {
+pub(crate) fn class_contains(node: roxmltree::Node<'_, '_>, class_name: &str) -> bool {
     node.attribute("class").is_some_and(|classes| {
         classes
             .split_ascii_whitespace()
@@ -1625,7 +1683,7 @@ fn state_rect_belongs_to(node: roxmltree::Node<'_, '_>, state_id: &str) -> bool 
         .is_some_and(|id| id.contains(&expected_fragment))
 }
 
-fn style_value<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
+pub(crate) fn style_value<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
     node.attribute("style")?.split(';').find_map(|declaration| {
         let (name, value) = declaration.split_once(':')?;
         (name.trim() == property).then(|| {
@@ -1915,8 +1973,7 @@ mod tests {
             &png_required_by,
             c6_raster_proof::RasterImage::decode_png(b"\x89PNG\r\n\x1a\n", raster_plan(1, 1)),
         )
-        .err()
-        .expect("a truncated PNG must fail closed");
+        .expect_err("a truncated PNG must fail closed");
         assert!(matches!(
             png,
             C6RuntimeError::RenderGroupTargetProofFailed {
@@ -1935,8 +1992,7 @@ mod tests {
             &jpeg_required_by,
             c6_raster_proof::RasterImage::decode_jpeg(&[0xff, 0xd8, 0xff, 0xd9], raster_plan(1, 1)),
         )
-        .err()
-        .expect("a truncated JPEG must fail closed");
+        .expect_err("a truncated JPEG must fail closed");
         assert!(matches!(
             jpeg,
             C6RuntimeError::RenderGroupTargetProofFailed {
@@ -1959,8 +2015,7 @@ mod tests {
             &pdf_required_by,
             c6_pdf_proof::load_pdf_artifact(&malformed_pdf),
         )
-        .err()
-        .expect("a malformed PDF must fail closed");
+        .expect_err("a malformed PDF must fail closed");
         assert!(matches!(
             pdf,
             C6RuntimeError::RenderGroupTargetProofFailed {

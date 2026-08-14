@@ -8,6 +8,7 @@ use merman_core::{MermaidConfig, OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 
 use crate::DiagramFamilyId;
+use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 use super::canvas::CanvasPaint;
 use super::family_mechanism_matrix::{FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES};
@@ -20,6 +21,7 @@ use super::typography::{Specified, TextStyle};
 use super::DiagramThemeSpec;
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
+const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
 
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
@@ -204,14 +206,14 @@ fn compile_node_family(
 
     contributions.add_typography(&reader);
     contributions.add_theme_variables(
-        "node.fill",
+        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
         [
             ("primaryColor", reader.fill(ThemeTarget::Node)),
             ("mainBkg", reader.fill(ThemeTarget::Node)),
         ],
     );
     contributions.add_theme_variables(
-        "node.stroke",
+        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
         [
             ("primaryBorderColor", reader.stroke(ThemeTarget::Node)),
             ("nodeBorder", reader.stroke(ThemeTarget::Node)),
@@ -230,12 +232,13 @@ fn compile_node_family(
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
     contributions.add_theme_variables(
-        "edge.stroke",
+        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
         [("lineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
     );
+    let marker_paint = reader.marker_paint_contribution();
     contributions.add_theme_variables(
-        "marker.paint",
-        [("arrowheadColor", reader.marker_or_edge_paint())],
+        marker_paint.contribution_id,
+        [("arrowheadColor", marker_paint.value)],
     );
     contributions.add_theme_variables(
         "edge-label-background.fill",
@@ -362,11 +365,11 @@ fn compile_sequence_family(
 
     contributions.add_typography(&reader);
     contributions.add_theme_variables(
-        "actor.fill",
+        ThemeRouteCutoverProjection::ActorFill.contribution_id(),
         [("actorBkg", reader.fill(ThemeTarget::Actor))],
     );
     contributions.add_theme_variables(
-        "actor.stroke",
+        ThemeRouteCutoverProjection::ActorStroke.contribution_id(),
         [("actorBorder", reader.stroke(ThemeTarget::Actor))],
     );
     contributions.add_theme_variables(
@@ -872,12 +875,19 @@ impl FamilyStyleReader {
         self.stroke_or_fill_resolution(target).into_value()
     }
 
-    fn marker_or_edge_paint(&self) -> Option<String> {
+    fn marker_paint_contribution(&self) -> MarkerPaintContribution {
         match self.stroke_or_fill_resolution(ThemeTarget::Marker) {
-            LegacyPaintResolution::Unspecified => self.stroke_or_fill_resolution(ThemeTarget::Edge),
-            marker => marker,
+            LegacyPaintResolution::Unspecified => MarkerPaintContribution {
+                contribution_id: ThemeRouteCutoverProjection::MarkerPaintFromEdge.contribution_id(),
+                value: self
+                    .stroke_or_fill_resolution(ThemeTarget::Edge)
+                    .into_value(),
+            },
+            marker => MarkerPaintContribution {
+                contribution_id: EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID,
+                value: marker.into_value(),
+            },
         }
-        .into_value()
     }
 
     fn text_fill(&self, target: ThemeTarget) -> Option<String> {
@@ -945,6 +955,11 @@ impl FamilyStyleReader {
         }
         LegacyPaintResolution::from_property(property)
     }
+}
+
+struct MarkerPaintContribution {
+    contribution_id: &'static str,
+    value: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1763,7 +1778,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_flowchart_and_swimlane_edge_stroke_never_enters_legacy_marker_bridge() {
+    fn typed_flowchart_and_swimlane_edge_stroke_retires_legacy_marker_fallback() {
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             let spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
@@ -1785,6 +1800,49 @@ mod tests {
             )));
             assert!(!bridge.owns_contribution_id(&format!(
                 "merman.legacy-family-theme.v1.{}.marker.paint",
+                family.as_str()
+            )));
+            assert!(!bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.marker.paint-from-edge",
+                family.as_str()
+            )));
+        }
+    }
+
+    #[test]
+    fn explicit_marker_paint_remains_legacy_when_edge_stroke_is_typed() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            let spec = DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+                        )
+                        .for_family(family),
+                    )
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Marker,
+                            ThemeStylePatch::default().with_stroke(solid("#d946ef")),
+                        )
+                        .for_family(family),
+                    ),
+            );
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(family);
+
+            assert_eq!(artifact.contribution_ids.len(), 1);
+            assert!(bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.marker.paint",
+                family.as_str()
+            )));
+            assert!(!bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.marker.paint-from-edge",
+                family.as_str()
+            )));
+            assert!(!bridge.owns_contribution_id(&format!(
+                "merman.legacy-family-theme.v1.{}.edge.stroke",
                 family.as_str()
             )));
         }
