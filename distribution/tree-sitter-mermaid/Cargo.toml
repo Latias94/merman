@@ -1,0 +1,42 @@
+[package]
+name = "tree-sitter-mermaid"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license = "MIT"
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Tolerant Tree-sitter grammar and editor queries for Mermaid"
+keywords = ["incremental", "mermaid", "parser", "tree-sitter"]
+categories = ["parsing", "text-editors"]
+publish = false
+include = [
+    "/bindings/**",
+    "/grammar.js",
+    "/grammar/**",
+    "/metadata/**",
+    "/queries/**",
+    "/src/**",
+    "/test/**",
+    "/tests/**",
+    "/wasm/**",
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md",
+    "/package.json",
+    "/package-lock.json",
+    "/tree-sitter.json",
+]
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter = { version = "=0.26.12", default-features = false, features = ["std"] }
+
+[package.metadata.tree-sitter-mermaid]
+language-abi = 14
+node-schema-version = 1
+query-schema-version = 1
+release-state = "dry-run-only"

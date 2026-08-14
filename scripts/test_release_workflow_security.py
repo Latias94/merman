@@ -18,6 +18,7 @@ PR_REACHABLE_WORKFLOWS = [
     WORKFLOW_ROOT / "npm-audit.yml",
     WORKFLOW_ROOT / "pages.yml",
     WORKFLOW_ROOT / "security-audit.yml",
+    WORKFLOW_ROOT / "tree-sitter-mermaid.yml",
     WORKFLOW_ROOT / "vscode-extension.yml",
 ]
 PUBLISH_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml")) + [
@@ -115,6 +116,35 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("persist-credentials: false"),
                     text.count("uses: actions/checkout@"),
                 )
+
+    def test_tree_sitter_mermaid_release_is_dry_run_only(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "release-independent-crate.yml")
+
+        self.assertIn("- tree-sitter-mermaid", workflow)
+        self.assertIn("publish_admitted=false", workflow)
+        self.assertIn(
+            "if: ${{ needs.validate-inputs.outputs.publish_admitted == 'true' }}",
+            workflow,
+        )
+        self.assertIn(
+            "npm pack ./distribution/tree-sitter-mermaid --dry-run --json",
+            workflow,
+        )
+
+    def test_tree_sitter_owner_runs_its_complete_package_gate(self) -> None:
+        ci = read(CI_WORKFLOW)
+        workflow = read(WORKFLOW_ROOT / "tree-sitter-mermaid.yml")
+
+        self.assertIn("uses: ./.github/workflows/tree-sitter-mermaid.yml", ci)
+        self.assertIn("cargo fmt --all -- --check", workflow)
+        self.assertIn("cargo clippy --locked -p tree-sitter-mermaid -p xtask", workflow)
+        self.assertIn("cargo nextest run --locked -p tree-sitter-mermaid", workflow)
+        self.assertIn("npm test --prefix distribution/tree-sitter-mermaid", workflow)
+        self.assertIn("cargo package --locked -p tree-sitter-mermaid", workflow)
+        self.assertIn(
+            "npm pack ./distribution/tree-sitter-mermaid --dry-run --json",
+            workflow,
+        )
 
     def test_workspace_release_ignores_flutter_package_tags(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")

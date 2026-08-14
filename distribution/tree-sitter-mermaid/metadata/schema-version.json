@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "cst": {
+    "id": "mermaid-cst",
+    "version": 1,
+    "stability": "experimental"
+  },
+  "queries": {
+    "id": "mermaid-queries",
+    "version": 1,
+    "stability": "experimental"
+  },
+  "compatiblePairs": [
+    {
+      "cst": 1,
+      "queries": 1
+    }
+  ]
+}

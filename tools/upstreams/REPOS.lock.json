@@ -7,6 +7,24 @@
       "ref": "mermaid@11.16.1",
       "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf"
     },
+    "monaqa-tree-sitter-mermaid": {
+      "path": "repo-ref/tree-sitter-mermaid-monaqa",
+      "url": "https://github.com/monaqa/tree-sitter-mermaid.git",
+      "ref": "master",
+      "commit": "90ae195b31933ceb9d079abfa8a3ad0a36fee4cc"
+    },
+    "pappasam-tree-sitter-mermaid": {
+      "path": "repo-ref/tree-sitter-mermaid-pappasam",
+      "url": "https://github.com/pappasam/tree-sitter-mermaid.git",
+      "ref": "main",
+      "commit": "1a11e2d8cf11afcfdb768f537c1a9bde294c24f9"
+    },
+    "singularity-tree-sitter-mermaid": {
+      "path": "repo-ref/tree-sitter-mermaid-singularity",
+      "url": "https://github.com/singularity-ng/singularity-parser-mermaid.git",
+      "ref": "main",
+      "commit": "f5ac2752fbf0f74f9c836014b87e511303d2abae"
+    },
     "mermaid-ascii": {
       "path": "repo-ref/mermaid-ascii",
       "url": "https://github.com/AlexanderGrooff/mermaid-ascii",

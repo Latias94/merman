@@ -49,7 +49,7 @@ This work creates a neighboring syntax product rather than replacing Merman's se
 
 #### Assumptions
 
-- The language package lives at `grammars/tree-sitter-mermaid/` in this monorepo so grammar changes, Merman oracle changes, and Mermaid baseline changes can be reviewed atomically.
+- The language package lives at `distribution/tree-sitter-mermaid/` in this monorepo so grammar changes, Merman oracle changes, and Mermaid baseline changes can be reviewed atomically.
 - The initial package version is `0.1.0`; public node and capture schemas are explicitly experimental until a later stability decision.
 - Generated language ABI 14 is the initial compatibility target. The CLI, Rust runtime, and `web-tree-sitter` are pinned to `0.26.12`; the source-built Node consumer is tested with the separately versioned `tree-sitter` Node runtime `0.25.1` until that package publishes a compatible newer line.
 - The first delivery includes generated C, a Rust binding crate, a source-built Node binding, and a language WASM. Platform-specific Node prebuilds are excluded.
@@ -83,7 +83,7 @@ This work creates a neighboring syntax product rather than replacing Merman's se
 - R1. The grammar is a top-level, independently versioned package and must not enter any Merman production dependency closure.
 - R2. A new ADR must define Tree-sitter as an external tolerant CST/query product. Merman remains the only owner of validity, semantic construction, DB mutation ordering, IR, diagnostics, navigation identity, and refactoring safety.
 - R3. The package must pin and report the exact Mermaid, ZenUML companion, Merman oracle, Tree-sitter CLI, Rust runtime, Node runtime, web runtime, language ABI, grammar version, node-schema version, and query-schema version identities. Each generation emits one immutable receipt that binds those identities to parser, schema, query, binding, and WASM digests; every package carries the same receipt and rejects incompatible node/query schema pairs.
-- R4. One machine-readable contract must cover exactly the 35 public families without becoming a second catalog. Public IDs, internal variants, and accepted headers/aliases are generated read-only projections of Merman's family catalog; grammar-owned fields are family roots, CST/query schema, evidence, and support tier. A composed receipt binds both authority digests, and internal variants or aliases never inflate the count.
+- R4. One machine-readable contract must cover exactly the 35 public families without becoming a second catalog. Public IDs, internal variants, and suggested authoring headers are generated read-only projections of Merman's family catalog. Complete accepted headers and aliases come from the pinned Mermaid and ZenUML syntax authorities and are proved by grammar corpus evidence, with public-family ownership cross-checked against Merman. Grammar-owned fields are family roots, CST/query schema, evidence, and support tier. A composed receipt binds both authority digests, and internal variants or aliases never inflate the count.
 
 #### Grammar and CST
 
@@ -340,7 +340,7 @@ sequenceDiagram
 
 ```text
 contracts/tree-sitter/mermaid-language-v1.json
-grammars/tree-sitter-mermaid/
+distribution/tree-sitter-mermaid/
   Cargo.toml
   LICENSE
   README.md
@@ -385,7 +385,7 @@ grammars/tree-sitter-mermaid/
   wasm/
     smoke.mjs
 crates/xtask/src/cmd/tree_sitter_mermaid.rs
-docs/adr/NNNN-tree-sitter-language-boundary.md
+docs/adr/0082-tree-sitter-language-boundary.md
 docs/development/TREE_SITTER_MERMAID.md
 docs/release/TREE_SITTER_MERMAID.md
 ```
@@ -414,7 +414,7 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 - Goal: Create the independent deep module and make its authority, versioning, legal provenance, CI owner, and non-dependency boundary executable before grammar complexity grows.
 - Requirements: R1-R4, R19-R23; F3, F6-F7; AE10-AE13.
 - Dependencies: None.
-- Files: `Cargo.toml`, `Cargo.lock`, `.gitignore`, `.gitattributes`, `.github/workflows/ci.yml`, `.github/workflows/release-independent-crate.yml`, `.github/dependabot.yml`, `scripts/ci_plan.py`, `scripts/test_ci_plan.py`, `scripts/release_projection.py`, `scripts/test_release_projection.py`, `scripts/verify_artifact_dependency_closures.py`, `scripts/test_verify_artifact_dependency_closures.py`, `scripts/verify-independent-crate-version-bumps.py`, its tests, `scripts/test_release_workflow_security.py`, `contracts/tree-sitter/mermaid-language-v1.json`, `contracts/README.md`, `grammars/tree-sitter-mermaid/Cargo.toml`, `grammars/tree-sitter-mermaid/package.json`, `grammars/tree-sitter-mermaid/package-lock.json`, `grammars/tree-sitter-mermaid/tree-sitter.json`, `grammars/tree-sitter-mermaid/metadata/{support,provenance,schema-version}.json`, `grammars/tree-sitter-mermaid/LICENSE`, `grammars/tree-sitter-mermaid/README.md`, `docs/adr/NNNN-tree-sitter-language-boundary.md`, `docs/development/CI.md`, `docs/release/THIRD_PARTY_COMPONENTS.json`.
+- Files: `Cargo.toml`, `Cargo.lock`, `.gitignore`, `.gitattributes`, `.github/workflows/ci.yml`, `.github/workflows/release-independent-crate.yml`, `.github/dependabot.yml`, `scripts/ci_plan.py`, `scripts/test_ci_plan.py`, `scripts/release_projection.py`, `scripts/test_release_projection.py`, `scripts/verify_artifact_dependency_closures.py`, `scripts/test_verify_artifact_dependency_closures.py`, `scripts/verify-independent-crate-version-bumps.py`, its tests, `scripts/test_release_workflow_security.py`, `contracts/tree-sitter/mermaid-language-v1.json`, `contracts/README.md`, `distribution/tree-sitter-mermaid/Cargo.toml`, `distribution/tree-sitter-mermaid/package.json`, `distribution/tree-sitter-mermaid/package-lock.json`, `distribution/tree-sitter-mermaid/tree-sitter.json`, `distribution/tree-sitter-mermaid/metadata/{support,provenance,schema-version}.json`, `distribution/tree-sitter-mermaid/LICENSE`, `distribution/tree-sitter-mermaid/README.md`, `docs/adr/0082-tree-sitter-language-boundary.md`, `docs/development/CI.md`, `docs/release/PUBLISH_ORDER.md`, `docs/release/THIRD_PARTY_COMPONENTS.json`.
 - Approach: Add the grammar as an explicit workspace member and independent package. Make Merman's family catalog and the grammar package's `metadata/support.json` the only editable owners of their respective R4 fields; generate the composed 35-row contract and published metadata deterministically, with both input digests. Seed provenance records for pinned Mermaid, ZenUML, pappasam, monaqa, and singularity sources before copying code. Add a first-class grammar CI owner and an absence assertion for Merman production profiles. Keep release workflows dry-run capable and make registry identity unresolved but non-blocking.
 - Execution note: The contract begins with every row below `conformant`; no bootstrap value may overstate capability. The ADR must distinguish external syntax distribution from the editor-only semantic parser prohibited by existing ADRs.
 - Patterns: Follow independent-package projection in the workspace, structured cross-consumer contracts under `contracts/`, CI owner classification in `scripts/ci_plan.py`, and existing third-party component relationships.
@@ -426,7 +426,7 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 - Goal: Build the outer CST, all header dispatch, shared lexical rules, minimal scanner, deterministic generation, and initial C/Rust/Node/WASM loading before expanding all family bodies.
 - Requirements: R5-R6, R11-R14, R17-R18; F1-F4; AE1-AE3, AE7-AE8.
 - Dependencies: U1.
-- Files: `grammars/tree-sitter-mermaid/grammar.js`, narrowly proven shared modules under `grammars/tree-sitter-mermaid/grammar/`, final hard-family modules under `grammars/tree-sitter-mermaid/grammar/families/`, `grammars/tree-sitter-mermaid/src/{parser.c,grammar.json,node-types.json,scanner.c}`, generated headers, `grammars/tree-sitter-mermaid/bindings/c/{tree-sitter-mermaid.h,tree-sitter-mermaid.pc.in}`, Node entry/build files, `grammars/tree-sitter-mermaid/bindings/rust/{build.rs,lib.rs}`, package-local cross-platform scripts, committed language WASM, `grammars/tree-sitter-mermaid/metadata/artifact-receipt.json`, `grammars/tree-sitter-mermaid/test/corpus/outer.txt`, hard-family corpus/edit files in their final per-family paths, `grammars/tree-sitter-mermaid/tests/{metadata,incremental,adversarial}.rs`, initial grammar/scanner fuzz targets and seeds, `crates/xtask/src/cmd/tree_sitter_mermaid.rs`, `crates/xtask/src/cmd/mod.rs`, `crates/xtask/src/main.rs`.
+- Files: `distribution/tree-sitter-mermaid/grammar.js`, narrowly proven shared modules under `distribution/tree-sitter-mermaid/grammar/`, final hard-family modules under `distribution/tree-sitter-mermaid/grammar/families/`, `distribution/tree-sitter-mermaid/src/{parser.c,grammar.json,node-types.json,scanner.c}`, generated headers, `distribution/tree-sitter-mermaid/bindings/c/{tree-sitter-mermaid.h,tree-sitter-mermaid.pc.in}`, Node entry/build files, `distribution/tree-sitter-mermaid/bindings/rust/{build.rs,lib.rs}`, package-local cross-platform scripts, committed language WASM, `distribution/tree-sitter-mermaid/metadata/artifact-receipt.json`, `distribution/tree-sitter-mermaid/test/corpus/outer.txt`, hard-family corpus/edit files in their final per-family paths, `distribution/tree-sitter-mermaid/tests/{metadata,incremental,adversarial}.rs`, initial grammar/scanner fuzz targets and seeds, `crates/xtask/src/cmd/tree_sitter_mermaid.rs`, `crates/xtask/src/cmd/mod.rs`, `crates/xtask/src/main.rs`.
 - Approach: Import only provenance-covered seed code, then establish the raw-source document/preamble/family shape. Recognize every accepted header but initially permit an explicitly named, tier-limited `unstructured_body` for unfinished families. Implement retained vertical mechanics slices in the final Flowchart, Sankey, Venn, Mindmap or Kanban, Tree View/Treemap, Event Modeling, and ZenUML modules; delete spike-only helpers before this unit closes. Generate the complete artifact set and R3 receipt in disposable state, load it through all first-delivery bindings, add arbitrary-byte and scanner-restart fuzz regressions, and record the first metrics snapshot.
 - Execution note: This is a fail-fast architecture checkpoint. If conflict count, generated C/WASM size, scanner serialization, or incremental/fresh behavior violates R18, stop and record a new design decision instead of hiding the problem in precedence or broad recovery.
 - Patterns: Use package-local official CLI commands; adapt the transactional artifact-set pattern from LALRPOP generation; keep `xtask` limited to Merman contract/oracle coordination.
@@ -438,7 +438,7 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 - Goal: Replace temporary bodies with useful family-specific CSTs for Architecture, Cynefin, GitGraph, Info, Packet, Pie, Radar, and Wardley.
 - Requirements: R7-R8, R15; F3, F5; AE3-AE4, AE9.
 - Dependencies: U2.
-- Files: corresponding `grammars/tree-sitter-mermaid/grammar/families/<slug>.js`, `grammars/tree-sitter-mermaid/test/corpus/families/<slug>.txt`, `grammars/tree-sitter-mermaid/test/edits/families/<slug>.json`, initial `grammars/tree-sitter-mermaid/test/queries/portable/highlights/<slug>.*`, public node/field snapshots, package support metadata, full generated artifact set, and metrics receipt.
+- Files: corresponding `distribution/tree-sitter-mermaid/grammar/families/<slug>.js`, `distribution/tree-sitter-mermaid/test/corpus/families/<slug>.txt`, `distribution/tree-sitter-mermaid/test/edits/families/<slug>.json`, initial `distribution/tree-sitter-mermaid/test/queries/portable/highlights/<slug>.*`, public node/field snapshots, package support metadata, full generated artifact set, and metrics receipt.
 - Approach: Translate pinned upstream rules family by family, naming declarations, identifiers, references, literals, operators, and blocks while retaining opaque leaves only for genuinely free-form payload. Each family lands with its baseline and admitted-valid oracle slice, legal/malformed/query/incremental evidence, highlights, one capture golden, node/field assertions, regenerated artifact set, and attributed metrics delta.
 - Execution note: Central grammar dispatch, generated artifacts, composed contracts, and receipts are integrated serially in unit order even when family-local modules are researched in parallel. Shared syntax is extracted only after at least two consumers prove the same token language.
 - Patterns: Keep grammar modules family-owned, reuse shared tokens only after two or more consumers prove an identical token language, give graph/Railroad/Langium helpers narrowly scoped names, and bind source translation provenance at file/rule level.
@@ -474,7 +474,7 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 - Goal: Complete Event Modeling, Kanban, Mindmap, Sankey, Sequence, Tree View, Treemap, and Venn with bounded scanner mechanics and edit-stable CSTs.
 - Requirements: R5-R8, R11, R15, R17-R18; F2-F5; AE3-AE5, AE9.
 - Dependencies: U5.
-- Files: corresponding per-family grammar, corpus, edit, highlight golden, node/field snapshot, support metadata, full generated artifact set and metrics receipt, `grammars/tree-sitter-mermaid/src/scanner.c`, scanner protocol/tests, `grammars/tree-sitter-mermaid/tests/{incremental,adversarial}.rs`, edit-sequence fuzz target and seeds.
+- Files: corresponding per-family grammar, corpus, edit, highlight golden, node/field snapshot, support metadata, full generated artifact set and metrics receipt, `distribution/tree-sitter-mermaid/src/scanner.c`, scanner protocol/tests, `distribution/tree-sitter-mermaid/tests/{incremental,adversarial}.rs`, edit-sequence fuzz target and seeds.
 - Approach: Represent indentation levels as bounded external tokens, Sankey records as multiline field structure, Venn constructs without unsaved parser feedback, and Sequence nesting/activation/messages as explicit blocks and relationships. Serialize every state bit affecting a future token and compare reused/fresh trees after adversarial edit traces.
 - Execution note: Scanner state size and behavior are release blockers. If a family cannot fit the shared scanner contract, redesign its syntax boundary rather than introduce unbounded stacks or global mutable state.
 - Patterns: Follow official external-scanner serialization requirements, use valid-symbol dispatch, preserve UTF-8 byte/point accuracy, and reuse repository fuzz regression/scheduled-discovery lifecycle.
@@ -498,7 +498,7 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 - Goal: Make the structured CST useful across all promised editor query surfaces and validate migration from existing ecosystem consumers without freezing their weak schema.
 - Requirements: R9-R10, R13, R15, R22; F1, F3, F8; AE6, AE8, AE12.
 - Dependencies: U7.
-- Files: `grammars/tree-sitter-mermaid/queries/{portable,neovim,helix,zed}/*.scm`, query applicability in package support metadata, per-profile/per-surface family goldens, `grammars/tree-sitter-mermaid/tests/queries.rs`, final node/capture snapshots, generated artifact/metrics receipt, migration notes, and downstream harnesses under `grammars/tree-sitter-mermaid/test/downstream/*`.
+- Files: `distribution/tree-sitter-mermaid/queries/{portable,neovim,helix,zed}/*.scm`, query applicability in package support metadata, per-profile/per-surface family goldens, `distribution/tree-sitter-mermaid/tests/queries.rs`, final node/capture snapshots, generated artifact/metrics receipt, migration notes, and downstream harnesses under `distribution/tree-sitter-mermaid/test/downstream/*`.
 - Approach: Consolidate the per-family highlights/goldens created in U3-U7 into a portable capture vocabulary, then complete editor-profile surfaces and family/surface/profile N/A evidence. Compile each profile against generated node types, replay representative monaqa consumer queries to identify migration changes, and execute the local profiles in fixed Neovim/Helix harnesses while validating Zed configuration/ABI/query compatibility.
 - Execution note: Schema changes remain experimental and may break during this unit. Freeze the unit's final snapshots only after all families are structured and downstream query ergonomics have been exercised.
 - Patterns: Use standard Tree-sitter capture conventions where they express the same semantics; keep editor-specific query files package-owned and avoid mapping them onto Merman semantic token contracts.
@@ -510,7 +510,7 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 - Goal: Turn 35-family claims into a complete one-way oracle and block release readiness on correctness, recovery, incremental equivalence, fuzz regressions, and bounded resource behavior.
 - Requirements: R4-R18, R21; F2-F6; AE1-AE11.
 - Dependencies: U8.
-- Files: `crates/xtask/src/cmd/tree_sitter_mermaid.rs`, fixture selection metadata established in U1-U2, `grammars/tree-sitter-mermaid/tests/{conformance,incremental,queries,adversarial}.rs`, all per-family corpus/edit/query paths, `fuzz/Cargo.toml`, grammar/scanner/edit/query fuzz targets and corpus, `.github/workflows/fuzz.yml`, `scripts/test_fuzz_config.py`, `docs/security/FUZZING.md`, package support metadata, composed contract, artifact/metrics receipts, Mermaid upgrade playbook and alignment skill.
+- Files: `crates/xtask/src/cmd/tree_sitter_mermaid.rs`, fixture selection metadata established in U1-U2, `distribution/tree-sitter-mermaid/tests/{conformance,incremental,queries,adversarial}.rs`, all per-family corpus/edit/query paths, `fuzz/Cargo.toml`, grammar/scanner/edit/query fuzz targets and corpus, `.github/workflows/fuzz.yml`, `scripts/test_fuzz_config.py`, `docs/security/FUZZING.md`, package support metadata, composed contract, artifact/metrics receipts, Mermaid upgrade playbook and alignment skill.
 - Approach: Aggregate the family-local oracle slices already running since U3, execute the complete admitted fixture set, and reject wrong roots, unexpected errors/missing nodes, generic fallbacks, query-contract gaps, stale schemas, or receipt mismatches. Run fixed single-variable doubling matrices for sibling statements, long labels/lines, nesting, ambiguous prefixes, unclosed constructs, indentation stairs, Sankey multiline CSV, Flowchart chains/mode alternation, Venn expressions, and ZenUML blocks. Measure fresh parse, representative incremental work/read bytes/changed ranges, applicable query profiles, native peak RSS, WASM instantiate/edit-loop memory, and build/artifact metrics separately; add query-on-arbitrary-tree fuzz and all-family seeds.
 - Execution note: The oracle compares claims, not ASTs or validity policies. It must not normalize three third-party grammars, derive Mermaid semantics from CST, or punish useful Tree-sitter recovery merely because Merman rejects an editing intermediate.
 - Patterns: Reuse the 35-baseline strict-parse test pattern, private fixture filtering, exact source digests, and existing fuzz lifecycle. Keep detailed grammar logic in the package, not `xtask`.
@@ -605,14 +605,14 @@ The exact generated header subpaths follow the fixed CLI output. Provenance and 
 ### Package and generation gates
 
 ```bash
-npm ci --prefix grammars/tree-sitter-mermaid
-npm run generate:check --prefix grammars/tree-sitter-mermaid
-npm run metrics:check --prefix grammars/tree-sitter-mermaid
-npm test --prefix grammars/tree-sitter-mermaid
-npm run test:queries --prefix grammars/tree-sitter-mermaid
-npm run build:wasm --prefix grammars/tree-sitter-mermaid
-npm run test:wasm --prefix grammars/tree-sitter-mermaid
-npm pack --dry-run --json --prefix grammars/tree-sitter-mermaid
+npm ci --prefix distribution/tree-sitter-mermaid
+npm run generate:check --prefix distribution/tree-sitter-mermaid
+npm run metrics:check --prefix distribution/tree-sitter-mermaid
+npm test --prefix distribution/tree-sitter-mermaid
+npm run test:queries --prefix distribution/tree-sitter-mermaid
+npm run build:wasm --prefix distribution/tree-sitter-mermaid
+npm run test:wasm --prefix distribution/tree-sitter-mermaid
+npm pack ./distribution/tree-sitter-mermaid --dry-run --json
 ```
 
 The fixed package scripts own official generator/query/WASM behavior. Freshness must detect changed, missing, and extra artifacts and leave the caller worktree unchanged on handled failure.
@@ -634,11 +634,11 @@ Run package/family-local gates while developing each unit. Run Cargo commands se
 ### Conformance and robustness gates
 
 ```bash
-npm run test:corpus --prefix grammars/tree-sitter-mermaid
-npm run test:incremental --prefix grammars/tree-sitter-mermaid
-npm run test:downstream --prefix grammars/tree-sitter-mermaid
-npm run test:adversarial --prefix grammars/tree-sitter-mermaid
-npm run fuzz:regression --prefix grammars/tree-sitter-mermaid
+npm run test:corpus --prefix distribution/tree-sitter-mermaid
+npm run test:incremental --prefix distribution/tree-sitter-mermaid
+npm run test:downstream --prefix distribution/tree-sitter-mermaid
+npm run test:adversarial --prefix distribution/tree-sitter-mermaid
+npm run fuzz:regression --prefix distribution/tree-sitter-mermaid
 cargo nextest run --locked -p tree-sitter-mermaid --test conformance --test incremental --test queries --test adversarial
 cargo run --locked -p xtask -- verify-tree-sitter-mermaid --all-fixtures
 ```
@@ -668,7 +668,7 @@ Expensive platform, sanitizer, scheduled fuzz, and latest-editor evidence that c
 
 ## Definition of Done
 
-- The repository contains one independently versioned, license-complete `grammars/tree-sitter-mermaid` package with deterministic ABI-14 generated C/JSON/header/WASM artifacts and no generator requirement for consumers.
+- The repository contains one independently versioned, license-complete `tree-sitter-mermaid` package with deterministic ABI-14 generated C/JSON/header/WASM artifacts and no generator requirement for consumers.
 - The composed machine contract contains exactly 35 projected public Merman family IDs, truthful aliases/internal variants, grammar-owned roots/evidence/query applicability, both authority digests, exact source/tool identities, and all 35 rows at `conformant` under R15.
 - Every admitted Merman-valid fixture selects the correct family root, contains family-specific named structure, and has no unexpected `ERROR`, `MISSING`, or generic whole-body/whole-line fallback.
 - Every family has legal, malformed, query, and incremental evidence; hard mechanics include scanner restart/serialization, UTF-8 byte/point, CRLF, family switching, indentation, multiline payload, lexer-mode, and external-companion cases.

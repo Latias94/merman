@@ -26,6 +26,10 @@ target/
 /tools/mermaid-cli/node_modules
 /tools/mermaid-cli/.cache
 /tools/vscode-extension/.vscode-test/
+/distribution/tree-sitter-mermaid/.tree-sitter/
+/distribution/tree-sitter-mermaid/build/
+/distribution/tree-sitter-mermaid/node_modules/
+/distribution/tree-sitter-mermaid/tree-sitter-mermaid-*.tgz
 /dist/
 /fuzz/artifacts/
 /fuzz/corpus/

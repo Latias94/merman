@@ -1,0 +1,52 @@
+name: Tree-sitter Mermaid
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
+
+      - name: Install fixed grammar toolchain
+        run: npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+
+      - name: Verify package boundary and language contract
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked -p tree-sitter-mermaid -p xtask --all-targets -- -D warnings
+          cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
+          cargo run --locked -p xtask -- verify-tree-sitter-mermaid
+          npm test --prefix distribution/tree-sitter-mermaid
+          python3 scripts/verify_artifact_dependency_closures.py --representative-targets
+
+      - name: Verify legal inventory
+        run: |
+          python3 scripts/verify-third-party-licenses.py
+          python3 scripts/verify_crate_package_legal_materials.py
+
+      - name: Dry-run package assembly
+        run: |
+          cargo package --locked -p tree-sitter-mermaid
+          npm pack ./distribution/tree-sitter-mermaid --dry-run --json

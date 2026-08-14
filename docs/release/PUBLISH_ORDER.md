@@ -28,7 +28,8 @@ Workspace-coupled manifests remain aligned to `0.8.0-alpha.5`. Python package me
 PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface reached its
 registry or that separately published alpha.5 channels share one source snapshot. The
 independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
-release axes.
+release axes. The `tree-sitter-mermaid` language distribution also has an independent version axis,
+but it remains dry-run-only until registry naming and ownership are explicitly admitted.
 
 ## Publish Order
 
@@ -47,6 +48,11 @@ release-order database.
 
 `roughr-merman` is versioned separately as `0.12.2`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
+
+`tree-sitter-mermaid` starts at `0.1.0` as a separately packaged Cargo/npm language distribution.
+The independent-crate workflow may run `cargo package` and `npm pack --dry-run`, but its publish job
+is fail-closed for this package. Do not publish either registry identity until a later release
+decision records ownership, package names, and the corresponding provenance path.
 
 ## Binding Release Chain
 

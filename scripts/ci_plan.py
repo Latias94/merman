@@ -19,6 +19,7 @@ OWNER_NAMES = (
     "cli",
     "core",
     "fuzz",
+    "grammar",
     "hygiene",
     "node",
     "npm",
@@ -295,10 +296,26 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path in {"Cargo.lock", "Cargo.toml", "rust-toolchain.toml", "dist-workspace.toml"}:
         return _ALL_OWNERS, f"shared Rust authority changed: {path}", True
+
+    if path.startswith("distribution/tree-sitter-mermaid/"):
+        owners = {"grammar"}
+        if path.endswith(("Cargo.toml", "package.json", "package-lock.json")) or path.startswith(
+            "distribution/tree-sitter-mermaid/metadata/provenance"
+        ):
+            owners.add("security")
+        return frozenset(owners), f"Tree-sitter Mermaid owner changed: {path}", False
+
     if path.startswith(("capabilities/", "crates/", "fixtures/", "tools/upstreams/")):
         return _ALL_OWNERS, f"shared runtime authority changed: {path}", True
     if path.startswith("scripts/"):
         return _ALL_OWNERS, f"shared repository owner changed: {path}", True
+
+    if path.startswith("contracts/tree-sitter/"):
+        return (
+            frozenset({"grammar", "hygiene"}),
+            f"Tree-sitter Mermaid contract changed: {path}",
+            False,
+        )
 
     if path.startswith(
         "playground/editor-artifact-receipt-v"

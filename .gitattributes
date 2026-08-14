@@ -31,6 +31,16 @@ LICENSE-*      text eol=lf
 *.mjs     text eol=lf
 *.lock    text eol=lf
 
+# Tree-sitter generated language artifacts are reviewed through deterministic regeneration.
+distribution/tree-sitter-mermaid/**/*.scm text eol=lf
+distribution/tree-sitter-mermaid/**/*.c text eol=lf
+distribution/tree-sitter-mermaid/**/*.h text eol=lf
+distribution/tree-sitter-mermaid/src/grammar.json linguist-generated=true
+distribution/tree-sitter-mermaid/src/node-types.json linguist-generated=true
+distribution/tree-sitter-mermaid/src/parser.c linguist-generated=true
+distribution/tree-sitter-mermaid/src/tree_sitter/** linguist-generated=true
+distribution/tree-sitter-mermaid/wasm/*.wasm binary linguist-generated=true
+
 # Legal mirrors preserve upstream license bytes; do not flag their verbatim whitespace.
 THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_LICENSES/** text eol=lf -whitespace

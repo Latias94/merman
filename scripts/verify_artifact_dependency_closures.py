@@ -52,6 +52,11 @@ NATIVE_BINDING_FORBIDDEN_PACKAGES = (
     "tokio",
     "uniffi_bindgen",
 )
+TREE_SITTER_FORBIDDEN_PACKAGES = (
+    "tree-sitter",
+    "tree-sitter-language",
+    "tree-sitter-mermaid",
+)
 
 
 @dataclass(frozen=True)
@@ -889,7 +894,7 @@ def check_case(
     claim = case.claim
     failures: list[str] = []
     required = set(claim.required_packages)
-    forbidden = set(claim.forbidden_packages)
+    forbidden = set(claim.forbidden_packages) | set(TREE_SITTER_FORBIDDEN_PACKAGES)
 
     overlaps = sorted(required & forbidden)
     if overlaps:

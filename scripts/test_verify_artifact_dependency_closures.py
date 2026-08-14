@@ -27,6 +27,7 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     NATIVE_BINDING_FORBIDDEN_PACKAGES,
     NATIVE_BINDING_PROFILE_IDS,
     PROFILE_TARGET_SCOPE,
+    TREE_SITTER_FORBIDDEN_PACKAGES,
     SEMANTIC_CLAIMS,
     ClosureClaim,
     ClosureVerificationError,
@@ -219,6 +220,32 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
+    def test_tree_sitter_packages_are_forbidden_from_every_production_profile(self) -> None:
+        loaded_case = case(
+            loaded_claim=claim(
+                "fixture",
+                required=("fixture",),
+            )
+        )
+        closure = parse_cargo_metadata(
+            metadata_document(
+                "fixture",
+                {
+                    "fixture": (),
+                    "tree-sitter": (),
+                },
+            ),
+            root_package="fixture",
+        )
+
+        failures, _observation = check_case(loaded_case, closure)
+
+        self.assertEqual(
+            failures,
+            ["forbidden packages present: tree-sitter"],
+        )
+        self.assertIn("tree-sitter-mermaid", TREE_SITTER_FORBIDDEN_PACKAGES)
+
     def test_repository_cases_cover_governed_profiles_and_declared_targets(self) -> None:
         profiles = load_artifact_profiles()
         cases = load_verification_cases()

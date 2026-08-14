@@ -94,6 +94,9 @@ class PlannerTests(unittest.TestCase):
 
     def test_owner_local_changes_select_their_narrow_jobs(self) -> None:
         fixtures = {
+            "distribution/tree-sitter-mermaid/queries/portable/highlights.scm": {
+                "grammar"
+            },
             "platforms/web/src/index.ts": {"hygiene", "npm", "web"},
             "platforms/node/package-lock.json": {"core", "hygiene", "node", "npm", "security"},
             "tools/vscode-extension/src/extension.ts": {"hygiene", "npm", "vscode"},
@@ -120,6 +123,28 @@ class PlannerTests(unittest.TestCase):
                 )
                 actual = {name for name, enabled in plan["owners"].items() if enabled}
                 self.assertEqual(actual, selected)
+
+    def test_tree_sitter_contract_selects_grammar_and_hygiene_owners(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(
+                b"M\0contracts/tree-sitter/mermaid-language-v1.json\0"
+            ),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        selected = {name for name, enabled in plan["owners"].items() if enabled}
+        self.assertEqual(selected, {"grammar", "hygiene"})
+
+    def test_unknown_grammar_path_fails_broad(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(b"M\0distribution/unowned-language/grammar.js\0"),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        self.assertTrue(plan["fallback"])
+        self.assertEqual(plan["owners"], {name: True for name in OWNER_NAMES})
 
     def test_cross_owner_inputs_select_every_consumer(self) -> None:
         fixtures = {

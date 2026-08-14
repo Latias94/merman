@@ -112,6 +112,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-web-diagram-catalog");
     println!("  verify-resource-contract");
     println!("  verify-lalrpop-parsers");
+    println!("  verify-tree-sitter-mermaid");
     println!("  check-alignment");
     println!("  profile-budget");
     println!("  wasm-size-matrix");
@@ -228,6 +229,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-native-abi" => cmd::verify_native_abi(args.collect()),
         "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
         "verify-lalrpop-parsers" => cmd::verify_lalrpop_parsers(args.collect()),
+        "verify-tree-sitter-mermaid" => cmd::verify_tree_sitter_mermaid(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),

@@ -1,0 +1,39 @@
+{
+  "name": "tree-sitter-mermaid",
+  "version": "0.1.0",
+  "description": "Tolerant Tree-sitter grammar and editor queries for Mermaid",
+  "private": true,
+  "license": "MIT",
+  "type": "commonjs",
+  "files": [
+    "bindings",
+    "grammar.js",
+    "grammar",
+    "LICENSE",
+    "metadata",
+    "queries",
+    "README.md",
+    "src",
+    "tree-sitter.json",
+    "wasm"
+  ],
+  "scripts": {
+    "check:metadata": "cargo run --locked -p xtask -- verify-tree-sitter-mermaid",
+    "test": "npm run check:metadata"
+  },
+  "devDependencies": {
+    "tree-sitter": "0.25.1",
+    "tree-sitter-cli": "0.26.12",
+    "web-tree-sitter": "0.26.12"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.mermaid",
+      "file-types": [
+        "mmd",
+        "mermaid"
+      ],
+      "injection-regex": "^(mermaid|mmd)$"
+    }
+  ]
+}

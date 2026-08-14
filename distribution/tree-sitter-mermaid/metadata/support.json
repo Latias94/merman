@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "selectedBaselines": {
+    "mermaid": {
+      "version": "11.16.1",
+      "ref": "mermaid@11.16.1",
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf"
+    },
+    "zenuml": {
+      "version": "3.50.1",
+      "ref": "v3.50.1",
+      "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36"
+    }
+  },
+  "repositoryAlignment": {
+    "mermaid": "aligned",
+    "zenuml": "aligned"
+  },
+  "families": [
+    {
+      "publicId": "architecture",
+      "rootNode": "architecture_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "block",
+      "rootNode": "block_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "c4",
+      "rootNode": "c4_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "class",
+      "rootNode": "class_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "cynefin",
+      "rootNode": "cynefin_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "er",
+      "rootNode": "entity_relationship_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "eventmodeling",
+      "rootNode": "event_modeling_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "flowchart",
+      "rootNode": "flowchart_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "gantt",
+      "rootNode": "gantt_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "gitgraph",
+      "rootNode": "git_graph_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "info",
+      "rootNode": "info_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "ishikawa",
+      "rootNode": "ishikawa_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "journey",
+      "rootNode": "journey_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "kanban",
+      "rootNode": "kanban_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "mindmap",
+      "rootNode": "mindmap_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "packet",
+      "rootNode": "packet_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "pie",
+      "rootNode": "pie_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "quadrantchart",
+      "rootNode": "quadrant_chart_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "radar",
+      "rootNode": "radar_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "railroad",
+      "rootNode": "railroad_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "railroadAbnf",
+      "rootNode": "railroad_abnf_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "railroadEbnf",
+      "rootNode": "railroad_ebnf_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "railroadPeg",
+      "rootNode": "railroad_peg_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "requirement",
+      "rootNode": "requirement_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "sankey",
+      "rootNode": "sankey_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "sequence",
+      "rootNode": "sequence_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "state",
+      "rootNode": "state_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "swimlane",
+      "rootNode": "swimlane_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "timeline",
+      "rootNode": "timeline_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "treeView",
+      "rootNode": "tree_view_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "treemap",
+      "rootNode": "treemap_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "venn",
+      "rootNode": "venn_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "wardley",
+      "rootNode": "wardley_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "xychart",
+      "rootNode": "xy_chart_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    },
+    {
+      "publicId": "zenuml",
+      "rootNode": "zenuml_diagram",
+      "lifecycle": "planned",
+      "supportTier": null,
+      "evidence": [],
+      "queryApplicability": {}
+    }
+  ]
+}
