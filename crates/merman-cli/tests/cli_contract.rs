@@ -32,6 +32,7 @@ fn compiled_help_and_version_are_available() {
             "mmdc",
             "lint",
             "fix",
+            "rustdoc",
             "capabilities",
             "detect",
             "parse",
@@ -126,6 +127,7 @@ fn root_help_groups_commands_by_user_task() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     for heading in [
         "Native rendering:",
+        "Documentation:",
         "Analysis:",
         "Compatibility:",
         "Capabilities and tooling:",
@@ -953,7 +955,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 3);
+    assert_eq!(payload["cli_contract_version"], 4);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -981,7 +983,14 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         command_ids.windows(2).all(|pair| pair[0] < pair[1]),
         "command ids must be sorted and unique: {command_ids:?}"
     );
-    for command in ["batch", "capabilities", "completion", "mmdc", "render"] {
+    for command in [
+        "batch",
+        "capabilities",
+        "completion",
+        "mmdc",
+        "render",
+        "rustdoc",
+    ] {
         assert!(
             command_ids.contains(&command),
             "missing compiled command {command}: {payload}"

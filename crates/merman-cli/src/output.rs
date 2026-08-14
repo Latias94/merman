@@ -470,6 +470,10 @@ pub(crate) fn preflight(
             publications.approve_numbered(namespace, parent)?;
             publications.protect(&inputs);
         }
+        #[cfg(feature = "rustdoc")]
+        ResolvedInvocation::Rustdoc(args) => {
+            preflight_rustdoc(args, cwd, &mut publications)?;
+        }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Mmdc(args) => {
             let inputs = render_inputs(
@@ -552,6 +556,83 @@ pub(crate) fn preflight(
     })
 }
 
+#[cfg(feature = "rustdoc")]
+fn preflight_rustdoc(
+    args: &mut crate::invocation::ResolvedRustdoc,
+    cwd: &Path,
+    publications: &mut PublicationGuards,
+) -> Result<(), CliError> {
+    args.anchor_config(cwd);
+    let config = crate::rustdoc::config::load(args.requested_config()?, &args.resources)?;
+    let mut inputs = Vec::with_capacity(config.fragments().len() + 1);
+    verify_rustdoc_identity(config.root(), config.root_identity(), "configuration root")?;
+    inputs.push(ProtectedInput::protect_acquired(
+        "Rustdoc configuration",
+        config.path(),
+        config.identity(),
+        cwd,
+    )?);
+    for fragment in config.fragments() {
+        inputs.push(ProtectedInput::protect_acquired(
+            "Rustdoc source",
+            fragment.source(),
+            fragment.identity(),
+            cwd,
+        )?);
+    }
+
+    let output_root = prospective_directory(
+        config.output_root(),
+        config.output_root(),
+        MissingParent::Allow,
+    )?;
+    if output_root.expected.strip_prefix(config.root()).is_err() {
+        return Err(CliError::InvalidOutput(format!(
+            "managed Rustdoc output root {} escapes configuration root {}",
+            safe_path(&output_root.expected),
+            safe_path(config.root())
+        )));
+    }
+    for input in &inputs {
+        if input.canonical.starts_with(&output_root.expected) {
+            return Err(CliError::InvalidOutput(format!(
+                "managed output root {} overlaps protected {} {}",
+                safe_path(&output_root.expected),
+                input.role,
+                safe_path(&input.requested)
+            )));
+        }
+    }
+
+    for fragment in config.fragments() {
+        let output = fragment.output(config.output_root());
+        let target = preflight_file_target(&output, cwd, &inputs, MissingParent::Allow)?;
+        require_transaction_descendant(&output_root, &target.parent, &output)?;
+        publications.approve_exact(target)?;
+    }
+    publications.approve_transaction_root(output_root)?;
+    publications.protect(&inputs);
+    args.prepare_config(config)
+}
+
+#[cfg(feature = "rustdoc")]
+fn verify_rustdoc_identity(
+    path: &Path,
+    expected: &Arc<same_file::Handle>,
+    role: &str,
+) -> Result<(), CliError> {
+    let current = same_file::Handle::from_path(path)
+        .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
+    if current != **expected {
+        return Err(CliError::file(
+            FileOperation::VerifyPublication,
+            path,
+            std::io::Error::other(format!("Rustdoc {role} changed identity after acquisition")),
+        ));
+    }
+    Ok(())
+}
+
 fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
     match invocation {
         ResolvedInvocation::Capabilities(_) => {}
@@ -594,6 +675,10 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
             anchor_input(&mut args.input, cwd);
             anchor_render_inputs(&mut args.common, cwd);
             anchor_optional_path(&mut args.compatibility.puppeteer_config_file, cwd);
+        }
+        #[cfg(feature = "rustdoc")]
+        ResolvedInvocation::Rustdoc(args) => {
+            args.anchor_config(cwd);
         }
         #[cfg(feature = "shell-completions")]
         ResolvedInvocation::Completion(_) => {}
@@ -785,6 +870,34 @@ impl ProtectedInput {
             lexical,
             canonical,
             identity,
+        })
+    }
+
+    #[cfg(feature = "rustdoc")]
+    fn protect_acquired(
+        role: &'static str,
+        requested: &Path,
+        expected_identity: &Arc<same_file::Handle>,
+        cwd: &Path,
+    ) -> Result<Self, CliError> {
+        verify_rustdoc_identity(requested, expected_identity, role)?;
+        let absolute = anchored_absolute(requested, cwd);
+        let canonical = std::fs::canonicalize(&absolute)
+            .map_err(|source| CliError::file(FileOperation::Canonicalize, requested, source))?;
+        if canonical != requested {
+            return Err(CliError::file(
+                FileOperation::VerifyPublication,
+                requested,
+                std::io::Error::other("Rustdoc acquisition path changed after canonicalization"),
+            ));
+        }
+        Ok(Self {
+            role,
+            requested: requested.to_path_buf(),
+            absolute,
+            lexical: lexical_absolute(requested, cwd),
+            canonical,
+            identity: Arc::clone(expected_identity),
         })
     }
 }

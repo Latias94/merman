@@ -109,6 +109,14 @@ pub(crate) enum CliError {
     InvalidInput(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[cfg(feature = "rustdoc")]
+    #[error("invalid Rustdoc configuration {path:?} at {location}: {source}")]
+    RustdocConfig {
+        path: PathBuf,
+        location: String,
+        #[source]
+        source: Box<CliError>,
+    },
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
@@ -173,6 +181,19 @@ impl CliError {
         }
     }
 
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn rustdoc_config(
+        path: impl AsRef<Path>,
+        location: impl Into<String>,
+        source: CliError,
+    ) -> Self {
+        Self::RustdocConfig {
+            path: path.as_ref().to_path_buf(),
+            location: location.into(),
+            source: Box::new(source),
+        }
+    }
+
     #[cfg(feature = "markdown")]
     pub(crate) fn markdown_chart(
         index: u64,
@@ -206,6 +227,8 @@ impl CliError {
             Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } | Self::Internal(_) => {
                 ErrorCategory::Operational
             }
+            #[cfg(feature = "rustdoc")]
+            Self::RustdocConfig { source, .. } => source.category(),
             #[cfg(feature = "markdown")]
             Self::Transaction(_) => ErrorCategory::Operational,
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]

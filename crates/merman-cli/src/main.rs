@@ -21,6 +21,8 @@ mod output;
 mod render;
 mod resources;
 mod runtime;
+#[cfg(feature = "rustdoc")]
+mod rustdoc;
 #[cfg(feature = "markdown")]
 mod transaction;
 

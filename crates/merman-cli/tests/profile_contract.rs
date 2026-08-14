@@ -36,6 +36,7 @@ const ALL_OPTIONAL_COMMANDS: &[&str] = &[
     "lint-rules",
     "mmdc",
     "render",
+    "rustdoc",
 ];
 
 const RELEASE_CAPABILITIES: &[&str] = &[
@@ -51,6 +52,7 @@ const RELEASE_CAPABILITIES: &[&str] = &[
     "parallel-markdown",
     "pdf",
     "png",
+    "rustdoc",
     "shell-completions",
     "svg",
     "system-clock",
@@ -212,6 +214,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "pdf",
         #[cfg(feature = "png")]
         "png",
+        #[cfg(feature = "rustdoc")]
+        "rustdoc",
         #[cfg(feature = "shell-completions")]
         "shell-completions",
         #[cfg(feature = "svg")]
@@ -250,6 +254,9 @@ fn expected_commands(capabilities: &[&str]) -> Vec<String> {
     if capabilities.contains("shell-completions") {
         commands.insert("completion".to_string());
     }
+    if capabilities.contains("rustdoc") {
+        commands.insert("rustdoc".to_string());
+    }
     commands.into_iter().collect()
 }
 
@@ -278,7 +285,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 3);
+    assert_eq!(payload["cli_contract_version"], 4);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(

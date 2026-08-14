@@ -134,6 +134,17 @@ pub(crate) fn run(
             execute_render(prepared, context)?;
             0
         }
+        #[cfg(feature = "rustdoc")]
+        ResolvedInvocation::Rustdoc(args) => {
+            let action = args.action;
+            let _quiet = args.quiet;
+            let config = args.into_config()?;
+            return Err(CliError::Internal(format!(
+                "rustdoc {} execution is not implemented; configuration {} passed preflight",
+                action.as_str(),
+                crate::error::safe_path(config.path())
+            )));
+        }
         #[cfg(feature = "shell-completions")]
         ResolvedInvocation::Completion(args) => {
             run_completion(args, &context.stdout)?;
