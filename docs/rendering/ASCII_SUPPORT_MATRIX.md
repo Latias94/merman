@@ -41,8 +41,8 @@ readable at ordinary terminal widths.
 | Flowchart / graph | Partial | Diagrammatic | No | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, nested groups, first-parent compound ownership, and scene-level route occupancy. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense-route candidate policy, and mixed-stroke crossing ownership remain unsupported or incomplete. |
 | Sequence | Partial | Diagrammatic | No | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, and participant-bounded nested control frames. | Actor presentation metadata and links are accepted but omitted; mirrored actors are opt-in. |
 | State | Partial | Diagrammatic | No | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | Some presentation metadata and future shape variants are approximated. |
-| Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
-| ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, shared relation components, and explicit relation summaries. | Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
+| Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
+| ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
 | XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, injective length-framed disclosure, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; terminal coordinates are quantized, cross-series same-cell ownership remains approximate, unknown direct-model orientations and band y-axes are rejected, and accessibility title/description metadata is intentionally omitted. |
 
 ## Structured-Text Outputs
@@ -104,7 +104,9 @@ output is supported, including nested namespace containers. The preview and expo
 diagrammatic coverage or the Structured Text projection plus a concise limit for the active diagram
 type. Simple sibling-namespace, namespace-to-root, and nested-sibling relationships route through
 the nearest namespace facades with length-framed leaf identity; dense or colliding namespace scenes
-remain partial and use the lossless `relations:` fallback.
+remain partial and use the lossless `relations:` fallback. Class and ER strict planar K2×2
+four-node/four-edge components use their bounded four-route diagrammatic layout; this does not
+promote arbitrary bounded or dense topology out of the same lossless fallback boundary.
 
 ## Testing Policy
 
@@ -114,3 +116,6 @@ remain partial and use the lossless `relations:` fallback.
   Mermaid input.
 - Keep Class/ER dense topology cases on the shared `relation_graph` summary path when routed output
   would overlap boxes; a resource-limit error remains an error and never becomes a summary.
+- Keep the strict planar K2×2 exception covered by the Class/ER parser tests plus the shared
+  `relation_graph` tests for declaration-order stability, four disjoint routes, exact/N−1 work
+  admission, and speculative-work/document-cell ownership on collision fallback.

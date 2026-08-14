@@ -197,6 +197,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "length-framed namespace facade member identity",
             "self-relation loops",
             "bounded iterative relation-layer sweeps",
+            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
             "routed relation lanes",
             "independent relation components",
             "lossless crossing, port-fit, route, and overlay collision summaries",
@@ -205,6 +206,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "dense or colliding cross-namespace relationships render as lossless relation summaries",
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "dense or collision-prone relation scenes can summarize",
+            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -216,6 +218,16 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/testdata/local-semantic/class/",
                 note: "local fixtures assert typed class semantics instead of copied reference spacing",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/class_model.rs",
+                note: "class_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 Class component remains diagrammatic",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/src/relation_graph/tests/",
+                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -240,6 +252,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "top-down, bottom-up, left-right, and right-left directions",
             "self-relationship loops",
             "bounded iterative relation-layer sweeps",
+            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
             "routed relation lanes",
             "independent relation components",
             "lossless crossing, port-fit, route, and overlay collision summaries",
@@ -247,6 +260,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         limits: &[
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "complex cyclic or collision-prone topology can summarize",
+            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
             "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
@@ -261,6 +275,16 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/testdata/local-semantic/er/",
                 note: "local fixtures assert entity, attribute, cardinality, and summary semantics",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/er_model.rs",
+                note: "er_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 ER component remains diagrammatic",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/src/relation_graph/tests/",
+                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -904,6 +928,41 @@ mod tests {
                 .limits
                 .contains(&"dense or colliding cross-namespace relationships render as lossless relation summaries")
         );
+    }
+
+    #[test]
+    fn class_and_er_capabilities_disclose_the_strict_planar_k2_2_boundary() {
+        for (diagram_type, parser_test) in [
+            (
+                "class",
+                "class_parser_k2_2_relationships_use_a_bounded_planar_layout",
+            ),
+            (
+                "er",
+                "er_parser_k2_2_relationships_use_a_bounded_planar_layout",
+            ),
+        ] {
+            let capability = find(diagram_type);
+
+            assert!(capability.supported_semantics.contains(
+                &"strict planar K2×2 four-node, four-edge components with four disjoint routes"
+            ));
+            assert!(capability.limits.contains(
+                &"strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
+            ));
+            assert!(
+                capability
+                    .evidence
+                    .iter()
+                    .any(|evidence| evidence.note.contains(parser_test)),
+                "{diagram_type} should cite its parser-backed strict K2×2 test",
+            );
+            assert!(capability.evidence.iter().any(|evidence| {
+                evidence.source.ends_with("relation_graph/tests/")
+                    && evidence.note.contains("four disjoint routes")
+                    && evidence.note.contains("exact/N-1")
+            }));
+        }
     }
 
     #[test]
