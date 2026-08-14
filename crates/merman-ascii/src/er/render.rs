@@ -345,8 +345,7 @@ fn render_er_components<'model>(
         let lines = render_horizontal_er_component_lines(
             boxes,
             &layouts,
-            context.direction,
-            context.options,
+            context,
             &adapter,
             resources,
             deferred_text,
@@ -553,8 +552,7 @@ fn render_er_document_lines(
 fn render_horizontal_er_component_lines<'adapter, 'model>(
     boxes: &[RenderedEntityBox],
     layouts: &[ErRelationLayout<'model>],
-    direction: ErDirection,
-    options: &AsciiRenderOptions,
+    context: &ErRenderContext<'_, 'model>,
     adapter: &ErRelationComponentAdapter<'adapter, 'model>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'model>,
@@ -563,8 +561,8 @@ fn render_horizontal_er_component_lines<'adapter, 'model>(
     relation_graph::render_horizontal_relation_components_with_execution(
         boxes,
         layouts,
-        direction.horizontal_direction(),
-        options,
+        context.direction.horizontal_direction(),
+        context.options,
         resources,
         adapter,
         deferred_text,
@@ -1693,6 +1691,12 @@ mod tests {
             width_profile: options.terminal_width_profile,
             direction,
         };
+        let context = ErRenderContext {
+            options: &options,
+            charset,
+            direction,
+            entity_identities: &entity_identities,
+        };
 
         let remaining = WORK_LIMIT
             .checked_sub(resources.layout_work_used())
@@ -1710,8 +1714,7 @@ mod tests {
         let error = render_horizontal_er_component_lines(
             &boxes,
             &layouts,
-            direction,
-            &options,
+            &context,
             &adapter,
             &mut resources,
             &mut deferred_text,
