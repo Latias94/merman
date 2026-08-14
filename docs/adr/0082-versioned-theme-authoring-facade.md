@@ -30,8 +30,11 @@ diagnostics, and replay.
 This ADR defines the proposed alpha authoring contract used by the C7a pre-freeze authoring
 witnesses. It does not declare a stable public interface, satisfy C6a, or unblock C7a. C7a remains
 blocked until the plan's compiler, family-writer, terminal-evidence, rollout, and author-task gates
-close. The tables below are candidate version 1 tables while this ADR is `proposed`; accepting this
-ADR freezes only rows with the required consumer and terminal-evidence coverage.
+close. While this ADR is `proposed`, it is the sole candidate source of truth for the version 1
+authoring envelope and expansion tables. Moving it to `accepted` records design approval only; it
+does not certify the implementation, freeze an expansion row, or create a compatibility promise.
+Only `C7a-contract` begins the compatibility and expansion-version freeze after the required
+consumer, terminal-evidence, and rollout witnesses pass.
 
 ## Decision
 
@@ -109,10 +112,10 @@ envelope does not carry effect graphs; authors who need effects use a complete
 Unknown top-level or nested fields are rejected. Serialized, cached, or cross-process definitions
 must carry both version fields. A Rust-only ephemeral builder may select the current versions before
 serialization, but persisted data never silently means `latest`. Unknown versions fail closed or
-enter an explicit migration operation. Before `C7a-contract`, this proposed version 1 table may be
-corrected, reduced, or reordered as an alpha breaking change. Once `C7a-contract` records expansion
-version 1, any semantic change to a default, expansion row, row order, or collision rule requires a
-new `expansion_version`.
+enter an explicit migration operation. Before `C7a-contract`, this candidate version 1 table may be
+corrected, reduced, or reordered as an alpha breaking change regardless of the ADR status. Once
+`C7a-contract` records expansion version 1, any semantic change to a default, expansion row, row
+order, or collision rule requires a new `expansion_version`.
 
 The contract registry owns the legal version tuple. Version 1 accepts exactly
 `(authoring_schema_version = 1, expansion_version = 1)` and produces
@@ -309,18 +312,18 @@ Composition with `ThemeDefinitionV1.styles` is deterministic:
 The complete spec retains the existing 512-rule ceiling. The executable table derives
 `MAX_AUTHORED_RULES = 512 - GENERATED_RULE_COUNT`; for the current 40-row candidate this is 472.
 Inputs with 473 authored rules fail with the dedicated rule-budget diagnostic before constructing a
-partial spec. If the proposed row set changes before `C7a-contract`, the derived boundary and golden
+partial spec. If the candidate row set changes before `C7a-contract`, the derived boundary and golden
 vectors change with it; after `C7a-contract`, changing the boundary requires a new expansion version.
 Concrete effect references in authored rules also fail with a dedicated diagnostic because version
 1 does not carry effect graphs.
 
 The executable contract table in `merman-render` must generate or verify this expansion. Bindings do
-not copy these rows or implement the collision algorithm. Before this ADR can move from `proposed` to
-`accepted` as the C7a candidate design, every generated rule facet and palette target must appear in
-a row-coverage manifest that names at least one direct typed consumer and terminal witness. A row
-without coverage is removed from expansion version 1 rather than retained as a convenience value
-that only creates a residual. ADR acceptance still does not freeze compatibility; only
-`C7a-contract` does that.
+not copy these rows or implement the collision algorithm. Before `C7a-candidate`, every generated
+rule facet and palette target must appear in a row-coverage manifest that names at least one direct
+typed consumer and terminal witness. A row without coverage is removed from expansion version 1
+rather than retained as a convenience value that only creates a residual. Moving this ADR from
+`proposed` to `accepted` approves the design and ownership boundary only; it neither certifies that
+coverage nor freezes compatibility. Only `C7a-contract` does that.
 
 ### 7. Separate theme and preset materialization results
 
@@ -440,14 +443,22 @@ admission results.
 
 ### 10. Assign implementation ownership narrowly
 
-- `merman-render::diagram_theme::wire` (or a lower dependency-free theme-contract module) owns every
-  `*WireV1` type, the executable token contract table, canonical materialization JSON,
-  `ThemeMaterializer`, expansion, preset materialization, materialization digests, and complete typed
-  results.
+- A dependency-neutral theme-contract module below both `merman-render` and
+  `merman-bindings-core` owns every persisted `*WireV1` type, the legal version-tuple registry, and
+  canonical wire serialization. It may be a small dedicated crate or an equally dependency-neutral
+  lower shared module; it must not import renderer or binding types.
+- `merman-render` owns decoding `ThemeRuleSetWireV1[]` into the in-memory typed `ThemeRuleSet`, the
+  executable token contract table, `ThemeMaterializer`, expansion, preset materialization,
+  materialization digests, and complete typed results. It consumes canonical bytes from the shared
+  contract module and never imports `merman-bindings-core`.
 - `merman-bindings-core` owns transport admission and external envelopes only; it projects or
-  generates SDK types from the shared wire contract and does not own a second serializer.
-- First-party bindings call the Rust-owned operation; they never expand tokens, reorder rules, or
-  resolve palette collisions locally.
+  generates SDK types from the dependency-neutral wire contract and does not own a second
+  serializer. Authoring wire ownership therefore introduces no dependency from
+  `merman-bindings-core` to `merman-render`; any unrelated pre-existing execution dependency is not
+  an authority for wire or canonicalization.
+- First-party bindings call the Rust-owned operation through the existing `merman` facade; they do
+  not import renderer internals, expand tokens, reorder rules, or resolve palette collisions
+  locally.
 - The current alpha `ThemeTokens::into_theme_spec`, `ThemePreset::spec`, and
   `DiagramThemeCompiler::compile_preset` paths are deleted or reduced to thin delegation through the
   same versioned materializer. Family-specific token fields and duplicate expansion tables are not
