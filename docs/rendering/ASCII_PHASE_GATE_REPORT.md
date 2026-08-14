@@ -2,7 +2,7 @@
 
 Status: Phase 0-3 evidence complete; Phase 4 candidates not admitted
 Baseline: pinned Mermaid `11.16.1`
-Last updated: 2026-08-10
+Last updated: 2026-08-14
 
 This report is the tracked gate artifact required by U16 and U17 of the ASCII semantic-depth plan.
 It records why common-family depth remains the priority and why Railroad, Requirement, Ishikawa,
@@ -87,6 +87,38 @@ pressure.
 | Packet | Audit exact ordered bit ranges and labels. | Retain StructuredText; character width does not encode bit width. |
 | Timeline | Inspect direction, sections, and ordered events. | Retain StructuredText; no spatial time spine was admitted. |
 | TreeView | Inspect file/directory hierarchy and disclosed node metadata. | Retain StructuredText; charset-aware tree prefixes are an outline, not a two-dimensional diagram. |
+
+## U30 Structural Closeout Disposition
+
+The changed integration tests are now partitioned by semantic owner. Flowchart and Sequence keep
+private parent modules for shared parser/options helpers, while the former multi-family
+`new_family_models` target delegates to TreeView, Mindmap, Timeline, Gantt, Journey, Kanban,
+Packet, and GitGraph modules. The split preserves one executable target and one shared harness
+without leaving unrelated family behavior in the same source file.
+
+The remaining large Sequence roots are retained as pipeline coordinators rather than mechanism
+owners. Lexical scanning, typed events, lifecycle validation, control geometry and paint, notes,
+boxes, prepared bodies, text, and recursive control trees already have separate modules.
+`sequence/model.rs` owns the single typed-model projection transaction, and `sequence/plan.rs`
+owns the admission-ordered body/control/document pipeline. Splitting either coordinator again
+would expose partially admitted row state or create pass-through modules. A future independent
+algorithm must be extracted behind a replayable plan or paint descriptor instead of being added
+as another branch in either root.
+
+`relation_graph.rs` is retained as the transaction-scoped component coordinator. Family semantics
+remain in Class and ER adapters; document encoding, horizontal routing, layered placement and
+routing, self loops, stacking, summaries, and the shared model are already separate owners. The
+root keeps component dispatch, fallback classification, route-batch validation, and final deferred
+document commit together because they share one resource context, one deferred-text registry, and
+the rule that semantic fallback preserves speculative layout work while resource failure rolls
+back the transaction. Moving only one of those decisions would expose invalid intermediate plans
+or duplicate fallback and resource policy. New geometry belongs in the corresponding routing
+module, new encoding belongs in the document/canvas path, and any new fallback policy with an
+independent lifecycle must first be extracted behind a typed outcome.
+
+These are cohesion boundaries, not line-count exemptions. Repository review must reopen U30 if a
+second independent transaction, encoding lifecycle, or fallback policy is added to either retained
+root.
 
 ## New-Family Admission Method
 
