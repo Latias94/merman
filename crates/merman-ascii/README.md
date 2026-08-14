@@ -116,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let control = OperationControl::new();
     let context = RuntimePolicy::deterministic().begin_operation()?;
     let resources = AsciiResourcePolicy::default();
-    let text = renderer.render_model(&parsed.model, &control, &context, resources)?;
+    let text = renderer.render_model(parsed.model(), &control, &context, resources)?;
 
     println!("{text}");
     Ok(())

@@ -8,6 +8,12 @@ use merman::{
     resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
+#[cfg(feature = "ascii")]
+use merman::{
+    AsciiRequest,
+    ascii::{AsciiResourceLimitId, AsciiResourcePolicy},
+};
+
 #[cfg(feature = "svg")]
 #[derive(Debug)]
 struct CancellingTextMeasurer {
@@ -247,14 +253,58 @@ fn svg_request_cancellation_is_not_reported_as_a_resource_limit() {
 
 #[cfg(feature = "ascii")]
 #[test]
-fn ascii_request_uses_target_local_grid_policy_and_common_cancellation() {
+fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
+    const EXACT_GRID_CELLS: usize = 75;
+    let source = "flowchart TD\nA --> B";
+    let exact_resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, EXACT_GRID_CELLS)
+        .expect("the exact grid limit must be valid");
+
+    let output = Renderer::new()
+        .render(RenderRequest::ascii(
+            source,
+            OperationControl::new(),
+            AsciiRequest {
+                resources: exact_resources,
+                ..Default::default()
+            },
+        ))
+        .expect("the exact target-local grid policy must admit the request");
+    assert!(matches!(output, RenderOutput::Ascii(Some(_))));
+
+    let below_resources = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxGridCells, EXACT_GRID_CELLS - 1)
+        .expect("the max-minus-one grid limit must be valid");
+    let error = Renderer::new()
+        .render(RenderRequest::ascii(
+            source,
+            OperationControl::new(),
+            AsciiRequest {
+                resources: below_resources,
+                ..Default::default()
+            },
+        ))
+        .expect_err("the max-minus-one target-local grid policy must reject the request");
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_ascii_grid_cells"
+                && limit.phase == "ascii_layout"
+                && limit.actual == EXACT_GRID_CELLS as u64
+                && limit.maximum == (EXACT_GRID_CELLS - 1) as u64
+    ));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn ascii_request_uses_common_cancellation() {
     let control = OperationControl::new();
     control.cancel();
     let error = Renderer::new()
         .render(RenderRequest::ascii(
             "flowchart TD\nA --> B",
             control,
-            merman::AsciiRequest::default(),
+            AsciiRequest::default(),
         ))
         .expect_err("cancelled ASCII request must stop");
     assert!(matches!(error, RenderError::Cancelled(_)));
