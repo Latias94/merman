@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
@@ -30,6 +31,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) wrap_padding: f64,
     pub(super) right_angles: bool,
     pub(super) loop_text_style: &'a TextStyle,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
@@ -248,22 +250,29 @@ fn write_central_connection_circles(
     out.push_str("</g>");
 }
 
-pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
+pub(super) fn render_sequence_messages(
+    out: &mut String,
+    ctx: &SequenceMessageRenderContext<'_>,
+) -> Result<()> {
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
     let mut sequence_number_step = 1.0;
     let mut activation_bounds = SequenceAutonumberActivationBounds::new(ctx.activation_width);
 
-    for _ in ctx
+    for (decoration_index, _) in ctx
         .model
         .messages
         .iter()
         .filter(|msg| msg.semantic_kind() == SequenceMessageKind::CentralDecorationRecord)
+        .enumerate()
     {
+        ctx.checkpoints.checkpoint_loop(decoration_index)?;
         out.push_str("<g/>");
     }
+    ctx.checkpoints.checkpoint()?;
 
-    for msg in &ctx.model.messages {
+    for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
         match msg.semantic_kind() {
             SequenceMessageKind::Autonumber => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
@@ -358,22 +367,28 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 render_sequence_message_text_lines(
                     out,
                     raw_lines.iter().map(String::as_str),
-                    lbl.y,
-                    label_x,
-                    label_anchor,
-                    line_step,
-                    ctx.actor_label_font_size,
-                );
+                    SequenceMessageTextLayout {
+                        label_y: lbl.y,
+                        label_x,
+                        label_anchor,
+                        line_step,
+                        actor_label_font_size: ctx.actor_label_font_size,
+                    },
+                    ctx.checkpoints,
+                )?;
             } else {
                 render_sequence_message_text_lines(
                     out,
                     crate::text::split_html_br_lines(text),
-                    lbl.y,
-                    label_x,
-                    label_anchor,
-                    line_step,
-                    ctx.actor_label_font_size,
-                );
+                    SequenceMessageTextLayout {
+                        label_y: lbl.y,
+                        label_x,
+                        label_anchor,
+                        line_step,
+                        actor_label_font_size: ctx.actor_label_font_size,
+                    },
+                    ctx.checkpoints,
+                )?;
             }
         }
 
@@ -501,6 +516,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
 
         let _ = (from, to);
     }
+    ctx.checkpoints.checkpoint()
 }
 
 fn round_sequence_number(value: f64) -> f64 {
@@ -515,17 +531,24 @@ fn format_sequence_number(value: f64) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SequenceMessageTextLayout<'a> {
+    label_y: f64,
+    label_x: f64,
+    label_anchor: &'a str,
+    line_step: f64,
+    actor_label_font_size: f64,
+}
+
 fn render_sequence_message_text_lines<'a>(
     out: &mut String,
     raw_lines: impl IntoIterator<Item = &'a str>,
-    label_y: f64,
-    label_x: f64,
-    label_anchor: &str,
-    line_step: f64,
-    actor_label_font_size: f64,
-) {
+    layout: SequenceMessageTextLayout<'_>,
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     for (i, raw) in raw_lines.into_iter().enumerate() {
-        let y = label_y + (i as f64) * line_step;
+        checkpoints.checkpoint_loop(i)?;
+        let y = layout.label_y + (i as f64) * layout.line_step;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
         let line = if decoded.as_ref().is_empty() {
             "\u{200B}"
@@ -535,11 +558,77 @@ fn render_sequence_message_text_lines<'a>(
         let _ = write!(
             out,
             r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
-            x = fmt(label_x.round()),
+            x = fmt(layout.label_x.round()),
             y = fmt(y),
-            anchor = label_anchor,
-            fs = fmt(actor_label_font_size),
+            anchor = layout.label_anchor,
+            fs = fmt(layout.actor_label_font_size),
             text = escape_xml(line)
         );
+    }
+    checkpoints.checkpoint()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_sequence_message_text_lines;
+    use crate::Error;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use merman_core::{OperationControl, OperationPhase};
+
+    struct CancellingLines {
+        control: OperationControl,
+        index: usize,
+        len: usize,
+    }
+
+    impl Iterator for CancellingLines {
+        type Item = &'static str;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.index >= self.len {
+                return None;
+            }
+            if self.index == 64 {
+                self.control.cancel();
+            }
+            self.index += 1;
+            Some("message")
+        }
+    }
+
+    #[test]
+    fn message_text_emit_loop_observes_mid_loop_cancellation() {
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let checkpoints = super::SequenceEmitCheckpoints::new(&meter);
+        let lines = CancellingLines {
+            control,
+            index: 0,
+            len: 130,
+        };
+        let mut out = String::new();
+
+        let error = render_sequence_message_text_lines(
+            &mut out,
+            lines,
+            super::SequenceMessageTextLayout {
+                label_y: 10.0,
+                label_x: 20.0,
+                label_anchor: "middle",
+                line_step: 19.0,
+                actor_label_font_size: 16.0,
+            },
+            checkpoints,
+        )
+        .unwrap_err();
+        let Error::Cancelled(error) = error else {
+            panic!("expected Sequence message emit cancellation");
+        };
+
+        assert_eq!(error.phase, OperationPhase::Emit);
+        assert_eq!(out.matches("<text ").count(), 64);
     }
 }

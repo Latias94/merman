@@ -1,4 +1,6 @@
+use super::SequenceLayoutCheckpoints;
 use super::constants::{SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX};
+use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode};
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use merman_core::geom::Box2;
@@ -76,32 +78,44 @@ pub(super) struct ClosedSequenceRect {
     pub(super) bottom: f64,
 }
 
+pub(super) struct SequenceRectStackBoundsContext<'a> {
+    pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) actor_index: &'a HashMap<&'a str, usize>,
+    pub(super) actor_centers_x: &'a [f64],
+    pub(super) edges: &'a [LayoutEdge],
+    pub(super) nodes: &'a [LayoutNode],
+    pub(super) actor_width_min: f64,
+    pub(super) box_margin: f64,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
+}
+
 pub(super) fn sequence_rect_stack_x_bounds(
-    model: &SequenceDiagramRenderModel,
-    actor_index: &HashMap<&str, usize>,
-    actor_centers_x: &[f64],
-    edges: &[LayoutEdge],
-    nodes: &[LayoutNode],
-    actor_width_min: f64,
-    box_margin: f64,
-) -> HashMap<String, (f64, f64)> {
-    let edges_by_id: HashMap<&str, &LayoutEdge> =
-        edges.iter().map(|e| (e.id.as_str(), e)).collect();
-    let nodes_by_id: HashMap<&str, &LayoutNode> =
-        nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+    ctx: SequenceRectStackBoundsContext<'_>,
+) -> Result<HashMap<String, (f64, f64)>> {
+    let mut edges_by_id = HashMap::with_capacity(ctx.edges.len());
+    for (edge_index, edge) in ctx.edges.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(edge_index)?;
+        edges_by_id.insert(edge.id.as_str(), edge);
+    }
+    let mut nodes_by_id = HashMap::with_capacity(ctx.nodes.len());
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        nodes_by_id.insert(node.id.as_str(), node);
+    }
 
     let mut stack: Vec<StackFrame> = Vec::new();
     let mut rect_bounds: HashMap<String, (f64, f64)> = HashMap::new();
 
-    for msg in &model.messages {
+    for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
         match msg.message_type {
             10 | 12 | 15 | 19 | 27 | 30 | 32 => stack.push(StackFrame::control()),
             11 | 14 | 16 | 21 | 29 | 31 => {
-                close_stack_frame(&mut stack, box_margin, false, &mut rect_bounds);
+                close_stack_frame(&mut stack, ctx.box_margin, false, &mut rect_bounds);
             }
             22 => stack.push(StackFrame::rect(msg.id.clone())),
             23 => {
-                close_stack_frame(&mut stack, box_margin, true, &mut rect_bounds);
+                close_stack_frame(&mut stack, ctx.box_margin, true, &mut rect_bounds);
             }
             _ => {
                 if stack.is_empty() {
@@ -109,20 +123,23 @@ pub(super) fn sequence_rect_stack_x_bounds(
                 }
                 if let Some((x1, x2)) = message_x_range(
                     msg,
-                    actor_index,
-                    actor_centers_x,
+                    ctx.actor_index,
+                    ctx.actor_centers_x,
                     &edges_by_id,
                     &nodes_by_id,
-                    actor_width_min,
+                    ctx.actor_width_min,
                 ) && let Some(frame) = stack.last_mut()
                 {
-                    frame.bounds.include(x1 - box_margin, x2 + box_margin);
+                    frame
+                        .bounds
+                        .include(x1 - ctx.box_margin, x2 + ctx.box_margin);
                 }
             }
         }
     }
 
-    rect_bounds
+    ctx.checkpoints.checkpoint()?;
+    Ok(rect_bounds)
 }
 
 #[derive(Debug, Clone)]

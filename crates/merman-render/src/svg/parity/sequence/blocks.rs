@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::block_collection::AltSection;
 use super::block_geometry::SequenceBlockGeometry;
 use super::block_text::{
@@ -20,6 +21,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) struct SimpleSequenceBlock<'a> {
@@ -38,6 +40,7 @@ impl<'a> SequenceBlockRenderContext<'a> {
             self.loop_text_style,
             self.sanitize_config,
             self.math_renderer,
+            self.checkpoints,
         )
     }
 
@@ -132,13 +135,14 @@ pub(super) fn render_simple_sequence_block(
     out: &mut String,
     block: SimpleSequenceBlock<'_>,
     ctx: &SequenceBlockRenderContext<'_>,
-) {
+) -> Result<()> {
     if block.geometry.frame_y_range().is_none() {
-        return;
+        return Ok(());
     }
     let Some(layout) = block.layout else {
-        return;
+        return Ok(());
     };
+    ctx.checkpoints.checkpoint()?;
 
     let (frame_x1, frame_x2, _min_left) = block
         .geometry
@@ -175,24 +179,38 @@ pub(super) fn render_simple_sequence_block(
             use_tspan: true,
         },
         &label,
-    );
+    )?;
     out.push_str("</g>");
+    ctx.checkpoints.checkpoint()
 }
 
-fn section_geometry<'a>(sections: &[AltSection<'a>]) -> SequenceBlockGeometry<'a> {
-    sections
-        .iter()
-        .fold(SequenceBlockGeometry::empty(), |geometry, section| {
-            geometry.merged(section.geometry)
-        })
+fn section_geometry<'a>(
+    sections: &[AltSection<'a>],
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<SequenceBlockGeometry<'a>> {
+    let mut geometry = SequenceBlockGeometry::empty();
+    for (section_index, section) in sections.iter().enumerate() {
+        checkpoints.checkpoint_loop(section_index)?;
+        geometry.merge(section.geometry);
+    }
+    checkpoints.checkpoint()?;
+    Ok(geometry)
 }
 
-fn section_separator_ys(sections: &[AltSection<'_>]) -> Option<Vec<f64>> {
-    sections
-        .iter()
-        .skip(1)
-        .map(|section| section.separator_y)
-        .collect()
+fn section_separator_ys(
+    sections: &[AltSection<'_>],
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<Option<Vec<f64>>> {
+    let mut separator_ys = Vec::with_capacity(sections.len().saturating_sub(1));
+    for (section_index, section) in sections.iter().skip(1).enumerate() {
+        checkpoints.checkpoint_loop(section_index)?;
+        let Some(separator_y) = section.separator_y else {
+            return Ok(None);
+        };
+        separator_ys.push(separator_y);
+    }
+    checkpoints.checkpoint()?;
+    Ok(Some(separator_ys))
 }
 
 pub(super) fn render_sectioned_sequence_block(
@@ -202,21 +220,22 @@ pub(super) fn render_sectioned_sequence_block(
     sections: &[AltSection<'_>],
     layout: Option<&SequenceBlockLayout>,
     ctx: &SequenceBlockRenderContext<'_>,
-) {
+) -> Result<()> {
     if sections.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let geometry = section_geometry(sections);
+    let geometry = section_geometry(sections, ctx.checkpoints)?;
     if geometry.frame_y_range().is_none() {
-        return;
+        return Ok(());
     }
     let Some(layout) = layout else {
-        return;
+        return Ok(());
     };
-    let Some(sep_ys) = section_separator_ys(sections) else {
-        return;
+    let Some(sep_ys) = section_separator_ys(sections, ctx.checkpoints)? else {
+        return Ok(());
     };
+    ctx.checkpoints.checkpoint()?;
 
     let (frame_x1, frame_x2, _min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
         ctx.default_frame_x1,
@@ -237,7 +256,8 @@ pub(super) fn render_sectioned_sequence_block(
     // Mermaid output and avoid sub-pixel gaps at the frame border.
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    for y in &sep_ys {
+    for (separator_index, y) in sep_ys.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(separator_index)?;
         let _ = write!(
             out,
             r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
@@ -255,6 +275,7 @@ pub(super) fn render_sectioned_sequence_block(
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let Some(label_text) = display_block_label(sec.raw_label, i == 0) else {
             continue;
         };
@@ -274,7 +295,7 @@ pub(super) fn render_sectioned_sequence_block(
                     use_tspan: true,
                 },
                 &label_text,
-            );
+            )?;
             continue;
         }
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
@@ -287,10 +308,11 @@ pub(super) fn render_sectioned_sequence_block(
             sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
             &label_text,
-        );
+        )?;
     }
 
     out.push_str("</g>");
+    ctx.checkpoints.checkpoint()
 }
 
 pub(super) fn render_critical_sequence_block(
@@ -299,21 +321,22 @@ pub(super) fn render_critical_sequence_block(
     sections: &[AltSection<'_>],
     layout: Option<&SequenceBlockLayout>,
     ctx: &SequenceBlockRenderContext<'_>,
-) {
+) -> Result<()> {
     if sections.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let geometry = section_geometry(sections);
+    let geometry = section_geometry(sections, ctx.checkpoints)?;
     if geometry.frame_y_range().is_none() {
-        return;
+        return Ok(());
     }
     let Some(layout) = layout else {
-        return;
+        return Ok(());
     };
-    let Some(sep_ys) = section_separator_ys(sections) else {
-        return;
+    let Some(sep_ys) = section_separator_ys(sections, ctx.checkpoints)? else {
+        return Ok(());
     };
+    ctx.checkpoints.checkpoint()?;
 
     let (mut frame_x1, frame_x2, min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
         ctx.default_frame_x1,
@@ -336,7 +359,8 @@ pub(super) fn render_critical_sequence_block(
     // separators (dashed)
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    for y in &sep_ys {
+    for (separator_index, y) in sep_ys.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(separator_index)?;
         let _ = write!(
             out,
             r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
@@ -354,6 +378,7 @@ pub(super) fn render_critical_sequence_block(
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(i)?;
         let Some(label_text) = display_block_label(sec.raw_label, i == 0) else {
             continue;
         };
@@ -373,7 +398,7 @@ pub(super) fn render_critical_sequence_block(
                     use_tspan: true,
                 },
                 &label_text,
-            );
+            )?;
             continue;
         }
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
@@ -386,8 +411,9 @@ pub(super) fn render_critical_sequence_block(
             sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
             &label_text,
-        );
+        )?;
     }
 
     out.push_str("</g>");
+    ctx.checkpoints.checkpoint()
 }

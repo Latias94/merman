@@ -1,6 +1,8 @@
+use super::SequenceLayoutCheckpoints;
 use super::constants::sequence_actor_popup_panel_height;
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle};
@@ -35,12 +37,13 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
-pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds {
-    let mut content = sequence_content_bounds(&ctx);
+pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Result<Bounds> {
+    let mut content = sequence_content_bounds(&ctx)?;
 
-    include_actor_popup_bottoms(&mut content, &ctx);
+    include_actor_popup_bottoms(&mut content, &ctx)?;
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
@@ -73,21 +76,23 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
 
     let mut bounds_box = ActorHorizontalBounds::from_content(ctx.bounds_start_x, ctx.bounds_stop_x);
     bounds_box.include(content.min_x, content.max_x);
-    bounds_box.include_actor_boxes(&ctx);
-    include_self_message_bounds(&mut bounds_box, &ctx);
+    bounds_box.include_actor_boxes(&ctx)?;
+    include_self_message_bounds(&mut bounds_box, &ctx)?;
+    ctx.checkpoints.checkpoint()?;
 
-    Bounds {
+    Ok(Bounds {
         min_x: bounds_box.start_x - ctx.diagram_margin_x,
         min_y: vb_min_y,
         max_x: bounds_box.stop_x + ctx.diagram_margin_x,
         max_y: bounds_box_stopy + ctx.diagram_margin_y,
-    }
+    })
 }
 
-fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds {
+fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> Result<ContentBounds> {
     let mut content = ContentBounds::new();
 
-    for n in ctx.nodes {
+    for (node_index, n) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
         let left = n.x - n.width / 2.0;
         let right = n.x + n.width / 2.0;
         let bottom = n.y + n.height / 2.0;
@@ -100,14 +105,16 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds
         }
     }
 
-    include_footer_row_height(&mut content, ctx);
+    include_footer_row_height(&mut content, ctx)?;
 
     if !ctx.mirror_actors {
-        for e in ctx.edges {
+        for (edge_index, e) in ctx.edges.iter().enumerate() {
+            ctx.checkpoints.checkpoint_loop(edge_index)?;
             if e.id.starts_with("lifeline-") {
                 continue;
             }
-            for p in &e.points {
+            for (point_index, p) in e.points.iter().enumerate() {
+                ctx.checkpoints.checkpoint_loop(point_index)?;
                 content.include_y(p.y);
             }
             if let Some(label) = e.label.as_ref() {
@@ -116,36 +123,45 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds
         }
     }
 
-    content.or_fallback(
+    Ok(content.or_fallback(
         ctx.actor_width_min.max(1.0),
         (ctx.bottom_box_top_y + ctx.actor_height).max(1.0),
-    )
+    ))
 }
 
-fn include_footer_row_height(content: &mut ContentBounds, ctx: &SequenceRootBoundsContext<'_>) {
+fn include_footer_row_height(
+    content: &mut ContentBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) -> Result<()> {
     if !ctx.mirror_actors {
-        return;
+        return Ok(());
     }
 
     // Mermaid's footer draw pass bumps the shared bounds cursor by the maximum rendered actor
     // height for the whole footer row, even when some actors were destroyed earlier and have their
     // own `stopy`. The root viewport follows that cursor, not just each individual footer node.
-    let max_footer_height = ctx
-        .nodes
-        .iter()
-        .filter(|n| n.id.starts_with("actor-bottom-"))
-        .map(|n| n.height)
-        .fold(0.0, f64::max);
+    let mut max_footer_height = 0.0_f64;
+    for (node_index, node) in ctx.nodes.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(node_index)?;
+        if node.id.starts_with("actor-bottom-") {
+            max_footer_height = max_footer_height.max(node.height);
+        }
+    }
     if max_footer_height > 0.0 {
         content.include_y(ctx.bottom_box_top_y + max_footer_height);
     }
+    Ok(())
 }
 
-fn include_actor_popup_bottoms(content: &mut ContentBounds, ctx: &SequenceRootBoundsContext<'_>) {
+fn include_actor_popup_bottoms(
+    content: &mut ContentBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) -> Result<()> {
     // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
     // present, even when they are emitted hidden by default. Account for the menu panel bottom so
     // root height stays aligned with upstream for link-only fixtures.
-    for actor_id in &ctx.model.actor_order {
+    for (actor_position, actor_id) in ctx.model.actor_order.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(actor_position)?;
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
@@ -160,17 +176,19 @@ fn include_actor_popup_bottoms(content: &mut ContentBounds, ctx: &SequenceRootBo
         };
         content.include_y(popup_content_bottom.max(0.0));
     }
+    Ok(())
 }
 
 fn include_self_message_bounds(
     bounds_box: &mut ActorHorizontalBounds,
     ctx: &SequenceRootBoundsContext<'_>,
-) {
+) -> Result<()> {
     // Mermaid's self-message bounds insert expands horizontally by
     // `dx = max(textWidth/2, conf.width/2)`, where `conf.width` is the configured actor width
     // (150 by default). This can increase `box.stopx` by ~1px due to `from_x + 1` rounding
     // behavior in message geometry, affecting viewBox width.
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(message_index)?;
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
@@ -206,6 +224,7 @@ fn include_self_message_bounds(
         let dx = (text_w.max(1.0) / 2.0).max(ctx.actor_width_min / 2.0);
         bounds_box.include(center_x - dx, center_x + dx);
     }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -256,10 +275,11 @@ impl ActorHorizontalBounds {
         }
     }
 
-    fn include_actor_boxes(&mut self, ctx: &SequenceRootBoundsContext<'_>) {
+    fn include_actor_boxes(&mut self, ctx: &SequenceRootBoundsContext<'_>) -> Result<()> {
         // Mermaid's bounds box includes the per-box inner margins (`box.margin`) when boxes exist.
         // Approximate this by extending actor bounds by their enclosing box margin.
         for i in 0..ctx.model.actor_order.len() {
+            ctx.checkpoints.checkpoint_loop(i)?;
             let left = ctx.actor_left_x[i];
             let right = left + ctx.actor_widths[i];
             if let Some(bi) = ctx.actor_box[i] {
@@ -269,6 +289,7 @@ impl ActorHorizontalBounds {
                 self.include(left, right);
             }
         }
+        Ok(())
     }
 
     fn include(&mut self, left: f64, right: f64) {

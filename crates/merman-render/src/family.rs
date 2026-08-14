@@ -838,9 +838,7 @@ impl FamilyRenderArtifact {
     ) -> Result<RenderedFamilySvg> {
         self.session.checkpoint(OperationPhase::Emit)?;
         let svg = render_family_artifact_svg(&self, options, debug)?;
-        self.session
-            .resource_policy()
-            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
+        admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         let family_kind = self.family.kind();
         let Self {
@@ -857,6 +855,15 @@ impl FamilyRenderArtifact {
             session,
         })
     }
+}
+
+fn admit_rendered_svg_output(session: &RenderSession, svg: &str) -> Result<()> {
+    // Termination wins over the final output ceiling when both become observable during emit.
+    session.checkpoint(OperationPhase::Emit)?;
+    session
+        .resource_policy()
+        .check_svg_bytes(svg, ResourceLimitPhase::SvgOutput)?;
+    Ok(())
 }
 
 #[inline(never)]
@@ -1593,7 +1600,9 @@ mod tests {
         TextMeasurementResultKind,
     };
     use crate::text::{TextMetrics, WrapMode};
-    use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
+    use merman_core::{
+        CustomJsonProvenance, CustomJsonRenderModel, Engine, OperationControl, ParseOptions,
+    };
     use serde_json::{Value, json};
 
     fn custom_semantic_parser(
@@ -1623,6 +1632,32 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn final_svg_admission_prefers_emit_cancellation_to_byte_limit() {
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let svg = "<svg/>";
+
+        let limit = session
+            .resource_policy()
+            .check_svg_bytes(svg, ResourceLimitPhase::SvgOutput)
+            .unwrap_err();
+        assert_eq!(limit.limit, "max_svg_bytes");
+
+        control.cancel();
+        let error = admit_rendered_svg_output(&session, svg).unwrap_err();
+        let Error::Cancelled(error) = error else {
+            panic!("expected final SVG admission cancellation");
+        };
+        assert_eq!(error.phase, OperationPhase::Emit);
     }
 
     fn text_measurement_call_count(session: &RenderSession) -> u64 {

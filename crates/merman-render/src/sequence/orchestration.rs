@@ -1,4 +1,3 @@
-use super::SEQUENCE_FRAME_SIDE_PAD_PX;
 use super::activation::SequenceActivationState;
 use super::actors::{
     SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
@@ -13,6 +12,8 @@ use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
+use super::{SEQUENCE_FRAME_SIDE_PAD_PX, SequenceLayoutCheckpoints};
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
@@ -47,6 +48,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
+    pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
 pub(super) struct SequenceLayoutGraph {
@@ -77,24 +79,33 @@ struct SequenceLayoutLoopState<'a> {
 }
 
 impl<'a> SequenceLayoutLoopState<'a> {
-    fn new(ctx: &SequenceLayoutGraphContext<'a>) -> Self {
+    fn new(ctx: &SequenceLayoutGraphContext<'a>) -> Result<Self> {
         let activation_state = SequenceActivationState::new(ctx.activation_width);
         let actor_lifecycle = SequenceActorLifecycle::new(SequenceActorLifecycleContext {
             model: ctx.model,
             actor_index: ctx.actor_index,
             actor_base_heights: ctx.actor_base_heights,
             actor_height: ctx.actor_height,
+            checkpoints: ctx.checkpoints,
         });
-        let (bounds_start_x, bounds_stop_x) = ctx
+        let mut bounds = None;
+        for (actor_position, (center_x, width)) in ctx
             .actor_centers_x
             .iter()
             .copied()
             .zip(ctx.actor_widths.iter().copied())
-            .map(|(center_x, width)| (center_x - width / 2.0, center_x + width / 2.0))
-            .reduce(|left, right| (left.0.min(right.0), left.1.max(right.1)))
-            .unwrap_or((0.0, ctx.sequence_default_width.max(1.0)));
+            .enumerate()
+        {
+            ctx.checkpoints.checkpoint_loop(actor_position)?;
+            let actor_bounds = (center_x - width / 2.0, center_x + width / 2.0);
+            bounds = Some(bounds.map_or(actor_bounds, |current: (f64, f64)| {
+                (current.0.min(actor_bounds.0), current.1.max(actor_bounds.1))
+            }));
+        }
+        let (bounds_start_x, bounds_stop_x) =
+            bounds.unwrap_or((0.0, ctx.sequence_default_width.max(1.0)));
 
-        Self {
+        Ok(Self {
             cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height,
             block_stopy_stack: Vec::new(),
             open_sequence_blocks: Vec::new(),
@@ -104,7 +115,7 @@ impl<'a> SequenceLayoutLoopState<'a> {
             actor_lifecycle,
             bounds_start_x,
             bounds_stop_x,
-        }
+        })
     }
 
     fn open_content_block(&mut self) {
@@ -387,7 +398,7 @@ fn handle_sequence_message(
 
 pub(super) fn build_sequence_layout_graph(
     ctx: SequenceLayoutGraphContext<'_>,
-) -> SequenceLayoutGraph {
+) -> Result<SequenceLayoutGraph> {
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let mut edges: Vec<LayoutEdge> = Vec::new();
 
@@ -401,8 +412,9 @@ pub(super) fn build_sequence_layout_graph(
             actor_base_heights: ctx.actor_base_heights,
             actor_top_offset_y: ctx.actor_top_offset_y,
             label_box_height: ctx.label_box_height,
+            checkpoints: ctx.checkpoints,
         },
-    );
+    )?;
 
     let SequenceBlockPlan { directive_steps } = plan_sequence_blocks(BlockStepPlanContext {
         model: ctx.model,
@@ -425,15 +437,17 @@ pub(super) fn build_sequence_layout_graph(
         math_config: ctx.math_config,
         math_renderer: ctx.math_renderer,
         message_metrics: ctx.message_metrics,
-    });
+        checkpoints: ctx.checkpoints,
+    })?;
 
     let rect_step_start = 2.0 * ctx.box_margin;
-    let mut state = SequenceLayoutLoopState::new(&ctx);
+    let mut state = SequenceLayoutLoopState::new(&ctx)?;
     let actor_is_type_width_limited = |actor_id: &str| -> bool {
         sequence_actor_is_type_width_limited(&ctx.model.actors, actor_id)
     };
 
     for (msg_idx, msg) in ctx.model.messages.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(msg_idx)?;
         if handle_sequence_directive(msg, &directive_steps, &mut state, &ctx) {
             continue;
         }
@@ -470,7 +484,7 @@ pub(super) fn build_sequence_layout_graph(
 
     state
         .actor_lifecycle
-        .apply_created_top_actor_positions(&mut nodes);
+        .apply_created_top_actor_positions(&mut nodes)?;
 
     append_sequence_footer_actors(
         &mut nodes,
@@ -487,17 +501,19 @@ pub(super) fn build_sequence_layout_graph(
             mirror_actors: ctx.mirror_actors,
             label_box_height: ctx.label_box_height,
             box_text_margin: ctx.box_text_margin,
+            checkpoints: ctx.checkpoints,
         },
-    );
+    )?;
+    ctx.checkpoints.checkpoint()?;
 
-    SequenceLayoutGraph {
+    Ok(SequenceLayoutGraph {
         nodes,
         edges,
         block_layouts_by_id: state.block_layouts_by_id,
         bottom_box_top_y,
         bounds_start_x: state.bounds_start_x,
         bounds_stop_x: state.bounds_stop_x,
-    }
+    })
 }
 
 fn include_rect_stack_bounds(

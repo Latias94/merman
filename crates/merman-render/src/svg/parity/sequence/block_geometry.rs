@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::model::SequenceSvgModel;
 use crate::sequence::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
@@ -9,22 +10,27 @@ use rustc_hash::FxHashMap;
 pub(super) fn frame_x_from_actors(
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-) -> Option<(f64, f64)> {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<Option<(f64, f64)>> {
     let mut min_x = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
-    for actor_id in &model.actor_order {
+    for (actor_index, actor_id) in model.actor_order.iter().enumerate() {
+        checkpoints.checkpoint_loop(actor_index)?;
         let node_id = format!("actor-top-{actor_id}");
-        let n = nodes_by_id.get(node_id.as_str()).copied()?;
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            return Ok(None);
+        };
         min_x = min_x.min(n.x);
         max_x = max_x.max(n.x);
     }
     if !min_x.is_finite() || !max_x.is_finite() {
-        return None;
+        return Ok(None);
     }
-    Some((
+    checkpoints.checkpoint()?;
+    Ok(Some((
         min_x - SEQUENCE_FRAME_SIDE_PAD_PX,
         max_x + SEQUENCE_FRAME_SIDE_PAD_PX,
-    ))
+    )))
 }
 
 #[derive(Debug, Clone, Copy)]

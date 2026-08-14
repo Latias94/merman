@@ -1,5 +1,7 @@
+use super::SequenceEmitCheckpoints;
 use super::block_geometry::SequenceBlockGeometry;
 use super::model::SequenceSvgModel;
+use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use merman_core::diagrams::sequence::SequenceMessage;
 use rustc_hash::FxHashMap;
@@ -130,22 +132,35 @@ pub(super) fn collect_sequence_blocks<'a>(
     edges_by_id: &FxHashMap<&str, &LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
-) -> (Vec<Option<usize>>, Vec<SequenceBlock<'a>>) {
-    collect_sequence_blocks_with(model, block_layouts_by_id, |message| {
-        SequenceBlockGeometry::from_message(message, actor_nodes_by_id, edges_by_id, nodes_by_id)
-    })
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<(Vec<Option<usize>>, Vec<SequenceBlock<'a>>)> {
+    collect_sequence_blocks_with(
+        model,
+        block_layouts_by_id,
+        |message| {
+            SequenceBlockGeometry::from_message(
+                message,
+                actor_nodes_by_id,
+                edges_by_id,
+                nodes_by_id,
+            )
+        },
+        checkpoints,
+    )
 }
 
 fn collect_sequence_blocks_with<'a>(
     model: &'a SequenceSvgModel,
     block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
     mut message_geometry: impl FnMut(&'a SequenceMessage) -> SequenceBlockGeometry<'a>,
-) -> (Vec<Option<usize>>, Vec<SequenceBlock<'a>>) {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<(Vec<Option<usize>>, Vec<SequenceBlock<'a>>)> {
     let mut blocks_by_end_index = vec![None; model.messages.len()];
-    let mut blocks = Vec::new();
+    let mut blocks = Vec::with_capacity(model.messages.len().div_ceil(2));
     let mut stack = Vec::new();
 
     for (message_index, message) in model.messages.iter().enumerate() {
+        checkpoints.checkpoint_loop(message_index)?;
         let raw_label = message.message_text();
         match message.message_type {
             2 => {
@@ -365,7 +380,8 @@ fn collect_sequence_blocks_with<'a>(
         }
     }
 
-    (blocks_by_end_index, blocks)
+    checkpoints.checkpoint()?;
+    Ok((blocks_by_end_index, blocks))
 }
 
 fn include_message_geometry<'a>(
@@ -401,12 +417,17 @@ fn push_block<'a>(
 #[cfg(test)]
 mod tests {
     use super::{SequenceBlock, collect_sequence_blocks_with};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::svg::parity::sequence::block_geometry::SequenceBlockGeometry;
     use merman_core::diagrams::sequence::{
         SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
     };
     use rustc_hash::FxHashMap;
     use std::collections::BTreeMap;
+
+    fn checkpoints(meter: &OperationWorkMeter) -> super::SequenceEmitCheckpoints<'_> {
+        super::SequenceEmitCheckpoints::new(meter)
+    }
 
     fn message(
         id: String,
@@ -461,13 +482,19 @@ mod tests {
         let model = model(messages);
         let block_layouts = FxHashMap::default();
         let mut y = 0.0;
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
-        let (blocks_by_end_index, blocks) =
-            collect_sequence_blocks_with(&model, &block_layouts, |_| {
+        let (blocks_by_end_index, blocks) = collect_sequence_blocks_with(
+            &model,
+            &block_layouts,
+            |_| {
                 let geometry = SequenceBlockGeometry::test_y_range(y, y + 1.0);
                 y += 1.0;
                 geometry
-            });
+            },
+            checkpoints(&meter),
+        )
+        .unwrap();
 
         assert_eq!(blocks.len(), DEPTH);
         assert_eq!(blocks_by_end_index.iter().flatten().count(), DEPTH);
@@ -496,12 +523,19 @@ mod tests {
         ]);
         let block_layouts = FxHashMap::default();
         let mut y = 0.0;
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
-        let (_, blocks) = collect_sequence_blocks_with(&model, &block_layouts, |_| {
-            let geometry = SequenceBlockGeometry::test_y_range(y, y + 1.0);
-            y += 1.0;
-            geometry
-        });
+        let (_, blocks) = collect_sequence_blocks_with(
+            &model,
+            &block_layouts,
+            |_| {
+                let geometry = SequenceBlockGeometry::test_y_range(y, y + 1.0);
+                y += 1.0;
+                geometry
+            },
+            checkpoints(&meter),
+        )
+        .unwrap();
 
         let SequenceBlock::Alt { sections, .. } = &blocks[1] else {
             panic!("expected the outer alt block");

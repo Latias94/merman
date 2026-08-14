@@ -1,4 +1,5 @@
 use super::super::*;
+use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
@@ -15,22 +16,24 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
 pub(super) fn render_sequence_note(
     out: &mut String,
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
-) {
+) -> Result<()> {
     if msg.message_type != 2 {
-        return;
+        return Ok(());
     }
+    ctx.checkpoints.checkpoint()?;
 
     let id = &msg.id;
     let raw = msg.message_text();
     let node_id = format!("note-{id}");
     let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-        return;
+        return Ok(());
     };
     let (x, y) = node_left_top(n);
     let cx = x + (n.width / 2.0);
@@ -79,7 +82,8 @@ pub(super) fn render_sequence_note(
             text_y,
             line_step,
             ctx.actor_label_font_size,
-        );
+            ctx.checkpoints,
+        )?;
     } else {
         render_sequence_note_lines(
             out,
@@ -88,9 +92,11 @@ pub(super) fn render_sequence_note(
             text_y,
             line_step,
             ctx.actor_label_font_size,
-        );
+            ctx.checkpoints,
+        )?;
     }
     out.push_str("</g>");
+    ctx.checkpoints.checkpoint()
 }
 
 fn render_sequence_note_lines<'a>(
@@ -100,8 +106,10 @@ fn render_sequence_note_lines<'a>(
     text_y: f64,
     line_step: f64,
     actor_label_font_size: f64,
-) {
+    checkpoints: SequenceEmitCheckpoints<'_>,
+) -> Result<()> {
     for (i, line) in lines.into_iter().enumerate() {
+        checkpoints.checkpoint_loop(i)?;
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
         let text = if decoded.as_ref().is_empty() {
             "\u{200B}"
@@ -118,14 +126,27 @@ fn render_sequence_note_lines<'a>(
             text = escape_xml(text)
         );
     }
+    checkpoints.checkpoint()
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+
     #[test]
     fn empty_note_rows_render_the_upstream_zero_width_space() {
         let mut out = String::new();
-        super::render_sequence_note_lines(&mut out, ["first", "", "last"], 50.0, 10.0, 19.0, 16.0);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        super::render_sequence_note_lines(
+            &mut out,
+            ["first", "", "last"],
+            50.0,
+            10.0,
+            19.0,
+            16.0,
+            super::SequenceEmitCheckpoints::new(&meter),
+        )
+        .unwrap();
 
         assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
     }
