@@ -16,6 +16,8 @@ use crate::terminal::{
     try_write_primary_deferred_style_with_policy, try_write_primary_grapheme_style_with_policy,
 };
 
+const CANVAS_INITIALIZATION_CHUNK_CELLS: usize = 4_096;
+
 #[derive(Debug)]
 pub(crate) struct Canvas {
     width: usize,
@@ -182,6 +184,17 @@ impl Canvas {
         Self::from_extent(extent, width_profile, resources.scoped())
     }
 
+    pub(crate) fn try_with_resources_and_execution(
+        width: usize,
+        height: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<Self> {
+        let extent = resources.grid_extent(width, height)?;
+        Self::from_extent_with_execution(extent, width_profile, resources.scoped(), execution)
+    }
+
     fn from_extent(
         extent: LogicalExtent,
         width_profile: TerminalWidthProfile,
@@ -194,6 +207,35 @@ impl Canvas {
             }
         })?;
         cells.resize(extent.cells(), TerminalCell::blank());
+        Ok(Self {
+            width: extent.width(),
+            height: extent.height(),
+            cells,
+            arena: GlyphArena::default(),
+            width_profile,
+            resources,
+        })
+    }
+
+    fn from_extent_with_execution(
+        extent: LogicalExtent,
+        width_profile: TerminalWidthProfile,
+        resources: ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> crate::Result<Self> {
+        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        let mut cells = Vec::new();
+        cells.try_reserve_exact(extent.cells()).map_err(|_| {
+            crate::AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Layout.as_str(),
+            }
+        })?;
+        while cells.len() < extent.cells() {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+            let remaining = extent.cells() - cells.len();
+            let next_len = cells.len() + remaining.min(CANVAS_INITIALIZATION_CHUNK_CELLS);
+            cells.resize(next_len, TerminalCell::blank());
+        }
         Ok(Self {
             width: extent.width(),
             height: extent.height(),
@@ -1464,7 +1506,7 @@ mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
-    use merman_core::{CancelReason, OperationControl, OperationPhase};
+    use merman_core::{CancelReason, OperationControl, OperationPhase, resources::ResourceProfile};
 
     fn policy_with_limit(id: AsciiResourceLimitId, limit: usize) -> AsciiResourcePolicy {
         AsciiResourcePolicy::default()
@@ -1495,6 +1537,36 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn controlled_canvas_initialization_observes_cancellation_between_chunks() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let base_resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        // Grid admission and the pre-allocation check succeed, as does the first initialization
+        // chunk. Cancellation must be observed before the second chunk is initialized.
+        control.cancel_after_checkpoints(3);
+        let execution = AsciiExecution::new(&control, &policy);
+        let emit_resources = execution.resource_context(&base_resources, OperationPhase::Emit);
+
+        let error = Canvas::try_with_resources_and_execution(
+            CANVAS_INITIALIZATION_CHUNK_CELLS + 1,
+            1,
+            TerminalWidthProfile::Unicode,
+            &emit_resources,
+            execution,
+        )
+        .expect_err("canvas initialization must stop between fixed-size chunks");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(base_resources.layout_work_used(), 0);
+        assert_eq!(base_resources.document_cells_used(), 0);
     }
 
     #[test]

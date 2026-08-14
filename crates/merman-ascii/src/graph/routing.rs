@@ -166,17 +166,6 @@ impl RouteScene {
         self.planned_cell_count
     }
 
-    #[cfg(test)]
-    pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
-        for route in &self.routes {
-            route.paint_body(drawing)?;
-        }
-        for route in &self.routes {
-            route.paint_markers(drawing)?;
-        }
-        Ok(())
-    }
-
     pub(super) fn paint_routes_with_execution(
         &self,
         drawing: &mut RouteDrawing<'_>,

@@ -190,11 +190,24 @@ fn render_flowchart_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let mut resources = resource::ResourceContext::new(*execution.resources());
-    let graph =
-        graph::from_flowchart_model_with_execution(model, options, &mut resources, *execution)?;
+    let base_resources = resource::ResourceContext::new(*execution.resources());
+    let mut semantic_resources =
+        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+    let graph = graph::from_flowchart_model_with_execution(
+        model,
+        options,
+        &mut semantic_resources,
+        *execution,
+    )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    graph::render_graph_with_resources_and_execution(&graph, options, &mut resources, *execution)
+    let mut layout_resources =
+        execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
+    graph::render_graph_with_resources_and_execution(
+        &graph,
+        options,
+        &mut layout_resources,
+        *execution,
+    )
 }
 
 fn render_gantt_model(
@@ -274,11 +287,23 @@ fn render_state_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    let mut resources = resource::ResourceContext::new(*execution.resources());
-    let graph =
-        state::from_state_model_with_context_and_execution(model, &mut resources, *execution)?;
+    let base_resources = resource::ResourceContext::new(*execution.resources());
+    let mut semantic_resources =
+        execution.resource_context(&base_resources, merman_core::OperationPhase::Semantic);
+    let graph = state::from_state_model_with_context_and_execution(
+        model,
+        &mut semantic_resources,
+        *execution,
+    )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    graph::render_graph_with_resources_and_execution(&graph, options, &mut resources, *execution)
+    let mut layout_resources =
+        execution.resource_context(&semantic_resources, merman_core::OperationPhase::Layout);
+    graph::render_graph_with_resources_and_execution(
+        &graph,
+        options,
+        &mut layout_resources,
+        *execution,
+    )
 }
 
 fn render_timeline_model(

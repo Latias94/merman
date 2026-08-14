@@ -70,8 +70,13 @@ pub(crate) fn render_graph_with_resources_and_execution(
         return Ok(String::new());
     }
 
-    let prepared = prepare_graph_render_controlled(graph, options, resources, execution)?;
-    paint_graph_render_controlled(prepared, options, resources, execution)
+    let mut layout_resources =
+        execution.resource_context(resources, merman_core::OperationPhase::Layout);
+    let prepared =
+        prepare_graph_render_controlled(graph, options, &mut layout_resources, execution)?;
+    let mut emit_resources =
+        execution.resource_context(&layout_resources, merman_core::OperationPhase::Emit);
+    paint_graph_render_controlled(prepared, options, &mut emit_resources, execution)
 }
 
 #[cfg(test)]
@@ -80,109 +85,10 @@ fn render_graph_uncontrolled(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<String> {
-    options.validate()?;
-    if graph.nodes.is_empty() && graph.groups.is_empty() {
-        return Ok(String::new());
-    }
-
-    let charset = GraphCharset::for_options(options);
-    let graph_layout = layout_graph_with_resources(graph, options, resources)?;
-    graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
-    let route_scene_plan = routing::prepare_route_scene_with_resources(
-        graph,
-        &graph_layout,
-        &graph.edges,
-        &charset,
-        resources,
-    )?;
-    let (edge_width, edge_height) = route_scene_plan.canvas_extent();
-    let extent = graph_canvas_extent(
-        &graph_layout.nodes,
-        &graph_layout.groups,
-        edge_width,
-        edge_height,
-        resources,
-    )?;
-    let width = extent.width();
-    let height = extent.height();
-    let output_transform = OutputTransform::for_direction(graph.direction);
-    if !output_transform.is_identity() {
-        resources.charge_layout_work(extent.cells())?;
-    }
-    let route_scene = route_scene_plan.materialize(resources)?;
-
-    let mut canvas =
-        RawCanvas::try_with_resources(width, height, options.terminal_width_profile, resources)?;
-    let mut route_cells = routing::RouteCells::new();
-    route_cells
-        .try_reserve(route_scene.planned_cell_count())
-        .map_err(|_| AsciiError::AllocationFailed {
-            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
-    {
-        let mut surface = TransformedSurface::new(
-            &mut canvas,
-            output_transform,
-            width,
-            height,
-            options.terminal_width_profile,
-        );
-        for group_index in &graph_layout.group_background_order {
-            if let Some(group) = graph_layout.groups.get(*group_index) {
-                paint_group_background(&mut surface, group);
-            }
-        }
-        for group in &graph_layout.groups {
-            draw_group_frame(&mut surface, group, &charset)?;
-        }
-        for layout in &graph_layout.nodes {
-            draw_node(&mut surface, layout, &charset, options)?;
-        }
-    }
-
-    redraw_transformed_node_compartments(
-        &mut canvas,
-        &graph_layout.nodes,
-        &charset,
-        output_transform,
-        width,
-        height,
-    )?;
-
-    {
-        let mut surface = TransformedSurface::new(
-            &mut canvas,
-            output_transform,
-            width,
-            height,
-            options.terminal_width_profile,
-        );
-        let mut route_drawing = routing::RouteDrawing::new(&mut surface, &mut route_cells);
-        route_scene.paint_routes(&mut route_drawing)?;
-    }
-
-    redraw_transformed_node_labels(
-        &mut canvas,
-        &graph_layout.nodes,
-        output_transform,
-        width,
-        height,
-    )?;
-    route_scene.draw_labels(
-        &mut canvas,
-        output_transform.route_label_transform(width, height),
-    )?;
-    if output_transform.is_identity() {
-        for group in &graph_layout.groups {
-            draw_group_title(&mut canvas, group)?;
-        }
-    } else {
-        for group in &graph_layout.groups {
-            draw_transformed_group_title(&mut canvas, group, output_transform, width, height)?;
-        }
-    }
-
-    canvas.finish_with_options(options)
+    let control = merman_core::OperationControl::new();
+    let policy = resources.policy();
+    let execution = AsciiExecution::new(&control, &policy);
+    render_graph_with_resources_and_execution(graph, options, resources, execution)
 }
 
 fn prepare_graph_render_controlled(
@@ -248,8 +154,14 @@ fn paint_graph_render_controlled(
         output_transform,
     } = prepared;
 
-    let mut canvas =
-        RawCanvas::try_with_resources(width, height, options.terminal_width_profile, resources)?;
+    let mut canvas = RawCanvas::try_with_resources_and_execution(
+        width,
+        height,
+        options.terminal_width_profile,
+        resources,
+        execution,
+    )?;
+    execution.checkpoint(merman_core::OperationPhase::Emit)?;
     let mut route_cells = routing::RouteCells::new();
     route_cells
         .try_reserve(route_scene.planned_cell_count())
@@ -268,7 +180,7 @@ fn paint_graph_render_controlled(
         for group_index in &graph_layout.group_background_order {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
             if let Some(group) = graph_layout.groups.get(*group_index) {
-                paint_group_background(&mut surface, group);
+                paint_group_background_with_execution(&mut surface, group, execution)?;
             }
         }
         for group in &graph_layout.groups {
@@ -277,7 +189,7 @@ fn paint_graph_render_controlled(
         }
         for layout in &graph_layout.nodes {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
-            draw_node(&mut surface, layout, &charset, options)?;
+            draw_node_with_execution(&mut surface, layout, &charset, options, execution)?;
         }
     }
 
@@ -342,13 +254,23 @@ impl OutputTransform {
     }
 }
 
-fn draw_node(
+fn draw_node_with_execution(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    paint_node_background_with_execution(canvas, layout, execution)?;
+    draw_node_foreground(canvas, layout, charset, options)
+}
+
+fn draw_node_foreground(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
 ) -> Result<()> {
-    paint_node_background(canvas, layout);
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
         GraphNodeShape::StateWithTitle => draw_rect_node(canvas, layout, charset, options),
@@ -400,29 +322,62 @@ fn draw_group_frame(
     }
 }
 
-fn paint_node_background(canvas: &mut Canvas<'_>, layout: &NodeLayout) {
-    let Some(color) = layout.style.background else {
-        return;
-    };
-    for y in layout.y..=layout.bottom() {
-        for x in layout.x..=layout.right() {
-            canvas.set_background_color(x, y, color);
-        }
-    }
+fn paint_node_background_with_execution(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    paint_background_cells(
+        canvas,
+        layout.style.background,
+        layout.x,
+        layout.y,
+        layout.right(),
+        layout.bottom(),
+        execution,
+    )
 }
 
-fn paint_group_background(canvas: &mut Canvas<'_>, group: &GroupLayout) {
+fn paint_group_background_with_execution(
+    canvas: &mut Canvas<'_>,
+    group: &GroupLayout,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
     if group.kind != GraphGroupKind::Container {
-        return;
+        return Ok(());
     }
-    let Some(color) = group.style.background else {
-        return;
+    paint_background_cells(
+        canvas,
+        group.style.background,
+        group.x,
+        group.y,
+        group.right(),
+        group.bottom(),
+        execution,
+    )
+}
+
+fn paint_background_cells(
+    canvas: &mut Canvas<'_>,
+    color: Option<crate::AsciiRgb>,
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    let Some(color) = color else {
+        return Ok(());
     };
-    for y in group.y..=group.bottom() {
-        for x in group.x..=group.right() {
+    let mut iteration = 0usize;
+    for y in top..=bottom {
+        for x in left..=right {
+            execution.checkpoint_loop(merman_core::OperationPhase::Emit, iteration)?;
             canvas.set_background_color(x, y, color);
+            iteration += 1;
         }
     }
+    Ok(())
 }
 
 fn draw_group_box(
@@ -1510,6 +1465,7 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::text::display_width_with_profile;
     use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
     fn canvas_transform_preserves_complete_grapheme_clusters() {
@@ -1540,6 +1496,44 @@ mod tests {
             "{rendered:?}"
         );
         assert!(rendered.contains("\u{1f1fa}\u{1f1f8}"), "{rendered:?}");
+    }
+
+    #[test]
+    fn controlled_group_background_observes_cancellation_inside_one_large_fill() {
+        let width = 16;
+        let height = 16;
+        let mut canvas =
+            RawCanvas::with_width_profile(width, height, TerminalWidthProfile::Unicode);
+        let group = GroupLayout {
+            id: "large".to_string(),
+            kind: GraphGroupKind::Container,
+            title: GraphLabel::new("Large"),
+            style: GraphGroupStyle {
+                background: Some(crate::AsciiRgb::new(1, 2, 3)),
+                ..GraphGroupStyle::default()
+            },
+            divider_span: None,
+            x: 0,
+            y: 0,
+            width,
+            height,
+        };
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let control = OperationControl::new();
+        // Two fixed-cadence checks succeed inside the same background. The third must stop the
+        // fill before all 256 cells are painted.
+        control.cancel_after_checkpoints(2);
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = paint_group_background_with_execution(&mut canvas, &group, execution)
+            .expect_err("one large group background must remain cooperatively cancellable");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
     }
 
     #[test]
