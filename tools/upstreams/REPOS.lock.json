@@ -25,6 +25,12 @@
       "ref": "main",
       "commit": "f5ac2752fbf0f74f9c836014b87e511303d2abae"
     },
+    "tree-sitter": {
+      "path": "repo-ref/tree-sitter",
+      "url": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.26.12",
+      "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00"
+    },
     "mermaid-ascii": {
       "path": "repo-ref/mermaid-ascii",
       "url": "https://github.com/AlexanderGrooff/mermaid-ascii",

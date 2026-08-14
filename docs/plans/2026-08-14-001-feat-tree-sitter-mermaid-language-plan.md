@@ -136,7 +136,7 @@ This work creates a neighboring syntax product rather than replacing Merman's se
 
 ### Acceptance Examples
 
-- AE1. `flowchart`, `flowchart-v2`, and `graph` headers all select the Flowchart public root, but coverage still counts one public family.
+- AE1. `flowchart` and `graph` headers select the Flowchart public root, while detector-only `flowchart-v2` remains a strict-header negative; coverage still counts one public family.
 - AE2. Replacing a Flowchart header with `sequenceDiagram` through one edit yields a Sequence root; no Flowchart declaration survives in the reused tree.
 - AE3. A half-typed edge or missing block terminator creates a localized recovery node while preceding declarations and later siblings remain queryable.
 - AE4. A valid family fixture containing named statements cannot pass `structured` if its body is captured only as a raw line or generic unknown statement.

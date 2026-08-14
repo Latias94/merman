@@ -51,13 +51,13 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `ratex`, `rough-rs`, `roughjs`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
 The independently versioned Tree-sitter Mermaid language source package and its pinned syntax and compatibility references.
 
-Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
+Components: `monaqa-tree-sitter-mermaid`, `pappasam-tree-sitter-mermaid`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`.
 
 ### `typst-publish`
 
@@ -421,14 +421,14 @@ The language package uses this grammar as the fixed downstream editor compatibil
 
 ### pappasam/tree-sitter-mermaid (`pappasam-tree-sitter-mermaid`)
 
-The language package pins this MIT grammar as its implementation seed; path-level relationships are promoted to copied or modified before derived source is admitted.
+The language package modifies selected grammar helpers and Flowchart/Mindmap seeds; metadata/derivations.json records each local path and source range.
 
 - Version: `0.1.0`
 - Source: <https://github.com/pappasam/tree-sitter-mermaid.git>
 - Source ref: `main`
 - Source commit: `1a11e2d8cf11afcfdb768f537c1a9bde294c24f9`
 - Source path: `.`
-- Relationship: `behavior-reference`
+- Relationship: `behavior-reference`, `modified`
 - License expression: `MIT`
 - Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
 - Local evidence: `distribution/tree-sitter-mermaid`
@@ -516,16 +516,32 @@ The language package retains this implementation as an additional behavior refer
 - Legal files:
   - [`THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE) (license, SHA-256 `601f9a3a5d582af11bd0386a3352435f8765b1d35bee882e5dc7ebb29cf3b540`)
 
+### Tree-sitter (`tree-sitter-generator`)
+
+The language package uses the pinned generator, copies its generated support headers, and modifies its C, Rust, and Node binding templates.
+
+- Version: `0.26.12`
+- Source: <https://github.com/tree-sitter/tree-sitter.git>
+- Source ref: `v0.26.12`
+- Source commit: `808e4b1fc06e269a107c4bd8bd936cc6fde18b00`
+- Source path: `.`
+- Relationship: `copied`, `generated`, `modified`
+- License expression: `MIT`
+- Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
+- Local evidence: `distribution/tree-sitter-mermaid`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/tree-sitter/LICENSE`](THIRD_PARTY_LICENSES/tree-sitter/LICENSE) (license, SHA-256 `c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78`)
+
 ### Mermaid (tree-sitter-mermaid baseline) (`tree-sitter-mermaid-mermaid-baseline`)
 
-The language package translates the exact Mermaid 11.16.1 syntax baseline recorded in its immutable package provenance; this component intentionally does not move with the repository baseline.
+The language package translates the exact Mermaid 11.16.1 syntax baseline and carries Merman-selected representative fixtures recorded against that baseline; this component intentionally does not move with the repository baseline.
 
 - Version: `11.16.1`
 - Source: <https://github.com/mermaid-js/mermaid.git>
 - Source ref: `mermaid@11.16.1`
 - Source commit: `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
 - Source path: `packages/mermaid`
-- Relationship: `behavior-reference`, `translated`
+- Relationship: `behavior-reference`, `fixtures`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
 - Local evidence: `distribution/tree-sitter-mermaid`
@@ -534,14 +550,14 @@ The language package translates the exact Mermaid 11.16.1 syntax baseline record
 
 ### ZenUML Core (tree-sitter-mermaid baseline) (`tree-sitter-mermaid-zenuml-baseline`)
 
-The language package follows the exact ZenUML Core 3.50.1 companion baseline recorded in its immutable package provenance; this component intentionally does not move with the repository baseline.
+The language package follows the exact ZenUML Core 3.50.1 companion baseline and carries its representative wrapper fixture; this component intentionally does not move with the repository baseline.
 
 - Version: `3.50.1`
 - Source: <https://github.com/mermaid-js/zenuml-core.git>
 - Source ref: `v3.50.1`
 - Source commit: `38404ccc14243ed54ab45b804b2eb6f2ca73af36`
 - Source path: `.`
-- Relationship: `behavior-reference`, `translated`
+- Relationship: `behavior-reference`, `fixtures`, `translated`
 - License expression: `MIT`
 - Artifact scopes: `source-archive`, `tree-sitter-mermaid-source`
 - Local evidence: `distribution/tree-sitter-mermaid`

@@ -33,6 +33,17 @@
         "legalComponentId": null
       },
       {
+        "id": "tree-sitter",
+        "kind": "generator-and-template-source",
+        "version": "0.26.12",
+        "repository": "https://github.com/tree-sitter/tree-sitter.git",
+        "ref": "v0.26.12",
+        "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
+        "usage": "Pinned generator, generated support headers, and modified C, Rust, and Node binding templates",
+        "license": "MIT",
+        "legalComponentId": "tree-sitter-generator"
+      },
+      {
         "id": "mermaid",
         "kind": "syntax-authority",
         "version": "11.16.1",
@@ -110,9 +121,10 @@
   },
   "authorities": {
     "mermanFamilyCatalogSha256": "744d1d749c665cf4e52f3fa2a5e381e953e1bc585274418e52382e5c1ab7635d",
-    "grammarSupportSha256": "31516e7cb403eb363bab8439b4fff47ca637ccb35b2de4e4e22cfe241bcaecbd",
+    "grammarSupportSha256": "bae827d04adf704f7d56a9fc30404a3c8dcefce1730ece9029dcaa57b2e327f2",
     "publicFamilyCount": 35
   },
+  "artifactReceiptId": "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613",
   "selectedBaselines": {
     "mermaid": {
       "version": "11.16.1",
@@ -140,9 +152,16 @@
         "architecture-beta"
       ],
       "rootNode": "architecture_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:architecture",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -155,9 +174,16 @@
         "block-beta"
       ],
       "rootNode": "block_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:block",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -174,9 +200,16 @@
         "C4Deployment"
       ],
       "rootNode": "c4_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:c4",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -191,9 +224,16 @@
         "classDiagram-v2"
       ],
       "rootNode": "class_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:class",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -206,9 +246,16 @@
         "cynefin-beta"
       ],
       "rootNode": "cynefin_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:cynefin",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -222,9 +269,16 @@
         "erDiagram"
       ],
       "rootNode": "entity_relationship_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:er",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -237,9 +291,16 @@
         "eventmodeling"
       ],
       "rootNode": "event_modeling_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:eventmodeling",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -256,9 +317,16 @@
         "flowchart-elk TD"
       ],
       "rootNode": "flowchart_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:flowchart",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -271,9 +339,16 @@
         "gantt"
       ],
       "rootNode": "gantt_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:gantt",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -286,9 +361,16 @@
         "gitGraph"
       ],
       "rootNode": "git_graph_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:gitgraph",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -301,9 +383,16 @@
         "info"
       ],
       "rootNode": "info_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:info",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -316,9 +405,16 @@
         "ishikawa-beta"
       ],
       "rootNode": "ishikawa_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:ishikawa",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -331,9 +427,16 @@
         "journey"
       ],
       "rootNode": "journey_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:journey",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -346,9 +449,16 @@
         "kanban"
       ],
       "rootNode": "kanban_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:kanban",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -361,9 +471,16 @@
         "mindmap"
       ],
       "rootNode": "mindmap_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:mindmap",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -377,9 +494,16 @@
         "packet-beta"
       ],
       "rootNode": "packet_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:packet",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -392,9 +516,16 @@
         "pie"
       ],
       "rootNode": "pie_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:pie",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -407,9 +538,16 @@
         "quadrantChart"
       ],
       "rootNode": "quadrant_chart_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:quadrantchart",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -422,9 +560,16 @@
         "radar-beta"
       ],
       "rootNode": "radar_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:radar",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -437,9 +582,16 @@
         "railroad-beta"
       ],
       "rootNode": "railroad_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroad",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -452,9 +604,16 @@
         "railroad-abnf-beta"
       ],
       "rootNode": "railroad_abnf_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroadAbnf",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -467,9 +626,16 @@
         "railroad-ebnf-beta"
       ],
       "rootNode": "railroad_ebnf_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroadEbnf",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -482,9 +648,16 @@
         "railroad-peg-beta"
       ],
       "rootNode": "railroad_peg_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroadPeg",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -497,9 +670,16 @@
         "requirementDiagram"
       ],
       "rootNode": "requirement_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:requirement",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -512,9 +692,16 @@
         "sankey"
       ],
       "rootNode": "sankey_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:sankey",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -527,9 +714,16 @@
         "sequenceDiagram"
       ],
       "rootNode": "sequence_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:sequence",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -544,9 +738,16 @@
         "stateDiagram"
       ],
       "rootNode": "state_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:state",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -559,9 +760,16 @@
         "swimlane-beta"
       ],
       "rootNode": "swimlane_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:swimlane",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -574,9 +782,16 @@
         "timeline"
       ],
       "rootNode": "timeline_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:timeline",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -589,9 +804,16 @@
         "treeView-beta"
       ],
       "rootNode": "tree_view_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:treeView",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -604,9 +826,16 @@
         "treemap-beta"
       ],
       "rootNode": "treemap_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:treemap",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -619,9 +848,16 @@
         "venn-beta"
       ],
       "rootNode": "venn_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:venn",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -634,9 +870,16 @@
         "wardley-beta"
       ],
       "rootNode": "wardley_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:wardley",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -650,9 +893,16 @@
         "xychart-beta"
       ],
       "rootNode": "xy_chart_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:xychart",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
@@ -665,9 +915,16 @@
         "zenuml"
       ],
       "rootNode": "zenuml_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:zenuml",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     }
   ]

@@ -1,0 +1,306 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1123124,
+      "path": "src/parser.c",
+      "sha256": "4571124f7b6db8932a20755a3d11c133de605aa17d3572002776cc4bb4e1b60f"
+    },
+    {
+      "bytes": 221131,
+      "path": "src/grammar.json",
+      "sha256": "b0ab30496963f9a10fa92304776a0c9f872d50e645fb7c6ca49de01635269d2f"
+    },
+    {
+      "bytes": 96031,
+      "path": "src/node-types.json",
+      "sha256": "0961bae20b4f99f9218129eb1871f08bed4cb68e98f7969df67ffdf444de02e5"
+    },
+    {
+      "bytes": 985,
+      "path": "src/tree_sitter/alloc.h",
+      "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+    },
+    {
+      "bytes": 13453,
+      "path": "src/tree_sitter/array.h",
+      "sha256": "20e6ba85abb9d5b7e2e6dedf675c9424a057a06feee03aa3e2dd48a1cb4bf8a2"
+    },
+    {
+      "bytes": 7624,
+      "path": "src/tree_sitter/parser.h",
+      "sha256": "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+    },
+    {
+      "bytes": 418755,
+      "path": "wasm/tree-sitter-mermaid.wasm",
+      "sha256": "442b73f6452d9a32e374d784a48a297e573692d0a36b27f0e4d84a8dbcf49a3d"
+    }
+  ],
+  "baselines": {
+    "mermaid": {
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+      "version": "11.16.1"
+    },
+    "merman-oracle": {
+      "commit": "e4d3169a614f4eca3e4897fe9ee1fd578136db92",
+      "version": "0.8.0-alpha.5"
+    },
+    "zenuml-core": {
+      "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+      "version": "3.50.1"
+    }
+  },
+  "generation": {
+    "grammarCommands": [
+      "tree-sitter generate --abi 14 --js-runtime native --json-summary",
+      "tree-sitter generate --abi 14 --js-runtime node --json-summary"
+    ],
+    "wasmCommand": "tree-sitter build --wasm --output wasm/tree-sitter-mermaid.wasm ."
+  },
+  "inputs": [
+    {
+      "bytes": 1385,
+      "path": "Cargo.toml",
+      "sha256": "67b2382943201dc86b3f331af3f3a2a4f6823b2da18238c153acca199dba9736"
+    },
+    {
+      "bytes": 408,
+      "path": "binding.gyp",
+      "sha256": "e615caaae0919f909a4bd20220c1a9eff69d497b339b1044d176bfa9fce92636"
+    },
+    {
+      "bytes": 311,
+      "path": "bindings/c/tree-sitter-mermaid.pc.in",
+      "sha256": "f8e0851e7d4f647455cf24ae344d5b4d9d55c4f869b91ddfb7425144d187bea2"
+    },
+    {
+      "bytes": 622,
+      "path": "bindings/c/tree_sitter/tree-sitter-mermaid.h.in",
+      "sha256": "80544e1cf928d5e8ecd3ff4c7c07c92f6f8d1643b57ab0bf4d2e3a75d6e85e64"
+    },
+    {
+      "bytes": 641,
+      "path": "bindings/node/binding.cc",
+      "sha256": "fbe6bb25af3e6af59c324e8d760274ba3e936488be8313f4a448054323482529"
+    },
+    {
+      "bytes": 516,
+      "path": "bindings/node/index.d.ts",
+      "sha256": "842a372ba157876e1d3cc58a5a74192e084fe2964077f2ee69cd60e8cd9785b6"
+    },
+    {
+      "bytes": 786,
+      "path": "bindings/node/index.js",
+      "sha256": "79f49f9272651590611f4af11e9a871738e06ba6ed2eddb8ae14e693e540e55b"
+    },
+    {
+      "bytes": 640,
+      "path": "bindings/rust/build.rs",
+      "sha256": "eac0de815865b0c491db5e31f4a18ea1c7878b69310586e44ead741ad7a97bc2"
+    },
+    {
+      "bytes": 4673,
+      "path": "bindings/rust/lib.rs",
+      "sha256": "89d569ee4fe52a768883ffccd19a628818fff83c3f6ce187cf44507d06511e79"
+    },
+    {
+      "bytes": 742,
+      "path": "bindings/wasm/index.js",
+      "sha256": "fe9021b384c97331358925d48aa2e9a2f9921c6a8b46a75e8d84c95d072e6aec"
+    },
+    {
+      "bytes": 3745,
+      "path": "grammar/families/event-modeling.js",
+      "sha256": "beefbfe0962edb9a9c1c90953ecb914ae1283a8dcc92f4478e23a033ce40032c"
+    },
+    {
+      "bytes": 4587,
+      "path": "grammar/families/flowchart.js",
+      "sha256": "aa75bbb28b980b62bb270999de912579486e0d6e14635d2709cba3f957ea2074"
+    },
+    {
+      "bytes": 2423,
+      "path": "grammar/families/kanban.js",
+      "sha256": "1ac0dec8000174c6d8f05989dacb03e65c062469440cf61190c5ac23efa5ae22"
+    },
+    {
+      "bytes": 2350,
+      "path": "grammar/families/mindmap.js",
+      "sha256": "0fc1aff2d6c9cc3e3b86e39c310f2db390275cd89fc0be905cec76610f494665"
+    },
+    {
+      "bytes": 7040,
+      "path": "grammar/families/recognized.js",
+      "sha256": "50be98e2e65b157357354394e4481a668d5256eca3207626275f5dbd84b70878"
+    },
+    {
+      "bytes": 1269,
+      "path": "grammar/families/sankey.js",
+      "sha256": "b40516dafb943415053d6ea9423c8ee0cafee3bfbe42da0573ae9c390e716c21"
+    },
+    {
+      "bytes": 2201,
+      "path": "grammar/families/tree-view.js",
+      "sha256": "c42cf90c03b4a7edaa1fc51e5b9829064a4dc271d9da5aa8c41deb10a50f4679"
+    },
+    {
+      "bytes": 1988,
+      "path": "grammar/families/treemap.js",
+      "sha256": "d42da3d54042893c7a658db3ae008cd5b42be14290f35ecac66dbd37f2f8b0f1"
+    },
+    {
+      "bytes": 3277,
+      "path": "grammar/families/venn.js",
+      "sha256": "f60fab11a92a337b1576210f4d0a918788ed50a643772c3c4f7f07e2673333cc"
+    },
+    {
+      "bytes": 4698,
+      "path": "grammar/families/zenuml.js",
+      "sha256": "58590a864cf2e0ef15935fbc4bbe9cdba36eef3b64039127ab830328544f99fe"
+    },
+    {
+      "bytes": 825,
+      "path": "grammar/shared/common.js",
+      "sha256": "f974a557621fd52eca40c4b39f527cd7261467976f00d4475d6bd0a99482d8fb"
+    },
+    {
+      "bytes": 372,
+      "path": "grammar/shared/header.js",
+      "sha256": "b71cf8a8825d74d816a4e29a95e14734b569c3fafb5e6f6d47fadff125c38c37"
+    },
+    {
+      "bytes": 567,
+      "path": "grammar/shared/indentation.js",
+      "sha256": "3afbdbefd2c962e6ba4dd40ed09db7ac2ea4396d51107a8819d11e9cba07586c"
+    },
+    {
+      "bytes": 535,
+      "path": "grammar/shared/preamble.js",
+      "sha256": "06f0008d7bd93fc1e3e80c482b81038081a0fff51e5851efa75f4439def1ec4d"
+    },
+    {
+      "bytes": 1786,
+      "path": "grammar.js",
+      "sha256": "ee718c5bb0d46a4df5a65a6f90d52fc73b49659bb471d8555f2bbdd54803ac2d"
+    },
+    {
+      "bytes": 8379,
+      "path": "metadata/derivations.json",
+      "sha256": "b4ccca9b89c194cd0d98a9feac6e6ace31a49b7adaff54adb499b377b9d1677e"
+    },
+    {
+      "bytes": 45243,
+      "path": "metadata/evidence/u2-mermaid-header-oracle.json",
+      "sha256": "070ffb8d84bed556429e97511ccb6019a88d6b2b8c253478722a6bceefab83e5"
+    },
+    {
+      "bytes": 8815,
+      "path": "metadata/fixtures/family-roots.json",
+      "sha256": "ffb243b182472af1d95afa74a3ea4543e9480c4d7b4823e4810ad4e4ca4adbf4"
+    },
+    {
+      "bytes": 15198,
+      "path": "metadata/headers.json",
+      "sha256": "731d342be7268c93d2b539dd42dac5632ba015d25863c5a6e903aa0506ca2fbc"
+    },
+    {
+      "bytes": 3529,
+      "path": "metadata/provenance.json",
+      "sha256": "00cff08433da1579f4a26c203c0151ba858bb229114378bb266530d940ea3de3"
+    },
+    {
+      "bytes": 290,
+      "path": "metadata/schema-version.json",
+      "sha256": "3b88076728ad9e5d5343323ac1510d03b6b1960afb7a36f629dfad79200917c6"
+    },
+    {
+      "bytes": 27655,
+      "path": "package-lock.json",
+      "sha256": "dacc5b79fd2ba33f01afaa4e98d23e4f1223e164eedad6d9b8d477b3bea01c71"
+    },
+    {
+      "bytes": 2531,
+      "path": "package.json",
+      "sha256": "3b6635be10842fd0294261d8178bcf75db64f08a2d51f21f600d597a17c28b2e"
+    },
+    {
+      "bytes": 240,
+      "path": "queries/portable/highlights.scm",
+      "sha256": "6c7a7b970291c14c8569eba173f28ccc4cd35710563d52c1da5fd64a352f155c"
+    },
+    {
+      "bytes": 18026,
+      "path": "scripts/generate.py",
+      "sha256": "7ee1868c1701379e730669c911621616e869f92730799d1951fecc2d92f57b92"
+    },
+    {
+      "bytes": 86472,
+      "path": "scripts/header-oracle/package-lock.json",
+      "sha256": "3a8e52743686a89fc09e05ffc42e9709283845765b08075175651d3f10c66b47"
+    },
+    {
+      "bytes": 380,
+      "path": "scripts/header-oracle/package.json",
+      "sha256": "942071e3f4dcf260853001fa5c2ffb1372f2f5b6401d80979c7f3e222824ec54"
+    },
+    {
+      "bytes": 9406,
+      "path": "scripts/header_oracle.js",
+      "sha256": "634eedde7e56c4a43b25b41a4e4c6f1ec9bc9f4254ac12126f3a2e2450de5e97"
+    },
+    {
+      "bytes": 14295,
+      "path": "scripts/header_receipt.js",
+      "sha256": "c2b799d43270d602aa6f3beff1522108da3e1d4e426f86d3d8de3060e126c13c"
+    },
+    {
+      "bytes": 17541,
+      "path": "scripts/mechanics_gate.js",
+      "sha256": "20c13324a6e2a335731052d0eff49fdefe67a0dfe6f3b0122b2f291f395e4d8d"
+    },
+    {
+      "bytes": 1074,
+      "path": "scripts/run_python.js",
+      "sha256": "794b8f22546ce770fd6a44daafcece29e897b2915acc058c3b7f7134e32e4fa5"
+    },
+    {
+      "bytes": 9698,
+      "path": "src/scanner.c",
+      "sha256": "cbaecbc2f2b51c9766e8bbaf0c32009d83958c256dcb60d4eda3adc6235bc35e"
+    },
+    {
+      "bytes": 742,
+      "path": "tree-sitter.json",
+      "sha256": "d46efb7fde359c79f041824cf0bc4874103894cd29703f70238ae0438c9a742c"
+    }
+  ],
+  "language": {
+    "abi": 14,
+    "cstSchemaVersion": 1,
+    "querySchemaVersion": 1,
+    "symbol": "mermaid"
+  },
+  "package": {
+    "name": "tree-sitter-mermaid",
+    "releaseState": "dry-run-only",
+    "version": "0.1.0"
+  },
+  "queryProfiles": [
+    {
+      "bytes": 240,
+      "path": "queries/portable/highlights.scm",
+      "profile": "portable",
+      "sha256": "6c7a7b970291c14c8569eba173f28ccc4cd35710563d52c1da5fd64a352f155c",
+      "surface": "highlights"
+    }
+  ],
+  "receiptId": "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613",
+  "schemaVersion": 1,
+  "toolchain": {
+    "nodeRuntime": "0.25.1",
+    "rustRuntime": "0.26.12",
+    "treeSitterCli": "0.26.12",
+    "wasiSdk": "29.0",
+    "webRuntime": "0.26.12"
+  }
+}

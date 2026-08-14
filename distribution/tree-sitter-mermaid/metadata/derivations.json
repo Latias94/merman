@@ -1,0 +1,328 @@
+{
+  "schemaVersion": 1,
+  "package": "tree-sitter-mermaid",
+  "derivations": [
+    {
+      "localPaths": [
+        "grammar.js",
+        "grammar/shared/common.js",
+        "grammar/shared/preamble.js"
+      ],
+      "localSymbols": [
+        "source_file",
+        "commonRules",
+        "preambleRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "pappasam-tree-sitter-mermaid",
+          "relationship": "modified",
+          "sourcePaths": [
+            "grammar.js:7-24",
+            "grammar.js:308-330"
+          ]
+        },
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagram-api/detectType.ts:36-45",
+            "packages/mermaid/src/diagram-api/regexes.ts:7-12"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/recognized.js",
+        "grammar/shared/header.js",
+        "metadata/headers.json"
+      ],
+      "localSymbols": [
+        "FAMILY_SPECS",
+        "recognizedFamilyRules",
+        "terminatedHeader",
+        "cases"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagram-api/diagram-orchestration.ts:86-127",
+            "packages/mermaid/src/diagrams/*/*Detector.ts",
+            "packages/mermaid/src/diagrams/*/parser/*.jison",
+            "packages/parser/src/language/**/*.langium"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/flowchart.js"
+      ],
+      "localSymbols": [
+        "flowchartRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "pappasam-tree-sitter-mermaid",
+          "relationship": "modified",
+          "sourcePaths": [
+            "grammar.js:369-622"
+          ]
+        },
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/flowchart/parser/flow.jison:116-540"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/mindmap.js"
+      ],
+      "localSymbols": [
+        "mindmapRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "pappasam-tree-sitter-mermaid",
+          "relationship": "modified",
+          "sourcePaths": [
+            "grammar.js:880-923"
+          ]
+        },
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/mindmap/parser/mindmap.jison:21-156",
+            "packages/mermaid/src/diagrams/mindmap/mindmapDb.ts:62-125"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/kanban.js"
+      ],
+      "localSymbols": [
+        "kanbanRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/kanban/parser/kanban.jison:24-190",
+            "packages/mermaid/src/diagrams/kanban/kanbanDb.ts:21-48"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/sankey.js"
+      ],
+      "localSymbols": [
+        "sankeyRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/sankey/parser/sankey.jison:29-64"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/venn.js"
+      ],
+      "localSymbols": [
+        "vennRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/venn/parser/venn.jison:11-146"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/event-modeling.js"
+      ],
+      "localSymbols": [
+        "eventModelingRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/parser/src/language/eventmodeling/event-modeling.langium:9-167"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/treemap.js"
+      ],
+      "localSymbols": [
+        "treemapRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/parser/src/language/treemap/treemap.langium:44-89"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/tree-view.js"
+      ],
+      "localSymbols": [
+        "treeViewRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/parser/src/language/treeView/treeView.langium:26-75",
+            "packages/mermaid/src/diagrams/treeView/boxDrawingPreprocessor.ts:67-208"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/zenuml.js"
+      ],
+      "localSymbols": [
+        "zenumlRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid-zenuml/src/parser.ts:1-27"
+          ]
+        },
+        {
+          "sourceId": "zenuml-core",
+          "relationship": "translated",
+          "sourcePaths": [
+            "src/g4/sequenceLexer.g4:7-180",
+            "src/g4/sequenceParser.g4:7-176"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "src/scanner.c",
+        "grammar/shared/indentation.js"
+      ],
+      "localSymbols": [
+        "tree_sitter_mermaid_external_scanner_scan",
+        "tree_sitter_mermaid_external_scanner_serialize",
+        "tree_sitter_mermaid_external_scanner_deserialize",
+        "indentationExternals"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/mindmap/mindmapDb.ts:62-125",
+            "packages/mermaid/src/diagrams/kanban/kanbanDb.ts:21-48",
+            "packages/parser/src/language/treemap/treemap.langium:44-65",
+            "packages/parser/src/language/treeView/treeView.langium:26-75"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "binding.gyp",
+        "bindings/c/tree-sitter-mermaid.pc.in",
+        "bindings/c/tree_sitter/tree-sitter-mermaid.h.in",
+        "bindings/c/tree_sitter/tree-sitter-mermaid.h",
+        "bindings/node/binding.cc",
+        "bindings/node/index.js",
+        "bindings/node/index.d.ts",
+        "bindings/node/binding_test.js",
+        "bindings/rust/build.rs",
+        "bindings/rust/lib.rs"
+      ],
+      "localSymbols": [
+        "targets",
+        "prefix",
+        "TREE_SITTER_MERMAID_H_",
+        "Initialize",
+        "module.exports",
+        "Language",
+        "main",
+        "LANGUAGE",
+        "NODE_TYPES"
+      ],
+      "sources": [
+        {
+          "sourceId": "tree-sitter",
+          "relationship": "modified",
+          "sourcePaths": [
+            "crates/cli/src/templates/binding.gyp",
+            "crates/cli/src/templates/PARSER_NAME.pc.in",
+            "crates/cli/src/templates/PARSER_NAME.h",
+            "crates/cli/src/templates/js-binding.cc",
+            "crates/cli/src/templates/index.js",
+            "crates/cli/src/templates/index.d.ts",
+            "crates/cli/src/templates/binding_test.js",
+            "crates/cli/src/templates/build.rs",
+            "crates/cli/src/templates/lib.rs"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "src/tree_sitter/alloc.h",
+        "src/tree_sitter/array.h",
+        "src/tree_sitter/parser.h"
+      ],
+      "localSymbols": [
+        "ts_current_malloc",
+        "Array",
+        "TSLexer"
+      ],
+      "sources": [
+        {
+          "sourceId": "tree-sitter",
+          "relationship": "copied",
+          "sourcePaths": [
+            "crates/generate/src/templates/alloc.h",
+            "crates/generate/src/templates/array.h",
+            "crates/generate/src/parser.h.inc"
+          ]
+        }
+      ]
+    }
+  ]
+}

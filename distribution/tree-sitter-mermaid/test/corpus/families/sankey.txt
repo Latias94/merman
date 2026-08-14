@@ -1,0 +1,52 @@
+==================
+quoted fields and embedded newline
+==================
+
+sankey-beta
+"Source, one","Target ""quoted""","12
+.5"
+plain,target,3.25
+
+---
+
+(source_file
+  (sankey_diagram
+    (sankey_header
+      (diagram_keyword))
+    (sankey_body
+      (sankey_record
+        (sankey_field
+          (sankey_quoted_field
+            (sankey_quoted_content)))
+        (sankey_field
+          (sankey_quoted_field
+            (sankey_quoted_content)
+            (sankey_escaped_quote)
+            (sankey_quoted_content)
+            (sankey_escaped_quote)))
+        (sankey_field
+          (sankey_quoted_field
+            (sankey_quoted_content))))
+      (sankey_record
+        (sankey_field
+          (sankey_unquoted_field))
+        (sankey_field
+          (sankey_unquoted_field))
+        (sankey_field
+          (sankey_unquoted_field))))))
+
+==================
+empty fields
+==================
+
+sankey
+,,
+
+---
+
+(source_file
+  (sankey_diagram
+    (sankey_header
+      (diagram_keyword))
+    (sankey_body
+      (sankey_record))))

@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: ubuntu-24.04
+  verify-generation-windows:
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -21,6 +21,37 @@ jobs:
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
+      - name: Install Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install fixed grammar toolchain
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          node distribution/tree-sitter-mermaid/node_modules/tree-sitter-cli/install.js
+
+      - name: Verify cross-platform generation entry
+        run: |
+          npm run check:generated --prefix distribution/tree-sitter-mermaid
+          npm run test:generation-script --prefix distribution/tree-sitter-mermaid
+
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24.13.1
+          cache: npm
+          cache-dependency-path: |
+            distribution/tree-sitter-mermaid/package-lock.json
+            distribution/tree-sitter-mermaid/scripts/header-oracle/package-lock.json
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
@@ -30,7 +61,14 @@ jobs:
           tool: nextest
 
       - name: Install fixed grammar toolchain
-        run: npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+        run: |
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid
+          npm ci --ignore-scripts --prefix distribution/tree-sitter-mermaid/scripts/header-oracle
+          node distribution/tree-sitter-mermaid/node_modules/tree-sitter-cli/install.js
+          npm run build:node --prefix distribution/tree-sitter-mermaid
+
+      - name: Replay pinned Mermaid header oracle
+        run: npm run check:header-oracle --prefix distribution/tree-sitter-mermaid
 
       - name: Verify package boundary and language contract
         run: |
@@ -39,6 +77,7 @@ jobs:
           cargo nextest run --locked -p tree-sitter-mermaid --no-fail-fast
           cargo nextest run --locked -p xtask tree_sitter_mermaid --no-fail-fast
           cargo run --locked -p xtask -- verify-tree-sitter-mermaid
+          npm run check:generated --prefix distribution/tree-sitter-mermaid
           npm test --prefix distribution/tree-sitter-mermaid
           python3 scripts/verify_artifact_dependency_closures.py --representative-targets
 
@@ -51,3 +90,4 @@ jobs:
         run: |
           cargo package --locked -p tree-sitter-mermaid
           npm pack ./distribution/tree-sitter-mermaid --dry-run --json
+          python3 distribution/tree-sitter-mermaid/scripts/package_smoke.py

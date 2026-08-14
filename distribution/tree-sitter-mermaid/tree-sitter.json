@@ -5,6 +5,7 @@
       "camelcase": "Mermaid",
       "scope": "source.mermaid",
       "path": ".",
+      "highlights": "queries/portable/highlights.scm",
       "file-types": [
         "mmd",
         "mermaid"

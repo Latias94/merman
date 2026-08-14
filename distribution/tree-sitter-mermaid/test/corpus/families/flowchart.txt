@@ -1,0 +1,228 @@
+==================
+nodes edges labels and shapes
+==================
+
+flowchart TD
+  A[Start] --> B{Choice}
+  B -->|Yes| C[OK]
+  B -->|No| D[Fail]
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_edge_statement
+        (flow_node
+          (identifier)
+          (flow_shape
+            (flow_square_label
+              (flow_label_text))))
+        (flow_edge
+          (flow_arrow))
+        (flow_node
+          (identifier)
+          (flow_shape
+            (flow_diamond_label
+              (flow_label_text)))))
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow)
+          (flow_edge_label
+            (flow_edge_label_text)))
+        (flow_node
+          (identifier)
+          (flow_shape
+            (flow_square_label
+              (flow_label_text)))))
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow)
+          (flow_edge_label
+            (flow_edge_label_text)))
+        (flow_node
+          (identifier)
+          (flow_shape
+            (flow_square_label
+              (flow_label_text))))))))
+
+==================
+subgraph direction and end stay structural
+==================
+
+flowchart TD
+subgraph cluster
+direction LR
+A --> B
+end
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_subgraph
+        (identifier)
+        (flow_direction_statement
+          (flow_direction_clause))
+        (flow_edge_statement
+          (flow_node
+            (identifier))
+          (flow_edge
+            (flow_arrow))
+          (flow_node
+            (identifier)))
+        (flow_subgraph_end)))))
+
+==================
+incomplete edge stops at its line
+==================
+
+flowchart TD
+A -->
+B --> C
+D
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_incomplete_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow))
+        (flow_edge_recovery))
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow))
+        (flow_node
+          (identifier)))
+      (flow_node_statement
+        (flow_node
+          (identifier))))))
+
+==================
+missing subgraph end stays local
+==================
+
+flowchart TD
+subgraph cluster
+A --> B
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_subgraph
+        (identifier)
+        (flow_edge_statement
+          (flow_node
+            (identifier))
+          (flow_edge
+            (flow_arrow))
+          (flow_node
+            (identifier)))
+        (MISSING flow_subgraph_end)))))
+
+==================
+adjacent arrows do not merge into identifiers
+==================
+
+flowchart TD
+A-->B
+node-id-->next-node
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow))
+        (flow_node
+          (identifier)))
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow))
+        (flow_node
+          (identifier))))))
+
+==================
+direction is contextual
+==================
+
+flowchart TD
+direction LR
+direction LRfoo
+direction LR foo
+direction
+direction[Dir]
+direction:::x
+direction --> B
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_direction_statement
+        (flow_direction_clause))
+      (flow_direction_statement
+        (flow_direction_clause)
+        (flow_direction_trailing_text))
+      (flow_direction_statement
+        (flow_direction_clause)
+        (flow_direction_trailing_text))
+      (flow_node_statement
+        (flow_node
+          (identifier)))
+      (flow_node_statement
+        (flow_node
+          (identifier)
+          (flow_shape
+            (flow_square_label
+              (flow_label_text)))))
+      (flow_node_statement
+        (flow_node
+          (identifier)
+          (flow_class_annotation
+            (identifier))))
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow))
+        (flow_node
+          (identifier))))))

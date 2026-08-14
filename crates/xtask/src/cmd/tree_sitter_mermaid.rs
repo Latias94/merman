@@ -9,14 +9,40 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use tree_sitter_mermaid::{
-    LANGUAGE_ABI, LANGUAGE_SYMBOL, NODE_SCHEMA_VERSION, PACKAGE_VERSION, QUERY_SCHEMA_VERSION,
-    TREE_SITTER_RUST_RUNTIME_VERSION,
+    ARTIFACT_RECEIPT, LANGUAGE_ABI, LANGUAGE_SYMBOL, NODE_SCHEMA_VERSION, PACKAGE_VERSION,
+    QUERY_SCHEMA_VERSION, TREE_SITTER_RUST_RUNTIME_VERSION,
 };
 
 const PACKAGE_ROOT: &str = "distribution/tree-sitter-mermaid";
 const SUPPORT_PATH: &str = "distribution/tree-sitter-mermaid/metadata/support.json";
 const PROVENANCE_PATH: &str = "distribution/tree-sitter-mermaid/metadata/provenance.json";
+const DERIVATIONS_PATH: &str = "distribution/tree-sitter-mermaid/metadata/derivations.json";
+const ARTIFACT_RECEIPT_PATH: &str =
+    "distribution/tree-sitter-mermaid/metadata/artifact-receipt.json";
+const METRICS_PATH: &str = "distribution/tree-sitter-mermaid/metadata/metrics/u2-mechanics.json";
 const SCHEMA_PATH: &str = "distribution/tree-sitter-mermaid/metadata/schema-version.json";
+const HEADER_MANIFEST_PATH: &str = "distribution/tree-sitter-mermaid/metadata/headers.json";
+const HEADER_RECEIPT_PATH: &str =
+    "distribution/tree-sitter-mermaid/metadata/evidence/u2-header-dispatch.json";
+const HEADER_RECEIPT_PACKAGE_PATH: &str = "metadata/evidence/u2-header-dispatch.json";
+const STRICT_HEADER_ORACLE_PATH: &str =
+    "distribution/tree-sitter-mermaid/metadata/evidence/u2-mermaid-header-oracle.json";
+const STRICT_HEADER_ORACLE_PACKAGE_PATH: &str = "metadata/evidence/u2-mermaid-header-oracle.json";
+const HEADER_ORACLE_SCRIPT_PATH: &str = "distribution/tree-sitter-mermaid/scripts/header_oracle.js";
+const HEADER_ORACLE_RUNNER_LOCK_PATH: &str =
+    "distribution/tree-sitter-mermaid/scripts/header-oracle/package-lock.json";
+const CONCATENATED_HEADER_NEGATIVES: [&str; 8] = [
+    "flowchartTD\n",
+    "infoshowInfo\n",
+    "pieshowData\n",
+    "pietitle Foo\n",
+    "gitGraphLR:\n",
+    "swimlane-betaTD\n",
+    "timelineLR\n",
+    "xycharthorizontal\n",
+];
+const FAMILY_FIXTURES_PATH: &str =
+    "distribution/tree-sitter-mermaid/metadata/fixtures/family-roots.json";
 const CONTRACT_PATH: &str = "contracts/tree-sitter/mermaid-language-v1.json";
 const UPSTREAM_LOCK_PATH: &str = "tools/upstreams/REPOS.lock.json";
 const THIRD_PARTY_COMPONENTS_PATH: &str = "docs/release/THIRD_PARTY_COMPONENTS.json";
@@ -24,9 +50,9 @@ const PUBLIC_FAMILY_COUNT: usize = 35;
 const TREE_SITTER_CLI_VERSION: &str = "0.26.12";
 const TREE_SITTER_NODE_VERSION: &str = "0.25.1";
 const TREE_SITTER_WEB_VERSION: &str = "0.26.12";
+const TREE_SITTER_WASI_SDK_VERSION: &str = "29.0";
 const MERMAN_ORACLE_VERSION: &str = "0.8.0-alpha.5";
 const MERMAN_ORACLE_COMMIT: &str = "e4d3169a614f4eca3e4897fe9ee1fd578136db92";
-const TIER_CLAIMS_ENABLED: bool = false;
 const QUERY_PROFILES: [&str; 4] = ["portable", "neovim", "helix", "zed"];
 const QUERY_SURFACES: [&str; 9] = [
     "highlights",
@@ -51,7 +77,12 @@ const EVIDENCE_KINDS: [&str; 10] = [
     "query",
     "recovery",
 ];
-const PACKAGE_LICENSE_COPIES: [(&str, &str, &str); 5] = [
+const PACKAGE_LICENSE_COPIES: [(&str, &str, &str); 6] = [
+    (
+        "tree-sitter",
+        "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
+        "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
+    ),
     (
         "mermaid",
         "THIRD_PARTY_LICENSES/mermaid/LICENSE",
@@ -77,6 +108,47 @@ const PACKAGE_LICENSE_COPIES: [(&str, &str, &str); 5] = [
         "THIRD_PARTY_LICENSES/tree-sitter-mermaid-singularity/LICENSE",
         "THIRD_PARTY_LICENSES/singularity-tree-sitter-mermaid/LICENSE",
     ),
+];
+const GENERATED_ARTIFACTS: [&str; 7] = [
+    "src/parser.c",
+    "src/grammar.json",
+    "src/node-types.json",
+    "src/tree_sitter/alloc.h",
+    "src/tree_sitter/array.h",
+    "src/tree_sitter/parser.h",
+    "wasm/tree-sitter-mermaid.wasm",
+];
+const ATTRIBUTED_PACKAGE_FILES: [&str; 30] = [
+    "binding.gyp",
+    "bindings/c/tree-sitter-mermaid.pc.in",
+    "bindings/c/tree_sitter/tree-sitter-mermaid.h",
+    "bindings/c/tree_sitter/tree-sitter-mermaid.h.in",
+    "bindings/node/binding.cc",
+    "bindings/node/binding_test.js",
+    "bindings/node/index.d.ts",
+    "bindings/node/index.js",
+    "bindings/rust/build.rs",
+    "bindings/rust/lib.rs",
+    "grammar.js",
+    "grammar/families/event-modeling.js",
+    "grammar/families/flowchart.js",
+    "grammar/families/kanban.js",
+    "grammar/families/mindmap.js",
+    "grammar/families/recognized.js",
+    "grammar/families/sankey.js",
+    "grammar/families/tree-view.js",
+    "grammar/families/treemap.js",
+    "grammar/families/venn.js",
+    "grammar/families/zenuml.js",
+    "grammar/shared/common.js",
+    "grammar/shared/header.js",
+    "grammar/shared/indentation.js",
+    "grammar/shared/preamble.js",
+    "metadata/headers.json",
+    "src/scanner.c",
+    "src/tree_sitter/alloc.h",
+    "src/tree_sitter/array.h",
+    "src/tree_sitter/parser.h",
 ];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -191,6 +263,343 @@ struct SourceIdentity {
     legal_component_id: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DerivationMetadata {
+    schema_version: u32,
+    package: String,
+    derivations: Vec<Derivation>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Derivation {
+    local_paths: Vec<String>,
+    local_symbols: Vec<String>,
+    sources: Vec<DerivationSource>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DerivationSource {
+    source_id: String,
+    relationship: String,
+    source_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ArtifactReceipt {
+    receipt_id: String,
+    schema_version: u32,
+    package: PackageIdentity,
+    language: LanguageIdentity,
+    toolchain: ReceiptToolchain,
+    baselines: BTreeMap<String, ReceiptBaseline>,
+    generation: serde_json::Value,
+    query_profiles: Vec<ReceiptQueryProfile>,
+    inputs: Vec<ReceiptFile>,
+    artifacts: Vec<ReceiptFile>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReceiptQueryProfile {
+    profile: String,
+    surface: String,
+    path: String,
+    sha256: String,
+    bytes: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReceiptToolchain {
+    tree_sitter_cli: String,
+    rust_runtime: String,
+    node_runtime: String,
+    web_runtime: String,
+    wasi_sdk: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReceiptBaseline {
+    version: String,
+    commit: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReceiptFile {
+    path: String,
+    sha256: String,
+    bytes: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderDispatchReceipt {
+    schema_version: u32,
+    producer: HeaderReceiptProducer,
+    artifact_receipt_id: String,
+    strict_oracle_receipt: StrictOracleReceiptReference,
+    header_manifest: ReceiptManifest,
+    fixture_manifest: ReceiptManifest,
+    cases: Vec<HeaderReceiptCase>,
+    negative_cases: Vec<HeaderNegativeCase>,
+    eof_negative_cases: Vec<HeaderEofNegativeCase>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleReceiptReference {
+    path: String,
+    sha256: String,
+    receipt_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderReceiptProducer {
+    id: String,
+    version: u32,
+    command: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReceiptManifest {
+    path: String,
+    sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderReceiptCase {
+    kind: String,
+    public_id: String,
+    input_sha256: String,
+    expected_root: String,
+    expected_diagram_type: Option<String>,
+    actual_root: String,
+    has_error: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderNegativeCase {
+    input_sha256: String,
+    actual_roots: Vec<String>,
+    has_error: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderEofNegativeCase {
+    public_id: String,
+    input_sha256: String,
+    actual_roots: Vec<String>,
+    has_error: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderManifest {
+    schema_version: u32,
+    authorities: serde_json::Value,
+    strict_oracle: StrictOracleManifest,
+    cases: Vec<HeaderManifestCase>,
+    strict_header_negatives: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleManifest {
+    receipt_path: String,
+    runner_lock_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HeaderManifestCase {
+    public_id: String,
+    root: String,
+    expected_diagram_type: String,
+    source: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictHeaderOracleReceipt {
+    receipt_id: String,
+    schema_version: u32,
+    producer: StrictOracleProducer,
+    authority: serde_json::Value,
+    header_manifest: ReceiptManifest,
+    runner_lock: ReceiptManifest,
+    runtime_packages: Vec<StrictOracleRuntimePackage>,
+    cases: Vec<StrictOracleCase>,
+    eof_candidate_count: usize,
+    eof_cases: Vec<StrictOracleEofCase>,
+    negative_cases: Vec<StrictOracleNegativeCase>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleProducer {
+    id: String,
+    version: u32,
+    command: String,
+    script: ReceiptManifest,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleRuntimePackage {
+    name: String,
+    version: String,
+    package_json_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleCase {
+    public_id: String,
+    input_sha256: String,
+    expected_diagram_type: String,
+    accepted: bool,
+    diagram_type: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleEofCase {
+    public_id: String,
+    input_sha256: String,
+    expected_diagram_type: String,
+    accepted: bool,
+    diagram_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictOracleNegativeCase {
+    input_sha256: String,
+    accepted: bool,
+    diagram_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FamilyFixture {
+    public_id: String,
+    root: String,
+    source: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MechanicsMetrics {
+    schema_version: u32,
+    checkpoint: String,
+    artifact_receipt_id: String,
+    r#static: StaticMetrics,
+    ratchet: MetricsRatchet,
+    observed: ObservedMetrics,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ObservedMetrics {
+    environment: MetricsEnvironment,
+    build: BuildMetrics,
+    native_node_smoke_parse_milliseconds: f64,
+    native_node_smoke_maximum_resident_set_bytes: u64,
+    wasm_node_smoke_parse_milliseconds: f64,
+    wasm_node_smoke_maximum_resident_set_bytes: u64,
+    smoke_measurement: String,
+    real_corpus: serde_json::Value,
+    synthetic_doubling: serde_json::Value,
+    fresh_and_incremental_work: serde_json::Value,
+    common_short_statement_local_edits: serde_json::Value,
+    query_time: QueryTimeMetrics,
+    wasm_runtime_memory_pages: WasmRuntimeMemoryMetrics,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MetricsEnvironment {
+    os: String,
+    architecture: String,
+    rust: String,
+    node: String,
+    tree_sitter_cli: String,
+    wasi_sdk: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BuildMetrics {
+    two_runtime_two_wasm_generation_wall_milliseconds: u64,
+    rust_release_compile_wall_milliseconds: u64,
+    node_binding_compile_wall_milliseconds: u64,
+    measurement: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QueryTimeMetrics {
+    status: String,
+    native_compile_milliseconds: f64,
+    native_execution_milliseconds: f64,
+    wasm_compile_milliseconds: f64,
+    wasm_execution_milliseconds: f64,
+    measurement: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WasmRuntimeMemoryMetrics {
+    status: String,
+    declared_minimum_pages: u64,
+    initial_pages: u64,
+    observed_peak_pages: u64,
+    max_peak_pages: u64,
+    stress_source_bytes: u64,
+    measurement: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StaticMetrics {
+    generated_c_bytes: u64,
+    wasm_bytes: u64,
+    parser_states: u64,
+    large_states: u64,
+    symbols: u64,
+    fields: u64,
+    external_tokens: u64,
+    conflicts: u64,
+    wasm_declared_minimum_memory_pages: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MetricsRatchet {
+    generated_c_hard_limit_bytes: u64,
+    wasm_hard_limit_bytes: u64,
+    parser_states_investigate_above: u64,
+    large_states_investigate_above: u64,
+    conflicts_allowed: u64,
+    independent_compile_hard_limit_milliseconds: u64,
+    native_smoke_parse_hard_limit_milliseconds: u64,
+    wasm_smoke_parse_hard_limit_milliseconds: u64,
+    native_peak_rss_investigate_above_bytes: u64,
+    wasm_peak_rss_investigate_above_bytes: u64,
+    query_hard_limit_milliseconds: u64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SchemaMetadata {
@@ -267,6 +676,7 @@ struct LanguageContract {
     provenance: ProvenanceMetadata,
     schemas: SchemaMetadata,
     authorities: AuthorityReceipt,
+    artifact_receipt_id: String,
     selected_baselines: SelectedBaselines,
     repository_alignment: RepositoryAlignment,
     families: Vec<ContractFamily>,
@@ -438,21 +848,10 @@ fn validate_support(
         .map(|family| family.public_id.as_str())
         .collect::<BTreeSet<_>>();
     let mut actual = BTreeSet::new();
-    let mut roots = BTreeSet::new();
     for family in &support.families {
         if !actual.insert(family.public_id.as_str()) {
             return Err(format!("duplicate public family {}", family.public_id));
         }
-        if !roots.insert(family.root_node.as_str()) {
-            return Err(format!("duplicate family root {}", family.root_node));
-        }
-        if !valid_root_node(&family.root_node) {
-            return Err(format!(
-                "family {} has invalid root node {:?}",
-                family.public_id, family.root_node
-            ));
-        }
-        validate_family_support(root, family)?;
     }
     let missing = expected.difference(&actual).copied().collect::<Vec<_>>();
     let unexpected = actual.difference(&expected).copied().collect::<Vec<_>>();
@@ -466,6 +865,20 @@ fn validate_support(
             "support metadata has {} rows; expected {PUBLIC_FAMILY_COUNT}",
             support.families.len()
         ));
+    }
+
+    let mut roots = BTreeSet::new();
+    for family in &support.families {
+        if !roots.insert(family.root_node.as_str()) {
+            return Err(format!("duplicate family root {}", family.root_node));
+        }
+        if !valid_root_node(&family.root_node) {
+            return Err(format!(
+                "family {} has invalid root node {:?}",
+                family.public_id, family.root_node
+            ));
+        }
+        validate_family_support(root, family)?;
     }
     Ok(())
 }
@@ -518,12 +931,6 @@ fn validate_family_support(root: &Path, family: &FamilySupport) -> Result<(), St
         }
         return Ok(());
     }
-    if !TIER_CLAIMS_ENABLED {
-        return Err(format!(
-            "family {} cannot claim a support tier before typed gate receipts are admitted",
-            family.public_id
-        ));
-    }
     if tier_rank > 0 && family.evidence.is_empty() {
         return Err(format!(
             "family {} claims support without evidence",
@@ -535,7 +942,7 @@ fn validate_family_support(root: &Path, family: &FamilySupport) -> Result<(), St
     validate_query_applicability(family, tier_rank >= 3, &evidence_kinds)
 }
 
-fn package_evidence_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
+fn package_file_path(root: &Path, relative: &str, purpose: &str) -> Result<PathBuf, String> {
     let relative_path = Path::new(relative);
     if relative.is_empty()
         || relative_path.is_absolute()
@@ -544,7 +951,7 @@ fn package_evidence_path(root: &Path, relative: &str) -> Result<PathBuf, String>
             .all(|component| matches!(component, Component::Normal(_)))
     {
         return Err(format!(
-            "evidence path {relative:?} is not a normalized package path"
+            "{purpose} path {relative:?} is not a normalized package path"
         ));
     }
     let package_root = root
@@ -554,23 +961,388 @@ fn package_evidence_path(root: &Path, relative: &str) -> Result<PathBuf, String>
     let path = package_root.join(relative_path);
     let resolved = path
         .canonicalize()
-        .map_err(|error| format!("failed to resolve evidence path {relative:?}: {error}"))?;
+        .map_err(|error| format!("failed to resolve {purpose} path {relative:?}: {error}"))?;
     if !resolved.starts_with(&package_root) || !resolved.is_file() {
         return Err(format!(
-            "evidence path {relative:?} must resolve to a file inside the language package"
+            "{purpose} path {relative:?} must resolve to a file inside the language package"
         ));
     }
     Ok(resolved)
 }
 
+fn package_evidence_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    package_file_path(root, relative, "evidence")
+}
+
 fn sha256_file(path: &Path) -> Result<String, String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("failed to read evidence {}: {error}", path.display()))?;
+    Ok(sha256_bytes(&bytes))
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
     let mut rendered = String::with_capacity(64);
     for byte in Sha256::digest(bytes) {
         write!(&mut rendered, "{byte:02x}").expect("writing to String cannot fail");
     }
-    Ok(rendered)
+    rendered
+}
+
+fn strict_oracle_case_matches(case: &HeaderManifestCase, result: &StrictOracleCase) -> bool {
+    !case.expected_diagram_type.is_empty()
+        && result.public_id == case.public_id
+        && result.input_sha256 == sha256_bytes(case.source.as_bytes())
+        && result.expected_diagram_type == case.expected_diagram_type
+        && result.accepted
+        && result.diagram_type == case.expected_diagram_type
+}
+
+fn strict_oracle_eof_case_matches(case: &HeaderManifestCase, result: &StrictOracleEofCase) -> bool {
+    !case.expected_diagram_type.is_empty()
+        && result.public_id == case.public_id
+        && result.input_sha256 == sha256_bytes(case.source.as_bytes())
+        && result.expected_diagram_type == case.expected_diagram_type
+        && match (&result.diagram_type, result.accepted) {
+            (Some(diagram_type), true) => diagram_type == &case.expected_diagram_type,
+            (None, false) => true,
+            _ => false,
+        }
+}
+
+fn validate_strict_header_oracle(
+    root: &Path,
+    manifest: &HeaderManifest,
+    reference: &StrictOracleReceiptReference,
+) -> Result<(Vec<HeaderManifestCase>, Vec<HeaderManifestCase>), String> {
+    let oracle: StrictHeaderOracleReceipt = read_json(root, STRICT_HEADER_ORACLE_PATH)?;
+    if reference.path != STRICT_HEADER_ORACLE_PACKAGE_PATH
+        || reference.sha256 != sha256_file(&root.join(STRICT_HEADER_ORACLE_PATH))?
+        || reference.receipt_id != oracle.receipt_id
+        || !valid_sha256(&oracle.receipt_id)
+        || oracle.schema_version != 3
+        || oracle.producer.id != "tree-sitter-mermaid/mermaid-strict-header-oracle"
+        || oracle.producer.version != 3
+        || oracle.producer.command
+            != concat!(
+                "node scripts/header_oracle.js --node-modules ",
+                "scripts/header-oracle/node_modules"
+            )
+        || oracle.producer.script.path != "scripts/header_oracle.js"
+        || oracle.producer.script.sha256 != sha256_file(&root.join(HEADER_ORACLE_SCRIPT_PATH))?
+        || oracle.header_manifest.path != "metadata/headers.json"
+        || oracle.header_manifest.sha256 != sha256_file(&root.join(HEADER_MANIFEST_PATH))?
+        || oracle.runner_lock.path != "scripts/header-oracle/package-lock.json"
+        || oracle.runner_lock.sha256 != sha256_file(&root.join(HEADER_ORACLE_RUNNER_LOCK_PATH))?
+        || manifest.strict_oracle.receipt_path != STRICT_HEADER_ORACLE_PACKAGE_PATH
+        || manifest.strict_oracle.runner_lock_path != "scripts/header-oracle/package-lock.json"
+    {
+        return Err("strict-header oracle identity or input digest drifted".to_string());
+    }
+
+    if oracle
+        .authority
+        .pointer("/mermaid/version")
+        .and_then(serde_json::Value::as_str)
+        != Some("11.16.1")
+        || oracle
+            .authority
+            .pointer("/mermaid/commit")
+            .and_then(serde_json::Value::as_str)
+            != Some("7ecca0cd7f1658ef74f4e7e91f925724ef403bbf")
+        || oracle
+            .authority
+            .pointer("/zenuml/version")
+            .and_then(serde_json::Value::as_str)
+            != Some("3.50.1")
+        || oracle
+            .authority
+            .pointer("/zenuml/commit")
+            .and_then(serde_json::Value::as_str)
+            != Some("38404ccc14243ed54ab45b804b2eb6f2ca73af36")
+        || oracle
+            .authority
+            .pointer("/zenuml/relationship")
+            .and_then(serde_json::Value::as_str)
+            != Some("project-selected companion override")
+    {
+        return Err("strict-header oracle authority drifted".to_string());
+    }
+
+    let expected_packages = [
+        ("mermaid", "11.16.1"),
+        ("@mermaid-js/parser", "1.2.0"),
+        ("@mermaid-js/mermaid-zenuml", "0.2.3"),
+        ("jsdom", "26.1.0"),
+        ("@zenuml/core", "3.50.1"),
+    ]
+    .into_iter()
+    .map(|(name, version)| (name.to_string(), version.to_string()))
+    .collect::<BTreeMap<_, _>>();
+    let mut actual_packages = BTreeMap::new();
+    for package in &oracle.runtime_packages {
+        if !valid_sha256(&package.package_json_sha256)
+            || actual_packages
+                .insert(package.name.clone(), package.version.clone())
+                .is_some()
+        {
+            return Err("strict-header oracle runtime package identity is invalid".to_string());
+        }
+    }
+    if actual_packages != expected_packages {
+        return Err("strict-header oracle runtime package set drifted".to_string());
+    }
+
+    if oracle.cases.len() != manifest.cases.len()
+        || oracle
+            .cases
+            .iter()
+            .zip(&manifest.cases)
+            .any(|(result, case)| !strict_oracle_case_matches(case, result))
+    {
+        return Err("strict-header oracle positive results drifted".to_string());
+    }
+    let eof_candidates = eof_header_candidates(manifest)?;
+    if oracle.eof_candidate_count != eof_candidates.len()
+        || oracle.eof_cases.len() != eof_candidates.len()
+        || oracle
+            .eof_cases
+            .iter()
+            .zip(&eof_candidates)
+            .any(|(result, case)| !strict_oracle_eof_case_matches(case, result))
+    {
+        return Err("strict-header oracle EOF results drifted".to_string());
+    }
+    if oracle.negative_cases.len() != manifest.strict_header_negatives.len()
+        || oracle
+            .negative_cases
+            .iter()
+            .zip(&manifest.strict_header_negatives)
+            .any(|(result, source)| {
+                result.input_sha256 != sha256_bytes(source.as_bytes())
+                    || result.accepted
+                    || result.diagram_type.is_some()
+            })
+    {
+        return Err("strict-header oracle negative results drifted".to_string());
+    }
+    let (accepted, rejected) = eof_candidates
+        .into_iter()
+        .zip(&oracle.eof_cases)
+        .partition::<Vec<_>, _>(|(_, result)| result.accepted);
+    Ok((
+        accepted.into_iter().map(|(case, _)| case).collect(),
+        rejected.into_iter().map(|(case, _)| case).collect(),
+    ))
+}
+
+fn eof_header_candidates(manifest: &HeaderManifest) -> Result<Vec<HeaderManifestCase>, String> {
+    let mut ownership = BTreeMap::<(String, String), (String, String)>::new();
+    let mut candidates = Vec::new();
+    for case in &manifest.cases {
+        let source = case
+            .source
+            .split(['\r', '\n'])
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let key = (case.public_id.clone(), source.clone());
+        if let Some((root, expected_diagram_type)) = ownership.get(&key) {
+            if root != &case.root || expected_diagram_type != &case.expected_diagram_type {
+                return Err(format!(
+                    "EOF header candidate {source:?} has conflicting ownership"
+                ));
+            }
+            continue;
+        }
+        ownership.insert(key, (case.root.clone(), case.expected_diagram_type.clone()));
+        candidates.push(HeaderManifestCase {
+            public_id: case.public_id.clone(),
+            root: case.root.clone(),
+            expected_diagram_type: case.expected_diagram_type.clone(),
+            source,
+        });
+    }
+    Ok(candidates)
+}
+
+fn validate_header_receipt(root: &Path, family: &FamilySupport) -> Result<(), String> {
+    let receipt: HeaderDispatchReceipt = read_json(root, HEADER_RECEIPT_PATH)?;
+    let artifact: ArtifactReceipt = read_json(root, ARTIFACT_RECEIPT_PATH)?;
+    let manifest: HeaderManifest = read_json(root, HEADER_MANIFEST_PATH)?;
+    let fixtures: Vec<FamilyFixture> = read_json(root, FAMILY_FIXTURES_PATH)?;
+
+    let (eof_cases, eof_negative_cases) =
+        validate_strict_header_oracle(root, &manifest, &receipt.strict_oracle_receipt)?;
+
+    if receipt.schema_version != 5
+        || receipt.producer.id != "tree-sitter-mermaid/header-dispatch"
+        || receipt.producer.version != 5
+        || receipt.producer.command != "node scripts/header_receipt.js"
+        || receipt.artifact_receipt_id != artifact.receipt_id
+        || receipt.header_manifest.path != "metadata/headers.json"
+        || receipt.fixture_manifest.path != "metadata/fixtures/family-roots.json"
+        || receipt.header_manifest.sha256 != sha256_file(&root.join(HEADER_MANIFEST_PATH))?
+        || receipt.fixture_manifest.sha256 != sha256_file(&root.join(FAMILY_FIXTURES_PATH))?
+    {
+        return Err(
+            "typed header-dispatch receipt identity or manifest digest drifted".to_string(),
+        );
+    }
+    if manifest.schema_version != 3
+        || manifest
+            .authorities
+            .pointer("/mermaid/version")
+            .and_then(serde_json::Value::as_str)
+            != Some("11.16.1")
+        || manifest
+            .authorities
+            .pointer("/mermaid/commit")
+            .and_then(serde_json::Value::as_str)
+            != Some("7ecca0cd7f1658ef74f4e7e91f925724ef403bbf")
+        || manifest
+            .authorities
+            .pointer("/zenuml/version")
+            .and_then(serde_json::Value::as_str)
+            != Some("3.50.1")
+        || manifest
+            .authorities
+            .pointer("/zenuml/commit")
+            .and_then(serde_json::Value::as_str)
+            != Some("38404ccc14243ed54ab45b804b2eb6f2ca73af36")
+        || manifest
+            .cases
+            .iter()
+            .any(|case| case.expected_diagram_type.is_empty())
+        || CONCATENATED_HEADER_NEGATIVES.iter().any(|source| {
+            !manifest
+                .strict_header_negatives
+                .iter()
+                .any(|negative| negative == source)
+        })
+    {
+        return Err("header manifest authority identity drifted".to_string());
+    }
+
+    let expected_cases = fixtures
+        .iter()
+        .map(|case| {
+            (
+                "baseline".to_string(),
+                case.public_id.clone(),
+                sha256_bytes(case.source.as_bytes()),
+                case.root.clone(),
+                None,
+            )
+        })
+        .chain(manifest.cases.iter().map(|case| {
+            (
+                "header".to_string(),
+                case.public_id.clone(),
+                sha256_bytes(case.source.as_bytes()),
+                case.root.clone(),
+                Some(case.expected_diagram_type.clone()),
+            )
+        }))
+        .chain(eof_cases.iter().map(|case| {
+            (
+                "header-eof".to_string(),
+                case.public_id.clone(),
+                sha256_bytes(case.source.as_bytes()),
+                case.root.clone(),
+                Some(case.expected_diagram_type.clone()),
+            )
+        }))
+        .collect::<BTreeSet<_>>();
+    if expected_cases.len() != fixtures.len() + manifest.cases.len() + eof_cases.len() {
+        return Err("header or fixture manifest repeats a positive case".to_string());
+    }
+    let mut actual_cases = BTreeSet::new();
+    for case in &receipt.cases {
+        if !matches!(case.kind.as_str(), "baseline" | "header" | "header-eof")
+            || !valid_sha256(&case.input_sha256)
+            || case.has_error
+            || case.actual_root != case.expected_root
+            || !actual_cases.insert((
+                case.kind.clone(),
+                case.public_id.clone(),
+                case.input_sha256.clone(),
+                case.expected_root.clone(),
+                case.expected_diagram_type.clone(),
+            ))
+        {
+            return Err("typed header-dispatch receipt contains an invalid result".to_string());
+        }
+    }
+    if actual_cases != expected_cases {
+        return Err("typed header-dispatch receipt does not cover the exact manifests".to_string());
+    }
+
+    let expected_negatives = manifest
+        .strict_header_negatives
+        .iter()
+        .map(|source| sha256_bytes(source.as_bytes()))
+        .collect::<Vec<_>>();
+    let actual_negatives = receipt
+        .negative_cases
+        .iter()
+        .map(|case| {
+            if !valid_sha256(&case.input_sha256)
+                || (!case.has_error && !case.actual_roots.is_empty())
+            {
+                return Err("typed header-dispatch receipt admitted a detector-only input");
+            }
+            Ok(case.input_sha256.clone())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if actual_negatives != expected_negatives {
+        return Err("typed header-dispatch receipt detector negatives drifted".to_string());
+    }
+    let actual_eof_negatives = receipt
+        .eof_negative_cases
+        .iter()
+        .map(|case| {
+            if !valid_sha256(&case.input_sha256)
+                || (!case.has_error && !case.actual_roots.is_empty())
+            {
+                return Err("typed header-dispatch receipt admitted a strict-rejected EOF header");
+            }
+            Ok((case.public_id.clone(), case.input_sha256.clone()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let expected_eof_negatives = eof_negative_cases
+        .iter()
+        .map(|case| (case.public_id.clone(), sha256_bytes(case.source.as_bytes())))
+        .collect::<Vec<_>>();
+    if actual_eof_negatives != expected_eof_negatives {
+        return Err("typed header-dispatch receipt EOF negatives drifted".to_string());
+    }
+    for kind in ["baseline", "header"] {
+        if !receipt.cases.iter().any(|case| {
+            case.kind == kind
+                && case.public_id == family.public_id
+                && case.expected_root == family.root_node
+        }) {
+            return Err(format!(
+                "family {} lacks typed {kind} dispatch evidence",
+                family.public_id
+            ));
+        }
+    }
+    if eof_cases
+        .iter()
+        .any(|case| case.public_id == family.public_id)
+        && !receipt.cases.iter().any(|case| {
+            case.kind == "header-eof"
+                && case.public_id == family.public_id
+                && case.expected_root == family.root_node
+        })
+    {
+        return Err(format!(
+            "family {} lacks typed header-eof dispatch evidence",
+            family.public_id
+        ));
+    }
+    Ok(())
 }
 
 fn evidence_path_matches_kind(kind: &str, path: &str) -> bool {
@@ -578,7 +1350,8 @@ fn evidence_path_matches_kind(kind: &str, path: &str) -> bool {
     match kind {
         "binding" => under("test/bindings/") || path == "metadata/artifact-receipt.json",
         "conformance" => under("test/conformance/"),
-        "corpus" | "header" => under("test/corpus/") && path.ends_with(".txt"),
+        "corpus" => under("test/corpus/") && path.ends_with(".txt"),
+        "header" => path == HEADER_RECEIPT_PACKAGE_PATH,
         "fuzz" => under("fuzz/corpus/"),
         "incremental" => under("test/edits/") && path.ends_with(".json"),
         "metrics" => under("metadata/metrics/") && path.ends_with(".json"),
@@ -645,6 +1418,9 @@ fn validate_evidence(
                 "family {} evidence {} digest drifted: expected {}, actual {actual}",
                 family.public_id, evidence.id, evidence.sha256
             ));
+        }
+        if evidence.kind == "header" {
+            validate_header_receipt(root, family)?;
         }
         kinds.insert(evidence.id.clone(), evidence.kind.clone());
     }
@@ -838,6 +1614,7 @@ fn validate_provenance(provenance: &ProvenanceMetadata) -> Result<(), String> {
     }
     let required = [
         "merman-oracle",
+        "tree-sitter",
         "mermaid",
         "zenuml-core",
         "pappasam-tree-sitter-mermaid",
@@ -890,12 +1667,734 @@ fn validate_provenance(provenance: &ProvenanceMetadata) -> Result<(), String> {
     Ok(())
 }
 
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn validate_derivations(
+    root: &Path,
+    derivations: &DerivationMetadata,
+    provenance: &ProvenanceMetadata,
+) -> Result<(), String> {
+    if derivations.schema_version != 1
+        || derivations.package != "tree-sitter-mermaid"
+        || derivations.derivations.is_empty()
+    {
+        return Err("derivation metadata identity is invalid".to_string());
+    }
+    let source_ids = provenance
+        .sources
+        .iter()
+        .map(|source| source.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let expected_paths = ATTRIBUTED_PACKAGE_FILES
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let mut actual_paths = BTreeSet::new();
+    let mut pappasam_modified = false;
+
+    for derivation in &derivations.derivations {
+        if derivation.local_paths.is_empty()
+            || derivation.local_symbols.is_empty()
+            || derivation.sources.is_empty()
+            || derivation
+                .local_symbols
+                .iter()
+                .any(|symbol| symbol.trim().is_empty())
+        {
+            return Err("derivation entry is incomplete".to_string());
+        }
+        for local_path in &derivation.local_paths {
+            package_file_path(root, local_path, "derivation")?;
+            if !actual_paths.insert(local_path.as_str()) {
+                return Err(format!("derivation path {local_path:?} is repeated"));
+            }
+        }
+        for source in &derivation.sources {
+            if !source_ids.contains(source.source_id.as_str())
+                || !matches!(
+                    source.relationship.as_str(),
+                    "behavior-reference" | "copied" | "modified" | "translated"
+                )
+                || source.source_paths.is_empty()
+                || source
+                    .source_paths
+                    .iter()
+                    .any(|path| path.trim().is_empty())
+            {
+                return Err(format!(
+                    "derivation source {} is incomplete or unknown",
+                    source.source_id
+                ));
+            }
+            if source.source_id == "pappasam-tree-sitter-mermaid"
+                && source.relationship == "modified"
+            {
+                pappasam_modified = true;
+            }
+        }
+    }
+    if actual_paths != expected_paths {
+        return Err(format!(
+            "derivation paths differ from attributed package files; expected={expected_paths:?}, actual={actual_paths:?}"
+        ));
+    }
+    if !pappasam_modified {
+        return Err("pappasam-derived paths are not marked modified".to_string());
+    }
+    Ok(())
+}
+
+fn validate_receipt_files(
+    root: &Path,
+    files: &[ReceiptFile],
+    purpose: &str,
+) -> Result<BTreeMap<String, u64>, String> {
+    let mut paths = BTreeMap::new();
+    for file in files {
+        if !valid_sha256(&file.sha256) || paths.insert(file.path.clone(), file.bytes).is_some() {
+            return Err(format!(
+                "{purpose} receipt entry {:?} is invalid",
+                file.path
+            ));
+        }
+        let path = package_file_path(root, &file.path, purpose)?;
+        let actual_bytes = path
+            .metadata()
+            .map_err(|error| format!("failed to stat {}: {error}", path.display()))?
+            .len();
+        if actual_bytes != file.bytes || sha256_file(&path)? != file.sha256 {
+            return Err(format!(
+                "{purpose} receipt entry {} differs from package bytes",
+                file.path
+            ));
+        }
+    }
+    Ok(paths)
+}
+
+fn validate_artifact_receipt(
+    root: &Path,
+    receipt: &ArtifactReceipt,
+    provenance: &ProvenanceMetadata,
+) -> Result<(), String> {
+    let mut canonical_body =
+        serde_json::to_value(receipt).map_err(|error| format!("invalid receipt body: {error}"))?;
+    canonical_body
+        .as_object_mut()
+        .expect("serialized artifact receipt must be an object")
+        .remove("receiptId");
+    canonical_body.sort_all_objects();
+    let canonical_bytes = serde_json::to_vec(&canonical_body)
+        .map_err(|error| format!("failed to serialize receipt body: {error}"))?;
+    let mut expected_receipt_id = String::with_capacity(64);
+    for byte in Sha256::digest(canonical_bytes) {
+        write!(&mut expected_receipt_id, "{byte:02x}").expect("writing to String cannot fail");
+    }
+
+    if receipt.schema_version != 1
+        || !valid_sha256(&receipt.receipt_id)
+        || receipt.package.name != "tree-sitter-mermaid"
+        || receipt.package.version != PACKAGE_VERSION
+        || receipt.package.release_state != "dry-run-only"
+        || receipt.language.symbol != LANGUAGE_SYMBOL
+        || receipt.language.abi != LANGUAGE_ABI
+        || receipt.language.cst_schema_version != NODE_SCHEMA_VERSION
+        || receipt.language.query_schema_version != QUERY_SCHEMA_VERSION
+    {
+        return Err("artifact receipt digest, package, or language identity drifted".to_string());
+    }
+    if receipt.toolchain.tree_sitter_cli != TREE_SITTER_CLI_VERSION
+        || receipt.toolchain.rust_runtime != TREE_SITTER_RUST_RUNTIME_VERSION
+        || receipt.toolchain.node_runtime != TREE_SITTER_NODE_VERSION
+        || receipt.toolchain.web_runtime != TREE_SITTER_WEB_VERSION
+        || receipt.toolchain.wasi_sdk != TREE_SITTER_WASI_SDK_VERSION
+    {
+        return Err("artifact receipt toolchain identity drifted".to_string());
+    }
+    if !receipt.generation.is_object() {
+        return Err("artifact receipt lacks generation commands".to_string());
+    }
+
+    let source_by_id = provenance
+        .sources
+        .iter()
+        .map(|source| (source.id.as_str(), source))
+        .collect::<BTreeMap<_, _>>();
+    for (receipt_id, source_id) in [
+        ("merman-oracle", "merman-oracle"),
+        ("mermaid", "mermaid"),
+        ("zenuml-core", "zenuml-core"),
+    ] {
+        let baseline = receipt
+            .baselines
+            .get(receipt_id)
+            .ok_or_else(|| format!("artifact receipt lacks {receipt_id} baseline"))?;
+        let source = source_by_id
+            .get(source_id)
+            .expect("provenance source set was validated");
+        if baseline.version != source.version || baseline.commit != source.commit {
+            return Err(format!("artifact receipt {receipt_id} baseline drifted"));
+        }
+    }
+    if receipt.baselines.len() != 3 {
+        return Err("artifact receipt has unexpected baselines".to_string());
+    }
+
+    let artifacts = validate_receipt_files(root, &receipt.artifacts, "artifact")?;
+    let expected_artifacts = GENERATED_ARTIFACTS
+        .into_iter()
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if artifacts.keys().cloned().collect::<BTreeSet<_>>() != expected_artifacts {
+        return Err("artifact receipt file set drifted".to_string());
+    }
+    let inputs = validate_receipt_files(root, &receipt.inputs, "input")?;
+    for required in [
+        "grammar.js",
+        "src/scanner.c",
+        "package-lock.json",
+        "metadata/provenance.json",
+        "metadata/derivations.json",
+        "metadata/headers.json",
+        "metadata/evidence/u2-mermaid-header-oracle.json",
+        "bindings/rust/lib.rs",
+        "bindings/node/index.js",
+        "bindings/wasm/index.js",
+        "bindings/c/tree_sitter/tree-sitter-mermaid.h.in",
+        "scripts/header_receipt.js",
+        "scripts/header_oracle.js",
+        "scripts/header-oracle/package.json",
+        "scripts/header-oracle/package-lock.json",
+    ] {
+        if !inputs.contains_key(required) {
+            return Err(format!("artifact receipt lacks required input {required}"));
+        }
+    }
+    let [query_profile] = receipt.query_profiles.as_slice() else {
+        return Err("artifact receipt must bind exactly one mechanics query profile".to_string());
+    };
+    if query_profile.profile != "portable"
+        || query_profile.surface != "highlights"
+        || query_profile.path != "queries/portable/highlights.scm"
+        || !valid_sha256(&query_profile.sha256)
+        || inputs.get(&query_profile.path) != Some(&query_profile.bytes)
+    {
+        return Err("artifact receipt query profile identity drifted".to_string());
+    }
+    let query_path = package_file_path(root, &query_profile.path, "query profile")?;
+    if query_path
+        .metadata()
+        .map_err(|error| format!("failed to stat {}: {error}", query_path.display()))?
+        .len()
+        != query_profile.bytes
+        || sha256_file(&query_path)? != query_profile.sha256
+    {
+        return Err("artifact receipt query profile differs from package bytes".to_string());
+    }
+    if receipt.receipt_id != expected_receipt_id {
+        return Err("artifact receipt digest does not match its canonical body".to_string());
+    }
+    let c_header = fs::read_to_string(
+        root.join(PACKAGE_ROOT)
+            .join("bindings/c/tree_sitter/tree-sitter-mermaid.h"),
+    )
+    .map_err(|error| format!("failed to read generated C receipt carrier: {error}"))?;
+    let expected_c_carrier = format!(
+        "#define TREE_SITTER_MERMAID_ARTIFACT_RECEIPT_ID \"{}\"",
+        receipt.receipt_id
+    );
+    if !c_header.lines().any(|line| line == expected_c_carrier) {
+        return Err("generated C binding carries a different artifact receipt".to_string());
+    }
+
+    let compiled_receipt: ArtifactReceipt = serde_json::from_str(ARTIFACT_RECEIPT)
+        .map_err(|error| format!("compiled artifact receipt is invalid: {error}"))?;
+    if compiled_receipt.receipt_id != receipt.receipt_id {
+        return Err("compiled Rust binding carries a different artifact receipt".to_string());
+    }
+    Ok(())
+}
+
+fn parser_define(source: &str, name: &str) -> Result<u64, String> {
+    let prefix = format!("#define {name} ");
+    source
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix))
+        .ok_or_else(|| format!("generated parser lacks {name}"))
+        .and_then(|value| {
+            value
+                .parse::<u64>()
+                .map_err(|error| format!("generated parser {name} is invalid: {error}"))
+        })
+}
+
+fn validate_metrics(
+    root: &Path,
+    metrics: &MechanicsMetrics,
+    receipt: &ArtifactReceipt,
+) -> Result<(), String> {
+    if metrics.schema_version != 1
+        || metrics.checkpoint != "u2-mechanics"
+        || metrics.artifact_receipt_id != receipt.receipt_id
+    {
+        return Err("U2 mechanics metrics identity drifted".to_string());
+    }
+    let incremental = &metrics.observed.fresh_and_incremental_work;
+    let metric = |name: &str| {
+        incremental
+            .get(name)
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("U2 metrics lack numeric {name}"))
+    };
+    let source_bytes = metric("sourceBytes")?;
+    let edit_byte = metric("editByte")?;
+    let fresh_bytes = metric("freshSuppliedBytes")?;
+    let fresh_coverage = metric("freshUniqueCoverageBytes")?;
+    let incremental_bytes = metric("incrementalSuppliedBytes")?;
+    let incremental_coverage = metric("incrementalUniqueCoverageBytes")?;
+    let fresh_work = metric("freshProgressCallbacks")?;
+    let incremental_work = metric("incrementalProgressCallbacks")?;
+    let read_limit = metric("maxIncrementalSuppliedPermille")?;
+    let work_limit = metric("maxIncrementalProgressPermille")?;
+    if source_bytes < 256 * 1024
+        || metric("inputChunkBytes")? != 64
+        || edit_byte < source_bytes / 3
+        || edit_byte > source_bytes * 2 / 3
+        || fresh_bytes < source_bytes
+        || fresh_coverage != source_bytes
+        || incremental_bytes * 1000 > source_bytes * read_limit
+        || incremental_coverage * 1000 > source_bytes * read_limit
+        || incremental_work * 1000 > fresh_work * work_limit
+        || read_limit != 10
+        || work_limit != 250
+        || metric("changedNamedNodes")? > 16
+        || incremental
+            .get("measurement")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        return Err("U2 fresh/incremental work ratchet drifted".to_string());
+    }
+
+    let short = &metrics.observed.common_short_statement_local_edits;
+    let short_metric = |value: &serde_json::Value, name: &str| {
+        value
+            .get(name)
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("U2 short-edit metrics lack numeric {name}"))
+    };
+    let short_source = short_metric(short, "sourceBytes")?;
+    let short_fresh_work = short_metric(short, "freshProgressCallbacks")?;
+    let short_supplied_limit = short_metric(short, "maxIncrementalSuppliedBytes")?;
+    let short_coverage_limit = short_metric(short, "maxIncrementalUniqueCoverageBytes")?;
+    let short_work_limit = short_metric(short, "maxIncrementalProgressPermille")?;
+    let operations = short
+        .get("operations")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "U2 short-edit metrics lack operations".to_string())?;
+    if short_source < 256 * 1024
+        || short_metric(short, "inputChunkBytes")? != 64
+        || short_metric(short, "freshSuppliedBytes")? < short_source
+        || short_metric(short, "freshUniqueCoverageBytes")? != short_source
+        || short_supplied_limit != 4096
+        || short_coverage_limit != 4096
+        || short_work_limit != 250
+        || operations.len() != 3
+        || short
+            .get("measurement")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        return Err("U2 common short-statement edit ratchet drifted".to_string());
+    }
+    for (operation, (expected_operation, source_delta)) in operations.iter().zip([
+        ("replace", 0_i64),
+        ("insert-statement", 10),
+        ("delete-statement", -10),
+    ]) {
+        if operation
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+            != Some(expected_operation)
+        {
+            return Err("U2 common short-statement operation identity drifted".to_string());
+        }
+        let positions = operation
+            .get("positions")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "U2 short-edit operation lacks positions".to_string())?;
+        if positions.len() != 3 {
+            return Err("U2 short-edit operation position count drifted".to_string());
+        }
+        for (index, (position, expected_name)) in positions
+            .iter()
+            .zip(["quarter", "middle", "three-quarter"])
+            .enumerate()
+        {
+            let edit_byte = short_metric(position, "editByte")?;
+            let requested = short_source * (index as u64 + 1) / 4;
+            let edited_source = short_metric(position, "editedSourceBytes")?;
+            let supplied = short_metric(position, "incrementalSuppliedBytes")?;
+            let coverage = short_metric(position, "incrementalUniqueCoverageBytes")?;
+            let work = short_metric(position, "incrementalProgressCallbacks")?;
+            if position.get("position").and_then(serde_json::Value::as_str) != Some(expected_name)
+                || edit_byte + 64 < requested
+                || edit_byte > requested + 64
+                || edited_source as i64 != short_source as i64 + source_delta
+                || short_metric(position, "freshSuppliedBytes")? < edited_source
+                || short_metric(position, "freshUniqueCoverageBytes")? != edited_source
+                || short_metric(position, "freshProgressCallbacks")? != short_fresh_work
+                || supplied > short_supplied_limit
+                || coverage > short_coverage_limit
+                || work * 1000 > short_fresh_work * short_work_limit
+            {
+                return Err(format!(
+                    "U2 common short-statement {expected_operation} {expected_name} metrics drifted"
+                ));
+            }
+        }
+    }
+
+    let environment = &metrics.observed.environment;
+    if environment.os != "darwin"
+        || environment.architecture != "arm64"
+        || environment.rust != "1.95.0"
+        || environment.node != "26.7.0"
+        || environment.tree_sitter_cli != receipt.toolchain.tree_sitter_cli
+        || environment.wasi_sdk != receipt.toolchain.wasi_sdk
+    {
+        return Err("U2 metrics measurement environment drifted".to_string());
+    }
+
+    let build = &metrics.observed.build;
+    let compile_limit = metrics.ratchet.independent_compile_hard_limit_milliseconds;
+    if compile_limit != 120_000
+        || build.two_runtime_two_wasm_generation_wall_milliseconds == 0
+        || build.two_runtime_two_wasm_generation_wall_milliseconds > compile_limit
+        || build.rust_release_compile_wall_milliseconds == 0
+        || build.rust_release_compile_wall_milliseconds > compile_limit
+        || build.node_binding_compile_wall_milliseconds == 0
+        || build.node_binding_compile_wall_milliseconds > compile_limit
+        || build.measurement.is_empty()
+    {
+        return Err("U2 generation or independent compile metrics drifted".to_string());
+    }
+
+    let native_parse = metrics.observed.native_node_smoke_parse_milliseconds;
+    let wasm_parse = metrics.observed.wasm_node_smoke_parse_milliseconds;
+    if !native_parse.is_finite()
+        || native_parse <= 0.0
+        || native_parse > metrics.ratchet.native_smoke_parse_hard_limit_milliseconds as f64
+        || !wasm_parse.is_finite()
+        || wasm_parse <= 0.0
+        || wasm_parse > metrics.ratchet.wasm_smoke_parse_hard_limit_milliseconds as f64
+        || metrics
+            .observed
+            .native_node_smoke_maximum_resident_set_bytes
+            == 0
+        || metrics
+            .observed
+            .native_node_smoke_maximum_resident_set_bytes
+            > metrics.ratchet.native_peak_rss_investigate_above_bytes
+        || metrics.observed.wasm_node_smoke_maximum_resident_set_bytes == 0
+        || metrics.observed.wasm_node_smoke_maximum_resident_set_bytes
+            > metrics.ratchet.wasm_peak_rss_investigate_above_bytes
+        || metrics.observed.smoke_measurement.is_empty()
+    {
+        return Err("U2 native or WASM smoke performance metrics drifted".to_string());
+    }
+
+    let real = &metrics.observed.real_corpus;
+    let real_metric = |name: &str| {
+        real.get(name)
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("U2 real-corpus metrics lack numeric {name}"))
+    };
+    let real_source = real_metric("sourceBytes")?;
+    let real_observed_wall = real_metric("observedFreshWallMilliseconds")?;
+    let real_wall_limit = real_metric("maxFreshWallMilliseconds")?;
+    if real_metric("fixtureCount")? != PUBLIC_FAMILY_COUNT as u64
+        || real
+            .get("fixtureManifestSha256")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(|digest| !valid_sha256(digest))
+        || real_source == 0
+        || real_metric("freshSuppliedBytes")? < real_source
+        || real_metric("freshUniqueCoverageBytes")? != real_source
+        || real_metric("freshProgressCallbacks")? == 0
+        || real_observed_wall == 0
+        || real_observed_wall > real_wall_limit
+        || real_wall_limit > 2_000
+        || real
+            .get("measurement")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        return Err("U2 real-corpus metrics drifted".to_string());
+    }
+
+    let doubling = &metrics.observed.synthetic_doubling;
+    if doubling.get("fixture").and_then(serde_json::Value::as_str)
+        != Some("synthetic-flowchart-common-short-statements")
+        || doubling
+            .get("inputChunkBytes")
+            .and_then(serde_json::Value::as_u64)
+            != Some(64)
+        || doubling
+            .get("maxConsecutiveGrowthPermille")
+            .and_then(serde_json::Value::as_u64)
+            != Some(3_000)
+        || doubling
+            .get("runtimeTrials")
+            .and_then(serde_json::Value::as_u64)
+            != Some(3)
+        || doubling
+            .get("measurement")
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        return Err("U2 synthetic-doubling identity drifted".to_string());
+    }
+    let doubling_lanes = doubling
+        .get("lanes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "U2 metrics lack synthetic-doubling lanes".to_string())?;
+    if doubling_lanes.len() != 5 {
+        return Err("U2 synthetic-doubling lane count drifted".to_string());
+    }
+    let mut prior_fresh_work = None;
+    let mut prior_growth_was_threefold = false;
+    let mut runtime_series = BTreeMap::<&str, Vec<f64>>::from([
+        ("native parse", Vec::new()),
+        ("native query", Vec::new()),
+        ("native RSS", Vec::new()),
+        ("WASM parse", Vec::new()),
+        ("WASM query", Vec::new()),
+        ("WASM RSS", Vec::new()),
+        ("WASM pages", Vec::new()),
+    ]);
+    for (lane, target_kib) in doubling_lanes.iter().zip([64_u64, 128, 256, 512, 1024]) {
+        let lane_metric = |name: &str| {
+            lane.get(name)
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(|| format!("U2 doubling metrics lack numeric {name}"))
+        };
+        let source = lane_metric("sourceBytes")?;
+        let fresh_work = lane_metric("freshProgressCallbacks")?;
+        let incremental_work = lane_metric("incrementalProgressCallbacks")?;
+        let observed_wall = lane_metric("observedFreshWallMilliseconds")?;
+        let wall_limit = lane_metric("maxFreshWallMilliseconds")?;
+        if lane_metric("targetKiB")? != target_kib
+            || source < target_kib * 1024
+            || source > target_kib * 1024 + 16
+            || lane_metric("editByte")? < source / 3
+            || lane_metric("editByte")? > source * 2 / 3
+            || lane_metric("freshSuppliedBytes")? < source
+            || lane_metric("freshUniqueCoverageBytes")? != source
+            || fresh_work == 0
+            || lane_metric("incrementalSuppliedBytes")? > 4_096
+            || lane_metric("incrementalUniqueCoverageBytes")? > 4_096
+            || incremental_work == 0
+            || incremental_work * 1_000 > fresh_work * 250
+            || observed_wall == 0
+            || observed_wall > wall_limit
+            || wall_limit > 2_000
+        {
+            return Err(format!("U2 {target_kib} KiB doubling lane drifted"));
+        }
+        if let Some(previous) = prior_fresh_work {
+            let threefold = fresh_work >= previous * 3;
+            if threefold && prior_growth_was_threefold {
+                return Err(
+                    "U2 fresh work has two consecutive at-least-threefold increases".to_string(),
+                );
+            }
+            prior_growth_was_threefold = threefold;
+        }
+        prior_fresh_work = Some(fresh_work);
+
+        for (runtime, label, parse_limit, rss_limit) in [
+            (
+                "nativeRuntime",
+                "native",
+                metrics.ratchet.native_smoke_parse_hard_limit_milliseconds,
+                metrics.ratchet.native_peak_rss_investigate_above_bytes,
+            ),
+            (
+                "wasmRuntime",
+                "WASM",
+                metrics.ratchet.wasm_smoke_parse_hard_limit_milliseconds,
+                metrics.ratchet.wasm_peak_rss_investigate_above_bytes,
+            ),
+        ] {
+            let snapshot = lane
+                .get(runtime)
+                .and_then(serde_json::Value::as_object)
+                .ok_or_else(|| format!("U2 {target_kib} KiB {label} runtime metrics missing"))?;
+            let timing = |name: &str| {
+                snapshot
+                    .get(name)
+                    .and_then(serde_json::Value::as_f64)
+                    .filter(|value| value.is_finite() && *value > 0.0)
+                    .ok_or_else(|| {
+                        format!("U2 {target_kib} KiB {label} runtime lacks valid {name}")
+                    })
+            };
+            let integer = |name: &str| {
+                snapshot
+                    .get(name)
+                    .and_then(serde_json::Value::as_u64)
+                    .filter(|value| *value > 0)
+                    .ok_or_else(|| {
+                        format!("U2 {target_kib} KiB {label} runtime lacks valid {name}")
+                    })
+            };
+            let parse = timing("observedParseMilliseconds")?;
+            let query_compile = timing("observedQueryCompileMilliseconds")?;
+            let query = timing("observedQueryMilliseconds")?;
+            let rss = integer("observedMaximumResidentSetBytes")?;
+            if parse > parse_limit as f64
+                || query_compile > metrics.ratchet.query_hard_limit_milliseconds as f64
+                || query > metrics.ratchet.query_hard_limit_milliseconds as f64
+                || rss > rss_limit
+            {
+                return Err(format!(
+                    "U2 {target_kib} KiB {label} runtime metric exceeded its hard limit"
+                ));
+            }
+            runtime_series
+                .get_mut(if runtime == "nativeRuntime" {
+                    "native parse"
+                } else {
+                    "WASM parse"
+                })
+                .expect("runtime series exists")
+                .push(parse);
+            runtime_series
+                .get_mut(if runtime == "nativeRuntime" {
+                    "native query"
+                } else {
+                    "WASM query"
+                })
+                .expect("runtime series exists")
+                .push(query);
+            runtime_series
+                .get_mut(if runtime == "nativeRuntime" {
+                    "native RSS"
+                } else {
+                    "WASM RSS"
+                })
+                .expect("runtime series exists")
+                .push(rss as f64);
+            if runtime == "wasmRuntime" {
+                let pages = integer("observedMemoryPages")?;
+                if integer("maxMemoryPages")? != 2_048 || pages > 2_048 {
+                    return Err(format!(
+                        "U2 {target_kib} KiB WASM runtime memory metric drifted"
+                    ));
+                }
+                runtime_series
+                    .get_mut("WASM pages")
+                    .expect("runtime series exists")
+                    .push(pages as f64);
+            }
+        }
+    }
+
+    for (name, values) in runtime_series {
+        if values
+            .windows(3)
+            .any(|window| window[1] >= window[0] * 3.0 && window[2] >= window[1] * 3.0)
+        {
+            return Err(format!(
+                "U2 {name} has two consecutive at-least-threefold increases"
+            ));
+        }
+    }
+
+    let query = &metrics.observed.query_time;
+    let query_limit = metrics.ratchet.query_hard_limit_milliseconds as f64;
+    if query.status != "measured"
+        || query.measurement.is_empty()
+        || [
+            query.native_compile_milliseconds,
+            query.native_execution_milliseconds,
+            query.wasm_compile_milliseconds,
+            query.wasm_execution_milliseconds,
+        ]
+        .into_iter()
+        .any(|milliseconds| {
+            !milliseconds.is_finite() || milliseconds <= 0.0 || milliseconds > query_limit
+        })
+    {
+        return Err("U2 portable query timing metrics drifted".to_string());
+    }
+
+    let wasm_memory = &metrics.observed.wasm_runtime_memory_pages;
+    if wasm_memory.status != "measured"
+        || wasm_memory.declared_minimum_pages != metrics.r#static.wasm_declared_minimum_memory_pages
+        || wasm_memory.initial_pages != 512
+        || wasm_memory.observed_peak_pages < wasm_memory.initial_pages
+        || wasm_memory.observed_peak_pages > wasm_memory.max_peak_pages
+        || wasm_memory.max_peak_pages != 2_048
+        || wasm_memory.stress_source_bytes < 1024 * 1024
+        || wasm_memory.measurement.is_empty()
+    {
+        return Err("U2 WASM runtime memory metrics drifted".to_string());
+    }
+
+    let artifact_sizes = receipt
+        .artifacts
+        .iter()
+        .map(|artifact| (artifact.path.as_str(), artifact.bytes))
+        .collect::<BTreeMap<_, _>>();
+    let parser_source = fs::read_to_string(root.join(PACKAGE_ROOT).join("src/parser.c"))
+        .map_err(|error| format!("failed to read generated parser metrics: {error}"))?;
+    let expected = [
+        ("STATE_COUNT", metrics.r#static.parser_states),
+        ("LARGE_STATE_COUNT", metrics.r#static.large_states),
+        ("SYMBOL_COUNT", metrics.r#static.symbols),
+        ("FIELD_COUNT", metrics.r#static.fields),
+        ("EXTERNAL_TOKEN_COUNT", metrics.r#static.external_tokens),
+    ];
+    for (name, recorded) in expected {
+        if parser_define(&parser_source, name)? != recorded {
+            return Err(format!("U2 metrics {name} drifted"));
+        }
+    }
+    if artifact_sizes.get("src/parser.c") != Some(&metrics.r#static.generated_c_bytes)
+        || artifact_sizes.get("wasm/tree-sitter-mermaid.wasm") != Some(&metrics.r#static.wasm_bytes)
+        || metrics.r#static.conflicts != 0
+        || metrics.r#static.wasm_declared_minimum_memory_pages != 2
+        || metrics.ratchet.generated_c_hard_limit_bytes != 10 * 1024 * 1024
+        || metrics.ratchet.wasm_hard_limit_bytes != 5 * 1024 * 1024
+        || metrics.ratchet.conflicts_allowed != 0
+        || metrics.ratchet.native_smoke_parse_hard_limit_milliseconds != 2_000
+        || metrics.ratchet.wasm_smoke_parse_hard_limit_milliseconds != 2_000
+        || metrics.ratchet.native_peak_rss_investigate_above_bytes != 256 * 1024 * 1024
+        || metrics.ratchet.wasm_peak_rss_investigate_above_bytes != 512 * 1024 * 1024
+        || metrics.ratchet.query_hard_limit_milliseconds != 2_000
+        || metrics.r#static.generated_c_bytes > metrics.ratchet.generated_c_hard_limit_bytes
+        || metrics.r#static.wasm_bytes > metrics.ratchet.wasm_hard_limit_bytes
+        || metrics.r#static.parser_states > metrics.ratchet.parser_states_investigate_above
+        || metrics.r#static.large_states > metrics.ratchet.large_states_investigate_above
+    {
+        return Err("U2 mechanics metrics or ratchet limits drifted".to_string());
+    }
+    Ok(())
+}
+
 fn validate_external_sources(
     provenance: &ProvenanceMetadata,
     lock: &RepositoryLock,
     legal: &ThirdPartyContract,
 ) -> Result<(), String> {
     for (source_id, expected_kind, expected_license, revision_may_drift) in [
+        ("tree-sitter", "generator-and-template-source", "MIT", false),
         ("mermaid", "syntax-authority", "MIT", true),
         ("zenuml-core", "companion-syntax-authority", "MIT", true),
         (
@@ -1119,10 +2618,10 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
             .and_then(|package| package.get("publish"))
             .and_then(toml::Value::as_bool)
             != Some(false)
-        || toml_string(
-            &package_manifest,
-            &["dependencies", "tree-sitter", "version"],
-        ) != Some("=0.26.12")
+        || toml_string(&package_manifest, &["dependencies", "tree-sitter-language"])
+            != Some("=0.1.7")
+        || toml_string(&package_manifest, &["dev-dependencies", "tree-sitter"]) != Some("=0.26.12")
+        || toml_string(&package_manifest, &["build-dependencies", "cc"]) != Some("1.2")
         || toml_integer(
             &package_manifest,
             &["package", "metadata", "tree-sitter-mermaid", "language-abi"],
@@ -1160,7 +2659,7 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
         ) != Some(true)
     {
         return Err(
-            "Cargo package identity, runtime pin, legal bundle, or dry-run boundary drifted"
+            "Cargo package identity, binding dependencies, legal bundle, or dry-run boundary drifted"
                 .to_string(),
         );
     }
@@ -1210,6 +2709,15 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
             .and_then(serde_json::Value::as_str)
             != Some(version)
         {
+            return Err(format!("npm package does not pin {name} {version}"));
+        }
+    }
+    let dependencies = package_json
+        .get("dependencies")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "npm dependencies are missing".to_string())?;
+    for (name, version) in [("node-addon-api", "8.9.2"), ("node-gyp-build", "4.8.4")] {
+        if dependencies.get(name).and_then(serde_json::Value::as_str) != Some(version) {
             return Err(format!("npm package does not pin {name} {version}"));
         }
     }
@@ -1289,6 +2797,10 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
         || grammar.get("camelcase").and_then(serde_json::Value::as_str) != Some("Mermaid")
         || grammar.get("scope").and_then(serde_json::Value::as_str) != Some("source.mermaid")
         || grammar.get("path").and_then(serde_json::Value::as_str) != Some(".")
+        || grammar
+            .get("highlights")
+            .and_then(serde_json::Value::as_str)
+            != Some("queries/portable/highlights.scm")
         || json_string_array(grammar.get("file-types")) != Some(vec!["mmd", "mermaid"])
         || grammar
             .get("injection-regex")
@@ -1319,12 +2831,18 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
 fn build_contract(root: &Path) -> Result<LanguageContract, String> {
     let support: SupportMetadata = read_json(root, SUPPORT_PATH)?;
     let provenance: ProvenanceMetadata = read_json(root, PROVENANCE_PATH)?;
+    let derivations: DerivationMetadata = read_json(root, DERIVATIONS_PATH)?;
+    let receipt: ArtifactReceipt = read_json(root, ARTIFACT_RECEIPT_PATH)?;
+    let metrics: MechanicsMetrics = read_json(root, METRICS_PATH)?;
     let schemas: SchemaMetadata = read_json(root, SCHEMA_PATH)?;
     let upstream_lock: RepositoryLock = read_json(root, UPSTREAM_LOCK_PATH)?;
     let legal: ThirdPartyContract = read_json(root, THIRD_PARTY_COMPONENTS_PATH)?;
     let core = core_family_projection()?;
     validate_support(root, &support, &core)?;
     validate_provenance(&provenance)?;
+    validate_derivations(root, &derivations, &provenance)?;
+    validate_artifact_receipt(root, &receipt, &provenance)?;
+    validate_metrics(root, &metrics, &receipt)?;
     validate_schemas(&schemas, &provenance)?;
     validate_external_sources(&provenance, &upstream_lock, &legal)?;
     validate_package_legal_bundle(root, &provenance)?;
@@ -1368,6 +2886,7 @@ fn build_contract(root: &Path) -> Result<LanguageContract, String> {
             grammar_support_sha256,
             public_family_count: PUBLIC_FAMILY_COUNT,
         },
+        artifact_receipt_id: receipt.receipt_id,
         selected_baselines: support.selected_baselines,
         repository_alignment: support.repository_alignment,
         families,
@@ -1436,15 +2955,52 @@ mod tests {
     }
 
     #[test]
-    fn support_metadata_matches_exact_public_catalog_without_claiming_support() {
+    fn strict_header_oracle_rejects_wrong_diagram_type_ownership() {
+        let case = HeaderManifestCase {
+            public_id: "flowchart".to_string(),
+            root: "flowchart_diagram".to_string(),
+            expected_diagram_type: "flowchart-v2".to_string(),
+            source: "flowchart TD\n".to_string(),
+        };
+        let mut result = StrictOracleCase {
+            public_id: case.public_id.clone(),
+            input_sha256: sha256_bytes(case.source.as_bytes()),
+            expected_diagram_type: case.expected_diagram_type.clone(),
+            accepted: true,
+            diagram_type: case.expected_diagram_type.clone(),
+        };
+        assert!(strict_oracle_case_matches(&case, &result));
+
+        result.diagram_type = "flowchart-elk".to_string();
+        assert!(!strict_oracle_case_matches(&case, &result));
+
+        let eof_case = HeaderManifestCase {
+            source: "flowchart".to_string(),
+            ..case
+        };
+        let eof_result = StrictOracleEofCase {
+            public_id: eof_case.public_id.clone(),
+            input_sha256: sha256_bytes(eof_case.source.as_bytes()),
+            expected_diagram_type: eof_case.expected_diagram_type.clone(),
+            accepted: true,
+            diagram_type: Some("flowchart-elk".to_string()),
+        };
+        assert!(!strict_oracle_eof_case_matches(&eof_case, &eof_result));
+    }
+
+    #[test]
+    fn support_metadata_matches_exact_public_catalog_at_recognized_tier() {
         let (support, core) = repository_inputs();
 
         validate_repository_support(&support, &core).expect("valid support metadata");
         assert_eq!(support.families.len(), PUBLIC_FAMILY_COUNT);
         assert!(support.families.iter().all(|family| {
-            family.lifecycle == "planned"
-                && family.support_tier.is_none()
-                && family.evidence.is_empty()
+            family.lifecycle == "active"
+                && family.support_tier.as_deref() == Some("recognized")
+                && family.evidence.len() == 1
+                && family.evidence[0].id == format!("u2-header-dispatch:{}", family.public_id)
+                && family.evidence[0].kind == "header"
+                && family.evidence[0].path == HEADER_RECEIPT_PACKAGE_PATH
                 && family.query_applicability.is_empty()
         }));
     }
@@ -1501,6 +3057,9 @@ mod tests {
                 },
             )]),
         );
+        query.families[0].lifecycle = "planned".to_string();
+        query.families[0].support_tier = None;
+        query.families[0].evidence.clear();
         assert!(
             validate_repository_support(&query, &core)
                 .unwrap_err()
@@ -1670,55 +3229,57 @@ mod tests {
         let evidence_path = evidence_dir.join("header.txt");
         fs::write(&evidence_path, "flowchart TD\n").expect("evidence fixture");
 
-        let (mut support, core) = repository_inputs();
-        support.families[0].evidence.push(FamilyEvidence {
-            id: "header-proof".to_string(),
-            kind: "header".to_string(),
+        let (support, _core) = repository_inputs();
+        let mut family = support.families[0].clone();
+        family.lifecycle = "planned".to_string();
+        family.support_tier = None;
+        family.evidence.clear();
+        family.evidence.push(FamilyEvidence {
+            id: "corpus-proof".to_string(),
+            kind: "corpus".to_string(),
             path: "test/corpus/header.txt".to_string(),
             sha256: sha256_file(&evidence_path).expect("fixture digest"),
         });
-        let error = validate_support(temporary.path(), &support, &core).unwrap_err();
+        let error = validate_family_support(temporary.path(), &family).unwrap_err();
         assert!(error.contains("planned family"));
 
-        support.families[0].lifecycle = "active".to_string();
-        support.families[0].support_tier = Some("recognized".to_string());
-        let error = validate_support(temporary.path(), &support, &core).unwrap_err();
-        assert!(error.contains("before typed gate receipts are admitted"));
+        family.lifecycle = "active".to_string();
+        family.support_tier = Some("recognized".to_string());
+        let error = validate_family_support(temporary.path(), &family).unwrap_err();
+        assert!(error.contains("lacks header evidence"));
 
-        validate_evidence(temporary.path(), &support.families[0])
-            .expect("well-formed inactive evidence");
+        validate_evidence(temporary.path(), &family).expect("well-formed corpus evidence");
 
-        support.families[0].evidence[0].sha256 = "0".repeat(64);
+        family.evidence[0].sha256 = "0".repeat(64);
         assert!(
-            validate_evidence(temporary.path(), &support.families[0])
+            validate_evidence(temporary.path(), &family)
                 .unwrap_err()
                 .contains("digest drifted")
         );
-        support.families[0].evidence[0].sha256 =
-            sha256_file(&evidence_path).expect("fixture digest");
-        support.families[0].evidence[0].kind = "query".to_string();
+        family.evidence[0].sha256 = sha256_file(&evidence_path).expect("fixture digest");
+        family.evidence[0].kind = "query".to_string();
         assert!(
-            validate_evidence(temporary.path(), &support.families[0])
+            validate_evidence(temporary.path(), &family)
                 .unwrap_err()
                 .contains("runner-owned path")
         );
-        support.families[0].evidence[0].kind = "header".to_string();
-        support.families[0].query_applicability.insert(
+        family.evidence[0].kind = "corpus".to_string();
+        family.query_applicability.insert(
             "portable".to_string(),
             BTreeMap::from([(
                 "highlights".to_string(),
                 QueryApplicability {
                     status: "asserted".to_string(),
-                    evidence: vec!["header-proof".to_string()],
+                    evidence: vec!["corpus-proof".to_string()],
                     rationale: None,
                 },
             )]),
         );
         assert!(
             validate_query_applicability(
-                &support.families[0],
+                &family,
                 false,
-                &BTreeMap::from([("header-proof".to_string(), "header".to_string())]),
+                &BTreeMap::from([("corpus-proof".to_string(), "corpus".to_string())]),
             )
             .unwrap_err()
             .contains("unverified query evidence")
@@ -1740,6 +3301,105 @@ mod tests {
     }
 
     #[test]
+    fn derivation_coverage_and_source_relationships_are_enforced() {
+        let root = crate::cmd::workspace_root();
+        let provenance: ProvenanceMetadata = read_json(&root, PROVENANCE_PATH).expect("provenance");
+        let mut derivations: DerivationMetadata =
+            read_json(&root, DERIVATIONS_PATH).expect("derivations");
+
+        derivations.derivations[0].local_paths.remove(0);
+        assert!(
+            validate_derivations(&root, &derivations, &provenance)
+                .unwrap_err()
+                .contains("differ from attributed package files")
+        );
+
+        let mut derivations: DerivationMetadata =
+            read_json(&root, DERIVATIONS_PATH).expect("derivations");
+        derivations.derivations[0].sources[0].source_id = "unknown-source".to_string();
+        assert!(
+            validate_derivations(&root, &derivations, &provenance)
+                .unwrap_err()
+                .contains("incomplete or unknown")
+        );
+    }
+
+    #[test]
+    fn artifact_receipt_binds_real_files_and_compiled_binding() {
+        let root = crate::cmd::workspace_root();
+        let provenance: ProvenanceMetadata = read_json(&root, PROVENANCE_PATH).expect("provenance");
+        let mut receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+
+        receipt.artifacts[0].sha256 = "0".repeat(64);
+        assert!(
+            validate_artifact_receipt(&root, &receipt, &provenance)
+                .unwrap_err()
+                .contains("differs from package bytes")
+        );
+
+        let mut receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+        receipt.receipt_id = "0".repeat(64);
+        assert!(
+            validate_artifact_receipt(&root, &receipt, &provenance)
+                .unwrap_err()
+                .contains("receipt digest")
+        );
+
+        let mut receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+        receipt.language.abi += 1;
+        assert!(
+            validate_artifact_receipt(&root, &receipt, &provenance)
+                .unwrap_err()
+                .contains("language identity drifted")
+        );
+
+        let mut receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+        receipt.query_profiles[0].sha256 = "0".repeat(64);
+        assert!(
+            validate_artifact_receipt(&root, &receipt, &provenance)
+                .unwrap_err()
+                .contains("query profile differs")
+        );
+    }
+
+    #[test]
+    fn mechanics_metrics_match_generated_macros_and_hard_budgets() {
+        let root = crate::cmd::workspace_root();
+        let receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+        let mut metrics: MechanicsMetrics = read_json(&root, METRICS_PATH).expect("metrics");
+
+        validate_metrics(&root, &metrics, &receipt).expect("current metrics");
+        metrics.ratchet.parser_states_investigate_above = 1;
+        assert!(
+            validate_metrics(&root, &metrics, &receipt)
+                .unwrap_err()
+                .contains("ratchet limits")
+        );
+
+        let mut metrics: MechanicsMetrics = read_json(&root, METRICS_PATH).expect("metrics");
+        metrics.observed.native_node_smoke_parse_milliseconds = 0.0;
+        assert!(
+            validate_metrics(&root, &metrics, &receipt)
+                .unwrap_err()
+                .contains("smoke performance")
+        );
+
+        let mut metrics: MechanicsMetrics = read_json(&root, METRICS_PATH).expect("metrics");
+        metrics.observed.synthetic_doubling["lanes"][0]["nativeRuntime"]["observedParseMilliseconds"] =
+            serde_json::json!(0.0);
+        assert!(
+            validate_metrics(&root, &metrics, &receipt)
+                .unwrap_err()
+                .contains("runtime lacks valid observedParseMilliseconds")
+        );
+    }
+
+    #[test]
     fn rendered_contract_contains_35_unique_roots_and_two_authority_digests() {
         let contract = build_contract(&crate::cmd::workspace_root()).expect("language contract");
         let roots = contract
@@ -1752,5 +3412,6 @@ mod tests {
         assert_eq!(roots.len(), PUBLIC_FAMILY_COUNT);
         assert_eq!(contract.authorities.merman_family_catalog_sha256.len(), 64);
         assert_eq!(contract.authorities.grammar_support_sha256.len(), 64);
+        assert_eq!(contract.artifact_receipt_id.len(), 64);
     }
 }

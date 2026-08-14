@@ -4797,7 +4797,12 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 name = "tree-sitter-mermaid"
 version = "0.1.0"
 dependencies = [
+ "cc",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tree-sitter",
+ "tree-sitter-language",
 ]
 
 [[package]]

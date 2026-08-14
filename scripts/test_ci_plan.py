@@ -137,6 +137,24 @@ class PlannerTests(unittest.TestCase):
         selected = {name for name, enabled in plan["owners"].items() if enabled}
         self.assertEqual(selected, {"grammar", "hygiene"})
 
+    def test_tree_sitter_grammar_mechanics_select_fuzz_regressions(self) -> None:
+        for path in (
+            "distribution/tree-sitter-mermaid/grammar.js",
+            "distribution/tree-sitter-mermaid/grammar/families/flowchart.js",
+            "distribution/tree-sitter-mermaid/src/parser.c",
+            "distribution/tree-sitter-mermaid/src/scanner.c",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                selected = {
+                    name for name, enabled in plan["owners"].items() if enabled
+                }
+                self.assertEqual(selected, {"fuzz", "grammar", "hygiene"})
+
     def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
         fixtures = {
             "distribution/tree-sitter-mermaid/Cargo.toml": {

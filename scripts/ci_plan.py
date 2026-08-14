@@ -299,6 +299,16 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path.startswith("distribution/tree-sitter-mermaid/"):
         owners = {"grammar", "hygiene"}
+        if (
+            path == "distribution/tree-sitter-mermaid/grammar.js"
+            or path.startswith("distribution/tree-sitter-mermaid/grammar/")
+            or path
+            in {
+                "distribution/tree-sitter-mermaid/src/parser.c",
+                "distribution/tree-sitter-mermaid/src/scanner.c",
+            }
+        ):
+            owners.add("fuzz")
         if path.endswith(("package.json", "package-lock.json")):
             owners.update({"npm", "security"})
         elif (

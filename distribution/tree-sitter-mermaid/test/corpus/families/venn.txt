@@ -1,0 +1,66 @@
+==================
+sets unions text and styles
+==================
+
+venn-beta
+set A ["Frontend"]: 10
+set B
+  text React ["library"]
+union A,B [Shared]: 4
+text A,B "OpenAPI" ["contract"]
+style A fill:#ffcc00,stroke:rgba(0, 0, 0, 0.5)
+
+---
+
+(source_file
+  (venn_diagram
+    (venn_header
+      (diagram_keyword))
+    (venn_body
+      (venn_set_statement
+        (venn_identifier
+          (identifier))
+        (venn_bracket_label
+          (quoted_string))
+        (number))
+      (venn_set_statement
+        (venn_identifier
+          (identifier)))
+      (venn_indented_text_statement
+        (venn_indented_text_marker)
+        (venn_text_value
+          (identifier))
+        (venn_bracket_label
+          (quoted_string)))
+      (venn_union_statement
+        (venn_identifier_list
+          (venn_identifier
+            (identifier))
+          (venn_identifier
+            (identifier)))
+        (venn_bracket_label
+          (venn_bracket_text))
+        (number))
+      (venn_text_statement
+        (venn_identifier_list
+          (venn_identifier
+            (identifier))
+          (venn_identifier
+            (identifier)))
+        (venn_text_value
+          (quoted_string))
+        (venn_bracket_label
+          (quoted_string)))
+      (venn_style_statement
+        (venn_identifier_list
+          (venn_identifier
+            (identifier)))
+        (venn_style_list
+          (venn_style_field
+            (identifier)
+            (venn_style_value
+              (venn_color)))
+          (venn_style_field
+            (identifier)
+            (venn_style_value
+              (venn_color))))))))

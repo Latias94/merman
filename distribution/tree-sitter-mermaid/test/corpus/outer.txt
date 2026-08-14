@@ -1,0 +1,578 @@
+==================
+empty document
+==================
+
+
+---
+
+(source_file)
+
+==================
+frontmatter directive and comment
+==================
+
+---
+title: Sample
+---
+%%{init: {"theme": "neutral"}}%%
+%% comment
+flowchart TD
+A --> B
+
+---
+
+(source_file
+  (frontmatter
+    (frontmatter_delimiter)
+    (frontmatter_line
+      (frontmatter_content))
+    (frontmatter_delimiter))
+  (directive)
+  (comment)
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flowchart_body
+      (flow_edge_statement
+        (flow_node
+          (identifier))
+        (flow_edge
+          (flow_arrow))
+        (flow_node
+          (identifier))))))
+
+==================
+architecture header
+==================
+
+architecture-beta
+
+---
+
+(source_file
+  (architecture_diagram
+    (architecture_header
+      (diagram_keyword))))
+
+==================
+block header
+==================
+
+block
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))))
+
+==================
+c4 header
+==================
+
+C4Context
+
+---
+
+(source_file
+  (c4_diagram
+    (c4_header
+      (diagram_keyword))))
+
+==================
+class header
+==================
+
+classDiagram
+
+---
+
+(source_file
+  (class_diagram
+    (class_header
+      (diagram_keyword))))
+
+==================
+cynefin header
+==================
+
+cynefin-beta:
+
+---
+
+(source_file
+  (cynefin_diagram
+    (cynefin_header
+      (diagram_keyword))))
+
+==================
+entity relationship header
+==================
+
+erDiagram
+
+---
+
+(source_file
+  (entity_relationship_diagram
+    (entity_relationship_header
+      (diagram_keyword))))
+
+==================
+event modeling header
+==================
+
+eventmodeling
+
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))))
+
+==================
+flowchart header
+==================
+
+flowchart TD
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))))
+
+==================
+extended flowchart header direction
+==================
+
+flowchart BR
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))))
+
+==================
+gantt header
+==================
+
+gantt
+
+---
+
+(source_file
+  (gantt_diagram
+    (gantt_header
+      (diagram_keyword))))
+
+==================
+git graph header
+==================
+
+gitGraph LR:
+
+---
+
+(source_file
+  (git_graph_diagram
+    (git_graph_header
+      (diagram_keyword)
+      (git_graph_direction))))
+
+==================
+info header
+==================
+
+info
+
+---
+
+(source_file
+  (info_diagram
+    (info_header
+      (diagram_keyword))))
+
+==================
+ishikawa header
+==================
+
+ishikawa-beta
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword))))
+
+==================
+journey header
+==================
+
+journey
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))))
+
+==================
+kanban header
+==================
+
+kanban
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))))
+
+==================
+mindmap header
+==================
+
+mindmap
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))))
+
+==================
+packet header
+==================
+
+packet
+
+---
+
+(source_file
+  (packet_diagram
+    (packet_header
+      (diagram_keyword))))
+
+==================
+pie header
+==================
+
+pie showData
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword)
+      (header_option))))
+
+==================
+pie inline title
+==================
+
+pie title NETFLIX
+
+---
+
+(source_file
+  (pie_diagram
+    (pie_header
+      (diagram_keyword)
+      (pie_inline_directive))))
+
+==================
+quadrant chart header
+==================
+
+quadrantChart
+
+---
+
+(source_file
+  (quadrant_chart_diagram
+    (quadrant_chart_header
+      (diagram_keyword))))
+
+==================
+radar header
+==================
+
+radar-beta:
+
+---
+
+(source_file
+  (radar_diagram
+    (radar_header
+      (diagram_keyword))))
+
+==================
+railroad header
+==================
+
+railroad-beta
+
+---
+
+(source_file
+  (railroad_diagram
+    (railroad_header
+      (diagram_keyword))))
+
+==================
+railroad ABNF header
+==================
+
+railroad-abnf-beta
+
+---
+
+(source_file
+  (railroad_abnf_diagram
+    (railroad_abnf_header
+      (diagram_keyword))))
+
+==================
+railroad EBNF header
+==================
+
+railroad-ebnf-beta
+
+---
+
+(source_file
+  (railroad_ebnf_diagram
+    (railroad_ebnf_header
+      (diagram_keyword))))
+
+==================
+railroad PEG header
+==================
+
+railroad-peg-beta
+
+---
+
+(source_file
+  (railroad_peg_diagram
+    (railroad_peg_header
+      (diagram_keyword))))
+
+==================
+requirement header
+==================
+
+requirementDiagram
+
+---
+
+(source_file
+  (requirement_diagram
+    (requirement_header
+      (diagram_keyword))))
+
+==================
+sankey header
+==================
+
+sankey
+
+---
+
+(source_file
+  (sankey_diagram
+    (sankey_header
+      (diagram_keyword))))
+
+==================
+sequence header
+==================
+
+sequenceDiagram
+
+---
+
+(source_file
+  (sequence_diagram
+    (sequence_header
+      (diagram_keyword))))
+
+==================
+state header
+==================
+
+stateDiagram-v2
+
+---
+
+(source_file
+  (state_diagram
+    (state_header
+      (diagram_keyword))))
+
+==================
+swimlane header
+==================
+
+swimlane-beta LR
+
+---
+
+(source_file
+  (swimlane_diagram
+    (swimlane_header
+      (diagram_keyword)
+      (direction))))
+
+==================
+extended swimlane header direction
+==================
+
+swimlane-beta <
+
+---
+
+(source_file
+  (swimlane_diagram
+    (swimlane_header
+      (diagram_keyword)
+      (direction))))
+
+==================
+timeline header
+==================
+
+timeline TD
+
+---
+
+(source_file
+  (timeline_diagram
+    (timeline_header
+      (diagram_keyword)
+      (timeline_direction))))
+
+==================
+tree view header
+==================
+
+treeView-beta
+
+---
+
+(source_file
+  (tree_view_diagram
+    (tree_view_header
+      (diagram_keyword))))
+
+==================
+treemap header
+==================
+
+treemap
+
+---
+
+(source_file
+  (treemap_diagram
+    (treemap_header
+      (diagram_keyword))))
+
+==================
+venn header
+==================
+
+venn-beta
+
+---
+
+(source_file
+  (venn_diagram
+    (venn_header
+      (diagram_keyword))))
+
+==================
+wardley header
+==================
+
+wardley-beta
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))))
+
+==================
+xy chart header
+==================
+
+xychart horizontal
+
+---
+
+(source_file
+  (xy_chart_diagram
+    (xy_chart_header
+      (diagram_keyword)
+      (orientation))))
+
+==================
+ZenUML adapter header
+==================
+
+zenuml
+A.m()
+
+---
+
+(source_file
+  (zenuml_diagram
+    (zenuml_header
+      (diagram_keyword))
+    (zenuml_body
+      (zenuml_message_statement
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_call_chain
+          (zenuml_signature
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_parenthesized_text)))))))
+
+==================
+ZenUML adapter accepts an adjacent body
+==================
+
+zenumlA.method()
+
+---
+
+(source_file
+  (zenuml_diagram
+    (zenuml_header
+      (diagram_keyword))
+    (zenuml_body
+      (zenuml_message_statement
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_call_chain
+          (zenuml_signature
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_parenthesized_text)))))))

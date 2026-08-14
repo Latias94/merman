@@ -11,7 +11,9 @@ description = "Tolerant Tree-sitter grammar and editor queries for Mermaid"
 keywords = ["incremental", "mermaid", "parser", "tree-sitter"]
 categories = ["parsing", "text-editors"]
 publish = false
+build = "bindings/rust/build.rs"
 include = [
+    "/binding.gyp",
     "/bindings/**",
     "/grammar.js",
     "/grammar/**",
@@ -20,6 +22,10 @@ include = [
     "/src/**",
     "/test/**",
     "/tests/**",
+    "/scripts/*.js",
+    "/scripts/*.py",
+    "/scripts/header-oracle/package.json",
+    "/scripts/header-oracle/package-lock.json",
     "/wasm/**",
     "/Cargo.toml",
     "/LICENSE",
@@ -35,7 +41,16 @@ include = [
 path = "bindings/rust/lib.rs"
 
 [dependencies]
-tree-sitter = { version = "=0.26.12", default-features = false, features = ["std"] }
+tree-sitter-language = "=0.1.7"
+
+[build-dependencies]
+cc = "1.2"
+
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tree-sitter = "=0.26.12"
 
 [package.metadata.tree-sitter-mermaid]
 language-abi = 14

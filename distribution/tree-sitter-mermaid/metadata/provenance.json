@@ -29,6 +29,17 @@
       "license": "MIT OR Apache-2.0"
     },
     {
+      "id": "tree-sitter",
+      "kind": "generator-and-template-source",
+      "version": "0.26.12",
+      "repository": "https://github.com/tree-sitter/tree-sitter.git",
+      "ref": "v0.26.12",
+      "commit": "808e4b1fc06e269a107c4bd8bd936cc6fde18b00",
+      "usage": "Pinned generator, generated support headers, and modified C, Rust, and Node binding templates",
+      "license": "MIT",
+      "legalComponentId": "tree-sitter-generator"
+    },
+    {
       "id": "mermaid",
       "kind": "syntax-authority",
       "version": "11.16.1",

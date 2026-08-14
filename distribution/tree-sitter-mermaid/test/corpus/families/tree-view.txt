@@ -1,0 +1,80 @@
+==================
+indentation form and annotations
+==================
+
+treeView-beta
+  my-project/
+      src/
+        App.tsx :::highlight icon(logos:react) ## main component
+    package.json
+    README.md
+
+---
+
+(source_file
+  (tree_view_diagram
+    (tree_view_header
+      (diagram_keyword))
+    (tree_view_body
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)
+          (tree_view_class_annotation
+            (identifier))
+          (tree_view_icon_annotation
+            (tree_view_icon_name))
+          (tree_view_description_annotation
+            (tree_view_description_text))))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name))))))
+
+==================
+box drawing form
+==================
+
+treeView-beta
+├── src/
+│   ├── index.ts
+│   └── utils.ts ## utility functions
+├── package.json
+└── README.md
+
+---
+
+(source_file
+  (tree_view_diagram
+    (tree_view_header
+      (diagram_keyword))
+    (tree_view_body
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)
+          (tree_view_description_annotation
+            (tree_view_description_text))))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name))))))

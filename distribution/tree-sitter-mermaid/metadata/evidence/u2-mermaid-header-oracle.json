@@ -1,0 +1,1395 @@
+{
+  "receiptId": "66c046126c33902c9d1c5dd6ca70a35154c156c0f60999a8de3d03d7d760effd",
+  "schemaVersion": 3,
+  "producer": {
+    "id": "tree-sitter-mermaid/mermaid-strict-header-oracle",
+    "version": 3,
+    "command": "node scripts/header_oracle.js --node-modules scripts/header-oracle/node_modules",
+    "script": {
+      "path": "scripts/header_oracle.js",
+      "sha256": "634eedde7e56c4a43b25b41a4e4c6f1ec9bc9f4254ac12126f3a2e2450de5e97"
+    }
+  },
+  "authority": {
+    "mermaid": {
+      "version": "11.16.1",
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf"
+    },
+    "zenuml": {
+      "version": "3.50.1",
+      "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+      "relationship": "project-selected companion override"
+    }
+  },
+  "headerManifest": {
+    "path": "metadata/headers.json",
+    "sha256": "731d342be7268c93d2b539dd42dac5632ba015d25863c5a6e903aa0506ca2fbc"
+  },
+  "runnerLock": {
+    "path": "scripts/header-oracle/package-lock.json",
+    "sha256": "3a8e52743686a89fc09e05ffc42e9709283845765b08075175651d3f10c66b47"
+  },
+  "runtimePackages": [
+    {
+      "name": "mermaid",
+      "version": "11.16.1",
+      "packageJsonSha256": "5aa9ec13c028ef286462f847211921f972c1f285ed4087fb9ed654daa40246a4"
+    },
+    {
+      "name": "@mermaid-js/parser",
+      "version": "1.2.0",
+      "packageJsonSha256": "e7162caf870c2a887739644abbb7105305612886d311897948fd31a704895e55"
+    },
+    {
+      "name": "@mermaid-js/mermaid-zenuml",
+      "version": "0.2.3",
+      "packageJsonSha256": "85345790db72173c6bffadfa3722dfc54d5a235c86154bc76dcbfa5b79a3d3b7"
+    },
+    {
+      "name": "jsdom",
+      "version": "26.1.0",
+      "packageJsonSha256": "9670cfae0de2c46a3276fa20815328e3903275b04cc8969a6f6be01f2c580043"
+    },
+    {
+      "name": "@zenuml/core",
+      "version": "3.50.1",
+      "packageJsonSha256": "a96f5bdb4dea172972d5d5558611669f863695c4b99f0d5515ad4ad7a1ebf3a3"
+    }
+  ],
+  "cases": [
+    {
+      "publicId": "architecture",
+      "inputSha256": "e686f7661a217d081d29ec64cffccd189a4ee15c3a0b74e4f4eff1b8a02527f1",
+      "expectedDiagramType": "architecture",
+      "accepted": true,
+      "diagramType": "architecture"
+    },
+    {
+      "publicId": "block",
+      "inputSha256": "c7106889122526a18cda8957a0ac245f66fb7ca0070fbf6527af23277631ca90",
+      "expectedDiagramType": "block",
+      "accepted": true,
+      "diagramType": "block"
+    },
+    {
+      "publicId": "block",
+      "inputSha256": "27c029fda971e492301f2b2e74074c2f23497aa4d5ebfa06e2607f99540f6313",
+      "expectedDiagramType": "block",
+      "accepted": true,
+      "diagramType": "block"
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "f2a17ea11296734358dc40a6d7ab8c6062e8e40bf91018eefa9970ca1ccf1d38",
+      "expectedDiagramType": "c4",
+      "accepted": true,
+      "diagramType": "c4"
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "ca950dabf557b1eb0d6c3fefd31789b130ae879e6d053d37620c76958b9b354b",
+      "expectedDiagramType": "c4",
+      "accepted": true,
+      "diagramType": "c4"
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "af86038add60f8b145b5b7bcf7bb93525be525686140c937d71ed3d0e8514f25",
+      "expectedDiagramType": "c4",
+      "accepted": true,
+      "diagramType": "c4"
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "cfd6b89e358429a93f1a0cd2e9bc4c302ce9d7e9ef2fe4a7e7262a96059906af",
+      "expectedDiagramType": "c4",
+      "accepted": true,
+      "diagramType": "c4"
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "009ec04b42e01d8c7fa6e8253052e6d1de573a2aa7694b8b02105b8e98c68874",
+      "expectedDiagramType": "c4",
+      "accepted": true,
+      "diagramType": "c4"
+    },
+    {
+      "publicId": "class",
+      "inputSha256": "85151a40d3a16d8a1613f3fd92b86df21abb815e76e9db81e0d41a179c7bb93d",
+      "expectedDiagramType": "class",
+      "accepted": true,
+      "diagramType": "class"
+    },
+    {
+      "publicId": "class",
+      "inputSha256": "dbfaae47d6bfad9e318144ad1b50ad8fc97172dbed6036d748bc4f72869f876b",
+      "expectedDiagramType": "classDiagram",
+      "accepted": true,
+      "diagramType": "classDiagram"
+    },
+    {
+      "publicId": "cynefin",
+      "inputSha256": "c81e0c2109e59cdcfbc2d9d9f882b1708d656b058a055f89ccd3c8e42073b97f",
+      "expectedDiagramType": "cynefin",
+      "accepted": true,
+      "diagramType": "cynefin"
+    },
+    {
+      "publicId": "cynefin",
+      "inputSha256": "bd9b6e3d39f9b8d0ff56c2f6617393635fb623b8066f952918d9d2b217e66f46",
+      "expectedDiagramType": "cynefin",
+      "accepted": true,
+      "diagramType": "cynefin"
+    },
+    {
+      "publicId": "er",
+      "inputSha256": "74ae87fd89fe0e9f4cfa8da895ab6527ef4da22c4cd1de2a703dd51149114558",
+      "expectedDiagramType": "er",
+      "accepted": true,
+      "diagramType": "er"
+    },
+    {
+      "publicId": "eventmodeling",
+      "inputSha256": "01f286140dbcaa34ac02ad7b4363befa940bb2c4e5634aba47ad5f2628fb60d7",
+      "expectedDiagramType": "eventmodeling",
+      "accepted": true,
+      "diagramType": "eventmodeling"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "7d4664e2da859ac26f76419e49fe6050f85ab18c5cc5fdc1b2a4398e4e4f7e18",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "a3d27ba5ee895011ffbdc9d1f782a009e5ea4df40a8cdcd7a1346ab3802937c4",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "d64ee7977758cccf2f7daf73b1d7d71ec947b8098f03c0fb4179ba3d6ff06d8c",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "68a5b750419ef8ead88789ea4538ce9eb87239635989a532151382d1b16ee09b",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "96c22355a10f82ccba17be9998bbde1bc9980a9a23f8076d78cadcf2fa7ffb56",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "0aa08df11a2354a38ba59851e224f1c344f977175a8f09ad13f83a9dba101d97",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "ea16c922d7f5142fcdc416b37e3aa93e74e6926560f59d49a95ae3e19fb7ef57",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "1ec7033f2362a0e33222f13a501adeb8d123b0c6d4acf33790bdeec1af4eb880",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "ad4bce48abfd42be31f004f6001266652166831d1ba05b36309758359c3d4702",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "6346b0b54c79f033a29599d9d50d2b715bb818b157c7903283e6b3ae39b05e04",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "1844bc16e29c814d61897716f046a6663a109148e46f36debafc7cc2d7b1e174",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "66a5eaff1a8e9bc309ce47c4e7b47b8cd763fab6bf292fe780c707ae1a4b463c",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "6bb0cbfa418732bfe126f4d0ad6b10cd99282fdedf1b02f53dad3f3bc191badb",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "7fc8e622e2a9bc7a5f5788e03dd475502807595b9c7279af0c4764159567c423",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "0e493784489dd8cfb3057ae76116feb797ed8345c8e8fe7a2189cfebfafcbea3",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "08abbef4cd091b63069e5ee70bc399e3e470729bc483509fe0b5f719c69eae05",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "c815777efebd22036da652b93f803c9ffd3420bcf5c7cc8759ec452da5233f94",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "994f34a4cf7563c9f6997b1a17bc0e1f6777d34b6e5a26750481ca91ce8310d0",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "eeca3dba93b79398f8e7937b8bd243b11fae30d54e6ad35d9a83647a19d1cac3",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "c63d797e9458663abcf1d0c12489a2794c4ba71552c1d0eb386c8a78db54ae23",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "afa0a4a06f917de505958855fbfd8603ce86b6d08d0f9c81eb43756249dad7c5",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "gantt",
+      "inputSha256": "a38563979d0c96ce07cb0937f20dec127345b881aee5a0efcedd5440e4e767a4",
+      "expectedDiagramType": "gantt",
+      "accepted": true,
+      "diagramType": "gantt"
+    },
+    {
+      "publicId": "gitgraph",
+      "inputSha256": "3397b3e44aa989de1e5acd387c14b2e0e1cd109042eba230640a5ea1ed802ae4",
+      "expectedDiagramType": "gitGraph",
+      "accepted": true,
+      "diagramType": "gitGraph"
+    },
+    {
+      "publicId": "gitgraph",
+      "inputSha256": "9750c5b2175bba9b7a3ac603c27876ce23af1881ca0cc287c565e6d605bb2d8b",
+      "expectedDiagramType": "gitGraph",
+      "accepted": true,
+      "diagramType": "gitGraph"
+    },
+    {
+      "publicId": "gitgraph",
+      "inputSha256": "0b46478a44a84384ee9a6a3fedae1697af2bb164f9c663a3174c980c1c878c01",
+      "expectedDiagramType": "gitGraph",
+      "accepted": true,
+      "diagramType": "gitGraph"
+    },
+    {
+      "publicId": "info",
+      "inputSha256": "96bac4de3ce48eccdafa38eb18e0581fe70d26b8d8d5a74ca8af79c77658dcde",
+      "expectedDiagramType": "info",
+      "accepted": true,
+      "diagramType": "info"
+    },
+    {
+      "publicId": "info",
+      "inputSha256": "181c99c6e2a9f4ff262e3fa3472b7f43b9c6e514c2648eb4243ba99c923371b9",
+      "expectedDiagramType": "info",
+      "accepted": true,
+      "diagramType": "info"
+    },
+    {
+      "publicId": "ishikawa",
+      "inputSha256": "540f890300a9f2e23ea319579c682298b8e45be46644215a125847deeab73846",
+      "expectedDiagramType": "ishikawa",
+      "accepted": true,
+      "diagramType": "ishikawa"
+    },
+    {
+      "publicId": "ishikawa",
+      "inputSha256": "b6bb5ad714eab0f1461e5a6f35d72b60465a59640091a58e42ded7d651b002b0",
+      "expectedDiagramType": "ishikawa",
+      "accepted": true,
+      "diagramType": "ishikawa"
+    },
+    {
+      "publicId": "journey",
+      "inputSha256": "1c6c3c994053be5ce8b50a53a57e316866692d8745c80eaee1aef5ef7954803d",
+      "expectedDiagramType": "journey",
+      "accepted": true,
+      "diagramType": "journey"
+    },
+    {
+      "publicId": "kanban",
+      "inputSha256": "d33ed63a3949b1f1b32e02a29c1644f90a3070629923d699ab59635d9741a435",
+      "expectedDiagramType": "kanban",
+      "accepted": true,
+      "diagramType": "kanban"
+    },
+    {
+      "publicId": "mindmap",
+      "inputSha256": "68ef292246ab73293e4829a0a984f8a30760faccaa84ecbc12481205c450c4d4",
+      "expectedDiagramType": "mindmap",
+      "accepted": true,
+      "diagramType": "mindmap"
+    },
+    {
+      "publicId": "packet",
+      "inputSha256": "68d68c74f6cf22edab9fcb536f2680630f8c473e57e35d5150ab98974cdc84a6",
+      "expectedDiagramType": "packet",
+      "accepted": true,
+      "diagramType": "packet"
+    },
+    {
+      "publicId": "packet",
+      "inputSha256": "b56f1af80f2b37d3a7269563fc9c0b0fd18c3c3dbd7cc56a82c50a8733d1fc99",
+      "expectedDiagramType": "packet",
+      "accepted": true,
+      "diagramType": "packet"
+    },
+    {
+      "publicId": "pie",
+      "inputSha256": "30188fcd6f35401396fb1ab2014510831cf407ad81b0b96896e992b1fae35bed",
+      "expectedDiagramType": "pie",
+      "accepted": true,
+      "diagramType": "pie"
+    },
+    {
+      "publicId": "pie",
+      "inputSha256": "fb5da74411ac600b9d26775e60b40176237ed2e336927a915852da27166cb2ef",
+      "expectedDiagramType": "pie",
+      "accepted": true,
+      "diagramType": "pie"
+    },
+    {
+      "publicId": "pie",
+      "inputSha256": "59b369b99d68940b1d7dfa65a8b8a711edb25249b8d5640f7bc1f3b4b5a9d95e",
+      "expectedDiagramType": "pie",
+      "accepted": true,
+      "diagramType": "pie"
+    },
+    {
+      "publicId": "quadrantchart",
+      "inputSha256": "716297b90788d7c54553e14117d18a7607009c988f2928eb35a1fb6de61aee8f",
+      "expectedDiagramType": "quadrantChart",
+      "accepted": true,
+      "diagramType": "quadrantChart"
+    },
+    {
+      "publicId": "radar",
+      "inputSha256": "9d40877cefeefbd1ed1fe7c11572e30606d1e0028505b7b07049f7f7f56e3ecd",
+      "expectedDiagramType": "radar",
+      "accepted": true,
+      "diagramType": "radar"
+    },
+    {
+      "publicId": "radar",
+      "inputSha256": "dd927a3602bdf954e1a5c573e8b3ecfe6fbec3162f1a67bf793f2dbad877f743",
+      "expectedDiagramType": "radar",
+      "accepted": true,
+      "diagramType": "radar"
+    },
+    {
+      "publicId": "railroad",
+      "inputSha256": "e5677a884630f61ab03db272baad49291c4e8b26db363cc7e6c803ba03a6dbee",
+      "expectedDiagramType": "railroad",
+      "accepted": true,
+      "diagramType": "railroad"
+    },
+    {
+      "publicId": "railroadAbnf",
+      "inputSha256": "c1c90bd865af30c0e917ff0090b4e3dae289f768b45b5d0335ab20a0b65b00a6",
+      "expectedDiagramType": "railroadAbnf",
+      "accepted": true,
+      "diagramType": "railroadAbnf"
+    },
+    {
+      "publicId": "railroadEbnf",
+      "inputSha256": "834cc3eca7357e67d4d1d3388bd4541f1984c35b0c3fcda045a30f39c5131bf1",
+      "expectedDiagramType": "railroadEbnf",
+      "accepted": true,
+      "diagramType": "railroadEbnf"
+    },
+    {
+      "publicId": "railroadPeg",
+      "inputSha256": "df20dc6f8b664e73955d0b87619bbe9df0c24e23dc5185414aec309421c54f2b",
+      "expectedDiagramType": "railroadPeg",
+      "accepted": true,
+      "diagramType": "railroadPeg"
+    },
+    {
+      "publicId": "requirement",
+      "inputSha256": "d154a5f1cf276befe915c6955a7280204903439f6838c88eac656a2444391c83",
+      "expectedDiagramType": "requirement",
+      "accepted": true,
+      "diagramType": "requirement"
+    },
+    {
+      "publicId": "requirement",
+      "inputSha256": "bd42c5378f05189c076ac4dae480abcef603dd1641534fae9e5734ac1577d298",
+      "expectedDiagramType": "requirement",
+      "accepted": true,
+      "diagramType": "requirement"
+    },
+    {
+      "publicId": "requirement",
+      "inputSha256": "03482ae42f10751e9e8e534e25db97d8850e32e3a966aa25e046020a4ddf3485",
+      "expectedDiagramType": "requirement",
+      "accepted": true,
+      "diagramType": "requirement"
+    },
+    {
+      "publicId": "sankey",
+      "inputSha256": "69f573ed165cfe23ff4b866e5dd539a59d0e3cf5488f4944699e00191bdd63fc",
+      "expectedDiagramType": "sankey",
+      "accepted": true,
+      "diagramType": "sankey"
+    },
+    {
+      "publicId": "sankey",
+      "inputSha256": "7b0f9723a5a62afa87f440c61f42b15d96ba58f994f9eb6b4905ea5f6d8425c6",
+      "expectedDiagramType": "sankey",
+      "accepted": true,
+      "diagramType": "sankey"
+    },
+    {
+      "publicId": "sankey",
+      "inputSha256": "57748db11dfda78467cf86bb2c676ec6e2feac382960b0d49b22429c363d4739",
+      "expectedDiagramType": "sankey",
+      "accepted": true,
+      "diagramType": "sankey"
+    },
+    {
+      "publicId": "sequence",
+      "inputSha256": "5da24f8a276eceb9f0e982a294c6a09c4e67f7e95b38553c3671445ac9a7c16b",
+      "expectedDiagramType": "sequence",
+      "accepted": true,
+      "diagramType": "sequence"
+    },
+    {
+      "publicId": "state",
+      "inputSha256": "b8e164a60b4083f100868eab327c65c84fbcb28575ad73a347d80ac873dadce3",
+      "expectedDiagramType": "stateDiagram",
+      "accepted": true,
+      "diagramType": "stateDiagram"
+    },
+    {
+      "publicId": "state",
+      "inputSha256": "f74c6486f80c1e9820a901a730eecb3d6f9aa88076f704b87a60bb02b8b24d01",
+      "expectedDiagramType": "stateDiagram",
+      "accepted": true,
+      "diagramType": "stateDiagram"
+    },
+    {
+      "publicId": "state",
+      "inputSha256": "265a2113d726c1257a8e5a32812982033df5064c15e65fdb04b2dbca60262119",
+      "expectedDiagramType": "stateDiagram",
+      "accepted": true,
+      "diagramType": "stateDiagram"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "df09280885bcf865da9c3a67c61714912d0f081119cbea65f426ee91b2cf5e4f",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "1bb35ffd066cb0bce36e70265201f7b04bf845e1b4d75e677c021caf62c23520",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "c77e4686cdf3cb1bf41b11c6e50bfcf8c471e928eb9301ed60c4d58f95eff055",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "a9d5b89c2bc68b66d52acab3f535873f0afacbaea4a914694d69869b4fae295f",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "0e552f38d8c0c41aae716394517bbab3d9488990d2eb7a7d3b3c8946cbcc3252",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "797b5c2da938f2d2ddc7fbe18ae62791e2fe5ff1fca27135e646d4c049266148",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "a6a2667ee44b7950d1349a398d443456a991851b76c30339887f817f27020d42",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "db4dd6502f3f13a113a57bca19f07bb0a92638ce4bb07d3e549c92c1cd52ee5e",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "bdafd4766449b219a38f6377427be2a031f01ae02586799e6b3c73e7752948dd",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "43fdf7b4bef6854afca746ad855dd8b370d3f2daf82de4acc02299d5941ae790",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "treeView",
+      "inputSha256": "f449c9da1d6b97f85c5cec4f14c4b1b8183495522eefa5d430bba08d53a99f70",
+      "expectedDiagramType": "treeView",
+      "accepted": true,
+      "diagramType": "treeView"
+    },
+    {
+      "publicId": "treemap",
+      "inputSha256": "f7746824453f29768a0d97b4578386ebac72f6d3f82052f36912cf52f809fd8f",
+      "expectedDiagramType": "treemap",
+      "accepted": true,
+      "diagramType": "treemap"
+    },
+    {
+      "publicId": "treemap",
+      "inputSha256": "0b27e1147b6528ea1e847698213ec39c87260f30e04a6a6bb84897a1b008856f",
+      "expectedDiagramType": "treemap",
+      "accepted": true,
+      "diagramType": "treemap"
+    },
+    {
+      "publicId": "venn",
+      "inputSha256": "fe65e29b28d41831fa9bc77afdf1764cf459bfde28748e53c9fcb8eccd875c24",
+      "expectedDiagramType": "venn",
+      "accepted": true,
+      "diagramType": "venn"
+    },
+    {
+      "publicId": "wardley",
+      "inputSha256": "432c9e5f42a6f409fa63f437fe34057a474419ed81553a601381706dbcce7729",
+      "expectedDiagramType": "wardley",
+      "accepted": true,
+      "diagramType": "wardley"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "7b7ed6ad2b62a73d1288726fcd6e7d68e7cc0f17c583ef8ed1d829e43647c961",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "56d81e1a8b5a1ed61aedd7ddbf65553611c2560968360e6783ab8a3f8795a8d5",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "e98c794b69e2ed5411feea3926ef9029ab923e1dc5c1d107cd28411dacb6632d",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "36c2353c7265f19e7733456d40f9d3228d8117b3e148dac0231fb6fec88abd26",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "zenuml",
+      "inputSha256": "fba037e920dc8b8ddffdd5da3297e55b9c8d6bf3f310717e55885395b4e760d7",
+      "expectedDiagramType": "zenuml",
+      "accepted": true,
+      "diagramType": "zenuml"
+    },
+    {
+      "publicId": "zenuml",
+      "inputSha256": "b5ab2a0af1fe905be253416b97f983cfbc4e7282441be2ad76b51ade06877c1e",
+      "expectedDiagramType": "zenuml",
+      "accepted": true,
+      "diagramType": "zenuml"
+    }
+  ],
+  "eofCandidateCount": 88,
+  "eofCases": [
+    {
+      "publicId": "architecture",
+      "inputSha256": "08253aa2268b0168bd275fc61bd075fcad90fc1eee903ddcb9d2904249ac2e4b",
+      "expectedDiagramType": "architecture",
+      "accepted": true,
+      "diagramType": "architecture"
+    },
+    {
+      "publicId": "block",
+      "inputSha256": "496aca80e4d8f29fb8e8cd816c3afb48d3f103970b3a2ee1600c08ca67326dee",
+      "expectedDiagramType": "block",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "block",
+      "inputSha256": "7fd03a2a87289549fbf833bff4b5820c0945204bafa6c1b26d53e6768c1641ce",
+      "expectedDiagramType": "block",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "63c49ecc612d6fc8eccbd15a1dbb54394ec280a34d963759c3d96f3c660bad03",
+      "expectedDiagramType": "c4",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "36b83aab46166811cd6ddeb1386a87931aa0684ee2af1720b3b4611300d601c4",
+      "expectedDiagramType": "c4",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "2838486dd4aa457b3579e2f0ac80fbbcd2200a9f828fcc9bbd58c0f524ccd5ea",
+      "expectedDiagramType": "c4",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "e9df70607ca36a6078043b343acbad99c1a8b726501899b0630793395e04f5a0",
+      "expectedDiagramType": "c4",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "c4",
+      "inputSha256": "00bf89fe64a94406e3a49899e66278d12041f241623f3b35e5425a2bc9fe426d",
+      "expectedDiagramType": "c4",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "class",
+      "inputSha256": "417505ab8c45275b4cc90eba0216e14698bfc9b3d27c19b32ee7b322d99a7867",
+      "expectedDiagramType": "class",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "class",
+      "inputSha256": "3efe59b37c432602a522d873541c22b948dd1c06c0e86e659004735b7c97859d",
+      "expectedDiagramType": "classDiagram",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "cynefin",
+      "inputSha256": "869fb40d1c0778726cc062043b46151984baccf5aa486792ef39c496984a1465",
+      "expectedDiagramType": "cynefin",
+      "accepted": true,
+      "diagramType": "cynefin"
+    },
+    {
+      "publicId": "cynefin",
+      "inputSha256": "1f601bd71a368b000446afc956c29ddb7f44764462c2d7b59c751022e5c67e95",
+      "expectedDiagramType": "cynefin",
+      "accepted": true,
+      "diagramType": "cynefin"
+    },
+    {
+      "publicId": "er",
+      "inputSha256": "bb1724dfac14e06528bc76a84ef1e6645bdb1230ea31b8224fdb42c1e1bb6c58",
+      "expectedDiagramType": "er",
+      "accepted": true,
+      "diagramType": "er"
+    },
+    {
+      "publicId": "eventmodeling",
+      "inputSha256": "662b63715358ffb480c4409abd66fef7b5a6c93273d1c5d468c0411b22ed0771",
+      "expectedDiagramType": "eventmodeling",
+      "accepted": true,
+      "diagramType": "eventmodeling"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "a3d27ba5ee895011ffbdc9d1f782a009e5ea4df40a8cdcd7a1346ab3802937c4",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "d64ee7977758cccf2f7daf73b1d7d71ec947b8098f03c0fb4179ba3d6ff06d8c",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "68a5b750419ef8ead88789ea4538ce9eb87239635989a532151382d1b16ee09b",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "41bcac41fe327db8d3f997edfd90997a327cd51a056a79fc98c7d6e7f20f8be9",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "2fa09e54f5d3dd634c28667505cdb96d4a1ca11839c848c5cdc35a2073842e56",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "f516d430b100e02d7a0a37e3c984a9ae25bbec10165e6fae12d04bbd153c6827",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "3b120df6e82b03e7cbc2f9fce4294b121dd6dd6e43da45280945893470fa41ca",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "1b8b57ea47f661a5e1418b29c85840de67b5474d1212f542701a05dfaffa7efb",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "173072cb4f233a2a14a42595038914d4a0f979a39ec76684e907dcb1c54d5a59",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "f589c588499b392987bc80d2adb341aa8ca37e7295352e841faefedb3b4ecd40",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "5b5a8012d90508b0953de3b8be02354b06091d14693971ae53494e9ac64af8ac",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "30d51935ba924a24993781719739fe44482a45c86bb6b64d03e9d19142259eec",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "f10c465ddcfdb9507a5bfeb5ab815d8d3f5210128c71d44116779037ac181324",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "e9488968f5367df9034c0350914ec15d7280036041beda69f1fa120dd5bbb9d3",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "e3ae53cee9c38a91e869d73c83b4a8883343fe8a1c6ab3ffce71efbce5c3f396",
+      "expectedDiagramType": "flowchart-v2",
+      "accepted": true,
+      "diagramType": "flowchart-v2"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "2703a836e0aacf262e8e690e2f6a1a903710d963cb2c5be95693f378a8728d59",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "d994f979716be86b122e0f53b12944cb1803ce28bfd9217edb148fd21e0e79f2",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "7a0b00d7e9a564fa74a4bb577b44ad3e086b6ca60bf6f4fbc15d998c2ea7d078",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "1086c23a9d54a9efb6cf2e9e08ab00356f99ffaeb5bb4d080f759074e9b33ae0",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "flowchart",
+      "inputSha256": "2641ac0b3d08eabc1c9e7205119c549fad53b74a0c60980dd64e7c85479b545e",
+      "expectedDiagramType": "flowchart-elk",
+      "accepted": true,
+      "diagramType": "flowchart-elk"
+    },
+    {
+      "publicId": "gantt",
+      "inputSha256": "ddc56d7239508b8e5c0e7b782d06096332a6503bfa0b718100dd061c11e93f73",
+      "expectedDiagramType": "gantt",
+      "accepted": true,
+      "diagramType": "gantt"
+    },
+    {
+      "publicId": "gitgraph",
+      "inputSha256": "a0655f0ceb954df5ace678113540df69d72898311d00edefa56ba2bfa13fff8a",
+      "expectedDiagramType": "gitGraph",
+      "accepted": true,
+      "diagramType": "gitGraph"
+    },
+    {
+      "publicId": "gitgraph",
+      "inputSha256": "550e0c75256953703ae79a9e8a90197b4ab775c6b6f3bf17b7e7d6de23565b20",
+      "expectedDiagramType": "gitGraph",
+      "accepted": true,
+      "diagramType": "gitGraph"
+    },
+    {
+      "publicId": "gitgraph",
+      "inputSha256": "a13f465ee02e9445159174d6c486a493980aaa6455ffafb1cbfb4651dac6da0c",
+      "expectedDiagramType": "gitGraph",
+      "accepted": true,
+      "diagramType": "gitGraph"
+    },
+    {
+      "publicId": "info",
+      "inputSha256": "06271baf49532c879aa3c58b48671884bcc858f09197412d682750496c33e1e1",
+      "expectedDiagramType": "info",
+      "accepted": true,
+      "diagramType": "info"
+    },
+    {
+      "publicId": "info",
+      "inputSha256": "df27ef00b2940c11e53af5a477f38d4fa7bc7fe3a9fa1a2cdb4e4cd3cda295e7",
+      "expectedDiagramType": "info",
+      "accepted": true,
+      "diagramType": "info"
+    },
+    {
+      "publicId": "ishikawa",
+      "inputSha256": "17123fab8a4e39601cf9d2521b2b80de84cd4abb1d1c1061e9b700dbbee27f23",
+      "expectedDiagramType": "ishikawa",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "ishikawa",
+      "inputSha256": "e83de806f426ac59a15ad46af06e0773491685b13b31c1356d49b8670b5c3c7f",
+      "expectedDiagramType": "ishikawa",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "journey",
+      "inputSha256": "cde56892bbebbf6c5fe56cf3317f558aec67aeb0ba19504ca3c9e6801cb45b28",
+      "expectedDiagramType": "journey",
+      "accepted": true,
+      "diagramType": "journey"
+    },
+    {
+      "publicId": "kanban",
+      "inputSha256": "7cc6d962e40fbc035b7a898a48d8aa8d7574a1319d4724c596b22bd06f3f16ac",
+      "expectedDiagramType": "kanban",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "mindmap",
+      "inputSha256": "0e8309dff245264cfe5854f8184c2ed1e98dcb3fa6a4f69b99fd29e0689f62d4",
+      "expectedDiagramType": "mindmap",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "packet",
+      "inputSha256": "7426afc489d0eef99a0b438def226ad139f752350c25cf2c04900281afbb79e0",
+      "expectedDiagramType": "packet",
+      "accepted": true,
+      "diagramType": "packet"
+    },
+    {
+      "publicId": "packet",
+      "inputSha256": "c4580507c7ce0c1cd70c74b51dc2f5a426b081f986e8f761277f1c2d4c85bbc7",
+      "expectedDiagramType": "packet",
+      "accepted": true,
+      "diagramType": "packet"
+    },
+    {
+      "publicId": "pie",
+      "inputSha256": "558211ed72b2d6967037419dff6f1e7cfd002d178c8fdeeb1239760d4e4c4059",
+      "expectedDiagramType": "pie",
+      "accepted": true,
+      "diagramType": "pie"
+    },
+    {
+      "publicId": "pie",
+      "inputSha256": "3b4832e946493a3334807f8cd1ca205661c1c74bdaf9e209019f20b485d9eb0d",
+      "expectedDiagramType": "pie",
+      "accepted": true,
+      "diagramType": "pie"
+    },
+    {
+      "publicId": "pie",
+      "inputSha256": "b0592519abc0055796d3d362977d0ca72d751f26cd6e5ad4e75dcfcadb275168",
+      "expectedDiagramType": "pie",
+      "accepted": true,
+      "diagramType": "pie"
+    },
+    {
+      "publicId": "quadrantchart",
+      "inputSha256": "fe2d2340059f81dc7cb26606a148d58a1047a743221dbf04b5a1e2c95dc50ae3",
+      "expectedDiagramType": "quadrantChart",
+      "accepted": true,
+      "diagramType": "quadrantChart"
+    },
+    {
+      "publicId": "radar",
+      "inputSha256": "f0c0291e45978e37663a924fcd7418a9f20e0702e8a532c77086251f52f19746",
+      "expectedDiagramType": "radar",
+      "accepted": true,
+      "diagramType": "radar"
+    },
+    {
+      "publicId": "radar",
+      "inputSha256": "75b87e1542cebd5b6fc2d847bea8ab0481aff87b1b19cdc118bb0dade7d3f448",
+      "expectedDiagramType": "radar",
+      "accepted": true,
+      "diagramType": "radar"
+    },
+    {
+      "publicId": "railroad",
+      "inputSha256": "4cf1616be56d692884eff6bd00dd6c698c3f68489e878369d99e1165f5a18be1",
+      "expectedDiagramType": "railroad",
+      "accepted": true,
+      "diagramType": "railroad"
+    },
+    {
+      "publicId": "railroadAbnf",
+      "inputSha256": "2cb4c30080b09c20735e4faf4cf171e2eee53d261f46a4c4df7cbefaa6057325",
+      "expectedDiagramType": "railroadAbnf",
+      "accepted": true,
+      "diagramType": "railroadAbnf"
+    },
+    {
+      "publicId": "railroadEbnf",
+      "inputSha256": "0ff977561d79486e124ad2184e8395775b88cfae1a2be7f1f128b440452453c5",
+      "expectedDiagramType": "railroadEbnf",
+      "accepted": true,
+      "diagramType": "railroadEbnf"
+    },
+    {
+      "publicId": "railroadPeg",
+      "inputSha256": "92791660b3b56846e7ff9960f613df93807663f75cc398b33cb0b453f830c840",
+      "expectedDiagramType": "railroadPeg",
+      "accepted": true,
+      "diagramType": "railroadPeg"
+    },
+    {
+      "publicId": "requirement",
+      "inputSha256": "add331b104948909d0b5488554392cc12967d12036fab57edf8fea002ad6c588",
+      "expectedDiagramType": "requirement",
+      "accepted": true,
+      "diagramType": "requirement"
+    },
+    {
+      "publicId": "requirement",
+      "inputSha256": "7c0c60421ffd687328036bb6085c6e8e55ca9b5abfeccd7ee3dd7043dad77d53",
+      "expectedDiagramType": "requirement",
+      "accepted": true,
+      "diagramType": "requirement"
+    },
+    {
+      "publicId": "requirement",
+      "inputSha256": "1be7d9636f2863bea8f1e497bba9e181388d89c63e1c59509858693aef494cf3",
+      "expectedDiagramType": "requirement",
+      "accepted": true,
+      "diagramType": "requirement"
+    },
+    {
+      "publicId": "sankey",
+      "inputSha256": "6b5b2d8b78f87eec6b8208f07da3449505db8d587c0ef64eac03cca63505cf7f",
+      "expectedDiagramType": "sankey",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "sankey",
+      "inputSha256": "424d292ac0be97a6811089a526d8578c25acb0a1955951cb1e595482dff0cfbf",
+      "expectedDiagramType": "sankey",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "sankey",
+      "inputSha256": "72f285cc005f6aead3bc3f0fed9497bd1ed02c6c798bb65271c272de5664c418",
+      "expectedDiagramType": "sankey",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "publicId": "sequence",
+      "inputSha256": "536f52ac1f79d0918360fd422c6ac8467d8c9747024ff84bcb9598cea84d5567",
+      "expectedDiagramType": "sequence",
+      "accepted": true,
+      "diagramType": "sequence"
+    },
+    {
+      "publicId": "state",
+      "inputSha256": "c1fbc714097adbb0ca1a62e61f4324160213a5d3260cce3117ffa9237c69573f",
+      "expectedDiagramType": "stateDiagram",
+      "accepted": true,
+      "diagramType": "stateDiagram"
+    },
+    {
+      "publicId": "state",
+      "inputSha256": "b4a65dfdd9dede1028b6508b01f1a713bec8364051282b3732d26929b2b76113",
+      "expectedDiagramType": "stateDiagram",
+      "accepted": true,
+      "diagramType": "stateDiagram"
+    },
+    {
+      "publicId": "state",
+      "inputSha256": "0a33889271bdfc0c0ee8c582266f5784b2295c749f7ac394df319a29d3bf9c04",
+      "expectedDiagramType": "stateDiagram",
+      "accepted": true,
+      "diagramType": "stateDiagram"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "6f53838447744cff70d2029579e86b9b7cf83ee6f6d581ea76d97fe98a05df4a",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "a0e63837e41e30071866ad1a253ec3341bc28be5f27d3c095c404f60b3d7f2b6",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "950d553681937678d44130d33cf8dfebbbc7b3662609b3347e6c27435481aa15",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "302ba56e9c7df89172d3e3b0cb5a1d17637a555c66382a10853e4616b10510f2",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "a513328951e07c7dbf9e3667f185a8bfae61eb19f2081707c156e9ed042f2418",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "swimlane",
+      "inputSha256": "1e9c4d5b246598b24754ef35b344e71a4e6f16c95d711665d30fa99bd6825118",
+      "expectedDiagramType": "swimlane",
+      "accepted": true,
+      "diagramType": "swimlane"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "52a67f98e073ab8547845504569c21cee494271ac677defc3b888cd0679f7df4",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "5a2ab8a27c06a99d97ec2ba62191f03f8ffa1e9bc38f50bad66400380306b911",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "2beb0413fcea97ec220e40f68b271ae854fe36b639c77a4b5f1e2087089703b7",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "timeline",
+      "inputSha256": "311851da5ab213e7ab5ffe1d287954426965f5b58290213a0d9f972d435b012e",
+      "expectedDiagramType": "timeline",
+      "accepted": true,
+      "diagramType": "timeline"
+    },
+    {
+      "publicId": "treeView",
+      "inputSha256": "f255ab708a2839fcf44aacb3f263ff7c0e98f53505fe2aace30c5282d6e1beb6",
+      "expectedDiagramType": "treeView",
+      "accepted": true,
+      "diagramType": "treeView"
+    },
+    {
+      "publicId": "treemap",
+      "inputSha256": "892fa294726313b0d7b7fd95edd7e74eb1d2b4cc3f1983e16b8b2bce944cd168",
+      "expectedDiagramType": "treemap",
+      "accepted": true,
+      "diagramType": "treemap"
+    },
+    {
+      "publicId": "treemap",
+      "inputSha256": "c5772b23a2b0fc78200084a8c584e58a6cb21bfc6d6cfb452664408d0d4f1593",
+      "expectedDiagramType": "treemap",
+      "accepted": true,
+      "diagramType": "treemap"
+    },
+    {
+      "publicId": "venn",
+      "inputSha256": "64d7d245cba2c5857b589b371017783e218f6add0177ef4114113993a5b5b1c2",
+      "expectedDiagramType": "venn",
+      "accepted": true,
+      "diagramType": "venn"
+    },
+    {
+      "publicId": "wardley",
+      "inputSha256": "5496fcbf891f69cf962a93db6d2ce6249496507d1e5cc5befda2213f7218ced9",
+      "expectedDiagramType": "wardley",
+      "accepted": true,
+      "diagramType": "wardley"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "d253903164ded24f8da58e41fdb6096de2070e96a1841391d7899660f755be37",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "bdd41cc48efc56e4ee5b83433f9617ee16b5661ab8527c94660a52400d67dc06",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "badacf47a51feb26aff546384e5b9736e15c4da42d49ee664ee13d02077b607c",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "xychart",
+      "inputSha256": "8aeda0cce1650515290be9fa5d7eb970564094e31fa2d2ad4c09b24558f9b3f4",
+      "expectedDiagramType": "xychart",
+      "accepted": true,
+      "diagramType": "xychart"
+    },
+    {
+      "publicId": "zenuml",
+      "inputSha256": "be096b491bc9a7f5626b35368426573f4c9ec26c47b0a0509c808cf81fa9a7ab",
+      "expectedDiagramType": "zenuml",
+      "accepted": true,
+      "diagramType": "zenuml"
+    },
+    {
+      "publicId": "zenuml",
+      "inputSha256": "64cae4c4216ecc823c971048a3db971133711451a6ac6bdda663e66d1b259d7b",
+      "expectedDiagramType": "zenuml",
+      "accepted": true,
+      "diagramType": "zenuml"
+    }
+  ],
+  "negativeCases": [
+    {
+      "inputSha256": "fbc4adacf55044fcdee8bd70f99369e2873fbb93f90b6bfd17450ac3406bc6fe",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "f39800db141f1931b2de2650be597ed002b60cf223d2e4f70cdfba25a56935f0",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "fcda509a47735240262829a341d75c12d88d5e8acb60013524a7a48076726dfa",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "4558fd81a043320409846a4fe9aa1cfa10b04d8d389baf316d0d6531144469fa",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "fa207516dff00778d8432680b3461b46934b30be615b88d6364834593726affa",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "9079f2f0fa1ef067ef33cc787e9fed372d8b69c31cd51cc53334be288398637d",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "99eef93344656d9e51debcdb6b83bea01339f3c0498ba47271420b1db10f6378",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "2b807cc00cd7aa1e8b7635a4834b50a2e2a34a6448ebcfbfc04e2fbff677c0ca",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "b744e621f69108e39c99de4b25760241830765e74a1114346cf02e9692ed3a69",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "d820d6ac47b16634e7dff4e7d82580df4551b940ce96289022fe318e368043c2",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "7d85fb9d07efc2507357a4f98867116d794054293b1e94f963b09319ee78a2a0",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "2b2b70710f02310c085a69ed8f8b299f6abad764690ba9db8361643b9317d587",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "bd2ed9c37ff9fb5473979eb12c4f451d3334186bb7a70a3d26a02e864b6addda",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "f6673335d5585f74606b0f47e105129705b3bf6bb1c986c8fc0fc4c69b6b9ff7",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "a19a8fe444f610e1701ac8712b9cb25014b948843be3c720c70ed4a10ae454a0",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "a6e13b907a16411954587053c05dba9a8b9767763eaa60af74964903b759584a",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "e730e55a63a7331b45acf7385ab2c5b7bd468346708082036496efa628b12cc4",
+      "accepted": false,
+      "diagramType": null
+    },
+    {
+      "inputSha256": "de882f41da8c7186f7797723e098fe451553dfef27d8f56e72097756cc8ecdfa",
+      "accepted": false,
+      "diagramType": null
+    }
+  ]
+}

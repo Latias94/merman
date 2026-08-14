@@ -1,0 +1,48 @@
+==================
+sections leaves classes and reindent
+==================
+
+treemap-beta
+"Products"
+    "Electronics"
+        "Phones": 50
+      "Computers": 30:::important
+"Clothing"
+    "Men's": 40
+
+classDef important fill:#f96,stroke:#333;
+
+---
+
+(source_file
+  (treemap_diagram
+    (treemap_header
+      (diagram_keyword))
+    (treemap_body
+      (treemap_item_statement
+        (treemap_section
+          (quoted_string)))
+      (treemap_item_statement
+        (treemap_section
+          (quoted_string)))
+      (treemap_item_statement
+        (treemap_leaf
+          (quoted_string)
+          (treemap_number)))
+      (treemap_item_statement
+        (treemap_leaf
+          (quoted_string)
+          (treemap_number)
+          (treemap_class_annotation
+            (identifier))))
+      (treemap_item_statement
+        (treemap_section
+          (quoted_string)))
+      (treemap_item_statement
+        (treemap_leaf
+          (quoted_string)
+          (treemap_number)))
+      (treemap_class_definition
+        (statement_keyword)
+        (identifier)
+        (treemap_style_text)))))

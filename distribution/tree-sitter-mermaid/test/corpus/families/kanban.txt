@@ -1,0 +1,92 @@
+==================
+flat rows retain indentation and metadata
+==================
+
+kanban
+  todo[Todo]
+    docs[Write documentation]@{ assigned: 'alice', priority: 'High' }
+    parser[Design grammar]@{
+      assigned: bob
+      ticket: MM-42
+    }
+  done[Done]
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))
+    (kanban_body
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (identifier)
+          (kanban_square_label
+            (kanban_label_text))))
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (identifier)
+          (kanban_square_label
+            (kanban_label_text)))
+        (kanban_metadata
+          (kanban_metadata_pair
+            (identifier)
+            (kanban_metadata_value))
+          (kanban_metadata_pair
+            (identifier)
+            (kanban_metadata_value))))
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (identifier)
+          (kanban_square_label
+            (kanban_label_text)))
+        (kanban_metadata
+          (kanban_metadata_pair
+            (identifier)
+            (kanban_metadata_value))
+          (kanban_metadata_pair
+            (identifier)
+            (kanban_metadata_value))))
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (identifier)
+          (kanban_square_label
+            (kanban_label_text)))))))
+
+==================
+baseline bare labels
+==================
+
+kanban
+  Todo
+    item1
+  Doing
+    item2
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))
+    (kanban_body
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (kanban_bare_label)))
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (kanban_bare_label)))
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (kanban_bare_label)))
+      (kanban_item_statement
+        (kanban_indentation)
+        (kanban_item
+          (kanban_bare_label))))))

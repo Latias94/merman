@@ -1,0 +1,66 @@
+==================
+entities frames and multiline data
+==================
+
+eventmodeling
+entity sales.order
+data payload `json` {
+  {"id": 42}
+}
+tf 10 cmd sales.order ->> 1 [[payload]] {ready}
+note 10 `md` {
+  **reviewed**
+}
+gwt 10 given cmd sales.order when evt sales.created then readmodel sales.summary
+
+---
+
+(source_file
+  (event_modeling_diagram
+    (event_modeling_header
+      (diagram_keyword))
+    (event_modeling_body
+      (event_entity_statement
+        (event_qualified_name
+          (identifier)
+          (identifier)))
+      (event_data_statement
+        (identifier)
+        (event_data_block
+          (event_data_type)
+          (event_block_content)
+          (event_nested_block
+            (event_block_content))
+          (event_block_content)))
+      (event_frame_statement
+        (event_frame_id)
+        (event_entity_kind)
+        (event_qualified_name
+          (identifier)
+          (identifier))
+        (event_frame_id)
+        (identifier)
+        (event_inline_data
+          (event_inline_object)))
+      (event_note_statement
+        (event_frame_id)
+        (event_data_block
+          (event_data_type)
+          (event_block_content)))
+      (event_gwt_statement
+        (event_frame_id)
+        (event_gwt_clause
+          (event_entity_kind)
+          (event_qualified_name
+            (identifier)
+            (identifier)))
+        (event_gwt_clause
+          (event_entity_kind)
+          (event_qualified_name
+            (identifier)
+            (identifier)))
+        (event_gwt_clause
+          (event_entity_kind)
+          (event_qualified_name
+            (identifier)
+            (identifier)))))))

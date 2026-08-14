@@ -5,13 +5,20 @@
   "private": true,
   "license": "MIT",
   "type": "commonjs",
+  "main": "./bindings/node/index.js",
+  "types": "./bindings/node/index.d.ts",
   "files": [
     "bindings",
+    "binding.gyp",
     "grammar.js",
     "grammar",
     "LICENSE",
     "metadata",
     "queries",
+    "scripts/*.js",
+    "scripts/*.py",
+    "scripts/header-oracle/package.json",
+    "scripts/header-oracle/package-lock.json",
     "README.md",
     "src",
     "THIRD_PARTY_LICENSES",
@@ -20,10 +27,30 @@
     "wasm"
   ],
   "scripts": {
+    "build:node": "node-gyp rebuild",
+    "generate": "node scripts/run_python.js scripts/generate.py --write",
+    "generate:header-oracle": "node scripts/header_oracle.js --node-modules scripts/header-oracle/node_modules --write",
+    "generate:header-evidence": "node scripts/header_receipt.js --write",
+    "check:header-oracle": "node scripts/header_oracle.js --node-modules scripts/header-oracle/node_modules",
+    "check:generated": "node scripts/run_python.js scripts/generate.py",
+    "check:header-evidence": "node scripts/header_receipt.js",
     "check:metadata": "cargo run --locked -p xtask -- verify-tree-sitter-mermaid",
-    "test": "npm run check:metadata"
+    "test:corpus": "tree-sitter test --overview-only",
+    "test:corpus:wasm": "tree-sitter test --wasm --overview-only",
+    "test:edits": "tree-sitter fuzz --iterations 5 --edits 5",
+    "test:generation-script": "node scripts/run_python.js -m unittest scripts.test_generate scripts.test_c_smoke",
+    "test:mechanics": "node scripts/mechanics_gate.js",
+    "test:node": "node --test bindings/node/binding_test.js",
+    "test:c": "node scripts/run_python.js scripts/c_smoke.py",
+    "test:wasm": "node --test bindings/node/wasm_test.js",
+    "test": "npm run check:header-evidence && npm run check:metadata && npm run test:generation-script && npm run test:corpus && npm run test:corpus:wasm && npm run test:edits && npm run test:node && npm run test:c && npm run test:wasm && npm run test:mechanics"
+  },
+  "dependencies": {
+    "node-addon-api": "8.9.2",
+    "node-gyp-build": "4.8.4"
   },
   "devDependencies": {
+    "node-gyp": "12.1.0",
     "tree-sitter": "0.25.1",
     "tree-sitter-cli": "0.26.12",
     "web-tree-sitter": "0.26.12"

@@ -20,281 +20,526 @@
     {
       "publicId": "architecture",
       "rootNode": "architecture_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:architecture",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "block",
       "rootNode": "block_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:block",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "c4",
       "rootNode": "c4_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:c4",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "class",
       "rootNode": "class_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:class",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "cynefin",
       "rootNode": "cynefin_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:cynefin",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "er",
       "rootNode": "entity_relationship_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:er",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "eventmodeling",
       "rootNode": "event_modeling_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:eventmodeling",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "flowchart",
       "rootNode": "flowchart_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:flowchart",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "gantt",
       "rootNode": "gantt_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:gantt",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "gitgraph",
       "rootNode": "git_graph_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:gitgraph",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "info",
       "rootNode": "info_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:info",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "ishikawa",
       "rootNode": "ishikawa_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:ishikawa",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "journey",
       "rootNode": "journey_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:journey",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "kanban",
       "rootNode": "kanban_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:kanban",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "mindmap",
       "rootNode": "mindmap_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:mindmap",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "packet",
       "rootNode": "packet_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:packet",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "pie",
       "rootNode": "pie_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:pie",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "quadrantchart",
       "rootNode": "quadrant_chart_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:quadrantchart",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "radar",
       "rootNode": "radar_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:radar",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "railroad",
       "rootNode": "railroad_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroad",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "railroadAbnf",
       "rootNode": "railroad_abnf_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroadAbnf",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "railroadEbnf",
       "rootNode": "railroad_ebnf_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroadEbnf",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "railroadPeg",
       "rootNode": "railroad_peg_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:railroadPeg",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "requirement",
       "rootNode": "requirement_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:requirement",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "sankey",
       "rootNode": "sankey_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:sankey",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "sequence",
       "rootNode": "sequence_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:sequence",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "state",
       "rootNode": "state_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:state",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "swimlane",
       "rootNode": "swimlane_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:swimlane",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "timeline",
       "rootNode": "timeline_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:timeline",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "treeView",
       "rootNode": "tree_view_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:treeView",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "treemap",
       "rootNode": "treemap_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:treemap",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "venn",
       "rootNode": "venn_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:venn",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "wardley",
       "rootNode": "wardley_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:wardley",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "xychart",
       "rootNode": "xy_chart_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:xychart",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     },
     {
       "publicId": "zenuml",
       "rootNode": "zenuml_diagram",
-      "lifecycle": "planned",
-      "supportTier": null,
-      "evidence": [],
+      "lifecycle": "active",
+      "supportTier": "recognized",
+      "evidence": [
+        {
+          "id": "u2-header-dispatch:zenuml",
+          "kind": "header",
+          "path": "metadata/evidence/u2-header-dispatch.json",
+          "sha256": "8b5186d5e51dae85c9d01c976660a94db53e20742d04a04b976520495e820aca"
+        }
+      ],
       "queryApplicability": {}
     }
   ]

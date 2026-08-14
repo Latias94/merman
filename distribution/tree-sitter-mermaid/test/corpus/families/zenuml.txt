@@ -1,0 +1,91 @@
+==================
+nested messages and control blocks
+==================
+
+zenuml
+title Checkout
+@Starter(Alice)
+Alice->Bob: Hello Bob, how are you?
+if(is_sick) {
+  Bob->Alice: Not so good
+} else {
+  Bob.FeelingFresh()
+}
+A.method() {
+  B.nested_sync_method()
+  B->C: nested async message
+}
+Bob-->Alice: Reply
+
+---
+
+(source_file
+  (zenuml_diagram
+    (zenuml_header
+      (diagram_keyword))
+    (zenuml_body
+      (zenuml_title_statement
+        (zenuml_title_text))
+      (zenuml_starter_statement
+        (zenuml_starter_annotation)
+        (zenuml_name
+          (zenuml_identifier)))
+      (zenuml_message_statement
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_arrow)
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_event_payload))
+      (zenuml_control_statement
+        (zenuml_parenthesized_text
+          (zenuml_expression_text))
+        (zenuml_brace_block
+          (zenuml_message_statement
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_arrow)
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_event_payload))))
+      (zenuml_control_statement
+        (zenuml_brace_block
+          (zenuml_message_statement
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_call_chain
+              (zenuml_signature
+                (zenuml_name
+                  (zenuml_identifier))
+                (zenuml_parenthesized_text))))))
+      (zenuml_message_statement
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_call_chain
+          (zenuml_signature
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_parenthesized_text)))
+        (zenuml_brace_block
+          (zenuml_message_statement
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_call_chain
+              (zenuml_signature
+                (zenuml_name
+                  (zenuml_identifier))
+                (zenuml_parenthesized_text))))
+          (zenuml_message_statement
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_arrow)
+            (zenuml_name
+              (zenuml_identifier))
+            (zenuml_event_payload))))
+      (zenuml_message_statement
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_arrow)
+        (zenuml_name
+          (zenuml_identifier))
+        (zenuml_event_payload)))))

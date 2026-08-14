@@ -1,0 +1,60 @@
+==================
+relative indentation and decorators
+==================
+
+mindmap
+  root((Mind map))
+      Origins
+        Long history
+    Research
+      On effectiveness
+      ::icon(fa fa-book)
+      :::urgent large
+    Tools
+      Pen and paper
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))
+    (mindmap_body
+      (mindmap_node_statement
+        (mindmap_node
+          (identifier)
+          (mindmap_shape
+            (mindmap_circle_shape
+              (mindmap_shape_text)))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label
+            (identifier))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label
+            (identifier)
+            (identifier))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label
+            (identifier))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label
+            (identifier)
+            (identifier))))
+      (mindmap_icon_statement
+        (mindmap_decorator_text))
+      (mindmap_class_statement
+        (mindmap_decorator_text))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label
+            (identifier))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label
+            (identifier)
+            (identifier)
+            (identifier)))))))

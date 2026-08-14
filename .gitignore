@@ -29,6 +29,7 @@ target/
 /distribution/tree-sitter-mermaid/.tree-sitter/
 /distribution/tree-sitter-mermaid/build/
 /distribution/tree-sitter-mermaid/node_modules/
+/distribution/tree-sitter-mermaid/scripts/header-oracle/node_modules/
 /distribution/tree-sitter-mermaid/tree-sitter-mermaid-*.tgz
 /dist/
 /fuzz/artifacts/

@@ -134,7 +134,12 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertNotIn("${{ inputs.", run)
         self.assertNotIn("github.event.inputs", run)
         self.assertIn('case "$DISPATCH_TARGET" in', run)
-        self.assertIn("all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api)", run)
+        self.assertIn(
+            "all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|"
+            "tree_sitter_mermaid_parse|tree_sitter_mermaid_edits|"
+            "tree_sitter_mermaid_scanner)",
+            run,
+        )
         self.assertIn('case "$DISPATCH_PRESET" in', run)
         self.assertIn("smoke|extended|long)", run)
         self.assertIn('case "$selected_targets" in', run)
