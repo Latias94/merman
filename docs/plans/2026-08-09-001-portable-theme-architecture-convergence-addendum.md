@@ -2,7 +2,7 @@
 title: "Portable Theme Architecture Convergence - Plan Addendum"
 type: refactor
 date: 2026-08-09
-updated: 2026-08-13
+updated: 2026-08-14
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md
@@ -19,7 +19,7 @@ execution: code
 | Objective | Converge Merman's visual customization layer inside the broader headless Mermaid engine. Merman continues to own parsing, analysis, layout, rendering, and editor-facing semantics with Mermaid parity as a quality target; the theme workstream adds typed custom themes, private family adapters, capability discovery, and target-specific portability evidence. Keep default Mermaid parity unchanged, retain a bounded opt-in built-in preset catalog, and prevent theme convenience features from becoming a second rendering architecture or an automated design product. |
 | Product contract | The August 6 R/A/F/AE identifiers remain the traceability source. This addendum is authoritative for the current-release scope, ownership, evidence gates, product boundary, preset admission, milestone sequencing, and public-surface timing; any conflicting current-release statement in the August 6 plan is superseded by the decisions below. Long-term capabilities remain future requirements until their named gate is closed. |
 | Authority | Mermaid `11.16.1@7ecca0cd` remains the semantic baseline. The compiled theme recipe describes visual intent; the render environment owns runtime ceilings; family and document evaluators prove what was actually applied. |
-| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Finish core convergence and C6a before declaring the authoring/discovery candidate, then contract and roll out the integration surface before C7a freezes. Stable cross-target preset claims wait for C6b. |
+| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Complete the proposed authoring-facade design now, finish core convergence and the native C6a engine gate, then verify and implement the authoring candidate before C7a rollout and freeze. Stable cross-target preset claims wait for C6b. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, let theme/config inputs widen renderer-owned policy, create preset-specific renderer branches, or add brand scanning, editorial rewriting, page-shell composition, bespoke routing, icon art direction, or motion playback to the core engine. |
 
 ## Why The Order Changes
@@ -65,7 +65,7 @@ release when a statement below differs.
 | External prepared text | External results are crate-private and `HostDependent` by default. The current release does not expose an external DTO/trait through JSON, FFI, or stable bindings, and does not promote self-attested results to `Portable`. | A separate external-assurance plan may define an independent trust root and a new contract; it is not part of C7a. |
 | Product identity | Merman is a headless Mermaid engine for parsing, analysis, layout, rendering, and editor-facing semantics, implemented with Mermaid parity as an explicit quality goal. Within that product, the visual customization layer owns typed theme authoring, capability discovery, and honest target admission. It may provide a bounded built-in visual preset catalog, but it does not scan brands, rewrite diagram content, choose a visual story, compose page chrome, or own animation and other application presentation policy. | A separate downstream application or adapter may compose those product decisions around Merman output without changing the core contract. |
 | Theme language | Stable `DiagramTheme` is a semantic visual recipe: typed targets, variants, paint/geometry, typography, bounded canvas/effects, and declared resources. It is not an arbitrary SVG/DOM/CSS programming language. Arbitrary selectors, element IDs, XML/HTML injection, and browser-only mechanisms remain `Unverified` or `SvgOnly` compatibility lanes. | A new primitive enters the stable language only after a real family consumer, resource limits, and target-specific evidence exist. |
-| Theme authoring freedom | Users may create new themes by composing the supported `ThemeTokens` and full `DiagramThemeSpec` vocabulary, including family-scoped rules and bounded resources, without modifying renderer code. A new semantic target or drawing primitive requires renderer work and a new capability/evidence gate. | Additive target descriptors may be introduced through versioned discovery; they do not become silently accepted selector strings. |
+| Theme authoring freedom | Users may create new themes without modifying renderer code either by materializing versioned `ThemeTokens` plus the existing typed `ThemeRuleSet`, or by authoring a complete `DiagramThemeSpec` directly. These are explicit authoring paths, not a hidden tokens-plus-spec merge at render time. A new semantic target or drawing primitive requires renderer work and a new capability/evidence gate. | Additive target descriptors may be introduced through versioned discovery; they do not become silently accepted selector strings. |
 | Built-in presets | A preset is a convenient, versioned materialization of the same typed recipe accepted from Rust, JSON, and bindings. The catalog is open to additional generally useful themes; Brutalist, Spotless, Cyberpunk, Modern Slate, or any later theme name is illustrative rather than a fixed roadmap or product-brand hierarchy. A preset must not select layout, Mermaid look, output pipeline, trusted postprocessors, or family-private behavior implicitly. | Alpha candidates may remain discovery-only while coverage is incomplete. Stable status is decided per preset from C6-backed family/target cells, allowed residuals, resource burden, and licensing rather than from theme name or catalog size. |
 | Preset cost boundary | Built-in presets should normally compile from static Merman-owned recipe data and reuse existing code and resources. They must not require a CSS/JavaScript interpreter, network access, brand crawler, application runtime, or substantial preset-only dependency/asset closure. Bundled fonts or other material assets require an explicit redistribution, size, resource-policy, and portability decision. | A heavier theme pack can live in an optional downstream package or host application instead of enlarging the core artifact. |
 | Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. The subtractive family-catalog correction therefore supersedes the August 2 FFI-plan KTD9 only for those two epochs: UniFFI advances to API 4 and Web/WASM advances to transport API 4. Native C ABI 3, runtime-catalog schema 1, Android transport API 1, Typst plugin ABI 2, and the Node transport remain unchanged. The incompatible post-alpha.5 Options grammar advances independently to schema 3 under KTD16. The next prerelease must carry the corrected projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
@@ -81,7 +81,7 @@ owner.
 
 | August 6 identifiers | Current-release disposition | Owning gate |
 | --- | --- | --- |
-| R3, R3a; A7; AE19 | Retained with an alpha contraction: `ThemeTokens` remains the design-system adapter but its candidate stable vocabulary is limited to cross-family roles. Family-specific actor, note, activation, cluster, and similar values materialize through deterministic token-to-rule defaults or the full `ThemeRuleSet`/`DiagramThemeSpec`. Reuse and light/dark state-isolation requirements remain unchanged. | C6a design-system and cold-start witnesses, then C7a-contract. |
+| R3, R3a; A7; AE19 | Retained with an alpha contraction: `ThemeTokens` remains the design-system adapter but its candidate stable vocabulary is limited to cross-family roles. Family-specific actor, note, activation, cluster, and similar values materialize through deterministic token-to-rule defaults or the full `ThemeRuleSet`/`DiagramThemeSpec`. Reuse and light/dark state-isolation requirements remain unchanged. | C7a pre-freeze authoring and cold-start witnesses, then C7a-contract. |
 | R8; AE21, AE24 | Retained for source traceability, contributor attribution, complete typed mechanism classification, and representative reference comparison. Superseded as a fixed named-product obligation: neither `pr28-modern-slate` nor the six named showcase themes is required to ship as a preset or complete C7b. Individual recipes may remain test witnesses or enter the open preset catalog through KTD14's maturity gate. | C6a/C7b evidence; C7a/C6b only for preset maturity claims. |
 | R13, R43, R45; F2; AE15; KTD4, KTD8, KTD11; U3 external-host clauses | Native prepared text and external `HostDependent` safety are retained. External `Portable` promotion, fully attested host claims, stable external DTOs, and browser/FFI projection are deferred and do not participate in the current release. | C4a owns native proof, C4b owns crate-private external safety, C7c owns any future assurance contract. |
 | R24, R35, R48; F5; AE7, AE18 | Retained with a stricter authority boundary: raw CSS and arbitrary SVG remain explicit trusted compatibility inputs, never self-authorize through document/config data, and cannot bypass the independent terminal safety decision. | C2 terminal safety and C7a-rollout public-surface checks. |
@@ -104,21 +104,99 @@ real family writer that emits it and returns a crate-private receipt, and target
 that the final artifact consumes it. A validated data field without those proofs is descriptive
 capacity, not supported rendering capability.
 
-For authoring surfaces, the first stable contract remains a closed preset-or-complete-spec union.
-`ThemeTokens` is the bounded convenience layer for applications that want a smaller vocabulary; it
-materializes a complete spec before compilation. Its stable vocabulary should remain a small set of
-cross-family roles such as canvas, surface, text, subtle text, border, line, accent, status colors,
-series, and typography. Family-specific roles such as actor, note, activation, or cluster styling
-belong in deterministic token-to-rule defaults or in the full `ThemeRuleSet`; they should not keep
-expanding the stable convenience object. This contraction is an alpha migration and must retain a
-design-system witness proving that common light/dark authoring remains ergonomic.
+The render-time contract remains a closed preset-or-complete-spec union. Token authoring is a
+separate pre-render operation: it materializes a complete `DiagramThemeSpec`, and callers then pass
+that spec through the ordinary compiler and renderer. `ThemeDefinitionV1` is therefore an authoring
+envelope, not a third render selection and not a new renderer domain object. It cannot contain a
+preset-plus-patch variant, output-target branches, runtime light/dark conditions, host policy, or
+family capability-dependent lowering.
 
-The exact token field set and expansion table are a C7a-candidate deliverable rather than an implied
-implementation choice. It must enumerate each retained cross-family field, each removed alpha field,
-its Rust and wire identifier, the deterministic `ThemeTarget`/variant/facet rules emitted from the
-retained fields, and any built-in preset value that must move to an explicit `ThemeRuleSet`. The
-current family-specific token fields remain alpha until that table and its binding migration tests
-land; they are not silently renamed or mapped by separate hosts.
+While proposed, ADR-0082 is the sole candidate source of truth for the version 1 authoring envelope,
+token defaults, expansion rows and order, palette-collision behavior, materialization result types,
+digest domains, and trace maturity. It becomes normative only when the corresponding rows and wire
+contract close their C7a witnesses; compatibility freezes only at `C7a-contract`. This plan owns
+sequencing and gates and does not define a second copy of those tables.
+
+The authority chain is fixed:
+
+```text
+ThemeDefinitionV1
+    -> ThemeMaterializer
+    -> MaterializedTheme with a complete DiagramThemeSpec
+
+DiagramThemeSpec
+    -> DiagramThemeCompiler
+    -> required capabilities + recipe fingerprint + compile diagnostics
+
+RenderedDocument / export report
+    -> actual application, residual, portability, and target admission
+```
+
+`ThemeMaterializer` is a pure deterministic lowering step. It owns versioned defaults, token
+expansion, and authoring-stage diagnostics only; it does not inspect a family implementation,
+output target, host policy, or runtime environment, and it never derives authoritative required
+capabilities, admission, portability, or terminal evidence. Those conclusions remain compiler- and
+renderer-owned.
+
+The alpha persisted authoring input is the closed `ThemeDefinitionV1` from ADR-0082: both version
+fields and a non-null `ThemeTokensV1` object are required; the optional non-null `styles` field is a
+flat tagged `ThemeRuleSetWireV1[]` decoded into the existing typed `ThemeRuleSet`. It does not
+introduce a second override AST or specificity engine. Token-generated rules precede authored rules.
+The ADR defines the generated row order and the replacement behavior for authored ordinal palettes
+that collide with generated palette targets. Family, variant, and ordinal matching continue to use
+the compiler's existing typed selectors and winner semantics.
+Mermaid source styles, `classDef`, and `linkStyle` remain a separate compatibility cascade and are
+never folded into authoring precedence.
+
+Serialized or cached definitions must bind both `authoring_schema_version` and `expansion_version`.
+A Rust-only ephemeral builder may default the current expansion before serialization, but a persisted
+definition cannot silently select `latest`. An expansion-table semantic change creates a new version;
+unknown versions fail closed or enter an explicit migration operation. Omitted token fields use that
+expansion version's documented defaults. Token `null` is rejected rather than overloaded as clear;
+explicit clear remains the existing typed `Specified::Clear` behavior inside `ThemeRuleSet`. Empty
+required collections such as `series` are validation errors, and fatal authoring errors return no
+partial spec.
+
+The candidate stable `ThemeTokensV1` vocabulary is limited to cross-family roles with real consumers:
+canvas, surface, alternate or muted surface, text, subtle text, border, line, accent, status colors,
+series, and basic typography. Radius, content padding, stroke width, elevation/shadow, and other
+geometry or effect conveniences remain alpha or rule-only until each has one unambiguous expansion,
+multiple real family consumers, resource bounds, and C6a evidence. Ambiguous `spacing` does not enter
+the first contract. Family-specific roles such as actor, note, activation, or cluster styling move
+to deterministic token-to-rule defaults or explicit `ThemeRuleSet` entries; they do not keep
+expanding the stable token object.
+
+ADR-0082 is completed now as a proposed authoring design, but it does not become accepted or bind
+C6a. After the C6a engine gate closes, one Rust-owned executable table and the C7a pre-freeze
+authoring witnesses verify the candidate contract. Every generated expansion row must then name a
+direct typed consumer and terminal witness; unproven rows are removed before ADR acceptance.
+Individual preset retain/remove decisions remain a later catalog gate.
+
+`MaterializedTheme` and `MaterializedPreset` are separate result types. The former binds authoring
+schema version, expansion version, complete-spec schema version, editable spec, diagnostics, and a
+`ThemeMaterializationDigest`. The latter binds preset ID, immutable revision, maturity,
+qualification revision/digest, complete-spec schema version, editable spec, and a
+`PresetMaterializationDigest`; it does not claim an authoring expansion version. Replayable preset
+materialization accepts an immutable preset ID/revision pair rather than a moving ID-only alias. Both
+materialization digests are materializer-owned integrity identities over their ADR-defined domains.
+Neither is the compiler-owned `ThemeRecipeFingerprint`, a qualification identity, an artifact
+digest, or render identity. Neither result contains authoritative required capabilities, admission,
+or portability.
+
+Authoring inspection, static discovery, and runtime evidence are separate surfaces. An alpha
+`inspect_theme_authoring` may explain token/default/rule provenance. Its expansion trace is a
+separate alpha/debug result and is not part of the stable `MaterializedTheme` or
+`MaterializedPreset` envelope. It may report a theme-internal winner only by joining that trace with
+compiler-owned resolution and provenance; it never
+re-matches selectors, reorders rules, or implements a second cascade. Without a compiler result it
+returns expansion sources only. It cannot say `Applied`, `Portable`, or `Rejected`.
+`describe_theme_support` returns only the C5/C6-backed static upper bound (`Unconditional`,
+`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`). Unknown or additive rows normalize
+to `Unverified`, never `Unsupported`. Only a concrete final render or export report may report actual
+application, residuals, and target admission. The first stable authoring surface therefore needs only
+`materialize_theme`, revision-aware `materialize_preset`, and query-oriented
+`describe_theme_support`; inspection and the complete selector/value-condition matrix remain alpha
+until real consumers prove a bounded public result.
 
 Preset patch/merge semantics are not part of the first stable binding or CLI contract. This avoids
 making merge precedence a second theme language; a later typed preset-override layer requires a
@@ -133,6 +211,11 @@ the current proof-theme names, and adding a high-quality low-cost preset is allo
 is reusable and its maturity is reported honestly. Conversely, no milestone is complete merely
 because a named theme exists or looks attractive; completion is measured by typed mechanisms,
 family/target coverage, resource closure, and final admission.
+
+DTCG import/export, CSS-variable export, arbitrary token algorithms, CSS selectors, pseudo-state
+conditions, and multi-mode definitions are future adapters. They may project into the same
+`ThemeDefinition` or complete spec later, but they are not renderer inputs and do not participate in
+the current C7a gate.
 
 Public maturity is explicit rather than inferred from where a symbol appears:
 
@@ -202,12 +285,12 @@ the current legacy-replacing typed-route inventory against finalized Standalone 
 but those route receipts remain non-cell authorization evidence and do not change the matrix counts.
 The checkpoint remains incomplete until the full C6a/C6b constraints are implemented.
 
-`C6a` is the native contract-eligibility gate: the three proof themes must pass Flowchart, State,
-and Sequence on Standalone SVG plus PNG as the named representative native target, and a cold-start
-custom theme must prove that the public recipe is generative rather than only capable of reproducing
-the reference corpus. The harness emits a dedicated `C6aEligibilityReceipt` only for the exact 18
-positive cells plus the design-system, cold-start, and pre-freeze family-consumer witnesses; a
-successful arbitrary tranche report is never equivalent. `C6b` is the cross-target release gate:
+`C6a` is the native engine contract-eligibility gate: the three proof themes must pass Flowchart,
+State, and Sequence on Standalone SVG plus PNG as the named representative native targets. The
+harness emits a dedicated `C6aEligibilityReceipt` only for the exact 18 positive cells and the
+versioned acceptance-manifest identity; a successful arbitrary tranche report is never equivalent.
+Authoring, cold-start, and pre-freeze family-consumer witnesses belong to C7a and cannot increase the
+C6 cell count. `C6b` is the cross-target release gate:
 all 45 cells, including Browser SVG, must be enforced and observed by their target-owned runners
 before stable cross-target preset/catalog claims are made. The 45 cells are exactly three proof
 themes by three matrix families (Flowchart, State, Sequence) by five targets. Swimlane remains a
@@ -310,12 +393,15 @@ continue to land through small proof-first changes with local tests and Conventi
    retain every other bridge route until matching evidence or C7b removes it; repair
    residual/admission accounting; and preserve default Mermaid parity. Do not add brand onboarding,
    page-shell, animation, or other application product concerns while this milestone is open.
-2. **Custom authoring and capability discovery.** Define a small alpha `ThemeTokens` convenience
-   candidate plus the expressive `ThemeRuleSet`/`DiagramThemeSpec` path. Build a versioned internal
+2. **Custom authoring and capability discovery.** Complete the proposed Authoring Facade design while
+   C6a remains open, then implement it after the C6a engine gate closes. Keep a small alpha
+   `ThemeTokens` convenience candidate plus the expressive existing
+   `ThemeRuleSet`/`DiagramThemeSpec` path. Build a versioned internal
    descriptor for family, output target, semantic target, selector, facet, bounded support
-   conditions, disposition, and relevant residual reasons. Publish `C7a-candidate` only after C1-C3, C4a, C5, C6a, and the pre-freeze
-   family consumers can populate it truthfully; the contract becomes stable only after C7a-rollout
-   verification. Built-in presets use this same interface and remain optional convenience entries.
+   conditions, disposition, and relevant residual reasons. Publish `C7a-candidate` only after C1-C3,
+   C4a, C5, C6a, and the pre-freeze family, expansion-row, and authoring witnesses can populate it
+   truthfully; the contract becomes stable only after C7a-rollout verification. Built-in presets use
+   this same interface and remain optional convenience entries.
 3. **Integration seam and contract contraction.** Stabilize the unified `RenderedDocument`, recipe
    fingerprint, family/target admission, residual reasons, font/portability summary, and trusted
    `SvgPipeline` escape hatch. Contract the Rust facade, bindings, CLI, and Typst surfaces around
@@ -512,9 +598,9 @@ own those product decisions.
 | C4a | Native core and single-face terminal binding landed; broader gate remains open | Native rustybuzz shaping, cluster fallback, projection, bounded wrapping, consumed-label sidecars, and sealed label tokens are retained. The exact tokenized artifact is bound to request/projection/line/run identity, while PNG/JPEG/PDF exporters verify final emitted line text and face/source observations. External results remain `HostDependent`; exact multi-face source/visible range proof remains in C6b. |
 | C4b | Conditional follow-up; assurance excluded | Session-private fallback candidates and basic response admission may remain, but no current product consumer requires the unfinished generation, budget, or circuit-breaker framework. Keep stable injection disabled. Implement those controls only before enabling a concrete crate-private external consumer. External output remains `HostDependent`; any later assurance or promotion requires C7c. |
 | C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; Flowchart and Swimlane consume narrow typed Node/NodeLabel/Edge tranches while retaining bridge routes for uncovered mechanisms; Sequence directly consumes selected Actor paint routes with post-emission evidence, while signal, note, activation, loop, message, typography, and other label routes remain on the bridge. The core family catalog is now the sole family-ID/alias/detection authority. Every current typed route that replaces a manifest-declared legacy projection set is covered by a private exact-route Standalone SVG plus PNG cutover receipt; those receipts authorize ownership only and do not close C6a. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
-| C6a | Partial infrastructure; native eligibility gate not closed | The acceptance specification and current four-cell State tranche run through a private, catalog-driven adapter registry with render-group identities, per-cell target receipts, artifact/proof digests, exact enforced-cell coverage, and explicit feature gating. Fixture admission binds the enforced cell to its reference theme and exact typed mechanism inventory. The registry currently has one real Brutalist/State render group; separate non-cell route-cutover witnesses prove the current Flowchart/Swimlane Node/Edge and Sequence Actor bridge replacements without increasing matrix progress. No exact 18-cell eligibility receipt exists: Flowchart/State/Sequence by Standalone SVG/PNG, the remaining selector/facet/value witnesses, source-style/spacing, repeating-gradient/effect shapes, design-system, cold-start, and real pre-freeze family consumers remain open. |
+| C6a | Partial infrastructure; native eligibility gate not closed | The acceptance specification and current four-cell State tranche run through a private, catalog-driven adapter registry with render-group identities, per-cell target receipts, artifact/proof digests, exact enforced-cell coverage, and explicit feature gating. Fixture admission binds the enforced cell to its reference theme and exact typed mechanism inventory. The registry currently has one real Brutalist/State render group; separate non-cell route-cutover witnesses prove the current Flowchart/Swimlane Node/Edge and Sequence Actor bridge replacements without increasing matrix progress. No exact 18-cell eligibility receipt exists: Flowchart/State/Sequence by Standalone SVG/PNG, the remaining selector/facet/value witnesses, source-style/spacing, and repeating-gradient/effect shapes remain open. Design-system, cold-start, pre-freeze family, expansion-row, and authoring witnesses belong to C7a and cannot block or increase the exact C6a cell count. |
 | C6b | Not started as a release gate | Browser SVG, JPEG/PDF completion, multi-face export, and the full 45-cell target-owned evidence matrix remain open. |
-| C7a | Not eligible; intentionally blocked | Do not declare the alpha contract candidate before C1-C3, C4a, C5, and C6a close plus the pre-freeze family consumers. Do not freeze the contract until C7a-rollout verification passes. Stable cross-target preset claims wait for C6b. |
+| C7a | Not eligible; intentionally blocked | Do not declare the alpha contract candidate before C1-C3, C4a, C5, and C6a close plus the pre-freeze family, expansion-row, and authoring witnesses. Do not freeze the contract until the mandatory author-task rollout verification passes. Stable cross-target preset claims wait for C6b. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The public alpha migration scaffold already spans Rust, Options JSON, Web/UniFFI, Typst, Playground,
@@ -779,22 +865,15 @@ and public theme scope from the independent renderer taxonomy before adding face
   long mixed-script labels; repeating/tiled versus ordinary gradients; blend values; one bounded
   effect graph; `RequirePortable` and `BestEffort`; and default parity snapshots. HTML/Markdown are
   separate bounded label-mode witnesses or explicit residuals, not a Cartesian multiplier.
-- **Design-system witness:** Build light/dark `ThemeTokens` from one host-resolved token set, reuse
-  each compiled theme across independent renderers, and prove Flowchart, State, and Sequence SVG plus
-  PNG without state leakage. This witness uses only `ThemeTokens` as caller input and verifies the
-  deterministically materialized spec; it cannot inject family-specific rules to compensate for a
-  missing convenience token. The full-spec cold-start witness remains separate.
 - **Non-blocking mechanism witnesses:** Ghibli, Hand Drawn, Memphis, and later reference recipes may
   exercise distinct mechanisms without counting as matrix cells or participating in
   `C6aEligibilityReceipt`. They remain C7b inputs unless explicitly promoted into the canonical
   18-cell tranche by a later plan revision.
-- **Cold-start authoring witness:** Build one theme that is not derived from `modern_mermaid` or PR
-  #28 using only the candidate `ThemeTokens` and `DiagramThemeSpec`. It combines common and
-  family-scoped semantics without raw CSS or a new renderer primitive and passes Standalone SVG plus
-  PNG across Flowchart, State, and Sequence.
-- **Done when:** The private harness emits `C6aEligibilityReceipt` only after all 18 cells plus the
-  design-system, cold-start, and real pre-freeze family-consumer witnesses pass. A smaller successful
-  tranche cannot generate this receipt or unlock C7a.
+- **Done when:** The private harness emits `C6aEligibilityReceipt` only after the versioned,
+  non-shrinking C6 acceptance manifest's exact 18 native cells pass. The receipt binds the manifest
+  digest, proof recipe revisions, cell receipts, final admission, and artifacts. Route-cutover
+  authorizations and later C7a authoring witnesses remain separate inputs and cannot increase the
+  18-cell count.
 
 ### C6b. Complete The Cross-Target Release Matrix
 
@@ -825,6 +904,13 @@ and public theme scope from the independent renderer taxonomy before adding face
 
 - **Covers:** Native-theme Rust/API, Options, binding, CLI, Typst, and design-system portions of the
   remaining R/AE items.
+- **Authoring Facade design gate:** Keep ADR-0082 `proposed` while current correctness work and C6a
+  close. Before `C7a-candidate`, land its executable Rust contract table, closed
+  `ThemeDefinitionV1` and `DiagramThemeSpecWireV1` projections, legal version-tuple registry,
+  cross-transport omission/null/clear encoding, diagnostic code registry, canonical serializer, and
+  golden digest vectors. The candidate expansion rows and palette order become normative only after
+  every row has the required direct consumer and terminal witness. This is an alpha design gate, not
+  a public stability claim, and C7a remains blocked.
 - **Pre-freeze family consumers:** Before declaring a contract candidate, run one source-backed
   representative from each remaining semantic shape category: relation-centric (`Class`),
   entity/card (`ER`), interval/lane (`Gantt`), quantitative chart (`Pie`), and spatial/container
@@ -835,8 +921,17 @@ and public theme scope from the independent renderer taxonomy before adding face
   evidence. A model-only or runtime-residual probe cannot freeze that category. Findings and owner
   decisions live in the internal family mechanism matrix and committed fixtures/reports. Any missing
   public shape returns the plan to C1/C5 before rollout.
+- **Pre-freeze authoring witnesses:** After C6a closes, build two independently authored light and
+  dark `ThemeDefinitionV1` records, materialize them through the Rust-owned `ThemeMaterializer`, bind
+  their materialization digests, reuse each compiled theme across independent renderers, and prove
+  Flowchart, State, and Sequence Standalone SVG plus PNG without state leakage. Use only
+  `ThemeTokensV1` for this witness; do not inject family-specific rules to hide a missing token
+  expansion. Separately build one cold-start complete spec with the existing `ThemeRuleSet` so the
+  full recipe language remains independently proven rather than becoming an implicit tokens-plus-spec
+  merge. These are C7a candidate inputs, not C6 cells and not inputs to `C6aEligibilityReceipt`.
 - **Approach:** Use three ordered gates rather than freezing before consumers can exercise the
-  candidate. `C7a-candidate` follows C1-C3, C4a, C5, C6a, and the pre-freeze family consumers; it
+  candidate. `C7a-candidate` follows C1-C3, C4a, C5, C6a, and the pre-freeze family, expansion-row,
+  and authoring witnesses; it
   declares the proposed versioned recipe envelope, compiler entry point, `ThemeTokens`, host-policy
   boundary, and coarse reports, but remains alpha. `C7a-rollout` then migrates Options JSON, bindings, Typst,
   examples, migration docs, and Merman native render/batch CLI pages/completions against that exact
@@ -849,18 +944,22 @@ and public theme scope from the independent renderer taxonomy before adding face
   Do not bulk-import the complete 24-theme modern_mermaid reference catalog into supported presets.
   Individual Merman-owned recipes may join the open preset catalog when they satisfy the same typed
   recipe, licensing, resource-cost, maturity, and evidence rules as every other candidate.
-- **Capability-discovery candidate:** Compose one versioned descriptor from the core family catalog
-  and the private C5 mechanism matrix. The core catalog owns family IDs and aliases; family writers
-  and terminal evidence own selector/facet disposition and residual facts; the facade only projects
-  the bounded result. Cover family, output target, semantic target, selector, facet, disposition,
-  and relevant residual reason IDs. A facet support entry is `Unconditional`, `Conditional`,
-  `Unsupported`, or `Unverified`; a `Conditional` entry carries only bounded, versioned value
-  classes, label modes, resource requirements, or host-policy predicates proven by C6. Conditions
-  that cannot be represented in that closed shape remain `Unverified`. The final `RenderReport`,
-  not discovery, remains authoritative for a concrete request. Rust, JSON metadata, Web/Node, UniFFI, C FFI, and Typst-facing
-  metadata must be generated or verified from the same authority. Older response consumers ignore
-  unknown additive descriptor rows/fields; execution requests reject unknown family, target,
-  selector, or facet IDs. Keep writer receipts and per-element ledgers private.
+- **Capability-discovery candidate:** Compose one versioned query/result envelope from the core
+  family catalog and a renderer-owned, versioned support-claim manifest derived from the private C5
+  mechanism matrix. The non-published C6 harness verifies every positive claim and binds the claim
+  manifest digest; production discovery never depends on the acceptance crate. Missing or
+  unverified combinations return `Unverified`. The stable query identifies family, output
+  target, semantic target, and facet, and returns a coarse state plus bounded reason IDs:
+  `Unconditional`, `Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. The complete
+  selector subclasses, value classes, label modes, resource predicates, and host-policy predicates
+  remain alpha until at least one first-party authoring consumer proves each extra dimension is
+  needed. `Unconditional` means the complete public value domain under the declared conditions, not
+  that one fixture passed. Conditions are implemented once and shared with runtime admission;
+  discovery does not reimplement them. Unknown string IDs and additive rows are preserved and
+  normalize to `Unverified`, while execution requests still reject unknown executable IDs. A concrete
+  final render or export report remains authoritative for one request. Rust, JSON metadata,
+  Web/Node, UniFFI, C FFI, and Typst-facing metadata project from the same authority. Keep writer
+  receipts, selectors, and per-element ledgers private.
 - **Existing preset migration:** Treat `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
   `gruvbox-dark`, `ayu-light`, and `ayu-dark` as the initial alpha inventory rather than inherited
   stable IDs. Before C7a-contract, each receives an explicit retain/remove decision and an alpha
@@ -869,24 +968,63 @@ and public theme scope from the independent renderer taxonomy before adding face
   stable compatibility promise until the stable catalog gate after C6b, even when it remains usable
   during alpha; any later recipe/resource change invalidates that revision's qualification as defined
   above.
-- **Preset materialization contract:** `merman-bindings-core` owns one versioned
-  `DiagramThemeSpecWire` serializer used by every binding metadata projection and by the native CLI.
-  The CLI exposes a fixed read-only `theme materialize <preset> --format json` operation; metadata
-  returns the preset revision, schema version, maturity, and the same complete editable spec. Unknown,
-  removed, or alpha-only preset handling is identical across hosts. Materialization never introduces
-  merge/patch semantics and encodes bounded assets through the existing typed resource wire shape.
-- **Verification:** The candidate gate validates the Rust envelope, compiler/policy boundary,
+- **Authoring and preset materialization contract:** `merman-render::diagram_theme::wire`, or a
+  lower dependency-free theme-contract module, owns the versioned `ThemeDefinitionWire`,
+  `ThemeRuleSetWire`, `MaterializedThemeWire`, `MaterializedPresetWire`, and
+  `DiagramThemeSpecWire` types, canonical serializer, and the only semantic `ThemeMaterializer`.
+  `merman-bindings-core` owns transport admission and external envelopes, and generated SDKs project
+  from the shared wire contract. Hosts call the same core materializer and never expand tokens,
+  reorder rules, resolve palette collisions, or canonicalize materialization locally. The current
+  alpha `ThemeTokens::into_theme_spec`, `ThemePreset::spec`, and `compile_preset` expansion paths are
+  deleted or reduced to thin delegation through this materializer; family-specific token fields and
+  duplicate expansion tables do not remain as compatibility implementations. The first stable
+  operations are `materialize_theme`, revision-aware
+  `materialize_preset(PresetRef)`, and query-oriented `describe_theme_support`; an authoring inspector
+  and its expansion trace are alpha/debug-only.
+  The CLI exposes fixed read-only `theme materialize` operations for a versioned definition or
+  preset. Both results separate the editable `spec` from metadata and tell users to pass the edited
+  spec through `theme.spec`; preset results do not pretend to have authoring schema or expansion
+  provenance. External materialization applies encoded-byte and collection admission before typed
+  decoding. Unknown versions, illegal version tuples, removed preset revisions, fatal validation
+  errors, more than the executable table's derived `MAX_AUTHORED_RULES`, concrete effect references,
+  resource limits, duplicate palettes, and empty required collections fail closed without a partial
+  spec.
+  Materialization never introduces preset merge/patch semantics and encodes bounded assets through
+  the existing typed resource wire shape.
+- **Verification:** The authoring contract matrix validates tokens-only expansion; token rules plus
+  existing global/family/variant/ordinal rules in the ADR-defined order; generated/authored ordinal
+  palette replacement and duplicate rejection; omitted, explicit clear, and rejected token-null
+  behavior through real generated SDK tri-state values; source-order conflicts; empty/invalid
+  collections; the derived exact/exact-plus-one authored-rule boundary; rejected concrete effect
+  references; pre-decode
+  byte/collection limits; legal and illegal schema/expansion/spec tuples; preset
+  export; `ThemeMaterializationDigest` and `PresetMaterializationDigest` sensitivity; exclusion of
+  maturity from the preset digest; and identical Rust, JSON, Web/Node, UniFFI, and generated SDK
+  materialization. The materialized spec then enters the ordinary compiler and renderer; the
+  authoring layer creates no proof receipt. The candidate gate validates the Rust envelope, compiler/policy boundary,
   version/discovery behavior, facet descriptor population from real C5/C6 evidence, unknown-ID and
   additive-field behavior, cross-binding descriptor round trips, existing-preset migration, coarse
   reports, deletion audit, and independent contract review. The
   rollout gate then runs the native portions of the original U8-U11 matrices: Options/binding/Typst
   parity, native CLI scope, generated contracts, migration examples, and public API compilation.
-  Only the combined receipt freezes `C7a-contract`. The rollout also regenerates all SDK/package
+  One aggregate `C7aContractEligibilityReport` binds the accepted ADR/table digest, C5 matrix and
+  route-manifest versions, C6a receipt, pre-freeze family and authoring witnesses, generated binding
+  artifacts, author-task results, and rollout outputs from one source revision. Do not create a new
+  public receipt type for each test action. Only this aggregate report freezes `C7a-contract`. The
+  rollout also regenerates all SDK/package
   copies from their authorities, checks Web types against the shared theme catalog, documents every
   resource field, and returns a versioned bounded execution-evidence envelope through Node, UniFFI,
   and C FFI. An alpha preset is discoverable only with an explicit maturity marker. A stable preset
   is eligible only when it declares supported family/target cells, allowed residual IDs, font source,
   and per-target admission expectations backed by C6 runner evidence.
+- **Authoring rollout witness:** After `C7a-candidate`, migrate first-party bindings and examples to
+  the shared materialization operations. Rust and at least one non-Rust or CLI consumer must complete
+  the same author-task matrix: create a tokens-only theme; add a family-scoped rule; materialize and
+  edit a preset revision; diagnose a precedence conflict; explain a conditional, unsupported, and
+  not-applicable query; and exercise omitted, clear, and invalid-null states. The Playground may
+  dogfood the same tasks with side-by-side Flowchart/State/Sequence light/dark previews, but a UI is
+  not required for the gate. This is rollout evidence and a usability check, not a frozen UI or a
+  reason to expose private ledgers.
 - **Done when:** Users can exercise the proven native theme surface ergonomically while external
   host results remain honestly `HostDependent` and strict portability rejects them. Any later family
   work that requires a new public recipe shape, capability, or report contract reopens
@@ -931,13 +1069,16 @@ and public theme scope from the independent renderer taxonomy before adding face
 2. `fix(theme): constrain compilation and refresh alpha resource contracts`
 3. `fix(text): bind terminal prepared text to retained evidence`
 4. `refactor(theme): complete family-scoped semantic programs`
-5. `feat(theme): complete the native C6a eligibility slices`
-6. `feat(theme): declare the alpha native theme candidate`
-7. `feat(theme): roll out the candidate native theme surface`
-8. `feat(theme)!: freeze the verified native theme contract`
-9. `test(theme): close the cross-target C6b release matrix` may proceed independently once its target
+5. `docs(theme): define the proposed alpha authoring facade contract`
+6. `feat(theme): complete the native C6a eligibility slices`
+7. `refactor(theme): prove the pre-freeze family and expansion consumers`
+8. `feat(theme): implement the versioned theme materializer and authoring witnesses`
+9. `feat(theme): declare the alpha native theme candidate`
+10. `feat(theme): roll out the candidate native theme surface`
+11. `feat(theme)!: freeze the verified native theme contract`
+12. `test(theme): close the cross-target C6b release matrix` may proceed independently once its target
    runners exist; it is required before stable cross-target preset/catalog claims, not before C7a.
-10. Resume remaining family breadth, selected preset candidates, reference comparisons, and
+13. Resume remaining family breadth, selected preset candidates, reference comparisons, and
     final-review commits only after
     the corresponding C7b gates pass. External-host assurance proceeds only under a separate C7c
     product decision.
