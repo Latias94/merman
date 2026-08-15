@@ -2875,9 +2875,10 @@ mod png_feature_tests {
         control.cancel();
 
         let prepared_error =
-            prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone())
-                .err()
-                .expect("pre-cancelled preparation must fail");
+            match prepare_raster_controlled(&svg, &RasterOptions::default(), control.clone()) {
+                Ok(_) => panic!("pre-cancelled preparation must fail"),
+                Err(error) => error,
+            };
         assert!(matches!(
             prepared_error,
             ExportError::Cancelled(OperationCancelled {
@@ -2888,8 +2889,7 @@ mod png_feature_tests {
         assert!(prepared_error.resource_limit_details().is_none());
 
         let bytes_error = svg_to_png_controlled(&svg, &RasterOptions::default(), control)
-            .err()
-            .expect("pre-cancelled encoding must fail");
+            .expect_err("pre-cancelled encoding must fail");
         assert!(matches!(
             bytes_error,
             ExportError::Cancelled(OperationCancelled {
@@ -2909,8 +2909,7 @@ mod png_feature_tests {
 
         let error = prepared
             .encode_png()
-            .err()
-            .expect("cancelled encoding must not return bytes");
+            .expect_err("cancelled encoding must not return bytes");
         assert!(matches!(
             error,
             ExportError::Cancelled(OperationCancelled {
@@ -2952,8 +2951,7 @@ mod jpeg_feature_tests {
         control.cancel();
 
         let error = svg_to_jpeg_controlled(&svg, &RasterOptions::default(), control)
-            .err()
-            .expect("pre-cancelled JPEG encoding must fail");
+            .expect_err("pre-cancelled JPEG encoding must fail");
         assert!(matches!(
             error,
             ExportError::Cancelled(OperationCancelled {
@@ -3042,9 +3040,11 @@ mod pdf_feature_tests {
         let control = OperationControl::new();
         control.cancel();
 
-        let prepared_error = prepare_pdf_controlled(&svg, &PdfOptions::default(), control.clone())
-            .err()
-            .expect("pre-cancelled PDF preparation must fail");
+        let prepared_error =
+            match prepare_pdf_controlled(&svg, &PdfOptions::default(), control.clone()) {
+                Ok(_) => panic!("pre-cancelled PDF preparation must fail"),
+                Err(error) => error,
+            };
         assert!(matches!(
             prepared_error,
             ExportError::Cancelled(OperationCancelled {
@@ -3055,8 +3055,7 @@ mod pdf_feature_tests {
         assert!(prepared_error.resource_limit_details().is_none());
 
         let bytes_error = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)
-            .err()
-            .expect("pre-cancelled PDF encoding must fail");
+            .expect_err("pre-cancelled PDF encoding must fail");
         assert!(matches!(
             bytes_error,
             ExportError::Cancelled(OperationCancelled {

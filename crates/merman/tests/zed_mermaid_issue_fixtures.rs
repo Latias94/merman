@@ -39,7 +39,7 @@ fn render_with_profile(
     let policy = RenderResourcePolicy::for_profile(profile);
     let renderer = Renderer::new()
         .with_parse_options(parse_options)
-        .with_resource_policy(policy.input_policy().clone());
+        .with_resource_policy(*policy.input_policy());
     let output = renderer.render(RenderRequest::svg(
         source,
         OperationControl::new(),
@@ -291,7 +291,7 @@ fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
     let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
     let policy = RenderResourcePolicy::for_profile(RenderResourceProfile::UnboundedForTrustedInput);
     let error = Renderer::new()
-        .with_resource_policy(policy.input_policy().clone())
+        .with_resource_policy(*policy.input_policy())
         .render(RenderRequest::png(
             &source,
             OperationControl::new(),

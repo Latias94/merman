@@ -27,7 +27,7 @@ impl AcquiredSnapshot {
 
 pub(in crate::session) enum ProjectionDecision {
     Ready(SnapshotContext),
-    Project(DiagnosticReprojectionRequest),
+    Project(Box<DiagnosticReprojectionRequest>),
 }
 
 enum AcquisitionAttempt<T> {
@@ -258,7 +258,7 @@ impl LanguageSession {
         match decision {
             ProjectionDecision::Ready(context) => Ok(AcquisitionAttempt::Ready(context)),
             ProjectionDecision::Project(request) => {
-                self.execute_projection_once(&executor, request).await
+                self.execute_projection_once(&executor, *request).await
             }
         }
     }

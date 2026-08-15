@@ -193,21 +193,21 @@ impl SessionState {
                     snapshot.stamp,
                 )));
             }
-            return Some(ProjectionDecision::Project(
+            return Some(ProjectionDecision::Project(Box::new(
                 self.diagnostic_reprojection_request_for_snapshot(
                     Arc::clone(cached.snapshot()),
                     snapshot.stamp,
                     Some(cached.authority()),
                 ),
-            ));
+            )));
         }
-        Some(ProjectionDecision::Project(
+        Some(ProjectionDecision::Project(Box::new(
             self.diagnostic_reprojection_request_for_snapshot(
                 Arc::clone(&snapshot.snapshot),
                 snapshot.stamp,
                 None,
             ),
-        ))
+        )))
     }
 
     pub(in crate::session) fn is_acquired_snapshot_current(

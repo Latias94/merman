@@ -31,7 +31,7 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
         "mindmap edge paths should not leak invalid style tokens"
     );
 
-    let doc = roxmltree::Document::parse(&svg).expect("valid svg xml");
+    let doc = roxmltree::Document::parse(svg).expect("valid svg xml");
     let node_1 = doc
         .descendants()
         .find(|n| n.has_tag_name("g") && n.attribute("id") == Some(NODE_1_ID))
