@@ -1,5 +1,10 @@
 # SVG, PNG, JPEG, and PDF Output
 
+> [!NOTE]
+> This guide documents the current `main` branch. The `RenderedDocument` and target-admission APIs
+> were introduced after the published `0.8.0-alpha.5` tag. Use matching Git revisions while trying
+> these examples, or consult the tagged documentation for a published release.
+
 Merman exposes four output contracts from the same headless render operation. SVG is the pure
 vector path. PNG and JPEG allocate a final pixel buffer. PDF keeps ordinary SVG geometry as vector
 content and rasterizes only operations such as filters that require a bitmap.
@@ -129,7 +134,7 @@ merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["pn
 ```rust
 use merman::svg::export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions};
 use merman::{
-    OperationControl, PdfRequest, PngRequest, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
 
 let renderer = Renderer::new();
@@ -146,31 +151,35 @@ let raster = RasterOptions::default()
     .with_fit_to(RasterFitBox::contain(960, 540))
     .with_scale(2.0)
     .with_matte("white");
-let RenderOutput::Png(Some(png)) = renderer.render(RenderRequest::png(
+let RenderOutput::Document(Some(document)) = renderer.render(RenderRequest::document(
     source,
     OperationControl::new(),
-    PngRequest {
-        svg: svg.clone(),
-        options: raster,
-    },
+    svg,
 ))? else {
     return Err("no Mermaid diagram detected".into());
 };
+let png = document.export_png(&raster, OperationControl::new())?;
 
 let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
     max_width_px: 800.0,
 });
-let RenderOutput::Pdf(Some(pdf)) = renderer.render(RenderRequest::pdf(
-    source,
-    OperationControl::new(),
-    PdfRequest { svg, options: pdf },
-))? else {
-    return Err("no Mermaid diagram detected".into());
-};
+let pdf = document.export_pdf(&pdf, OperationControl::new())?;
 
-# let _ = (png.bytes, pdf.bytes);
+# let _ = (png.bytes(), pdf.bytes());
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+Use `prepare_png_export`, `prepare_jpeg_export`, or `prepare_pdf_export` when a scheduler must
+inspect the frozen allocation report before encoding. Calling `encode()` on the prepared value
+returns the same evidence-bearing `RasterOutput` or `PdfOutput` as the corresponding one-step
+`export_*` method.
+
+`RenderedDocument` freezes layout, terminal SVG resources, render evidence, and the standalone SVG
+admission once. Document completion does not enforce that SVG receipt; inspect
+`standalone_svg_admission()` before publishing the SVG. Each native projection receives its own
+cancellation control, independently enforces the request's portability requirement, and returns a
+target-owned admission receipt.
+Calling `into_bytes()` is an explicit lossy projection that discards those receipts.
 
 The same path is available as a runnable repository example:
 

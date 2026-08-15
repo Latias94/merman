@@ -91,9 +91,10 @@ Choose one typed target for each request:
 | Parse a typed Mermaid model | `Engine` and `ParseOptions` | Always available |
 | Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Always available |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
+| Complete one document for several graphical targets | `RenderRequest::document()` | `svg` plus each output feature used |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
 | Render terminal text for supported families | `RenderRequest::ascii()` | `ascii` |
-| Export PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
+| Export one-shot PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
 | Produce diagnostics or analyze Markdown and MDX fences | `merman::analysis::Analyzer` | `analysis` |
 | Build parser-backed editor snapshots | APIs under `merman::editor` | `editor` |
 

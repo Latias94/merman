@@ -19,6 +19,7 @@ pub(crate) fn prove_brutalist_state_pdf(
     fixture: &BrutalistStateFixtureContract<'_>,
     sealed_svg: &str,
     bytes: &[u8],
+    artifact_digest: [u8; 32],
     filter_scale: f32,
 ) -> C6ProofResult<super::C6TargetProof> {
     let contract = BrutalistStatePdfContract::from_fixture(fixture, filter_scale)?;
@@ -104,7 +105,7 @@ pub(crate) fn prove_brutalist_state_pdf(
     .map_err(|error| C6ProofError::new("pdf-text", error))?;
 
     Ok(super::C6TargetProof::brutalist_state_pdf(
-        bytes,
+        artifact_digest,
         super::brutalist_state_applied_mechanisms(),
     ))
 }

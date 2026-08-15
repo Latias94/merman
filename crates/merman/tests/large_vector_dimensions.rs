@@ -76,9 +76,9 @@ fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
     let RenderOutput::Pdf(Some(pdf)) = output else {
         panic!("XYChart should be detected");
     };
-    assert!(pdf.bytes.starts_with(b"%PDF-"));
+    assert!(pdf.bytes().starts_with(b"%PDF-"));
     assert!(
-        String::from_utf8_lossy(&pdf.bytes).contains("100000"),
+        String::from_utf8_lossy(pdf.bytes()).contains("100000"),
         "PDF should retain the intrinsic vector page size"
     );
 

@@ -1,5 +1,10 @@
 # merman-export
 
+> [!NOTE]
+> This README documents the current `main` branch. The operation-scoped `Renderer`,
+> `RenderedDocument`, and target-admission examples were introduced after the published
+> `0.8.0-alpha.5` tag. Use matching Git revisions for current-main APIs.
+
 `merman-export` is the bounded binary-export layer behind Merman's PNG, JPEG, and PDF output. It encodes SVG that has already passed Merman's terminal resvg-compatible finalizer; it does not parse Mermaid source or choose a layout engine.
 
 Most applications should depend on [`merman`](https://crates.io/crates/merman) and select its
@@ -50,12 +55,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no Mermaid diagram detected".into());
     };
 
-    std::fs::write("diagram.png", png.bytes)?;
+    std::fs::write("diagram.png", png.bytes())?;
     Ok(())
 }
 ```
 
-Replace `png` with `jpeg` or `pdf` when only that format is required. JPEG uses `RasterOptions`; PDF uses its independent `PdfOptions` page and filter policy.
+Replace `png` with `jpeg` or `pdf` when only that format is required. JPEG uses `RasterOptions`; PDF uses its independent `PdfOptions` page and filter policy. Use `into_bytes()` only when deliberately discarding render and target-admission evidence.
 
 `RasterOptions::matte` and `PdfOptions::page_paint` are output-compositing controls. They do not
 change the diagram theme canvas or trigger layout. Use theme configuration for diagram-owned

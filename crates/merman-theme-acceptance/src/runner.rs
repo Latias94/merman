@@ -10,8 +10,8 @@ use merman::svg::{
     ThemeTextStyle, TypographySpec,
 };
 use merman::{
-    DiagramFamilyId, Engine, JpegRequest, MermaidConfig, OperationControl, PdfRequest, PngRequest,
-    RenderEvidence, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest,
+    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderEvidence, RenderOutput,
+    RenderRequest, RenderedDocument, Renderer, SvgEnvironment, SvgRequest, TargetAdmissionReceipt,
     ThemeEvidenceStatus,
 };
 use merman_export::{
@@ -19,11 +19,10 @@ use merman_export::{
     RasterOptions, RasterOutputKind, SvgConversionPlan,
 };
 use merman_theme_fixtures::{
-    C6AcceptanceCatalog, C6EnforcedCell, C6ExpectedFontSource, C6ProofFamily, C6ProofTheme,
-    C6RequiredAdmission, ExpectedOutputTarget, ReferenceBorderInput, ReferenceCanvasLayer,
-    ReferenceDiagramFamily, ReferenceFontBinding, ReferenceFontStack, ReferenceSemanticRule,
-    ReferenceSemanticTarget, ReferenceShadowInput, ReferenceThemeInput, ReferenceThemeMechanism,
-    ReferenceThemeTokens, ThemeFixtureCatalog,
+    C6AcceptanceCatalog, C6EnforcedCell, C6ProofFamily, C6ProofTheme, ExpectedOutputTarget,
+    ReferenceBorderInput, ReferenceCanvasLayer, ReferenceDiagramFamily, ReferenceFontBinding,
+    ReferenceFontStack, ReferenceSemanticRule, ReferenceSemanticTarget, ReferenceShadowInput,
+    ReferenceThemeInput, ReferenceThemeMechanism, ReferenceThemeTokens, ThemeFixtureCatalog,
 };
 
 use crate::observation::{
@@ -481,16 +480,15 @@ fn execute_brutalist_state_group(
 
     let renderer = brutalist_state_renderer();
     let svg_request = portable_svg_request();
-    let svg_output = prove_render_group(
+    let document = prove_render_group(
         &group.key,
-        render_brutalist_state_svg(&renderer, &source, &theme, svg_request.clone()),
+        render_brutalist_state_document(&renderer, &source, &theme, svg_request),
     )?;
     let svg_identity = prove_render_group(
         &group.key,
-        prove_brutalist_state_evidence(svg_output.evidence(), &theme),
+        prove_brutalist_state_evidence(document.evidence(), &theme),
     )?;
-    let svg_resource_fingerprint = *svg_output.resource_fingerprint().as_bytes();
-    let sealed_svg = svg_output.svg();
+    let sealed_svg = document.svg();
     let mechanisms =
         prove_render_group(&group.key, prove_brutalist_state_svg(&contract, sealed_svg))?;
     prove_render_group(
@@ -518,10 +516,8 @@ fn execute_brutalist_state_group(
                 &png_dependents,
                 &contract,
                 sealed_svg,
-                &renderer,
-                &source,
+                &document,
                 &theme,
-                svg_request.clone(),
             )
         })
         .transpose()?;
@@ -533,10 +529,8 @@ fn execute_brutalist_state_group(
         .then(|| {
             observe_brutalist_state_jpeg(
                 &group.key,
-                &renderer,
-                &source,
+                &document,
                 &theme,
-                svg_request.clone(),
                 &png_support
                     .as_ref()
                     .ok_or_else(|| render_group_error(&group.key, "jpeg-png-control-plan"))?
@@ -548,22 +542,12 @@ fn execute_brutalist_state_group(
         .cells
         .iter()
         .any(|cell| cell.key().target() == ExpectedOutputTarget::Pdf)
-        .then(|| {
-            observe_brutalist_state_pdf(
-                &group.key,
-                &contract,
-                sealed_svg,
-                &renderer,
-                &source,
-                &theme,
-                svg_request.clone(),
-            )
-        })
+        .then(|| observe_brutalist_state_pdf(&group.key, &contract, sealed_svg, &document, &theme))
         .transpose()?;
 
-    let resource_fingerprint = canonical_resource_fingerprint(
+    prove_shared_document_identity(
         &group.key,
-        svg_resource_fingerprint,
+        document.standalone_svg_admission(),
         png_support.as_ref().map(|support| &support.0),
         jpeg_observation.as_ref(),
         pdf_observation.as_ref(),
@@ -572,13 +556,15 @@ fn execute_brutalist_state_group(
         group.key.clone(),
         theme_catalog,
         &svg_identity,
-        sealed_svg,
-        resource_fingerprint,
+        document.standalone_svg_admission(),
     )?;
-    let svg_observation = C6TargetObservation::portable(
+    let svg_observation = C6TargetObservation::from_target_receipt(
         svg_identity,
-        resource_fingerprint,
-        C6TargetProof::brutalist_state_standalone_svg(sealed_svg.as_bytes(), mechanisms.clone()),
+        document.standalone_svg_admission(),
+        C6TargetProof::brutalist_state_standalone_svg(
+            document.standalone_svg_admission().artifact_digest(),
+            mechanisms.clone(),
+        ),
     );
 
     let mut cells = Vec::with_capacity(group.cells.len());
@@ -623,27 +609,21 @@ fn render_group_error(key: &C6RenderGroupKey, field: &'static str) -> C6RuntimeE
 #[derive(Clone)]
 struct C6TargetObservation {
     identity: crate::observation::C6RenderIdentity,
-    resource_fingerprint: [u8; 32],
-    admission: C6RequiredAdmission,
-    admission_reason_ids: Vec<String>,
+    target_receipt: TargetAdmissionReceipt,
     residual_ids: BTreeSet<String>,
-    font_source: C6ExpectedFontSource,
     proof: C6TargetProof,
 }
 
 impl C6TargetObservation {
-    fn portable(
+    fn from_target_receipt(
         identity: crate::observation::C6RenderIdentity,
-        resource_fingerprint: [u8; 32],
+        target_receipt: &TargetAdmissionReceipt,
         proof: C6TargetProof,
     ) -> Self {
         Self {
             identity,
-            resource_fingerprint,
-            admission: C6RequiredAdmission::Portable,
-            admission_reason_ids: Vec::new(),
+            target_receipt: target_receipt.clone(),
             residual_ids: BTreeSet::new(),
-            font_source: C6ExpectedFontSource::Embedded,
             proof,
         }
     }
@@ -657,31 +637,36 @@ impl C6TargetObservation {
             enforced,
             group,
             self.identity,
-            self.resource_fingerprint,
-            self.admission,
-            self.admission_reason_ids,
+            self.target_receipt,
             self.residual_ids,
-            self.font_source,
             self.proof,
         )
     }
 }
 
-fn canonical_resource_fingerprint(
+fn prove_shared_document_identity(
     key: &C6RenderGroupKey,
-    finalized_svg: [u8; 32],
+    standalone: &TargetAdmissionReceipt,
     png: Option<&C6TargetObservation>,
     jpeg: Option<&C6TargetObservation>,
     pdf: Option<&C6TargetObservation>,
-) -> Result<[u8; 32], C6RuntimeError> {
-    let mut fingerprints = [png, jpeg, pdf]
-        .into_iter()
-        .flatten()
-        .map(|observation| observation.resource_fingerprint);
-    if finalized_svg == [0; 32] || fingerprints.any(|candidate| candidate != finalized_svg) {
-        return Err(render_group_error(key, "native-resource-fingerprint"));
+) -> Result<(), C6RuntimeError> {
+    let standalone_resource = *standalone.resource_fingerprint().as_bytes();
+    let standalone_fonts = *standalone.font_catalog_fingerprint().as_bytes();
+    let mismatched = [png, jpeg, pdf].into_iter().flatten().any(|observation| {
+        let receipt = &observation.target_receipt;
+        receipt.document_digest() != standalone.document_digest()
+            || *receipt.resource_fingerprint().as_bytes() != standalone_resource
+            || *receipt.font_catalog_fingerprint().as_bytes() != standalone_fonts
+    });
+    if standalone.document_digest() == [0; 32]
+        || standalone_resource == [0; 32]
+        || standalone_fonts == [0; 32]
+        || mismatched
+    {
+        return Err(render_group_error(key, "native-document-identity"));
     }
-    Ok(finalized_svg)
+    Ok(())
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -911,32 +896,16 @@ fn observe_brutalist_state_png(
     required_by: &[ExpectedOutputTarget],
     contract: &BrutalistStateFixtureContract<'_>,
     sealed_svg: &str,
-    renderer: &Renderer,
-    source: &str,
+    document: &RenderedDocument,
     theme: &DiagramTheme,
-    svg_request: SvgRequest,
 ) -> Result<(C6TargetObservation, PngArtifactProof), C6RuntimeError> {
-    let output = renderer
-        .render(
-            RenderRequest::png(
-                source,
-                OperationControl::new(),
-                PngRequest {
-                    svg: svg_request,
-                    options: RasterOptions::default().with_scale(2.0),
-                },
-            )
-            .with_theme(theme.clone()),
+    let output = document
+        .export_png(
+            &RasterOptions::default().with_scale(2.0),
+            OperationControl::new(),
         )
         .map_err(|error| C6ProofError::new("png-render", error.to_string()))
         .map_err(|error| error.into_target_runtime(key, ExpectedOutputTarget::Png, required_by))?;
-    let RenderOutput::Png(Some(output)) = output else {
-        return Err(C6ProofError::new(
-            "png-render",
-            "enforced source did not produce a PNG artifact",
-        )
-        .into_target_runtime(key, ExpectedOutputTarget::Png, required_by));
-    };
     let report = output.export_report();
     let identity = prove_target(
         key,
@@ -951,7 +920,7 @@ fn observe_brutalist_state_png(
         prove_raster_export_report(
             report,
             RasterOutputKind::Png,
-            output.plan,
+            output.plan(),
             output.evidence(),
         ),
     )?;
@@ -959,15 +928,11 @@ fn observe_brutalist_state_png(
         key,
         ExpectedOutputTarget::Png,
         required_by,
-        prove_brutalist_state_png(contract, sealed_svg, &output.bytes, output.plan),
+        prove_brutalist_state_png(contract, sealed_svg, output.bytes(), output.plan()),
     )?;
-    let target_proof = proof.target_proof(&output.bytes);
+    let target_proof = proof.target_proof(output.admission().artifact_digest());
     Ok((
-        C6TargetObservation::portable(
-            identity,
-            *report.resource_fingerprint().as_bytes(),
-            target_proof,
-        ),
+        C6TargetObservation::from_target_receipt(identity, output.admission(), target_proof),
         proof,
     ))
 }
@@ -975,36 +940,20 @@ fn observe_brutalist_state_png(
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn observe_brutalist_state_jpeg(
     key: &C6RenderGroupKey,
-    renderer: &Renderer,
-    source: &str,
+    document: &RenderedDocument,
     theme: &DiagramTheme,
-    svg_request: SvgRequest,
     png_proof: &PngArtifactProof,
 ) -> Result<C6TargetObservation, C6RuntimeError> {
     const REQUIRED_BY: [ExpectedOutputTarget; 1] = [ExpectedOutputTarget::Jpeg];
-    let output = renderer
-        .render(
-            RenderRequest::jpeg(
-                source,
-                OperationControl::new(),
-                JpegRequest {
-                    svg: svg_request,
-                    options: RasterOptions::default().with_scale(2.0),
-                },
-            )
-            .with_theme(theme.clone()),
+    let output = document
+        .export_jpeg(
+            &RasterOptions::default().with_scale(2.0),
+            OperationControl::new(),
         )
         .map_err(|error| C6ProofError::new("jpeg-render", error.to_string()))
         .map_err(|error| {
             error.into_target_runtime(key, ExpectedOutputTarget::Jpeg, &REQUIRED_BY)
         })?;
-    let RenderOutput::Jpeg(Some(output)) = output else {
-        return Err(C6ProofError::new(
-            "jpeg-render",
-            "enforced source did not produce a JPEG artifact",
-        )
-        .into_target_runtime(key, ExpectedOutputTarget::Jpeg, &REQUIRED_BY));
-    };
     let report = output.export_report();
     let identity = prove_target(
         key,
@@ -1019,7 +968,7 @@ fn observe_brutalist_state_jpeg(
         prove_raster_export_report(
             report,
             RasterOutputKind::Jpeg,
-            output.plan,
+            output.plan(),
             output.evidence(),
         ),
     )?;
@@ -1027,11 +976,16 @@ fn observe_brutalist_state_jpeg(
         key,
         ExpectedOutputTarget::Jpeg,
         &REQUIRED_BY,
-        prove_brutalist_state_jpeg(&output.bytes, output.plan, png_proof),
+        prove_brutalist_state_jpeg(
+            output.bytes(),
+            output.admission().artifact_digest(),
+            output.plan(),
+            png_proof,
+        ),
     )?;
-    Ok(C6TargetObservation::portable(
+    Ok(C6TargetObservation::from_target_receipt(
         identity,
-        *report.resource_fingerprint().as_bytes(),
+        output.admission(),
         proof,
     ))
 }
@@ -1041,33 +995,14 @@ fn observe_brutalist_state_pdf(
     key: &C6RenderGroupKey,
     contract: &BrutalistStateFixtureContract<'_>,
     sealed_svg: &str,
-    renderer: &Renderer,
-    source: &str,
+    document: &RenderedDocument,
     theme: &DiagramTheme,
-    svg_request: SvgRequest,
 ) -> Result<C6TargetObservation, C6RuntimeError> {
     const REQUIRED_BY: [ExpectedOutputTarget; 1] = [ExpectedOutputTarget::Pdf];
-    let output = renderer
-        .render(
-            RenderRequest::pdf(
-                source,
-                OperationControl::new(),
-                PdfRequest {
-                    svg: svg_request,
-                    options: PdfOptions::default(),
-                },
-            )
-            .with_theme(theme.clone()),
-        )
+    let output = document
+        .export_pdf(&PdfOptions::default(), OperationControl::new())
         .map_err(|error| C6ProofError::new("pdf-render", error.to_string()))
         .map_err(|error| error.into_target_runtime(key, ExpectedOutputTarget::Pdf, &REQUIRED_BY))?;
-    let RenderOutput::Pdf(Some(output)) = output else {
-        return Err(C6ProofError::new(
-            "pdf-render",
-            "enforced source did not produce a PDF artifact",
-        )
-        .into_target_runtime(key, ExpectedOutputTarget::Pdf, &REQUIRED_BY));
-    };
     let report = output.export_report();
     let identity = prove_target(
         key,
@@ -1079,13 +1014,13 @@ fn observe_brutalist_state_pdf(
         key,
         ExpectedOutputTarget::Pdf,
         &REQUIRED_BY,
-        prove_pdf_export_report(report, output.plan, output.evidence()),
+        prove_pdf_export_report(report, output.plan(), output.evidence()),
     )?;
     prove_target(
         key,
         ExpectedOutputTarget::Pdf,
         &REQUIRED_BY,
-        prove_pdf_artifact(&output.bytes),
+        prove_pdf_artifact(output.bytes()),
     )?;
     let proof = prove_target(
         key,
@@ -1094,13 +1029,14 @@ fn observe_brutalist_state_pdf(
         prove_brutalist_state_pdf(
             contract,
             sealed_svg,
-            &output.bytes,
-            output.plan.effective_scale,
+            output.bytes(),
+            output.admission().artifact_digest(),
+            output.plan().effective_scale,
         ),
     )?;
-    Ok(C6TargetObservation::portable(
+    Ok(C6TargetObservation::from_target_receipt(
         identity,
-        *report.resource_fingerprint().as_bytes(),
+        output.admission(),
         proof,
     ))
 }
@@ -1252,22 +1188,22 @@ pub(crate) fn portable_svg_request() -> SvgRequest {
     }
 }
 
-fn render_brutalist_state_svg(
+fn render_brutalist_state_document(
     renderer: &Renderer,
     source: &str,
     theme: &DiagramTheme,
     request: SvgRequest,
-) -> C6ProofResult<merman::FinalizedSvgOutput> {
+) -> C6ProofResult<RenderedDocument> {
     let output = renderer
         .render(
-            RenderRequest::finalized_svg(source, OperationControl::new(), request)
+            RenderRequest::document(source, OperationControl::new(), request)
                 .with_theme(theme.clone()),
         )
         .map_err(|error| C6ProofError::new("render-svg", error.to_string()))?;
-    let RenderOutput::FinalizedSvg(Some(output)) = output else {
+    let RenderOutput::Document(Some(output)) = output else {
         return Err(C6ProofError::new(
             "render-svg",
-            "enforced source did not produce a standalone SVG artifact",
+            "enforced source did not produce a completed document",
         ));
     };
     Ok(output)

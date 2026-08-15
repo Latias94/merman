@@ -104,20 +104,11 @@ impl PreparedGraphicalOutput {
         match self {
             Self::Svg => merman::RenderTarget::Svg(svg),
             #[cfg(feature = "png")]
-            Self::Png { options } => merman::RenderTarget::Png(merman::PngRequest {
-                svg,
-                options: options.clone(),
-            }),
+            Self::Png { .. } => merman::RenderTarget::Document(svg),
             #[cfg(feature = "jpeg")]
-            Self::Jpeg { options } => merman::RenderTarget::Jpeg(merman::JpegRequest {
-                svg,
-                options: options.clone(),
-            }),
+            Self::Jpeg { .. } => merman::RenderTarget::Document(svg),
             #[cfg(feature = "pdf")]
-            Self::Pdf { options } => merman::RenderTarget::Pdf(merman::PdfRequest {
-                svg,
-                options: options.clone(),
-            }),
+            Self::Pdf { .. } => merman::RenderTarget::Document(svg),
         }
     }
 }

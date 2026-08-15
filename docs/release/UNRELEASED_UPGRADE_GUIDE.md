@@ -85,6 +85,38 @@ replacement.
 owner, so callers should use `family_id()`, `operation_context()`, measurement provenance, and the
 coarse theme evidence rather than branching on an internal path taxonomy.
 
+Development snapshots that used `FinalizedSvgOutput`, `RenderTarget::FinalizedSvg`,
+`RenderOutput::FinalizedSvg`, or `RenderRequest::finalized_svg` must migrate to
+`RenderedDocument`, `RenderTarget::Document`, `RenderOutput::Document`, and
+`RenderRequest::document`. A document freezes one terminal SVG and can project PNG, JPEG, and PDF
+without repeating parse, layout, or SVG finalization. `RasterOutput` and `PdfOutput` no longer
+expose mutable `bytes` / `plan` fields or decomposable `into_parts()` tuples; use `bytes()`,
+`plan()`, and `admission()` while evidence must remain attached, or the explicitly lossy
+`into_bytes()` when only encoded bytes cross the next boundary.
+
+`RenderedDocument` is no longer `Clone`: cloning it copied the entire sealed SVG and made an
+apparently cheap evidence snapshot scale with document size. Borrow one document while preparing
+or exporting targets. Hosts that must inspect allocation before encoding can call
+`prepare_png_export`, `prepare_jpeg_export`, or `prepare_pdf_export`, read the frozen report, then
+call `encode()`.
+
+`TargetAdmissionReceipt::reasons()` now returns the non-exhaustive `TargetAdmissionReason` enum
+rather than raw strings. Use `TargetAdmissionReason::id()` only at serialization or logging
+boundaries. `RenderTarget` and `RenderOutput` are also non-exhaustive; external matches must retain
+a wildcard arm so additive targets do not become source-breaking.
+
+Document completion is target-neutral. It always retains the standalone-SVG receipt, even when
+that receipt is `HostDependent` or `Rejected`; inspect
+`RenderedDocument::standalone_svg_admission()` before
+publishing the SVG. PNG, JPEG, and PDF projections independently enforce the request's portability
+requirement from their own target-owned receipts, so the SVG decision cannot preempt another
+target.
+
+`RenderedDocument::document_digest()` and
+`TargetAdmissionReceipt::target_evidence_digest()` are alpha correlation identities. Their
+canonical encodings are explicit and deterministic within this API revision, but they are not yet
+cross-release cache keys and must not be described as stable before the C7a contract gate.
+
 ```rust
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 

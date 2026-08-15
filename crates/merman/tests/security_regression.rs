@@ -109,7 +109,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Png(output) = output else {
             unreachable!("PNG request must return PNG output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -133,7 +133,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Jpeg(output) = output else {
             unreachable!("JPEG request must return JPEG output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -153,7 +153,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Pdf(output) = output else {
             unreachable!("PDF request must return PDF output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 }
 

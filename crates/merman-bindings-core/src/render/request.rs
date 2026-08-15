@@ -125,9 +125,10 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("png"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        let plan = output.plan();
         Ok(crate::operation::BindingOperationOutput::raster(
-            output.bytes,
-            output.plan,
+            output.into_bytes(),
+            plan,
         ))
     }
 
@@ -152,9 +153,10 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("jpeg"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        let plan = output.plan();
         Ok(crate::operation::BindingOperationOutput::raster(
-            output.bytes,
-            output.plan,
+            output.into_bytes(),
+            plan,
         ))
     }
 
@@ -179,9 +181,10 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("pdf"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        let plan = output.plan();
         Ok(crate::operation::BindingOperationOutput::pdf(
-            output.bytes,
-            output.plan,
+            output.into_bytes(),
+            plan,
         ))
     }
 
@@ -586,6 +589,9 @@ fn classify_render_error(
         }
         merman::RenderError::SvgEnvironment(err) => {
             BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+        }
+        merman::RenderError::TargetAdmission(err) => {
+            BindingError::new(BindingStatus::RenderError, err.to_string())
         }
         merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

@@ -85,19 +85,21 @@ mod operation_runner;
 pub mod render;
 #[cfg(feature = "ascii")]
 pub use render::AsciiRequest;
-#[cfg(feature = "jpeg")]
-pub use render::JpegRequest;
-#[cfg(feature = "png")]
-pub use render::PngRequest;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
 #[cfg(feature = "svg")]
 pub use render::{
-    FinalizedSvgOutput, RenderEvidence, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest,
+    DocumentPortabilityReport, RenderArtifactKind, RenderEvidence, RenderedDocument,
+    SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest, TargetAdmissionError,
+    TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
     ThemeEvidenceStatus, ThemeEvidenceSummary,
 };
+#[cfg(feature = "jpeg")]
+pub use render::{JpegRequest, PreparedJpegExport};
 #[cfg(feature = "pdf")]
-pub use render::{PdfOutput, PdfRequest};
+pub use render::{PdfOutput, PdfRequest, PreparedPdfExport};
+#[cfg(feature = "png")]
+pub use render::{PngRequest, PreparedPngExport};
 pub use render::{
     RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, ResourceLimitCause,
     ResourceLimitExceeded, SemanticArtifact,

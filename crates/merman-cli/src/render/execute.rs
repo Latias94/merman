@@ -102,54 +102,92 @@ pub(crate) fn execute_graphical(
                     Err(CliError::NoDiagram)
                 }
                 #[cfg(feature = "png")]
-                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Png(Some(output))) => {
-                    report_raster_plan(prepared.quiet, output.plan, stderr);
+                (
+                    PreparedGraphicalOutput::Png { options },
+                    merman::RenderOutput::Document(Some(document)),
+                ) => {
+                    #[cfg(feature = "markdown")]
+                    let metadata = svg_metadata(document.svg());
+                    let export = document.prepare_png_export(options, control.clone())?;
+                    let report = export.export_report();
+                    let actual_weight = super::admission::actual_raster_weight(
+                        report.raster(),
+                        report.embedded_images(),
+                        8,
+                    )?;
+                    prepared.admission.ensure_actual_weight(actual_weight)?;
+                    report_raster_plan(prepared.quiet, report.raster(), stderr);
+                    let output = export.encode()?;
                     Ok(ExecutedArtifact {
-                        bytes: output.bytes,
+                        bytes: output.into_bytes(),
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
-                        title: None,
+                        title: metadata.0,
                         #[cfg(feature = "markdown")]
-                        desc: None,
+                        desc: metadata.1,
                     })
                 }
                 #[cfg(feature = "png")]
-                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Png(None)) => {
+                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Document(None)) => {
                     Err(CliError::NoDiagram)
                 }
                 #[cfg(feature = "jpeg")]
                 (
-                    PreparedGraphicalOutput::Jpeg { .. },
-                    merman::RenderOutput::Jpeg(Some(output)),
+                    PreparedGraphicalOutput::Jpeg { options },
+                    merman::RenderOutput::Document(Some(document)),
                 ) => {
-                    report_raster_plan(prepared.quiet, output.plan, stderr);
+                    #[cfg(feature = "markdown")]
+                    let metadata = svg_metadata(document.svg());
+                    let export = document.prepare_jpeg_export(options, control.clone())?;
+                    let report = export.export_report();
+                    let actual_weight = super::admission::actual_raster_weight(
+                        report.raster(),
+                        report.embedded_images(),
+                        10,
+                    )?;
+                    prepared.admission.ensure_actual_weight(actual_weight)?;
+                    report_raster_plan(prepared.quiet, report.raster(), stderr);
+                    let output = export.encode()?;
                     Ok(ExecutedArtifact {
-                        bytes: output.bytes,
+                        bytes: output.into_bytes(),
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
-                        title: None,
+                        title: metadata.0,
                         #[cfg(feature = "markdown")]
-                        desc: None,
+                        desc: metadata.1,
                     })
                 }
                 #[cfg(feature = "jpeg")]
-                (PreparedGraphicalOutput::Jpeg { .. }, merman::RenderOutput::Jpeg(None)) => {
+                (PreparedGraphicalOutput::Jpeg { .. }, merman::RenderOutput::Document(None)) => {
                     Err(CliError::NoDiagram)
                 }
                 #[cfg(feature = "pdf")]
-                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Pdf(Some(output))) => {
-                    report_pdf_filter_plan(prepared.quiet, output.plan, stderr);
+                (
+                    PreparedGraphicalOutput::Pdf { options },
+                    merman::RenderOutput::Document(Some(document)),
+                ) => {
+                    #[cfg(feature = "markdown")]
+                    let metadata = svg_metadata(document.svg());
+                    let export = document.prepare_pdf_export(options, control.clone())?;
+                    let report = export.export_report();
+                    let actual_weight = super::admission::actual_pdf_weight(
+                        report.filters(),
+                        report.embedded_images(),
+                    )?;
+                    prepared.admission.ensure_actual_weight(actual_weight)?;
+                    report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
+                    let output = export.encode()?;
                     Ok(ExecutedArtifact {
-                        bytes: output.bytes,
+                        bytes: output.into_bytes(),
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
-                        title: None,
+                        title: metadata.0,
                         #[cfg(feature = "markdown")]
-                        desc: None,
+                        desc: metadata.1,
                     })
                 }
                 #[cfg(feature = "pdf")]
-                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Pdf(None)) => {
+                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Document(None)) => {
                     Err(CliError::NoDiagram)
                 }
                 (_, _) => Err(CliError::InvalidOutput(

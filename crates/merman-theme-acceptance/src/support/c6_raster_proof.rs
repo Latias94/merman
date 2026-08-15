@@ -33,9 +33,9 @@ pub(crate) struct PngArtifactProof {
 }
 
 impl PngArtifactProof {
-    pub(crate) fn target_proof(&self, bytes: &[u8]) -> super::C6TargetProof {
+    pub(crate) fn target_proof(&self, artifact_digest: [u8; 32]) -> super::C6TargetProof {
         super::C6TargetProof::brutalist_state_png(
-            bytes,
+            artifact_digest,
             super::brutalist_state_applied_mechanisms(),
         )
     }
@@ -81,6 +81,7 @@ pub(crate) fn decode_bounded_png_artifact(
 
 pub(crate) fn prove_brutalist_state_jpeg(
     bytes: &[u8],
+    artifact_digest: [u8; 32],
     raster_plan: RasterPlan,
     png: &PngArtifactProof,
 ) -> C6ProofResult<super::C6TargetProof> {
@@ -97,7 +98,7 @@ pub(crate) fn prove_brutalist_state_jpeg(
     prove_brutalist_state_raster(&png.contract, &png.geometry, &raster, 18)?;
     prove_jpeg_tracks_png(&raster, &png.raster, &png.contract, &png.geometry)?;
     Ok(super::C6TargetProof::brutalist_state_jpeg(
-        bytes,
+        artifact_digest,
         super::brutalist_state_applied_mechanisms(),
     ))
 }

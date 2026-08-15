@@ -39,6 +39,13 @@ Typical choices:
 - Use `RenderRequest::png`, `RenderRequest::jpeg`, or `RenderRequest::pdf` when the input is Mermaid
   source and the caller wants the standard render-and-export path. These typed targets select the
   sealed raster-safe path within the same operation.
+- Use `RenderRequest::document` when the same completed layout must project to several targets.
+  `RenderedDocument::export_png`, `export_jpeg`, and `export_pdf` reuse one sealed SVG and return
+  target-owned admission receipts without re-entering parsing, layout, or SVG finalization. Their
+  `prepare_*_export` counterparts expose the frozen export plan before encoding for schedulers and
+  batch admission.
+  Document completion is target-neutral: inspect `standalone_svg_admission()` before publishing
+  its SVG bytes, while each native projection enforces its own admission independently.
 - Add `SvgPostprocessor` passes when a host application needs product-specific draft styling or
   metadata. The selected built-in preset always runs after these passes.
 

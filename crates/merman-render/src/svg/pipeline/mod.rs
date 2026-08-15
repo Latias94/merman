@@ -134,7 +134,8 @@ impl SvgFinalizationReport {
         &self.resource_closure
     }
 
-    /// Returns the number of terminal SVG `<text>` elements considered by font admission.
+    /// Returns the number of character-bearing terminal SVG `<text>` elements considered by font
+    /// admission. Empty Mermaid parity nodes do not select a font face and are excluded.
     pub const fn text_element_count(&self) -> usize {
         self.text_element_count
     }

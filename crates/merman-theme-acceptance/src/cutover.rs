@@ -12,7 +12,9 @@ use merman::svg::{
     ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
 };
 use merman::{
-    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer,
+    DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderArtifactKind, RenderOutput,
+    RenderRequest, Renderer, TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus,
+    TargetFontSource,
 };
 use merman_export::{
     ExportFontPlan, RasterExportReport, RasterOptions, RasterOutputKind, RasterPlan,
@@ -274,9 +276,11 @@ struct RenderedCutoverCase {
     recipe_digest: [u8; 32],
     operation_digest: [u8; 32],
     admission_digest: [u8; 32],
-    png_admission_digest: [u8; 32],
+    svg_target_receipt_digest: [u8; 32],
+    png_target_receipt_digest: [u8; 32],
     document_digest: [u8; 32],
     resource_fingerprint: [u8; 32],
+    font_catalog_fingerprint: [u8; 32],
     svg_artifact_digest: [u8; 32],
     png_artifact_digest: [u8; 32],
     svg_assertions: BTreeMap<ThemeRouteCutoverDescriptor, [u8; 32]>,
@@ -419,19 +423,22 @@ impl C6RouteCutoverReceipt {
         );
         c6_ensure!(
             "route-admission-receipt",
-            rendered.png_admission_digest != [0; 32],
-            "PNG route admission digest is zero for {}",
+            rendered.svg_target_receipt_digest != [0; 32]
+                && rendered.png_target_receipt_digest != [0; 32],
+            "target-owned route admission digest is zero for {}",
             witness_label(witness)
         );
-        let mut value = b"merman.c6-route-cutover-receipt.v3\0".to_vec();
+        let mut value = b"merman.c6-route-cutover-receipt.v4\0".to_vec();
         append_witness(&mut value, witness);
         value.extend_from_slice(&rendered.source_digest);
         value.extend_from_slice(&rendered.recipe_digest);
         value.extend_from_slice(&rendered.operation_digest);
         value.extend_from_slice(&rendered.admission_digest);
-        value.extend_from_slice(&rendered.png_admission_digest);
+        value.extend_from_slice(&rendered.svg_target_receipt_digest);
+        value.extend_from_slice(&rendered.png_target_receipt_digest);
         value.extend_from_slice(&rendered.document_digest);
         value.extend_from_slice(&rendered.resource_fingerprint);
+        value.extend_from_slice(&rendered.font_catalog_fingerprint);
         value.extend_from_slice(&rendered.svg_artifact_digest);
         value.extend_from_slice(&rendered.png_artifact_digest);
         value.extend_from_slice(svg_assertion_digest);
@@ -576,27 +583,38 @@ fn render_cutover_case(
     let theme = compile_cutover_theme(case)?;
     let renderer = cutover_renderer(profile);
     let svg_request = portable_svg_request();
-    let svg_output = renderer
+    let document_output = renderer
         .render(
-            RenderRequest::finalized_svg(case.source, OperationControl::new(), svg_request.clone())
+            RenderRequest::document(case.source, OperationControl::new(), svg_request)
                 .with_theme(theme.clone()),
         )
         .map_err(|error| C6ProofError::new("route-svg-render", error.to_string()))?;
-    let RenderOutput::FinalizedSvg(Some(svg_output)) = svg_output else {
+    let RenderOutput::Document(Some(document)) = document_output else {
         return Err(C6ProofError::new(
             "route-svg-render",
-            "route witness did not produce a finalized SVG",
+            "route witness did not produce a completed document",
         ));
     };
-    let (sealed_svg, render_evidence) = svg_output.into_parts();
+    let render_evidence = document.evidence();
     let render_identity = prove_portable_family_evidence(
-        &render_evidence,
+        render_evidence,
         &theme,
         expected_route.family_id(),
         FamilyEvidenceRequirements::ROUTE_CUTOVER,
     )?;
+    let document_portability = document.portability();
+    c6_ensure!(
+        "route-document-portability",
+        document_portability.is_evidence_valid()
+            && !document_portability.is_host_dependent()
+            && document_portability.reasons().is_empty(),
+        "route document proof is not target-independent and verified: verified={} host_dependent={} reasons={:?}",
+        document_portability.is_evidence_valid(),
+        document_portability.is_host_dependent(),
+        document_portability.reasons()
+    );
     let family_evidence =
-        merman::__theme_acceptance::theme_acceptance_evidence(&render_evidence).family();
+        merman::__theme_acceptance::theme_acceptance_evidence(render_evidence).family();
     c6_ensure!(
         "route-family-disposition",
         family_evidence.required_count() == 1
@@ -609,7 +627,8 @@ fn render_cutover_case(
         family_evidence.not_applicable_count(),
         family_evidence.residual_count()
     );
-    let svg = sealed_svg.as_str();
+    let sealed_svg = document.sealed_svg();
+    let svg = document.svg();
     let markers = match (expected_route.family_id(), expected_route.target()) {
         (DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE, ThemeTarget::Edge) => {
             prove_flowchart_markers_svg(svg, profile)?
@@ -625,18 +644,14 @@ fn render_cutover_case(
     );
 
     let raster_options = RasterOptions::default().with_scale(2.0);
-    let prepared = merman_export::prepare_raster_controlled(
-        &sealed_svg,
-        &raster_options,
-        OperationControl::new(),
-    )
-    .map_err(|error| C6ProofError::new("route-png-prepare", error.to_string()))?;
-    let (png_bytes, report) = prepared
-        .encode_png_with_report()
+    let png_output = document
+        .export_png(&raster_options, OperationControl::new())
         .map_err(|error| C6ProofError::new("route-png-encode", error.to_string()))?;
+    let png_bytes = png_output.bytes();
+    let report = png_output.export_report();
     let png_plan = report.raster();
-    let png_admission_digest = prove_cutover_png_report(report, png_plan, &render_evidence)?;
-    let raster = decode_bounded_png_artifact(&png_bytes, png_plan)?;
+    prove_cutover_png_report(report, png_plan, render_evidence)?;
+    let raster = decode_bounded_png_artifact(png_bytes, png_plan)?;
 
     let png_resource = *report.resource_fingerprint().as_bytes();
     c6_ensure!(
@@ -645,13 +660,34 @@ fn render_cutover_case(
         "SVG and PNG resource fingerprints differ"
     );
 
-    let svg_artifact_digest = sha256(svg);
-    let mut document_identity = b"merman.c6-route-cutover-document.v2\0".to_vec();
-    append_witness(&mut document_identity, witness_id);
-    document_identity.extend_from_slice(theme.recipe_fingerprint().as_bytes());
-    document_identity.extend_from_slice(render_identity.operation_digest());
-    document_identity.extend_from_slice(&svg_resource);
-    document_identity.extend_from_slice(&svg_artifact_digest);
+    let svg_receipt = document.standalone_svg_admission();
+    let png_receipt = png_output.admission();
+    c6_ensure!(
+        "route-document-identity",
+        svg_receipt.document_digest() == png_receipt.document_digest(),
+        "SVG and PNG target receipts refer to different completed documents"
+    );
+    c6_ensure!(
+        "route-resource-receipt-identity",
+        svg_receipt.resource_fingerprint().as_bytes() == &svg_resource
+            && png_receipt.resource_fingerprint().as_bytes() == &png_resource
+            && svg_receipt.font_catalog_fingerprint() == png_receipt.font_catalog_fingerprint(),
+        "SVG and PNG target receipts do not retain the same document resources"
+    );
+    c6_ensure!(
+        "route-artifact-identity",
+        svg_receipt.artifact_digest() == sha256(svg)
+            && png_receipt.artifact_digest() == sha256(png_bytes),
+        "target receipt artifact digests do not match the final bytes"
+    );
+    let svg_target_receipt_digest = cutover_target_receipt_digest(
+        CutoverTargetAdmissionContract::PaintStandaloneSvgV1,
+        svg_receipt,
+    )?;
+    let png_target_receipt_digest = cutover_target_receipt_digest(
+        CutoverTargetAdmissionContract::PortableNativePngV1,
+        png_receipt,
+    )?;
 
     Ok(RenderedCutoverCase {
         routes,
@@ -659,11 +695,13 @@ fn render_cutover_case(
         recipe_digest: *theme.recipe_fingerprint().as_bytes(),
         operation_digest: *render_identity.operation_digest(),
         admission_digest: *render_identity.admission_digest(),
-        png_admission_digest,
-        document_digest: sha256(document_identity),
+        svg_target_receipt_digest,
+        png_target_receipt_digest,
+        document_digest: svg_receipt.document_digest(),
         resource_fingerprint: svg_resource,
-        svg_artifact_digest,
-        png_artifact_digest: sha256(&png_bytes),
+        font_catalog_fingerprint: *svg_receipt.font_catalog_fingerprint().as_bytes(),
+        svg_artifact_digest: svg_receipt.artifact_digest(),
+        png_artifact_digest: png_receipt.artifact_digest(),
         svg_assertions: svg_proof.assertions,
         svg_view_box: svg_proof.view_box,
         target_regions: svg_proof.target_regions,
@@ -745,7 +783,7 @@ fn prove_cutover_png_report(
     report: RasterExportReport,
     expected_plan: RasterPlan,
     evidence: &merman::RenderEvidence,
-) -> C6ProofResult<[u8; 32]> {
+) -> C6ProofResult<()> {
     c6_ensure!(
         "route-png-report",
         report.output() == RasterOutputKind::Png && report.raster() == expected_plan,
@@ -785,97 +823,106 @@ fn prove_cutover_png_report(
         "PNG route witness unexpectedly applied an output matte"
     );
     prove_cutover_font_plan(report.fonts())?;
-    Ok(cutover_png_admission_digest(report))
+    Ok(())
 }
 
-fn cutover_png_admission_digest(report: RasterExportReport) -> [u8; 32] {
-    let mut value = b"merman.c6-route-png-admission.v1\0".to_vec();
-    append_len_prefixed(&mut value, b"png");
-    value.extend_from_slice(report.resource_fingerprint().as_bytes());
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CutoverTargetAdmissionContract {
+    PaintStandaloneSvgV1,
+    PortableNativePngV1,
+}
 
-    match report.native_filter_receipt() {
-        Some(receipt) => {
-            value.push(1);
-            value.extend_from_slice(&receipt.hard_shadow_count().to_be_bytes());
-            value.extend_from_slice(&receipt.reference_count().to_be_bytes());
+impl CutoverTargetAdmissionContract {
+    const fn id(self) -> &'static str {
+        match self {
+            Self::PaintStandaloneSvgV1 => "paint-standalone-svg-v1",
+            Self::PortableNativePngV1 => "portable-native-png-v1",
         }
-        None => value.push(0),
     }
 
-    let raster = report.raster();
-    for number in [
-        raster.requested_width_px,
-        raster.requested_height_px,
-        raster.requested_scale,
-        raster.effective_scale,
-    ] {
-        value.extend_from_slice(&number.to_bits().to_be_bytes());
-    }
-    value.extend_from_slice(&raster.width_px.to_be_bytes());
-    value.extend_from_slice(&raster.height_px.to_be_bytes());
-    value.push(u8::from(raster.limited));
-
-    let images = report.embedded_images();
-    for count in [images.data_resources, images.raster_images] {
-        value.extend_from_slice(&usize_to_u64(count).to_be_bytes());
-    }
-    for bytes in [
-        images.largest_data_bytes,
-        images.total_data_bytes,
-        images.largest_raster_pixels,
-        images.total_pixels,
-    ] {
-        value.extend_from_slice(&bytes.to_be_bytes());
-    }
-
-    let conversion = report.conversion();
-    for count in [
-        conversion.tree_nodes,
-        conversion.max_tree_depth,
-        conversion.max_isolation_depth,
-        conversion.filtered_groups,
-        conversion.filter_primitives,
-        conversion.subroots,
-        conversion.nested_svg_images,
-    ] {
-        value.extend_from_slice(&usize_to_u64(count).to_be_bytes());
-    }
-
-    let fonts = report.fonts();
-    value.extend_from_slice(fonts.catalog_fingerprint().as_bytes());
-    append_len_prefixed(&mut value, fonts.source_mode().id().as_bytes());
-    for count in [
-        fonts.loaded_embedded_face_count(),
-        fonts.prepared_label_expected_count(),
-        fonts.prepared_label_verified_count(),
-        fonts.prepared_label_mismatch_count(),
-        fonts.prepared_label_host_dependent_count(),
-        fonts.prepared_label_terminal_incomplete_count(),
-        fonts.unclassified_face_count(),
-        fonts.notdef_glyph_count(),
-    ] {
-        value.extend_from_slice(&usize_to_u64(count).to_be_bytes());
-    }
-    for flag in [
-        fonts.used_embedded_fonts(),
-        fonts.used_system_fonts(),
-        fonts.family_fallback_used(),
-        fonts.glyph_fallback_used(),
-        fonts.unresolved_font_request(),
-        fonts.unresolved_glyph_fallback(),
-    ] {
-        value.push(u8::from(flag));
-    }
-
-    match report.matte() {
-        Some(matte) => {
-            value.push(1);
-            value.extend_from_slice(&[matte.red(), matte.green(), matte.blue(), matte.alpha()]);
+    const fn artifact_kind(self) -> RenderArtifactKind {
+        match self {
+            Self::PaintStandaloneSvgV1 => RenderArtifactKind::Svg,
+            Self::PortableNativePngV1 => RenderArtifactKind::Png,
         }
-        None => value.push(0),
     }
-    value.push(u8::from(report.matte_defaulted()));
-    sha256(value)
+
+    fn accepts(
+        self,
+        status: TargetAdmissionStatus,
+        reasons: &[TargetAdmissionReason],
+        font_source: TargetFontSource,
+    ) -> bool {
+        match self {
+            Self::PaintStandaloneSvgV1 => {
+                (status == TargetAdmissionStatus::Portable
+                    && reasons.is_empty()
+                    && font_source == TargetFontSource::Embedded)
+                    || (status == TargetAdmissionStatus::HostDependent
+                        && reasons == [TargetAdmissionReason::SvgFontsNotSelfContained]
+                        && matches!(
+                            font_source,
+                            TargetFontSource::None | TargetFontSource::Embedded
+                        ))
+            }
+            Self::PortableNativePngV1 => {
+                status == TargetAdmissionStatus::Portable
+                    && reasons.is_empty()
+                    && font_source == TargetFontSource::Embedded
+            }
+        }
+    }
+}
+
+fn cutover_target_receipt_digest(
+    contract: CutoverTargetAdmissionContract,
+    receipt: &TargetAdmissionReceipt,
+) -> C6ProofResult<[u8; 32]> {
+    let expected_kind = contract.artifact_kind();
+    c6_ensure!(
+        "route-target-admission",
+        receipt.artifact_kind() == expected_kind,
+        "expected {} target receipt, got {}",
+        expected_kind.id(),
+        receipt.artifact_kind().id()
+    );
+    c6_ensure!(
+        "route-target-admission",
+        contract.accepts(receipt.status(), receipt.reasons(), receipt.font_source(),),
+        "{} target does not satisfy {}: status={} reasons={:?} font_source={}",
+        expected_kind.id(),
+        contract.id(),
+        receipt.status().id(),
+        receipt.reasons(),
+        receipt.font_source().id()
+    );
+    c6_ensure!(
+        "route-target-admission",
+        receipt.resource_fingerprint().as_bytes() != &[0; 32]
+            && receipt.font_catalog_fingerprint().as_bytes() != &[0; 32]
+            && receipt.document_digest() != [0; 32]
+            && receipt.target_evidence_digest() != [0; 32]
+            && receipt.artifact_digest() != [0; 32],
+        "{} target receipt retained a zero identity component",
+        expected_kind.id()
+    );
+
+    let mut value = b"merman.c6-route-target-admission.v2\0".to_vec();
+    append_len_prefixed(&mut value, contract.id().as_bytes());
+    append_len_prefixed(&mut value, receipt.artifact_kind().id().as_bytes());
+    append_len_prefixed(&mut value, receipt.status().id().as_bytes());
+    append_len_prefixed(&mut value, b"admission-reasons");
+    value.extend_from_slice(&usize_to_u64(receipt.reasons().len()).to_be_bytes());
+    for reason in receipt.reasons() {
+        append_len_prefixed(&mut value, reason.id().as_bytes());
+    }
+    append_len_prefixed(&mut value, receipt.font_source().id().as_bytes());
+    value.extend_from_slice(receipt.resource_fingerprint().as_bytes());
+    value.extend_from_slice(receipt.font_catalog_fingerprint().as_bytes());
+    value.extend_from_slice(&receipt.document_digest());
+    value.extend_from_slice(&receipt.target_evidence_digest());
+    value.extend_from_slice(&receipt.artifact_digest());
+    Ok(sha256(value))
 }
 
 fn prove_cutover_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
@@ -1166,14 +1213,14 @@ fn prove_route<T>(witness: &str, result: C6ProofResult<T>) -> Result<T, RouteCut
 mod tests {
     use std::collections::BTreeMap;
 
-    use merman::DiagramFamilyId;
     use merman::svg::ThemeTarget;
+    use merman::{DiagramFamilyId, TargetAdmissionReason, TargetAdmissionStatus, TargetFontSource};
 
     use super::{
-        C6RouteCutoverReceipt, CutoverWitnessId, CutoverWitnessProfile,
-        RouteCutoverAuthorizationReceipt, evaluate_route_receipts, expected_cutover_witnesses,
-        legacy_replacing_typed_theme_routes, require_marker_pixel_counts,
-        run_route_cutover_witnesses, transformed_path_terminals,
+        C6RouteCutoverReceipt, CutoverTargetAdmissionContract, CutoverWitnessId,
+        CutoverWitnessProfile, RouteCutoverAuthorizationReceipt, evaluate_route_receipts,
+        expected_cutover_witnesses, legacy_replacing_typed_theme_routes,
+        require_marker_pixel_counts, run_route_cutover_witnesses, transformed_path_terminals,
     };
 
     #[test]
@@ -1194,6 +1241,71 @@ mod tests {
 
         assert_ne!(baseline.digest(), changed_manifest.digest());
         assert_ne!(baseline.digest(), changed_report.digest());
+    }
+
+    #[test]
+    fn paint_route_svg_admission_allows_only_the_exact_font_seal_residual() {
+        let contract = CutoverTargetAdmissionContract::PaintStandaloneSvgV1;
+
+        assert!(contract.accepts(
+            TargetAdmissionStatus::Portable,
+            &[],
+            TargetFontSource::Embedded,
+        ));
+        assert!(contract.accepts(
+            TargetAdmissionStatus::HostDependent,
+            &[TargetAdmissionReason::SvgFontsNotSelfContained],
+            TargetFontSource::Embedded,
+        ));
+        assert!(contract.accepts(
+            TargetAdmissionStatus::HostDependent,
+            &[TargetAdmissionReason::SvgFontsNotSelfContained],
+            TargetFontSource::None,
+        ));
+        assert!(!contract.accepts(
+            TargetAdmissionStatus::HostDependent,
+            &[TargetAdmissionReason::HostDependentTextLayout],
+            TargetFontSource::Embedded,
+        ));
+        assert!(!contract.accepts(
+            TargetAdmissionStatus::HostDependent,
+            &[
+                TargetAdmissionReason::SvgFontsNotSelfContained,
+                TargetAdmissionReason::HostDependentTextLayout,
+            ],
+            TargetFontSource::Embedded,
+        ));
+        assert!(!contract.accepts(
+            TargetAdmissionStatus::Rejected,
+            &[TargetAdmissionReason::SvgFontsNotSelfContained],
+            TargetFontSource::Embedded,
+        ));
+        assert!(!contract.accepts(
+            TargetAdmissionStatus::HostDependent,
+            &[TargetAdmissionReason::SvgFontsNotSelfContained],
+            TargetFontSource::System,
+        ));
+    }
+
+    #[test]
+    fn native_png_route_admission_remains_strictly_portable() {
+        let contract = CutoverTargetAdmissionContract::PortableNativePngV1;
+
+        assert!(contract.accepts(
+            TargetAdmissionStatus::Portable,
+            &[],
+            TargetFontSource::Embedded,
+        ));
+        assert!(!contract.accepts(
+            TargetAdmissionStatus::HostDependent,
+            &[TargetAdmissionReason::SvgFontsNotSelfContained],
+            TargetFontSource::Embedded,
+        ));
+        assert!(!contract.accepts(
+            TargetAdmissionStatus::Portable,
+            &[],
+            TargetFontSource::Mixed,
+        ));
     }
 
     #[test]

@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&output_path, output.bytes)?;
+    std::fs::write(&output_path, output.bytes())?;
     eprintln!("wrote {}", output_path.display());
     Ok(())
 }

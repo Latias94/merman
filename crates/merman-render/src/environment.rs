@@ -1896,8 +1896,11 @@ impl RenderEnvironment {
         let theme_compatibility_recipe = resolved_resources
             .theme()
             .map(|theme| theme.parse_compatibility().recipe().clone());
+        let portability_requirement = resolved_resources
+            .portability_requirement()
+            .unwrap_or(self.theme_portability);
         let (prepared_text_layout, text_layout_error) =
-            self.prepare_text_layout(&resolved_resources);
+            self.prepare_text_layout(&resolved_resources, portability_requirement);
         let trusted_theme_lanes = resolved_resources
             .admission()
             .map(ResolvedThemeAdmission::trusted_lanes)
@@ -1920,6 +1923,7 @@ impl RenderEnvironment {
             trusted_theme_lanes,
             trusted_theme_lane_usage: AtomicU64::new(0),
             theme_compatibility_recipe,
+            portability_requirement,
             resolved_theme_resources: resolved_resources,
         })
     }
@@ -1927,6 +1931,7 @@ impl RenderEnvironment {
     fn prepare_text_layout(
         &self,
         resolved_resources: &ResolvedSessionThemeResources,
+        portability: ThemePortabilityRequirement,
     ) -> (Option<PreparedTextLayout>, Option<TextLayoutError>) {
         let catalog = resolved_resources.font_catalog();
         if catalog.assets().is_empty() {
@@ -1941,9 +1946,6 @@ impl RenderEnvironment {
             .measurement_fallback_policy()
             .unwrap_or(&self.theme_measurement_fallbacks)
             .eligible_for(catalog.kind());
-        let portability = resolved_resources
-            .portability_requirement()
-            .unwrap_or(self.theme_portability);
         let mut builder = PreparedTextLayoutBuilder::new(request.clone());
         let mut deferred_host_response = None;
         let mut terminal_error = None;
@@ -2182,6 +2184,7 @@ pub struct RenderSession {
     trusted_theme_lanes: TrustedThemeLanes,
     trusted_theme_lane_usage: AtomicU64,
     theme_compatibility_recipe: Option<ThemeCompatibilityRecipe>,
+    portability_requirement: ThemePortabilityRequirement,
     resolved_theme_resources: ResolvedSessionThemeResources,
 }
 
@@ -2281,6 +2284,11 @@ impl RenderSession {
         self.resolved_theme_resources.portability_requirement()
     }
 
+    /// Returns the effective host/theme portability requirement frozen for this operation.
+    pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
+        self.portability_requirement
+    }
+
     pub fn trusted_theme_lanes(&self) -> &TrustedThemeLanes {
         &self.trusted_theme_lanes
     }
@@ -2359,6 +2367,7 @@ impl RenderSession {
             prepared_text_retained_bytes_peak: self.work_meter.prepared_text_retained_bytes_peak(),
             theme_recipe_report: self.theme_recipe_report().cloned(),
             theme_host_admission_report: self.theme_host_admission_report(),
+            portability_requirement: self.portability_requirement,
             font_catalog_fingerprint: self.font_catalog().fingerprint(),
             font_source_policy: self.font_source_policy().clone(),
             prepared_text_layout: self
@@ -2385,6 +2394,7 @@ pub struct RenderSessionReport {
     prepared_text_retained_bytes_peak: usize,
     theme_recipe_report: Option<ThemeRecipeReport>,
     theme_host_admission_report: Option<ThemeHostAdmissionReport>,
+    portability_requirement: ThemePortabilityRequirement,
     font_catalog_fingerprint: FontCatalogFingerprint,
     font_source_policy: FontSourcePolicy,
     prepared_text_layout: Option<PreparedTextLayoutReport>,
@@ -2442,6 +2452,11 @@ impl RenderSessionReport {
 
     pub const fn theme_host_admission_report(&self) -> Option<&ThemeHostAdmissionReport> {
         self.theme_host_admission_report.as_ref()
+    }
+
+    /// Returns the effective host/theme portability requirement frozen for this operation.
+    pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
+        self.portability_requirement
     }
 
     pub const fn font_catalog_fingerprint(&self) -> FontCatalogFingerprint {
@@ -4043,6 +4058,21 @@ mod tests {
                 .portability_requirement(),
             ThemePortabilityRequirement::RequirePortable
         );
+    }
+
+    #[test]
+    fn unthemed_report_freezes_the_host_portability_requirement() {
+        let report = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session()
+            .expect("begin unthemed portable session")
+            .report();
+
+        assert_eq!(
+            report.portability_requirement(),
+            ThemePortabilityRequirement::RequirePortable
+        );
+        assert!(report.theme_host_admission_report().is_none());
     }
 
     #[test]
