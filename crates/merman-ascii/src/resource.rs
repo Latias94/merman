@@ -413,6 +413,20 @@ impl ResourceContext {
         }
     }
 
+    /// Creates an independent zeroed ledger while preserving policy and operation control.
+    ///
+    /// Deterministic replay phases use this context to verify their measured usage without
+    /// charging the render-wide ledger twice. Keeping the operation binding ensures cancellation
+    /// and deadlines retain priority over resource admission during the replay.
+    pub(crate) fn detached(&self) -> Self {
+        Self {
+            policy: self.policy,
+            layout_work_used: Rc::new(Cell::new(0)),
+            document_cells_used: Rc::new(Cell::new(0)),
+            operation: self.operation.clone(),
+        }
+    }
+
     /// Rebinds an existing controlled ledger view to a different operation phase.
     pub(crate) fn with_operation_phase(&self, phase: OperationPhase) -> Self {
         let mut scoped = self.clone();
@@ -947,6 +961,40 @@ mod tests {
         ));
         assert_eq!(resources.layout_work_used(), 0);
         assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn detached_context_preserves_control_without_sharing_ledger_usage() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("valid work limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 2)
+            .expect("valid document limit");
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(1, 1)
+            .expect("the shared ledger should accept its initial usage");
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+        let detached = controlled.detached();
+
+        assert_eq!(detached.layout_work_used(), 0);
+        assert_eq!(detached.document_cells_used(), 0);
+        control.cancel();
+        let error = detached
+            .charge_usage(3, 3)
+            .expect_err("cancellation must win over detached resource ceilings");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 1);
+        assert_eq!(resources.document_cells_used(), 1);
+        assert_eq!(detached.layout_work_used(), 0);
+        assert_eq!(detached.document_cells_used(), 0);
     }
 
     #[test]

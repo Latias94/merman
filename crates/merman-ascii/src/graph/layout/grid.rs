@@ -204,7 +204,7 @@ fn plan_node_labels_transactional(
     before_plan_reserve();
     let mut plans = Vec::new();
     try_reserve_vec(&mut plans, graph.nodes.len())?;
-    let replay_resources = ResourceContext::new(resources.policy());
+    let replay_resources = resources.detached();
     for node in &graph.nodes {
         plans.push(GraphNodeLabelPlan::try_for_node(
             node,
@@ -2030,6 +2030,34 @@ mod tests {
             assert_eq!(below_resources.layout_work_used(), 0, "limit={limit:?}");
             assert_eq!(below_resources.document_cells_used(), 0, "limit={limit:?}");
         }
+    }
+
+    #[test]
+    fn node_label_replay_observes_cancellation_and_restores_shared_ledger() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("alpha", "Alpha");
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(7, 11)
+            .expect("the shared ledger should accept its initial usage");
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+
+        let error =
+            plan_node_labels_impl(&graph, TerminalWidthProfile::Unicode, &controlled, || {
+                control.cancel()
+            })
+            .expect_err("the deterministic label replay must observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 7);
+        assert_eq!(resources.document_cells_used(), 11);
     }
 
     #[test]
