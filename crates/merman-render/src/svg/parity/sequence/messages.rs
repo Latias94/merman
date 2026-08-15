@@ -63,6 +63,53 @@ fn is_reverse_arrow_type(msg_type: i32) -> bool {
     matches!(msg_type, 45 | 46 | 47 | 48 | 55 | 56 | 57 | 58)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SequenceMessageLinePlan {
+    class: &'static str,
+    style: &'static str,
+    marker_start: Option<&'static str>,
+    marker_end: Option<&'static str>,
+}
+
+impl SequenceMessageLinePlan {
+    fn for_type(message_type: i32) -> Self {
+        let dotted = matches!(
+            message_type,
+            1 | 4 | 6 | 25 | 34 | 51 | 52 | 53 | 54 | 55 | 56 | 57 | 58
+        );
+        let (marker_start, marker_end) = match message_type {
+            33 | 34 => (Some("arrowhead"), Some("arrowhead")),
+            5 | 6 => (None, None),
+            3 | 4 => (None, Some("crosshead")),
+            24 | 25 => (None, Some("filled-head")),
+            41 | 51 => (None, Some("solidTopArrowHead")),
+            42 | 52 => (None, Some("solidBottomArrowHead")),
+            43 | 53 => (None, Some("stickTopArrowHead")),
+            44 | 54 => (None, Some("stickBottomArrowHead")),
+            45 | 55 => (Some("solidBottomArrowHead"), None),
+            46 | 56 => (Some("solidTopArrowHead"), None),
+            47 | 57 => (Some("stickBottomArrowHead"), None),
+            48 | 58 => (Some("stickTopArrowHead"), None),
+            _ => (None, Some("arrowhead")),
+        };
+
+        Self {
+            class: if dotted {
+                "messageLine1"
+            } else {
+                "messageLine0"
+            },
+            style: if dotted {
+                r#" style="stroke-dasharray: 3, 3; fill: none;""#
+            } else {
+                r#" style="fill: none;""#
+            },
+            marker_start,
+            marker_end,
+        }
+    }
+}
+
 fn actor_center_x(ctx: &SequenceMessageRenderContext<'_>, actor_id: &str) -> Option<f64> {
     ctx.nodes_by_id
         .get(format!("actor-top-{actor_id}").as_str())
@@ -359,29 +406,15 @@ pub(super) fn render_sequence_messages(
             }
         }
 
-        let class = match msg.message_type {
-            1 | 4 | 6 | 25 | 34 => "messageLine1",
-            _ => "messageLine0",
-        };
-        let style = match msg.message_type {
-            1 | 4 | 6 | 25 | 34 => r#" style="stroke-dasharray: 3, 3; fill: none;""#,
-            _ => r#" style="fill: none;""#,
-        };
-
-        let marker_start = match msg.message_type {
-            33 | 34 => Some(marker_attr("marker-start", ctx.diagram_id, "arrowhead")),
-            _ => None,
-        };
-        let marker_end = match msg.message_type {
-            // open arrow variants: no marker.
-            5 | 6 => None,
-            // cross arrow variants
-            3 | 4 => Some(marker_attr("marker-end", ctx.diagram_id, "crosshead")),
-            // filled-head variants
-            24 | 25 => Some(marker_attr("marker-end", ctx.diagram_id, "filled-head")),
-            // default arrowhead variants
-            _ => Some(marker_attr("marker-end", ctx.diagram_id, "arrowhead")),
-        };
+        let line_plan = SequenceMessageLinePlan::for_type(msg.message_type);
+        let class = line_plan.class;
+        let style = line_plan.style;
+        let marker_start = line_plan
+            .marker_start
+            .map(|marker| marker_attr("marker-start", ctx.diagram_id, marker));
+        let marker_end = line_plan
+            .marker_end
+            .map(|marker| marker_attr("marker-end", ctx.diagram_id, marker));
         let data_attrs = message_data_attrs(&msg.id, from, to);
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.

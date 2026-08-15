@@ -804,11 +804,8 @@ impl<'input> Lexer<'input> {
             if b == b'@' && end + 1 < bytes.len() && bytes[end + 1] == b'{' {
                 break;
             }
-            if b == b'-' {
-                let next = bytes.get(end + 1).copied();
-                if matches!(next, Some(b'-' | b'>' | b'x' | b')')) {
-                    break;
-                }
+            if self.peek_signal_type_at(end) {
+                break;
             }
             if b == b'<' {
                 break;
@@ -1175,7 +1172,7 @@ mod tests {
     #[test]
     fn lexes_all_upstream_half_arrow_variants() {
         for (arrow, expected_type) in super::HALF_ARROW_TYPES {
-            let input = format!("A {arrow} B: message");
+            let input = format!("A{arrow}B: message");
             let signal_types: Vec<_> = Lexer::new(&input)
                 .map(|event| event.expect("sequence token").1)
                 .filter_map(|token| match token {

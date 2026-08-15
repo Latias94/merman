@@ -675,6 +675,89 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
 }
 
 #[test]
+fn sequence_half_arrows_use_the_mermaid_11_16_marker_and_line_class_table() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant A
+participant B
+A-|\B: solid top
+A-|/B: solid bottom
+A-\\B: stick top
+A-//B: stick bottom
+A--|\B: dotted solid top
+A--|/B: dotted solid bottom
+A--\\B: dotted stick top
+A--//B: dotted stick bottom
+A/|-B: reverse solid top
+A\|-B: reverse solid bottom
+A//-B: reverse stick top
+A\\-B: reverse stick bottom
+A/|--B: dotted reverse solid top
+A\|--B: dotted reverse solid bottom
+A//--B: dotted reverse stick top
+A\\--B: dotted reverse stick bottom
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence half-arrow SVG");
+    let expected = [
+        (0, "messageLine0", None, Some("solidTopArrowHead")),
+        (1, "messageLine0", None, Some("solidBottomArrowHead")),
+        (2, "messageLine0", None, Some("stickTopArrowHead")),
+        (3, "messageLine0", None, Some("stickBottomArrowHead")),
+        (4, "messageLine1", None, Some("solidTopArrowHead")),
+        (5, "messageLine1", None, Some("solidBottomArrowHead")),
+        (6, "messageLine1", None, Some("stickTopArrowHead")),
+        (7, "messageLine1", None, Some("stickBottomArrowHead")),
+        (8, "messageLine0", Some("solidBottomArrowHead"), None),
+        (9, "messageLine0", Some("solidTopArrowHead"), None),
+        (10, "messageLine0", Some("stickBottomArrowHead"), None),
+        (11, "messageLine0", Some("stickTopArrowHead"), None),
+        (12, "messageLine1", Some("solidBottomArrowHead"), None),
+        (13, "messageLine1", Some("solidTopArrowHead"), None),
+        (14, "messageLine1", Some("stickBottomArrowHead"), None),
+        (15, "messageLine1", Some("stickTopArrowHead"), None),
+    ];
+
+    for (id, expected_class, expected_start, expected_end) in expected {
+        let data_id = format!("i{id}");
+        let message = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.attribute("data-et") == Some("message")
+                    && node.attribute("data-id") == Some(data_id.as_str())
+            })
+            .unwrap_or_else(|| panic!("missing Sequence message {data_id}: {svg}"));
+        assert_eq!(
+            message.attribute("class"),
+            Some(expected_class),
+            "{data_id}"
+        );
+        assert_eq!(
+            message.attribute("marker-start"),
+            expected_start
+                .map(|marker| format!("url(#merman-{marker})"))
+                .as_deref(),
+            "{data_id} marker-start"
+        );
+        assert_eq!(
+            message.attribute("marker-end"),
+            expected_end
+                .map(|marker| format!("url(#merman-{marker})"))
+                .as_deref(),
+            "{data_id} marker-end"
+        );
+        assert_eq!(
+            message
+                .attribute("style")
+                .is_some_and(|style| style.contains("stroke-dasharray: 3, 3")),
+            expected_class == "messageLine1",
+            "{data_id} dash style"
+        );
+    }
+}
+
+#[test]
 fn sequence_actor_links_follow_mermaid_security_level() {
     let strict = render_sequence_svg_from_text(
         r#"sequenceDiagram
