@@ -23,7 +23,7 @@ use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
     ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, hash_map::Entry};
 
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
 
@@ -190,7 +190,7 @@ fn render_er_diagram_impl(
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
-    validate_unique_er_entity_ids(model, &mut resources)?;
+    let authored_entity_identities = index_unique_er_entity_identities(model, &resources)?;
     let charset = ErCharset::for_options(options);
     let direction = ErDirection::try_from_model(&model.direction)?;
     resources = execution.resource_context(&resources, merman_core::OperationPhase::Layout);
@@ -251,7 +251,9 @@ fn render_er_diagram_impl(
         );
     }
 
-    let authored_entity_identities = er_authored_entity_identities(model, &resources)?;
+    // Preserve the established relationship-path work receipt at its original layout-phase
+    // admission point even though semantic validation now owns and returns the reusable index.
+    resources.charge_layout_work(model.entities.len())?;
     let context = ErRenderContext {
         options,
         charset,
@@ -270,26 +272,7 @@ fn render_er_diagram_impl(
     Ok(rendered)
 }
 
-fn validate_unique_er_entity_ids(
-    model: &ErDiagramRenderModel,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    resources.charge_layout_work(model.entities.len())?;
-    let mut ids = HashSet::new();
-    ids.try_reserve(model.entities.len())
-        .map_err(|_| layout_allocation_failed())?;
-    for entity in model.entities.values() {
-        if !ids.insert(entity.id.as_str()) {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "er",
-                feature: "duplicate rendered ER entity ids",
-            });
-        }
-    }
-    Ok(())
-}
-
-fn er_authored_entity_identities<'model>(
+fn index_unique_er_entity_identities<'model>(
     model: &'model ErDiagramRenderModel,
     resources: &ResourceContext,
 ) -> Result<HashMap<&'model str, &'model str>> {
@@ -298,12 +281,19 @@ fn er_authored_entity_identities<'model>(
     identities
         .try_reserve(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
-    identities.extend(
-        model
-            .entities
-            .iter()
-            .map(|(authored_identity, entity)| (entity.id.as_str(), authored_identity.as_str())),
-    );
+    for (authored_identity, entity) in &model.entities {
+        match identities.entry(entity.id.as_str()) {
+            Entry::Vacant(entry) => {
+                entry.insert(authored_identity.as_str());
+            }
+            Entry::Occupied(_) => {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "er",
+                    feature: "duplicate rendered ER entity ids",
+                });
+            }
+        }
+    }
     Ok(identities)
 }
 
@@ -1629,7 +1619,7 @@ mod tests {
                 .expect("ER summary box should plan"),
             );
         }
-        let authored_entity_identities = er_authored_entity_identities(model, &resources)
+        let authored_entity_identities = index_unique_er_entity_identities(model, &resources)
             .expect("ER summary identities should plan");
         let mut layouts = Vec::new();
         layouts
@@ -1721,7 +1711,7 @@ mod tests {
                 .expect("horizontal ER entity should plan"),
             );
         }
-        let authored_entity_identities = er_authored_entity_identities(&model, &resources)
+        let authored_entity_identities = index_unique_er_entity_identities(&model, &resources)
             .expect("horizontal ER identities should plan");
         let mut layouts = Vec::new();
         for relationship in &model.relationships {
