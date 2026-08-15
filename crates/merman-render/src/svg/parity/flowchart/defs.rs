@@ -179,11 +179,18 @@ struct PreparedFlowchartMarkerColor<'a> {
 }
 
 impl<'a> PreparedFlowchartMarkerColor<'a> {
-    fn new(raw: &'a str) -> Self {
-        Self {
+    fn prepare(
+        raw: &'a str,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        let normalization_work = 1usize
+            .checked_add(raw.len().div_ceil(64))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        work_meter.charge(normalization_work)?;
+        Ok(Self {
             raw,
             id: marker_color_id(raw),
-        }
+        })
     }
 }
 
@@ -268,7 +275,9 @@ impl FlowchartMarkerEmissionPlan {
         let start_base = flowchart_edge_marker_start_base(edge);
         let end_base = flowchart_edge_marker_end_base(edge);
         let prepared_color = if start_base.is_some() || end_base.is_some() {
-            marker_color.map(PreparedFlowchartMarkerColor::new)
+            marker_color
+                .map(|raw| PreparedFlowchartMarkerColor::prepare(raw, work_meter))
+                .transpose()?
         } else {
             None
         };
@@ -361,7 +370,6 @@ impl FlowchartMarkerEmissionPlan {
                 variant_index: None,
             });
         };
-        work_meter.charge(marker_color.raw.len().div_ceil(64))?;
         if marker_color.id.is_empty() {
             return Ok(FlowchartMarkerReference {
                 base,
@@ -1172,6 +1180,37 @@ mod tests {
         let mut defs = String::new();
         plan.push_extra_markers(&mut defs, "diagram", "flowchart-v2", false);
         assert!(defs.is_empty());
+    }
+
+    #[test]
+    fn marker_color_normalization_work_is_admitted_atomically_before_scan() {
+        let edge = edge("edge", "arrow_point");
+        let color = format!("#{}", "a".repeat(64));
+        let normalization_work = 1 + color.len().div_ceil(64);
+        assert_eq!(normalization_work, 3);
+
+        let short_meter = meter_with_limits(usize::MAX, normalization_work);
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let error = plan
+            .register_edge(&edge, Some(&color), &short_meter)
+            .expect_err("normalization must be rejected before scanning the color");
+
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert_eq!(
+            short_meter.used(),
+            1,
+            "only the edge admission may be charged"
+        );
+        assert!(plan.variants.is_empty());
+        assert!(plan.edge_occurrences.is_empty());
+
+        let exact_work = 1 + normalization_work + 1 + 1;
+        let exact_meter = meter();
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        exact_plan
+            .register_edge(&edge, Some(&color), &exact_meter)
+            .expect("normalization, reference, and variant work must be charged once each");
+        assert_eq!(exact_meter.used(), exact_work);
     }
 
     #[test]
