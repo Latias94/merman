@@ -22,14 +22,38 @@ for (const required of [packageJson, packageLock]) {
   }
 }
 
+const packageManifest = JSON.parse(fs.readFileSync(packageJson, "utf8"));
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "merman-npm-licenses-"));
 const generatedPath = path.join(temporaryRoot, "licenses.txt");
+const generatorConfigPath = path.join(temporaryRoot, "generate-license-file.json");
 try {
+  const replacements = {};
+  const exclusions = [];
+  // Keep first-party file dependencies stable before and after package assembly.
+  if (Object.hasOwn(packageManifest.dependencies ?? {}, "@mermanjs/web")) {
+    const webLicense = path.join(repositoryRoot, "platforms/web/LICENSE");
+    if (!fs.statSync(webLicense, { throwIfNoEntry: false })?.isFile()) {
+      fail("missing canonical @mermanjs/web license: platforms/web/LICENSE");
+    }
+    replacements["@mermanjs/web"] = path.relative(temporaryRoot, webLicense);
+  }
+  // Native canvas artifacts are host tooling, not part of the browser payload.
+  if (packageManifest.name === "merman-playground") {
+    exclusions.push("/^@napi-rs\\/canvas-(?:android|darwin|linux|win32)-/");
+  }
+  fs.writeFileSync(
+    generatorConfigPath,
+    `${JSON.stringify({ replace: replacements, exclude: exclusions }, null, 2)}\n`,
+    "utf8",
+  );
+
   const result = spawnNpmSync(
     [
       "exec",
       "--",
       "generate-license-file",
+      "--config",
+      generatorConfigPath,
       "--input",
       "package.json",
       "--output",
@@ -54,7 +78,7 @@ try {
     .digest("hex");
   const generated = [
     "Merman npm production dependency licenses",
-    `Package: ${JSON.parse(fs.readFileSync(packageJson, "utf8")).name}`,
+    `Package: ${packageManifest.name}`,
     `Generator: generate-license-file ${GENERATOR_VERSION}`,
     `package-lock.json SHA-256: ${lockDigest}`,
     "",
