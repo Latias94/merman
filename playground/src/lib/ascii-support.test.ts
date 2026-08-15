@@ -159,12 +159,22 @@ test("fallback projection fields derive the compatibility support level", () => 
     )
   );
   assert.ok(
+    classDiagram.supported_semantics.includes(
+      "strict planar K2×2 four-node, four-edge components with four disjoint routes"
+    )
+  );
+  assert.ok(
     classDiagram.limits.includes(
       "dense or colliding cross-namespace relationships render as lossless relation summaries"
     )
   );
   assert.ok(
     classDiagram.limits.some((limit) => limit.includes("ports do not fit"))
+  );
+  assert.ok(
+    classDiagram.limits.includes(
+      "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
+    )
   );
   assert.ok(
     classDiagram.limits.every(
@@ -176,6 +186,16 @@ test("fallback projection fields derive the compatibility support level", () => 
   assert.ok(
     er.supported_semantics.includes(
       "entity boxes, attributes, key tokens, and attribute comments"
+    )
+  );
+  assert.ok(
+    er.supported_semantics.includes(
+      "strict planar K2×2 four-node, four-edge components with four disjoint routes"
+    )
+  );
+  assert.ok(
+    er.limits.includes(
+      "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
     )
   );
   assert.ok(

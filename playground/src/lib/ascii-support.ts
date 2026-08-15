@@ -76,12 +76,14 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
       "four directions and namespace containers",
       "readable sibling namespace, namespace-to-root, and nested namespace facade routing",
       "length-framed namespace facade member identity",
+      "strict planar K2×2 four-node, four-edge components with four disjoint routes",
       "self-relations, routed relation components, and lossless summaries",
     ],
     limits: [
       "dense or colliding cross-namespace relationships render as lossless relation summaries",
       "parallel relation lanes whose ports do not fit use a lossless relation summary",
       "dense or collision-prone relation scenes can summarize",
+      "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
     ],
   },
   er: {
@@ -93,10 +95,12 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
       "entity boxes, attributes, key tokens, and attribute comments",
       "relationship labels, cardinalities, and identifying relationships",
       "four directions, self-relations, and routed relation components",
+      "strict planar K2×2 four-node, four-edge components with four disjoint routes",
       "lossless crossing, port-fit, route, and collision summaries",
     ],
     limits: [
       "complex cyclic topology can summarize",
+      "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
       "unknown cardinality or relationship kinds are unsupported",
       "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
     ],

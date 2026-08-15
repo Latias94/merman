@@ -25,8 +25,8 @@ fn main() -> Result<(), merman_core::Error> {
         .parse_diagram_sync("flowchart TD; A[API] --> B[DB];", ParseOptions::strict())?
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
-    println!("{}", parsed.model);
+    assert_eq!(parsed.metadata().diagram_type, "flowchart-v2");
+    println!("{}", parsed.model());
 
     Ok(())
 }
@@ -74,7 +74,7 @@ fn main() -> Result<(), merman_core::Error> {
         )?
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "sequence");
+    assert_eq!(parsed.metadata().diagram_type, "sequence");
     Ok(())
 }
 ```
