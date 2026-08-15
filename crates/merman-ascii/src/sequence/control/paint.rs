@@ -7,8 +7,8 @@ use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::Result;
 use crate::resource::ResourceContext;
 use crate::sequence::SequenceCheckpointCursor;
+use crate::sequence::chars::SequenceChars;
 use crate::sequence::layout::SequenceLayout;
-use crate::sequence::render::SequenceChars;
 use crate::sequence::text::{SequenceLine, padded_line_with_checkpoints};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

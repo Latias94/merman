@@ -12,9 +12,10 @@ use crate::text::display_width_with_profile;
 #[cfg(test)]
 use merman_core::OperationPhase;
 
+use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
+use super::lifeline::{render_overlay_row, retained_lifeline_width};
 use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
-use super::render::{SequenceChars, render_overlay_row, retained_lifeline_width};
 use super::text::{
     SequenceBatchExtent, SequenceLine, SequenceRowFootprint, blank_line_with_checkpoints,
     validate_batch_footprints_with_checkpoints,

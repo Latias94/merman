@@ -1,6 +1,7 @@
 use super::super::SequenceCheckpointCursor;
+use super::super::chars::SequenceChars;
 use super::super::layout::SequenceLayout;
-use super::super::render::{SequenceChars, build_lifeline_line};
+use super::super::lifeline::build_lifeline_line;
 use super::super::text::{SequenceLine, SequenceRowFootprint};
 use super::super::tree::SequenceParticipantSpan;
 use crate::error::{AsciiError, Result};

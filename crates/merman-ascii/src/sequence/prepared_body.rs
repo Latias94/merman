@@ -1,14 +1,16 @@
-use super::events::{
-    MessageActorState, PreparedMessageRows, PreparedSelfMessageRows, ensure_message_actors_visible,
-    prepare_message_rows, prepare_self_message_rows, render_message, render_self_message,
+use super::chars::SequenceChars;
+use super::event_paint::{MessageActorState, render_message, render_self_message};
+use super::event_plan::{
+    PreparedMessageRows, PreparedSelfMessageRows, ensure_message_actors_visible,
+    prepare_message_rows, prepare_self_message_rows,
 };
 use super::layout::{SequenceLayout, participant_left};
+use super::lifeline::{build_lifeline_line, retained_lifeline_width};
 use super::model::{
     AsciiSequenceDiagram, MaterializedSequenceParticipantLabel, PreparedSequenceParticipantLabel,
     SequenceEvent,
 };
 use super::notes::{PreparedNoteRows, ensure_note_actors_known, prepare_note_rows, render_note};
-use super::render::{SequenceChars, build_lifeline_line, retained_lifeline_width};
 use super::text::{
     SequenceBatchExtent, SequenceExtentLedger, SequenceLine, SequenceRowFootprint,
     blank_line_with_checkpoints, padded_line_with_checkpoints, trim_right,

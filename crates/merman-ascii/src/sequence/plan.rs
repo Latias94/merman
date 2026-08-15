@@ -1,4 +1,4 @@
-use super::boxes::render_sequence_boxes;
+use super::chars::SequenceChars;
 use super::control::{
     PreparedSequenceControlFrames, SequenceControlBoundaryState, SequenceControlFrame,
     SequenceControlFrameForest, SequenceControlFrameNode, SequenceControlFrameSeparator,
@@ -7,20 +7,13 @@ use super::control::{
 use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at};
 use super::model::{AsciiSequenceDiagram, SequenceEvent};
 use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
-use super::render::SequenceChars;
+use super::row_document::SequenceRowDocument;
 #[cfg(test)]
 use super::text::blank_line;
-use super::text::{SequenceLine, blank_line_with_checkpoints, charge_text_work, trim_right};
 use super::tree::{SequenceControl, SequenceVisit};
 use super::{SequenceActorRenderState, SequenceCheckpointCursor};
-use crate::color::AsciiColorMode;
-use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
-use crate::terminal::{TerminalCellText, primary_width};
-use crate::text::display_width_with_profile;
-use merman_core::OperationPhase;
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
 #[derive(Debug)]
 struct SequenceRowPlanner<'diagram> {
@@ -340,26 +333,43 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
     }
 }
 
-#[derive(Debug)]
-pub(super) struct SequenceRowPlan {
-    lines: Vec<SequenceLine>,
-}
-
 struct PreparedSequenceRowPlan<'diagram> {
     body: SequencePreparedBody<'diagram>,
     controls: Option<PreparedSequenceControlFrames<'diagram>>,
 }
 
-impl SequenceRowPlan {
-    pub(super) fn build(
-        diagram: &AsciiSequenceDiagram,
-        layout: &SequenceLayout,
-        chars: &SequenceChars,
-        mirror_actors: bool,
-        resources: &mut ResourceContext,
-        checkpoints: &mut SequenceCheckpointCursor<'_>,
-    ) -> Result<Self> {
-        let prepared = Self::prepare(
+pub(super) fn build_sequence_row_document(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    mirror_actors: bool,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<SequenceRowDocument> {
+    let prepared = prepare_sequence_row_plan(
+        diagram,
+        layout,
+        chars,
+        mirror_actors,
+        resources,
+        checkpoints,
+    )?;
+    materialize_sequence_row_plan(prepared, diagram, layout, chars, resources, checkpoints)
+}
+
+#[cfg(test)]
+fn build_sequence_row_document_with_materialization_probe(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    mirror_actors: bool,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+    before_materialize: impl FnOnce(),
+) -> Result<SequenceRowDocument> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        let prepared = prepare_sequence_row_plan(
             diagram,
             layout,
             chars,
@@ -367,311 +377,143 @@ impl SequenceRowPlan {
             resources,
             checkpoints,
         )?;
-        Self::materialize(prepared, diagram, layout, chars, resources, checkpoints)
-    }
+        before_materialize();
+        materialize_sequence_row_plan(prepared, diagram, layout, chars, resources, checkpoints)
+    })
+}
 
-    #[cfg(test)]
-    fn build_with_materialization_probe(
-        diagram: &AsciiSequenceDiagram,
-        layout: &SequenceLayout,
-        chars: &SequenceChars,
-        mirror_actors: bool,
-        resources: &mut ResourceContext,
-        checkpoints: &mut SequenceCheckpointCursor<'_>,
-        before_materialize: impl FnOnce(),
-    ) -> Result<Self> {
-        let transaction = resources.clone();
-        transaction.transaction(|_| {
-            let prepared = Self::prepare(
-                diagram,
-                layout,
-                chars,
-                mirror_actors,
-                resources,
-                checkpoints,
-            )?;
-            before_materialize();
-            Self::materialize(prepared, diagram, layout, chars, resources, checkpoints)
-        })
-    }
+fn prepare_sequence_row_plan<'diagram>(
+    diagram: &'diagram AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    mirror_actors: bool,
+    resources: &mut ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<PreparedSequenceRowPlan<'diagram>> {
+    checkpoints.before_charge()?;
+    let mut planner = SequenceRowPlanner::new(diagram, resources, checkpoints)?;
+    let mut prepared = SequencePreparedBody::new(
+        diagram,
+        layout,
+        planner.visible_actors(),
+        resources,
+        checkpoints,
+    )?;
 
-    fn prepare<'diagram>(
-        diagram: &'diagram AsciiSequenceDiagram,
-        layout: &SequenceLayout,
-        chars: &SequenceChars,
-        mirror_actors: bool,
-        resources: &mut ResourceContext,
-        checkpoints: &mut SequenceCheckpointCursor<'_>,
-    ) -> Result<PreparedSequenceRowPlan<'diagram>> {
-        checkpoints.before_charge()?;
-        let mut planner = SequenceRowPlanner::new(diagram, resources, checkpoints)?;
-        let mut prepared = SequencePreparedBody::new(
-            diagram,
-            layout,
-            planner.visible_actors(),
-            resources,
-            checkpoints,
-        )?;
-
-        diagram
-            .body
-            .try_visit(resources, checkpoints.execution(), |visit, resources| {
-                checkpoints.tick()?;
-                match visit {
-                    SequenceVisit::Event(event) => {
-                        if let Some(step) =
-                            planner.advance(diagram, event, resources, checkpoints)?
-                        {
-                            prepared.prepare_step(
-                                diagram,
-                                step,
-                                layout,
-                                chars,
-                                resources,
-                                checkpoints,
-                            )?;
-                        }
-                    }
-                    SequenceVisit::EnterControl { control, depth } => {
-                        planner.enter_control(
-                            control,
-                            depth,
-                            prepared.current_row(),
+    diagram
+        .body
+        .try_visit(resources, checkpoints.execution(), |visit, resources| {
+            checkpoints.tick()?;
+            match visit {
+                SequenceVisit::Event(event) => {
+                    if let Some(step) = planner.advance(diagram, event, resources, checkpoints)? {
+                        prepared.prepare_step(
+                            diagram,
+                            step,
+                            layout,
+                            chars,
                             resources,
                             checkpoints,
                         )?;
-                    }
-                    SequenceVisit::EnterSection {
-                        control,
-                        section_index,
-                    } => {
-                        if section_index > 0 && planner.section_is_empty(prepared.current_row())? {
-                            prepared.push_lifeline(
-                                planner.active_counts(),
-                                planner.visible_actors(),
-                                layout,
-                                resources,
-                                checkpoints,
-                            )?;
-                        }
-                        planner.enter_section(
-                            control,
-                            section_index,
-                            prepared.current_row(),
-                            resources,
-                            checkpoints,
-                        )?;
-                    }
-                    SequenceVisit::ExitControl => {
-                        if planner.section_is_empty(prepared.current_row())? {
-                            prepared.push_lifeline(
-                                planner.active_counts(),
-                                planner.visible_actors(),
-                                layout,
-                                resources,
-                                checkpoints,
-                            )?;
-                        }
-                        planner.exit_control(prepared.current_row(), resources, checkpoints)?;
                     }
                 }
-                Ok(())
-            })?;
-        prepared.finish(
-            SequenceActorRenderState::new(planner.active_counts(), planner.visible_actors()),
-            diagram,
-            layout,
-            mirror_actors,
-            resources,
-            checkpoints,
-        )?;
-
-        let control_tree = planner.finish()?;
-        let prepared_controls = prepare_sequence_control_frames(
-            control_tree,
-            prepared.footprints(),
-            layout,
-            resources,
-            checkpoints,
-        )?;
-        let materialization_work = match prepared_controls.as_ref() {
-            Some(control) => {
-                let control_work = control.materialization_work_units(resources, checkpoints)?;
-                resources.checked_work_add(
-                    prepared.materialization_work_units(resources, checkpoints)?,
-                    control_work,
-                )?
+                SequenceVisit::EnterControl { control, depth } => {
+                    planner.enter_control(
+                        control,
+                        depth,
+                        prepared.current_row(),
+                        resources,
+                        checkpoints,
+                    )?;
+                }
+                SequenceVisit::EnterSection {
+                    control,
+                    section_index,
+                } => {
+                    if section_index > 0 && planner.section_is_empty(prepared.current_row())? {
+                        prepared.push_lifeline(
+                            planner.active_counts(),
+                            planner.visible_actors(),
+                            layout,
+                            resources,
+                            checkpoints,
+                        )?;
+                    }
+                    planner.enter_section(
+                        control,
+                        section_index,
+                        prepared.current_row(),
+                        resources,
+                        checkpoints,
+                    )?;
+                }
+                SequenceVisit::ExitControl => {
+                    if planner.section_is_empty(prepared.current_row())? {
+                        prepared.push_lifeline(
+                            planner.active_counts(),
+                            planner.visible_actors(),
+                            layout,
+                            resources,
+                            checkpoints,
+                        )?;
+                    }
+                    planner.exit_control(prepared.current_row(), resources, checkpoints)?;
+                }
             }
-            None => prepared.materialization_work_units(resources, checkpoints)?,
-        };
-        charge_materialization_work(materialization_work, resources, checkpoints)?;
-        checkpoints.tick()?;
-        Ok(PreparedSequenceRowPlan {
-            body: prepared,
-            controls: prepared_controls,
-        })
-    }
-
-    fn materialize(
-        prepared: PreparedSequenceRowPlan<'_>,
-        diagram: &AsciiSequenceDiagram,
-        layout: &SequenceLayout,
-        chars: &SequenceChars,
-        resources: &mut ResourceContext,
-        checkpoints: &mut SequenceCheckpointCursor<'_>,
-    ) -> Result<Self> {
-        let mut lines =
-            prepared
-                .body
-                .materialize(diagram, layout, chars, resources, checkpoints)?;
-        if let Some(control) = prepared.controls {
-            checkpoints.tick()?;
-            lines = control.materialize(lines, layout, chars, resources, checkpoints)?;
-        }
-
-        Ok(Self { lines })
-    }
-
-    pub(super) fn render(
-        self,
-        diagram: &AsciiSequenceDiagram,
-        layout: &SequenceLayout,
-        chars: &SequenceChars,
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-        layout_checkpoints: &mut SequenceCheckpointCursor<'_>,
-    ) -> Result<String> {
-        let mut lines = self.lines;
-        if !diagram.boxes.is_empty() {
-            lines = render_sequence_boxes(
-                lines,
-                diagram,
-                layout,
-                chars,
-                resources,
-                layout_checkpoints,
-            )?;
-        }
-        if let Some(title) = diagram.title.as_deref() {
-            prepend_title_line(&mut lines, title, resources, layout_checkpoints)?;
-        }
-        // Box/title geometry, extent admission, and canvas construction are layout work.  Only
-        // after those complete do we bind the shared ledger to Emit for byte/document emission.
-        let mut emit_resources = layout_checkpoints
-            .execution()
-            .resource_context(resources, OperationPhase::Emit);
-        let mut emit_checkpoints = layout_checkpoints.next_phase(OperationPhase::Emit);
-        finish_sequence_lines(lines, options, &mut emit_resources, &mut emit_checkpoints)
-    }
-}
-
-fn finish_sequence_lines(
-    lines: Vec<SequenceLine>,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<String> {
-    if options.color_mode == AsciiColorMode::Plain {
-        let document_resources = resources.scoped();
-        let mut output = CheckedOutput::new(resources.policy());
-        if lines.is_empty() {
-            checkpoints.before_charge()?;
-            document_resources.charge_layout_work(1)?;
-            checkpoints.before_charge()?;
-            output.push_char('\n')?;
-            return Ok(output.finish());
-        }
-        for line in lines {
-            checkpoints.before_charge()?;
-            document_resources.charge_document_cells(line.len())?;
-            checkpoints.before_charge()?;
-            document_resources.charge_layout_work(line.len().max(1))?;
-            write_plain_sequence_line(&line, &mut output, checkpoints)?;
-            checkpoints.before_charge()?;
-            output.push_char('\n')?;
-        }
-        return Ok(output.finish());
-    }
-
-    if lines.is_empty() {
-        return Ok(String::new());
-    }
-
-    let deferred = crate::safe_text::DeferredTextRegistry::new();
-    crate::canvas::finish_styled_line_iter_with_deferred_resources_with_execution(
-        lines.iter(),
-        options,
-        true,
+            Ok(())
+        })?;
+    prepared.finish(
+        SequenceActorRenderState::new(planner.active_counts(), planner.visible_actors()),
+        diagram,
+        layout,
+        mirror_actors,
         resources,
-        &deferred,
-        checkpoints.execution(),
-    )
-}
+        checkpoints,
+    )?;
 
-fn write_plain_sequence_line(
-    line: &SequenceLine,
-    output: &mut CheckedOutput,
-    checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<()> {
-    let mut offset = 0usize;
-    while let Some(cell) = line.surface_cells().get(offset).copied() {
-        checkpoints.before_charge()?;
-        if let Some(text) = cell.try_output_text(line.surface_arena())? {
-            match text {
-                TerminalCellText::Scalar(ch) => output.push_char(ch)?,
-                TerminalCellText::Grapheme(grapheme) => output.push_str(grapheme)?,
-            }
+    let control_tree = planner.finish()?;
+    let prepared_controls = prepare_sequence_control_frames(
+        control_tree,
+        prepared.footprints(),
+        layout,
+        resources,
+        checkpoints,
+    )?;
+    let materialization_work = match prepared_controls.as_ref() {
+        Some(control) => {
+            let control_work = control.materialization_work_units(resources, checkpoints)?;
+            resources.checked_work_add(
+                prepared.materialization_work_units(resources, checkpoints)?,
+                control_work,
+            )?
         }
-        offset = offset
-            .checked_add(primary_width(line.surface_cells(), offset).max(1))
-            .ok_or_else(allocation_failed)?;
-    }
-    Ok(())
+        None => prepared.materialization_work_units(resources, checkpoints)?,
+    };
+    charge_materialization_work(materialization_work, resources, checkpoints)?;
+    checkpoints.tick()?;
+    Ok(PreparedSequenceRowPlan {
+        body: prepared,
+        controls: prepared_controls,
+    })
 }
 
-fn prepend_title_line(
-    lines: &mut Vec<SequenceLine>,
-    title: &str,
+fn materialize_sequence_row_plan(
+    prepared: PreparedSequenceRowPlan<'_>,
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
     resources: &mut ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<()> {
-    let mut width = 0usize;
-    for line in lines.iter() {
+) -> Result<SequenceRowDocument> {
+    let mut lines = prepared
+        .body
+        .materialize(diagram, layout, chars, resources, checkpoints)?;
+    if let Some(control) = prepared.controls {
         checkpoints.tick()?;
-        width = width.max(line.len());
+        lines = control.materialize(lines, layout, chars, resources, checkpoints)?;
     }
-    let width_profile = lines
-        .first()
-        .map(SequenceLine::width_profile)
-        .unwrap_or(TerminalWidthProfile::Unicode);
-    charge_text_work(title, width_profile, resources, checkpoints)?;
-    let title_width = display_width_with_profile(title, width_profile);
-    let height = resources.checked_grid_add(lines.len(), 1)?;
-    resources.grid_extent(width.max(title_width), height)?;
-    checkpoints.before_charge()?;
-    resources.charge_layout_work(title_width.max(1))?;
-    lines.try_reserve(1).map_err(|_| allocation_failed())?;
-    lines.insert(
-        0,
-        render_title_line(title, width, width_profile, resources, checkpoints)?,
-    );
-    Ok(())
-}
 
-fn render_title_line(
-    title: &str,
-    width: usize,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-    checkpoints: &mut SequenceCheckpointCursor<'_>,
-) -> Result<SequenceLine> {
-    let title_width = display_width_with_profile(title, width_profile);
-    let left = width.saturating_sub(title_width) / 2;
-    let mut line = blank_line_with_checkpoints(left, width_profile, resources, checkpoints)?;
-    line.try_push_role_text_with_checkpoint(title, AsciiColorRole::Text, resources, || {
-        checkpoints.tick()
-    })?;
-    trim_right(line)
+    Ok(SequenceRowDocument::new(lines))
 }
 
 fn unsupported(feature: &'static str) -> AsciiError {
@@ -714,11 +556,10 @@ fn allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::color::AsciiColorMode;
     use crate::operation::AsciiExecution;
-    use crate::options::AsciiRenderOptions;
+    use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use crate::sequence::events::prepare_message_rows;
+    use crate::sequence::event_plan::prepare_message_rows;
     use crate::sequence::layout::{calculate_layout, calculate_layout_with_resources};
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration, SequenceControlKind,
@@ -975,7 +816,7 @@ mod tests {
         let before_work = base_resources.layout_work_used();
         let before_cells = base_resources.document_cells_used();
 
-        let error = SequenceRowPlan::build_with_materialization_probe(
+        let error = build_sequence_row_document_with_materialization_probe(
             &diagram,
             &layout,
             &ascii_chars(),
@@ -1045,7 +886,7 @@ mod tests {
         let layout =
             calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)?;
         let chars = ascii_chars();
-        SequenceRowPlan::build_with_materialization_probe(
+        build_sequence_row_document_with_materialization_probe(
             diagram,
             &layout,
             &chars,
@@ -1071,7 +912,7 @@ mod tests {
         let mut checkpoints = layout_checkpoints(&limited);
         let layout =
             calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)?;
-        SequenceRowPlan::build_with_materialization_probe(
+        build_sequence_row_document_with_materialization_probe(
             diagram,
             &layout,
             &ascii_chars(),
@@ -1164,7 +1005,7 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
-        let plan = SequenceRowPlan::build(
+        let plan = build_sequence_row_document(
             &diagram,
             &layout,
             &ascii_chars(),
@@ -1203,7 +1044,7 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
-        let plan = SequenceRowPlan::build(
+        let plan = build_sequence_row_document(
             &diagram,
             &layout,
             &ascii_chars(),
@@ -1235,7 +1076,7 @@ mod tests {
         let layout = calculate_layout(&diagram, &options, &policy).unwrap();
         let mut resources = ResourceContext::new(policy);
         let mut layout_cursor = layout_checkpoints(&policy);
-        let plan = SequenceRowPlan::build(
+        let plan = build_sequence_row_document(
             &diagram,
             &layout,
             &ascii_chars(),
@@ -1265,7 +1106,7 @@ mod tests {
         let exact_layout = calculate_layout(&diagram, &options, &exact).unwrap();
         let mut exact_resources = ResourceContext::new(exact);
         let mut exact_layout_checkpoints = layout_checkpoints(&exact);
-        let exact_plan = SequenceRowPlan::build(
+        let exact_plan = build_sequence_row_document(
             &diagram,
             &exact_layout,
             &ascii_chars(),
@@ -1295,7 +1136,7 @@ mod tests {
         let below_layout = calculate_layout(&diagram, &options, &below).unwrap();
         let mut below_resources = ResourceContext::new(below);
         let mut below_layout_checkpoints = layout_checkpoints(&below);
-        let below_plan = SequenceRowPlan::build(
+        let below_plan = build_sequence_row_document(
             &diagram,
             &below_layout,
             &ascii_chars(),
@@ -1320,71 +1161,6 @@ mod tests {
                 if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
                     && details.actual == total_work
                     && details.max == total_work - 1
-        ));
-    }
-
-    #[test]
-    fn styled_sequence_rows_stream_through_one_output_budget_in_every_mode() {
-        for mode in [
-            AsciiColorMode::Plain,
-            AsciiColorMode::Ansi16,
-            AsciiColorMode::Ansi256,
-            AsciiColorMode::TrueColor,
-            AsciiColorMode::Html,
-        ] {
-            let base = AsciiRenderOptions::unicode().with_color_mode(mode);
-            let base_policy = AsciiResourcePolicy::default();
-            let expected = finish_styled_test_lines(&base, &base_policy)
-                .expect("unmodified profile should encode styled sequence rows");
-
-            let exact = AsciiResourcePolicy::default()
-                .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
-                .expect("exact output limit should be valid");
-            assert_eq!(
-                finish_styled_test_lines(&base, &exact).expect("exact output budget should encode"),
-                expected
-            );
-
-            let below = AsciiResourcePolicy::default()
-                .with_limit(
-                    AsciiResourceLimitId::MaxOutputBytes,
-                    expected.len().saturating_sub(1),
-                )
-                .expect("limit below encoded output should be valid");
-            let error = finish_styled_test_lines(&base, &below)
-                .expect_err("aggregate output budget must reject before partial output escapes");
-            assert!(matches!(
-                error,
-                AsciiError::ResourceLimitExceeded(details)
-                    if details.limit == AsciiResourceLimitId::MaxOutputBytes
-                        && details.actual > details.max
-                        && details.max == expected.len() - 1
-            ));
-        }
-    }
-
-    #[test]
-    fn plain_emit_cancellation_precedes_the_limit_minus_one_output_write() {
-        let options = AsciiRenderOptions::ascii();
-        let policy = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 64)
-            .expect("the output limit should be valid");
-        let mut resources = ResourceContext::new(policy);
-        let line =
-            SequenceLine::plain_text_with_profile(&"x".repeat(128), options.terminal_width_profile);
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(66);
-        let execution = AsciiExecution::new(&control, &policy);
-        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Emit);
-
-        let error = finish_sequence_lines(vec![line], &options, &mut resources, &mut checkpoints)
-            .expect_err("the 65th byte should observe cancellation before exceeding 64 bytes");
-
-        assert!(matches!(
-            error,
-            AsciiError::Cancelled(cancelled)
-                if cancelled.phase == OperationPhase::Emit
-                    && cancelled.reason == merman_core::CancelReason::Requested
         ));
     }
 
@@ -1437,7 +1213,7 @@ mod tests {
             )
             .expect("the planned body line should fit"),
         ];
-        let plan = SequenceRowPlan { lines };
+        let plan = SequenceRowDocument::new(lines);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(0);
         let execution = AsciiExecution::new(&control, &policy);
@@ -1462,36 +1238,6 @@ mod tests {
                 if cancelled.phase == OperationPhase::Layout
                     && cancelled.reason == merman_core::CancelReason::Requested
         ));
-    }
-
-    fn finish_styled_test_lines(
-        options: &AsciiRenderOptions,
-        policy: &AsciiResourcePolicy,
-    ) -> Result<String> {
-        let mut resources = ResourceContext::new(*policy);
-        let execution = AsciiExecution::standalone(policy);
-        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Emit);
-        finish_sequence_lines(
-            styled_test_lines(options, *policy),
-            options,
-            &mut resources,
-            &mut checkpoints,
-        )
-    }
-
-    fn styled_test_lines(
-        options: &AsciiRenderOptions,
-        policy: AsciiResourcePolicy,
-    ) -> Vec<SequenceLine> {
-        let mut first = SequenceLine::with_resource_policy(options.terminal_width_profile, policy);
-        first
-            .try_push_role_text("A<&", AsciiColorRole::Text)
-            .expect("styled line should fit");
-        let mut second = SequenceLine::with_resource_policy(options.terminal_width_profile, policy);
-        second
-            .try_push_role_text("B👩🏽‍💻", AsciiColorRole::EdgeArrow)
-            .expect("styled line should fit");
-        vec![first, second]
     }
 
     fn diagram(participant_count: usize) -> AsciiSequenceDiagram {

@@ -4,9 +4,9 @@ mod paint;
 pub(super) use super::tree::SequenceParticipantSpan;
 pub(super) use geometry::SequenceControlBoundaryState;
 
+use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::SequenceControlKind;
-use super::render::SequenceChars;
 use super::text::{SequenceLine, SequenceRowFootprint};
 use super::{SequenceCheckpointCursor, try_plan_sequence_label};
 use crate::color::AsciiRgb;

@@ -8,9 +8,9 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 use crate::text::{display_width_with_profile, truncate_display_width_with_profile};
 
+use super::chars::SequenceChars;
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
-use super::render::SequenceChars;
 #[cfg(test)]
 use super::text::blank_line;
 use super::text::{
