@@ -2,6 +2,7 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
+use crate::resource::ResourceContext;
 use crate::safe_text::{
     BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
     push_optional_document_field,
@@ -14,17 +15,7 @@ pub(super) fn render_git_graph_diagram(
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
-    layout_resources.charge_layout_work(model.commits.len())?;
-    if model
-        .commits
-        .iter()
-        .any(|commit| commit_kind(commit.commit_type).is_none())
-    {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "gitGraph",
-            feature: "unknown commit types",
-        });
-    }
+    validate_commit_types(&model.commits, &layout_resources)?;
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
@@ -70,6 +61,25 @@ pub(super) fn render_git_graph_diagram(
     }
 
     document.finish()
+}
+
+fn validate_commit_types(
+    commits: &[GitGraphCommitRenderModel],
+    resources: &ResourceContext,
+) -> Result<()> {
+    resources.transaction(|resources| {
+        resources.charge_layout_work(commits.len())?;
+        for commit in commits {
+            resources.checkpoint()?;
+            if commit_kind(commit.commit_type).is_none() {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "gitGraph",
+                    feature: "unknown commit types",
+                });
+            }
+        }
+        Ok(())
+    })
 }
 
 fn push_commit_text(
@@ -123,10 +133,10 @@ fn commit_kind(commit_type: i64) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::error::AsciiError;
-    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
-    use merman_core::OperationControl;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use merman_core::diagrams::git_graph::GitGraphBranchRenderModel;
     use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     fn commit(commit_type: i64) -> GitGraphCommitRenderModel {
         GitGraphCommitRenderModel {
@@ -158,10 +168,11 @@ mod tests {
 
     #[test]
     fn commit_type_admission_charges_the_complete_validation_scan() {
+        const VALIDATION_WORK: usize = 2;
         let model = model_with_commits(vec![commit(0), commit(98)]);
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let exact = unbounded
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, VALIDATION_WORK)
             .expect("exact validation-work limit should be valid");
         let exact_control = OperationControl::new();
 
@@ -179,7 +190,10 @@ mod tests {
         );
 
         let below = unbounded
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .with_limit(
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                VALIDATION_WORK - 1,
+            )
             .expect("N-1 validation-work limit should be valid");
         let below_control = OperationControl::new();
         let error = render_git_graph_diagram(
@@ -192,9 +206,55 @@ mod tests {
             error,
             AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-                    && details.actual == 2
-                    && details.max == 1
+                    && details.actual == VALIDATION_WORK
+                    && details.max == VALIDATION_WORK - 1
         ));
+    }
+
+    #[test]
+    fn commit_type_validation_rolls_back_semantic_failure() {
+        const PRIOR_WORK: usize = 3;
+        const PRIOR_CELLS: usize = 2;
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(PRIOR_WORK, PRIOR_CELLS)
+            .expect("prior ledger usage should fit");
+
+        let error = validate_commit_types(&[commit(0), commit(98)], &resources)
+            .expect_err("unknown commit types should reject the validation batch");
+
+        assert_eq!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "gitGraph",
+                feature: "unknown commit types",
+            }
+        );
+        assert_eq!(resources.layout_work_used(), PRIOR_WORK);
+        assert_eq!(resources.document_cells_used(), PRIOR_CELLS);
+    }
+
+    #[test]
+    fn commit_type_validation_prioritizes_cancellation_over_work_ceiling() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("positive validation-work limit should be valid");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+        let controlled = resources.controlled(control, OperationPhase::Layout);
+
+        let error = validate_commit_types(&[commit(0), commit(1)], &controlled)
+            .expect_err("cancellation should win before the validation-work charge");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
     }
 
     #[test]

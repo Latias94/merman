@@ -277,7 +277,13 @@ fn git_graph_summary_loop_observes_operation_cancellation() {
         warning_facts: Vec::new(),
     };
 
-    let error = render_with_scheduled_cancellation(RenderSemanticModel::GitGraph(model), 4);
+    // Commit-type validation now checks each commit before the summary is emitted. Advance past
+    // those semantic checks so this fixture continues to exercise the Emit loop itself.
+    let successful_checkpoints = model.commits.len() + 4;
+    let error = render_with_scheduled_cancellation(
+        RenderSemanticModel::GitGraph(model),
+        successful_checkpoints,
+    );
     assert!(matches!(
         error,
         AsciiError::Cancelled(cancelled)

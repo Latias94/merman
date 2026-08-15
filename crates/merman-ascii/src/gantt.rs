@@ -82,11 +82,13 @@ pub(super) fn render_gantt_diagram(
             emitted_section_capacity,
         } = task_index;
         let mut emitted_sections = HashSet::new();
+        document.resources_mut().checkpoint()?;
         emitted_sections
             .try_reserve(emitted_section_capacity)
             .map_err(|_| layout_allocation_error())?;
 
         for section in &model.sections {
+            document.resources_mut().checkpoint()?;
             let first_occurrence = emitted_sections.insert(section.as_str());
             push_section(&mut document, section)?;
             if !first_occurrence {
@@ -102,6 +104,7 @@ pub(super) fn render_gantt_diagram(
         // Direct typed models may contain a task whose section is absent from the declaration
         // list. Preserve it under its authored section instead of dropping the task.
         for section in task_section_order {
+            document.resources_mut().checkpoint()?;
             if emitted_sections.insert(section) {
                 push_section(&mut document, section)?;
                 if let Some(tasks) = tasks_by_section.get(section) {
@@ -128,24 +131,28 @@ pub(super) fn render_gantt_diagram(
 #[derive(Debug, Clone, Copy)]
 struct GanttStructureAdmission {
     task_capacity: usize,
+    emitted_section_capacity: usize,
     grouped: bool,
 }
 
 impl GanttStructureAdmission {
-    fn preflight(model: &GanttDiagramRenderModel, resources: &mut ResourceContext) -> Result<Self> {
+    fn preflight(model: &GanttDiagramRenderModel, resources: &ResourceContext) -> Result<Self> {
         let task_capacity = model.tasks.len();
         let grouped = !model.sections.is_empty();
 
         // The grouped path retains one slot per task in the id set, section-order vector,
         // section map, and section task vectors. Its emitted-section set additionally admits the
         // authored sections plus the worst case where every task names a distinct orphan section.
+        let emitted_section_capacity = if grouped {
+            resources.checked_work_add(model.sections.len(), task_capacity)?
+        } else {
+            0
+        };
         let allocation_work = if grouped {
             let grouped_task_slots = resources.checked_work_mul(task_capacity, 3)?;
-            let emitted_section_slots =
-                resources.checked_work_add(model.sections.len(), task_capacity)?;
             let indexed_task_slots =
                 resources.checked_work_add(task_capacity, grouped_task_slots)?;
-            resources.checked_work_add(indexed_task_slots, emitted_section_slots)?
+            resources.checked_work_add(indexed_task_slots, emitted_section_capacity)?
         } else {
             task_capacity
         };
@@ -170,6 +177,7 @@ impl GanttStructureAdmission {
 
         Ok(Self {
             task_capacity,
+            emitted_section_capacity,
             grouped,
         })
     }
@@ -185,14 +193,16 @@ impl<'model> GanttTaskIndex<'model> {
     fn materialize(
         model: &'model GanttDiagramRenderModel,
         admission: GanttStructureAdmission,
-        resources: &mut ResourceContext,
+        resources: &ResourceContext,
     ) -> Result<Option<Self>> {
+        resources.checkpoint()?;
         let mut task_ids = HashSet::new();
         task_ids
             .try_reserve(admission.task_capacity)
             .map_err(|_| layout_allocation_error())?;
 
         let mut grouped_index = if admission.grouped {
+            resources.checkpoint()?;
             let mut task_section_order = Vec::new();
             let mut tasks_by_section = HashMap::new();
             task_section_order
@@ -204,13 +214,14 @@ impl<'model> GanttTaskIndex<'model> {
             Some(Self {
                 task_section_order,
                 tasks_by_section,
-                emitted_section_capacity: 0,
+                emitted_section_capacity: admission.emitted_section_capacity,
             })
         } else {
             None
         };
 
         for task in &model.tasks {
+            resources.checkpoint()?;
             if !task_ids.insert(task.id.as_str()) {
                 return Err(crate::error::AsciiError::UnsupportedFeature {
                     diagram_type: "gantt",
@@ -227,27 +238,27 @@ impl<'model> GanttTaskIndex<'model> {
                     entry.insert(Vec::new())
                 }
             };
+            resources.checkpoint()?;
             tasks
                 .try_reserve(1)
                 .map_err(|_| layout_allocation_error())?;
             tasks.push(task);
         }
 
-        if let Some(index) = grouped_index.as_mut() {
-            index.emitted_section_capacity =
-                resources.checked_work_add(model.sections.len(), index.task_section_order.len())?;
-        }
+        resources.checkpoint()?;
         Ok(grouped_index)
     }
 }
 
 fn admit_then_materialize_gantt_structure<T>(
     model: &GanttDiagramRenderModel,
-    resources: &mut ResourceContext,
-    materialize: impl FnOnce(GanttStructureAdmission, &mut ResourceContext) -> Result<T>,
+    resources: &ResourceContext,
+    materialize: impl FnOnce(GanttStructureAdmission, &ResourceContext) -> Result<T>,
 ) -> Result<T> {
-    let admission = GanttStructureAdmission::preflight(model, resources)?;
-    materialize(admission, resources)
+    resources.transaction(|resources| {
+        let admission = GanttStructureAdmission::preflight(model, resources)?;
+        materialize(admission, resources)
+    })
 }
 
 fn push_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
@@ -419,6 +430,7 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
     use merman_core::time::{OffsetDateTime, UtcOffset};
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn direct_model() -> GanttDiagramRenderModel {
@@ -459,66 +471,112 @@ mod tests {
         );
     }
 
-    fn admission_work(model: &GanttDiagramRenderModel) -> usize {
-        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let mut resources = ResourceContext::new(policy);
-        admit_then_materialize_gantt_structure(model, &mut resources, |_, _| Ok(()))
-            .expect("unbounded Gantt admission should succeed");
-        resources.layout_work_used()
-    }
-
     #[test]
     fn gantt_admission_accepts_exact_work_before_materializing_index() {
+        const STRUCTURE_WORK: usize = 42;
         let model = direct_model();
-        let exact_work = admission_work(&model);
-        assert_eq!(exact_work, 42);
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, STRUCTURE_WORK)
             .expect("exact Gantt admission work limit should be valid");
-        let mut resources = ResourceContext::new(policy);
+        let resources = ResourceContext::new(policy);
         let materialized = Cell::new(false);
-        let index = admit_then_materialize_gantt_structure(
-            &model,
-            &mut resources,
-            |admission, resources| {
+        let index =
+            admit_then_materialize_gantt_structure(&model, &resources, |admission, resources| {
                 materialized.set(true);
                 GanttTaskIndex::materialize(&model, admission, resources)
-            },
-        )
-        .expect("exact Gantt admission work should permit materialization");
+            })
+            .expect("exact Gantt admission work should permit materialization");
 
         assert!(materialized.get());
         let index = index.expect("declared sections require a grouped task index");
         assert_eq!(index.tasks_by_section.len(), 2);
-        assert_eq!(resources.layout_work_used(), exact_work);
+        assert_eq!(resources.layout_work_used(), STRUCTURE_WORK);
     }
 
     #[test]
     fn gantt_admission_rejects_max_minus_one_before_materializing_index() {
+        const STRUCTURE_WORK: usize = 42;
         let model = direct_model();
-        let exact_work = admission_work(&model);
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, STRUCTURE_WORK - 1)
             .expect("max-minus-one Gantt admission work limit should be valid");
-        let mut resources = ResourceContext::new(policy);
+        let resources = ResourceContext::new(policy);
         let materialized = Cell::new(false);
-        let error = admit_then_materialize_gantt_structure(
-            &model,
-            &mut resources,
-            |admission, resources| {
+        let error =
+            admit_then_materialize_gantt_structure(&model, &resources, |admission, resources| {
                 materialized.set(true);
                 GanttTaskIndex::materialize(&model, admission, resources).map(|_| ())
-            },
-        )
-        .expect_err("max-minus-one Gantt admission work should fail before materialization");
+            })
+            .expect_err("max-minus-one Gantt admission work should fail before materialization");
 
         assert!(!materialized.get());
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-                    && details.actual == exact_work
-                    && details.max == exact_work - 1
+                    && details.actual == STRUCTURE_WORK
+                    && details.max == STRUCTURE_WORK - 1
         ));
+        assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn gantt_index_failure_rolls_back_structure_work() {
+        const PRIOR_WORK: usize = 3;
+        const PRIOR_CELLS: usize = 2;
+        let mut model = direct_model();
+        let duplicate_id = model.tasks[0].id.clone();
+        model.tasks[1].id = duplicate_id;
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(PRIOR_WORK, PRIOR_CELLS)
+            .expect("prior ledger usage should fit");
+
+        let error =
+            admit_then_materialize_gantt_structure(&model, &resources, |admission, resources| {
+                GanttTaskIndex::materialize(&model, admission, resources).map(|_| ())
+            })
+            .expect_err("duplicate ids should reject index materialization");
+
+        assert_eq!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "gantt",
+                feature: "duplicate task ids",
+            }
+        );
+        assert_eq!(resources.layout_work_used(), PRIOR_WORK);
+        assert_eq!(resources.document_cells_used(), PRIOR_CELLS);
+    }
+
+    #[test]
+    fn gantt_index_cancellation_rolls_back_admitted_work() {
+        const PRIOR_WORK: usize = 3;
+        const PRIOR_CELLS: usize = 2;
+        let model = direct_model();
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        resources
+            .charge_usage(PRIOR_WORK, PRIOR_CELLS)
+            .expect("prior ledger usage should fit");
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+
+        let error =
+            admit_then_materialize_gantt_structure(&model, &controlled, |admission, resources| {
+                control.cancel();
+                GanttTaskIndex::materialize(&model, admission, resources).map(|_| ())
+            })
+            .expect_err("materialization should observe cancellation at its first checkpoint");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), PRIOR_WORK);
+        assert_eq!(resources.document_cells_used(), PRIOR_CELLS);
     }
 }
