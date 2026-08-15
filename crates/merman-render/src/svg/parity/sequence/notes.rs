@@ -2,7 +2,7 @@ use super::super::*;
 use super::geometry::node_left_top;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
-    SequenceMathHeightMode, SequenceNoteThemeReceipt, sequence_note_final_wrapped_lines,
+    SequenceMathHeightMode, SequenceStaticRectThemeReceipt, sequence_note_final_wrapped_lines,
     sequence_text_line_step_px,
 };
 use merman_core::diagrams::sequence::SequenceMessage;
@@ -22,7 +22,7 @@ pub(super) fn render_sequence_note(
     out: &mut impl SvgOutput,
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
-    theme_receipt: &mut SequenceNoteThemeReceipt,
+    theme_receipt: &mut SequenceStaticRectThemeReceipt,
 ) {
     if msg.message_type != 2 {
         return;

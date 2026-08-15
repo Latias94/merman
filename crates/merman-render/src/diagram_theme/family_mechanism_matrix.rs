@@ -255,6 +255,12 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_NOTE_STROKE)
         }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTIVATION_FILL)
+        }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTIVATION_STROKE)
+        }
         _ => None,
     }
 }
@@ -599,7 +605,10 @@ fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::SEQUENCE
-        && matches!(target, ThemeTarget::Actor | ThemeTarget::Note)
+        && matches!(
+            target,
+            ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation
+        )
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
@@ -1378,7 +1387,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_actor_and_note_direct_routes_only_accept_static_scalar_paints() {
+    fn sequence_direct_rect_routes_only_accept_static_scalar_paints() {
         let gradient = super::super::canvas::LinearGradient::new(
             90.0,
             [
@@ -1395,7 +1404,11 @@ mod tests {
             ],
         )
         .expect("valid gradient");
-        for target in [ThemeTarget::Actor, ThemeTarget::Note] {
+        for target in [
+            ThemeTarget::Actor,
+            ThemeTarget::Note,
+            ThemeTarget::Activation,
+        ] {
             let solid = ThemeRule::new(
                 target,
                 ThemeStylePatch::default()
@@ -1553,6 +1566,34 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["note.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Activation,
+                Fill,
+                Transparent,
+                vec!["activation.fill"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Activation,
+                Fill,
+                Solid,
+                vec!["activation.fill"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Activation,
+                Stroke,
+                Transparent,
+                vec!["activation.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Activation,
+                Stroke,
+                Solid,
+                vec!["activation.stroke"],
             ),
             (
                 DiagramFamilyId::SWIMLANE,

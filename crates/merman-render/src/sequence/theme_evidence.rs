@@ -18,12 +18,8 @@ struct SequenceThemeEvidenceState {
     actor_stroke_unhandled: bool,
     actor_stroke_overridden: bool,
     actor_style_receipt: SequenceActorThemeReceipt,
-    note_count: usize,
-    note_fill_emitted: bool,
-    note_fill_overridden: bool,
-    note_stroke_emitted: bool,
-    note_stroke_overridden: bool,
-    note_style_receipt: SequenceNoteThemeReceipt,
+    note: SequenceStaticRectThemeState,
+    activation: SequenceStaticRectThemeState,
 }
 
 /// Winner facts produced by the terminal Sequence Actor writer.
@@ -74,18 +70,19 @@ impl SequenceActorThemeReceipt {
     }
 }
 
-/// Winner and terminal-emission facts produced by the Sequence Note rectangle writer.
+/// Winner and terminal-emission facts produced by a Sequence static rectangle writer.
 ///
 /// This receipt is deliberately narrower than the Actor receipt: the current direct tranche owns
-/// only unqualified static Note fill and stroke. The rectangle writer records each surface it
-/// actually emits so evidence cannot be manufactured from the compiled route matrix alone.
+/// only unqualified static fill and stroke for Note and Activation surfaces. Each writer records
+/// the surfaces it actually emits so evidence cannot be manufactured from the compiled route
+/// matrix alone.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct SequenceNoteThemeReceipt {
+pub(crate) struct SequenceStaticRectThemeReceipt {
     static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
     emitted_rects: usize,
 }
 
-impl SequenceNoteThemeReceipt {
+impl SequenceStaticRectThemeReceipt {
     pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         record_style_winners(&mut self.static_winners, style);
     }
@@ -112,37 +109,56 @@ impl SequenceNoteThemeReceipt {
     }
 }
 
-/// Complete terminal emission facts for the current Sequence Note paint tranche.
-///
-/// The constructor normalizes authored-note applicability and complete rectangle coverage once,
-/// so evidence recording cannot combine a typed paint claim with an incomplete terminal receipt.
-#[derive(Debug)]
-pub(crate) struct SequenceNoteThemeEmission {
-    note_count: usize,
+/// Complete terminal emission facts for one Sequence static rectangle paint tranche.
+#[derive(Debug, Clone, Default)]
+struct SequenceStaticRectThemeState {
+    surface_count: usize,
     fill_emitted: bool,
     fill_overridden: bool,
     stroke_emitted: bool,
     stroke_overridden: bool,
-    receipt: SequenceNoteThemeReceipt,
+    receipt: SequenceStaticRectThemeReceipt,
 }
 
-impl SequenceNoteThemeEmission {
+impl SequenceStaticRectThemeState {
+    fn merge(&mut self, emission: SequenceStaticRectThemeEmission) {
+        self.surface_count = self.surface_count.max(emission.surface_count);
+        self.fill_emitted |= emission.fill_emitted;
+        self.fill_overridden |= emission.fill_overridden;
+        self.stroke_emitted |= emission.stroke_emitted;
+        self.stroke_overridden |= emission.stroke_overridden;
+        self.receipt.merge(emission.receipt);
+    }
+}
+
+/// Complete writer-owned emission facts shared by Note and Activation rectangles.
+#[derive(Debug)]
+pub(crate) struct SequenceStaticRectThemeEmission {
+    surface_count: usize,
+    fill_emitted: bool,
+    fill_overridden: bool,
+    stroke_emitted: bool,
+    stroke_overridden: bool,
+    receipt: SequenceStaticRectThemeReceipt,
+}
+
+impl SequenceStaticRectThemeEmission {
     pub(crate) fn from_terminal_writer(
-        note_count: usize,
+        surface_count: usize,
         typed_fill: Option<&str>,
         fill_overridden: bool,
         typed_stroke: Option<&str>,
         stroke_overridden: bool,
-        receipt: SequenceNoteThemeReceipt,
+        receipt: SequenceStaticRectThemeReceipt,
     ) -> Self {
-        let has_notes = note_count != 0;
-        let complete_rect_emission = has_notes && receipt.emitted_rects == note_count;
+        let has_surfaces = surface_count != 0;
+        let complete_rect_emission = has_surfaces && receipt.emitted_rects == surface_count;
         Self {
-            note_count,
+            surface_count,
             fill_emitted: complete_rect_emission && typed_fill.is_some(),
-            fill_overridden: has_notes && fill_overridden,
+            fill_overridden: has_surfaces && fill_overridden,
             stroke_emitted: complete_rect_emission && typed_stroke.is_some(),
-            stroke_overridden: has_notes && stroke_overridden,
+            stroke_overridden: has_surfaces && stroke_overridden,
             receipt,
         }
     }
@@ -154,6 +170,71 @@ struct SequenceRuleObservation {
     incomplete: bool,
     capabilities: BTreeSet<ThemeCapability>,
     residual: Option<FamilyThemeResidualReason>,
+}
+
+fn observe_static_rect_rule(
+    surface: &SequenceStaticRectThemeState,
+    observation: &mut SequenceRuleObservation,
+    disposition: FamilyThemeDisposition,
+    rule_index: usize,
+    selector: FamilyThemeSelectorShape,
+    facet: FamilyThemeRuleFacet,
+) {
+    if surface.surface_count == 0 || !surface.receipt.route_won(rule_index, selector, facet) {
+        return;
+    }
+    observation.applicable = true;
+    match facet {
+        FamilyThemeRuleFacet::Fill(_) if surface.fill_overridden => return,
+        FamilyThemeRuleFacet::Stroke(_) if surface.stroke_overridden => return,
+        _ => {}
+    }
+    match (disposition, facet) {
+        (
+            FamilyThemeDisposition::TypedAdapter,
+            FamilyThemeRuleFacet::Fill(
+                kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
+            ),
+        ) => {
+            if !surface.fill_emitted {
+                observation.incomplete = true;
+                return;
+            }
+            observation.capabilities.insert(capability_for_paint(kind));
+        }
+        (
+            FamilyThemeDisposition::TypedAdapter,
+            FamilyThemeRuleFacet::Stroke(
+                kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
+            ),
+        ) => {
+            if !surface.stroke_emitted {
+                observation.incomplete = true;
+                return;
+            }
+            observation.capabilities.insert(capability_for_paint(kind));
+        }
+        (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
+        (FamilyThemeDisposition::Unsupported, facet) => {
+            observation
+                .residual
+                .get_or_insert(unsupported_reason_for_facet(facet));
+        }
+        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
+    }
+}
+
+fn capability_for_paint(kind: FamilyThemePaintKind) -> ThemeCapability {
+    match kind {
+        FamilyThemePaintKind::Transparent => ThemeCapability::TransparentPaint,
+        FamilyThemePaintKind::Solid => ThemeCapability::SolidPaint,
+        FamilyThemePaintKind::Clear
+        | FamilyThemePaintKind::LinearGradient
+        | FamilyThemePaintKind::RadialGradient
+        | FamilyThemePaintKind::Pattern => {
+            unreachable!("only typed scalar paints reach a static rectangle writer")
+        }
+    }
 }
 
 /// Records actual Sequence writer emission so program routes alone cannot manufacture evidence.
@@ -188,17 +269,20 @@ impl SequenceThemeEvidenceRecorder {
         state.actor_style_receipt.merge(actor_style_receipt);
     }
 
-    pub(crate) fn record_note_emission(&self, emission: SequenceNoteThemeEmission) {
+    pub(crate) fn record_note_emission(&self, emission: SequenceStaticRectThemeEmission) {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.note_count = state.note_count.max(emission.note_count);
-        state.note_fill_emitted |= emission.fill_emitted;
-        state.note_fill_overridden |= emission.fill_overridden;
-        state.note_stroke_emitted |= emission.stroke_emitted;
-        state.note_stroke_overridden |= emission.stroke_overridden;
-        state.note_style_receipt.merge(emission.receipt);
+        state.note.merge(emission);
+    }
+
+    pub(crate) fn record_activation_emission(&self, emission: SequenceStaticRectThemeEmission) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.activation.merge(emission);
     }
 
     pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
@@ -214,8 +298,10 @@ impl SequenceThemeEvidenceRecorder {
 
         let mut actor_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut note_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
+        let mut activation_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
 
-        // Seed every Actor rule and every static unqualified Note rule before checking winners.
+        // Seed every Actor rule and every static unqualified Note/Activation rule before checking
+        // winners.
         // This keeps superseded rules, unmatched ordinal selectors, and empty terminal models in
         // the ledger so the final pass can classify them as explicitly not applicable instead of
         // leaving required keys unaccounted.
@@ -236,6 +322,15 @@ impl SequenceThemeEvidenceRecorder {
             } = route.mechanism()
             {
                 note_rules.entry(rule_index).or_default();
+            }
+            if let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::Activation,
+                selector: FamilyThemeSelectorShape::Static { variant: None },
+                ..
+            } = route.mechanism()
+            {
+                activation_rules.entry(rule_index).or_default();
             }
         }
 
@@ -363,85 +458,28 @@ impl SequenceThemeEvidenceRecorder {
                 }
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
-                    target: ThemeTarget::Note,
+                    target: target @ (ThemeTarget::Note | ThemeTarget::Activation),
                     selector,
                     facet,
                 } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
-                    let observation = note_rules.entry(rule_index).or_default();
-                    if state.note_count == 0
-                        || !state
-                            .note_style_receipt
-                            .route_won(rule_index, selector, facet)
-                    {
-                        continue;
-                    }
-                    observation.applicable = true;
-                    if state.note_fill_overridden && matches!(facet, FamilyThemeRuleFacet::Fill(_))
-                    {
-                        continue;
-                    }
-                    if state.note_stroke_overridden
-                        && matches!(facet, FamilyThemeRuleFacet::Stroke(_))
-                    {
-                        continue;
-                    }
-                    match route.disposition() {
-                        FamilyThemeDisposition::TypedAdapter
-                            if matches!(
-                                facet,
-                                FamilyThemeRuleFacet::Fill(
-                                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-                                )
-                            ) =>
-                        {
-                            if !state.note_fill_emitted {
-                                observation.incomplete = true;
-                                continue;
-                            }
-                            match facet {
-                                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent) => {
-                                    observation
-                                        .capabilities
-                                        .insert(ThemeCapability::TransparentPaint);
-                                }
-                                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid) => {
-                                    observation.capabilities.insert(ThemeCapability::SolidPaint);
-                                }
-                                _ => unreachable!("guarded by the typed Note fill route"),
-                            }
+                    let (surface, observation) = match target {
+                        ThemeTarget::Note => {
+                            (&state.note, note_rules.entry(rule_index).or_default())
                         }
-                        FamilyThemeDisposition::TypedAdapter
-                            if matches!(
-                                facet,
-                                FamilyThemeRuleFacet::Stroke(
-                                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-                                )
-                            ) =>
-                        {
-                            if !state.note_stroke_emitted {
-                                observation.incomplete = true;
-                                continue;
-                            }
-                            match facet {
-                                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Transparent) => {
-                                    observation
-                                        .capabilities
-                                        .insert(ThemeCapability::TransparentPaint);
-                                }
-                                FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Solid) => {
-                                    observation.capabilities.insert(ThemeCapability::SolidPaint);
-                                }
-                                _ => unreachable!("guarded by the typed Note stroke route"),
-                            }
-                        }
-                        FamilyThemeDisposition::TypedAdapter => observation.incomplete = true,
-                        FamilyThemeDisposition::Unsupported => {
-                            observation
-                                .residual
-                                .get_or_insert(unsupported_reason_for_facet(facet));
-                        }
-                        FamilyThemeDisposition::LegacyCompatibility => {}
-                    }
+                        ThemeTarget::Activation => (
+                            &state.activation,
+                            activation_rules.entry(rule_index).or_default(),
+                        ),
+                        _ => unreachable!("guarded by the static rectangle target pattern"),
+                    };
+                    observe_static_rect_rule(
+                        surface,
+                        observation,
+                        route.disposition(),
+                        rule_index,
+                        selector,
+                        facet,
+                    );
                 }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Actor,
@@ -473,9 +511,9 @@ impl SequenceThemeEvidenceRecorder {
                 FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {
-                    // This narrow adapter owns Actor plus unqualified static Note paint evidence.
-                    // Other Sequence targets and selector classes remain unaccounted unless the
-                    // compatibility lane rejects them first.
+                    // This narrow adapter owns Actor plus unqualified static Note and Activation
+                    // paint evidence. Other Sequence targets and selector classes remain
+                    // unaccounted unless the compatibility lane rejects them first.
                 }
             }
         }
@@ -497,24 +535,39 @@ impl SequenceThemeEvidenceRecorder {
                 evidence.mark_applied_with_capabilities(key, observation.capabilities);
             }
         }
-        for (rule_index, observation) in note_rules {
-            let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Note,
-            };
-            if state.note_count == 0 || !observation.applicable {
-                evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // A future direct facet reached a Note rect but has no terminal receipt yet.
-            } else if observation.capabilities.is_empty() {
-                evidence.mark_not_applicable(key);
-            } else {
-                evidence.mark_applied_with_capabilities(key, observation.capabilities);
-            }
-        }
+        finish_static_rect_rules(&mut evidence, ThemeTarget::Note, &state.note, note_rules);
+        finish_static_rect_rules(
+            &mut evidence,
+            ThemeTarget::Activation,
+            &state.activation,
+            activation_rules,
+        );
         evidence
+    }
+}
+
+fn finish_static_rect_rules(
+    evidence: &mut FamilyThemeEvidence,
+    target: ThemeTarget,
+    surface: &SequenceStaticRectThemeState,
+    rules: BTreeMap<usize, SequenceRuleObservation>,
+) {
+    for (rule_index, observation) in rules {
+        let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+            index: rule_index,
+            target,
+        };
+        if surface.surface_count == 0 || !observation.applicable {
+            evidence.mark_not_applicable(key);
+        } else if let Some(reason) = observation.residual {
+            evidence.mark_residual(key, reason);
+        } else if observation.incomplete {
+            // A direct facet reached a rectangle but the terminal writer did not seal it.
+        } else if observation.capabilities.is_empty() {
+            evidence.mark_not_applicable(key);
+        } else {
+            evidence.mark_applied_with_capabilities(key, observation.capabilities);
+        }
     }
 }
 
@@ -624,7 +677,7 @@ mod tests {
             .expect("compile Sequence Note theme");
         let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
         for (note_count, emitted_rects) in [(1, 0), (2, 1)] {
-            let mut receipt = SequenceNoteThemeReceipt::default();
+            let mut receipt = SequenceStaticRectThemeReceipt::default();
             receipt.record_static_style(&resolved.style(
                 ThemeTarget::Note,
                 ThemeVariant::Default,
@@ -634,7 +687,7 @@ mod tests {
                 receipt.record_rect_emission();
             }
             let recorder = SequenceThemeEvidenceRecorder::default();
-            recorder.record_note_emission(SequenceNoteThemeEmission::from_terminal_writer(
+            recorder.record_note_emission(SequenceStaticRectThemeEmission::from_terminal_writer(
                 note_count,
                 Some("#ef4444"),
                 false,
@@ -642,6 +695,52 @@ mod tests {
                 false,
                 receipt,
             ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn activation_winner_without_complete_rect_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Activation,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Activation theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (activation_count, emitted_rects) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceStaticRectThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Activation,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..emitted_rects {
+                receipt.record_rect_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_activation_emission(
+                SequenceStaticRectThemeEmission::from_terminal_writer(
+                    activation_count,
+                    Some("#ef4444"),
+                    false,
+                    None,
+                    false,
+                    receipt,
+                ),
+            );
 
             let evidence = recorder.finish(Some(&resolved));
             assert!(evidence.applied().is_empty());

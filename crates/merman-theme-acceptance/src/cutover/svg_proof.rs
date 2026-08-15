@@ -150,7 +150,7 @@ fn target_underlay_colors(
         }
         (
             DiagramFamilyId::SEQUENCE,
-            ThemeTarget::Actor | ThemeTarget::Note,
+            ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation,
             ThemeRouteCutoverFacet::Stroke,
         ) => {
             let root_id = document
@@ -160,6 +160,7 @@ fn target_underlay_colors(
             let selector = match route.target() {
                 ThemeTarget::Actor => format!("#{root_id} .actor"),
                 ThemeTarget::Note => format!("#{root_id} .note"),
+                ThemeTarget::Activation => format!("#{root_id} .activation0"),
                 _ => unreachable!("guarded by the Sequence underlay route"),
             };
             let underlay =
@@ -1052,7 +1053,9 @@ fn sequence_route_observation(
 ) -> C6ProofResult<SequenceRouteObservation> {
     match route.target() {
         ThemeTarget::Actor => sequence_actor_route_observation(document, route),
-        ThemeTarget::Note => sequence_note_route_observation(document, route),
+        ThemeTarget::Note | ThemeTarget::Activation => {
+            sequence_static_rect_route_observation(document, route)
+        }
         target => Err(C6ProofError::new(
             "route-svg-proof",
             format!("unsupported Sequence cutover target {}", target.id()),
@@ -1203,7 +1206,7 @@ fn sequence_actor_route_observation(
     })
 }
 
-fn sequence_note_route_observation(
+fn sequence_static_rect_route_observation(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
 ) -> C6ProofResult<SequenceRouteObservation> {
@@ -1211,64 +1214,118 @@ fn sequence_note_route_observation(
     let root_id = root
         .attribute("id")
         .ok_or_else(|| C6ProofError::new("route-svg-proof", "Sequence SVG root lacks an id"))?;
-    let notes = document
-        .descendants()
-        .filter(|node| node.attribute("data-et") == Some("note"))
-        .collect::<Vec<_>>();
-    c6_ensure!(
-        "route-svg-proof",
-        notes.len() == 3,
-        "Sequence Note witness expected 3 terminal groups, found {}",
-        notes.len()
-    );
-
+    let (surface_name, selector, surfaces) = match route.target() {
+        ThemeTarget::Note => {
+            let notes = document
+                .descendants()
+                .filter(|node| node.attribute("data-et") == Some("note"))
+                .collect::<Vec<_>>();
+            c6_ensure!(
+                "route-svg-proof",
+                notes.len() == 3,
+                "Sequence Note witness expected 3 terminal groups, found {}",
+                notes.len()
+            );
+            let mut surfaces = Vec::with_capacity(notes.len());
+            for note in notes {
+                let rects = note
+                    .children()
+                    .filter(|node| node.has_tag_name("rect") && class_contains(*node, "note"))
+                    .collect::<Vec<_>>();
+                c6_ensure!(
+                    "route-svg-proof",
+                    rects.len() == 1,
+                    "Sequence Note group expected one terminal rect, found {}",
+                    rects.len()
+                );
+                surfaces.push((
+                    note.attribute("data-id").unwrap_or_default().to_owned(),
+                    rects[0],
+                ));
+            }
+            ("Note", format!("#{root_id} .note"), surfaces)
+        }
+        ThemeTarget::Activation => {
+            let activations = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("rect")
+                        && ["activation0", "activation1", "activation2"]
+                            .into_iter()
+                            .any(|class| class_contains(*node, class))
+                })
+                .collect::<Vec<_>>();
+            c6_ensure!(
+                "route-svg-proof",
+                activations.len() == 3,
+                "Sequence Activation witness expected three terminal rects, found {}",
+                activations.len()
+            );
+            let mut surfaces = Vec::with_capacity(3);
+            for class in ["activation0", "activation1", "activation2"] {
+                let matching = activations
+                    .iter()
+                    .copied()
+                    .filter(|activation| activation.attribute("class") == Some(class))
+                    .collect::<Vec<_>>();
+                c6_ensure!(
+                    "route-svg-proof",
+                    matching.len() == 1,
+                    "Sequence Activation witness expected one terminal {class} rect, found {}",
+                    matching.len()
+                );
+                surfaces.push((class.to_owned(), matching[0]));
+            }
+            (
+                "Activation",
+                sequence_activation_selector(root_id),
+                surfaces,
+            )
+        }
+        target => {
+            return Err(C6ProofError::new(
+                "route-svg-proof",
+                format!("unsupported Sequence rectangle target {}", target.id()),
+            ));
+        }
+    };
     let property = facet_property(route.facet());
-    let note_selector = format!("#{root_id} .note");
-    let note_value = sequence_stylesheet_property(document, &note_selector, property)?;
-    let mut target_regions = Vec::with_capacity(notes.len());
-    let mut terminal = b"merman.c6-route-sequence-note-surfaces.v1\0".to_vec();
-    for note in notes {
-        let rects = note
-            .children()
-            .filter(|node| node.has_tag_name("rect") && class_contains(*node, "note"))
-            .collect::<Vec<_>>();
-        c6_ensure!(
-            "route-svg-proof",
-            rects.len() == 1,
-            "Sequence Note group expected one terminal rect, found {}",
-            rects.len()
-        );
-        let rect = rects[0];
+    let value = sequence_stylesheet_property(document, &selector, property)?;
+    let mut target_regions = Vec::with_capacity(surfaces.len());
+    let mut terminal = b"merman.c6-route-sequence-static-rect-surfaces.v1\0".to_vec();
+    append_len_prefixed(&mut terminal, route.target().id().as_bytes());
+    for (identity, rect) in surfaces {
         if let Some(inline) = style_value(rect, property) {
             c6_ensure!(
                 "route-svg-proof",
-                inline == note_value,
-                "Sequence Note rect overrides typed {property} with `{inline}`"
+                inline == value,
+                "Sequence {surface_name} rect overrides typed {property} with `{inline}`"
             );
         }
         let base_value = rect.attribute(property).ok_or_else(|| {
             C6ProofError::new(
                 "route-svg-proof",
-                format!("Sequence Note rect lacks its base {property} attribute"),
+                format!("Sequence {surface_name} rect lacks its base {property} attribute"),
             )
         })?;
         let region = element_bounds(rect, route.facet())?;
-        append_len_prefixed(
-            &mut terminal,
-            note.attribute("data-id").unwrap_or_default().as_bytes(),
-        );
+        append_len_prefixed(&mut terminal, identity.as_bytes());
         append_len_prefixed(&mut terminal, base_value.as_bytes());
         append_rect(&mut terminal, region);
         target_regions.push(region);
     }
-    append_len_prefixed(&mut terminal, note_selector.as_bytes());
-    append_len_prefixed(&mut terminal, note_value.as_bytes());
+    append_len_prefixed(&mut terminal, selector.as_bytes());
+    append_len_prefixed(&mut terminal, value.as_bytes());
 
     Ok(SequenceRouteObservation {
-        value: note_value.to_owned(),
+        value: value.to_owned(),
         terminal_digest: sha256(terminal),
         target_regions,
     })
+}
+
+fn sequence_activation_selector(root_id: &str) -> String {
+    format!("#{root_id} .activation0,#{root_id} .activation1,#{root_id} .activation2")
 }
 
 fn sequence_stylesheet_property<'a>(

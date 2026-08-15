@@ -1,4 +1,5 @@
 use super::super::*;
+use super::activation::build_sequence_activation_plan;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::render_sequence_actor_popup_menus;
 use super::actor_shapes::{
@@ -121,6 +122,14 @@ fn render_sequence_diagram_svg_inner(
         sanitize_config,
         "themeVariables.noteBorderColor",
     );
+    let activation_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.activationBkgColor",
+    );
+    let activation_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.activationBorderColor",
+    );
     let mut actor_theme =
         resolve_sequence_actor_theme(options, sanitize_config, !model.actor_order.is_empty())?;
     let note_count = model
@@ -128,8 +137,9 @@ fn render_sequence_diagram_svg_inner(
         .iter()
         .filter(|message| message.message_type == 2)
         .count();
-    let mut note_theme = resolve_sequence_note_theme(
+    let mut note_theme = resolve_sequence_static_rect_theme(
         options,
+        crate::diagram_theme::ThemeTarget::Note,
         note_count != 0,
         note_fill_overridden,
         note_stroke_overridden,
@@ -150,6 +160,20 @@ fn render_sequence_diagram_svg_inner(
     for e in &layout.edges {
         edges_by_id.insert(e.id.as_str(), e);
     }
+    let activation_plan = build_sequence_activation_plan(
+        model,
+        &nodes_by_id,
+        &edges_by_id,
+        settings.activation_width,
+    );
+    let activation_count = activation_plan.rect_count();
+    let mut activation_theme = resolve_sequence_static_rect_theme(
+        options,
+        crate::diagram_theme::ThemeTarget::Activation,
+        activation_count != 0,
+        activation_fill_overridden,
+        activation_stroke_overridden,
+    )?;
 
     render_sequence_box_frames_and_rect_blocks(
         &mut out,
@@ -195,6 +219,8 @@ fn render_sequence_diagram_svg_inner(
             actor_stroke: actor_theme.typed_stroke.as_deref(),
             note_fill: note_theme.typed_fill.as_deref(),
             note_stroke: note_theme.typed_stroke.as_deref(),
+            activation_fill: activation_theme.typed_fill.as_deref(),
+            activation_stroke: activation_theme.typed_stroke.as_deref(),
         },
     );
     out.push_str("</style><g/>");
@@ -264,16 +290,32 @@ fn render_sequence_diagram_svg_inner(
         settings: &settings,
         measurer,
     };
-    render_sequence_interaction_overlays(&mut out, &interaction_ctx, &mut note_theme.receipt);
+    render_sequence_interaction_overlays(
+        &mut out,
+        &interaction_ctx,
+        &activation_plan,
+        &mut note_theme.receipt,
+        &mut activation_theme.receipt,
+    );
     out.checkpoint()?;
     prepared.theme_evidence().record_note_emission(
-        crate::sequence::SequenceNoteThemeEmission::from_terminal_writer(
+        crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
             note_count,
             note_theme.typed_fill.as_deref(),
             note_fill_overridden,
             note_theme.typed_stroke.as_deref(),
             note_stroke_overridden,
             note_theme.receipt,
+        ),
+    );
+    prepared.theme_evidence().record_activation_emission(
+        crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
+            activation_count,
+            activation_theme.typed_fill.as_deref(),
+            activation_fill_overridden,
+            activation_theme.typed_stroke.as_deref(),
+            activation_stroke_overridden,
+            activation_theme.receipt,
         ),
     );
 
@@ -346,10 +388,10 @@ struct SequenceActorThemeResolution {
 }
 
 #[derive(Default)]
-struct SequenceNoteThemeResolution {
+struct SequenceStaticRectThemeResolution {
     typed_fill: Option<String>,
     typed_stroke: Option<String>,
-    receipt: crate::sequence::SequenceNoteThemeReceipt,
+    receipt: crate::sequence::SequenceStaticRectThemeReceipt,
 }
 
 impl SequenceActorThemeResolution {
@@ -470,29 +512,34 @@ fn resolve_sequence_actor_theme(
     })
 }
 
-fn resolve_sequence_note_theme(
+fn resolve_sequence_static_rect_theme(
     options: &SvgExecution<'_>,
-    has_notes: bool,
+    target: crate::diagram_theme::ThemeTarget,
+    has_surfaces: bool,
     fill_overridden: bool,
     stroke_overridden: bool,
-) -> Result<SequenceNoteThemeResolution> {
+) -> Result<SequenceStaticRectThemeResolution> {
     use crate::diagram_theme::{
         FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
-        FamilyThemeSelectorShape, ThemeTarget, ThemeVariant,
+        FamilyThemeSelectorShape, ThemeVariant,
     };
 
-    if !has_notes {
-        return Ok(SequenceNoteThemeResolution::default());
+    debug_assert!(matches!(
+        target,
+        crate::diagram_theme::ThemeTarget::Note | crate::diagram_theme::ThemeTarget::Activation
+    ));
+    if !has_surfaces {
+        return Ok(SequenceStaticRectThemeResolution::default());
     }
     let Some(theme) = options.resolved_theme() else {
-        return Ok(SequenceNoteThemeResolution::default());
+        return Ok(SequenceStaticRectThemeResolution::default());
     };
-    let mut has_note_rule_routes = false;
-    let mut has_typed_note_fill = false;
-    let mut has_typed_note_stroke = false;
+    let mut has_rule_routes = false;
+    let mut has_typed_fill = false;
+    let mut has_typed_stroke = false;
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
-            target: ThemeTarget::Note,
+            target: route_target,
             selector: FamilyThemeSelectorShape::Static { variant: None },
             facet,
             ..
@@ -500,24 +547,27 @@ fn resolve_sequence_note_theme(
         else {
             continue;
         };
-        has_note_rule_routes = true;
+        if route_target != target {
+            continue;
+        }
+        has_rule_routes = true;
         if route.disposition() != FamilyThemeDisposition::TypedAdapter {
             continue;
         }
         match facet {
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
-            ) => has_typed_note_fill = true,
+            ) => has_typed_fill = true,
             FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
-            ) => has_typed_note_stroke = true,
+            ) => has_typed_stroke = true,
             _ => {}
         }
     }
-    let mut receipt = crate::sequence::SequenceNoteThemeReceipt::default();
-    let style = if has_note_rule_routes {
+    let mut receipt = crate::sequence::SequenceStaticRectThemeReceipt::default();
+    let style = if has_rule_routes {
         let style = theme.style_with_work_meter(
-            ThemeTarget::Note,
+            target,
             ThemeVariant::Default,
             None,
             options.work_meter(),
@@ -527,13 +577,13 @@ fn resolve_sequence_note_theme(
     } else {
         None
     };
-    let typed_fill = (!fill_overridden && has_typed_note_fill)
+    let typed_fill = (!fill_overridden && has_typed_fill)
         .then(|| style.as_ref().and_then(|style| css_paint(style.fill())))
         .flatten();
-    let typed_stroke = (!stroke_overridden && has_typed_note_stroke)
+    let typed_stroke = (!stroke_overridden && has_typed_stroke)
         .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
         .flatten();
-    Ok(SequenceNoteThemeResolution {
+    Ok(SequenceStaticRectThemeResolution {
         typed_fill,
         typed_stroke,
         receipt,

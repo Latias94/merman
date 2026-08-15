@@ -410,11 +410,11 @@ fn compile_sequence_family(
         ],
     );
     contributions.add_theme_variables(
-        "activation.fill",
+        ThemeRouteCutoverProjection::ActivationFill.contribution_id(),
         [("activationBkgColor", reader.fill(ThemeTarget::Activation))],
     );
     contributions.add_theme_variables(
-        "activation.stroke",
+        ThemeRouteCutoverProjection::ActivationStroke.contribution_id(),
         [(
             "activationBorderColor",
             reader.stroke(ThemeTarget::Activation),

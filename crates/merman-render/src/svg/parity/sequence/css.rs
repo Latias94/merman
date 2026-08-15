@@ -6,6 +6,8 @@ pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) actor_stroke: Option<&'a str>,
     pub(super) note_fill: Option<&'a str>,
     pub(super) note_stroke: Option<&'a str>,
+    pub(super) activation_fill: Option<&'a str>,
+    pub(super) activation_stroke: Option<&'a str>,
 }
 
 #[cfg(test)]
@@ -258,6 +260,20 @@ pub(super) fn write_sequence_css_with_theme_adapter(
             id, typed_note_stroke
         );
     }
+    if let Some(typed_activation_fill) = typed.activation_fill {
+        let _ = write!(
+            &mut out,
+            r#"#{} .activation0,#{} .activation1,#{} .activation2{{fill:{};}}"#,
+            id, id, id, typed_activation_fill
+        );
+    }
+    if let Some(typed_activation_stroke) = typed.activation_stroke {
+        let _ = write!(
+            &mut out,
+            r#"#{} .activation0,#{} .activation1,#{} .activation2{{stroke:{};}}"#,
+            id, id, id, typed_activation_stroke
+        );
+    }
     let _ = write!(
         &mut out,
         r#"#{} g rect.rect{{filter:{};stroke:{};}}"#,
@@ -458,5 +474,31 @@ mod tests {
         assert!(!css.contains(r#"#seq .noteText{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageText{stroke:#2563eb;"#));
         assert!(!css.contains(r#"#seq .activation0{fill:#dc2626;"#));
+    }
+
+    #[test]
+    fn sequence_activation_paint_css_is_scoped_to_activation_rects() {
+        let css = sequence_css_with_theme_adapter(
+            "seq",
+            16.0,
+            &json!({
+                "themeVariables": {
+                    "activationBkgColor": "#dddddd",
+                    "activationBorderColor": "#cccccc"
+                }
+            }),
+            SequenceThemeCssAdapter {
+                activation_fill: Some("#dc2626"),
+                activation_stroke: Some("#2563eb"),
+                ..SequenceThemeCssAdapter::default()
+            },
+        );
+
+        assert!(css.contains(r#"#seq .activation0{fill:#dddddd;stroke:#cccccc;}"#));
+        assert!(css.contains(
+            r#"#seq .activation0,#seq .activation1,#seq .activation2{fill:#dc2626;}#seq .activation0,#seq .activation1,#seq .activation2{stroke:#2563eb;}"#
+        ));
+        assert!(!css.contains(r#"#seq .note{fill:#dc2626;"#));
+        assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
     }
 }

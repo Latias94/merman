@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 2;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 3;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 8] = [
+); 10] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -46,6 +46,14 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::NoteStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::ActivationFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::ActivationStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -93,6 +101,10 @@ const NOTE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::NoteFill];
 const NOTE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::NoteStroke];
+const ACTIVATION_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ActivationFill];
+const ACTIVATION_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ActivationStroke];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -107,7 +119,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 20] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 24] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -247,6 +259,34 @@ const ACTIVE_ROUTES: [RouteAuthorization; 20] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NOTE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ACTIVATION_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ACTIVATION_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        ACTIVATION_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        ACTIVATION_STROKE_PROJECTIONS,
     ),
 ];
 

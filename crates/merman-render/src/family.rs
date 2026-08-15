@@ -8507,6 +8507,206 @@ style Empty font-weight:banana
     }
 
     #[test]
+    fn require_portable_accepts_sequence_activation_scalar_paints_after_rect_emission() {
+        for (style, expected_css) in [
+            (
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ef4444").expect("valid Activation fill")),
+                "#merman .activation0,#merman .activation1,#merman .activation2{fill:#ef4444;}",
+            ),
+            (
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                "#merman .activation0,#merman .activation1,#merman .activation2{fill:transparent;}",
+            ),
+            (
+                ThemeStylePatch::default()
+                    .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Activation stroke")),
+                "#merman .activation0,#merman .activation1,#merman .activation2{stroke:#2563eb;}",
+            ),
+            (
+                ThemeStylePatch::default().with_stroke(CanvasPaint::Transparent),
+                "#merman .activation0,#merman .activation1,#merman .activation2{stroke:transparent;}",
+            ),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(ThemeTarget::Activation, style)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .expect("compile Sequence Activation theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict portable Sequence Activation session"),
+            )
+            .expect("Sequence Activation theme should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Sequence Activation paint should be proven by the rect writer");
+
+            assert!(
+                rendered.svg().contains(expected_css),
+                "Sequence SVG should contain the typed Activation paint: {}",
+                rendered.svg()
+            );
+            assert!(
+                rendered.svg().contains(r#"class="activation0""#),
+                "Sequence SVG should contain the terminal Activation rect: {}",
+                rendered.svg()
+            );
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Activation,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_activation_rule_without_a_terminal_rect_is_not_applicable() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Activation,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#ef4444").expect("valid Activation fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Activation theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Sequence Activation session"),
+        )
+        .expect("Sequence Activation rule without activations should prepare")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("Sequence Activation rule without terminal rects should be not applicable");
+
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Activation,
+            }]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn sequence_explicit_activation_paints_own_precedence_over_typed_paints() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Activation,
+                            ThemeStylePatch::default()
+                                .with_fill(
+                                    CanvasPaint::solid("#ef4444").expect("valid Activation fill"),
+                                )
+                                .with_stroke(
+                                    CanvasPaint::solid("#2563eb").expect("valid Activation stroke"),
+                                ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Activation theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new().with_site_config(
+                MermaidConfig::from_value(json!({
+                    "themeVariables": {
+                        "activationBkgColor": "#22c55e",
+                        "activationBorderColor": "#a855f7"
+                    }
+                })),
+            ))
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Request\nactivate Bob\nBob-->>Alice: Response\ndeactivate Bob\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict configured Sequence Activation session"),
+        )
+        .expect("explicit Mermaid Activation paints should remain evaluable")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit Mermaid Activation paints should satisfy strict portability");
+
+        assert!(rendered.svg().contains("#22c55e"), "{}", rendered.svg());
+        assert!(rendered.svg().contains("#a855f7"), "{}", rendered.svg());
+        assert!(!rendered.svg().contains("#ef4444"), "{}", rendered.svg());
+        assert!(!rendered.svg().contains("#2563eb"), "{}", rendered.svg());
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Activation,
+            }]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
     fn sequence_explicit_note_paints_own_precedence_over_typed_note_paints() {
         let theme = DiagramThemeCompiler::new()
             .compile(

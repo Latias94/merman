@@ -47,7 +47,7 @@ use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_seque
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 pub(crate) use theme_evidence::{
-    SequenceActorThemeReceipt, SequenceNoteThemeEmission, SequenceNoteThemeReceipt,
+    SequenceActorThemeReceipt, SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt,
     SequenceThemeEvidenceRecorder,
 };
 

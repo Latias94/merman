@@ -135,6 +135,22 @@ Note over Alice,Bob: Shared note
 Note right of Bob: Right note
 Alice->>Bob: Hello
 "#;
+const SEQUENCE_ACTIVATION_SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Outer request
+activate Bob
+Alice->>Bob: Middle request
+activate Bob
+Alice->>Bob: Inner request
+activate Bob
+Bob-->>Alice: Inner response
+deactivate Bob
+Bob-->>Alice: Middle response
+deactivate Bob
+Bob-->>Alice: Outer response
+deactivate Bob
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -232,6 +248,7 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             Ok(SEQUENCE_STROKE_SOURCE)
         }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, _) => Ok(SEQUENCE_NOTE_SOURCE),
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, _) => Ok(SEQUENCE_ACTIVATION_SOURCE),
         _ => Err(C6ProofError::new(
             "route-source",
             format!("no route-cutover witness source for {}", route_label(route)),
@@ -578,7 +595,7 @@ fn render_cutover_case(
     );
 
     let theme = compile_cutover_theme(case)?;
-    let renderer = cutover_renderer(profile);
+    let renderer = cutover_renderer(case.id);
     let svg_request = portable_svg_request();
     let document_output = renderer
         .render(
@@ -677,7 +694,10 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
         ThemeRouteCutoverFacet::Stroke => {
             let solid = match route.target() {
                 ThemeTarget::Edge => SOLID_EDGE.css,
-                ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note => SOLID_STROKE.css,
+                ThemeTarget::Node
+                | ThemeTarget::Actor
+                | ThemeTarget::Note
+                | ThemeTarget::Activation => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
                         "route-theme",
@@ -725,12 +745,22 @@ fn cutover_paint(value: ThemeRouteCutoverValue, solid: &str) -> C6ProofResult<Ca
     }
 }
 
-fn cutover_renderer(profile: CutoverWitnessProfile) -> Renderer {
+fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
+    let profile = witness.profile();
+    let theme_variables = if witness.route().target() == ThemeTarget::Activation {
+        serde_json::json!({
+            "actorLineColor": "transparent",
+            "signalColor": "transparent"
+        })
+    } else {
+        serde_json::json!({})
+    };
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({
             "htmlLabels": false,
             "look": if profile.is_neo() { "neo" } else { "classic" },
-            "flowchart": { "htmlLabels": false }
+            "flowchart": { "htmlLabels": false },
+            "themeVariables": theme_variables
         }),
     )))
 }
@@ -977,11 +1007,11 @@ fn cutover_witness_shape_label(shape: CutoverWitnessShape) -> String {
 fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<ControlColor> {
     match (route.target(), route.facet()) {
         (
-            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
         (
-            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
         (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE),
@@ -1010,11 +1040,17 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
         },
         ThemeRouteCutoverValue::Solid => match (route.target(), route.facet()) {
             (
-                ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+                ThemeTarget::Node
+                | ThemeTarget::Actor
+                | ThemeTarget::Note
+                | ThemeTarget::Activation,
                 ThemeRouteCutoverFacet::Fill,
             ) => Ok(SOLID_FILL.css),
             (
-                ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+                ThemeTarget::Node
+                | ThemeTarget::Actor
+                | ThemeTarget::Note
+                | ThemeTarget::Activation,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
             (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE.css),
@@ -1180,11 +1216,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_twenty_routes_and_twenty_eight_artifact_witnesses() {
+    fn route_inventory_retains_twenty_four_routes_and_thirty_two_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 20);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 28);
+        assert_eq!(inventory.len(), 24);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 32);
     }
 
     #[test]

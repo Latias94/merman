@@ -1,5 +1,5 @@
 use super::super::*;
-use super::activation::{build_sequence_activation_plan, render_sequence_activation_group};
+use super::activation::{SequenceActivationPlan, render_sequence_activation_group};
 use super::block_collection::{SequenceBlock, collect_sequence_blocks};
 use super::block_geometry::frame_x_from_actors;
 use super::blocks::{
@@ -9,7 +9,7 @@ use super::blocks::{
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
-use crate::sequence::SequenceNoteThemeReceipt;
+use crate::sequence::SequenceStaticRectThemeReceipt;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
@@ -27,18 +27,10 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
 pub(super) fn render_sequence_interaction_overlays(
     out: &mut impl SvgOutput,
     ctx: &SequenceInteractionRenderContext<'_>,
-    note_theme_receipt: &mut SequenceNoteThemeReceipt,
+    activation_plan: &SequenceActivationPlan<'_>,
+    note_theme_receipt: &mut SequenceStaticRectThemeReceipt,
+    activation_theme_receipt: &mut SequenceStaticRectThemeReceipt,
 ) {
-    // Mermaid creates activation placeholders at ACTIVE_START and inserts the `<rect>` once the
-    // corresponding ACTIVE_END is encountered. We store the final rect geometry during this
-    // first pass and remember which message id should emit which activation group.
-    let activation_plan = build_sequence_activation_plan(
-        ctx.model,
-        ctx.nodes_by_id,
-        ctx.edges_by_id,
-        ctx.settings.activation_width,
-    );
-
     let Some((frame_x1, frame_x2)) = frame_x_from_actors(ctx.model, ctx.nodes_by_id) else {
         return;
     };
@@ -84,7 +76,7 @@ pub(super) fn render_sequence_interaction_overlays(
     };
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
-        render_sequence_activation_group(out, &activation_plan, &msg.id);
+        render_sequence_activation_group(out, activation_plan, &msg.id, activation_theme_receipt);
         render_sequence_note(out, msg, &note_ctx, note_theme_receipt);
 
         let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {

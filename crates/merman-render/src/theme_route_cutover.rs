@@ -95,11 +95,13 @@ pub enum ThemeRouteCutoverProjection {
     ActorStroke = 5,
     NoteFill = 6,
     NoteStroke = 7,
+    ActivationFill = 8,
+    ActivationStroke = 9,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 10] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -108,6 +110,8 @@ impl ThemeRouteCutoverProjection {
         Self::ActorStroke,
         Self::NoteFill,
         Self::NoteStroke,
+        Self::ActivationFill,
+        Self::ActivationStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -120,6 +124,8 @@ impl ThemeRouteCutoverProjection {
             Self::ActorStroke => "actor.stroke",
             Self::NoteFill => "note.fill",
             Self::NoteStroke => "note.stroke",
+            Self::ActivationFill => "activation.fill",
+            Self::ActivationStroke => "activation.stroke",
         }
     }
 
@@ -133,12 +139,14 @@ impl ThemeRouteCutoverProjection {
             | Self::ActorFill
             | Self::ActorStroke
             | Self::NoteFill
-            | Self::NoteStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::NoteStroke
+            | Self::ActivationFill
+            | Self::ActivationStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const fn bit(self) -> u8 {
+    const fn bit(self) -> u16 {
         1 << self as u8
     }
 }
@@ -164,7 +172,7 @@ impl ThemeRouteCutoverProjectionAction {
 /// Fixed, canonical set of legacy projection obligations for one route.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ThemeRouteCutoverProjectionSet(u8);
+pub struct ThemeRouteCutoverProjectionSet(u16);
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 impl ThemeRouteCutoverProjectionSet {
@@ -176,6 +184,10 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::ActorStroke);
     pub const REPLACE_NOTE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::NoteFill);
     pub const REPLACE_NOTE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NoteStroke);
+    pub const REPLACE_ACTIVATION_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ActivationFill);
+    pub const REPLACE_ACTIVATION_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ActivationStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())

@@ -1,5 +1,6 @@
 use super::super::*;
 use super::model::SequenceSvgModel;
+use crate::sequence::SequenceStaticRectThemeReceipt;
 use crate::sequence::sequence_activation_start_x;
 use rustc_hash::FxHashMap;
 
@@ -23,8 +24,15 @@ struct SequenceActivationRect {
 pub(super) struct SequenceActivationPlan<'a> {
     groups: Vec<Option<SequenceActivationRect>>,
     group_by_start_id: FxHashMap<&'a str, usize>,
+    rect_count: usize,
     fill: String,
     stroke: String,
+}
+
+impl SequenceActivationPlan<'_> {
+    pub(super) const fn rect_count(&self) -> usize {
+        self.rect_count
+    }
 }
 
 pub(super) fn build_sequence_activation_plan<'a>(
@@ -43,6 +51,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
     let mut activation_stacks: std::collections::BTreeMap<&str, Vec<SequenceActivationStart>> =
         std::collections::BTreeMap::new();
     let mut groups: Vec<Option<SequenceActivationRect>> = Vec::new();
+    let mut rect_count = 0usize;
     let mut group_by_start_id: FxHashMap<&str, usize> =
         FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
 
@@ -112,6 +121,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
                 };
                 if let Some(slot) = groups.get_mut(start.group_index) {
                     *slot = Some(rect);
+                    rect_count = rect_count.saturating_add(1);
                 }
             }
             _ => {}
@@ -123,6 +133,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
     SequenceActivationPlan {
         groups,
         group_by_start_id,
+        rect_count,
         fill,
         stroke,
     }
@@ -132,6 +143,7 @@ pub(super) fn render_sequence_activation_group(
     out: &mut impl SvgOutput,
     plan: &SequenceActivationPlan,
     message_id: &str,
+    theme_receipt: &mut SequenceStaticRectThemeReceipt,
 ) {
     let Some(group_index) = plan.group_by_start_id.get(message_id).copied() else {
         return;
@@ -152,6 +164,7 @@ pub(super) fn render_sequence_activation_group(
             fill = escape_xml(&plan.fill),
             stroke = escape_xml(&plan.stroke),
         );
+        theme_receipt.record_rect_emission();
     }
     out.push_str("</g>");
 }
