@@ -372,6 +372,119 @@ pub enum SequenceCentralDecoration {
     Both,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Semantic family of a Mermaid sequence control record.
+pub enum SequenceControlKind {
+    Loop,
+    Opt,
+    Break,
+    Alt,
+    Par,
+    Critical,
+    Rect,
+    ParOver,
+}
+
+impl SequenceControlKind {
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Self::Loop => "loop",
+            Self::Opt => "opt",
+            Self::Break => "break",
+            Self::Alt => "alt",
+            Self::Par => "par",
+            Self::Critical => "critical",
+            Self::Rect => "rect",
+            Self::ParOver => "par_over",
+        }
+    }
+
+    pub fn separator_keyword(self) -> Option<&'static str> {
+        match self {
+            Self::Alt => Some("else"),
+            Self::Par => Some("and"),
+            Self::Critical => Some("option"),
+            Self::Loop | Self::Opt | Self::Break | Self::Rect | Self::ParOver => None,
+        }
+    }
+
+    pub fn accepts_end(self, end: Self) -> bool {
+        self == end || matches!((self, end), (Self::ParOver, Self::Par))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Structural role of one Mermaid sequence control record.
+pub enum SequenceControlRole {
+    Start,
+    Separator,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Typed projection of Mermaid's numeric control-record protocol.
+pub struct SequenceControlSemantics {
+    pub kind: SequenceControlKind,
+    pub role: SequenceControlRole,
+}
+
+impl SequenceControlSemantics {
+    pub fn consumes_text(self) -> bool {
+        self.role != SequenceControlRole::End
+    }
+
+    fn from_message_type(message_type: i32) -> Option<Self> {
+        use SequenceControlKind as Kind;
+        use SequenceControlRole as Role;
+
+        let (kind, role) = match message_type {
+            LINETYPE_LOOP_START => (Kind::Loop, Role::Start),
+            LINETYPE_LOOP_END => (Kind::Loop, Role::End),
+            LINETYPE_ALT_START => (Kind::Alt, Role::Start),
+            LINETYPE_ALT_ELSE => (Kind::Alt, Role::Separator),
+            LINETYPE_ALT_END => (Kind::Alt, Role::End),
+            LINETYPE_OPT_START => (Kind::Opt, Role::Start),
+            LINETYPE_OPT_END => (Kind::Opt, Role::End),
+            LINETYPE_PAR_START => (Kind::Par, Role::Start),
+            LINETYPE_PAR_AND => (Kind::Par, Role::Separator),
+            LINETYPE_PAR_END => (Kind::Par, Role::End),
+            LINETYPE_RECT_START => (Kind::Rect, Role::Start),
+            LINETYPE_RECT_END => (Kind::Rect, Role::End),
+            LINETYPE_CRITICAL_START => (Kind::Critical, Role::Start),
+            LINETYPE_CRITICAL_OPTION => (Kind::Critical, Role::Separator),
+            LINETYPE_CRITICAL_END => (Kind::Critical, Role::End),
+            LINETYPE_BREAK_START => (Kind::Break, Role::Start),
+            LINETYPE_BREAK_END => (Kind::Break, Role::End),
+            LINETYPE_PAR_OVER_START => (Kind::ParOver, Role::Start),
+            _ => return None,
+        };
+        Some(Self { kind, role })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Semantic placement of an authored sequence note.
+pub enum SequenceNotePlacement {
+    LeftOf,
+    RightOf,
+    Over,
+}
+
+impl SequenceNotePlacement {
+    fn from_raw(placement: i32) -> Option<Self> {
+        match placement {
+            PLACEMENT_LEFT_OF => Some(Self::LeftOf),
+            PLACEMENT_RIGHT_OF => Some(Self::RightOf),
+            PLACEMENT_OVER => Some(Self::Over),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// Typed role of one Mermaid compatibility `messages` record.
@@ -522,27 +635,10 @@ impl SequenceMessage {
             LINETYPE_ACTIVE_START => SequenceMessageKind::ActivationStart,
             LINETYPE_ACTIVE_END => SequenceMessageKind::ActivationEnd,
             LINETYPE_AUTONUMBER => SequenceMessageKind::Autonumber,
-            LINETYPE_CENTRAL_CONNECTION
-            | LINETYPE_CENTRAL_CONNECTION_REVERSE
-            | LINETYPE_CENTRAL_CONNECTION_DUAL => SequenceMessageKind::CentralDecorationRecord,
-            LINETYPE_LOOP_START
-            | LINETYPE_LOOP_END
-            | LINETYPE_ALT_START
-            | LINETYPE_ALT_ELSE
-            | LINETYPE_ALT_END
-            | LINETYPE_OPT_START
-            | LINETYPE_OPT_END
-            | LINETYPE_PAR_START
-            | LINETYPE_PAR_AND
-            | LINETYPE_PAR_END
-            | LINETYPE_RECT_START
-            | LINETYPE_RECT_END
-            | LINETYPE_CRITICAL_START
-            | LINETYPE_CRITICAL_OPTION
-            | LINETYPE_CRITICAL_END
-            | LINETYPE_BREAK_START
-            | LINETYPE_BREAK_END
-            | LINETYPE_PAR_OVER_START => SequenceMessageKind::Control,
+            _ if self.central_record_decoration().is_some() => {
+                SequenceMessageKind::CentralDecorationRecord
+            }
+            _ if self.control_semantics().is_some() => SequenceMessageKind::Control,
             _ => SequenceMessageKind::Unknown,
         }
     }
@@ -559,6 +655,23 @@ impl SequenceMessage {
             LINETYPE_CENTRAL_CONNECTION_DUAL => Some(SequenceCentralDecoration::Both),
             _ => None,
         }
+    }
+
+    pub fn central_record_decoration(&self) -> Option<SequenceCentralDecoration> {
+        match self.message_type {
+            LINETYPE_CENTRAL_CONNECTION => Some(SequenceCentralDecoration::Target),
+            LINETYPE_CENTRAL_CONNECTION_REVERSE => Some(SequenceCentralDecoration::Source),
+            LINETYPE_CENTRAL_CONNECTION_DUAL => Some(SequenceCentralDecoration::Both),
+            _ => None,
+        }
+    }
+
+    pub fn control_semantics(&self) -> Option<SequenceControlSemantics> {
+        SequenceControlSemantics::from_message_type(self.message_type)
+    }
+
+    pub fn note_placement(&self) -> Option<SequenceNotePlacement> {
+        SequenceNotePlacement::from_raw(self.placement.unwrap_or(PLACEMENT_OVER))
     }
 }
 
@@ -647,4 +760,10 @@ pub struct SequenceNote {
     pub placement: i32,
     #[serde(default)]
     pub wrap: bool,
+}
+
+impl SequenceNote {
+    pub fn note_placement(&self) -> Option<SequenceNotePlacement> {
+        SequenceNotePlacement::from_raw(self.placement)
+    }
 }

@@ -13,8 +13,8 @@ use crate::safe_text::LabelBreakPolicy;
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
 use merman_core::OperationPhase;
 use merman_core::diagrams::sequence::{
-    SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceDiagramRenderModel,
-    SequenceMessage as CoreSequenceMessage,
+    SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceControlRole,
+    SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage,
     SequenceMessageDirection as CoreSequenceMessageDirection,
     SequenceMessageKind as CoreSequenceMessageKind,
     SequenceMessageMarker as CoreSequenceMessageMarker, SequenceMessagePayload,
@@ -23,28 +23,7 @@ use merman_core::diagrams::sequence::{
 use std::collections::HashMap;
 
 pub(super) use super::lifecycle::SequenceActorLifecycle;
-
-const LOOP_START_MESSAGE_TYPE: i32 = 10;
-const LOOP_END_MESSAGE_TYPE: i32 = 11;
-const ALT_START_MESSAGE_TYPE: i32 = 12;
-const ALT_ELSE_MESSAGE_TYPE: i32 = 13;
-const ALT_END_MESSAGE_TYPE: i32 = 14;
-const OPT_START_MESSAGE_TYPE: i32 = 15;
-const OPT_END_MESSAGE_TYPE: i32 = 16;
-const PAR_START_MESSAGE_TYPE: i32 = 19;
-const PAR_AND_MESSAGE_TYPE: i32 = 20;
-const PAR_END_MESSAGE_TYPE: i32 = 21;
-const RECT_START_MESSAGE_TYPE: i32 = 22;
-const RECT_END_MESSAGE_TYPE: i32 = 23;
-const CRITICAL_START_MESSAGE_TYPE: i32 = 27;
-const CRITICAL_OPTION_MESSAGE_TYPE: i32 = 28;
-const CRITICAL_END_MESSAGE_TYPE: i32 = 29;
-const BREAK_START_MESSAGE_TYPE: i32 = 30;
-const BREAK_END_MESSAGE_TYPE: i32 = 31;
-const PAR_OVER_START_MESSAGE_TYPE: i32 = 32;
-const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
-const NOTE_PLACEMENT_RIGHT_OF: i32 = 1;
-const NOTE_PLACEMENT_OVER: i32 = 2;
+pub(super) use merman_core::diagrams::sequence::{SequenceControlKind, SequenceNotePlacement};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
@@ -266,46 +245,6 @@ enum SequenceControlRecord {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SequenceControlKind {
-    Loop,
-    Opt,
-    Break,
-    Alt,
-    Par,
-    Critical,
-    Rect,
-    ParOver,
-}
-
-impl SequenceControlKind {
-    pub(super) fn keyword(self) -> &'static str {
-        match self {
-            Self::Loop => "loop",
-            Self::Opt => "opt",
-            Self::Break => "break",
-            Self::Alt => "alt",
-            Self::Par => "par",
-            Self::Critical => "critical",
-            Self::Rect => "rect",
-            Self::ParOver => "par_over",
-        }
-    }
-
-    pub(super) fn separator_keyword(self) -> Option<&'static str> {
-        match self {
-            Self::Alt => Some("else"),
-            Self::Par => Some("and"),
-            Self::Critical => Some("option"),
-            Self::Loop | Self::Opt | Self::Break | Self::Rect | Self::ParOver => None,
-        }
-    }
-
-    pub(super) fn accepts_end(self, end: Self) -> bool {
-        self == end || matches!((self, end), (Self::ParOver, Self::Par))
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceMessage {
     pub(super) model_index: usize,
@@ -333,27 +272,6 @@ pub(super) struct SequenceNote {
     pub(super) label: String,
     pub(super) wrap: bool,
     pub(super) placement: SequenceNotePlacement,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SequenceNotePlacement {
-    LeftOf,
-    RightOf,
-    Over,
-}
-
-impl SequenceNotePlacement {
-    fn from_model(value: Option<i32>) -> Result<Self> {
-        match value.unwrap_or(NOTE_PLACEMENT_OVER) {
-            NOTE_PLACEMENT_LEFT_OF => Ok(Self::LeftOf),
-            NOTE_PLACEMENT_RIGHT_OF => Ok(Self::RightOf),
-            NOTE_PLACEMENT_OVER => Ok(Self::Over),
-            _ => Err(AsciiError::UnsupportedFeature {
-                diagram_type: "sequence",
-                feature: "note placement",
-            }),
-        }
-    }
 }
 
 fn preflight_sequence_projection(
@@ -552,7 +470,12 @@ fn from_sequence_model_transactional(
             })?;
 
         if semantic_kind == CoreSequenceMessageKind::Note {
-            let placement = SequenceNotePlacement::from_model(message.placement)?;
+            let placement = message
+                .note_placement()
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: "sequence",
+                    feature: "note placement",
+                })?;
             let label = message.message_text();
             body.push_event(
                 SequenceEvent::Note(SequenceNote {
@@ -628,57 +551,33 @@ fn sequence_control_record(
     model_index: usize,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<SequenceControlRecord>> {
-    let kind = match message.message_type {
-        LOOP_START_MESSAGE_TYPE => Some((SequenceControlKind::Loop, true)),
-        LOOP_END_MESSAGE_TYPE => Some((SequenceControlKind::Loop, false)),
-        ALT_START_MESSAGE_TYPE => Some((SequenceControlKind::Alt, true)),
-        ALT_END_MESSAGE_TYPE => Some((SequenceControlKind::Alt, false)),
-        OPT_START_MESSAGE_TYPE => Some((SequenceControlKind::Opt, true)),
-        OPT_END_MESSAGE_TYPE => Some((SequenceControlKind::Opt, false)),
-        PAR_START_MESSAGE_TYPE => Some((SequenceControlKind::Par, true)),
-        PAR_END_MESSAGE_TYPE => Some((SequenceControlKind::Par, false)),
-        RECT_START_MESSAGE_TYPE => Some((SequenceControlKind::Rect, true)),
-        RECT_END_MESSAGE_TYPE => Some((SequenceControlKind::Rect, false)),
-        CRITICAL_START_MESSAGE_TYPE => Some((SequenceControlKind::Critical, true)),
-        CRITICAL_END_MESSAGE_TYPE => Some((SequenceControlKind::Critical, false)),
-        BREAK_START_MESSAGE_TYPE => Some((SequenceControlKind::Break, true)),
-        BREAK_END_MESSAGE_TYPE => Some((SequenceControlKind::Break, false)),
-        PAR_OVER_START_MESSAGE_TYPE => Some((SequenceControlKind::ParOver, true)),
-        _ => None,
-    };
-
-    let separator_kind = match message.message_type {
-        ALT_ELSE_MESSAGE_TYPE => Some(SequenceControlKind::Alt),
-        PAR_AND_MESSAGE_TYPE => Some(SequenceControlKind::Par),
-        CRITICAL_OPTION_MESSAGE_TYPE => Some(SequenceControlKind::Critical),
-        _ => None,
-    };
-
-    let Some((kind, is_start)) = kind else {
-        if let Some(kind) = separator_kind {
-            ensure_endpointless_control_message(message)?;
-            return Ok(Some(SequenceControlRecord::Separator {
-                model_index,
-                kind,
-                label: try_clone_projection_string(message.message_text(), execution)?,
-            }));
-        }
+    let Some(semantics) = message.control_semantics() else {
         return Ok(None);
     };
 
     ensure_endpointless_control_message(message)?;
 
-    if is_start {
-        let raw_label = message.message_text();
-        let (label, background) = sequence_control_start_label(kind, raw_label, execution)?;
-        Ok(Some(SequenceControlRecord::Start {
+    match semantics.role {
+        SequenceControlRole::Start => {
+            let raw_label = message.message_text();
+            let (label, background) =
+                sequence_control_start_label(semantics.kind, raw_label, execution)?;
+            Ok(Some(SequenceControlRecord::Start {
+                model_index,
+                kind: semantics.kind,
+                label,
+                background,
+            }))
+        }
+        SequenceControlRole::Separator => Ok(Some(SequenceControlRecord::Separator {
             model_index,
-            kind,
-            label,
-            background,
-        }))
-    } else {
-        Ok(Some(SequenceControlRecord::End { kind, model_index }))
+            kind: semantics.kind,
+            label: try_clone_projection_string(message.message_text(), execution)?,
+        })),
+        SequenceControlRole::End => Ok(Some(SequenceControlRecord::End {
+            model_index,
+            kind: semantics.kind,
+        })),
     }
 }
 

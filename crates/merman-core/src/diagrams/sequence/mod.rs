@@ -84,16 +84,26 @@ pub(crate) use render_model::render_model_to_compat_json;
 // Keep terminal consumers on the typed projection instead of duplicating LINETYPE decoding.
 pub use render_model::{
     SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
-    SequenceCentralDecoration, SequenceDiagramRenderModel, SequenceMessage,
-    SequenceMessageDirection, SequenceMessageKind, SequenceMessageMarker, SequenceMessagePayload,
-    SequenceMessageStroke, SequenceNote, SequenceSignalSemantics,
+    SequenceCentralDecoration, SequenceControlKind, SequenceControlRole, SequenceControlSemantics,
+    SequenceDiagramRenderModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
+    SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
+    SequenceNotePlacement, SequenceSignalSemantics,
 };
 
 #[cfg(test)]
 mod tests {
     use super::{
-        SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageKind,
-        SequenceMessageMarker, SequenceMessageStroke, render_model_to_compat_json,
+        LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
+        LINETYPE_BREAK_START, LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
+        LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_CRITICAL_END, LINETYPE_CRITICAL_OPTION,
+        LINETYPE_CRITICAL_START, LINETYPE_LOOP_END, LINETYPE_LOOP_START, LINETYPE_NOTE,
+        LINETYPE_OPT_END, LINETYPE_OPT_START, LINETYPE_PAR_AND, LINETYPE_PAR_END,
+        LINETYPE_PAR_OVER_START, LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START,
+        PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF, SequenceCentralDecoration,
+        SequenceControlKind, SequenceControlRole, SequenceControlSemantics, SequenceMessage,
+        SequenceMessageDirection, SequenceMessageKind, SequenceMessageMarker,
+        SequenceMessagePayload, SequenceMessageStroke, SequenceNotePlacement,
+        render_model_to_compat_json,
     };
     use crate::{Engine, ParseOptions, RenderSemanticModel};
 
@@ -530,6 +540,10 @@ A()->>()B: both"#,
             SequenceMessageKind::CentralDecorationRecord
         );
         assert_eq!(
+            model.messages[1].central_record_decoration(),
+            Some(SequenceCentralDecoration::Target)
+        );
+        assert_eq!(
             model.messages[2].central_decoration(),
             Some(SequenceCentralDecoration::Source)
         );
@@ -538,11 +552,110 @@ A()->>()B: both"#,
             SequenceMessageKind::CentralDecorationRecord
         );
         assert_eq!(
+            model.messages[3].central_record_decoration(),
+            Some(SequenceCentralDecoration::Source)
+        );
+        assert_eq!(
             model.messages[4].central_decoration(),
             Some(SequenceCentralDecoration::Both)
         );
         assert!(model.messages[5..].iter().all(|message| {
             message.semantic_kind() == SequenceMessageKind::CentralDecorationRecord
         }));
+        assert_eq!(
+            model.messages[5].central_record_decoration(),
+            Some(SequenceCentralDecoration::Target)
+        );
+        assert_eq!(
+            model.messages[6].central_record_decoration(),
+            Some(SequenceCentralDecoration::Source)
+        );
+    }
+
+    #[test]
+    fn typed_render_model_owns_control_record_and_note_placement_protocols() {
+        use SequenceControlKind as Kind;
+        use SequenceControlRole as Role;
+
+        let controls = [
+            (LINETYPE_LOOP_START, Kind::Loop, Role::Start),
+            (LINETYPE_LOOP_END, Kind::Loop, Role::End),
+            (LINETYPE_ALT_START, Kind::Alt, Role::Start),
+            (LINETYPE_ALT_ELSE, Kind::Alt, Role::Separator),
+            (LINETYPE_ALT_END, Kind::Alt, Role::End),
+            (LINETYPE_OPT_START, Kind::Opt, Role::Start),
+            (LINETYPE_OPT_END, Kind::Opt, Role::End),
+            (LINETYPE_PAR_START, Kind::Par, Role::Start),
+            (LINETYPE_PAR_AND, Kind::Par, Role::Separator),
+            (LINETYPE_PAR_END, Kind::Par, Role::End),
+            (LINETYPE_RECT_START, Kind::Rect, Role::Start),
+            (LINETYPE_RECT_END, Kind::Rect, Role::End),
+            (LINETYPE_CRITICAL_START, Kind::Critical, Role::Start),
+            (LINETYPE_CRITICAL_OPTION, Kind::Critical, Role::Separator),
+            (LINETYPE_CRITICAL_END, Kind::Critical, Role::End),
+            (LINETYPE_BREAK_START, Kind::Break, Role::Start),
+            (LINETYPE_BREAK_END, Kind::Break, Role::End),
+            (LINETYPE_PAR_OVER_START, Kind::ParOver, Role::Start),
+        ];
+
+        for (message_type, kind, role) in controls {
+            let message = sequence_message_with_type(message_type, None);
+            let expected = SequenceControlSemantics { kind, role };
+            assert_eq!(message.control_semantics(), Some(expected));
+            assert_eq!(message.semantic_kind(), SequenceMessageKind::Control);
+            assert_eq!(expected.consumes_text(), role != Role::End);
+        }
+
+        let placements = [
+            (Some(PLACEMENT_LEFT_OF), SequenceNotePlacement::LeftOf),
+            (Some(PLACEMENT_RIGHT_OF), SequenceNotePlacement::RightOf),
+            (Some(PLACEMENT_OVER), SequenceNotePlacement::Over),
+            (None, SequenceNotePlacement::Over),
+        ];
+        for (raw, expected) in placements {
+            assert_eq!(
+                sequence_message_with_type(LINETYPE_NOTE, raw).note_placement(),
+                Some(expected)
+            );
+        }
+        assert_eq!(
+            sequence_message_with_type(LINETYPE_NOTE, Some(99)).note_placement(),
+            None
+        );
+
+        let central_records = [
+            (
+                LINETYPE_CENTRAL_CONNECTION,
+                SequenceCentralDecoration::Target,
+            ),
+            (
+                LINETYPE_CENTRAL_CONNECTION_REVERSE,
+                SequenceCentralDecoration::Source,
+            ),
+            (
+                LINETYPE_CENTRAL_CONNECTION_DUAL,
+                SequenceCentralDecoration::Both,
+            ),
+        ];
+        for (message_type, expected) in central_records {
+            assert_eq!(
+                sequence_message_with_type(message_type, None).central_record_decoration(),
+                Some(expected)
+            );
+        }
+    }
+
+    fn sequence_message_with_type(message_type: i32, placement: Option<i32>) -> SequenceMessage {
+        SequenceMessage {
+            id: String::new(),
+            from: None,
+            to: None,
+            message_type,
+            message: SequenceMessagePayload::Text(String::new()),
+            wrap: false,
+            activate: false,
+            placement,
+            central_connection: 0,
+        }
     }
 }

@@ -8,9 +8,6 @@ use merman_core::diagrams::sequence::{
 };
 use std::collections::HashSet;
 
-const CENTRAL_TARGET_MESSAGE_TYPE: i32 = 59;
-const CENTRAL_SOURCE_MESSAGE_TYPE: i32 = 60;
-
 pub(super) fn validate_supported_sequence_model(
     model: &SequenceDiagramRenderModel,
     execution: AsciiExecution<'_>,
@@ -86,7 +83,10 @@ fn validate_message_record_shapes(
             SequenceMessageKind::Control => {
                 message.from.is_none()
                     && message.to.is_none()
-                    && (control_message_consumes_text(message.message_type) || text_is_empty)
+                    && (message
+                        .control_semantics()
+                        .is_some_and(|semantics| semantics.consumes_text())
+                        || text_is_empty)
             }
             SequenceMessageKind::CentralDecorationRecord => {
                 message.from.is_some() && message.to.is_none() && text_is_empty
@@ -118,10 +118,6 @@ fn validate_message_record_shapes(
         }
     }
     Ok(())
-}
-
-fn control_message_consumes_text(message_type: i32) -> bool {
-    !matches!(message_type, 11 | 14 | 16 | 21 | 23 | 29 | 31)
 }
 
 fn validate_autonumber_values(
@@ -170,16 +166,16 @@ fn validate_central_records(
                 continue;
             }
             Some(SequenceCentralDecoration::Target) => [
-                Some((CENTRAL_TARGET_MESSAGE_TYPE, message.to.as_deref())),
+                Some((SequenceCentralDecoration::Target, message.to.as_deref())),
                 None,
             ],
             Some(SequenceCentralDecoration::Source) => [
-                Some((CENTRAL_SOURCE_MESSAGE_TYPE, message.from.as_deref())),
+                Some((SequenceCentralDecoration::Source, message.from.as_deref())),
                 None,
             ],
             Some(SequenceCentralDecoration::Both) => [
-                Some((CENTRAL_TARGET_MESSAGE_TYPE, message.to.as_deref())),
-                Some((CENTRAL_SOURCE_MESSAGE_TYPE, message.from.as_deref())),
+                Some((SequenceCentralDecoration::Target, message.to.as_deref())),
+                Some((SequenceCentralDecoration::Source, message.from.as_deref())),
             ],
             None => {
                 index += 1;
@@ -188,12 +184,12 @@ fn validate_central_records(
         };
 
         let record_count = expected.iter().flatten().count();
-        for (offset, (message_type, actor)) in expected.into_iter().flatten().enumerate() {
+        for (offset, (decoration, actor)) in expected.into_iter().flatten().enumerate() {
             execution.checkpoint(OperationPhase::Semantic)?;
             let record = model.messages.get(index + offset + 1);
             if !record.is_some_and(|record| {
                 record.semantic_kind() == SequenceMessageKind::CentralDecorationRecord
-                    && record.message_type == message_type
+                    && record.central_record_decoration() == Some(decoration)
                     && record.from.as_deref() == actor
             }) {
                 return Err(AsciiError::UnsupportedFeature {
