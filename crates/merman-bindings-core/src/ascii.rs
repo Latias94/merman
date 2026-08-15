@@ -424,6 +424,7 @@ mod tests {
         assert_eq!(details.actual, expected);
         assert_eq!(details.max, expected - 1);
         assert_eq!(details.profile, "interactive");
+        assert_eq!(details.cause, BindingResourceLimitCause::Ceiling);
     }
 
     #[test]
@@ -825,29 +826,6 @@ mod tests {
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("max_svg_bytes"), "{error:?}");
-    }
-
-    #[test]
-    fn render_ascii_grid_limit_uses_resource_limit_status() {
-        let error = render_ascii(
-            b"flowchart TD\nA[Hello] --> B[World]",
-            br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } } }"#,
-        )
-        .unwrap_err();
-
-        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        assert!(
-            error.message().contains("max_ascii_grid_cells"),
-            "{error:?}"
-        );
-        let details = error
-            .resource_details()
-            .expect("structured resource details");
-        assert_eq!(details.limit_id, "max_ascii_grid_cells");
-        assert_eq!(details.phase, "ascii_layout");
-        assert_eq!(details.max, 1);
-        assert_eq!(details.profile, "interactive");
-        assert_eq!(details.cause, BindingResourceLimitCause::Ceiling);
     }
 
     #[test]

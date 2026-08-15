@@ -692,22 +692,6 @@ mod tests {
         details.actual
     }
 
-    #[cfg(feature = "ascii")]
-    fn assert_wasm_ascii_exact_boundary(limit_id: &str, phase: &str, expected: u64, source: &str) {
-        let exact_options = wasm_ascii_options(limit_id, expected);
-        let output =
-            execute_wasm_operation("ascii", source.as_bytes(), exact_options.as_bytes(), None)
-                .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
-        assert!(!output.is_empty());
-
-        let below_options = wasm_ascii_options(limit_id, expected - 1);
-        let error =
-            execute_wasm_operation("ascii", source.as_bytes(), below_options.as_bytes(), None)
-                .expect_err("one-below WASM ASCII boundary must fail");
-        let actual = assert_wasm_ascii_resource_error(error, limit_id, phase, expected - 1);
-        assert_eq!(actual, expected);
-    }
-
     #[test]
     fn package_version_matches_crate_version() {
         assert_eq!(package_version(), env!("CARGO_PKG_VERSION"));
@@ -1355,6 +1339,19 @@ mod tests {
         let resources = catalog.resources;
         assert_eq!(resources.general_binding_default_profile, "interactive");
         assert_eq!(resources.profiles.len(), 4);
+        #[cfg(feature = "ascii")]
+        for case in ascii_resource_boundaries() {
+            let limit = resources
+                .limits
+                .iter()
+                .find(|limit| limit.id == case.id)
+                .unwrap_or_else(|| panic!("WASM resource catalog is missing {}", case.id));
+            assert!(
+                limit.operation_ids.contains(&"ascii"),
+                "WASM resource catalog does not route {} to ASCII",
+                case.id
+            );
+        }
         for limit in resources.limits {
             assert!(
                 limit
@@ -1420,14 +1417,32 @@ mod tests {
 
     #[cfg(feature = "ascii")]
     #[test]
-    fn wasm_ascii_operations_preserve_typed_exact_resource_boundaries() {
-        for case in ascii_resource_boundaries() {
-            assert_wasm_ascii_exact_boundary(
-                &case.id,
-                &case.phase,
-                case.expected.wasm_interactive,
-                &case.source,
-            );
-        }
+    fn wasm_ascii_operation_preserves_a_typed_exact_resource_boundary() {
+        let case = ascii_resource_boundaries()
+            .into_iter()
+            .find(|case| case.id == "max_ascii_output_bytes")
+            .expect("shared ASCII output boundary");
+        let expected = case.expected.wasm_interactive;
+
+        let exact_options = wasm_ascii_options(&case.id, expected);
+        let output = execute_wasm_operation(
+            "ascii",
+            case.source.as_bytes(),
+            exact_options.as_bytes(),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", case.id));
+        assert!(!output.is_empty());
+
+        let below_options = wasm_ascii_options(&case.id, expected - 1);
+        let error = execute_wasm_operation(
+            "ascii",
+            case.source.as_bytes(),
+            below_options.as_bytes(),
+            None,
+        )
+        .expect_err("one-below WASM ASCII boundary must fail");
+        let actual = assert_wasm_ascii_resource_error(error, &case.id, &case.phase, expected - 1);
+        assert_eq!(actual, expected);
     }
 }

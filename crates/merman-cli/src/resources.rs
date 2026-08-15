@@ -1013,7 +1013,9 @@ mod tests {
         policy.apply_override("max_source_bytes", 17).unwrap();
         policy.apply_override("max_css_bytes", 23).unwrap();
         #[cfg(feature = "ascii")]
-        policy.apply_override("max_ascii_output_bytes", 29).unwrap();
+        for id in AsciiResourceLimitId::ALL {
+            policy.apply_override(id.as_str(), 29).unwrap();
+        }
 
         assert_eq!(
             policy
@@ -1028,12 +1030,9 @@ mod tests {
         );
         assert_eq!(policy.base_value(CliResourceLimitId::MaxCssBytes), None);
         #[cfg(feature = "ascii")]
-        assert_eq!(
-            policy
-                .ascii_policy()
-                .value(AsciiResourceLimitId::MaxOutputBytes),
-            Some(29)
-        );
+        for id in AsciiResourceLimitId::ALL {
+            assert_eq!(policy.ascii_policy().value(id), Some(29));
+        }
     }
 
     #[test]

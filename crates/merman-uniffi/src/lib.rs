@@ -1710,29 +1710,6 @@ mod tests {
             .expect("generated UniFFI ASCII override must produce valid options JSON")
     }
 
-    #[cfg(feature = "ascii")]
-    fn assert_uniffi_ascii_exact_boundary(
-        id: MermanResourceOverrideId,
-        limit_id: &str,
-        phase: &str,
-        expected: u64,
-        source: &str,
-    ) {
-        let engine = engine();
-        let output = engine
-            .render_ascii(source.to_string(), Some(uniffi_ascii_options(id, expected)))
-            .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
-        assert!(!output.is_empty(), "{limit_id} produced no output");
-        let error = engine
-            .render_ascii(
-                source.to_string(),
-                Some(uniffi_ascii_options(id, expected - 1)),
-            )
-            .expect_err("one-below UniFFI ASCII boundary must fail");
-        let details = assert_ascii_resource_error(error, limit_id, phase, expected - 1);
-        assert_eq!(details.actual, expected);
-    }
-
     #[cfg(feature = "svg")]
     fn assert_reentrant_error(error: &MermanError) {
         let MermanError::Binding {
@@ -2773,25 +2750,28 @@ mod tests {
 
     #[cfg(feature = "ascii")]
     #[test]
-    fn uniffi_ascii_operations_preserve_typed_exact_resource_boundaries() {
-        for case in ascii_resource_boundaries() {
-            let id = match case.id.as_str() {
-                "max_ascii_grid_cells" => MermanResourceOverrideId::MaxAsciiGridCells,
-                "max_ascii_layout_work_units" => MermanResourceOverrideId::MaxAsciiLayoutWorkUnits,
-                "max_ascii_document_cells" => MermanResourceOverrideId::MaxAsciiDocumentCells,
-                "max_ascii_output_bytes" => MermanResourceOverrideId::MaxAsciiOutputBytes,
-                "max_ascii_grapheme_bytes" => MermanResourceOverrideId::MaxAsciiGraphemeBytes,
-                "max_ascii_nesting_depth" => MermanResourceOverrideId::MaxAsciiNestingDepth,
-                other => panic!("unknown ASCII resource boundary {other}"),
-            };
-            assert_uniffi_ascii_exact_boundary(
-                id,
-                &case.id,
-                &case.phase,
-                case.expected.uniffi_interactive,
-                &case.source,
-            );
-        }
+    fn uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary() {
+        let id = MermanResourceOverrideId::MaxAsciiOutputBytes;
+        let case = ascii_resource_boundaries()
+            .into_iter()
+            .find(|case| case.id == id.id())
+            .expect("shared ASCII output boundary");
+        let expected = case.expected.uniffi_interactive;
+        let engine = engine();
+
+        let output = engine
+            .render_ascii(
+                case.source.clone(),
+                Some(uniffi_ascii_options(id, expected)),
+            )
+            .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", case.id));
+        assert!(!output.is_empty(), "{} produced no output", case.id);
+
+        let error = engine
+            .render_ascii(case.source, Some(uniffi_ascii_options(id, expected - 1)))
+            .expect_err("one-below UniFFI ASCII boundary must fail");
+        let details = assert_ascii_resource_error(error, &case.id, &case.phase, expected - 1);
+        assert_eq!(details.actual, expected);
     }
 
     #[cfg(feature = "svg")]
@@ -3264,6 +3244,29 @@ mod tests {
 
         for (ordinal, variant) in variants.into_iter().enumerate() {
             assert_eq!(variant as usize, ordinal);
+        }
+
+        #[cfg(feature = "ascii")]
+        {
+            let mut transport_ids = [
+                MermanResourceOverrideId::MaxAsciiGridCells,
+                MermanResourceOverrideId::MaxAsciiLayoutWorkUnits,
+                MermanResourceOverrideId::MaxAsciiDocumentCells,
+                MermanResourceOverrideId::MaxAsciiOutputBytes,
+                MermanResourceOverrideId::MaxAsciiGraphemeBytes,
+                MermanResourceOverrideId::MaxAsciiNestingDepth,
+            ]
+            .map(MermanResourceOverrideId::id);
+            transport_ids.sort_unstable();
+
+            let shared_cases = ascii_resource_boundaries();
+            let mut shared_ids = shared_cases
+                .iter()
+                .map(|case| case.id.as_str())
+                .collect::<Vec<_>>();
+            shared_ids.sort_unstable();
+
+            assert_eq!(transport_ids.as_slice(), shared_ids.as_slice());
         }
     }
 

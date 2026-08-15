@@ -383,58 +383,42 @@ fn cli_applies_the_selected_resource_profile_to_text_output() {
 }
 
 #[test]
-fn cli_applies_ascii_resource_overrides_to_text_output() {
-    let output = run_with_stdin(
-        &[
-            "render",
-            "--format",
-            "ascii",
-            "--resource-limit",
-            "max_ascii_output_bytes=1",
-            "-",
-        ],
-        "flowchart LR\nA --> B",
+fn cli_reports_a_representative_ascii_resource_boundary_with_stable_typed_context() {
+    let case = ascii_resource_boundaries()
+        .into_iter()
+        .find(|case| case.id == "max_ascii_output_bytes")
+        .expect("shared ASCII output boundary");
+    let exact = case.expected.cli_trusted_native;
+
+    let exact_output = run_ascii_with_resource_limit(&case.id, exact, &case.source);
+    assert!(
+        exact_output.status.success(),
+        "exact {} boundary failed: {}",
+        case.id,
+        String::from_utf8_lossy(&exact_output.stderr),
+    );
+    assert!(
+        !exact_output.stdout.is_empty(),
+        "{} produced no output",
+        case.id
     );
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("max_ascii_output_bytes"), "{stderr}");
-}
-
-#[test]
-fn cli_reports_every_ascii_resource_limit_with_stable_typed_context() {
-    for case in ascii_resource_boundaries() {
-        let exact = case.expected.cli_trusted_native;
-        let exact_output = run_ascii_with_resource_limit(&case.id, exact, &case.source);
-        assert!(
-            exact_output.status.success(),
-            "exact {} boundary failed: {}",
-            case.id,
-            String::from_utf8_lossy(&exact_output.stderr),
-        );
-        assert!(
-            !exact_output.stdout.is_empty(),
-            "{} produced no output",
-            case.id
-        );
-
-        let below_output = run_ascii_with_resource_limit(&case.id, exact - 1, &case.source);
-        assert!(
-            !below_output.status.success(),
-            "one-below {} boundary unexpectedly succeeded",
-            case.id
-        );
-        let stderr = String::from_utf8(below_output.stderr).expect("stderr should be utf8");
-        let expected_prefix = format!(
-            "ASCII resource limit `{}` exceeded during `{}`: actual {}",
-            case.id, case.phase, exact
-        );
-        assert!(stderr.contains(&expected_prefix), "{stderr}");
-        assert!(
-            stderr.contains(&format!("maximum {} (profile `trusted-native`)", exact - 1)),
-            "{stderr}"
-        );
-    }
+    let below_output = run_ascii_with_resource_limit(&case.id, exact - 1, &case.source);
+    assert!(
+        !below_output.status.success(),
+        "one-below {} boundary unexpectedly succeeded",
+        case.id
+    );
+    let stderr = String::from_utf8(below_output.stderr).expect("stderr should be utf8");
+    let expected_prefix = format!(
+        "ASCII resource limit `{}` exceeded during `{}`: actual {}",
+        case.id, case.phase, exact
+    );
+    assert!(stderr.contains(&expected_prefix), "{stderr}");
+    assert!(
+        stderr.contains(&format!("maximum {} (profile `trusted-native`)", exact - 1)),
+        "{stderr}"
+    );
 }
 
 #[test]
