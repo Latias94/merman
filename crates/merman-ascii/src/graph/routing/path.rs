@@ -47,9 +47,10 @@ pub(super) fn route_grid_path(
     to: &NodeLayout,
     port_policy: GridPathPortPolicy,
 ) -> Option<GridPathRoute> {
-    let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+    let policy = crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
-    ));
+    );
+    let mut resources = ResourceContext::new(policy);
     route_grid_path_with_resources(layouts, from, to, port_policy, &mut resources)
         .expect("test grid routing work must remain representable")
 }
@@ -62,7 +63,15 @@ pub(super) fn route_grid_path_with_resources(
     port_policy: GridPathPortPolicy,
     resources: &mut ResourceContext,
 ) -> Result<Option<GridPathRoute>> {
-    route_grid_path_with_resources_and_execution(layouts, from, to, port_policy, resources, None)
+    let policy = resources.policy();
+    route_grid_path_with_resources_and_execution(
+        layouts,
+        from,
+        to,
+        port_policy,
+        resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 pub(super) fn route_grid_path_with_resources_and_execution(
@@ -71,7 +80,7 @@ pub(super) fn route_grid_path_with_resources_and_execution(
     to: &NodeLayout,
     port_policy: GridPathPortPolicy,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
     match port_policy {
         GridPathPortPolicy::DirectionalShortest => select_shortest_reachable_grid_path(
@@ -94,7 +103,7 @@ fn select_shortest_reachable_grid_path(
     to: &NodeLayout,
     candidates: [PortPair; 2],
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
     let mut selected: Option<GridPathRoute> = None;
     for ports in candidates {
@@ -118,7 +127,7 @@ fn plan_grid_path_for_ports(
     to: &NodeLayout,
     ports: PortPair,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
     let start = from.grid_for_port(ports.start, resources)?;
     let target = to.grid_for_port(ports.end, resources)?;
@@ -257,7 +266,7 @@ fn find_grid_path(
     start: GridCoord,
     target: GridCoord,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<Vec<GridCoord>>> {
     let max_x = layouts.iter().try_fold(0usize, |current, layout| {
         Ok::<_, crate::error::AsciiError>(
@@ -379,7 +388,7 @@ impl PartialOrd for OpenEntry {
 fn occupied_grid_cells(
     layouts: &[NodeLayout],
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashSet<GridCoord>> {
     const NODE_GRID_FOOTPRINT: usize = 9;
     let capacity = resources.checked_work_mul(layouts.len(), NODE_GRID_FOOTPRINT)?;
@@ -437,7 +446,7 @@ fn grid_heuristic(a: GridCoord, b: GridCoord, resources: &ResourceContext) -> Re
 fn merge_grid_path(
     path: Vec<GridCoord>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<GridCoord>> {
     if path.len() <= 2 {
         return Ok(path);
@@ -461,11 +470,8 @@ fn merge_grid_path(
     Ok(merged)
 }
 
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(OperationPhase::Layout)?;
-    }
-    Ok(())
+fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
+    execution.checkpoint(OperationPhase::Layout)
 }
 
 pub(super) fn step_direction(from: GridCoord, to: GridCoord) -> StepDirection {
@@ -582,7 +588,7 @@ mod tests {
             &to,
             GridPathPortPolicy::DirectionalShortest,
             &mut resources,
-            Some(AsciiExecution::new(&control, &policy)),
+            AsciiExecution::new(&control, &policy),
         )
         .expect_err("routing should observe cancellation before exhausting work");
 

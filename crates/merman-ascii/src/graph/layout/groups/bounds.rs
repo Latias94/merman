@@ -170,35 +170,7 @@ pub(super) fn layout_groups(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<LaidOutGroups> {
-    layout_groups_controlled(graph, layouts, topology, width_profile, resources, None)
-}
-
-pub(super) fn layout_groups_with_execution(
-    graph: &AsciiGraph,
-    layouts: &[NodeLayout],
-    topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<LaidOutGroups> {
-    layout_groups_controlled(
-        graph,
-        layouts,
-        topology,
-        width_profile,
-        resources,
-        Some(execution),
-    )
-}
-
-fn layout_groups_controlled(
-    graph: &AsciiGraph,
-    layouts: &[NodeLayout],
-    topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
 ) -> Result<LaidOutGroups> {
     // Charge indexed lookups plus the linear topology, layout, and output passes up front.
     let mut member_count = 0usize;
@@ -244,11 +216,9 @@ fn layout_groups_controlled(
     groups_by_graph_index.resize_with(graph.groups.len(), || None);
 
     let leaf_group_levels = if has_empty_group {
-        Some(if let Some(execution) = execution {
-            grid::rank_leaf_group_levels_with_execution(graph, topology, resources, execution)?
-        } else {
-            grid::rank_leaf_group_levels(graph, topology, resources)?
-        })
+        Some(grid::rank_leaf_group_levels(
+            graph, topology, resources, execution,
+        )?)
     } else {
         None
     };
@@ -397,7 +367,7 @@ fn child_first_group_order(
     graph: &AsciiGraph,
     topology: &GraphGroupTopology<'_>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<usize>> {
     let mut remaining_children = Vec::new();
     remaining_children
@@ -464,11 +434,8 @@ fn child_first_group_order(
     Ok(order)
 }
 
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
-    match execution {
-        Some(execution) => execution.checkpoint_loop(OperationPhase::Layout, iteration),
-        None => Ok(()),
-    }
+fn checkpoint_layout(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
+    execution.checkpoint_loop(OperationPhase::Layout, iteration)
 }
 
 fn invalid_group_membership(graph: &AsciiGraph) -> AsciiError {
@@ -1219,6 +1186,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut measured_resources,
+            AsciiExecution::for_test(&unbounded),
         )
         .expect("unbounded indexed group-bound work should pass");
         let exact_work = measured_resources.layout_work_used();
@@ -1234,6 +1202,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut exact_resources,
+            AsciiExecution::for_test(&exact_policy),
         )
         .expect("exact indexed group-bound work should pass");
         assert_eq!(groups.items.len(), graph.groups.len());
@@ -1249,6 +1218,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut below_resources,
+            AsciiExecution::for_test(&below_policy),
         )
         .expect_err("max-minus-one indexed group-bound work should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
@@ -1269,9 +1239,8 @@ mod tests {
             Vec::new(),
             GraphGroupStyle::default(),
         );
-        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
-            ResourceProfile::UnboundedForTrustedInput,
-        ));
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
         let topology = GraphGroupTopology::try_new(&graph, &mut resources)
             .expect("empty group topology should build");
 
@@ -1281,6 +1250,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut resources,
+            AsciiExecution::for_test(&policy),
         )
         .expect("empty group should receive a visible perimeter");
 
@@ -1312,6 +1282,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut measured_resources,
+            AsciiExecution::for_test(&unbounded),
         )
         .expect("unbounded empty group layout should pass");
         let exact_work = measured_resources.layout_work_used();
@@ -1327,6 +1298,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut exact_resources,
+            AsciiExecution::for_test(&exact_policy),
         )
         .expect("exact empty group layout-work budget should pass");
         assert_eq!(exact_resources.layout_work_used(), exact_work);
@@ -1341,6 +1313,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut below_resources,
+            AsciiExecution::for_test(&below_policy),
         )
         .expect_err("max-minus-one empty group layout-work budget should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
@@ -1368,9 +1341,8 @@ mod tests {
             vec!["inner".to_string()],
             GraphGroupStyle::default(),
         );
-        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
-            ResourceProfile::UnboundedForTrustedInput,
-        ));
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
         let topology = GraphGroupTopology::try_new(&graph, &mut resources)
             .expect("nested empty group topology should build");
 
@@ -1380,6 +1352,7 @@ mod tests {
             &topology,
             TerminalWidthProfile::Unicode,
             &mut resources,
+            AsciiExecution::for_test(&policy),
         )
         .expect("nested empty groups should receive real bounds");
         let inner = groups

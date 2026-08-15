@@ -33,7 +33,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
     topology: Option<&GraphGroupTopology<'_>>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<EdgeRouteCandidates> {
     let primary =
         match plan_edge_route_with_topology(request, topology, label, resources, execution)? {

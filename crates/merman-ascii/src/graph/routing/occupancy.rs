@@ -50,12 +50,14 @@ fn terminal_claims_allow_route_cell(
     owner: &RouteOwner,
     claims: &[TerminalClaim],
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    control: &OperationControl,
 ) -> Result<bool> {
     for endpoint_id in [&owner.from, &owner.to] {
         let mut all_incident_to_endpoint = true;
         for claim in claims {
-            checkpoint_layout(execution)?;
+            control
+                .checkpoint_at(OperationPhase::Layout)
+                .map_err(AsciiError::Cancelled)?;
             resources.charge_layout_work(1)?;
             if existing_routes
                 .get(claim.route_index)
@@ -277,24 +279,15 @@ pub(super) struct SceneOccupancy<'layout> {
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     labels: HashSet<CanvasCoord>,
     pub(super) protected: Vec<ProtectedGeometry<'layout>>,
-    control: Option<OperationControl>,
+    control: OperationControl,
 }
 
 impl<'layout> SceneOccupancy<'layout> {
-    #[cfg(test)]
     pub(super) fn try_new_for_routes(
         graph_layout: &'layout GraphLayout,
         route_capacity: usize,
         resources: &mut ResourceContext,
-    ) -> Result<Self> {
-        Self::try_new_for_routes_with_execution(graph_layout, route_capacity, resources, None)
-    }
-
-    pub(super) fn try_new_for_routes_with_execution(
-        graph_layout: &'layout GraphLayout,
-        route_capacity: usize,
-        resources: &mut ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let marker_capacity = resources.checked_work_mul(route_capacity, 2)?;
         let mut protected_capacity = graph_layout.nodes.len();
@@ -315,7 +308,7 @@ impl<'layout> SceneOccupancy<'layout> {
             markers: HashMap::new(),
             labels: HashSet::new(),
             protected: Vec::new(),
-            control: execution.map(AsciiExecution::cloned_control),
+            control: execution.cloned_control(),
         };
         scene
             .route_bounds
@@ -356,12 +349,9 @@ impl<'layout> SceneOccupancy<'layout> {
     }
 
     pub(in crate::graph::routing) fn checkpoint_layout(&self) -> Result<()> {
-        match self.control.as_ref() {
-            Some(control) => control
-                .checkpoint_at(OperationPhase::Layout)
-                .map_err(AsciiError::Cancelled),
-            None => Ok(()),
-        }
+        self.control
+            .checkpoint_at(OperationPhase::Layout)
+            .map_err(AsciiError::Cancelled)
     }
 
     #[cfg(test)]
@@ -371,7 +361,13 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
         diagram_type: &'static str,
     ) -> Result<Self> {
-        let mut scene = Self::try_new_for_routes(graph_layout, routes.len(), resources)?;
+        let policy = resources.policy();
+        let mut scene = Self::try_new_for_routes(
+            graph_layout,
+            routes.len(),
+            resources,
+            AsciiExecution::for_test(&policy),
+        )?;
         for (route_index, route) in routes.iter().enumerate() {
             let start = route
                 .plan
@@ -410,7 +406,6 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
-    #[cfg(test)]
     pub(super) fn score_route(
         &self,
         existing_routes: &[PreparedRoute],
@@ -419,22 +414,10 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
         diagram_type: &'static str,
     ) -> Result<Option<RouteCandidateScore>> {
-        self.score_route_with_execution(existing_routes, plan, owner, resources, diagram_type, None)
-    }
-
-    pub(super) fn score_route_with_execution(
-        &self,
-        existing_routes: &[PreparedRoute],
-        plan: &RoutePlan,
-        owner: &RouteOwner,
-        resources: &mut ResourceContext,
-        diagram_type: &'static str,
-        execution: Option<AsciiExecution<'_>>,
-    ) -> Result<Option<RouteCandidateScore>> {
         let mut shared_cells = 0usize;
 
         for (_, cell) in plan.active_cells() {
-            checkpoint_layout(execution)?;
+            self.checkpoint_layout()?;
             resources.charge_layout_work(self.protected.len().max(1))?;
             let crosses_reserved = self.protected.iter().any(|protected| {
                 let is_endpoint_port = protected.allows_endpoint_port(&owner.from, cell.coord)
@@ -454,19 +437,19 @@ impl<'layout> SceneOccupancy<'layout> {
                     owner,
                     claims,
                     resources,
-                    execution,
+                    &self.control,
                 )?
             {
                 return Ok(None);
             }
             if self.route_cells.contains_key(&cell.coord) {
-                checkpoint_layout(execution)?;
+                self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 shared_cells = resources.checked_work_add(shared_cells, 1)?;
             }
         }
 
-        checkpoint_layout(execution)?;
+        self.checkpoint_layout()?;
         if !self.plan_labels_have_clear_candidate(plan, resources)? {
             return Ok(None);
         }
@@ -480,7 +463,7 @@ impl<'layout> SceneOccupancy<'layout> {
             let mut available = 0usize;
             let mut predecessor = None;
             for candidate in candidates.iter().copied() {
-                checkpoint_layout(execution)?;
+                self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 if !marker_candidate_continues_chain(predecessor, candidate) {
                     break;
@@ -1139,13 +1122,6 @@ impl<'layout> SceneOccupancy<'layout> {
         }
         Ok(())
     }
-}
-
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(OperationPhase::Layout)?;
-    }
-    Ok(())
 }
 
 fn try_reserve_hash_map<K, V>(map: &mut HashMap<K, V>, additional: usize) -> Result<()>

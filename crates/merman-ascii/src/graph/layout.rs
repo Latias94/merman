@@ -109,7 +109,13 @@ pub(super) fn layout_graph_with_resources(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<GraphLayout> {
-    layout_graph_controlled(graph, options, resources, None)
+    let policy = resources.policy();
+    layout_graph_with_resources_and_execution(
+        graph,
+        options,
+        resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 pub(super) fn layout_graph_with_resources_and_execution(
@@ -118,15 +124,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GraphLayout> {
-    layout_graph_controlled(graph, options, resources, Some(execution))
-}
-
-fn layout_graph_controlled(
-    graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
-) -> Result<GraphLayout> {
+    execution.rebind_resource_context(resources, merman_core::OperationPhase::Layout);
     checkpoint_layout(execution)?;
     grid::preflight_minimum_grid_extent(graph, options, resources)?;
     charge_graph_layout_work(graph, resources)?;
@@ -139,18 +137,14 @@ fn layout_graph_controlled(
     };
     check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
     checkpoint_layout(execution)?;
-    let (mut nodes, column_widths, row_heights) = if let Some(execution) = execution {
-        grid::layout_nodes_with_execution(
-            graph,
-            options,
-            topology.as_ref(),
-            &label_plans,
-            resources,
-            execution,
-        )?
-    } else {
-        grid::layout_nodes(graph, options, topology.as_ref(), &label_plans, resources)?
-    };
+    let (mut nodes, column_widths, row_heights) = grid::layout_nodes(
+        graph,
+        options,
+        topology.as_ref(),
+        &label_plans,
+        resources,
+        execution,
+    )?;
     checkpoint_layout(execution)?;
     let (group_offset_x, group_offset_y) = if graph.groups.is_empty() {
         (0, 0)
@@ -166,9 +160,7 @@ fn layout_graph_controlled(
         )?
     };
     for (index, node) in nodes.iter_mut().enumerate() {
-        if let Some(execution) = execution {
-            execution.checkpoint_loop(merman_core::OperationPhase::Layout, index)?;
-        }
+        execution.checkpoint_loop(merman_core::OperationPhase::Layout, index)?;
         node.x = resources.checked_grid_add(node.x, group_offset_x)?;
         node.y = resources.checked_grid_add(node.y, group_offset_y)?;
     }
@@ -192,17 +184,6 @@ fn layout_graph_controlled(
             items: Vec::new(),
             background_order: Vec::new(),
         }
-    } else if let Some(execution) = execution {
-        groups::layout_groups_with_execution(
-            graph,
-            &nodes,
-            topology
-                .as_ref()
-                .expect("non-empty graph groups must have topology"),
-            options.terminal_width_profile,
-            resources,
-            execution,
-        )?
     } else {
         groups::layout_groups(
             graph,
@@ -212,6 +193,7 @@ fn layout_graph_controlled(
                 .expect("non-empty graph groups must have topology"),
             options.terminal_width_profile,
             resources,
+            execution,
         )?
     };
     checkpoint_layout(execution)?;
@@ -230,11 +212,8 @@ fn layout_graph_controlled(
     })
 }
 
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    }
-    Ok(())
+fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
+    execution.checkpoint(merman_core::OperationPhase::Layout)
 }
 
 pub(super) fn graph_canvas_extent(
@@ -305,6 +284,38 @@ mod tests {
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStroke, GraphGroupStyle};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn graph_layout_cancellation_precedes_grid_and_work_admission() {
+        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+        graph.add_node("a", "A");
+        let options = AsciiRenderOptions::unicode();
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 1)
+            .expect("one grid cell should be a valid limit")
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one work unit should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+
+        let error = layout_graph_with_resources_and_execution(
+            &graph,
+            &options,
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("cancellation should win before graph resource admission");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+    }
 
     #[test]
     fn nested_graph_groups_accept_exact_depth_and_reject_max_minus_one() {

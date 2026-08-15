@@ -31,7 +31,7 @@ pub(super) fn apply_group_placement_adjustments(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     placement::apply_group_placement_adjustments(
         graph,
@@ -59,19 +59,9 @@ pub(super) fn layout_groups(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<LaidOutGroups> {
-    bounds::layout_groups(graph, layouts, topology, width_profile, resources)
-}
-
-pub(super) fn layout_groups_with_execution(
-    graph: &AsciiGraph,
-    layouts: &[NodeLayout],
-    topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
-    bounds::layout_groups_with_execution(
+    bounds::layout_groups(
         graph,
         layouts,
         topology,

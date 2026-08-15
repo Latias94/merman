@@ -180,6 +180,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     options: GridRouteOptions,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
+    let policy = resources.policy();
     plan_left_right_grid_path_route_with_options_resources_and_execution(
         graph_layout,
         from,
@@ -189,12 +190,12 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
         charset,
         options,
         resources,
-        None,
+        AsciiExecution::for_test(&policy),
     )
 }
 
 // Keep the route geometry, label descriptor, charset, resource ledger, and operation state
-// explicit at this internal planning seam. The uncontrolled wrapper above exists for unit tests.
+// explicit at this internal planning seam.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_execution(
     graph_layout: &GraphLayout,
@@ -205,7 +206,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
     charset: &GraphCharset,
     options: GridRouteOptions,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
     let Some(route) = route_grid_path_with_resources_and_execution(
         &graph_layout.nodes,
@@ -363,7 +364,7 @@ fn plan_grid_path(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<GridPathPlan> {
     let mut cells = PlannedRouteCells::new();
     let mut lines_drawn = Vec::new();
@@ -406,7 +407,7 @@ fn plan_grid_line(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<(
     Vec<CanvasCoord>,
     Option<PlannedCellId>,
@@ -480,7 +481,7 @@ fn plan_grid_corners(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for index in 1..path.len().saturating_sub(1) {
         checkpoint_layout(execution)?;
@@ -506,7 +507,7 @@ fn plan_grid_box_start(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     checkpoint_layout(execution)?;
     if !charset.unicode {
@@ -539,9 +540,6 @@ fn plan_grid_box_start(
     Ok(())
 }
 
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(OperationPhase::Layout)?;
-    }
-    Ok(())
+fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
+    execution.checkpoint(OperationPhase::Layout)
 }

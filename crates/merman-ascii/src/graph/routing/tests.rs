@@ -146,8 +146,14 @@ fn route_body_admission_rejects_reserved_node_cells_before_commit() {
         "target",
     );
     let mut resources = unbounded_resources();
-    let mut occupancy =
-        SceneOccupancy::try_new_for_routes(&graph_layout, 1, &mut resources).unwrap();
+    let policy = resources.policy();
+    let mut occupancy = SceneOccupancy::try_new_for_routes(
+        &graph_layout,
+        1,
+        &mut resources,
+        AsciiExecution::for_test(&policy),
+    )
+    .unwrap();
 
     assert!(
         !occupancy

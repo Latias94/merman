@@ -22,7 +22,7 @@ pub(super) fn apply_group_placement_adjustments(
     topology: &GraphGroupTopology<'_>,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let original_placements = clone_grid_placements(placements, resources)?;
     let original_root_axis = root_axis_positions(graph.direction, placements, resources)?;
@@ -158,7 +158,7 @@ fn solve_group_placement_constraints(
     placements: &mut [GridCoord],
     disabled_overrides: &mut [bool],
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<GroupPlacementState> {
     // Rebuild each attempt from the Dagre placement. A conflicting rigid-block cycle therefore
     // disables only the implicated local override instead of accumulating partial shifts.
@@ -780,7 +780,7 @@ fn separate_placement_blocks_on_cross_axis(
     placements: &mut [GridCoord],
     blocks: &PlacementBlocks,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for current_block_index in 0..blocks.blocks.len() {
         let current_block = &blocks.blocks[current_block_index];
@@ -822,7 +822,7 @@ fn required_cross_axis_shift(
     current_members: &[usize],
     previous_members: &[usize],
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<usize> {
     const NODE_GRID_SPAN: usize = 3;
 
@@ -908,7 +908,7 @@ fn placement_state_is_valid(
     placements: &[GridCoord],
     invariants: &[RankInvariant],
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<bool> {
     checkpoint_layout(execution)?;
     resources.charge_layout_work(invariants.len())?;
@@ -942,11 +942,8 @@ fn placement_state_is_valid(
     Ok(true)
 }
 
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(OperationPhase::Layout)?;
-    }
-    Ok(())
+fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
+    execution.checkpoint(OperationPhase::Layout)
 }
 
 fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
@@ -1074,7 +1071,7 @@ mod tests {
             &placements,
             &[],
             &mut resources,
-            Some(AsciiExecution::new(&control, &policy)),
+            AsciiExecution::new(&control, &policy),
         )
         .expect_err("cancellation should win before the next pair-work debit");
 

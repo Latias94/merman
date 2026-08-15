@@ -34,15 +34,11 @@ pub(crate) fn from_state_model_with_resources(
     policy: AsciiResourcePolicy,
 ) -> Result<AsciiGraph> {
     let mut resources = ResourceContext::new(policy);
-    from_state_model_with_context(model, &mut resources)
-}
-
-#[cfg(test)]
-pub(crate) fn from_state_model_with_context(
-    model: &StateDiagramRenderModel,
-    resources: &mut ResourceContext,
-) -> Result<AsciiGraph> {
-    from_state_model_with_context_controlled(model, resources, None)
+    from_state_model_with_context_and_execution(
+        model,
+        &mut resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 pub(crate) fn from_state_model_with_context_and_execution(
@@ -50,14 +46,7 @@ pub(crate) fn from_state_model_with_context_and_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
-    from_state_model_with_context_controlled(model, resources, Some(execution))
-}
-
-fn from_state_model_with_context_controlled(
-    model: &StateDiagramRenderModel,
-    resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
-) -> Result<AsciiGraph> {
+    execution.rebind_resource_context(resources, merman_core::OperationPhase::Semantic);
     preflight_state_projection_text(model, resources, execution)?;
     let projection_work = state_projection_work(model, resources, execution)?;
     resources.charge_layout_work(projection_work)?;
@@ -138,17 +127,14 @@ fn from_state_model_with_context_controlled(
     Ok(graph)
 }
 
-fn checkpoint_projection(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)?;
-    }
-    Ok(())
+fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
+    execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)
 }
 
 fn preflight_state_projection_text(
     model: &StateDiagramRenderModel,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     charge_text_layout(resources, &model.direction)?;
     for (index, node) in model.nodes.iter().enumerate() {
@@ -191,7 +177,7 @@ fn preflight_state_projection_text(
 fn state_projection_work(
     model: &StateDiagramRenderModel,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<usize> {
     let mut authored_items = 0usize;
     for (index, node) in model.nodes.iter().enumerate() {
@@ -254,7 +240,7 @@ fn projection_allocation_failed() -> AsciiError {
 fn validate_supported_state_model(
     model: &StateDiagramRenderModel,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let mut node_by_id = HashMap::new();
     node_by_id
@@ -288,7 +274,7 @@ fn validate_state_parent_ownership(
     model: &StateDiagramRenderModel,
     node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint_projection(execution, index)?;
@@ -361,7 +347,7 @@ fn unsupported(feature: &'static str) -> AsciiError {
 
 fn group_members_by_id(
     model: &StateDiagramRenderModel,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashMap<String, Vec<String>>> {
     let mut members = HashMap::<String, Vec<String>>::new();
     members
@@ -383,7 +369,7 @@ fn group_members_by_id(
 
 fn note_node_parent_by_id(
     model: &StateDiagramRenderModel,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashMap<String, String>> {
     let mut parents = HashMap::new();
     parents
@@ -405,7 +391,7 @@ fn note_node_parent_by_id(
 fn note_side_constraints(
     model: &StateDiagramRenderModel,
     note_node_parent_by_id: &HashMap<String, String>,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashMap<String, GraphNodeSideConstraint>> {
     let mut note_group_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     note_group_by_id
@@ -487,7 +473,7 @@ fn sorted_group_nodes<'a>(
     model: &'a StateDiagramRenderModel,
     group_members: &HashMap<String, Vec<String>>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<&'a StateDiagramRenderNode>> {
     let mut parent_by_id = HashMap::new();
     parent_by_id
@@ -536,7 +522,7 @@ fn node_depth(
     parent_by_id: &HashMap<&str, Option<&str>>,
     node_count: usize,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<usize> {
     let mut depth = 0usize;
     let mut parent = node.parent_id.as_deref();
@@ -573,7 +559,7 @@ fn state_direction_projection(
     model: &StateDiagramRenderModel,
     root_direction: GraphDirection,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<StateDirectionProjection> {
     let mut node_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     node_by_id
@@ -625,7 +611,7 @@ fn nearest_explicit_ancestor_direction(
     node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
     node_count: usize,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<GraphDirection>> {
     let mut parent_id = node.parent_id.as_deref();
     for _ in 0..node_count {
@@ -654,11 +640,8 @@ fn nearest_explicit_ancestor_direction(
     }
 }
 
-fn checkpoint_projection_before_charge(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    }
-    Ok(())
+fn checkpoint_projection_before_charge(execution: AsciiExecution<'_>) -> Result<()> {
+    execution.checkpoint(merman_core::OperationPhase::Semantic)
 }
 
 fn is_group_container(
@@ -864,6 +847,37 @@ fn parse_state_direction(direction: &str) -> Result<GraphDirection> {
 mod tests {
     use super::*;
     use merman_core::resources::ResourceProfile;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn state_projection_cancellation_precedes_the_first_resource_debit() {
+        let model = StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes: vec![state_node("a")],
+            ..StateDiagramRenderModel::default()
+        };
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one work unit should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+
+        let error = from_state_model_with_context_and_execution(
+            &model,
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("cancellation should win before state projection work exhaustion");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Semantic
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+    }
 
     #[test]
     fn state_projection_accepts_exact_work_and_rejects_max_minus_one() {
@@ -921,27 +935,32 @@ mod tests {
             .map(|node| (node.id.as_str(), node))
             .collect::<HashMap<_, _>>();
         let validation_resources = ResourceContext::new(unbounded);
-        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, None)
+        let execution = AsciiExecution::for_test(&unbounded);
+        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, execution)
             .expect("large flat state model should pass ownership validation");
         assert_eq!(validation_resources.layout_work_used(), 0);
 
-        let group_members = group_members_by_id(&model, None)
+        let group_members = group_members_by_id(&model, execution)
             .expect("large flat state model should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
-        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, None)
+        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, execution)
             .expect("large flat state model should sort groups");
         assert!(groups.is_empty());
         assert_eq!(sorting_resources.layout_work_used(), 0);
 
         let direction_resources = ResourceContext::new(unbounded);
-        let projection =
-            state_direction_projection(&model, GraphDirection::TopDown, &direction_resources, None)
-                .expect("large flat state model should project directions");
+        let projection = state_direction_projection(
+            &model,
+            GraphDirection::TopDown,
+            &direction_resources,
+            execution,
+        )
+        .expect("large flat state model should project directions");
         assert_eq!(projection.node_by_id.len(), NODE_COUNT);
         assert!(projection.group_by_id.is_empty());
         assert_eq!(direction_resources.layout_work_used(), 0);
         assert_eq!(
-            state_projection_work(&model, &direction_resources, None)
+            state_projection_work(&model, &direction_resources, execution)
                 .expect("large flat state projection work should fit"),
             NODE_COUNT * STATE_NODE_PROJECTION_WORK_UNITS
         );
@@ -952,18 +971,25 @@ mod tests {
         let node = state_node("flat");
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let resources = ResourceContext::new(unbounded);
+        let execution = AsciiExecution::for_test(&unbounded);
 
         let parent_by_id = HashMap::new();
         assert_eq!(
-            node_depth(&node, &parent_by_id, usize::MAX, &resources, None,)
+            node_depth(&node, &parent_by_id, usize::MAX, &resources, execution,)
                 .expect("a flat state should not allocate from the model-width bound"),
             0
         );
 
         let node_by_id = HashMap::from([(node.id.as_str(), &node)]);
         assert_eq!(
-            nearest_explicit_ancestor_direction(&node, &node_by_id, usize::MAX, &resources, None,)
-                .expect("a flat state direction lookup should not allocate from the model width"),
+            nearest_explicit_ancestor_direction(
+                &node,
+                &node_by_id,
+                usize::MAX,
+                &resources,
+                execution,
+            )
+            .expect("a flat state direction lookup should not allocate from the model width"),
             None
         );
         assert_eq!(resources.layout_work_used(), 0);
@@ -999,17 +1025,18 @@ mod tests {
             .map(|node| (node.id.as_str(), node))
             .collect::<HashMap<_, _>>();
         let validation_resources = ResourceContext::new(unbounded);
-        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, None)
+        let execution = AsciiExecution::for_test(&unbounded);
+        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, execution)
             .expect("deep valid state parent chain should pass ownership validation");
         assert_eq!(
             validation_resources.layout_work_used(),
             expected_ancestor_steps
         );
 
-        let group_members = group_members_by_id(&model, None)
+        let group_members = group_members_by_id(&model, execution)
             .expect("deep valid state parent chain should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
-        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, None)
+        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, execution)
             .expect("deep valid state parent chain should sort groups");
         assert_eq!(groups.len(), NODE_COUNT - 1);
         assert_eq!(
@@ -1023,9 +1050,13 @@ mod tests {
         );
 
         let direction_resources = ResourceContext::new(unbounded);
-        let projection =
-            state_direction_projection(&model, GraphDirection::TopDown, &direction_resources, None)
-                .expect("deep valid state parent chain should project directions");
+        let projection = state_direction_projection(
+            &model,
+            GraphDirection::TopDown,
+            &direction_resources,
+            execution,
+        )
+        .expect("deep valid state parent chain should project directions");
         assert_eq!(
             projection.node_by_id.get("state-63"),
             Some(&GraphDirection::LeftRight)
@@ -1045,8 +1076,12 @@ mod tests {
     fn assert_projection_accepts_exact_work(model: &StateDiagramRenderModel) {
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut measured = ResourceContext::new(unbounded);
-        from_state_model_with_context(model, &mut measured)
-            .expect("unbounded state projection should succeed");
+        from_state_model_with_context_and_execution(
+            model,
+            &mut measured,
+            AsciiExecution::for_test(&unbounded),
+        )
+        .expect("unbounded state projection should succeed");
         let exact = measured.layout_work_used();
         assert!(exact > 1);
 

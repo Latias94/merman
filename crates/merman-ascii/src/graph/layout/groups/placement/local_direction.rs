@@ -22,14 +22,12 @@ pub(super) fn apply_subgraph_direction_overrides(
     placements: &mut [GridCoord],
     disabled_overrides: &[bool],
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let graph = context.graph;
     let topology = context.topology;
     for group_index in 0..graph.groups.len() {
-        if let Some(execution) = execution {
-            execution.checkpoint(OperationPhase::Layout)?;
-        }
+        execution.checkpoint(OperationPhase::Layout)?;
         if disabled_overrides
             .get(group_index)
             .copied()
@@ -328,7 +326,7 @@ fn place_group_nodes(
     graph: &AsciiGraph,
     direction: GraphDirection,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<HashMap<usize, GridCoord>> {
     let ranked = super::super::super::grid::place_ranked_grid_nodes_without_group_adjustments(
         graph, direction, resources, execution,

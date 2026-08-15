@@ -36,7 +36,12 @@ pub(crate) fn render_graph(
     policy: AsciiResourcePolicy,
 ) -> Result<String> {
     let mut resources = ResourceContext::new(policy);
-    render_graph_uncontrolled(graph, options, &mut resources)
+    render_graph_with_resources_and_execution(
+        graph,
+        options,
+        &mut resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 #[cfg(test)]
@@ -45,7 +50,13 @@ pub(crate) fn render_graph_with_resources(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<String> {
-    render_graph_uncontrolled(graph, options, resources)
+    let policy = resources.policy();
+    render_graph_with_resources_and_execution(
+        graph,
+        options,
+        resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 #[cfg(test)]
@@ -77,18 +88,6 @@ pub(crate) fn render_graph_with_resources_and_execution(
     let mut emit_resources =
         execution.resource_context(&layout_resources, merman_core::OperationPhase::Emit);
     paint_graph_render_controlled(prepared, options, &mut emit_resources, execution)
-}
-
-#[cfg(test)]
-fn render_graph_uncontrolled(
-    graph: &AsciiGraph,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-) -> Result<String> {
-    let control = merman_core::OperationControl::new();
-    let policy = resources.policy();
-    let execution = AsciiExecution::new(&control, &policy);
-    render_graph_with_resources_and_execution(graph, options, resources, execution)
 }
 
 fn prepare_graph_render_controlled(

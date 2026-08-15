@@ -134,7 +134,14 @@ pub(in crate::graph::routing) fn plan_edge_route_with_resources(
     } else {
         Some(GraphGroupTopology::try_new(request.graph, resources)?)
     };
-    plan_edge_route_with_topology(request, topology.as_ref(), label, resources, None)
+    let policy = resources.policy();
+    plan_edge_route_with_topology(
+        request,
+        topology.as_ref(),
+        label,
+        resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 pub(in crate::graph::routing) fn plan_edge_route_with_topology(
@@ -142,7 +149,7 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
     topology: Option<&GraphGroupTopology<'_>>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<EdgeRoutePlan> {
     let boundary =
         edge_boundary_context_with_resources(request.graph, request.edge, topology, resources)?;
@@ -197,7 +204,7 @@ fn plan_left_right_route(
     request: EdgeRouteRequest<'_>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
     let graph_layout = request.graph_layout;
     let from = request.from;
@@ -333,7 +340,7 @@ fn plan_top_down_route(
     request: EdgeRouteRequest<'_>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
     let from = request.from;
     let to = request.to;
@@ -507,7 +514,7 @@ fn plan_boundary_route(
     request: EdgeRouteRequest<'_>,
     label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
     match boundary {
         EdgeBoundaryContext::Entering {

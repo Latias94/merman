@@ -621,8 +621,16 @@ diagram gates:
 
 U30 closeout disposition: the Sequence actor scanner now has its own lexical-syntax owner, the
 relation graph has separate document and self-loop planning modules, and Class namespace ownership
-has a dedicated renderer module. The Sequence and Flowchart integration suites are split into
-semantic test modules while their shared parser/options helpers remain private in one parent.
+has a dedicated renderer module. Graph grid layout now delegates Mermaid-compatible Dagre rank
+projection to `graph/layout/grid/rank.rs`; that module alone owns Graphlib creation order, compound
+anchors, Dugong work control, dense rank projection, and the associated characterization tests
+behind two rank-result interfaces. The remaining `grid.rs` intentionally owns the single ranked
+node geometry admission pipeline: label plans determine node shape extents, logical placements feed
+axis sizing and edge spacing, and the admitted plans are materialized only after the final extent
+check. Splitting those steps would expose mutable placement/axis state or duplicate exact resource
+accounting rather than create a deeper module. The Sequence and Flowchart integration suites are
+split into semantic test modules while their shared parser/options helpers remain private in one
+parent.
 `sequence/plan.rs` and `sequence/control.rs` remain intentionally cohesive: row planning,
 `SequenceExtentLedger` reservations, control-frame lifetimes, and final paint ordering form one
 admission protocol and currently have no stable internal seam that would avoid exposing mutable row

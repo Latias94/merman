@@ -268,7 +268,15 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<RouteScenePlan<'a>> {
-    prepare_route_scene_inner(graph, graph_layout, edges, charset, resources, None)
+    let policy = resources.policy();
+    prepare_route_scene_with_execution(
+        graph,
+        graph_layout,
+        edges,
+        charset,
+        resources,
+        AsciiExecution::for_test(&policy),
+    )
 }
 
 pub(super) fn prepare_route_scene_with_execution<'a>(
@@ -279,27 +287,8 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RouteScenePlan<'a>> {
-    prepare_route_scene_inner(
-        graph,
-        graph_layout,
-        edges,
-        charset,
-        resources,
-        Some(execution),
-    )
-}
-
-fn prepare_route_scene_inner<'a>(
-    graph: &AsciiGraph,
-    graph_layout: &GraphLayout,
-    edges: &'a [AsciiGraphEdge],
-    charset: &GraphCharset,
-    resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
-) -> Result<RouteScenePlan<'a>> {
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    }
+    execution.rebind_resource_context(resources, merman_core::OperationPhase::Layout);
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let topology = if graph.groups.is_empty() {
         None
     } else {
@@ -328,7 +317,7 @@ fn prepare_route_scene_inner<'a>(
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
 
-    let mut occupancy = SceneOccupancy::try_new_for_routes_with_execution(
+    let mut occupancy = SceneOccupancy::try_new_for_routes(
         graph_layout,
         canonical_edges.len(),
         resources,
@@ -336,9 +325,7 @@ fn prepare_route_scene_inner<'a>(
     )?;
 
     for (edge_index, edge) in canonical_edges.iter().enumerate() {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Layout)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         if edge.stroke == super::model::GraphEdgeStroke::Invisible {
             continue;
         }
@@ -390,20 +377,12 @@ fn prepare_route_scene_inner<'a>(
         };
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
-            if let Some(execution) = execution {
-                execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            }
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
             let plan = plan
                 .with_marker_requests(edge.start_marker, edge.end_marker, graph.diagram_type())?
                 .with_style(edge.style);
-            let Some(score) = occupancy.score_route_with_execution(
-                &routes,
-                &plan,
-                &owner,
-                resources,
-                graph.diagram_type(),
-                execution,
-            )?
+            let Some(score) =
+                occupancy.score_route(&routes, &plan, &owner, resources, graph.diagram_type())?
             else {
                 continue;
             };
@@ -431,9 +410,7 @@ fn prepare_route_scene_inner<'a>(
         routes.push(prepared);
     }
 
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     allocate_marker_berths(
         &mut routes,
         &mut occupancy,
@@ -441,18 +418,14 @@ fn prepare_route_scene_inner<'a>(
         resources,
         graph.diagram_type(),
     )?;
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     allocate_route_label_placements(&mut routes, &mut occupancy, resources, graph.diagram_type())?;
 
     let mut width = 0;
     let mut height = 0;
     let mut planned_cell_count = 0usize;
     for route in &routes {
-        if let Some(execution) = execution {
-            execution.checkpoint(merman_core::OperationPhase::Layout)?;
-        }
+        execution.checkpoint(merman_core::OperationPhase::Layout)?;
         planned_cell_count = planned_cell_count
             .checked_add(route.plan.active_cells().count())
             .ok_or_else(|| {
@@ -465,9 +438,7 @@ fn prepare_route_scene_inner<'a>(
         height = height.max(plan_height);
     }
 
-    if let Some(execution) = execution {
-        execution.checkpoint(merman_core::OperationPhase::Layout)?;
-    }
+    execution.checkpoint(merman_core::OperationPhase::Layout)?;
     Ok(RouteScenePlan {
         routes,
         extent: (width, height),
