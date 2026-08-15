@@ -39,14 +39,14 @@ fn er_theme_color_limit(effective_config: &serde_json::Value) -> usize {
         .unwrap_or(12)
 }
 
-fn er_redux_color_css(
+fn write_er_redux_color_css(
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     data_look: &str,
     border_colors: &[String],
     background_colors: &[String],
     theme_color_limit: usize,
-) -> String {
-    let mut out = String::new();
+) -> Result<()> {
     for index in 0..theme_color_limit {
         let Some(border_color) = border_colors.get(index) else {
             continue;
@@ -56,7 +56,7 @@ fn er_redux_color_css(
             .map(|color| format!("fill:{color};"))
             .unwrap_or_default();
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
             escape_xml(diagram_id),
             escape_xml(data_look),
@@ -69,23 +69,46 @@ fn er_redux_color_css(
             border_color,
             fill,
         );
+        out.checkpoint()?;
     }
-    out
+    Ok(())
 }
 
-fn insert_er_redux_color_css(css: &mut String, diagram_id: &str, color_css: &str) {
-    if color_css.is_empty() {
-        return;
-    }
-
+fn er_redux_color_css_insertion_point(css: &str, diagram_id: &str) -> usize {
     let escaped_id = escape_xml(diagram_id);
     let family_rule = format!("#{escaped_id} .entityBox");
     let root_rule = format!("#{escaped_id} :root");
-    let insertion_point = css
-        .find(&family_rule)
+    css.find(&family_rule)
         .or_else(|| css.find(&root_rule))
-        .unwrap_or(css.len());
-    css.insert_str(insertion_point, color_css);
+        .unwrap_or(css.len())
+}
+
+fn write_er_style(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    data_look: &str,
+    effective_config: &serde_json::Value,
+    border_colors: &[String],
+    background_colors: &[String],
+    theme_color_limit: usize,
+) -> Result<()> {
+    let css = er_css(diagram_id, effective_config)?;
+    let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
+
+    out.push_str("<style>");
+    out.push_str(&css[..insertion_point]);
+    out.checkpoint()?;
+    write_er_redux_color_css(
+        out,
+        diagram_id,
+        data_look,
+        border_colors,
+        background_colors,
+        theme_color_limit,
+    )?;
+    out.push_str(&css[insertion_point..]);
+    out.push_str("</style>");
+    out.checkpoint()
 }
 
 fn compile_er_entity_styles(
@@ -385,7 +408,7 @@ pub(crate) fn render_er_diagram_svg_model(
     });
 
     let pad = options.viewbox_padding.max(0.0);
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let (translate_x, translate_y, root_bounds, root_width_for_title) = if is_empty_diagram {
         let empty_span = (pad * 2.0).max(1.0);
         (
@@ -445,17 +468,17 @@ pub(crate) fn render_er_diagram_svg_model(
         );
         out.push_str("</desc>");
     }
+    out.checkpoint()?;
 
-    let mut css = er_css(diagram_id, effective_config)?;
-    let redux_color_css = er_redux_color_css(
+    write_er_style(
+        &mut out,
         diagram_id,
         data_look,
+        effective_config,
         &redux_border_colors,
         &redux_background_colors,
         theme_color_limit,
-    );
-    insert_er_redux_color_css(&mut css, diagram_id, &redux_color_css);
-    let _ = write!(&mut out, r#"<style>{css}</style>"#);
+    )?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -473,6 +496,7 @@ pub(crate) fn render_er_diagram_svg_model(
             r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentStart" class="marker mdParent er" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>
 <defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentEnd" class="marker mdParent er" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>"#
         );
+        out.checkpoint()?;
     }
 
     let _ = writeln!(
@@ -486,6 +510,7 @@ pub(crate) fn render_er_diagram_svg_model(
 <defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
 <defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
     );
+    out.checkpoint()?;
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
@@ -541,12 +566,14 @@ pub(crate) fn render_er_diagram_svg_model(
         let _ = writeln!(&mut out, r#"<g class="root">"#);
         out.push_str(r#"<g class="clusters"/>"#);
     }
+    out.checkpoint()?;
 
     if is_elk_layout {
         out.push_str(r#"<g class="edges edgePaths">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
+    out.checkpoint()?;
     if options.debug.include_edges {
         for e in &edges {
             if e.points.len() < 2 {
@@ -604,11 +631,14 @@ pub(crate) fn render_er_diagram_svg_model(
                 let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
             }
             out.push_str(" />");
+            out.checkpoint()?;
         }
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="edgeLabels">"#);
+    out.checkpoint()?;
     if options.debug.include_edges {
         for e in &edges {
             let rel_idx = er_rel_idx_from_edge_id(&e.id)
@@ -755,12 +785,15 @@ pub(crate) fn render_er_diagram_svg_model(
                     out.push_str("</g></g></g>");
                 }
             }
+            out.checkpoint()?;
         }
     }
     out.push_str("</g>\n");
+    out.checkpoint()?;
 
     // Entities drawn after relationships so they cover markers when overlapping.
     out.push_str(r#"<g class="nodes">"#);
+    out.checkpoint()?;
     for n in &nodes {
         let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
             if n.id.contains("---") {
@@ -776,6 +809,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 out.push_str(r#"<rect width="0.1" height="0.1"/>"#);
                 out.push_str(r#"<g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#);
             }
+            out.checkpoint()?;
             continue;
         };
 
@@ -841,6 +875,7 @@ pub(crate) fn render_er_diagram_svg_model(
             fmt(cx),
             fmt(cy)
         );
+        out.checkpoint()?;
 
         if entity.attributes.is_empty() {
             let _ = write!(
@@ -852,6 +887,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(w),
                 fmt(h)
             );
+            out.checkpoint()?;
             let wrap_mode = entity_wrap_mode;
             let label_metrics = measurer.measure_wrapped(
                 measure.label.rendered_text(),
@@ -878,6 +914,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 html_label_content(&measure.label, "", true)
             );
             out.push_str("</g>");
+            out.checkpoint()?;
             continue;
         }
 
@@ -1084,6 +1121,7 @@ pub(crate) fn render_er_diagram_svg_model(
             override_style_attr
         );
         out.push_str("</g>");
+        out.checkpoint()?;
 
         // Row rectangles
         let odd_fill = theme_token(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
@@ -1151,6 +1189,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 row_override_style_attr
             );
             out.push_str("</g>");
+            out.checkpoint()?;
         }
 
         // HTML labels
@@ -1183,6 +1222,7 @@ pub(crate) fn render_er_diagram_svg_model(
             html_label_content(&measure.label, &span_style_attr, false)
         );
         out.push_str("</div></foreignObject></g>");
+        out.checkpoint()?;
 
         let type_col_w = measure.type_col_w.max(0.0);
         let name_col_w = measure.name_col_w.max(0.0);
@@ -1299,6 +1339,8 @@ pub(crate) fn render_er_diagram_svg_model(
             );
             out.push_str("</div></foreignObject></g>");
 
+            out.checkpoint()?;
+
             row_top += row_h;
         }
 
@@ -1315,7 +1357,7 @@ pub(crate) fn render_er_diagram_svg_model(
         // - once via the later `yOffsets` pass (which always contains `0`)
         #[allow(clippy::too_many_arguments)]
         fn write_divider_group(
-            out: &mut String,
+            out: &mut impl SvgOutput,
             hand_drawn_seed: &roughr::core::RoughRandomness,
             x0: f64,
             y0: f64,
@@ -1323,7 +1365,7 @@ pub(crate) fn render_er_diagram_svg_model(
             y1: f64,
             fill: &str,
             divider_path_attrs: &str,
-        ) {
+        ) -> Result<()> {
             let (rx0, ry0, rx1, ry1) = thin_divider_rect_bounds(x0, y0, x1, y1);
             let _ = write!(
                 out,
@@ -1333,6 +1375,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 rough_rect_border_path_d(hand_drawn_seed, rx0, ry0, rx1, ry1),
                 divider_path_attrs
             );
+            out.checkpoint()
         }
 
         write_divider_group(
@@ -1344,7 +1387,7 @@ pub(crate) fn render_er_diagram_svg_model(
             sep_y,
             &box_fill,
             &divider_path_attrs,
-        );
+        )?;
 
         let mut divider_xs: Vec<f64> = Vec::new();
         divider_xs.push(ox + type_col_w);
@@ -1364,7 +1407,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 box_y1,
                 &box_fill,
                 &divider_path_attrs,
-            );
+            )?;
         }
 
         write_divider_group(
@@ -1376,17 +1419,20 @@ pub(crate) fn render_er_diagram_svg_model(
             sep_y,
             &box_fill,
             &divider_path_attrs,
-        );
+        )?;
 
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     out.push_str("</g>\n");
+    out.checkpoint()?;
 
     if !is_elk_layout {
         out.push_str("</g>\n</g>\n");
     }
+    out.checkpoint()?;
 
-    push_er_gradient(&mut out, diagram_id, effective_config);
+    push_er_gradient(&mut out, diagram_id, effective_config)?;
 
     if let Some(title) = diagram_title {
         // Mermaid `utils.insertTitle(...)` appends the title after rendering the graph content.
@@ -1405,19 +1451,20 @@ pub(crate) fn render_er_diagram_svg_model(
             escape_xml(title)
         );
         out.push_str("</text>\n");
+        out.checkpoint()?;
     }
 
-    push_er_shadow_defs(&mut out, diagram_id, effective_config);
+    push_er_shadow_defs(&mut out, diagram_id, effective_config)?;
 
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 fn push_er_shadow_defs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config_value: &serde_json::Value,
-) {
+) -> Result<()> {
     let flood_color = effective_config_value
         .get("theme")
         .and_then(|v| v.as_str())
@@ -1433,15 +1480,16 @@ fn push_er_shadow_defs(
         diagram_id.as_str(),
         flood_color
     );
+    out.checkpoint()
 }
 
 fn push_er_gradient(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config_value: &serde_json::Value,
-) {
+) -> Result<()> {
     if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return;
+        return Ok(());
     }
 
     let gradient_start =
@@ -1472,6 +1520,7 @@ fn push_er_gradient(
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
+    out.checkpoint()
 }
 
 fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &str) -> String {
@@ -1504,6 +1553,90 @@ mod tests {
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
     use serde_json::json;
     use std::collections::BTreeMap;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl super::SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn er_redux_color_css_stops_after_the_first_svg_sink_failure() {
+        let border_colors = vec!["#e879f9".to_string(), "#2dd4bf".to_string()];
+        let background_colors = vec!["#fdf4ff".to_string(), "#f0fdfa".to_string()];
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = super::write_er_redux_color_css(
+            &mut out,
+            "er",
+            "classic",
+            &border_colors,
+            &background_colors,
+            2,
+        )
+        .expect_err("the rejecting sink must stop ER Redux color CSS emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "ER Redux color CSS emission must stop at the first failed sink checkpoint"
+        );
+    }
 
     #[test]
     fn er_redux_color_theme_emits_per_entity_color_rules() {
@@ -1535,7 +1668,9 @@ mod tests {
         );
 
         assert_eq!(super::er_theme_color_limit(&config), 2);
-        let css = super::er_redux_color_css("er", "classic", &borders, &backgrounds, 2);
+        let mut css = String::new();
+        super::write_er_redux_color_css(&mut css, "er", "classic", &borders, &backgrounds, 2)
+            .unwrap();
         assert!(css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
         ));
@@ -1543,14 +1678,24 @@ mod tests {
             r##"#er [data-look="classic"][data-color-id="color-1"].node rect{stroke:#2dd4bf;fill:#f0fdfa;}"##
         ));
 
-        let dark_css = super::er_redux_color_css("er", "classic", &borders, &[], 2);
+        let mut dark_css = String::new();
+        super::write_er_redux_color_css(&mut dark_css, "er", "classic", &borders, &[], 2).unwrap();
         assert!(dark_css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
         ));
         assert!(!dark_css.contains("fill:"), "{dark_css}");
 
-        let mut merged = super::er_css("er", &config).unwrap();
-        super::insert_er_redux_color_css(&mut merged, "er", &css);
+        let mut merged = String::new();
+        super::write_er_style(
+            &mut merged,
+            "er",
+            "classic",
+            &config,
+            &borders,
+            &backgrounds,
+            2,
+        )
+        .unwrap();
         let colors = merged.find("[data-color-id=").unwrap();
         let family = merged.find("#er .entityBox").unwrap();
         let root = merged.find("#er :root").unwrap();
