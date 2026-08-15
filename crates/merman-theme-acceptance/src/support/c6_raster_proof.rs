@@ -63,6 +63,21 @@ pub(crate) fn decode_bounded_png_artifact(
     Ok(raster)
 }
 
+pub(crate) fn parse_c6_svg_view_box(value: &str) -> C6ProofResult<[f64; 4]> {
+    let rect = parse_view_box(value)?;
+    Ok([rect.left, rect.top, rect.width, rect.height])
+}
+
+pub(crate) fn transformed_c6_svg_rect(node: roxmltree::Node<'_, '_>) -> C6ProofResult<[f64; 4]> {
+    let rect = transformed_rect(node)?;
+    Ok([rect.left, rect.top, rect.width, rect.height])
+}
+
+pub(crate) fn parse_c6_hex_rgb(value: &str) -> C6ProofResult<[u8; 3]> {
+    let color = Rgb::parse_hex(value)?;
+    Ok([color.red, color.green, color.blue])
+}
+
 pub(crate) fn prove_brutalist_state_jpeg(
     bytes: &[u8],
     raster_plan: RasterPlan,
@@ -800,6 +815,67 @@ impl RasterImage {
             }
         }
         Some(count)
+    }
+
+    pub(crate) fn rounded_corner_coverage_in_svg_rect(
+        &self,
+        view_box: [f64; 4],
+        rect: [f64; 4],
+        radius: f64,
+        stroke_width: f64,
+        canvas: [u8; 3],
+        tolerance: u8,
+    ) -> Option<RoundedCornerCoverage> {
+        let [view_left, view_top, view_width, view_height] = view_box;
+        let [left, top, width, height] = rect;
+        if !view_box
+            .into_iter()
+            .chain(rect)
+            .chain([radius, stroke_width])
+            .all(f64::is_finite)
+            || view_width <= 0.0
+            || view_height <= 0.0
+            || width <= 0.0
+            || height <= 0.0
+            || radius <= 0.0
+            || stroke_width < 0.0
+        {
+            return None;
+        }
+
+        let transform = self.transform(Rect {
+            left: view_left,
+            top: view_top,
+            width: view_width,
+            height: view_height,
+        });
+        let rounded_rect = Rect {
+            left,
+            top,
+            width,
+            height,
+        }
+        .expanded(stroke_width / 2.0);
+        let outer_radius = radius + stroke_width / 2.0;
+        let patch_size = outer_radius + 2.0;
+        Some(rounded_corner_coverage(
+            self,
+            transform,
+            Rect {
+                left: rounded_rect.left,
+                top: rounded_rect.top,
+                width: patch_size,
+                height: patch_size,
+            },
+            rounded_rect,
+            outer_radius,
+            Rgb {
+                red: canvas[0],
+                green: canvas[1],
+                blue: canvas[2],
+            },
+            tolerance,
+        ))
     }
 
     #[cfg(test)]
@@ -1851,7 +1927,7 @@ struct MaskBounds {
 }
 
 #[derive(Default)]
-struct RoundedCornerCoverage {
+pub(crate) struct RoundedCornerCoverage {
     inside_matching: usize,
     inside_total: usize,
     outside_matching: usize,
@@ -1859,11 +1935,19 @@ struct RoundedCornerCoverage {
 }
 
 impl RoundedCornerCoverage {
-    fn inside_ratio(&self) -> f64 {
+    pub(crate) const fn inside_total(&self) -> usize {
+        self.inside_total
+    }
+
+    pub(crate) const fn outside_total(&self) -> usize {
+        self.outside_total
+    }
+
+    pub(crate) fn inside_ratio(&self) -> f64 {
         self.inside_matching as f64 / self.inside_total as f64
     }
 
-    fn outside_ratio(&self) -> f64 {
+    pub(crate) fn outside_ratio(&self) -> f64 {
         self.outside_matching as f64 / self.outside_total as f64
     }
 }

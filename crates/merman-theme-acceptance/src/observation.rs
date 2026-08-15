@@ -233,6 +233,18 @@ pub(crate) struct C6TargetProof {
 }
 
 impl C6TargetProof {
+    pub(crate) fn brutalist_flowchart_standalone_svg(
+        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    ) -> Self {
+        Self::seal("brutalist-flowchart-standalone-svg-v1", mechanisms)
+    }
+
+    pub(crate) fn brutalist_flowchart_png(
+        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    ) -> Self {
+        Self::seal("brutalist-flowchart-png-v1", mechanisms)
+    }
+
     pub(crate) fn brutalist_state_standalone_svg(
         mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
     ) -> Self {
@@ -1019,8 +1031,8 @@ mod tests {
             .evaluate(&acceptance, &themes)
             .expect("complete synthetic receipts");
 
-        assert_eq!(report.verified_cell_count(), 4);
-        assert_eq!(report.render_group_count(), 2);
+        assert_eq!(report.verified_cell_count(), 6);
+        assert_eq!(report.render_group_count(), 3);
         assert_eq!(report.manifest_digest(), acceptance.manifest_digest());
         assert_ne!(report.execution_digest(), &[0; 32]);
     }
@@ -1031,8 +1043,8 @@ mod tests {
         let enforced = acceptance
             .enforced_tranche()
             .cells()
-            .next()
-            .expect("enforced cell");
+            .find(|cell| cell.key().family() == C6ProofFamily::State)
+            .expect("enforced State cell");
         let document = themed_state_document_with_ceiling(ThemeResourcePolicy::interactive());
         let identity = C6RenderIdentity::from_evidence(document.evidence());
         let group = C6RenderGroupReceipt::seal(

@@ -256,13 +256,16 @@
       "sourcePath": "sources/ordinal-palette.mmd",
       "sourceSha256": "55ea0bb4e826da54d31289834d374524cbf622fcaca54d084215a7b09514cb85",
       "expectationPath": "expectations/ordinal-palette.json",
-      "expectationSha256": "ec1be974b5fa055c62fa1d33947a08d2cb61256c84de6faf71805748be90bb17",
+      "expectationSha256": "84df0efbd45976d6919baf8fc82421e08784c23ad8c055efa60712f8e1397d64",
       "themeInputPath": "inputs/ordinal-palette.json",
-      "themeInputSha256": "9fe920cadf346ada6434e7ab55bcd0de28061415f4c318c71025033059b8448b",
+      "themeInputSha256": "525b6c15230070d2db5170f03bc18624024ef80418ea04a93f418b3506531ae6",
       "evidenceSourceIds": [
+        "source-excalidraw",
         "source-modern-mermaid"
       ],
-      "assetIds": []
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
     },
     {
       "id": "fixture-layered-canvas",

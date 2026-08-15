@@ -102,6 +102,11 @@ pub(crate) struct FamilyEvidenceRequirements {
 }
 
 impl FamilyEvidenceRequirements {
+    const BRUTALIST_FLOWCHART: Self = Self {
+        require_prepared_text: true,
+        require_root_theme: true,
+    };
+
     const BRUTALIST_STATE: Self = Self {
         require_prepared_text: true,
         require_root_theme: true,
@@ -147,15 +152,26 @@ mod c6_pdf_proof;
 mod c6_sequence_proof;
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[path = "support/c6_flowchart_proof.rs"]
+mod c6_flowchart_proof;
+
+use c6_flowchart_proof::{
+    BrutalistFlowchartSvgProof, prove_brutalist_flowchart_png, prove_brutalist_flowchart_svg,
+};
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use c6_pdf_proof::prove_brutalist_state_pdf;
 use c6_raster_proof::{PngArtifactProof, prove_brutalist_state_jpeg, prove_brutalist_state_png};
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub(crate) use c6_raster_proof::{RasterImage as C6RasterImage, decode_bounded_png_artifact};
+pub(crate) use c6_raster_proof::{
+    RasterImage as C6RasterImage, decode_bounded_png_artifact, parse_c6_hex_rgb,
+    parse_c6_svg_view_box, transformed_c6_svg_rect,
+};
 use c6_sequence_proof::{
     BrutalistSequenceSvgProof, prove_brutalist_sequence_png, prove_brutalist_sequence_svg,
 };
 
 const SHADOW_EFFECT_ID: &str = "c6-brutalist-state-shadow";
+const BRUTALIST_FLOWCHART_FIXTURE_ID: &str = "fixture-ordinal-palette";
 const BRUTALIST_STATE_FIXTURE_ID: &str = "fixture-c6-brutalist-state";
 const BRUTALIST_SEQUENCE_FIXTURE_ID: &str = "fixture-sequence-proof";
 const COMMON_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 3] = [
@@ -172,6 +188,14 @@ const COMPLETE_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 7] = [
     ReferenceThemeMechanism::StrokeStyling,
     ReferenceThemeMechanism::ThemeVariables,
 ];
+const BRUTALIST_FLOWCHART_MECHANISMS: [ReferenceThemeMechanism; 6] = [
+    ReferenceThemeMechanism::CanvasSolid,
+    ReferenceThemeMechanism::FontStack,
+    ReferenceThemeMechanism::NthChildSelector,
+    ReferenceThemeMechanism::RoundedCorners,
+    ReferenceThemeMechanism::StrokeStyling,
+    ReferenceThemeMechanism::ThemeVariables,
+];
 
 struct BrutalistCommonFixtureContract<'a> {
     tokens: &'a ReferenceThemeTokens,
@@ -181,12 +205,106 @@ struct BrutalistCommonFixtureContract<'a> {
     mechanisms: BTreeSet<ReferenceThemeMechanism>,
 }
 
+struct BrutalistFlowchartFixtureContract<'a> {
+    common: BrutalistCommonFixtureContract<'a>,
+    border: &'a ReferenceBorderInput,
+    radius_px: u16,
+    palette_colors: &'a [String],
+}
+
 struct BrutalistStateFixtureContract<'a> {
     common: BrutalistCommonFixtureContract<'a>,
     border: &'a ReferenceBorderInput,
     radius_px: u16,
     palette_colors: &'a [String],
     shadow: &'a ReferenceShadowInput,
+}
+
+impl<'a> BrutalistFlowchartFixtureContract<'a> {
+    fn from_input(input: &'a ReferenceThemeInput) -> C6ProofResult<Self> {
+        let common = BrutalistCommonFixtureContract::from_input(input)?;
+        let node_style = input.node_style().ok_or_else(|| {
+            C6ProofError::new(
+                "fixture-contract",
+                "Brutalist Flowchart requires a node style",
+            )
+        })?;
+        c6_ensure!(
+            "fixture-contract",
+            node_style.dash_pattern().is_empty(),
+            "Brutalist Flowchart node style must not use a dash pattern"
+        );
+        let border = node_style.border().ok_or_else(|| {
+            C6ProofError::new(
+                "fixture-contract",
+                "Brutalist Flowchart requires a node border",
+            )
+        })?;
+        let radius_px = node_style.corner_radius_px().ok_or_else(|| {
+            C6ProofError::new(
+                "fixture-contract",
+                "Brutalist Flowchart requires rounded nodes",
+            )
+        })?;
+        c6_ensure!(
+            "fixture-contract",
+            node_style.shadow().is_none(),
+            "Brutalist Flowchart does not admit a node shadow"
+        );
+
+        let palette_colors = match input.semantic_rules() {
+            [
+                ReferenceSemanticRule::OrdinalPalette {
+                    family,
+                    target,
+                    colors,
+                },
+            ] => {
+                c6_ensure!(
+                    "fixture-contract",
+                    *family == ReferenceDiagramFamily::Flowchart,
+                    "ordinal palette belongs to {family:?}, not Flowchart"
+                );
+                c6_ensure!(
+                    "fixture-contract",
+                    *target == ReferenceSemanticTarget::Node,
+                    "ordinal palette targets {target:?}, not nodes"
+                );
+                colors.as_slice()
+            }
+            _ => {
+                return Err(C6ProofError::new(
+                    "fixture-contract",
+                    "Brutalist Flowchart requires exactly one node ordinal palette",
+                ));
+            }
+        };
+        c6_ensure!(
+            "fixture-contract",
+            palette_colors.len() == 3,
+            "Brutalist Flowchart requires three ordinal colors, got {}",
+            palette_colors.len()
+        );
+        c6_ensure!(
+            "fixture-contract",
+            palette_colors.first().map(String::as_str) == Some(common.tokens.primary()),
+            "first Flowchart ordinal color does not match the primary token"
+        );
+
+        let expected_mechanisms = BRUTALIST_FLOWCHART_MECHANISMS.into_iter().collect();
+        c6_ensure!(
+            "fixture-contract",
+            common.mechanisms == expected_mechanisms,
+            "Brutalist Flowchart mechanisms differ: expected={expected_mechanisms:?}, actual={:?}",
+            common.mechanisms
+        );
+        Ok(Self {
+            common,
+            border,
+            radius_px,
+            palette_colors,
+        })
+    }
 }
 
 type BrutalistSequenceFixtureContract<'a> = BrutalistCommonFixtureContract<'a>;
@@ -392,6 +510,14 @@ impl<'a> Deref for BrutalistStateFixtureContract<'a> {
     }
 }
 
+impl<'a> Deref for BrutalistFlowchartFixtureContract<'a> {
+    type Target = BrutalistCommonFixtureContract<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.common
+    }
+}
+
 fn themes_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -510,6 +636,17 @@ impl C6RenderGroupAdapter {
     }
 }
 
+const BRUTALIST_FLOWCHART_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
+    theme: C6ProofTheme::Brutalist,
+    family: C6ProofFamily::Flowchart,
+    source_fixture_id: BRUTALIST_FLOWCHART_FIXTURE_ID,
+    supported_targets: &[
+        ExpectedOutputTarget::StandaloneSvg,
+        ExpectedOutputTarget::Png,
+    ],
+    execute: execute_brutalist_flowchart_group,
+};
+
 const BRUTALIST_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     theme: C6ProofTheme::Brutalist,
     family: C6ProofFamily::State,
@@ -532,8 +669,11 @@ const BRUTALIST_SEQUENCE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     execute: execute_brutalist_sequence_group,
 };
 
-static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] =
-    &[BRUTALIST_SEQUENCE_ADAPTER, BRUTALIST_STATE_ADAPTER];
+static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] = &[
+    BRUTALIST_FLOWCHART_ADAPTER,
+    BRUTALIST_SEQUENCE_ADAPTER,
+    BRUTALIST_STATE_ADAPTER,
+];
 
 #[derive(Debug)]
 struct C6RenderGroupWork {
@@ -719,6 +859,32 @@ fn complete_c6_svg_png_render_group(
     })
 }
 
+fn execute_brutalist_flowchart_group(
+    theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
+    group: C6RenderGroupWork,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
+    let (input, source) = load_render_group_fixture(theme_catalog, &group.key)?;
+    let rendered = prove_render_group(
+        &group.key,
+        prove_brutalist_flowchart_rendered_document(theme_catalog, input, &source),
+    )?;
+    complete_c6_svg_png_render_group(
+        theme_catalog,
+        acceptance,
+        group,
+        &rendered.document,
+        &rendered.identity,
+        C6TargetProof::brutalist_flowchart_standalone_svg(rendered.svg_proof.mechanisms()),
+        |_, bytes, plan| {
+            prove_brutalist_flowchart_png(&rendered.contract, &rendered.svg_proof, bytes, plan)?;
+            Ok(C6TargetProof::brutalist_flowchart_png(
+                rendered.svg_proof.mechanisms(),
+            ))
+        },
+    )
+}
+
 fn execute_brutalist_state_group(
     theme_catalog: &ThemeFixtureCatalog,
     acceptance: &C6AcceptanceCatalog,
@@ -768,6 +934,38 @@ fn execute_brutalist_sequence_group(
     )
 }
 
+struct BrutalistFlowchartRenderedDocument<'a> {
+    contract: BrutalistFlowchartFixtureContract<'a>,
+    document: RenderedDocument,
+    identity: crate::observation::C6RenderIdentity,
+    svg_proof: BrutalistFlowchartSvgProof,
+}
+
+fn prove_brutalist_flowchart_rendered_document<'a>(
+    theme_catalog: &ThemeFixtureCatalog,
+    input: &'a ReferenceThemeInput,
+    source: &str,
+) -> C6ProofResult<BrutalistFlowchartRenderedDocument<'a>> {
+    let contract = BrutalistFlowchartFixtureContract::from_input(input)?;
+    let theme = compile_brutalist_flowchart_theme(theme_catalog, &contract)?;
+    let renderer = brutalist_native_text_renderer(contract.font_family());
+    let document = render_brutalist_document(&renderer, source, &theme, portable_svg_request())?;
+    let identity = prove_portable_family_evidence(
+        document.evidence(),
+        &theme,
+        DiagramFamilyId::FLOWCHART,
+        FamilyEvidenceRequirements::BRUTALIST_FLOWCHART,
+    )?;
+    let svg_proof = prove_brutalist_flowchart_svg(&contract, document.svg())?;
+
+    Ok(BrutalistFlowchartRenderedDocument {
+        contract,
+        document,
+        identity,
+        svg_proof,
+    })
+}
+
 struct BrutalistStateRenderedDocument<'a> {
     contract: BrutalistStateFixtureContract<'a>,
     document: RenderedDocument,
@@ -812,7 +1010,7 @@ fn prove_brutalist_sequence_rendered_document<'a>(
 ) -> C6ProofResult<BrutalistSequenceRenderedDocument<'a>> {
     let contract = BrutalistSequenceFixtureContract::from_sequence_input(input)?;
     let theme = compile_brutalist_sequence_theme(theme_catalog, &contract)?;
-    let renderer = brutalist_sequence_renderer(contract.font_family());
+    let renderer = brutalist_native_text_renderer(contract.font_family());
     let document = render_brutalist_document(&renderer, source, &theme, portable_svg_request())?;
     let identity = prove_portable_family_evidence(
         document.evidence(),
@@ -1252,7 +1450,7 @@ fn brutalist_state_renderer() -> Renderer {
     )))
 }
 
-fn brutalist_sequence_renderer(font_family: &str) -> Renderer {
+fn brutalist_native_text_renderer(font_family: &str) -> Renderer {
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({
             "htmlLabels": false,
@@ -1292,6 +1490,45 @@ fn render_brutalist_document(
         ));
     };
     Ok(output)
+}
+
+fn compile_brutalist_flowchart_theme(
+    theme_catalog: &ThemeFixtureCatalog,
+    contract: &BrutalistFlowchartFixtureContract<'_>,
+) -> C6ProofResult<DiagramTheme> {
+    let mut node_patch = ThemeStylePatch::default()
+        .with_stroke(brutalist_solid(
+            contract.border.color(),
+            "flowchart-node-stroke",
+        )?)
+        .with_stroke_width(f32::from(contract.border.width_px()))
+        .map_err(|error| C6ProofError::new("flowchart-node-stroke", error.to_string()))?;
+    node_patch.geometry.radius = Specified::Value(f32::from(contract.radius_px));
+
+    let palette_colors = contract
+        .palette_colors
+        .iter()
+        .map(|color| {
+            ThemeColorValue::parse(color)
+                .map_err(|error| C6ProofError::new("flowchart-node-palette", error.to_string()))
+        })
+        .collect::<C6ProofResult<Vec<_>>>()?;
+    let palette = OrdinalPalette::new(palette_colors)
+        .map_err(|error| C6ProofError::new("flowchart-node-palette", error.to_string()))?;
+    let styles = ThemeRuleSet::default()
+        .with_rule(
+            ThemeRule::new(ThemeTarget::Node, node_patch).for_family(DiagramFamilyId::FLOWCHART),
+        )
+        .with_ordinal_palette(ThemeTarget::Node, palette);
+
+    DiagramThemeCompiler::new()
+        .compile(materialize_brutalist_spec(
+            theme_catalog,
+            contract,
+            styles,
+            false,
+        )?)
+        .map_err(|error| C6ProofError::new("flowchart-theme-compile", error.to_string()))
 }
 
 fn compile_brutalist_state_theme(

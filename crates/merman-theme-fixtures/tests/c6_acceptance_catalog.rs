@@ -145,8 +145,8 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
         C6_ACCEPTANCE_CELL_COUNT
     );
     assert_eq!(C6_ACCEPTANCE_CELL_COUNT, 18);
-    assert_eq!(catalog.enforced_tranche().cells().len(), 4);
-    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 14);
+    assert_eq!(catalog.enforced_tranche().cells().len(), 6);
+    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 12);
     assert_eq!(actual_keys, expected_keys);
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
 
@@ -172,6 +172,15 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
     }
 
     for target in C6_NATIVE_OUTPUT_TARGETS {
+        let key = C6CellKey::new(C6ProofTheme::Brutalist, C6ProofFamily::Flowchart, target);
+        assert_eq!(
+            catalog
+                .enforced_tranche()
+                .cell(key)
+                .map(|cell| cell.source_fixture_id()),
+            Some("fixture-ordinal-palette")
+        );
+
         let key = C6CellKey::new(C6ProofTheme::Brutalist, C6ProofFamily::State, target);
         assert_eq!(
             catalog
@@ -192,9 +201,7 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
     }
     for theme in C6_PROOF_THEMES {
         for family in C6_PROOF_FAMILIES {
-            if theme == C6ProofTheme::Brutalist
-                && matches!(family, C6ProofFamily::Sequence | C6ProofFamily::State)
-            {
+            if theme == C6ProofTheme::Brutalist {
                 continue;
             }
             for target in C6_NATIVE_OUTPUT_TARGETS {
@@ -416,7 +423,7 @@ fn enforcement_and_portable_expectation_invariants_fail_closed() {
         "standalone-svg",
     )["enforcement"] = json!({
         "kind": "enforced",
-        "sourceFixtureId": "fixture-ordinal-palette"
+        "sourceFixtureId": "fixture-token-baseline"
     });
     match parse_value(&incomplete_input, &source_catalog) {
         Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {

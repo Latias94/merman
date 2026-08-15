@@ -148,6 +148,48 @@ fn sequence_proof_fixture_registers_the_closed_family_and_source_inventory() {
 }
 
 #[test]
+fn ordinal_palette_fixture_registers_the_brutalist_flowchart_contract() {
+    let catalog = ThemeFixtureCatalog::load(themes_root()).expect("load committed theme corpus");
+    let fixture = catalog
+        .fixture("fixture-ordinal-palette")
+        .expect("Flowchart ordinal palette fixture");
+
+    assert_eq!(fixture.source_family(), ReferenceDiagramFamily::Flowchart);
+    assert_eq!(
+        fixture.expectation().evidence_kind(),
+        FixtureEvidenceKind::TypedCapability
+    );
+    assert!(fixture.source_reference_mechanisms().is_empty());
+    let mechanisms = fixture
+        .theme_input()
+        .expect("Flowchart typed theme input")
+        .mechanisms();
+    assert_eq!(mechanisms, *fixture.expectation().reference_mechanisms());
+    assert_eq!(
+        mechanisms,
+        BTreeSet::from([
+            ReferenceThemeMechanism::CanvasSolid,
+            ReferenceThemeMechanism::FontStack,
+            ReferenceThemeMechanism::NthChildSelector,
+            ReferenceThemeMechanism::RoundedCorners,
+            ReferenceThemeMechanism::StrokeStyling,
+            ReferenceThemeMechanism::ThemeVariables,
+        ])
+    );
+    assert_eq!(
+        fixture.asset_ids(),
+        &BTreeSet::from(["font-excalifont-latin".to_string()])
+    );
+    assert!(
+        catalog
+            .theme("brutalist")
+            .expect("Brutalist reference theme")
+            .fixture_ids()
+            .contains(fixture.id())
+    );
+}
+
+#[test]
 fn every_theme_has_a_closed_five_target_contract() {
     let catalog = ThemeFixtureCatalog::load(themes_root()).expect("load committed theme corpus");
     let expected_targets = EXPECTED_OUTPUT_TARGETS.into_iter().collect::<BTreeSet<_>>();
