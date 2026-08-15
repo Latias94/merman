@@ -457,7 +457,7 @@ mod tests {
         let chars = SequenceChars::for_options(&options);
         let mut resources = ResourceContext::new(policy);
         let mut checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
         let prepared = prepare_self_message_rows(
@@ -500,10 +500,8 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxGridCells, 29)
             .unwrap();
         let mut resources = ResourceContext::new(below);
-        let mut checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&below),
-            OperationPhase::Layout,
-        );
+        let mut checkpoints =
+            SequenceCheckpointCursor::new(AsciiExecution::for_test(&below), OperationPhase::Layout);
         let error = prepare_self_message_rows(
             &message,
             &layout,

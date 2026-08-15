@@ -799,7 +799,7 @@ mod tests {
             .map(line_footprint)
             .collect::<Result<Vec<_>>>()?;
         let mut checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
         let frame_plans = plan_control_frames(
@@ -916,7 +916,7 @@ mod tests {
             .expect("control test footprints should be valid");
         let tree = disjoint_tree(vec![test_frame(SequenceControlKind::Loop, "", 0, ROWS - 1)]);
         let mut planning_checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
         let prepared = prepare_sequence_control_frames(
@@ -1006,7 +1006,7 @@ mod tests {
             .collect::<Result<Vec<_>>>()?;
         let policy = resources.policy();
         let mut checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
         let Some(prepared) = prepare_sequence_control_frames(

@@ -10,7 +10,7 @@ use crate::sequence::model::{
 fn builder_owns_nested_controls_and_explicit_sections_before_layout() {
     let policy = AsciiResourcePolicy::default();
     let resources = ResourceContext::new(policy);
-    let execution = AsciiExecution::standalone(&policy);
+    let execution = AsciiExecution::for_test(&policy);
     let mut builder = SequenceTreeBuilder::new(6, &resources, execution).unwrap();
     builder
         .start_control(
@@ -98,7 +98,7 @@ fn builder_admits_both_input_sized_containers_before_allocation() {
     SequenceTreeBuilder::new_with_probe(
         EXPECTED_ITEMS,
         &exact_resources,
-        AsciiExecution::standalone(&exact_policy),
+        AsciiExecution::for_test(&exact_policy),
         || exact_allocated.set(true),
     )
     .expect("the exact two-container work budget should be admitted");
@@ -113,7 +113,7 @@ fn builder_admits_both_input_sized_containers_before_allocation() {
     let error = match SequenceTreeBuilder::new_with_probe(
         EXPECTED_ITEMS,
         &below_resources,
-        AsciiExecution::standalone(&below_policy),
+        AsciiExecution::for_test(&below_policy),
         || below_allocated.set(true),
     ) {
         Ok(_) => panic!("the limit-minus-one budget should reject before allocation"),
@@ -137,7 +137,7 @@ fn nesting_limit_rejects_before_attaching_the_child_control() {
         .with_limit(AsciiResourceLimitId::MaxNestingDepth, 1)
         .unwrap();
     let resources = ResourceContext::new(policy);
-    let execution = AsciiExecution::standalone(&policy);
+    let execution = AsciiExecution::for_test(&policy);
     let mut builder = SequenceTreeBuilder::new(2, &resources, execution).unwrap();
     builder
         .start_control(

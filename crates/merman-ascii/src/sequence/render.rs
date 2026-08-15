@@ -23,7 +23,7 @@ pub(crate) fn render_sequence_diagram(
         diagram,
         options,
         &mut resources,
-        AsciiExecution::standalone(policy),
+        AsciiExecution::for_test(policy),
     )
 }
 

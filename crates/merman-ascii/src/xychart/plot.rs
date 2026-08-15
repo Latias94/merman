@@ -3050,7 +3050,7 @@ mod tests {
                 .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
                 .expect("the retained-mask work limit should be valid");
             let mut resources = ResourceContext::new(policy);
-            let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::standalone(&policy));
+            let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::for_test(&policy));
             let extent = LogicalExtent::checked(WIDTH, HEIGHT, policy)?;
             let mut mask = RetainedCellMask::try_new(extent, &mut resources, &mut checkpoints)?;
 
@@ -3156,7 +3156,7 @@ mod tests {
             .expect("the exact topology grid limit should be valid");
         let mut exact_resources = ResourceContext::new(exact_policy);
         let mut exact_checkpoints =
-            XyChartCheckpointCursor::new(AsciiExecution::standalone(&exact_policy));
+            XyChartCheckpointCursor::new(AsciiExecution::for_test(&exact_policy));
         LineTopology::new(7, 3, &mut exact_resources, &mut exact_checkpoints)
             .expect("the exact source-plus-mask grid should fit");
 
@@ -3165,7 +3165,7 @@ mod tests {
             .expect("the N-1 topology grid limit should be valid");
         let mut below_resources = ResourceContext::new(below_policy);
         let mut below_checkpoints =
-            XyChartCheckpointCursor::new(AsciiExecution::standalone(&below_policy));
+            XyChartCheckpointCursor::new(AsciiExecution::for_test(&below_policy));
         let error = LineTopology::new(7, 3, &mut below_resources, &mut below_checkpoints)
             .expect_err("N-1 must reject before the topology mask is allocated");
 
@@ -3181,7 +3181,7 @@ mod tests {
     fn topology_connect_observes_cancellation_inside_a_long_segment() {
         let policy = default_resources();
         let mut resources = ResourceContext::new(policy);
-        let mut setup = XyChartCheckpointCursor::new(AsciiExecution::standalone(&policy));
+        let mut setup = XyChartCheckpointCursor::new(AsciiExecution::for_test(&policy));
         let mut topology = LineTopology::new(66, 1, &mut resources, &mut setup)
             .expect("the topology fixture should allocate");
         let control = OperationControl::new();
@@ -3230,7 +3230,7 @@ mod tests {
         let plot_area = XyChartPlotArea::from_options(&options);
         let policy = default_resources();
         let mut resources = ResourceContext::new(policy);
-        let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::standalone(&policy));
+        let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::for_test(&policy));
         let mut row = StyledLine::try_blank_with_policy(
             plot_area.horizontal_width,
             TerminalWidthProfile::Cjk,

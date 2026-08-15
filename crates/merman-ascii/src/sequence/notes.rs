@@ -465,7 +465,7 @@ mod tests {
             placement: SequenceNotePlacement::Over,
         };
         let mut checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
         let prepared =

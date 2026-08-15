@@ -29,7 +29,7 @@ pub(super) fn calculate_layout(
 ) -> Result<SequenceLayout> {
     let mut resources = ResourceContext::new(*policy);
     let mut checkpoints =
-        SequenceCheckpointCursor::new(AsciiExecution::standalone(policy), OperationPhase::Layout);
+        SequenceCheckpointCursor::new(AsciiExecution::for_test(policy), OperationPhase::Layout);
     calculate_layout_with_resources(diagram, options, &mut resources, &mut checkpoints)
 }
 

@@ -951,7 +951,7 @@ mod tests {
         let mut diagram = diagram(2);
         let resources = test_resources();
         let policy = resources.policy();
-        let execution = AsciiExecution::standalone(&policy);
+        let execution = AsciiExecution::for_test(&policy);
         let mut body =
             crate::sequence::tree::SequenceTreeBuilder::new(3, &resources, execution).unwrap();
         body.start_control(
@@ -1264,7 +1264,7 @@ mod tests {
     }
 
     fn layout_checkpoints(policy: &AsciiResourcePolicy) -> SequenceCheckpointCursor<'_> {
-        SequenceCheckpointCursor::new(AsciiExecution::standalone(policy), OperationPhase::Layout)
+        SequenceCheckpointCursor::new(AsciiExecution::for_test(policy), OperationPhase::Layout)
     }
 
     fn ascii_chars() -> SequenceChars {

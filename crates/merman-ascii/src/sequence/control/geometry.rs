@@ -227,7 +227,7 @@ mod tests {
         let mut exact = resources_with_work_limit(4);
         let exact_policy = exact.policy();
         let exact_checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&exact_policy),
+            AsciiExecution::for_test(&exact_policy),
             OperationPhase::Layout,
         );
         let snapshot = SequenceControlBoundaryState::try_capture(
@@ -243,7 +243,7 @@ mod tests {
         let mut below = resources_with_work_limit(3);
         let below_policy = below.policy();
         let below_checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&below_policy),
+            AsciiExecution::for_test(&below_policy),
             OperationPhase::Layout,
         );
         let error = SequenceControlBoundaryState::try_capture(

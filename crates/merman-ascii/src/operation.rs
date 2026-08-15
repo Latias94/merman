@@ -13,26 +13,21 @@ const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
 /// Narrow operation projection consumed by the model-to-text backend.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AsciiExecution<'a> {
-    control: Option<&'a OperationControl>,
+    control: &'a OperationControl,
     resources: &'a AsciiResourcePolicy,
 }
 
 impl<'a> AsciiExecution<'a> {
     /// Creates a projection from the caller-owned operation state.
     pub const fn new(control: &'a OperationControl, resources: &'a AsciiResourcePolicy) -> Self {
-        Self {
-            control: Some(control),
-            resources,
-        }
+        Self { control, resources }
     }
 
-    /// Creates an uncontrolled execution projection for crate-local unit tests.
+    /// Creates a real, never-cancelled execution projection for crate-local unit tests.
     #[cfg(test)]
-    pub const fn standalone(resources: &'a AsciiResourcePolicy) -> Self {
-        Self {
-            control: None,
-            resources,
-        }
+    pub fn for_test(resources: &'a AsciiResourcePolicy) -> Self {
+        static CONTROL: std::sync::OnceLock<OperationControl> = std::sync::OnceLock::new();
+        Self::new(CONTROL.get_or_init(OperationControl::new), resources)
     }
 
     pub const fn resources(self) -> &'a AsciiResourcePolicy {
@@ -45,8 +40,8 @@ impl<'a> AsciiExecution<'a> {
         self.resource_context(&resources, phase)
     }
 
-    pub(crate) fn cloned_control(self) -> Option<OperationControl> {
-        self.control.cloned()
+    pub(crate) fn cloned_control(self) -> OperationControl {
+        self.control.clone()
     }
 
     /// Creates a ledger-sharing resource view for one operation phase.
@@ -56,10 +51,7 @@ impl<'a> AsciiExecution<'a> {
         phase: OperationPhase,
     ) -> ResourceContext {
         debug_assert_eq!(resources.policy(), *self.resources);
-        match self.cloned_control() {
-            Some(control) => resources.controlled(control, phase),
-            None => resources.clone(),
-        }
+        resources.controlled(self.cloned_control(), phase)
     }
 
     /// Rebinds one shared resource ledger before entering a different operation phase.
@@ -73,10 +65,9 @@ impl<'a> AsciiExecution<'a> {
     }
 
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {
-        match self.control {
-            Some(control) => control.checkpoint_at(phase).map_err(AsciiError::Cancelled),
-            None => Ok(()),
-        }
+        self.control
+            .checkpoint_at(phase)
+            .map_err(AsciiError::Cancelled)
     }
 
     /// Checks caller-owned cancellation at a bounded cadence inside deterministic long loops.

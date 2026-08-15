@@ -709,7 +709,7 @@ mod tests {
     }
 
     fn layout_checkpoints(policy: &AsciiResourcePolicy) -> SequenceCheckpointCursor<'_> {
-        SequenceCheckpointCursor::new(AsciiExecution::standalone(policy), OperationPhase::Layout)
+        SequenceCheckpointCursor::new(AsciiExecution::for_test(policy), OperationPhase::Layout)
     }
 
     fn empty_layout() -> SequenceLayout {

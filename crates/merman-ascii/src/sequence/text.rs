@@ -636,7 +636,7 @@ mod tests {
         let batch = SequenceBatchExtent::uniform(height, width, width, resources)?;
         let policy = resources.policy();
         let checkpoints = SequenceCheckpointCursor::new(
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
             OperationPhase::Layout,
         );
         ledger.reserve(batch, resources, &checkpoints)

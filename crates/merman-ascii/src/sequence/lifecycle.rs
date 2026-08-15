@@ -440,7 +440,7 @@ mod tests {
             &model,
             &participant_index,
             &mut resources,
-            AsciiExecution::standalone(&unbounded),
+            AsciiExecution::for_test(&unbounded),
         )
         .expect("shared lifecycle anchors should consume successive signals");
         let total_work = resources.layout_work_used();
@@ -456,7 +456,7 @@ mod tests {
             &model,
             &participant_index,
             &mut exact_resources,
-            AsciiExecution::standalone(&exact),
+            AsciiExecution::for_test(&exact),
         )
         .expect("exact lifecycle work limit should pass");
         assert_eq!(exact_resources.layout_work_used(), total_work);
@@ -472,7 +472,7 @@ mod tests {
             &model,
             &participant_index,
             &mut below_resources,
-            AsciiExecution::standalone(&below),
+            AsciiExecution::for_test(&below),
         )
         .expect_err("lifecycle planning must reject before request materialization");
         assert!(matches!(
@@ -501,7 +501,7 @@ mod tests {
             &model,
             &participant_index,
             &mut resources,
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::for_test(&policy),
         )
         .expect_err("misaligned lifecycle sidecars must be rejected");
         assert!(matches!(

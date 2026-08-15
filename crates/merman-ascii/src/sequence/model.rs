@@ -120,7 +120,7 @@ impl SequenceParticipantLabel {
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
         let mut resources = ResourceContext::new(policy);
-        let execution = AsciiExecution::standalone(&policy);
+        let execution = AsciiExecution::for_test(&policy);
         Self::try_from_raw(raw, wrap, width_profile, &mut resources, execution)
             .expect("test participant label should fit the unbounded resource policy")
     }
@@ -917,7 +917,7 @@ mod tests {
             true,
             TerminalWidthProfile::Unicode,
             &mut measured_resources,
-            AsciiExecution::standalone(&unbounded),
+            AsciiExecution::for_test(&unbounded),
         )
         .expect("unbounded participant-label plan should pass");
         let required_cells = measured.metrics.max_width * measured.metrics.line_count;
@@ -932,7 +932,7 @@ mod tests {
             true,
             TerminalWidthProfile::Unicode,
             &mut exact_resources,
-            AsciiExecution::standalone(&exact_policy),
+            AsciiExecution::for_test(&exact_policy),
         )
         .expect("exact participant-label grid extent should pass");
 
@@ -945,7 +945,7 @@ mod tests {
             true,
             TerminalWidthProfile::Unicode,
             &mut below_resources,
-            AsciiExecution::standalone(&below_policy),
+            AsciiExecution::for_test(&below_policy),
         )
         .expect_err("max-minus-one participant-label grid extent should reject");
 

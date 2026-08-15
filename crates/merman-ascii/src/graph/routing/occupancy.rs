@@ -315,7 +315,7 @@ impl<'layout> SceneOccupancy<'layout> {
             markers: HashMap::new(),
             labels: HashSet::new(),
             protected: Vec::new(),
-            control: execution.and_then(AsciiExecution::cloned_control),
+            control: execution.map(AsciiExecution::cloned_control),
         };
         scene
             .route_bounds

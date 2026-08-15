@@ -203,12 +203,7 @@ pub(crate) fn render_xychart_diagram_with_resources(
     options: &AsciiRenderOptions,
     resources: AsciiResourcePolicy,
 ) -> Result<String> {
-    render_xychart_diagram_controlled(
-        model,
-        options,
-        AsciiExecution::standalone(&resources),
-        || {},
-    )
+    render_xychart_diagram_controlled(model, options, AsciiExecution::for_test(&resources), || {})
 }
 
 #[cfg(test)]
@@ -221,7 +216,7 @@ fn render_xychart_diagram_with_materializer(
     render_xychart_diagram_controlled(
         model,
         options,
-        AsciiExecution::standalone(&resources),
+        AsciiExecution::for_test(&resources),
         before_document_materialize,
     )
 }

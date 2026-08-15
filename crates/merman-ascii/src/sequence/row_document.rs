@@ -245,7 +245,7 @@ mod tests {
         policy: &AsciiResourcePolicy,
     ) -> Result<String> {
         let mut resources = ResourceContext::new(*policy);
-        let execution = AsciiExecution::standalone(policy);
+        let execution = AsciiExecution::for_test(policy);
         let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Emit);
         finish_sequence_lines(
             styled_test_lines(options, *policy),
