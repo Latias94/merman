@@ -38,10 +38,10 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 ### Key Decisions
 
 - **Keep Canonical and add Host as explicit modes.** (session-settled: user-approved — chosen over an unbounded or Host-only canvas: deterministic parity remains the default while integration sizing becomes inspectable.) Governs R1-R5.
-- **Use one shared Host viewport for both Compare engines.** (session-settled: user-directed — chosen over measuring each Compare pane: per-pane dimensions would compare different layouts.) Governs R2-R4.
+- **Use one shared Host viewport for both Compare engines.** (session-settled: user-directed — chosen over measuring each Compare pane: per-pane dimensions would compare different layouts.) Governs R2-R3, R14.
 - **Ship SVG, PNG, and JPEG in the same export workbench.** (session-settled: user-directed — chosen over deferring JPEG: the user authorized the complete format set with explicit background handling.) Governs R6-R11.
 - **Treat mobile behavior as part of the feature.** (session-settled: user-approved — chosen over desktop-first follow-up work: viewport and export states must remain usable on supported narrow and landscape layouts.) Governs R12-R15.
-- **Preserve pinned Mermaid renderer semantics.** (session-settled: user-approved — chosen over locally expanding Sequence title bounds: inherited upstream clipping stays visible rather than being hidden by a Merman-only semantic divergence.) Governs R4, R14.
+- **Preserve pinned Mermaid renderer semantics.** (session-settled: user-approved — chosen over locally expanding Sequence title bounds: inherited upstream clipping stays visible rather than being hidden by a Merman-only semantic divergence.) Governs R16.
 
 ### Requirements
 
@@ -65,9 +65,10 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 **Responsive workflow and reliability**
 
 - R12. Desktop uses one focused export dialog; narrow and landscape-mobile layouts use the same state model in a full-screen presentation.
-- R13. Export format, background, quality, scale, validation, busy, success, and failure states remain keyboard- and screen-reader-accessible.
+- R13. Export format, background, quality, raster sizing, validation, busy, success, and failure states remain keyboard- and screen-reader-accessible.
 - R14. Host resizing, workspace tab changes, Compare activation, and mobile orientation changes cannot mix viewport dimensions or artifacts across operations.
 - R15. Raster planning rejects invalid geometry, caps side length and total pixels before allocation, and reports downscaling or browser encoding failure without crashing the page.
+- R16. Viewport and export work preserve pinned Mermaid renderer semantics and do not add a Merman-only root-bounds workaround to hide inherited title clipping.
 
 ### Key Flows
 
@@ -75,7 +76,7 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
   - **Trigger:** A user selects Host viewport and opens Visual or Compare.
   - **Steps:** The workspace owner captures a valid size; the coordinator freezes it; Merman and Mermaid.js render from the same operation; the UI reports the effective dimensions.
   - **Outcome:** Layout differences are engine differences rather than pane-size differences.
-  - **Covered by:** R1-R5, R14.
+  - **Covered by:** R1-R5, R14, R16.
 - F2. Configured artifact export
   - **Trigger:** A user opens Export for the current engine artifact.
   - **Steps:** The dialog freezes the publication and engine; validates format-specific options; creates a bounded preview; then downloads that same recipe.
@@ -89,8 +90,8 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 
 ### Acceptance Examples
 
-- AE1. Covers F1 / R1-R4. Given Canonical mode in Compare, when the Preview pane is resized, both engines continue to receive `800x600` and Bench results are unchanged.
-- AE2. Covers F1 / R2-R5. Given Host mode and a `960x540` Preview workspace, when Compare renders, both engine snapshots report `960x540` even though their visible panes occupy different widths.
+- AE1. Covers R1, R4. Given Canonical mode in Compare, when the Preview pane is resized, both engines continue to receive `800x600` and Bench results are unchanged.
+- AE2. Covers F1 / R2-R3, R5. Given Host mode and a `960x540` Preview workspace, when Compare renders, both engine snapshots report `960x540` even though their visible panes occupy different widths.
 - AE3. Covers F3 / R2, R14. Given Host mode on mobile while Editor is visible, when source changes and Preview later becomes visible, no zero dimension is published and any changed workspace size produces one coherent rerender.
 - AE4. Covers F2 / R6-R7. Given an SVG with a white root canvas and white semantic node fills, when Transparent PNG is selected, the root canvas becomes transparent while the node fills remain white.
 - AE5. Covers F2 / R8-R10. Given transparent source pixels and a custom JPEG background, when preview and download run, both composite the selected color before encoding and produce matching dimensions.
@@ -98,7 +99,7 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 - AE7. Covers F2 / R10-R11. Given a dialog opened for publication A while publication B completes, when the user downloads, preview and file remain bound and visibly attributed to A until the dialog is explicitly closed; B never replaces the target in place.
 - AE8. Covers F3 / R12-R15. Given `320x568` and `568x320` viewports, when every format and background state is exercised, controls remain reachable, preview remains bounded, and the document has no horizontal overflow.
 - AE9. Covers F2 / R9. Given intrinsic geometry and a requested width, height, or fit box, when raster planning runs, the unspecified axis preserves aspect ratio and the preview/download recipe uses the displayed output dimensions.
-- AE10. Covers F1 / R2-R4. Given the long Sequence title reported in Zed issue 62410, when Host Compare renders it, Merman and pinned Mermaid.js receive the same operation viewport and expose the same upstream root-viewBox clipping behavior; the Playground does not hide it with a Merman-only bounds workaround.
+- AE10. Covers F1 / R2-R3, R16. Given the long Sequence title reported in Zed issue 62410, when Host Compare renders it, Merman and pinned Mermaid.js receive the same operation viewport and expose the same upstream root-viewBox clipping behavior; the Playground does not hide it with a Merman-only bounds workaround.
 
 ### Success Criteria
 
@@ -128,12 +129,12 @@ SVG and PNG downloads already exist, but PNG uses a fixed scale and inherits wha
 
 ### Key Technical Decisions
 
-- KTD1. **Viewport mode is operation input.** The selected mode and resolved dimensions are captured before debounce/execution and participate in operation identity; presentation ResizeObserver updates never mutate an in-flight operation. Implements R1-R5 and R14.
+- KTD1. **Viewport mode is operation input.** The selected mode, effective dimensions, and Host-measuring fallback state are captured before debounce/execution and participate in operation identity; presentation ResizeObserver updates never mutate an in-flight operation. Before the first positive Host measurement, selecting Host creates a new `mode=host`, `effective=800x600`, `measuring=true` operation rather than retaining an older publication; the first positive measurement creates the next Host operation. Implements R1-R5 and R14.
 - KTD2. **One workspace measurement owner feeds both engines.** Host mode measures the unsplit Preview workspace allocation, not Merman/Mermaid panes, and retains the last positive finite size through hidden-tab and transient zero-size states. (session-settled: user-directed — chosen over per-pane measurement: Compare requires identical layout inputs.) Implements R2-R3 and R14.
 - KTD3. **Benchmark owns its canonical constant.** Interactive viewport selection does not enter benchmark corpus or benchmark realm inputs. Implements R4.
 - KTD4. **Export freezes a typed recipe behind artifact authority.** One recipe binds publication, engine, format, background policy, raster sizing, JPEG quality, authority-resolved raster source, and planned output geometry before preview or download. Exact SVG uses the validated publication artifact; Merman raster uses a `resvg-safe` derivative of that publication's frozen operation, while Mermaid.js raster uses its validated publication artifact. The dialog never retargets after opening; later publications leave this labeled snapshot intact until explicit close. Implements R6-R11 and R15.
 - KTD5. **Root background transformation is narrow, structured, and browser-owned.** Export clones and parses the SVG with browser DOM APIs, changes only the root canvas background, and never rewrites descendant fills or the published artifact. Implements R6-R8 and AE4.
-- KTD6. **One raster planner replaces PNG-only planning.** Format-neutral geometry planning mirrors native scale and fit-box sizing, retains the Rust planner's rounding and aspect-ratio behavior, and enforces the authoritative `4096` side and `16,777,216` pixel limits before Canvas allocation. Implements R9, R10, R15, and AE9.
+- KTD6. **One raster planner replaces PNG-only planning.** Format-neutral geometry planning mirrors native scale, width, height, and fit-box sizing, retains the Rust planner's rounding and aspect-ratio behavior, and enforces the authoritative `4096` side and `16,777,216` pixel limits before Canvas allocation. Implements R9, R10, R15, and AE9.
 - KTD7. **One browser rasterizer serves preview, PNG, and JPEG.** It loads a transformed SVG Blob, draws into a bounded Canvas, explicitly paints opaque JPEG backgrounds, checks the returned Blob MIME, revokes object URLs, and returns typed failures. Implements R7-R10 and R15.
 - KTD8. **The export dialog owns configuration and lifecycle.** Toolbar and per-engine Compare controls launch the dialog with an artifact target; they no longer contain format-specific download handlers or busy sets. Implements R10-R13. (session-settled: user-directed — chosen over incrementally extending direct handlers: broad internal breaking refactors and obsolete-code deletion are authorized.)
 - KTD9. **Responsive UI is one component tree.** Desktop dialog and mobile full-screen presentation share state, validation, and action ownership; CSS and media queries change composition without duplicating export logic. Implements R12-R13.
@@ -303,7 +304,7 @@ stateDiagram-v2
 
 **Goal:** Let users select Canonical or Host and see the effective shared dimensions across desktop, Compare, share links, and hidden mobile workspaces.
 
-**Requirements:** R1-R5, R12-R14; KTD1, KTD2, KTD9, KTD10.
+**Requirements:** R1-R5, R14, R16; KTD1, KTD2, KTD10.
 
 **Dependencies:** U1.
 
@@ -360,8 +361,8 @@ stateDiagram-v2
 
 - Create `playground/src/lib/raster-export-plan.ts`.
 - Create `playground/src/lib/raster-export-plan.test.ts`.
-- Delete `playground/src/lib/png-export-plan.ts`.
-- Delete `playground/src/lib/png-export-plan.test.ts`.
+- Keep `playground/src/lib/png-export-plan.ts` as a temporary compatibility entry until U4 migrates its browser caller.
+- Keep `playground/src/lib/png-export-plan.test.ts` only until equivalent planner coverage passes through the new module.
 - Modify `playground/src/runtime/artifact-actions.ts`.
 - Modify `playground/src/runtime/artifact-actions.test.ts`.
 - Modify `playground/package.json` test targets.
@@ -371,7 +372,7 @@ stateDiagram-v2
 1. Generalize the existing raster geometry planner to the native scale/width/height/fit-box contract with fixed `4096` side and `16,777,216` pixel limits.
 2. Define discriminated sizing, format, and background policies so invalid geometry, JPEG transparency, out-of-range quality, and ambiguous derived axes are unrepresentable after validation.
 3. Freeze export recipes from the current publication and selected engine before browser IO, preserving Merman's operation-bound `resvg-safe` preparation and Mermaid.js's validated publication artifact path.
-4. Remove obsolete PNG-specific types and overloads after every caller moves to the new recipe.
+4. Move pure planning and artifact-action callers to the new recipe while leaving a narrow compatibility entry for `export.ts`; U6 removes it after U4 migrates the browser caller.
 
 **Execution note:** Start with planner and recipe tests, including red tests for explicit-width, explicit-height, and fit-box requests.
 
@@ -436,7 +437,7 @@ stateDiagram-v2
 
 ### U5. Replace direct actions with the export workbench
 
-**Goal:** Give global Visual and per-engine Compare artifacts one coherent, accessible dialog for format, preview, background, scale, quality, and download.
+**Goal:** Give global Visual and per-engine Compare artifacts one coherent, accessible dialog for format, preview, background, raster sizing, quality, and download.
 
 **Requirements:** R5-R13, R15; KTD4, KTD8, KTD9.
 
@@ -495,6 +496,8 @@ stateDiagram-v2
 - Modify `playground/src/App.tsx` as needed for stable mobile workspace measurement.
 - Modify `playground/src/styles/globals.css`.
 - Modify `playground/src/components/ExportDialog.tsx`.
+- Modify `playground/src/runtime/render-artifact.ts`.
+- Modify `playground/src/runtime/render-artifact.test.ts`.
 - Modify `playground/tests/mobile.interactions.spec.ts`.
 - Modify `playground/tests/render.presentation.spec.ts`.
 - Modify `playground/tests/cross-browser.smoke.spec.ts`.
@@ -534,7 +537,7 @@ stateDiagram-v2
 |---|---|---|
 | Type and unit behavior | `npm --prefix playground run test:browser:typecheck` | Browser-test types remain valid. |
 | Runtime ownership | `npm --prefix playground run test:runtime` | Frozen viewport and publication/action contracts. |
-| Export planning | `npm --prefix playground run test:export` | Format-neutral scale/fit geometry, fixed limits, and validation. |
+| Export planning | `npm --prefix playground run test:export` | Format-neutral scale, width, height, and fit-box geometry, fixed limits, and validation. |
 | Full Playground tests | `npm --prefix playground test` | Existing runtime, realm, benchmark, share, and export regressions. |
 | Static quality | `npm --prefix playground run lint` | React, TypeScript, accessibility-adjacent lint, and source quality. |
 | Production build | `npm --prefix playground run build` | WASM preparation, opaque realm, CSP, licenses, TypeScript, and Vite output. |
