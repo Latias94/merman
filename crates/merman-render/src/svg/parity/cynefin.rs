@@ -26,7 +26,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id);
     let marker_id = format!("cynefin-arrow-{diagram_id}");
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "cynefin");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
@@ -42,6 +42,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             diagram_id_esc,
             escape_xml_display(title)
         );
+        out.checkpoint()?;
     }
     if let Some(descr) = acc_descr {
         let _ = write!(
@@ -50,19 +51,21 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             diagram_id_esc,
             escape_xml_display(descr)
         );
+        out.checkpoint()?;
     }
 
-    let _ = write!(
-        &mut out,
-        "<style>{}</style>",
-        cynefin_css(diagram_id, effective_config, &theme)
-    );
-    out.push_str("<g/>");
+    out.push_str("<style>");
+    out.checkpoint()?;
+    write_cynefin_css(&mut out, diagram_id, effective_config, &theme)?;
+    out.push_str("</style><g/>");
+    out.checkpoint()?;
     if let Some(title) = acc_title {
         let _ = write!(&mut out, "<title>{}</title>", escape_xml_display(title));
+        out.checkpoint()?;
     }
     if let Some(descr) = acc_descr {
         let _ = write!(&mut out, "<desc>{}</desc>", escape_xml_display(descr));
+        out.checkpoint()?;
     }
 
     let _ = write!(
@@ -71,14 +74,15 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         fmt(layout.padding),
         fmt(layout.padding)
     );
-    push_backgrounds(&mut out, layout, &theme);
-    push_boundaries(&mut out, layout, seed, &theme);
-    push_labels(&mut out, layout);
+    out.checkpoint()?;
+    push_backgrounds(&mut out, layout, &theme)?;
+    push_boundaries(&mut out, layout, seed, &theme)?;
+    push_labels(&mut out, layout)?;
     if layout.show_domain_descriptions {
-        push_subtitles(&mut out, layout);
+        push_subtitles(&mut out, layout)?;
     }
-    push_items(&mut out, layout, &theme);
-    push_transitions(&mut out, layout, &marker_id);
+    push_items(&mut out, layout, &theme)?;
+    push_transitions(&mut out, layout, &marker_id)?;
     if let Some(title) = title {
         let _ = write!(
             &mut out,
@@ -87,8 +91,10 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             fmt(-layout.padding / 2.0),
             escape_xml_display(title)
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     if !layout.transitions.is_empty() {
         let _ = write!(
@@ -96,17 +102,19 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             r#"<defs><marker id="{}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
             escape_attr_display(&marker_id)
         );
+        out.checkpoint()?;
     }
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 fn push_backgrounds(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     layout: &CynefinDiagramLayout,
     theme: &crate::cynefin::CynefinTheme,
-) {
+) -> Result<()> {
     out.push_str(r#"<g class="cynefin-backgrounds">"#);
+    out.checkpoint()?;
     for domain_name in crate::cynefin::quadrant_domains() {
         let Some(domain) = layout
             .domain_layouts
@@ -124,17 +132,20 @@ fn push_backgrounds(
             fmt(domain.height),
             escape_attr_display(crate::cynefin::domain_fill(theme, domain_name))
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()
 }
 
 fn push_boundaries(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     layout: &CynefinDiagramLayout,
     seed: f64,
     theme: &crate::cynefin::CynefinTheme,
-) {
+) -> Result<()> {
     out.push_str(r#"<g class="cynefin-boundaries">"#);
+    out.checkpoint()?;
     let fold_path = crate::cynefin::generate_fold_path(
         layout.width,
         layout.height,
@@ -156,6 +167,7 @@ fn push_boundaries(
         escape_attr_display(&cliff_path)
     );
     out.push_str("</g>");
+    out.checkpoint()?;
 
     let confusion_path = crate::cynefin::generate_confusion_path(
         layout.width / 2.0,
@@ -169,10 +181,12 @@ fn push_boundaries(
         escape_attr_display(&confusion_path),
         escape_attr_display(&theme.confusion_bg)
     );
+    out.checkpoint()
 }
 
-fn push_labels(out: &mut String, layout: &CynefinDiagramLayout) {
+fn push_labels(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Result<()> {
     out.push_str(r#"<g class="cynefin-labels">"#);
+    out.checkpoint()?;
     for domain_name in crate::cynefin::quadrant_domains() {
         let Some(domain) = layout
             .domain_layouts
@@ -193,6 +207,7 @@ fn push_labels(out: &mut String, layout: &CynefinDiagramLayout) {
             fmt(y),
             escape_xml_display(crate::cynefin::domain_title(domain_name))
         );
+        out.checkpoint()?;
     }
     let y = if layout.show_domain_descriptions {
         layout.height / 2.0 - 10.0
@@ -206,10 +221,12 @@ fn push_labels(out: &mut String, layout: &CynefinDiagramLayout) {
         fmt(y)
     );
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn push_subtitles(out: &mut String, layout: &CynefinDiagramLayout) {
+fn push_subtitles(out: &mut impl SvgOutput, layout: &CynefinDiagramLayout) -> Result<()> {
     out.push_str(r#"<g class="cynefin-subtitles">"#);
+    out.checkpoint()?;
     for domain_name in crate::cynefin::quadrant_domains() {
         let Some(domain) = layout
             .domain_layouts
@@ -229,6 +246,7 @@ fn push_subtitles(out: &mut String, layout: &CynefinDiagramLayout) {
             fmt(domain.cy + 5.0),
             escape_xml_display(practice)
         );
+        out.checkpoint()?;
     }
     let _ = write!(
         out,
@@ -237,14 +255,16 @@ fn push_subtitles(out: &mut String, layout: &CynefinDiagramLayout) {
         fmt(layout.height / 2.0 + 8.0)
     );
     out.push_str("</g>");
+    out.checkpoint()
 }
 
 fn push_items(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     layout: &CynefinDiagramLayout,
     theme: &crate::cynefin::CynefinTheme,
-) {
+) -> Result<()> {
     out.push_str(r#"<g class="cynefin-items">"#);
+    out.checkpoint()?;
     for item in &layout.items {
         let fill = crate::cynefin::domain_fill(theme, &item.domain);
         let rect_class = if item.overflow {
@@ -266,15 +286,22 @@ fn push_items(
             fmt(item.text_y),
             escape_xml_display(&item.label)
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: &str) {
+fn push_transitions(
+    out: &mut impl SvgOutput,
+    layout: &CynefinDiagramLayout,
+    marker_id: &str,
+) -> Result<()> {
     if layout.transitions.is_empty() {
-        return;
+        return Ok(());
     }
     out.push_str(r#"<g class="cynefin-arrows">"#);
+    out.checkpoint()?;
     for transition in &layout.transitions {
         let d = format!(
             "M{},{} Q{},{} {},{}",
@@ -291,6 +318,7 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
             escape_attr_display(&d),
             escape_attr_display(marker_id)
         );
+        out.checkpoint()?;
         if let Some(label) = transition
             .label
             .as_deref()
@@ -303,21 +331,25 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
                 fmt(transition.cpy - 6.0),
                 escape_xml_display(label)
             );
+            out.checkpoint()?;
         }
     }
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn cynefin_css(
+fn write_cynefin_css(
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
     theme: &crate::cynefin::CynefinTheme,
-) -> String {
+) -> Result<()> {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
+    out.push_str(&parts.css_prefix);
+    out.checkpoint()?;
     let _ = write!(
-        &mut out,
+        out,
         "#{id} .cynefinDomain{{stroke:none;}}\
 #{id} .cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
 #{id} .cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
@@ -353,5 +385,5 @@ fn cynefin_css(
         theme.label_color
     );
     out.push_str(&parts.root_rule);
-    out
+    out.checkpoint()
 }

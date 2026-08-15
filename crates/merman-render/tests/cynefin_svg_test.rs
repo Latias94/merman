@@ -11,6 +11,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::CynefinDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 
@@ -53,6 +56,81 @@ fn parse_layout_and_render_with_environment(
         .to_owned();
 
     (layout, svg)
+}
+
+fn try_render_cynefin_svg_with_resource_policy(
+    input: &str,
+    policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .expect("render session");
+    let parsed = legacy_init_theme_compat_engine()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("parse Cynefin resource-bound fixture")
+        .expect("detect Cynefin resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("cynefin-bounded".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn cynefin_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let input = r#"---
+title: Bounded Cynefin
+config:
+  cynefin:
+    seed: 1
+---
+cynefin-beta
+accTitle: Bounded Cynefin accessibility title
+accDescr: A bounded Cynefin diagram with items and a transition
+clear
+  "Runbook"
+complex
+  "Retrospective"
+clear --> complex : "Probe"
+"#;
+    let baseline = try_render_cynefin_svg_with_resource_policy(
+        input,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Cynefin baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "Cynefin fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Cynefin SVG byte ceiling");
+    let exact = try_render_cynefin_svg_with_resource_policy(input, exact_policy)
+        .expect("the exact Cynefin family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Cynefin SVG byte ceiling");
+    let error = try_render_cynefin_svg_with_resource_policy(input, below_policy)
+        .expect_err("one byte below the Cynefin family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Cynefin MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 #[test]

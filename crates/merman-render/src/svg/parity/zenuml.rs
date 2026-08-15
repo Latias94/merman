@@ -28,7 +28,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         .unwrap_or(true);
     let bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, view_width, view_height);
     let root_spec = root_svg::RootViewportSpec::mermaid(bounds, use_max_width);
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut chrome = root_svg::RootChrome::new(diagram_id, "zenuml");
     chrome.dom.trailing_newline = false;
     let root_document =
@@ -38,6 +38,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     out.push_str("<defs><style>");
     out.push_str(zenuml_css());
     out.push_str("</style></defs>");
+    out.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="4"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="3"/>"#,
@@ -46,6 +47,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         fmt(view_width - 2.0),
         fmt(view_height - 2.0),
     );
+    out.checkpoint()?;
     let header_y = FRAME_HEADER_HEIGHT + 6.0;
     let _ = write!(
         &mut out,
@@ -54,6 +56,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         fmt(view_width - 1.0),
         fmt(header_y - 0.5),
     );
+    out.checkpoint()?;
     let title = model
         .title
         .as_deref()
@@ -66,6 +69,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
             fmt((header_y - 0.5) / 2.0),
             escape_xml(&resolve_emoji_in_text(title)),
         );
+        out.checkpoint()?;
     }
     let _ = write!(
         &mut out,
@@ -73,6 +77,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         fmt(content_left),
         fmt(header_y),
     );
+    out.checkpoint()?;
     let creation_names = layout
         .creations
         .iter()
@@ -104,6 +109,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
             );
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     for lifeline in &layout.lifelines {
         let _ = write!(
@@ -115,13 +121,14 @@ pub(super) fn render_zenuml_diagram_svg_model(
             fmt(lifeline.x + 0.5),
             fmt(lifeline.bottom_y),
         );
+        out.checkpoint()?;
     }
     for participant in layout
         .participants
         .iter()
         .filter(|participant| !creation_names.contains(participant.name.as_str()))
     {
-        render_participant(&mut out, participant);
+        render_participant(&mut out, participant)?;
     }
     for occurrence in &layout.occurrences {
         let _ = write!(
@@ -134,24 +141,25 @@ pub(super) fn render_zenuml_diagram_svg_model(
             fmt(occurrence.width - 2.0),
             fmt(occurrence.height - 2.0),
         );
+        out.checkpoint()?;
     }
     for creation in &layout.creations {
-        render_participant(&mut out, &creation.participant);
+        render_participant(&mut out, &creation.participant)?;
     }
     for message in &layout.messages {
-        render_message(&mut out, message);
+        render_message(&mut out, message)?;
     }
     for self_call in &layout.self_calls {
-        render_self_call(&mut out, self_call);
+        render_self_call(&mut out, self_call)?;
     }
     for creation in &layout.creations {
-        render_creation(&mut out, creation);
+        render_creation(&mut out, creation)?;
     }
     for returned in &layout.returns {
-        render_return(&mut out, returned);
+        render_return(&mut out, returned)?;
     }
     for fragment in &layout.fragments {
-        render_fragment(&mut out, fragment);
+        render_fragment(&mut out, fragment)?;
     }
     for divider in &layout.dividers {
         let center_x = divider.width / 2.0;
@@ -187,15 +195,20 @@ pub(super) fn render_zenuml_diagram_svg_model(
             fmt(divider.y),
             escape_xml(&label),
         );
+        out.checkpoint()?;
     }
     for comment in &layout.comments {
-        render_comment(&mut out, comment);
+        render_comment(&mut out, comment)?;
     }
     out.push_str("</g></svg>");
-    root_document.complete(out)
+    out.checkpoint()?;
+    root_document.complete(out.finish()?)
 }
 
-fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
+fn render_participant(
+    out: &mut impl SvgOutput,
+    participant: &ZenumlParticipantLayout,
+) -> Result<()> {
     let y = participant.y;
     let x = participant.x - participant.width / 2.0 + 1.0;
     let fill = participant
@@ -220,10 +233,11 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
         fmt(participant.height - 2.0),
         fill,
     );
+    out.checkpoint()?;
     if participant.is_starter {
-        render_participant_icon(out, "actor", participant.x - 14.0, y + 8.0);
+        render_participant_icon(out, "actor", participant.x - 14.0, y + 8.0)?;
         out.push_str("</g>");
-        return;
+        return out.checkpoint();
     }
     let text_y = y + participant.height / 2.0 - 0.25;
     let label_y = if participant.stereotype.is_some() {
@@ -248,10 +262,10 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
         let icon_x = group_x + 4.0;
         let icon_y =
             y + (participant.height - 24.0) / 2.0 + if icon == "boundary" { 2.75 } else { 0.0 };
-        render_participant_icon(out, icon, icon_x, icon_y);
+        render_participant_icon(out, icon, icon_x, icon_y)?;
         if let Some(emoji) = emoji {
             let emoji_x = icon_x + 28.0;
-            render_participant_emoji(out, emoji, emoji_x, label_y);
+            render_participant_emoji(out, emoji, emoji_x, label_y)?;
             text_x = emoji_x + 24.0;
         } else {
             text_x = group_x + 36.0;
@@ -264,7 +278,7 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
             .unwrap_or_default()
             .max(group_width);
         let group_x = participant.x - inner_width / 2.0;
-        render_participant_emoji(out, emoji, group_x, label_y);
+        render_participant_emoji(out, emoji, group_x, label_y)?;
         text_x = group_x + 24.0;
         text_anchor = "start";
     }
@@ -281,6 +295,7 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
             fmt(text_y - 8.0),
             escape_xml(stereotype),
         );
+        out.checkpoint()?;
     }
     let text_length = if participant.name.contains(':') {
         format!(
@@ -299,9 +314,10 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
         text_length,
         escape_xml(&participant.label),
     );
+    out.checkpoint()
 }
 
-fn render_participant_emoji(out: &mut String, emoji: &str, x: f64, y: f64) {
+fn render_participant_emoji(out: &mut impl SvgOutput, emoji: &str, x: f64, y: f64) -> Result<()> {
     let _ = write!(
         out,
         r#"<text x="{}" y="{}" dominant-baseline="central" font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Twemoji Mozilla',sans-serif" class="participant-emoji">{}</text>"#,
@@ -309,6 +325,7 @@ fn render_participant_emoji(out: &mut String, emoji: &str, x: f64, y: f64) {
         fmt(y),
         escape_xml(emoji),
     );
+    out.checkpoint()
 }
 
 struct ParticipantIcon {
@@ -318,9 +335,9 @@ struct ParticipantIcon {
     attributes: &'static str,
 }
 
-fn render_participant_icon(out: &mut String, key: &str, x: f64, y: f64) {
+fn render_participant_icon(out: &mut impl SvgOutput, key: &str, x: f64, y: f64) -> Result<()> {
     let Some(icon) = participant_icon(key) else {
-        return;
+        return Ok(());
     };
     let scale = 24.0 / icon.view_box_width.max(icon.view_box_height);
     let content = svg_asset_content(icon.svg);
@@ -339,6 +356,7 @@ fn render_participant_icon(out: &mut String, key: &str, x: f64, y: f64) {
         attributes,
         content,
     );
+    out.checkpoint()
 }
 
 fn participant_icon(key: &str) -> Option<ParticipantIcon> {
@@ -413,7 +431,7 @@ fn participant_icon(key: &str) -> Option<ParticipantIcon> {
     })
 }
 
-fn render_message(out: &mut String, message: &ZenumlMessageLayout) {
+fn render_message(out: &mut impl SvgOutput, message: &ZenumlMessageLayout) -> Result<()> {
     let left_to_right = message.from_x < message.to_x;
     let from_x = if left_to_right {
         message.from_x + 1.0
@@ -444,7 +462,8 @@ fn render_message(out: &mut String, message: &ZenumlMessageLayout) {
         fmt(line_y),
         dash,
     );
-    render_arrow_head(out, to_x, line_y, message.is_reverse, message.arrow_style);
+    out.checkpoint()?;
+    render_arrow_head(out, to_x, line_y, message.is_reverse, message.arrow_style)?;
     let _ = write!(
         out,
         r#"<text class="message-label" x="{}" y="{}" text-anchor="middle"{}>{}</text><text class="seq-number" x="{}" y="{}" text-anchor="end">{}</text></g>"#,
@@ -456,9 +475,10 @@ fn render_message(out: &mut String, message: &ZenumlMessageLayout) {
         fmt(label_y),
         escape_xml(&message.number),
     );
+    out.checkpoint()
 }
 
-fn render_self_call(out: &mut String, call: &ZenumlSelfCallLayout) {
+fn render_self_call(out: &mut impl SvgOutput, call: &ZenumlSelfCallLayout) -> Result<()> {
     let asynchronous = call.arrow_style == ZenumlArrowStyle::Open;
     let label_y = call.y + if asynchronous { 15.0 } else { 12.0 };
     let svg_y = call.y + if asynchronous { 20.0 } else { 14.0 };
@@ -488,9 +508,10 @@ fn render_self_call(out: &mut String, call: &ZenumlSelfCallLayout) {
         fmt(call.y + 12.0),
         escape_xml(&call.number),
     );
+    out.checkpoint()
 }
 
-fn render_creation(out: &mut String, creation: &ZenumlCreationLayout) {
+fn render_creation(out: &mut impl SvgOutput, creation: &ZenumlCreationLayout) -> Result<()> {
     let message = &creation.message;
     let participant = &creation.participant;
     let reverse = message.to_x < message.from_x;
@@ -515,20 +536,23 @@ fn render_creation(out: &mut String, creation: &ZenumlCreationLayout) {
         fmt(to_x),
         fmt(message.y),
     );
-    render_open_polyline(out, to_x, message.y, reverse, "arrow-head arrow-open");
+    out.checkpoint()?;
+    render_open_polyline(out, to_x, message.y, reverse, "arrow-head arrow-open")?;
+    let rendered_label = render_creation_label(&message.label, &message.style);
     let _ = write!(
         out,
         r#"<text x="{}" y="{}" text-anchor="middle" class="message-label">{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"#,
         fmt(label_x),
         fmt(label_y),
-        render_creation_label(&message.label, &message.style),
+        rendered_label,
         fmt(from_x.min(to_x) - 4.0),
         fmt(label_y),
         escape_xml(&message.number),
     );
+    out.checkpoint()
 }
 
-fn render_return(out: &mut String, returned: &ZenumlReturnLayout) {
+fn render_return(out: &mut impl SvgOutput, returned: &ZenumlReturnLayout) -> Result<()> {
     if returned.is_self {
         let icon_x = returned.from_x + 4.0;
         let icon_y = returned.y - 12.0;
@@ -542,7 +566,7 @@ fn render_return(out: &mut String, returned: &ZenumlReturnLayout) {
             fmt(returned.y - 1.0),
             escape_xml(&resolve_emoji_in_text(&returned.label)),
         );
-        return;
+        return out.checkpoint();
     }
     let line_y = returned.y.floor();
     let label_x = returned.from_x.min(returned.to_x)
@@ -558,13 +582,14 @@ fn render_return(out: &mut String, returned: &ZenumlReturnLayout) {
         fmt(returned.to_x),
         fmt(line_y),
     );
+    out.checkpoint()?;
     render_open_polyline(
         out,
         returned.to_x,
         line_y,
         returned.is_reverse,
         "return-arrow",
-    );
+    )?;
     let _ = write!(
         out,
         r#"<text x="{}" y="{}" text-anchor="middle" class="return-label">{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"#,
@@ -575,15 +600,16 @@ fn render_return(out: &mut String, returned: &ZenumlReturnLayout) {
         fmt(label_y),
         escape_xml(&returned.number),
     );
+    out.checkpoint()
 }
 
 fn render_arrow_head(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     tip_x: f64,
     tip_y: f64,
     points_left: bool,
     style: ZenumlArrowStyle,
-) {
+) -> Result<()> {
     let filled = style == ZenumlArrowStyle::Solid;
     let x = if points_left { tip_x } else { tip_x - 7.0 };
     let transform = if points_left {
@@ -602,9 +628,16 @@ fn render_arrow_head(
         close,
         if filled { "#000" } else { "none" },
     );
+    out.checkpoint()
 }
 
-fn render_open_polyline(out: &mut String, tip_x: f64, tip_y: f64, points_left: bool, class: &str) {
+fn render_open_polyline(
+    out: &mut impl SvgOutput,
+    tip_x: f64,
+    tip_y: f64,
+    points_left: bool,
+    class: &str,
+) -> Result<()> {
     let direction = if points_left { 1.0 } else { -1.0 };
     let base_x = tip_x + direction * 5.15;
     let _ = write!(
@@ -618,6 +651,7 @@ fn render_open_polyline(out: &mut String, tip_x: f64, tip_y: f64, points_left: b
         fmt(tip_y + 3.25),
         class,
     );
+    out.checkpoint()
 }
 
 fn render_creation_label(
@@ -640,7 +674,7 @@ fn render_creation_label(
     format!("<tspan{style}>{}</tspan>", escape_xml(label))
 }
 
-fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
+fn render_fragment(out: &mut impl SvgOutput, fragment: &ZenumlFragmentLayout) -> Result<()> {
     let (class, kind_label) = match fragment.kind {
         ZenumlLayoutFragmentKind::Loop => ("loop", "Loop"),
         ZenumlLayoutFragmentKind::Alternative => ("alt", "Alt"),
@@ -666,7 +700,8 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
         fmt(header_y),
         fmt(fragment.width - 2.0),
     );
-    render_fragment_icon(out, fragment.kind, header_x + 4.0, header_y);
+    out.checkpoint()?;
+    render_fragment_icon(out, fragment.kind, header_x + 4.0, header_y)?;
     let _ = write!(
         out,
         r#"<text x="{}" y="{}" dominant-baseline="central" class="fragment-label">{}</text><text x="{}" y="{}" text-anchor="end" dominant-baseline="central" class="seq-number">{}</text>"#,
@@ -677,6 +712,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
         fmt(header_y + 8.0),
         escape_xml(&fragment.number),
     );
+    out.checkpoint()?;
     if !fragment.label.is_empty() {
         render_bracketed_label(
             out,
@@ -685,7 +721,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
             &fragment.label,
             fragment.label_width,
             "fragment-condition",
-        );
+        )?;
     }
     for section in fragment.sections.iter().skip(1) {
         let separator_y = section.y + 0.5;
@@ -697,6 +733,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
             fmt(fragment.x + fragment.width - 1.0),
             fmt(separator_y),
         );
+        out.checkpoint()?;
         if let Some(inner) = &section.inner_label {
             render_bracketed_label(
                 out,
@@ -705,7 +742,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
                 inner,
                 section.inner_label_width,
                 "fragment-section-label",
-            );
+            )?;
         } else if let (Some(keyword), Some(detail)) = (&section.keyword, &section.detail) {
             let keyword_width = section.keyword_width.unwrap_or(0.0);
             let background_width = keyword_width + section.detail_width.unwrap_or(0.0) + 16.0;
@@ -722,6 +759,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
                 fmt(section.y + 16.0),
                 escape_xml(detail),
             );
+            out.checkpoint()?;
         } else if !section.label.is_empty() {
             let _ = write!(
                 out,
@@ -733,19 +771,21 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
                 fmt(section.y + 16.0),
                 escape_xml(&section.label),
             );
+            out.checkpoint()?;
         }
     }
     out.push_str("</g>");
+    out.checkpoint()
 }
 
 fn render_bracketed_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     x: f64,
     y: f64,
     inner: &str,
     inner_width: Option<f64>,
     class: &str,
-) {
+) -> Result<()> {
     let inner_x = x + 7.89;
     let close_x = inner_x + inner_width.unwrap_or(0.0) + 4.0;
     let _ = write!(
@@ -762,9 +802,15 @@ fn render_bracketed_label(
         fmt(y),
         class,
     );
+    out.checkpoint()
 }
 
-fn render_fragment_icon(out: &mut String, kind: ZenumlLayoutFragmentKind, x: f64, y: f64) {
+fn render_fragment_icon(
+    out: &mut impl SvgOutput,
+    kind: ZenumlLayoutFragmentKind,
+    x: f64,
+    y: f64,
+) -> Result<()> {
     let (key, raw, view_box, attributes) = match kind {
         ZenumlLayoutFragmentKind::Alternative => (
             "alt",
@@ -826,6 +872,7 @@ fn render_fragment_icon(out: &mut String, kind: ZenumlLayoutFragmentKind, x: f64
         attributes,
         content,
     );
+    out.checkpoint()
 }
 
 fn svg_asset_content(svg: &'static str) -> &'static str {
@@ -842,7 +889,7 @@ fn svg_asset_content(svg: &'static str) -> &'static str {
     svg[content_start..content_end].trim()
 }
 
-fn render_comment(out: &mut String, comment: &ZenumlCommentLayout) {
+fn render_comment(out: &mut impl SvgOutput, comment: &ZenumlCommentLayout) -> Result<()> {
     let lines = markdown_comment_lines(&comment.text);
     let _ = write!(
         out,
@@ -850,6 +897,7 @@ fn render_comment(out: &mut String, comment: &ZenumlCommentLayout) {
         escape_attr(&comment.statement_id),
         style_attr(&comment.style),
     );
+    out.checkpoint()?;
     for (index, line) in lines.iter().enumerate() {
         if index == 0 {
             let _ = write!(
@@ -867,8 +915,10 @@ fn render_comment(out: &mut String, comment: &ZenumlCommentLayout) {
                 if line.is_empty() { " " } else { line },
             );
         }
+        out.checkpoint()?;
     }
     out.push_str("</text>");
+    out.checkpoint()
 }
 
 fn markdown_comment_lines(markdown: &str) -> Vec<String> {
@@ -970,6 +1020,22 @@ fn zenuml_css() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn zenuml_polyline_propagates_the_bounded_svg_sink_failure() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+
+        let error = render_open_polyline(&mut out, 32.0, 48.0, false, "return-arrow")
+            .expect_err("the bounded sink must stop ZenUML polyline emission");
+
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert!(out.as_str().is_empty());
+    }
 
     #[test]
     fn fenced_comment_code_closes_monospace_runs_per_svg_line() {
