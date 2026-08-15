@@ -4,7 +4,9 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
-use crate::safe_text::{terminal_text_requires_normalization, visit_safe_line_graphemes};
+use crate::safe_text::{
+    charge_text_layout, terminal_text_requires_normalization, visit_safe_line_graphemes,
+};
 use crate::text::StyledLine;
 #[cfg(test)]
 use crate::text::display_width_with_profile;
@@ -358,13 +360,14 @@ impl ValueRange {
 
 #[derive(Debug, Clone)]
 pub(super) enum AxisPlan {
-    Band { categories: Vec<String> },
+    Band { authored_category_count: usize },
     Linear { range: ValueRange },
 }
 
 impl AxisPlan {
     fn resolve_sample_position(
         &self,
+        band_labels: &[String],
         x: &str,
         fallback_index: usize,
         slot_count: usize,
@@ -372,13 +375,20 @@ impl AxisPlan {
     ) -> Result<(usize, Option<f64>, bool)> {
         if slot_count <= 1 {
             let (normalized_x, clipped) = match self {
-                Self::Band { categories } => (
-                    None,
-                    !categories.is_empty()
-                        && categories
-                            .get(fallback_index)
-                            .is_none_or(|category| category != x),
-                ),
+                Self::Band {
+                    authored_category_count,
+                } => {
+                    let categories = band_labels
+                        .get(..*authored_category_count)
+                        .ok_or_else(|| resources.grid_overflow())?;
+                    (
+                        None,
+                        !categories.is_empty()
+                            && categories
+                                .get(fallback_index)
+                                .is_none_or(|category| category != x),
+                    )
+                }
                 Self::Linear { range } => match x.parse::<f64>() {
                     Ok(value) if value.is_finite() => {
                         (Some(range.normalized(value)), !range.contains(value))
@@ -390,7 +400,12 @@ impl AxisPlan {
         }
 
         match self {
-            Self::Band { categories } => {
+            Self::Band {
+                authored_category_count,
+            } => {
+                let categories = band_labels
+                    .get(..*authored_category_count)
+                    .ok_or_else(|| resources.grid_overflow())?;
                 if categories
                     .get(fallback_index)
                     .is_some_and(|category| category == x)
@@ -563,7 +578,12 @@ impl TerminalChartPlan {
             _ => None,
         };
         let slot_count = cardinality.slot_count;
-        let category_labels = axis_labels(&x_axis, slot_count, resources)?;
+        let authored_band_categories: &[String] = match &model.x_axis {
+            XyChartAxisRenderModel::Band { categories, .. } => categories,
+            XyChartAxisRenderModel::Linear { .. } => &[],
+        };
+        let category_labels =
+            axis_labels(&x_axis, authored_band_categories, slot_count, resources)?;
 
         let mut series = Vec::new();
         series
@@ -590,6 +610,7 @@ impl TerminalChartPlan {
                 series_index,
                 lane,
                 &x_axis,
+                &category_labels,
                 slot_count,
                 resources,
             )?);
@@ -691,9 +712,19 @@ impl TerminalChartPlan {
         } else {
             &self.category_labels
         };
-        let has_band_domain = matches!(&self.x_axis, AxisPlan::Band { .. });
+        let authored_band_categories = match &self.x_axis {
+            AxisPlan::Band {
+                authored_category_count,
+            } => Some(
+                self.category_labels
+                    .get(..*authored_category_count)
+                    .ok_or_else(|| resources.grid_overflow())?,
+            ),
+            AxisPlan::Linear { .. } => None,
+        };
+        let has_band_domain = authored_band_categories.is_some();
         let implicit_band_domain =
-            matches!(&self.x_axis, AxisPlan::Band { categories } if categories.is_empty());
+            authored_band_categories.is_some_and(|categories| categories.is_empty());
         let has_linear_x_domain = matches!(&self.x_axis, AxisPlan::Linear { .. });
         let x_linear_domain = has_linear_x_domain;
         let y_linear_domain = !show_y_axis_labels
@@ -741,16 +772,16 @@ impl TerminalChartPlan {
         // vertical chart and gutter-aligned padding for a horizontal chart. A changed projection
         // can be authored directly by another model, and distinct categories can project to the
         // same field. Keep the complete framed domain whenever that channel is not injective.
-        let band_domain_disclosure = match &self.x_axis {
-            AxisPlan::Band { .. } if !show_x_axis_labels => true,
-            AxisPlan::Band { categories } => band_label_projection_loses_identity(
+        let band_domain_disclosure = match authored_band_categories {
+            Some(_) if !show_x_axis_labels => true,
+            Some(categories) => band_label_projection_loses_identity(
                 categories,
                 axis_labels,
                 plot_area,
                 horizontal,
                 resources,
             )?,
-            AxisPlan::Linear { .. } => false,
+            None => false,
         };
 
         if values_are_ambiguous {
@@ -1045,7 +1076,7 @@ fn build_axis_plan(
 ) -> Result<AxisPlan> {
     match axis {
         XyChartAxisRenderModel::Band { categories, .. } => Ok(AxisPlan::Band {
-            categories: categories.clone(),
+            authored_category_count: categories.len(),
         }),
         XyChartAxisRenderModel::Linear { min, max, .. } => {
             let mut data_min = f64::INFINITY;
@@ -1080,27 +1111,65 @@ fn build_axis_plan(
 
 fn axis_labels(
     axis: &AxisPlan,
+    authored_band_categories: &[String],
     count: usize,
     resources: &mut ResourceContext,
 ) -> Result<Vec<String>> {
-    let mut labels = Vec::new();
-    labels
-        .try_reserve_exact(count)
-        .map_err(|_| AsciiError::AllocationFailed {
-            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
+    axis_labels_with_allocation_probe(axis, authored_band_categories, count, resources, || {})
+}
+
+fn axis_labels_with_allocation_probe(
+    axis: &AxisPlan,
+    authored_band_categories: &[String],
+    count: usize,
+    resources: &mut ResourceContext,
+    before_band_allocation: impl FnOnce(),
+) -> Result<Vec<String>> {
     match axis {
-        AxisPlan::Band { categories } => {
+        AxisPlan::Band {
+            authored_category_count,
+        } => {
+            let categories = authored_band_categories
+                .get(..*authored_category_count)
+                .ok_or_else(|| resources.grid_overflow())?;
+            if count < categories.len() {
+                return Err(resources.grid_overflow());
+            }
+
+            resources.charge_layout_work(count)?;
             for category in categories {
-                resources.charge_layout_work(1)?;
-                labels.push(category.clone());
+                charge_text_layout(resources, category)?;
+            }
+
+            before_band_allocation();
+            let mut labels = Vec::new();
+            labels
+                .try_reserve_exact(count)
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
+            for category in categories {
+                let mut label = String::new();
+                label.try_reserve_exact(category.len()).map_err(|_| {
+                    AsciiError::AllocationFailed {
+                        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                    }
+                })?;
+                label.push_str(category);
+                labels.push(label);
             }
             for index in labels.len()..count {
-                resources.charge_layout_work(1)?;
                 labels.push(resources.checked_grid_add(index, 1)?.to_string());
             }
+            Ok(labels)
         }
         AxisPlan::Linear { range } => {
+            let mut labels = Vec::new();
+            labels
+                .try_reserve_exact(count)
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
             if count == 1 {
                 resources.charge_layout_work(1)?;
                 labels.push(format_data_number(range.min));
@@ -1112,9 +1181,9 @@ fn axis_labels(
                     labels.push(format_tick_number(range.min + step * index as f64, step));
                 }
             }
+            Ok(labels)
         }
     }
-    Ok(labels)
 }
 
 fn build_horizontal_axis_labels(
@@ -1209,6 +1278,7 @@ fn build_series_plan(
     series_index: usize,
     bar_lane: Option<usize>,
     x_axis: &AxisPlan,
+    category_labels: &[String],
     slot_count: usize,
     resources: &mut ResourceContext,
 ) -> Result<SeriesPlan> {
@@ -1222,9 +1292,14 @@ fn build_series_plan(
     if plot.data.is_empty() {
         for (index, value) in plot.values.iter().copied().enumerate() {
             resources.charge_layout_work(1)?;
-            let x = fallback_x_label(x_axis, index, plot.values.len());
-            let (slot, normalized_x, x_clipped) =
-                x_axis.resolve_sample_position(&x, index, slot_count, resources)?;
+            let x = fallback_x_label(x_axis, category_labels, index, plot.values.len());
+            let (slot, normalized_x, x_clipped) = x_axis.resolve_sample_position(
+                category_labels,
+                &x,
+                index,
+                slot_count,
+                resources,
+            )?;
             data.push(SeriesDatum {
                 x,
                 value: Some(value),
@@ -1239,7 +1314,7 @@ fn build_series_plan(
         for (index, (x, value)) in plot.data.iter().enumerate() {
             resources.charge_layout_work(1)?;
             let (slot, normalized_x, x_clipped) =
-                x_axis.resolve_sample_position(x, index, slot_count, resources)?;
+                x_axis.resolve_sample_position(category_labels, x, index, slot_count, resources)?;
             data.push(SeriesDatum {
                 x: x.clone(),
                 value: *value,
@@ -1279,9 +1354,14 @@ pub(super) const fn plot_type_name(plot_type: XyChartPlotType) -> &'static str {
     }
 }
 
-fn fallback_x_label(axis: &AxisPlan, index: usize, count: usize) -> String {
+fn fallback_x_label(
+    axis: &AxisPlan,
+    category_labels: &[String],
+    index: usize,
+    count: usize,
+) -> String {
     match axis {
-        AxisPlan::Band { categories } => categories
+        AxisPlan::Band { .. } => category_labels
             .get(index)
             .cloned()
             .unwrap_or_else(|| (index + 1).to_string()),
@@ -2709,6 +2789,7 @@ mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
     use merman_core::{CancelReason, OperationControl};
+    use std::cell::Cell;
 
     fn default_resources() -> AsciiResourcePolicy {
         AsciiResourcePolicy::default()
@@ -2831,6 +2912,115 @@ mod tests {
     }
 
     #[test]
+    fn band_axis_labels_materialize_only_after_exact_admission() {
+        let policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 4)
+            .expect("the exact band-label work limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let axis = AxisPlan::Band {
+            authored_category_count: 1,
+        };
+        let categories = vec!["A".to_string()];
+        let allocated = Cell::new(false);
+
+        let labels =
+            axis_labels_with_allocation_probe(&axis, &categories, 2, &mut resources, || {
+                allocated.set(true)
+            })
+            .expect("the exact container and category-text admission should fit");
+
+        assert!(allocated.get());
+        assert_eq!(labels, ["A", "2"]);
+        assert_eq!(resources.layout_work_used(), 4);
+    }
+
+    #[test]
+    fn band_axis_labels_reject_large_text_before_first_allocation() {
+        let policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("the bounded band-label work limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let axis = AxisPlan::Band {
+            authored_category_count: 1,
+        };
+        let categories = vec!["A".repeat(256 * 1_024)];
+        let allocated = Cell::new(false);
+
+        let error =
+            axis_labels_with_allocation_probe(&axis, &categories, 1, &mut resources, || {
+                allocated.set(true)
+            })
+            .expect_err("the category scan must reject before reserving or copying labels");
+
+        assert!(!allocated.get());
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, 3);
+        assert_eq!(details.max, 2);
+        assert_eq!(resources.layout_work_used(), 2);
+    }
+
+    #[test]
+    fn band_axis_labels_check_grapheme_limit_before_first_allocation() {
+        let policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
+            .expect("the bounded grapheme limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let axis = AxisPlan::Band {
+            authored_category_count: 1,
+        };
+        let categories = vec!["é".to_string()];
+        let allocated = Cell::new(false);
+
+        let error =
+            axis_labels_with_allocation_probe(&axis, &categories, 1, &mut resources, || {
+                allocated.set(true)
+            })
+            .expect_err("the grapheme ceiling must reject before reserving or copying labels");
+
+        assert!(!allocated.get());
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a grapheme resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxGraphemeBytes);
+        assert_eq!(details.actual, 2);
+        assert_eq!(details.max, 1);
+    }
+
+    #[test]
+    fn band_axis_label_admission_prioritizes_cancellation_before_allocation() {
+        let policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("the bounded band-label work limit should be valid");
+        let base_resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel();
+        let mut resources = base_resources.controlled(control, OperationPhase::Layout);
+        let axis = AxisPlan::Band {
+            authored_category_count: 1,
+        };
+        let categories = vec!["A".repeat(256 * 1_024)];
+        let allocated = Cell::new(false);
+
+        let error =
+            axis_labels_with_allocation_probe(&axis, &categories, 2, &mut resources, || {
+                allocated.set(true)
+            })
+            .expect_err("cancellation must win over the container work ceiling");
+
+        assert!(!allocated.get());
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
     fn retained_band_width_stops_after_the_first_overflowing_grapheme() {
         let policy = default_resources()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
@@ -2910,7 +3100,7 @@ mod tests {
         let category = format!("{}\u{1b}", "A".repeat(4_096));
         let plan = TerminalChartPlan {
             x_axis: AxisPlan::Band {
-                categories: vec![category.clone()],
+                authored_category_count: 1,
             },
             x_linear_domain: None,
             y_range: ValueRange { min: 0.0, max: 1.0 },

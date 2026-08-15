@@ -2924,7 +2924,7 @@ mod tests {
         // This is a fixed semantic boundary for the compact fixture. It covers the declared
         // cardinality, series/sample planning, retained-width admission, paint, and encoding
         // work; it is intentionally not derived from a renderer-reported usage value.
-        const REQUIRED_LAYOUT_WORK: usize = 305;
+        const REQUIRED_LAYOUT_WORK: usize = 307;
         let accepted = resources_with_limit(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             REQUIRED_LAYOUT_WORK,
