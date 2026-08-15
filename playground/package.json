@@ -38,7 +38,7 @@
     "test:examples": "node --test --experimental-strip-types src/lib/examples.test.ts",
     "test:editor-worker": "node --test --experimental-strip-types src/editor/protocol.test.ts src/editor/worker-client.test.ts src/editor/worker-runtime.test.ts src/lib/mermaid-language.test.ts",
     "test:editor-artifact-decision": "node --test scripts/editor-artifact-measurement/contract.test.mjs",
-    "test:export": "node --test --experimental-strip-types src/lib/png-export-plan.test.ts",
+    "test:export": "node --test --experimental-strip-types src/lib/raster-export-plan.test.ts",
     "test:browser:chromium:desktop": "npm run build && npm run test:browser:chromium:desktop:built",
     "test:browser:chromium:desktop:built": "npm --prefix tests run test:desktop",
     "test:browser:mobile": "npm run build && npm run test:browser:mobile:built",

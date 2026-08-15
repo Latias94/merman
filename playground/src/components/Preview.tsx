@@ -45,7 +45,7 @@ import type {
   RenderPublicationId,
 } from "@/src/runtime/render-coordinator";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
-import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
+import { useExportWorkbench } from "@/src/components/ExportDialog";
 import {
   SvgViewport,
   useSvgViewportController,
@@ -103,6 +103,7 @@ export function Preview({ className }: PreviewProps) {
   const isDarkMode = useAppStore((state) => state.resolvedTheme === "dark");
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
+  const { openExport } = useExportWorkbench();
   const renderState = useRenderCoordinator((state) => state);
   const currentBatch = selectCompletedRenderBatch(renderState);
   const visibleBatch = selectVisibleRenderBatch(renderState);
@@ -120,10 +121,6 @@ export function Preview({ className }: PreviewProps) {
     useState<DiagnosticKey | null>(null);
   const [copiedSvgTarget, setCopiedSvgTarget] =
     useState<CopiedSvgTarget | null>(null);
-  const [exportingPngEngines, setExportingPngEngines] = useState<
-    Set<EngineKey>
-  >(() => new Set());
-  const exportingPngEnginesRef = useRef<Set<EngineKey>>(new Set());
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
   const asciiCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -249,52 +246,6 @@ export function Preview({ className }: PreviewProps) {
       console.error("Failed to copy diagnostics JSON:", err);
     }
   }, [diagnosticTab, diagnostics]);
-
-  const handleExportSvg = useCallback(
-    async (engine: EngineKey, publicationId: RenderPublicationId) => {
-      try {
-        await executeArtifactAction({
-          action: "download-svg",
-          engine,
-          publicationId,
-        });
-        toast.success(t("export.svgSuccess"));
-      } catch {
-        toast.error(t("export.failed"));
-      }
-    },
-    [t],
-  );
-
-  const handleExportPng = useCallback(
-    async (engine: EngineKey, publicationId: RenderPublicationId) => {
-      if (exportingPngEnginesRef.current.has(engine)) {
-        return;
-      }
-      exportingPngEnginesRef.current.add(engine);
-      setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-      try {
-        const plan = await executeArtifactAction({
-          action: "download-png",
-          engine,
-          publicationId,
-          scale: 2,
-        });
-        toast.success(
-          t("export.pngSuccess", {
-            width: plan.outputWidth,
-            height: plan.outputHeight,
-          }),
-        );
-      } catch (error) {
-        toast.error(pngExportErrorMessage(error, t));
-      } finally {
-        exportingPngEnginesRef.current.delete(engine);
-        setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-      }
-    },
-    [t],
-  );
 
   const handleRefreshCompare = useCallback(() => {
     refreshRenderCoordinator();
@@ -544,10 +495,8 @@ export function Preview({ className }: PreviewProps) {
                 }}
                 actions={{
                   copiedSvgTarget,
-                  exportingPngEngines,
                   onCopySvg: handleCopySvg,
-                  onExportPng: handleExportPng,
-                  onExportSvg: handleExportSvg,
+                  onExport: openExport,
                   onRetry: handleRefreshCompare,
                   onPresentationReady: (engine, at) => {
                     if (visibleBatch) {

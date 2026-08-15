@@ -159,6 +159,32 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   errors.assertNone();
 });
 
+test("Host viewport gives both Compare engines the measured Preview allocation", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const control = page.getByTestId("render-viewport-control");
+  await control.getByRole("button", { name: "Host", exact: true }).click();
+  await expect(control).toHaveAttribute("data-viewport-status", "host");
+  const viewport = {
+    width: Number(await control.getAttribute("data-viewport-width")),
+    height: Number(await control.getAttribute("data-viewport-height")),
+  };
+  expect(viewport.width).toBeGreaterThan(0);
+  expect(viewport.height).toBeGreaterThan(0);
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
+    1,
+  );
+  await expect.poll(() => compareRealmUsesViewport(page, viewport)).toBe(true);
+  await expect.poll(() => compareSvgTexts(page)).toHaveLength(2);
+  errors.assertNone();
+});
+
 test("Compare detection and rendering share external ELK configuration", async ({
   page,
 }) => {
@@ -220,16 +246,23 @@ async function compareSvgTexts(
 async function compareRealmUsesCanonicalViewport(
   page: import("@playwright/test").Page,
 ): Promise<boolean> {
-  return page.evaluate((viewport) => {
+  return compareRealmUsesViewport(page, CANONICAL_RENDER_VIEWPORT);
+}
+
+async function compareRealmUsesViewport(
+  page: import("@playwright/test").Page,
+  viewport: Readonly<{ width: number; height: number }>,
+): Promise<boolean> {
+  return page.evaluate((expected) => {
     const realm = document.querySelector('iframe[data-merman-realm="compare"]');
     if (!(realm instanceof HTMLIFrameElement)) {
       return false;
     }
     return (
-      realm.clientWidth === viewport.width &&
-      realm.clientHeight === viewport.height
+      realm.clientWidth === expected.width &&
+      realm.clientHeight === expected.height
     );
-  }, CANONICAL_RENDER_VIEWPORT);
+  }, viewport);
 }
 
 async function mermaidCompareViewBoxWidth(

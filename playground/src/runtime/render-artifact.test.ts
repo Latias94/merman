@@ -11,7 +11,6 @@ import {
 const forgedArtifact: NavigableInlineSvg = {
   kind: "navigable-inline-svg",
   svg: '<svg xmlns="http://www.w3.org/2000/svg" />',
-  exportFormats: { png: true, svg: true },
 };
 void forgedArtifact;
 
@@ -20,7 +19,6 @@ test("render output is projected through the navigable inline SVG path", () => {
   const artifact = projectNavigableInlineSvg(svg);
   assert.equal(artifact.kind, "navigable-inline-svg");
   assert.equal(artifact.svg, svg);
-  assert.deepEqual(artifact.exportFormats, { png: true, svg: true });
   assert.equal(Object.isFrozen(artifact), true);
   assert.doesNotThrow(() => assertNavigableInlineSvgArtifact(artifact));
 });

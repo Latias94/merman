@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -7,7 +7,6 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FileCode,
   FileText,
   ImageIcon,
   Share2,
@@ -28,7 +27,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
+import { useExportWorkbench } from "@/src/components/ExportDialog";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import {
   asciiSupportDescription,
@@ -60,7 +59,7 @@ export function useToolbarArtifactActions() {
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
   const currentBatch = useRenderCoordinator(selectCompletedRenderBatch);
   const asciiSupport = useAsciiSupport();
-  const [isExporting, setIsExporting] = useState(false);
+  const { openExport } = useExportWorkbench();
   const asciiCapability = asciiSupport.capabilityFor(diagramType);
   const asciiSupported = asciiSupport.isSupported(diagramType);
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
@@ -73,42 +72,10 @@ export function useToolbarArtifactActions() {
   const artifactActionsEnabled = currentMerman !== null;
   const asciiAvailable = currentBatch?.ascii.status === "success";
 
-  const handleExportSVG = useCallback(async () => {
-    try {
-      if (!currentBatch) throw new Error("Current render is unavailable.");
-      await executeArtifactAction({
-        action: "download-svg",
-        engine: "merman",
-        publicationId: currentBatch.snapshot.publicationId,
-      });
-      toast.success(t("export.svgSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
-    }
-  }, [currentBatch, t]);
-
-  const handleExportPNG = useCallback(async () => {
-    setIsExporting(true);
-    try {
-      if (!currentBatch) throw new Error("Current render is unavailable.");
-      const plan = await executeArtifactAction({
-        action: "download-png",
-        engine: "merman",
-        publicationId: currentBatch.snapshot.publicationId,
-        scale: 2,
-      });
-      toast.success(
-        t("export.pngSuccess", {
-          width: plan.outputWidth,
-          height: plan.outputHeight,
-        }),
-      );
-    } catch (error) {
-      toast.error(pngExportErrorMessage(error, t));
-    } finally {
-      setIsExporting(false);
-    }
-  }, [currentBatch, t]);
+  const handleOpenExport = useCallback((restoreFocus?: HTMLElement | null) => {
+    if (!currentBatch) return;
+    openExport("merman", currentBatch.snapshot.publicationId, restoreFocus);
+  }, [currentBatch, openExport]);
 
   const handleExportASCII = useCallback(async () => {
     try {
@@ -199,11 +166,9 @@ export function useToolbarArtifactActions() {
     handleCopyMarkdown,
     handleCopySVG,
     handleExportASCII,
-    handleExportPNG,
-    handleExportSVG,
+    handleOpenExport,
     handleOpenMermaidLive,
     handleShare,
-    isExporting,
   };
 }
 
@@ -219,6 +184,7 @@ export function ToolbarArtifactActions({
   owner: ToolbarArtifactActionsOwner;
 }) {
   const { t } = useTranslation();
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
   return (
     <>
       <DropdownMenu>
@@ -226,10 +192,10 @@ export function ToolbarArtifactActions({
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
+                ref={exportTriggerRef}
                 variant="outline"
                 size={compact ? "icon-sm" : "sm"}
                 className={compact ? undefined : "w-8 px-0 sm:w-auto sm:px-2.5"}
-                disabled={owner.isExporting}
                 aria-label={t("toolbar.export")}
               >
                 <Download className="size-4" />
@@ -248,28 +214,11 @@ export function ToolbarArtifactActions({
           <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={owner.handleExportSVG}
-            disabled={!owner.artifactActionsEnabled}
-          >
-            <FileCode className="size-4" />
-            {t("export.svg")}
-            {!compact && (
-              <span className="ml-auto text-xs text-muted-foreground">
-                {t("export.svgDesc")}
-              </span>
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={owner.handleExportPNG}
+            onClick={() => owner.handleOpenExport(exportTriggerRef.current)}
             disabled={!owner.artifactActionsEnabled}
           >
             <ImageIcon className="size-4" />
-            {t("export.png")}
-            {!compact && (
-              <span className="ml-auto text-xs text-muted-foreground">
-                {t("export.pngDesc")}
-              </span>
-            )}
+            {t("export.image")}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={owner.handleExportASCII}

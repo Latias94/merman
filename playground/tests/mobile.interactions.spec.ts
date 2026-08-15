@@ -152,6 +152,61 @@ test("Pixel portrait and a shortened viewport keep dialogs scrollable and dismis
   errors.assertNone();
 });
 
+test("export workbench stays reachable in portrait and safe-area landscape", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+  await waitForPreviewSvg(page);
+
+  await page.getByRole("button", { name: "Export", exact: true }).tap();
+  await page.getByRole("menuitem", { name: "Export image…" }).tap();
+  const dialog = page.getByRole("dialog", { name: "Export image" });
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) =>
+    Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    ),
+  );
+  const portraitBox = await dialog.boundingBox();
+  expect(portraitBox).not.toBeNull();
+  expect(portraitBox!.x).toBeLessThanOrEqual(1);
+  expect(portraitBox!.y).toBeLessThanOrEqual(1);
+  expect(portraitBox!.width).toBeGreaterThanOrEqual(319);
+  expect(portraitBox!.height).toBeGreaterThanOrEqual(567);
+
+  await dialog.getByRole("button", { name: "PNG", exact: true }).tap();
+  const preview = dialog.getByRole("img", { name: "Export preview" });
+  await preview.scrollIntoViewIfNeeded();
+  await expect(preview).toBeVisible();
+  const download = dialog.getByRole("button", {
+    name: "Download",
+    exact: true,
+  });
+  await expectInsideViewport(page, download);
+  await expectNoDocumentOverflow(page);
+
+  await page.locator("html").evaluate((element) => {
+    element.style.setProperty("--merman-safe-area-inset-left", "44px");
+    element.style.setProperty("--merman-safe-area-inset-right", "12px");
+  });
+  await page.setViewportSize({ width: 844, height: 390 });
+  const formatGroup = dialog.getByRole("group", { name: "File format" });
+  await formatGroup.scrollIntoViewIfNeeded();
+  await expect
+    .poll(async () => (await formatGroup.boundingBox())?.x ?? -1)
+    .toBeGreaterThanOrEqual(44);
+  await expectInsideViewport(
+    page,
+    dialog.getByRole("button", { name: "Close export" }),
+  );
+  await expectInsideViewport(page, download);
+  await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
 test("landscape touch gestures and preview modes remain operable", async ({
   page,
 }) => {

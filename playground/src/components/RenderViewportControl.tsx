@@ -22,7 +22,13 @@ export function RenderViewportControl() {
         });
 
   return (
-    <div className="ml-auto flex min-w-0 items-center gap-2">
+    <div
+      data-testid="render-viewport-control"
+      data-viewport-status={resolved.status}
+      data-viewport-width={resolved.viewport.width}
+      data-viewport-height={resolved.viewport.height}
+      className="ml-auto flex min-w-0 items-center gap-2"
+    >
       <div
         role="group"
         aria-label={t("preview.viewportMode")}
