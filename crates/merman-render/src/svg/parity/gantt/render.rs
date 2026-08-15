@@ -46,13 +46,54 @@ fn gantt_insert_before_width(base: &str, insert: &str) -> String {
     parts.join(" ")
 }
 
+fn render_gantt_axis_ticks(
+    out: &mut impl SvgOutput,
+    ticks: &[crate::model::GanttAxisTickLayout],
+    left_padding: f64,
+    tick_size: f64,
+    with_dy: bool,
+) -> Result<()> {
+    for t in ticks {
+        let tx = (t.x - left_padding) + 0.5;
+        let _ = write!(
+            out,
+            r#"<g class="tick" opacity="1" transform="translate({},0)">"#,
+            fmt(tx)
+        );
+        out.checkpoint()?;
+        let _ = write!(
+            out,
+            r#"<line stroke="currentColor" y2="{}"/>"#,
+            fmt(tick_size)
+        );
+        out.checkpoint()?;
+        if with_dy {
+            let _ = write!(
+                out,
+                r##"<text fill="#000" y="3" dy="1em" stroke="none" font-size="10" style="text-anchor: middle;">{}</text>"##,
+                escape_xml(&t.label)
+            );
+        } else {
+            let _ = write!(
+                out,
+                r##"<text fill="#000" y="-3" dy="0em" stroke="none" font-size="10" style="text-anchor: middle;">{}</text>"##,
+                escape_xml(&t.label)
+            );
+        }
+        out.push_str("</g>");
+        out.checkpoint()?;
+    }
+
+    Ok(())
+}
+
 fn render_gantt_axis_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     layout: &crate::model::GanttDiagramLayout,
     ticks: &[crate::model::GanttAxisTickLayout],
     y: f64,
     with_dy: bool,
-) {
+) -> Result<()> {
     let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
     // Mermaid renders two possible axis grids:
     // - bottom axis (ticks extend upward, label baseline uses `dy="1em"` at `y="3"`)
@@ -69,6 +110,7 @@ fn render_gantt_axis_group(
         fmt(layout.left_padding),
         fmt(y)
     );
+    out.checkpoint()?;
 
     let d = format!(
         "M0.5,{}V0.5H{}V{}",
@@ -81,36 +123,12 @@ fn render_gantt_axis_group(
         r#"<path class="domain" stroke="currentColor" d="{}"/>"#,
         escape_attr(&d)
     );
+    out.checkpoint()?;
 
-    for t in ticks {
-        let tx = (t.x - layout.left_padding) + 0.5;
-        let _ = write!(
-            out,
-            r#"<g class="tick" opacity="1" transform="translate({},0)">"#,
-            fmt(tx)
-        );
-        let _ = write!(
-            out,
-            r#"<line stroke="currentColor" y2="{}"/>"#,
-            fmt(tick_size)
-        );
-        if with_dy {
-            let _ = write!(
-                out,
-                r##"<text fill="#000" y="3" dy="1em" stroke="none" font-size="10" style="text-anchor: middle;">{}</text>"##,
-                escape_xml(&t.label)
-            );
-        } else {
-            let _ = write!(
-                out,
-                r##"<text fill="#000" y="-3" dy="0em" stroke="none" font-size="10" style="text-anchor: middle;">{}</text>"##,
-                escape_xml(&t.label)
-            );
-        }
-        out.push_str("</g>");
-    }
+    render_gantt_axis_ticks(out, ticks, layout.left_padding, tick_size, with_dy)?;
 
     out.push_str("</g>");
+    out.checkpoint()
 }
 
 pub(crate) fn render_gantt_diagram_svg_model(
@@ -136,7 +154,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty());
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = acc_title
         .as_ref()
         .map(|_| format!("chart-title-{diagram_id}"));
@@ -173,10 +191,16 @@ pub(crate) fn render_gantt_diagram_svg_model(
             text = escape_xml(descr)
         );
     }
+    out.checkpoint()?;
 
+    out.push_str("<style>");
+    out.checkpoint()?;
     let css = gantt_css(diagram_id, effective_config);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    out.push_str(r#"<g/>"#);
+    out.push_str(&css);
+    drop(css);
+    out.checkpoint()?;
+    out.push_str(r#"</style><g/>"#);
+    out.checkpoint()?;
 
     let (min_ms, max_ms) = match (
         layout.tasks.iter().map(|t| t.start_ms).min(),
@@ -203,6 +227,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             out.push_str("<g/>");
         } else {
             out.push_str("<g>");
+            out.checkpoint()?;
             for (i, r) in layout.excludes.iter().enumerate() {
                 // Mermaid's gantt exclude rectangles use a slightly unintuitive origin:
                 //
@@ -235,13 +260,15 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     cx = fmt_allow_nan(cx),
                     cy = fmt_allow_nan(cy),
                 );
+                out.checkpoint()?;
             }
             out.push_str("</g>");
         }
+        out.checkpoint()?;
     }
 
     let bottom_axis_y = h - layout.top_padding;
-    render_gantt_axis_group(&mut out, layout, &layout.bottom_ticks, bottom_axis_y, true);
+    render_gantt_axis_group(&mut out, layout, &layout.bottom_ticks, bottom_axis_y, true)?;
 
     if layout.top_axis {
         render_gantt_axis_group(
@@ -250,13 +277,14 @@ pub(crate) fn render_gantt_diagram_svg_model(
             &layout.top_ticks,
             layout.top_padding,
             false,
-        );
+        )?;
     }
 
     if layout.rows.is_empty() {
         out.push_str("<g/>");
     } else {
         out.push_str("<g>");
+        out.checkpoint()?;
         for r in &layout.rows {
             let _ = write!(
                 &mut out,
@@ -267,9 +295,11 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 h = fmt(r.height),
                 cls = escape_attr(&r.class),
             );
+            out.checkpoint()?;
         }
         out.push_str("</g>");
     }
+    out.checkpoint()?;
 
     let mut tasks_in_draw_order: Vec<(usize, &crate::model::GanttTaskLayout)> =
         layout.tasks.iter().enumerate().collect();
@@ -285,6 +315,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         out.push_str("<g/>");
     } else {
         out.push_str("<g>");
+        out.checkpoint()?;
 
         for (_idx, t) in &tasks_in_draw_order {
             let start_x = gantt_scale_time_round(t.start_ms, min_ms, max_ms, range);
@@ -315,6 +346,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 origin = escape_attr(&origin),
                 cls = escape_attr(&t.bar.class),
             );
+            out.checkpoint()?;
         }
 
         for (_idx, t) in &tasks_in_draw_order {
@@ -385,15 +417,18 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 cls = escape_attr(&class),
                 txt = escape_xml(&t.label.text),
             );
+            out.checkpoint()?;
         }
 
         out.push_str("</g>");
     }
+    out.checkpoint()?;
 
     if layout.section_titles.is_empty() {
         out.push_str("<g/>");
     } else {
         out.push_str("<g>");
+        out.checkpoint()?;
         for st in &layout.section_titles {
             let _ = write!(
                 &mut out,
@@ -404,6 +439,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 fs = fmt(layout.section_font_size),
                 cls = escape_attr(&st.class),
             );
+            out.checkpoint()?;
             for (j, line) in st.lines.iter().enumerate() {
                 if j == 0 {
                     let _ = write!(
@@ -420,11 +456,14 @@ pub(crate) fn render_gantt_diagram_svg_model(
                         txt = escape_xml(line)
                     );
                 }
+                out.checkpoint()?;
             }
             out.push_str("</text>");
+            out.checkpoint()?;
         }
         out.push_str("</g>");
     }
+    out.checkpoint()?;
 
     if model.today_marker.trim() != "off" {
         let today_x = if layout.tasks.is_empty() {
@@ -456,6 +495,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let _ = write!(&mut out, r#" style="{}""#, escape_attr(&style));
         }
         out.push_str("/></g>");
+        out.checkpoint()?;
     }
 
     let title = layout.title.as_deref().unwrap_or_default();
@@ -468,5 +508,92 @@ pub(crate) fn render_gantt_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn gantt_axis_stops_after_the_first_svg_sink_failure() {
+        let ticks = (0..4)
+            .map(|index| crate::model::GanttAxisTickLayout {
+                time_ms: index,
+                x: 100.0 + (index as f64) * 50.0,
+                label: format!("tick-{index}"),
+            })
+            .collect::<Vec<_>>();
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = render_gantt_axis_ticks(&mut out, &ticks, 75.0, -115.0, true)
+            .expect_err("the rejecting sink must stop Gantt axis rendering");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Gantt axis rendering must stop after the first failed tick write"
+        );
+    }
 }

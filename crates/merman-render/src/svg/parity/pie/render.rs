@@ -54,6 +54,85 @@ fn empty_pie_root_viewport_fallback(
     ))
 }
 
+fn render_pie_slices(
+    out: &mut impl SvgOutput,
+    slices: &[crate::model::PieSliceLayout],
+    radius: f64,
+    inner_radius: f64,
+    effective_config: &serde_json::Value,
+) -> Result<()> {
+    for slice in slices {
+        let slice_class = pie_slice_class(effective_config, &slice.label);
+        if slice.is_full_circle {
+            let d = if inner_radius > 0.0 {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
+                    r = fmt(radius),
+                    ir = fmt(inner_radius)
+                )
+            } else {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
+                    r = fmt(radius)
+                )
+            };
+            let _ = write!(
+                out,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
+                d = d,
+                fill = escape_xml(&slice.fill),
+                class = escape_xml(&slice_class)
+            );
+        } else {
+            let (x0, y0) = pie_polar_xy(radius, slice.start_angle);
+            let (x1, y1) = pie_polar_xy(radius, slice.end_angle);
+            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
+                1
+            } else {
+                0
+            };
+            let d = if inner_radius > 0.0 {
+                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
+                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
+                    x0 = fmt(x0),
+                    y0 = fmt(y0),
+                    r = fmt(radius),
+                    large = large,
+                    x1 = fmt(x1),
+                    y1 = fmt(y1),
+                    ix1 = fmt(ix1),
+                    iy1 = fmt(iy1),
+                    ir = fmt(inner_radius),
+                    ix0 = fmt(ix0),
+                    iy0 = fmt(iy0)
+                )
+            } else {
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
+                    x0 = fmt(x0),
+                    y0 = fmt(y0),
+                    r = fmt(radius),
+                    large = large,
+                    x1 = fmt(x1),
+                    y1 = fmt(y1)
+                )
+            };
+            let _ = write!(
+                out,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
+                d = d,
+                fill = escape_xml(&slice.fill),
+                class = escape_xml(&slice_class)
+            );
+        }
+        out.checkpoint()?;
+    }
+
+    Ok(())
+}
+
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
@@ -87,7 +166,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, render_settings.use_max_width)
         .with_max_width(root_max_width);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = model
         .acc_title
         .as_deref()
@@ -130,10 +209,16 @@ pub(crate) fn render_pie_diagram_svg_model(
             text = escape_xml(d)
         );
     }
+    out.checkpoint()?;
 
+    out.push_str("<style>");
+    out.checkpoint()?;
     let css = pie_css(diagram_id, effective_config);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    out.push_str(r#"<g/>"#);
+    out.push_str(&css);
+    drop(css);
+    out.checkpoint()?;
+    out.push_str(r#"</style><g/>"#);
+    out.checkpoint()?;
 
     let _ = write!(
         &mut out,
@@ -170,76 +255,16 @@ pub(crate) fn render_pie_diagram_svg_model(
         r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
         r = fmt(layout.outer_radius)
     );
+    out.checkpoint()?;
 
     let inner_radius = render_settings.donut_hole * layout.radius;
-    for slice in &layout.slices {
-        let r = layout.radius;
-        let slice_class = pie_slice_class(effective_config, &slice.label);
-        if slice.is_full_circle {
-            let d = if inner_radius > 0.0 {
-                format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
-                    r = fmt(r),
-                    ir = fmt(inner_radius)
-                )
-            } else {
-                format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                    r = fmt(r)
-                )
-            };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill),
-                class = escape_xml(&slice_class)
-            );
-        } else {
-            let (x0, y0) = pie_polar_xy(r, slice.start_angle);
-            let (x1, y1) = pie_polar_xy(r, slice.end_angle);
-            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
-                1
-            } else {
-                0
-            };
-            let d = if inner_radius > 0.0 {
-                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
-                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(r),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1),
-                    ix1 = fmt(ix1),
-                    iy1 = fmt(iy1),
-                    ir = fmt(inner_radius),
-                    ix0 = fmt(ix0),
-                    iy0 = fmt(iy0)
-                )
-            } else {
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(r),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1)
-                )
-            };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill),
-                class = escape_xml(&slice_class)
-            );
-        }
-    }
+    render_pie_slices(
+        &mut out,
+        &layout.slices,
+        layout.radius,
+        inner_radius,
+        effective_config,
+    )?;
 
     for slice in &layout.slices {
         let _ = write!(
@@ -249,6 +274,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             y = fmt(slice.text_y),
             text = escape_xml(&format!("{}%", slice.percent))
         );
+        out.checkpoint()?;
     }
 
     out.push_str("</g>");
@@ -270,6 +296,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             );
         }
     }
+    out.checkpoint()?;
 
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;
@@ -281,6 +308,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             x = fmt(layout.legend_x),
             y = fmt(item.y)
         );
+        out.checkpoint()?;
         let style = pie_legend_rect_style(&item.fill);
         let _ = write!(
             &mut out,
@@ -288,6 +316,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             size = fmt(legend_rect_size),
             style = escape_xml(&style)
         );
+        out.checkpoint()?;
         let text = if model.show_data {
             format!("{} [{}]", item.label, fmt(item.value))
         } else {
@@ -301,10 +330,11 @@ pub(crate) fn render_pie_diagram_svg_model(
             text = escape_xml(&text)
         );
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -312,6 +342,94 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use merman_core::diagrams::pie::PieDiagramRenderModel;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn pie_slices_stop_after_the_first_svg_sink_failure() {
+        let slices = (0..4)
+            .map(|index| crate::model::PieSliceLayout {
+                label: format!("slice-{index}"),
+                value: 1.0,
+                start_angle: 0.0,
+                end_angle: std::f64::consts::TAU,
+                is_full_circle: true,
+                percent: 100,
+                text_x: 0.0,
+                text_y: 0.0,
+                fill: "#ECECFF".to_string(),
+            })
+            .collect::<Vec<_>>();
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = render_pie_slices(&mut out, &slices, 185.0, 0.0, &serde_json::json!({}))
+            .expect_err("the rejecting sink must stop Pie slice rendering");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Pie slice rendering must stop after the first failed slice write"
+        );
+    }
 
     #[test]
     fn pie_legend_rect_style_serializes_default_palette_colors_as_rgb() {

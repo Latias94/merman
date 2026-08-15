@@ -6,6 +6,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::GanttDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use std::sync::Arc;
@@ -169,6 +172,78 @@ fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+fn try_render_gantt_svg_with_resource_policy(
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let session = RenderEnvironment::deterministic()
+        .with_runtime_policy(
+            merman_core::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(1_704_067_200_000),
+        )
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin Gantt resource-bound session");
+    let parsed = futures::executor::block_on(
+        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse Gantt resource-bound fixture")
+    .expect("detect Gantt resource-bound fixture");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("gantt-bounded".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok(rendered.svg().to_owned())
+}
+
+#[test]
+fn gantt_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = r#"gantt
+dateFormat YYYY-MM-DD
+todayMarker off
+section Delivery
+Plan: plan, 2024-01-01, 2d
+Ship: ship, after plan, 1d
+"#;
+    let baseline = try_render_gantt_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded Gantt baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "Gantt fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact Gantt SVG byte ceiling");
+    let exact = try_render_gantt_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact Gantt family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact Gantt SVG byte ceiling");
+    let error = try_render_gantt_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the Gantt family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Gantt MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 #[test]
