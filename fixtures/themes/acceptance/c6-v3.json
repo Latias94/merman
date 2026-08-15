@@ -87,7 +87,6 @@
       "target": "standalone-svg",
       "expectation": {
         "mechanismRequirements": {
-          "stroke-styling": "must-apply",
           "theme-variables": "must-apply"
         },
         "expectedResidualIds": [],
@@ -104,7 +103,6 @@
       "target": "png",
       "expectation": {
         "mechanismRequirements": {
-          "stroke-styling": "must-apply",
           "theme-variables": "must-apply"
         },
         "expectedResidualIds": [],

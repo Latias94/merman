@@ -490,15 +490,6 @@ fn sequence_document_seals_prepared_text_with_the_embedded_full_font() {
                 ),
         )
         .expect("compile Sequence full-font theme");
-    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
-        merman::MermaidConfig::from_value(serde_json::json!({
-            "htmlLabels": false,
-            "fontFamily": "Excalifont",
-            "themeVariables": {
-                "fontFamily": "Excalifont"
-            }
-        })),
-    ));
     let request = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
             merman::svg::ThemePortabilityRequirement::RequirePortable,
@@ -506,32 +497,68 @@ fn sequence_document_seals_prepared_text_with_the_embedded_full_font() {
         pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
         ..merman::SvgRequest::default()
     };
-    let output = renderer
-        .render(
-            RenderRequest::document(
-                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Prepared message\nNote over Alice,Bob: Prepared note",
-                OperationControl::new(),
-                request,
+    for (case, config) in [
+        (
+            "theme variable only",
+            serde_json::json!({
+                "htmlLabels": false,
+                "themeVariables": {"fontFamily": "Excalifont"}
+            }),
+        ),
+        (
+            "theme variable overrides the root font",
+            serde_json::json!({
+                "htmlLabels": false,
+                "fontFamily": "Missing Root Font",
+                "themeVariables": {"fontFamily": "Excalifont"}
+            }),
+        ),
+    ] {
+        let renderer = Renderer::new().with_engine(
+            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(config)),
+        );
+        let output = renderer
+            .render(
+                RenderRequest::document(
+                    "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Prepared message\nNote over Alice,Bob: Prepared note",
+                    OperationControl::new(),
+                    request.clone(),
+                )
+                .with_theme(theme.clone()),
             )
-            .with_theme(theme),
-        )
-        .expect("portable Sequence document should complete");
-    let RenderOutput::Document(Some(document)) = output else {
-        panic!("expected a completed Sequence document");
-    };
+            .unwrap_or_else(|error| panic!("{case}: portable Sequence document: {error}"));
+        let RenderOutput::Document(Some(document)) = output else {
+            panic!("{case}: expected a completed Sequence document");
+        };
 
-    assert!(document.portability().prepared_text_evidence_valid());
-    assert!(document.portability().is_evidence_valid());
-    assert!(!document.portability().is_host_dependent());
-    assert!(document.portability().reasons().is_empty());
+        assert!(
+            document.portability().prepared_text_evidence_valid(),
+            "{case}"
+        );
+        assert!(document.portability().is_evidence_valid(), "{case}");
+        assert!(!document.portability().is_host_dependent(), "{case}");
+        assert!(document.portability().reasons().is_empty(), "{case}");
 
-    let admission = document.standalone_svg_admission();
-    assert_eq!(admission.status(), merman::TargetAdmissionStatus::Portable);
-    assert_eq!(admission.font_source(), merman::TargetFontSource::Embedded);
-    assert!(admission.reasons().is_empty());
-    assert!(document.svg().contains("data-merman-typed-fonts=\"v1\""));
-    assert!(document.svg().contains("@font-face{"));
-    assert!(!document.svg().contains("merman-prepared-"));
+        let admission = document.standalone_svg_admission();
+        assert_eq!(
+            admission.status(),
+            merman::TargetAdmissionStatus::Portable,
+            "{case}"
+        );
+        assert_eq!(
+            admission.font_source(),
+            merman::TargetFontSource::Embedded,
+            "{case}"
+        );
+        assert!(admission.reasons().is_empty(), "{case}");
+        assert!(
+            document.svg().contains("data-merman-typed-fonts=\"v1\""),
+            "{case}"
+        );
+        assert!(document.svg().contains("@font-face{"), "{case}");
+        assert!(document.svg().contains("font-family:Excalifont"), "{case}");
+        assert!(!document.svg().contains("merman-prepared-"), "{case}");
+    }
 }
 
 #[cfg(feature = "svg")]

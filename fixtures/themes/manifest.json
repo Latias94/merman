@@ -225,7 +225,7 @@
       "expectationPath": "expectations/sequence-proof.json",
       "expectationSha256": "8e53f5b56e3f4b642cdcf8733cfc39db96159a704093a581a5107f6f0f4f68e7",
       "themeInputPath": "inputs/sequence-proof.json",
-      "themeInputSha256": "6d20a26e8b84ea2b77bf9fdc51897c7471458c53c59130a521ef0b7edf0a68ab",
+      "themeInputSha256": "9c15e75de9f29949cf4c628330a7f1afa36f11ecaadb8a26f7ba63ce1f1db49a",
       "evidenceSourceIds": [
         "source-excalidraw",
         "source-modern-mermaid"

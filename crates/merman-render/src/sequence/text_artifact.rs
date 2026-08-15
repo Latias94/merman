@@ -37,9 +37,8 @@ impl SequenceTextSidecar {
         let base_typography = ThemeTextStyle::default()
             .with_font_size_px(font_size)
             .expect("Sequence font size is normalized to a positive finite value");
-        let source_font_stack = crate::config::config_string(effective_config, &["fontFamily"])
-            .as_deref()
-            .and_then(parse_css_font_stack);
+        let source_font_stack =
+            parse_css_font_stack(&crate::config::config_font_family_css(effective_config));
         Self {
             prepared_text_layout: prepared_text_layout.cloned(),
             base_typography,
@@ -96,6 +95,7 @@ impl SequenceTextSidecar {
                     &requested_typography,
                     emitted_font_stack
                         .as_ref()
+                        .filter(|stack| stack.contains_named_family())
                         .or(self.source_font_stack.as_ref()),
                 )
                 .map_err(Error::from)?;

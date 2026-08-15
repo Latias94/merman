@@ -27,13 +27,7 @@
     }
   ],
   "blendMode": null,
-  "nodeStyle": {
-    "border": {
-      "color": "#111111",
-      "widthPx": 3
-    },
-    "dashPattern": []
-  },
+  "nodeStyle": null,
   "semanticRules": [],
   "svgEffects": [],
   "residualMechanisms": []

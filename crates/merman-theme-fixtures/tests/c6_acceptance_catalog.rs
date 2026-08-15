@@ -70,9 +70,7 @@ fn expected_mechanisms(
             Mechanism::StrokeStyling,
             Mechanism::ThemeVariables,
         ],
-        (C6ProofTheme::Brutalist, C6ProofFamily::Sequence) => {
-            &[Mechanism::StrokeStyling, Mechanism::ThemeVariables]
-        }
+        (C6ProofTheme::Brutalist, C6ProofFamily::Sequence) => &[Mechanism::ThemeVariables],
         (C6ProofTheme::Spotless, C6ProofFamily::Flowchart) => &[
             Mechanism::CanvasGradient,
             Mechanism::CanvasPattern,

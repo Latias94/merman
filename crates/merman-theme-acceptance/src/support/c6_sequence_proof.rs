@@ -10,10 +10,7 @@ use super::{
     decode_bounded_png_artifact,
 };
 
-const CELL_MECHANISMS: [ReferenceThemeMechanism; 2] = [
-    ReferenceThemeMechanism::StrokeStyling,
-    ReferenceThemeMechanism::ThemeVariables,
-];
+const CELL_MECHANISMS: [ReferenceThemeMechanism; 1] = [ReferenceThemeMechanism::ThemeVariables];
 
 #[derive(Clone, Debug)]
 pub(crate) struct BrutalistSequenceSvgProof {

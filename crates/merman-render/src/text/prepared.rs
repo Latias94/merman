@@ -320,6 +320,14 @@ impl ParsedCssFontStack {
         self.font_stack.families()
     }
 
+    pub(crate) fn contains_named_family(&self) -> bool {
+        self.font_stack
+            .families()
+            .iter()
+            .enumerate()
+            .any(|(index, _)| self.generic_family(index).is_none())
+    }
+
     fn generic_family(&self, index: usize) -> Option<GenericFontFamily> {
         self.generic_families.get(&index).copied()
     }

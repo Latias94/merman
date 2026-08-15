@@ -99,7 +99,6 @@ fn sequence_proof_fixture_registers_the_closed_family_and_source_inventory() {
         BTreeSet::from([
             ReferenceThemeMechanism::CanvasSolid,
             ReferenceThemeMechanism::FontStack,
-            ReferenceThemeMechanism::StrokeStyling,
             ReferenceThemeMechanism::ThemeVariables,
         ])
     );

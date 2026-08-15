@@ -158,10 +158,9 @@ use c6_sequence_proof::{
 const SHADOW_EFFECT_ID: &str = "c6-brutalist-state-shadow";
 const BRUTALIST_STATE_FIXTURE_ID: &str = "fixture-c6-brutalist-state";
 const BRUTALIST_SEQUENCE_FIXTURE_ID: &str = "fixture-sequence-proof";
-const COMMON_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 4] = [
+const COMMON_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 3] = [
     ReferenceThemeMechanism::CanvasSolid,
     ReferenceThemeMechanism::FontStack,
-    ReferenceThemeMechanism::StrokeStyling,
     ReferenceThemeMechanism::ThemeVariables,
 ];
 const COMPLETE_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 7] = [
@@ -179,12 +178,12 @@ struct BrutalistCommonFixtureContract<'a> {
     font_stack: &'a ReferenceFontStack,
     font_asset_id: &'a str,
     canvas_color: &'a str,
-    border: &'a ReferenceBorderInput,
     mechanisms: BTreeSet<ReferenceThemeMechanism>,
 }
 
 struct BrutalistStateFixtureContract<'a> {
     common: BrutalistCommonFixtureContract<'a>,
+    border: &'a ReferenceBorderInput,
     radius_px: u16,
     palette_colors: &'a [String],
     shadow: &'a ReferenceShadowInput,
@@ -249,37 +248,21 @@ impl<'a> BrutalistCommonFixtureContract<'a> {
             "canvas color does not match the background token"
         );
 
-        let node_style = input.node_style().ok_or_else(|| {
-            C6ProofError::new("fixture-contract", "Brutalist requires a node style")
-        })?;
-        c6_ensure!(
-            "fixture-contract",
-            node_style.dash_pattern().is_empty(),
-            "Brutalist node style must not use a dash pattern"
-        );
-        let border = node_style.border().ok_or_else(|| {
-            C6ProofError::new("fixture-contract", "Brutalist requires a node border")
-        })?;
-
         Ok(Self {
             tokens,
             font_stack,
             font_asset_id,
             canvas_color,
-            border,
             mechanisms: input.mechanisms(),
         })
     }
 
     fn from_sequence_input(input: &'a ReferenceThemeInput) -> C6ProofResult<Self> {
         let contract = Self::from_input(input)?;
-        let node_style = input
-            .node_style()
-            .expect("the common Brutalist contract requires a node style");
         c6_ensure!(
             "fixture-contract",
-            node_style.corner_radius_px().is_none() && node_style.shadow().is_none(),
-            "Brutalist Sequence admits only the common border surface"
+            input.node_style().is_none(),
+            "Brutalist Sequence does not claim the unsupported node-style contract"
         );
         c6_ensure!(
             "fixture-contract",
@@ -305,7 +288,7 @@ impl<'a> BrutalistCommonFixtureContract<'a> {
     }
 
     fn stroke(&self) -> &str {
-        self.border.color()
+        self.tokens.text()
     }
 
     fn font_family(&self) -> &str {
@@ -316,9 +299,17 @@ impl<'a> BrutalistCommonFixtureContract<'a> {
 impl<'a> BrutalistStateFixtureContract<'a> {
     fn from_input(input: &'a ReferenceThemeInput) -> C6ProofResult<Self> {
         let common = BrutalistCommonFixtureContract::from_input(input)?;
-        let node_style = input
-            .node_style()
-            .expect("the common Brutalist contract requires a node style");
+        let node_style = input.node_style().ok_or_else(|| {
+            C6ProofError::new("fixture-contract", "Brutalist State requires a node style")
+        })?;
+        c6_ensure!(
+            "fixture-contract",
+            node_style.dash_pattern().is_empty(),
+            "Brutalist State node style must not use a dash pattern"
+        );
+        let border = node_style.border().ok_or_else(|| {
+            C6ProofError::new("fixture-contract", "Brutalist State requires a node border")
+        })?;
         let radius_px = node_style.corner_radius_px().ok_or_else(|| {
             C6ProofError::new("fixture-contract", "Brutalist State requires rounded nodes")
         })?;
@@ -385,6 +376,7 @@ impl<'a> BrutalistStateFixtureContract<'a> {
 
         Ok(Self {
             common,
+            border,
             radius_px,
             palette_colors,
             shadow,
