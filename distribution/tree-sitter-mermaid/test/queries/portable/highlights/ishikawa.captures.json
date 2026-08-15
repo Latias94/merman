@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "ishikawa.mmd",
+  "captures": [
+    {"name": "keyword", "text": "ishikawa-beta", "startByte": 0, "endByte": 13},
+    {"name": "string", "text": "Problem", "startByte": 14, "endByte": 21},
+    {"name": "string", "text": "Process", "startByte": 24, "endByte": 31},
+    {"name": "string", "text": "Slow review", "startByte": 36, "endByte": 47},
+    {"name": "string", "text": "People", "startByte": 50, "endByte": 56}
+  ]
+}

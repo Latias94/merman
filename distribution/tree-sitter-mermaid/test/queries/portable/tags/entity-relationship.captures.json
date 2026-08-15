@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/entity-relationship.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "CUSTOMER",
+      "startByte": 10,
+      "endByte": 18
+    },
+    {
+      "name": "definition.class",
+      "text": "CUSTOMER[\"Customer\"]:::entity {\n  string id PK \"identifier\"\n}",
+      "startByte": 10,
+      "endByte": 71
+    }
+  ]
+}

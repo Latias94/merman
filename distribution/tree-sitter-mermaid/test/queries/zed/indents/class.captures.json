@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "class.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "namespace domain {\n  class Customer[\"Customer\"]:::entity {\n    +String name\n  }\n}",
+      "startByte": 13,
+      "endByte": 94
+    },
+    {
+      "name": "indent",
+      "text": "{\n    +String name\n  }",
+      "startByte": 70,
+      "endByte": 92
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 91,
+      "endByte": 92
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 93,
+      "endByte": 94
+    },
+    {
+      "name": "indent",
+      "text": "call select(1)",
+      "startByte": 203,
+      "endByte": 217
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 216,
+      "endByte": 217
+    }
+  ]
+}

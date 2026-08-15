@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "pie.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "pie showData\ntitle 市场份额\n\"Alpha\": 60.5\n'Beta': -1\n",
+      "startByte": 0,
+      "endByte": 57
+    },
+    {
+      "name": "class.inside",
+      "text": "title 市场份额\n\"Alpha\": 60.5\n'Beta': -1\n",
+      "startByte": 13,
+      "endByte": 57
+    },
+    {
+      "name": "function.around",
+      "text": "\"Alpha\": 60.5",
+      "startByte": 32,
+      "endByte": 45
+    },
+    {
+      "name": "function.around",
+      "text": "'Beta': -1",
+      "startByte": 46,
+      "endByte": 56
+    }
+  ]
+}

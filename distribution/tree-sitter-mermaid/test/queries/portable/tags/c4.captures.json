@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/c4.mmd",
+  "captures": [
+    {
+      "name": "definition.module",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "name",
+      "text": "apps",
+      "startByte": 56,
+      "endByte": 60
+    },
+    {
+      "name": "definition.class",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "name",
+      "text": "customer",
+      "startByte": 89,
+      "endByte": 97
+    },
+    {
+      "name": "definition.class",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "name",
+      "text": "api",
+      "startByte": 123,
+      "endByte": 126
+    },
+    {
+      "name": "definition.class",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    },
+    {
+      "name": "name",
+      "text": "db",
+      "startByte": 171,
+      "endByte": 173
+    }
+  ]
+}

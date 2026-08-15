@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "kanban.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "kanban",
+      "startByte": 0,
+      "endByte": 6
+    },
+    {
+      "name": "item",
+      "text": "kanban\n  todo[待办]\n    docs[\"Write docs\"]@{ assigned: 'Alice B.', ticket: MM-42 }\n    ::icon(fa fa-book)\n    :::urgent large\n",
+      "startByte": 0,
+      "endByte": 128
+    },
+    {
+      "name": "item",
+      "text": "  todo[待办]",
+      "startByte": 7,
+      "endByte": 21
+    },
+    {
+      "name": "name",
+      "text": "todo",
+      "startByte": 9,
+      "endByte": 13
+    },
+    {
+      "name": "item",
+      "text": "    docs[\"Write docs\"]@{ assigned: 'Alice B.', ticket: MM-42 }",
+      "startByte": 22,
+      "endByte": 84
+    },
+    {
+      "name": "name",
+      "text": "docs",
+      "startByte": 26,
+      "endByte": 30
+    }
+  ]
+}

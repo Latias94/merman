@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "publicId": "zenuml",
+  "rootNode": "zenuml_diagram",
+  "nodes": {
+    "zenuml_alias_clause": [
+      "keyword",
+      "label"
+    ],
+    "zenuml_argument_list": [
+      "argument",
+      "close",
+      "delimiter",
+      "open"
+    ],
+    "zenuml_assignee": [
+      "delimiter",
+      "item"
+    ],
+    "zenuml_assignment": [
+      "assignee",
+      "operator",
+      "type"
+    ],
+    "zenuml_assignment_expression": [
+      "assignment",
+      "value"
+    ],
+    "zenuml_async_message_statement": [
+      "arrow",
+      "delimiter",
+      "message",
+      "modifier",
+      "source",
+      "target"
+    ],
+    "zenuml_binary_expression": [
+      "left",
+      "operator",
+      "right"
+    ],
+    "zenuml_block": [
+      "close",
+      "comment",
+      "open",
+      "statement",
+      "terminator"
+    ],
+    "zenuml_body": [
+      "comment",
+      "declaration",
+      "statement",
+      "terminator"
+    ],
+    "zenuml_call_chain": [
+      "call",
+      "delimiter"
+    ],
+    "zenuml_call_expression": [
+      "arguments",
+      "delimiter",
+      "message",
+      "name",
+      "target"
+    ],
+    "zenuml_catch_clause": [
+      "body",
+      "exception",
+      "keyword"
+    ],
+    "zenuml_condition_clause": [
+      "close",
+      "open",
+      "value"
+    ],
+    "zenuml_construct": [
+      "name"
+    ],
+    "zenuml_creation_expression": [
+      "arguments",
+      "constructor",
+      "keyword"
+    ],
+    "zenuml_creation_statement": [
+      "arguments",
+      "assignment",
+      "body",
+      "constructor",
+      "keyword",
+      "modifier"
+    ],
+    "zenuml_critical_statement": [
+      "body",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_declaration_argument": [
+      "name",
+      "type"
+    ],
+    "zenuml_diagram": [
+      "body",
+      "header"
+    ],
+    "zenuml_divider_statement": [
+      "operator",
+      "text"
+    ],
+    "zenuml_else_clause": [
+      "body",
+      "keyword"
+    ],
+    "zenuml_else_if_clause": [
+      "body",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_emoji": [
+      "close",
+      "name",
+      "open"
+    ],
+    "zenuml_endpoint": [
+      "emoji",
+      "name"
+    ],
+    "zenuml_finally_clause": [
+      "body",
+      "keyword"
+    ],
+    "zenuml_group_block": [
+      "close",
+      "comment",
+      "open",
+      "participant",
+      "terminator"
+    ],
+    "zenuml_group_declaration": [
+      "body",
+      "keyword",
+      "name"
+    ],
+    "zenuml_header": [
+      "keyword"
+    ],
+    "zenuml_if_statement": [
+      "body",
+      "branch",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_incomplete_message_statement": [
+      "arrow",
+      "delimiter",
+      "source",
+      "target"
+    ],
+    "zenuml_loop_statement": [
+      "body",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_named_argument": [
+      "name",
+      "operator",
+      "value"
+    ],
+    "zenuml_optional_statement": [
+      "body",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_parallel_statement": [
+      "body",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_parenthesized_expression": [
+      "close",
+      "open",
+      "value"
+    ],
+    "zenuml_participant_declaration": [
+      "alias",
+      "color",
+      "emoji",
+      "name",
+      "stereotype",
+      "type",
+      "width"
+    ],
+    "zenuml_reference_list": [
+      "close",
+      "delimiter",
+      "open",
+      "participant"
+    ],
+    "zenuml_reference_statement": [
+      "keyword",
+      "participants"
+    ],
+    "zenuml_reply_message_statement": [
+      "arrow",
+      "delimiter",
+      "message",
+      "source",
+      "target"
+    ],
+    "zenuml_return_statement": [
+      "annotation",
+      "keyword",
+      "message",
+      "value"
+    ],
+    "zenuml_section_statement": [
+      "body",
+      "condition",
+      "keyword"
+    ],
+    "zenuml_signature": [
+      "arguments",
+      "emoji",
+      "name"
+    ],
+    "zenuml_starter_declaration": [
+      "annotation",
+      "close",
+      "open",
+      "participant"
+    ],
+    "zenuml_stereotype": [
+      "close",
+      "name",
+      "open"
+    ],
+    "zenuml_sync_message_statement": [
+      "arrow",
+      "assignment",
+      "body",
+      "delimiter",
+      "message",
+      "modifier",
+      "source",
+      "target"
+    ],
+    "zenuml_text_expression": [
+      "word"
+    ],
+    "zenuml_title_statement": [
+      "keyword",
+      "text"
+    ],
+    "zenuml_try_statement": [
+      "body",
+      "catch",
+      "finally",
+      "keyword"
+    ],
+    "zenuml_unary_expression": [
+      "operand",
+      "operator"
+    ],
+    "zenuml_unclosed_argument_list": [
+      "argument",
+      "delimiter",
+      "open"
+    ],
+    "zenuml_unclosed_block": [
+      "comment",
+      "open",
+      "statement",
+      "terminator"
+    ],
+    "zenuml_unclosed_condition_clause": [
+      "open",
+      "value"
+    ],
+    "zenuml_unclosed_group_block": [
+      "comment",
+      "open",
+      "participant",
+      "terminator"
+    ],
+    "zenuml_unclosed_reference_list": [
+      "delimiter",
+      "open",
+      "participant"
+    ],
+    "zenuml_width": [
+      "value"
+    ]
+  }
+}

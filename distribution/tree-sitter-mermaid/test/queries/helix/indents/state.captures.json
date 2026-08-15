@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "profile": "helix",
+  "consumerVersion": "25.07.1",
+  "surface": "indents",
+  "source": "state.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "state Parent {\n  [*] --> Child\n}",
+      "startByte": 16,
+      "endByte": 48
+    },
+    {
+      "name": "outdent",
+      "text": "}",
+      "startByte": 47,
+      "endByte": 48
+    }
+  ]
+}
+

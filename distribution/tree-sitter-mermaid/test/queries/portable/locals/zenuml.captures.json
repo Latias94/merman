@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/zenuml.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "zenuml\ntitle Order 流程\n@Starter(用户)\n@Actor <<boundary>> 用户 as \"Customer\" #4f81bd\nconst Order order = new Order(id, count = 2)\nif (ready && count >= 2) {\n  用户->API.create(order, timeout = 250ms)\n} else {\n  API->Queue: accepted\n}\nQueue-->用户: done\n// durable comment\n",
+      "startByte": 0,
+      "endByte": 283
+    },
+    {
+      "name": "local.definition",
+      "text": "用户",
+      "startByte": 35,
+      "endByte": 41
+    },
+    {
+      "name": "local.definition",
+      "text": "用户",
+      "startByte": 63,
+      "endByte": 69
+    },
+    {
+      "name": "local.definition",
+      "text": "order",
+      "startByte": 104,
+      "endByte": 109
+    },
+    {
+      "name": "local.reference",
+      "text": "用户",
+      "startByte": 166,
+      "endByte": 172
+    },
+    {
+      "name": "local.reference",
+      "text": "API",
+      "startByte": 174,
+      "endByte": 177
+    },
+    {
+      "name": "local.reference",
+      "text": "API",
+      "startByte": 220,
+      "endByte": 223
+    },
+    {
+      "name": "local.reference",
+      "text": "Queue",
+      "startByte": 225,
+      "endByte": 230
+    },
+    {
+      "name": "local.reference",
+      "text": "Queue",
+      "startByte": 243,
+      "endByte": 248
+    },
+    {
+      "name": "local.reference",
+      "text": "用户",
+      "startByte": 251,
+      "endByte": 257
+    }
+  ]
+}

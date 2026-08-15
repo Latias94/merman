@@ -1,0 +1,15 @@
+---
+title: zenuml
+---
+zenuml
+title Order 流程
+@Starter(用户)
+@Actor <<boundary>> 用户 as "Customer" #4f81bd
+const Order order = new Order(id, count = 2)
+if (ready && count >= 2) {
+  用户->API.create(order, timeout = 250ms)
+} else {
+  API->Queue: accepted
+}
+Queue-->用户: done
+// durable comment

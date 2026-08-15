@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Sankey CRLF Unicode source edit",
+    "source": "sankey-beta\r\nBefore,Target,1\r\n",
+    "old": "Before",
+    "replacement": "来源世界"
+  },
+  {
+    "name": "Sankey quoted comma becomes multiline field",
+    "source": "sankey\n\"Source, one\",Target,1\nAfter,End,2\n",
+    "old": "Source, one",
+    "replacement": "Source, one\ncontinued"
+  },
+  {
+    "name": "Sankey escaped quote edit",
+    "source": "sankey\nSource,\"Target \"\"old\"\"\",1\n",
+    "old": "old",
+    "replacement": "new 世界"
+  },
+  {
+    "name": "Sankey truncated record repair",
+    "source": "sankey\nBefore,Middle,1\nTruncated,Only\nAfter,End,2\n",
+    "old": "Truncated,Only",
+    "replacement": "Recovered,Complete,3"
+  },
+  {
+    "name": "Sankey unclosed quoted record repair",
+    "source": "sankey\nBefore,Middle,1\n\"Unclosed,target,2\nAfter,End,3\n",
+    "old": "\"Unclosed,target,2",
+    "replacement": "\"Recovered\",target,2"
+  },
+  {
+    "name": "Sankey header alias switch",
+    "source": "sankey-beta\nSource,Target,1\n",
+    "old": "sankey-beta",
+    "replacement": "SANKEY"
+  },
+  {
+    "name": "Sankey header-only body insertion",
+    "source": "sankey",
+    "old": "sankey",
+    "replacement": "sankey\nSource,Target,1"
+  }
+]

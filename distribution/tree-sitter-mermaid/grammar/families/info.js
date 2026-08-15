@@ -21,29 +21,23 @@ const infoRules = {
   ),
 
   info_body: ($) => choice(
+    repeat1($._info_terminated_body_item),
     seq(
-      repeat($._info_trivia),
-      field('show_info', $.info_show_statement),
-      repeat($._info_trivia),
-      repeat(seq(
-        field('statement', $._info_common_statement),
-        repeat($._info_trivia),
-      )),
+      repeat($._info_terminated_body_item),
+      $._info_eof_body_item,
     ),
-    seq(
-      repeat($._info_trivia),
-      repeat1(seq(
-        field('statement', $._info_common_statement),
-        repeat($._info_trivia),
-      )),
-    ),
-    repeat1($._info_trivia),
   ),
 
-  info_show_statement: ($) => field(
-    'keyword',
-    alias(token(prec(20, 'showInfo')), $.statement_keyword),
-  ),
+  info_show_statement: ($) => prec.right(seq(
+    field(
+      'keyword',
+      alias(token(prec(20, 'showInfo')), $.statement_keyword),
+    ),
+    optional(choice(
+      field('comment', $.comment),
+      field('directive', $.directive),
+    )),
+  )),
 
   _info_common_statement: ($) => choice(
     $.langium_title_statement,
@@ -51,11 +45,27 @@ const infoRules = {
     $.langium_acc_descr_statement,
   ),
 
-  _info_trivia: ($) => choice(
+  _info_body_statement: ($) => choice(
+    field('statement', $._info_common_statement),
+    field('recovery', $.info_recovery_statement),
+  ),
+
+  _info_terminated_body_item: ($) => choice(
+    field('show_info', $.info_show_statement),
+    $._langium_newline,
+    seq(choice($.comment, $.directive), $._langium_newline),
+    seq($._info_body_statement, $._langium_newline),
+  ),
+
+  _info_eof_body_item: ($) => choice(
     $.comment,
     $.directive,
-    $._langium_newline,
+    $._info_body_statement,
   ),
+
+  info_recovery_statement: ($) => field('text', $.info_recovery_text),
+
+  info_recovery_text: (_) => token(prec(1, /[^%\r\n][^\r\n]*/)),
 };
 
 module.exports = { infoRules };

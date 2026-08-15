@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "zenuml.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "@Starter(用户)",
+      "startByte": 26,
+      "endByte": 42
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 41,
+      "endByte": 42
+    },
+    {
+      "name": "indent",
+      "text": "(id, count = 2)",
+      "startByte": 121,
+      "endByte": 136
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 135,
+      "endByte": 136
+    },
+    {
+      "name": "indent",
+      "text": "(ready && count >= 2)",
+      "startByte": 140,
+      "endByte": 161
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 160,
+      "endByte": 161
+    },
+    {
+      "name": "indent",
+      "text": "{\n  用户->API.create(order, timeout = 250ms)\n}",
+      "startByte": 162,
+      "endByte": 210
+    },
+    {
+      "name": "indent",
+      "text": "(order, timeout = 250ms)",
+      "startByte": 184,
+      "endByte": 208
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 207,
+      "endByte": 208
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 209,
+      "endByte": 210
+    },
+    {
+      "name": "indent",
+      "text": "{\n  API->Queue: accepted\n}",
+      "startByte": 216,
+      "endByte": 242
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 241,
+      "endByte": 242
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Entity Relationship CRLF Unicode alias edit",
+    "source": "erDiagram\r\nCUSTOMER[\"Customer account\"]\r\nCUSTOMER ||--o{ ORDER : places\r\n",
+    "old": "Customer account",
+    "replacement": "客户账户"
+  },
+  {
+    "name": "Entity Relationship attribute insertion",
+    "source": "erDiagram\nORDER {\n  uuid id PK\n}\nORDER ||--|| ITEM : contains\n",
+    "old": "uuid id PK",
+    "replacement": "uuid id PK\n  decimal total"
+  },
+  {
+    "name": "Entity Relationship incomplete relationship repair",
+    "source": "erDiagram\nBEFORE ||--o{\nAFTER\nAFTER ||--|| BEFORE : follows\n",
+    "old": "BEFORE ||--o{",
+    "replacement": "BEFORE ||--o{ AFTER : contains"
+  },
+  {
+    "name": "Entity Relationship unclosed role repair",
+    "source": "erDiagram\nA ||--|| B : \"unfinished\nC ||--|| D : follows\n",
+    "old": "\"unfinished",
+    "replacement": "\"finished\""
+  },
+  {
+    "name": "Entity Relationship incomplete attribute repair",
+    "source": "erDiagram\nBOOK {\n  string id PK\n  broken\n  string title\n}\nAFTER\n",
+    "old": "broken",
+    "replacement": "string author FK"
+  },
+  {
+    "name": "Entity Relationship cardinality alias edit",
+    "source": "erDiagram\nPERSON many optionally to many POSSESSION : owns\nAFTER\n",
+    "old": "many optionally to many",
+    "replacement": "one or more optionally to zero or one"
+  },
+  {
+    "name": "Entity Relationship alias prefix removal",
+    "source": "erDiagram\nbuzz CUSTOMER[\"Customer Alias\"]:::person\nCUSTOMER ||--|| ORDER : places\n",
+    "old": "buzz ",
+    "replacement": ""
+  }
+]

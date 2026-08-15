@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/wardley.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "wardley-beta\ncomponent API [0.6, 0.7] (build)\ncomponent DB [0.4, 0.5]\nAPI +<> DB; constraint\nevolve API 0.8\n",
+      "startByte": 0,
+      "endByte": 108
+    },
+    {
+      "name": "local.definition",
+      "text": "API",
+      "startByte": 23,
+      "endByte": 26
+    },
+    {
+      "name": "local.definition",
+      "text": "DB",
+      "startByte": 56,
+      "endByte": 58
+    },
+    {
+      "name": "local.reference",
+      "text": "API",
+      "startByte": 70,
+      "endByte": 73
+    },
+    {
+      "name": "local.reference",
+      "text": "DB",
+      "startByte": 78,
+      "endByte": 80
+    },
+    {
+      "name": "local.reference",
+      "text": "API",
+      "startByte": 100,
+      "endByte": 103
+    }
+  ]
+}

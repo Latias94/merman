@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "block.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "block",
+      "startByte": 16,
+      "endByte": 21
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 30,
+      "endByte": 31
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 41,
+      "endByte": 42
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 50,
+      "endByte": 51
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 56,
+      "endByte": 57
+    },
+    {
+      "name": "open",
+      "text": "[(",
+      "startByte": 60,
+      "endByte": 62
+    },
+    {
+      "name": "close",
+      "text": ")]",
+      "startByte": 72,
+      "endByte": 74
+    },
+    {
+      "name": "close",
+      "text": "end",
+      "startByte": 101,
+      "endByte": 104
+    },
+    {
+      "name": "open",
+      "text": "<[",
+      "startByte": 110,
+      "endByte": 112
+    },
+    {
+      "name": "close",
+      "text": "]>(",
+      "startByte": 118,
+      "endByte": 121
+    }
+  ]
+}

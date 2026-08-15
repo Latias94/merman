@@ -1,0 +1,7 @@
+[[language]]
+name = "mermaid"
+scope = "source.mermaid"
+file-types = ["mmd", "mermaid"]
+comment-token = "%%"
+indent = { tab-width = 2, unit = "  " }
+grammar = "mermaid"

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/zenuml.mmd",
+  "captures": [
+    {
+      "name": "definition.class",
+      "text": "@Starter(用户)",
+      "startByte": 26,
+      "endByte": 42
+    },
+    {
+      "name": "name",
+      "text": "用户",
+      "startByte": 35,
+      "endByte": 41
+    },
+    {
+      "name": "definition.class",
+      "text": "@Actor <<boundary>> 用户 as \"Customer\" #4f81bd",
+      "startByte": 43,
+      "endByte": 91
+    },
+    {
+      "name": "name",
+      "text": "用户",
+      "startByte": 63,
+      "endByte": 69
+    },
+    {
+      "name": "definition.var",
+      "text": "Order order =",
+      "startByte": 98,
+      "endByte": 111
+    },
+    {
+      "name": "name",
+      "text": "order",
+      "startByte": 104,
+      "endByte": 109
+    }
+  ]
+}

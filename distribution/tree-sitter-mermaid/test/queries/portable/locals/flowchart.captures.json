@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/flowchart.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "flowchart TD\nsubgraph lane[\"Lane 世界\"]\n  direction LR\n  A[\"`Markdown **start**`\"] e1@-->|go| B{Done}\nend\nclassDef active fill:#f96,stroke-width:2px\nclass A,B active\nstyle B fill:#fff\nclick A href \"https://example.com\" \"Open\" _blank\n",
+      "startByte": 0,
+      "endByte": 235
+    },
+    {
+      "name": "local.definition",
+      "text": "A",
+      "startByte": 59,
+      "endByte": 60
+    },
+    {
+      "name": "local.definition",
+      "text": "B",
+      "startByte": 96,
+      "endByte": 97
+    },
+    {
+      "name": "local.reference",
+      "text": "A",
+      "startByte": 157,
+      "endByte": 158
+    },
+    {
+      "name": "local.reference",
+      "text": "B",
+      "startByte": 159,
+      "endByte": 160
+    },
+    {
+      "name": "local.reference",
+      "text": "B",
+      "startByte": 174,
+      "endByte": 175
+    },
+    {
+      "name": "local.reference",
+      "text": "A",
+      "startByte": 192,
+      "endByte": 193
+    }
+  ]
+}

@@ -33,14 +33,18 @@ A --> B
     (flowchart_header
       (diagram_keyword)
       (direction))
-    (flowchart_body
-      (flow_edge_statement
-        (flow_node
-          (identifier))
-        (flow_edge
-          (flow_arrow))
-        (flow_node
-          (identifier))))))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))
 
 ==================
 architecture header
@@ -60,39 +64,58 @@ block header
 ==================
 
 block
+a
 
 ---
 
 (source_file
   (block_diagram
     (block_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (block_body
+      (block_node_statement
+        (block_node
+          (block_identifier))))))
 
 ==================
 c4 header
 ==================
 
 C4Context
+Person(a, "A")
 
 ---
 
 (source_file
   (c4_diagram
     (c4_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (c4_body
+      (c4_entity_declaration
+        (c4_entity_kind)
+        (c4_reference
+          (c4_identifier))
+        (c4_argument
+          (c4_string))))))
 
 ==================
 class header
 ==================
 
 classDiagram
+class A
 
 ---
 
 (source_file
   (class_diagram
     (class_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (class_body
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier))))))
 
 ==================
 cynefin header
@@ -324,7 +347,8 @@ radar-beta:
 (source_file
   (radar_diagram
     (radar_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (radar_body)))
 
 ==================
 railroad header
@@ -337,7 +361,8 @@ railroad-beta
 (source_file
   (railroad_diagram
     (railroad_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (railroad_body)))
 
 ==================
 railroad ABNF header
@@ -350,7 +375,8 @@ railroad-abnf-beta
 (source_file
   (railroad_abnf_diagram
     (railroad_abnf_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (railroad_abnf_body)))
 
 ==================
 railroad EBNF header
@@ -363,7 +389,8 @@ railroad-ebnf-beta
 (source_file
   (railroad_ebnf_diagram
     (railroad_ebnf_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (railroad_ebnf_body)))
 
 ==================
 railroad PEG header
@@ -376,7 +403,8 @@ railroad-peg-beta
 (source_file
   (railroad_peg_diagram
     (railroad_peg_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (railroad_peg_body)))
 
 ==================
 requirement header
@@ -396,13 +424,24 @@ sankey header
 ==================
 
 sankey
+A,B,1
 
 ---
 
 (source_file
   (sankey_diagram
     (sankey_header
-      (diagram_keyword))))
+      (diagram_keyword))
+    (sankey_body
+      (sankey_record
+        (sankey_field
+          (sankey_unquoted_field))
+        (sankey_record_delimiter)
+        (sankey_field
+          (sankey_unquoted_field))
+        (sankey_record_delimiter)
+        (sankey_field
+          (sankey_unquoted_field))))))
 
 ==================
 sequence header
@@ -536,7 +575,7 @@ xychart horizontal
   (xy_chart_diagram
     (xy_chart_header
       (diagram_keyword)
-      (orientation))))
+      (xy_chart_orientation))))
 
 ==================
 ZenUML adapter header
@@ -552,14 +591,15 @@ A.m()
     (zenuml_header
       (diagram_keyword))
     (zenuml_body
-      (zenuml_message_statement
-        (zenuml_name
-          (zenuml_identifier))
+      (zenuml_sync_message_statement
+        (zenuml_endpoint
+          (zenuml_name
+            (zenuml_identifier)))
         (zenuml_call_chain
           (zenuml_signature
             (zenuml_name
               (zenuml_identifier))
-            (zenuml_parenthesized_text)))))))
+            (zenuml_argument_list)))))))
 
 ==================
 ZenUML adapter accepts an adjacent body
@@ -574,11 +614,12 @@ zenumlA.method()
     (zenuml_header
       (diagram_keyword))
     (zenuml_body
-      (zenuml_message_statement
-        (zenuml_name
-          (zenuml_identifier))
+      (zenuml_sync_message_statement
+        (zenuml_endpoint
+          (zenuml_name
+            (zenuml_identifier)))
         (zenuml_call_chain
           (zenuml_signature
             (zenuml_name
               (zenuml_identifier))
-            (zenuml_parenthesized_text)))))))
+            (zenuml_argument_list)))))))

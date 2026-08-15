@@ -76,25 +76,32 @@ fn unclosed_family_constructs_recover_inside_the_selected_root() {
         (
             b"eventmodeling\ndata Payload `json` {\n  {\"id\": 1}\n".as_slice(),
             "event_modeling_diagram",
+            "(MISSING \"}\")",
         ),
         (
             b"sankey\n\"Source\nline,Target,1\n".as_slice(),
             "sankey_diagram",
+            "sankey_unclosed_record",
         ),
         (
             b"zenuml\nif (ready) {\n  Alice.method()\n".as_slice(),
             "zenuml_diagram",
+            "zenuml_unclosed_block",
         ),
     ];
 
-    for (source, expected_root) in cases {
+    for (source, expected_root, expected_recovery) in cases {
         let mut parser = parser();
         let tree = parser
             .parse(source, None)
             .expect("parse must return a tree");
         let root = tree.root_node();
-        assert!(root.has_error(), "{expected_root} must expose recovery");
-        assert!(root.to_sexp().contains(expected_root));
+        let sexp = root.to_sexp();
+        assert!(sexp.contains(expected_root));
+        assert!(
+            sexp.contains(expected_recovery),
+            "{expected_root} must expose {expected_recovery}: {sexp}"
+        );
         assert_bounded(root, source.len());
     }
 }

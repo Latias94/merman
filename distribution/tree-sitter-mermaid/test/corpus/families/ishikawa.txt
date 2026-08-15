@@ -1,0 +1,155 @@
+==================
+effect causes indentation comments and unicode labels stay structural
+==================
+
+ishikawa-beta
+    质量问题
+        Process
+            Out of focus
+        User
+            Shaky hands
+        %% preserved comment
+        Environment
+            光线不足
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword))
+    (ishikawa_body
+      (ishikawa_effect_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_indentation)
+      (comment)
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label)))))
+
+==================
+legacy case insensitive header and unindented causes
+==================
+
+ISHIKAWA
+Problem
+Cause A
+  Subcause A1
+Cause B
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword))
+    (ishikawa_body
+      (ishikawa_effect_statement
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_label)))))
+
+==================
+same line body and eof label
+==================
+
+ishikawa-beta Problem
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword))
+    (ishikawa_body
+      (ishikawa_effect_statement
+        (ishikawa_label)))))
+
+==================
+indentation only and comments do not absorb following siblings
+==================
+
+ishikawa-beta
+Problem
+  Cause A
+    
+%% between causes
+  Cause B
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword))
+    (ishikawa_body
+      (ishikawa_effect_statement
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label))
+      (ishikawa_indented_blank_line
+        (ishikawa_indentation))
+      (comment)
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label)))))
+
+==================
+header only at eof
+==================
+
+ishikawa-beta
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword))))
+
+==================
+header and leading comments preserve the effect boundary
+==================
+
+ishikawa-beta %% header comment
+  %% before effect
+Effect
+  Cause
+
+---
+
+(source_file
+  (ishikawa_diagram
+    (ishikawa_header
+      (diagram_keyword)
+      (comment))
+    (ishikawa_body
+      (ishikawa_indentation)
+      (comment)
+      (ishikawa_effect_statement
+        (ishikawa_label))
+      (ishikawa_cause_statement
+        (ishikawa_indentation)
+        (ishikawa_label)))))

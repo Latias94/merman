@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "cynefin.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "cynefin-beta",
+      "startByte": 0,
+      "endByte": 12
+    },
+    {
+      "name": "item",
+      "text": "cynefin-beta:\ntitle Team practices\ncomplex \"Retrospectives\"\ncomplex --> complicated : \"Pattern emerges\"\n",
+      "startByte": 0,
+      "endByte": 104
+    }
+  ]
+}

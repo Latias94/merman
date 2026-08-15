@@ -17,21 +17,28 @@ treeView-beta
       (diagram_keyword))
     (tree_view_body
       (tree_view_node_statement
+        (tree_view_indentation_start)
         (tree_view_node
           (tree_view_bare_name)))
       (tree_view_node_statement
+        (tree_view_indentation_indent)
         (tree_view_node
           (tree_view_bare_name)))
       (tree_view_node_statement
+        (tree_view_indentation_indent)
         (tree_view_node
           (tree_view_bare_name)
           (tree_view_class_annotation
-            (identifier))
+            (tree_view_class_marker)
+            (tree_view_class_name))
           (tree_view_icon_annotation
+            (tree_view_icon_open)
             (tree_view_icon_name))
           (tree_view_description_annotation
+            (tree_view_description_marker)
             (tree_view_description_text))))
       (tree_view_node_statement
+        (tree_view_indentation_dedent)
         (tree_view_node
           (tree_view_bare_name)))
       (tree_view_node_statement
@@ -69,6 +76,7 @@ treeView-beta
         (tree_view_node
           (tree_view_bare_name)
           (tree_view_description_annotation
+            (tree_view_description_marker)
             (tree_view_description_text))))
       (tree_view_box_statement
         (tree_view_box_prefix)
@@ -76,5 +84,159 @@ treeView-beta
           (tree_view_bare_name)))
       (tree_view_box_statement
         (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name))))))
+
+==================
+metadata unicode spaces comments and EOF
+==================
+
+treeView-beta
+title Project tree
+accTitle: Project files
+accDescr: Unicode labels and annotations
+accDescr {Block description}
+Root folder/
+  %% generated files
+  But  _  _ton💓.tsx icon(logos:react) :::highlight ## main component
+
+  🚀 rocket-app/
+    README.md
+
+---
+
+(source_file
+  (tree_view_diagram
+    (tree_view_header
+      (diagram_keyword))
+    (tree_view_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_acc_descr_block
+          (langium_acc_descr_block_text)))
+      (tree_view_node_statement
+        (tree_view_indentation_start)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (comment)
+      (tree_view_node_statement
+        (tree_view_indentation_indent)
+        (tree_view_node
+          (tree_view_bare_name)
+          (tree_view_icon_annotation
+            (tree_view_icon_open)
+            (tree_view_icon_name))
+          (tree_view_class_annotation
+            (tree_view_class_marker)
+            (tree_view_class_name))
+          (tree_view_description_annotation
+            (tree_view_description_marker)
+            (tree_view_description_text))))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_node_statement
+        (tree_view_indentation_indent)
+        (tree_view_node
+          (tree_view_bare_name))))))
+
+==================
+flexible box drawing and decorative lines
+==================
+
+treeView-beta
+root/
+├─ src/
+│
+│   ├─── index.ts
+│   └─utils.ts ## helpers
+┃   ┗━━━ heavy.ts
+└README.md
+
+---
+
+(source_file
+  (tree_view_diagram
+    (tree_view_header
+      (diagram_keyword))
+    (tree_view_body
+      (tree_view_node_statement
+        (tree_view_indentation_start)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_decoration_statement
+        (tree_view_box_decoration))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)
+          (tree_view_description_annotation
+            (tree_view_description_marker)
+            (tree_view_description_text))))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_box_statement
+        (tree_view_box_prefix)
+        (tree_view_node
+          (tree_view_bare_name))))))
+
+==================
+localized incomplete constructs preserve siblings
+==================
+
+treeView-beta
+before.txt
+  └──
+after.txt :::
+final.txt icon(
+"Unclosed label
+sibling.txt
+
+---
+
+(source_file
+  (tree_view_diagram
+    (tree_view_header
+      (diagram_keyword))
+    (tree_view_body
+      (tree_view_node_statement
+        (tree_view_indentation_start)
+        (tree_view_node
+          (tree_view_bare_name)))
+      (tree_view_incomplete_box_statement
+        (tree_view_box_prefix))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)
+          (tree_view_incomplete_class_annotation
+            (tree_view_class_marker))))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_bare_name)
+          (tree_view_incomplete_icon_annotation
+            (tree_view_icon_open))))
+      (tree_view_node_statement
+        (tree_view_node
+          (tree_view_unclosed_name)))
+      (tree_view_node_statement
         (tree_view_node
           (tree_view_bare_name))))))

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "profile": "helix",
+  "consumerVersion": "25.07.1",
+  "surface": "textobjects",
+  "source": "flowchart.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "flowchart TD\nsubgraph api[API]\n  request[Request] --> response[Response]\nend\n",
+      "startByte": 0,
+      "endByte": 77
+    },
+    {
+      "name": "class.inside",
+      "text": "subgraph api[API]\n  request[Request] --> response[Response]\nend\n",
+      "startByte": 13,
+      "endByte": 77
+    },
+    {
+      "name": "entry.around",
+      "text": "subgraph api[API]\n  request[Request] --> response[Response]\nend\n",
+      "startByte": 13,
+      "endByte": 77
+    }
+  ]
+}
+

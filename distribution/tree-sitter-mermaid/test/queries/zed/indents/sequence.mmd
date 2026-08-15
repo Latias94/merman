@@ -1,0 +1,13 @@
+sequenceDiagram
+  participant A
+  participant B
+  A->>B: Hi
+  alt ok
+    B-->>A: yes
+  else no
+    B-->>A: no
+  end
+  loop Every day
+    A->>B: ping
+  end
+

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "swimlane.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "swimlane-beta LR\nsubgraph sales[\"Sales 世界\"]\n  lead[\"`Markdown **lead**`\"] e1@-->|quote| review{Review}\nend\nsubgraph delivery[Delivery]\n  review --> done((Done))\nend\nclassDef active fill:#f96,stroke:#333\nclass lead,review active\nstyle done fill:#fff\nclick lead callback \"Open\"\n",
+      "startByte": 0,
+      "endByte": 280
+    },
+    {
+      "name": "function.around",
+      "text": "subgraph sales[\"Sales 世界\"]\n  lead[\"`Markdown **lead**`\"] e1@-->|quote| review{Review}\nend",
+      "startByte": 17,
+      "endByte": 110
+    },
+    {
+      "name": "class.inside",
+      "text": "subgraph sales[\"Sales 世界\"]\n  lead[\"`Markdown **lead**`\"] e1@-->|quote| review{Review}\nend\nsubgraph delivery[Delivery]\n  review --> done((Done))\nend\nclassDef active fill:#f96,stroke:#333\nclass lead,review active\nstyle done fill:#fff\nclick lead callback \"Open\"\n",
+      "startByte": 17,
+      "endByte": 280
+    },
+    {
+      "name": "function.around",
+      "text": "subgraph delivery[Delivery]\n  review --> done((Done))\nend",
+      "startByte": 111,
+      "endByte": 168
+    }
+  ]
+}

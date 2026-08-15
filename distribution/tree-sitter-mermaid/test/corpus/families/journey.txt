@@ -1,0 +1,194 @@
+==================
+title accessibility sections scores tasks and actors stay structural
+==================
+
+journey
+title 用户旅程
+accTitle: Accessible journey
+accDescr {
+  A Unicode 描述 across lines.
+}
+section Go to work
+Make tea: 5: Alice, Bob
+Prototype parser: -1.5
+# local note
+%% Mermaid note
+%%{init: {"theme": "neutral"}}%%
+section 回家
+Sit down: 3:
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))
+    (journey_body
+      (journey_title_statement
+        (statement_keyword)
+        (journey_title_text))
+      (journey_accessibility_title_statement
+        (statement_keyword)
+        (journey_accessibility_line_text))
+      (journey_accessibility_description_statement
+        (statement_keyword)
+        (journey_accessibility_description_block))
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)
+        (journey_actor_delimiter)
+        (journey_actor_list
+          (journey_actor)
+          (journey_actor)))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score))
+      (journey_hash_comment)
+      (comment)
+      (directive)
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)
+        (journey_actor_delimiter)))))
+
+==================
+header only at eof
+==================
+
+journey
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))))
+
+==================
+same line body and eof task
+==================
+
+journey section Minimal
+Only task: 3
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))
+    (journey_body
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)))))
+
+==================
+keyword prefixes remain task names
+==================
+
+journey
+section Scope
+sectionWorker: 4: Alice
+titleCase: 2: Bob
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))
+    (journey_body
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)
+        (journey_actor_delimiter)
+        (journey_actor_list
+          (journey_actor)))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)
+        (journey_actor_delimiter)
+        (journey_actor_list
+          (journey_actor))))))
+
+==================
+incomplete task and malformed row preserve following siblings
+==================
+
+journey
+section Before
+Broken task:
+unknown row payload
+section After
+Healthy task: 5: Alice
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))
+    (journey_body
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_incomplete_task_statement
+        (journey_task_name)
+        (journey_task_delimiter))
+      (journey_malformed_statement
+        (journey_malformed_text))
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)
+        (journey_actor_delimiter)
+        (journey_actor_list
+          (journey_actor))))))
+
+==================
+unclosed accessibility block stays on its physical line
+==================
+
+journey
+accDescr {unterminated
+section After
+Healthy task: 5
+
+---
+
+(source_file
+  (journey_diagram
+    (journey_header
+      (diagram_keyword))
+    (journey_body
+      (journey_accessibility_description_statement
+        (statement_keyword)
+        (journey_unclosed_accessibility_description_block))
+      (journey_section_statement
+        (statement_keyword)
+        (journey_section_name))
+      (journey_task_statement
+        (journey_task_name)
+        (journey_task_delimiter)
+        (journey_score)))))

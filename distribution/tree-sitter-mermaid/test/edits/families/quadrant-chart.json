@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Quadrant Chart CRLF Unicode point label",
+    "source": "quadrantChart\r\nx-axis Low --> High\r\nCampaign A: [0.3, 0.6]\r\n",
+    "old": "Campaign A",
+    "replacement": "产品甲"
+  },
+  {
+    "name": "Quadrant Chart coordinate edit",
+    "source": "quadrantChart\nPoint: [0.3, 0.6]\n",
+    "old": "0.3, 0.6",
+    "replacement": "0.45, 0.23"
+  },
+  {
+    "name": "Quadrant Chart style and class insertion",
+    "source": "quadrantChart\nPoint: [0.3, 0.6]\nclassDef focus color: #ff0000\n",
+    "old": "Point: [0.3, 0.6]",
+    "replacement": "Point:::focus: [0.3, 0.6] radius: 12, stroke-width: 3px"
+  },
+  {
+    "name": "Quadrant Chart malformed point repair",
+    "source": "quadrantChart\nquadrant-1 Before\nBroken: [1.2, 0.4]\nquadrant-2 After\n",
+    "old": "Broken: [1.2, 0.4]",
+    "replacement": "Recovered: [0.8, 0.4]"
+  },
+  {
+    "name": "Quadrant Chart header-only body insertion",
+    "source": "quadrantChart",
+    "old": "quadrantChart",
+    "replacement": "quadrantChart x-axis Low --> High\nPoint: [0, 1]"
+  },
+  {
+    "name": "Quadrant Chart unclosed label repair",
+    "source": "quadrantChart\nx-axis \"unterminated\nquadrant-1 After\n",
+    "old": "\"unterminated",
+    "replacement": "\"Recovered\" --> Complete"
+  }
+]

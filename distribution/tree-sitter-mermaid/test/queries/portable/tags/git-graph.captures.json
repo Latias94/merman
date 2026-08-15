@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/git-graph.mmd",
+  "captures": [
+    {
+      "name": "definition.module",
+      "text": "branch feature/test order:2",
+      "startByte": 73,
+      "endByte": 100
+    },
+    {
+      "name": "name",
+      "text": "feature/test",
+      "startByte": 80,
+      "endByte": 92
+    }
+  ]
+}

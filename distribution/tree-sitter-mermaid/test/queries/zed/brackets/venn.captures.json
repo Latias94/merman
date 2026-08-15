@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "venn.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 34,
+      "endByte": 35
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 45,
+      "endByte": 46
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 65,
+      "endByte": 66
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 72,
+      "endByte": 73
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 93,
+      "endByte": 94
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 103,
+      "endByte": 104
+    }
+  ]
+}

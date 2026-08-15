@@ -1,91 +1,498 @@
 ==================
-nested messages and control blocks
+head declarations preserve participant metadata and Unicode
 ==================
 
 zenuml
-title Checkout
-@Starter(Alice)
-Alice->Bob: Hello Bob, how are you?
-if(is_sick) {
-  Bob->Alice: Not so good
-} else {
-  Bob.FeelingFresh()
+title International checkout
+@Starter(顾客)
+group Services {
+  @Actor <<boundary>> [globe] "顾客" 180 as Customer #4f81bd
+  @Database 数据库
 }
-A.method() {
-  B.nested_sync_method()
-  B->C: nested async message
-}
-Bob-->Alice: Reply
+@Actor Alice as "Primary user" #abc
+Bob
 
 ---
 
 (source_file
   (zenuml_diagram
-    (zenuml_header
-      (diagram_keyword))
-    (zenuml_body
-      (zenuml_title_statement
-        (zenuml_title_text))
-      (zenuml_starter_statement
-        (zenuml_starter_annotation)
-        (zenuml_name
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      declaration: (zenuml_title_statement
+        keyword: (zenuml_statement_keyword)
+        text: (zenuml_title_text))
+      declaration: (zenuml_starter_declaration
+        annotation: (zenuml_starter_annotation)
+        participant: (zenuml_name
           (zenuml_identifier)))
-      (zenuml_message_statement
-        (zenuml_name
+      declaration: (zenuml_group_declaration
+        keyword: (zenuml_statement_keyword)
+        name: (zenuml_name
           (zenuml_identifier))
-        (zenuml_arrow)
-        (zenuml_name
+        body: (zenuml_group_block
+          participant: (zenuml_participant_declaration
+            type: (zenuml_participant_annotation)
+            stereotype: (zenuml_stereotype
+              name: (zenuml_name
+                (zenuml_identifier)))
+            emoji: (zenuml_emoji
+              name: (zenuml_name
+                (zenuml_identifier)))
+            name: (zenuml_name
+              (zenuml_string))
+            width: (zenuml_width
+              value: (zenuml_number))
+            alias: (zenuml_alias_clause
+              keyword: (zenuml_statement_keyword)
+              label: (zenuml_name
+                (zenuml_identifier)))
+            color: (zenuml_color))
+          participant: (zenuml_participant_declaration
+            type: (zenuml_participant_annotation)
+            name: (zenuml_name
+              (zenuml_identifier)))))
+      declaration: (zenuml_participant_declaration
+        type: (zenuml_participant_annotation)
+        name: (zenuml_name
           (zenuml_identifier))
-        (zenuml_event_payload))
-      (zenuml_control_statement
-        (zenuml_parenthesized_text
-          (zenuml_expression_text))
-        (zenuml_brace_block
-          (zenuml_message_statement
-            (zenuml_name
+        alias: (zenuml_alias_clause
+          keyword: (zenuml_statement_keyword)
+          label: (zenuml_name
+            (zenuml_string)))
+        color: (zenuml_color))
+      declaration: (zenuml_participant_declaration
+        name: (zenuml_name
+          (zenuml_identifier))))))
+
+==================
+messages expose assignment calls payloads and replies
+==================
+
+zenuml
+const Order order = new Order(id, count = 2)
+await Alice->API.createOrder(order, timeout = 250ms)
+API->Queue: Order accepted
+Queue-->Alice: done
+return order
+
+---
+
+(source_file
+  (zenuml_diagram
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      statement: (zenuml_creation_statement
+        modifier: (zenuml_modifier)
+        assignment: (zenuml_assignment
+          type: (zenuml_name
+            (zenuml_identifier))
+          assignee: (zenuml_assignee
+            item: (zenuml_identifier))
+          operator: (zenuml_assignment_operator))
+        keyword: (zenuml_statement_keyword)
+        constructor: (zenuml_construct
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arguments: (zenuml_argument_list
+          argument: (zenuml_argument
+            (zenuml_expression
+              (zenuml_identifier)))
+          argument: (zenuml_argument
+            (zenuml_named_argument
+              name: (zenuml_identifier)
+              operator: (zenuml_assignment_operator)
+              value: (zenuml_expression
+                (zenuml_number))))))
+      statement: (zenuml_sync_message_statement
+        modifier: (zenuml_modifier)
+        source: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arrow: (zenuml_arrow)
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        message: (zenuml_call_chain
+          call: (zenuml_signature
+            name: (zenuml_name
               (zenuml_identifier))
-            (zenuml_arrow)
-            (zenuml_name
-              (zenuml_identifier))
-            (zenuml_event_payload))))
-      (zenuml_control_statement
-        (zenuml_brace_block
-          (zenuml_message_statement
-            (zenuml_name
-              (zenuml_identifier))
-            (zenuml_call_chain
-              (zenuml_signature
-                (zenuml_name
+            arguments: (zenuml_argument_list
+              argument: (zenuml_argument
+                (zenuml_expression
+                  (zenuml_identifier)))
+              argument: (zenuml_argument
+                (zenuml_named_argument
+                  name: (zenuml_identifier)
+                  operator: (zenuml_assignment_operator)
+                  value: (zenuml_expression
+                    (zenuml_number_unit))))))))
+      statement: (zenuml_async_message_statement
+        source: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arrow: (zenuml_arrow)
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        message: (zenuml_event_payload))
+      statement: (zenuml_reply_message_statement
+        source: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arrow: (zenuml_return_arrow)
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        message: (zenuml_event_payload))
+      statement: (zenuml_return_statement
+        keyword: (zenuml_control_keyword)
+        value: (zenuml_expression
+          (zenuml_identifier))))))
+
+==================
+nested alternatives loops and parallel regions remain structured
+==================
+
+zenuml
+if (ready && count >= 2) {
+  Alice->API: submit
+} else if (retry) {
+  while (pending) {
+    API.poll()
+  }
+} else {
+  par {
+    API->Queue: enqueue
+  }
+}
+opt (audit) {
+  Auditor.record()
+}
+critical (locked) {
+  Store.commit()
+}
+
+---
+
+(source_file
+  (zenuml_diagram
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      statement: (zenuml_if_statement
+        keyword: (zenuml_control_keyword)
+        condition: (zenuml_condition_clause
+          value: (zenuml_expression
+            (zenuml_binary_expression
+              left: (zenuml_expression
+                (zenuml_identifier))
+              operator: (zenuml_operator)
+              right: (zenuml_expression
+                (zenuml_binary_expression
+                  left: (zenuml_expression
+                    (zenuml_identifier))
+                  operator: (zenuml_operator)
+                  right: (zenuml_expression
+                    (zenuml_number)))))))
+        body: (zenuml_block
+          statement: (zenuml_async_message_statement
+            source: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            arrow: (zenuml_arrow)
+            target: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            message: (zenuml_event_payload)))
+        branch: (zenuml_else_if_clause
+          keyword: (zenuml_control_keyword)
+          keyword: (zenuml_control_keyword)
+          condition: (zenuml_condition_clause
+            value: (zenuml_expression
+              (zenuml_identifier)))
+          body: (zenuml_block
+            statement: (zenuml_loop_statement
+              keyword: (zenuml_control_keyword)
+              condition: (zenuml_condition_clause
+                value: (zenuml_expression
+                  (zenuml_identifier)))
+              body: (zenuml_block
+                statement: (zenuml_sync_message_statement
+                  target: (zenuml_endpoint
+                    name: (zenuml_name
+                      (zenuml_identifier)))
+                  message: (zenuml_call_chain
+                    call: (zenuml_signature
+                      name: (zenuml_name
+                        (zenuml_identifier))
+                      arguments: (zenuml_argument_list))))))))
+        branch: (zenuml_else_clause
+          keyword: (zenuml_control_keyword)
+          body: (zenuml_block
+            statement: (zenuml_parallel_statement
+              keyword: (zenuml_control_keyword)
+              body: (zenuml_block
+                statement: (zenuml_async_message_statement
+                  source: (zenuml_endpoint
+                    name: (zenuml_name
+                      (zenuml_identifier)))
+                  arrow: (zenuml_arrow)
+                  target: (zenuml_endpoint
+                    name: (zenuml_name
+                      (zenuml_identifier)))
+                  message: (zenuml_event_payload)))))))
+      statement: (zenuml_optional_statement
+        keyword: (zenuml_control_keyword)
+        condition: (zenuml_condition_clause
+          value: (zenuml_expression
+            (zenuml_identifier)))
+        body: (zenuml_block
+          statement: (zenuml_sync_message_statement
+            target: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            message: (zenuml_call_chain
+              call: (zenuml_signature
+                name: (zenuml_name
                   (zenuml_identifier))
-                (zenuml_parenthesized_text))))))
-      (zenuml_message_statement
-        (zenuml_name
-          (zenuml_identifier))
-        (zenuml_call_chain
-          (zenuml_signature
-            (zenuml_name
-              (zenuml_identifier))
-            (zenuml_parenthesized_text)))
-        (zenuml_brace_block
-          (zenuml_message_statement
-            (zenuml_name
-              (zenuml_identifier))
-            (zenuml_call_chain
-              (zenuml_signature
-                (zenuml_name
+                arguments: (zenuml_argument_list))))))
+      statement: (zenuml_critical_statement
+        keyword: (zenuml_control_keyword)
+        condition: (zenuml_condition_clause
+          value: (zenuml_expression
+            (zenuml_identifier)))
+        body: (zenuml_block
+          statement: (zenuml_sync_message_statement
+            target: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            message: (zenuml_call_chain
+              call: (zenuml_signature
+                name: (zenuml_name
                   (zenuml_identifier))
-                (zenuml_parenthesized_text))))
-          (zenuml_message_statement
-            (zenuml_name
+                arguments: (zenuml_argument_list)))))))))
+
+==================
+try catch finally references sections and dividers remain structured
+==================
+
+zenuml
+section (booking) {
+  try {
+    Consumer->API: book
+  } catch (BookingError error) {
+    API->Consumer: failed
+  } finally {
+    API.cleanup()
+  }
+}
+ref(Consumer, API)
+== Recovery phase
+
+---
+
+(source_file
+  (zenuml_diagram
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      statement: (zenuml_section_statement
+        keyword: (zenuml_control_keyword)
+        condition: (zenuml_condition_clause
+          value: (zenuml_expression
+            (zenuml_identifier)))
+        body: (zenuml_block
+          statement: (zenuml_try_statement
+            keyword: (zenuml_control_keyword)
+            body: (zenuml_block
+              statement: (zenuml_async_message_statement
+                source: (zenuml_endpoint
+                  name: (zenuml_name
+                    (zenuml_identifier)))
+                arrow: (zenuml_arrow)
+                target: (zenuml_endpoint
+                  name: (zenuml_name
+                    (zenuml_identifier)))
+                message: (zenuml_event_payload)))
+            catch: (zenuml_catch_clause
+              keyword: (zenuml_control_keyword)
+              exception: (zenuml_argument_list
+                argument: (zenuml_argument
+                  (zenuml_declaration_argument
+                    type: (zenuml_name
+                      (zenuml_identifier))
+                    name: (zenuml_identifier))))
+              body: (zenuml_block
+                statement: (zenuml_async_message_statement
+                  source: (zenuml_endpoint
+                    name: (zenuml_name
+                      (zenuml_identifier)))
+                  arrow: (zenuml_arrow)
+                  target: (zenuml_endpoint
+                    name: (zenuml_name
+                      (zenuml_identifier)))
+                  message: (zenuml_event_payload))))
+            finally: (zenuml_finally_clause
+              keyword: (zenuml_control_keyword)
+              body: (zenuml_block
+                statement: (zenuml_sync_message_statement
+                  target: (zenuml_endpoint
+                    name: (zenuml_name
+                      (zenuml_identifier)))
+                  message: (zenuml_call_chain
+                    call: (zenuml_signature
+                      name: (zenuml_name
+                        (zenuml_identifier))
+                      arguments: (zenuml_argument_list)))))))))
+      statement: (zenuml_reference_statement
+        keyword: (zenuml_control_keyword)
+        participants: (zenuml_reference_list
+          participant: (zenuml_name
+            (zenuml_identifier))
+          participant: (zenuml_name
+            (zenuml_identifier))))
+      statement: (zenuml_divider_statement
+        operator: (zenuml_operator)
+        text: (zenuml_divider_text)))))
+
+==================
+incomplete messages and blocks recover at their owning construct
+==================
+
+zenuml
+Alice->
+Bob.
+Queue:
+if (ready {
+  Alice->Bob: sibling survives
+
+---
+
+(source_file
+  (zenuml_diagram
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      statement: (zenuml_incomplete_message_statement
+        source: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arrow: (zenuml_arrow))
+      statement: (zenuml_incomplete_message_statement
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier))))
+      statement: (zenuml_async_message_statement
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier))))
+      statement: (zenuml_if_statement
+        keyword: (zenuml_control_keyword)
+        condition: (zenuml_unclosed_condition_clause
+          value: (zenuml_expression
+            (zenuml_identifier)))
+        body: (zenuml_unclosed_block
+          statement: (zenuml_async_message_statement
+            source: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            arrow: (zenuml_arrow)
+            target: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            message: (zenuml_event_payload)))))))
+
+==================
+incomplete arguments and strings do not consume later siblings
+==================
+
+zenuml
+new Order(id, count =
+Alice.call("unfinished
+Bob->Carol: sibling survives
+
+---
+
+(source_file
+  (zenuml_diagram
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      statement: (zenuml_creation_statement
+        keyword: (zenuml_statement_keyword)
+        constructor: (zenuml_construct
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arguments: (zenuml_unclosed_argument_list
+          argument: (zenuml_argument
+            (zenuml_expression
+              (zenuml_identifier)))
+          argument: (zenuml_argument
+            (zenuml_named_argument
+              name: (zenuml_identifier)
+              operator: (zenuml_assignment_operator)))))
+      statement: (zenuml_sync_message_statement
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        message: (zenuml_call_chain
+          call: (zenuml_signature
+            name: (zenuml_name
               (zenuml_identifier))
-            (zenuml_arrow)
-            (zenuml_name
-              (zenuml_identifier))
-            (zenuml_event_payload))))
-      (zenuml_message_statement
-        (zenuml_name
-          (zenuml_identifier))
-        (zenuml_arrow)
-        (zenuml_name
-          (zenuml_identifier))
-        (zenuml_event_payload)))))
+            arguments: (zenuml_unclosed_argument_list
+              argument: (zenuml_argument
+                (zenuml_expression
+                  (zenuml_unclosed_string)))))))
+      statement: (zenuml_async_message_statement
+        source: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        arrow: (zenuml_arrow)
+        target: (zenuml_endpoint
+          name: (zenuml_name
+            (zenuml_identifier)))
+        message: (zenuml_event_payload)))))
+
+==================
+keyword prefixes stay identifiers while exact controls stay keywords
+==================
+
+zenuml
+titleService
+returnValue
+forEach (itemReady) {
+  parallelWorker.run()
+}
+// exact keywords above do not capture these prefixes
+
+---
+
+(source_file
+  (zenuml_diagram
+    header: (zenuml_header
+      keyword: (diagram_keyword))
+    body: (zenuml_body
+      declaration: (zenuml_participant_declaration
+        name: (zenuml_name
+          (zenuml_identifier)))
+      declaration: (zenuml_participant_declaration
+        name: (zenuml_name
+          (zenuml_identifier)))
+      statement: (zenuml_loop_statement
+        keyword: (zenuml_control_keyword)
+        condition: (zenuml_condition_clause
+          value: (zenuml_expression
+            (zenuml_identifier)))
+        body: (zenuml_block
+          statement: (zenuml_sync_message_statement
+            target: (zenuml_endpoint
+              name: (zenuml_name
+                (zenuml_identifier)))
+            message: (zenuml_call_chain
+              call: (zenuml_signature
+                name: (zenuml_name
+                  (zenuml_identifier))
+                arguments: (zenuml_argument_list))))))
+      comment: (zenuml_comment))))

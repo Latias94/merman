@@ -1,0 +1,195 @@
+==================
+namespaces members relations interactions and accessibility stay structural
+==================
+
+classDiagram-v2
+direction LR
+namespace model.core["Domain"] {
+  class `Order Item`["Order item"]:::aggregate <<Entity>> {
+    +String id
+    +total() Decimal
+  }
+  note for `Order Item` "Primary
+record"
+}
+class Customer
+`Order Item` "1" o-- "many" Customer : owns
+<<Service>> Customer
+note "Top level"
+classDef aggregate fill:#eef,stroke:#333
+style Customer fill:#fff
+cssClass "Customer" aggregate
+callback Customer "selectCustomer" "Select"
+link Customer "https://example.test" "Docs" _blank
+click Customer href "https://example.test/customer" "Open" _self
+click Customer call onSelect(1, "x") "Run"
+accTitle: Class domain
+accDescr {Class relationships}
+
+---
+
+(source_file
+  (class_diagram
+    (class_header
+      (diagram_keyword))
+    (class_body
+      (class_direction_statement
+        (class_statement_keyword)
+        (class_direction))
+      (class_namespace_declaration
+        (class_statement_keyword)
+        (class_namespace_name)
+        (class_label
+          (class_string))
+        (class_namespace_body
+          (class_declaration
+            (class_statement_keyword)
+            (class_name)
+            (class_label
+              (class_string))
+            (class_style_annotation
+              (class_style_name))
+            (class_stereotype
+              (class_annotation_name))
+            (class_member_block
+              (class_member)
+              (class_member)))
+          (class_note_statement
+            (class_statement_keyword)
+            (class_note_relation)
+            (class_reference)
+            (class_note_text
+              (class_string)))))
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier)))
+      (class_relationship
+        (class_reference)
+        (class_cardinality
+          (class_string))
+        (class_relationship_operator)
+        (class_cardinality
+          (class_string))
+        (class_reference
+          (identifier))
+        (class_relationship_label))
+      (class_annotation_statement
+        (class_stereotype
+          (class_annotation_name))
+        (class_reference
+          (identifier)))
+      (class_note_statement
+        (class_statement_keyword)
+        (class_note_text))
+      (class_definition_statement
+        (class_statement_keyword)
+        (class_style_name)
+        (class_style_list
+          (class_style_item)
+          (class_style_item)))
+      (class_style_statement
+        (class_statement_keyword)
+        (class_reference
+          (identifier))
+        (class_style_list
+          (class_style_item)))
+      (class_css_class_statement
+        (class_statement_keyword)
+        (class_string)
+        (class_style_name))
+      (class_callback_statement
+        (class_callback_keyword)
+        (class_reference
+          (identifier))
+        (class_string)
+        (class_string))
+      (class_interaction_statement
+        (class_statement_keyword)
+        (class_reference
+          (identifier))
+        (class_string)
+        (class_string)
+        (class_link_target))
+      (class_interaction_statement
+        (class_statement_keyword)
+        (class_reference
+          (identifier))
+        (class_href_action
+          (class_statement_keyword)
+          (class_string))
+        (class_string)
+        (class_link_target))
+      (class_interaction_statement
+        (class_statement_keyword)
+        (class_reference
+          (identifier))
+        (class_call_action
+          (class_statement_keyword)
+          (class_callback_name)
+          (class_callback_arguments))
+        (class_string))
+      (class_accessibility_title_statement
+        (class_statement_keyword)
+        (class_line_text))
+      (class_accessibility_description_statement
+        (class_statement_keyword)
+        (class_accessibility_description_block)))))
+
+==================
+line local recovery preserves later declarations and relationships
+==================
+
+classDiagram
+class A
+A <|--
+note for A "unfinished
+class B
+B --> A : follows
+
+---
+
+(source_file
+  (class_diagram
+    (class_header
+      (diagram_keyword))
+    (class_body
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier)))
+      (class_incomplete_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator))
+      (class_note_statement
+        (class_statement_keyword)
+        (class_note_relation)
+        (class_reference
+          (identifier))
+        (class_note_text
+          (class_unclosed_string)))
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier)))
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference
+          (identifier))
+        (class_relationship_label)))))
+
+==================
+header-only input is rejected without a class body
+==================
+
+classDiagram
+
+---
+
+(source_file
+  (ERROR
+    (class_header
+      (diagram_keyword))))

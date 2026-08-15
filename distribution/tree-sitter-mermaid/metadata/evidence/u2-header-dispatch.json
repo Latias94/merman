@@ -5,7 +5,7 @@
     "version": 5,
     "command": "node scripts/header_receipt.js"
   },
-  "artifactReceiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",
+  "artifactReceiptId": "ab71ded522199295a4081927691a61167bd276da66f25691005dc33a3d32049a",
   "strictOracleReceipt": {
     "path": "metadata/evidence/u2-mermaid-header-oracle.json",
     "sha256": "4bc145b3384ee66bffa0de122c3ec5a17e4db6257258e40e2a21625487c6513e",
@@ -1805,9 +1805,7 @@
     },
     {
       "inputSha256": "4558fd81a043320409846a4fe9aa1cfa10b04d8d389baf316d0d6531144469fa",
-      "actualRoots": [
-        "flowchart_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
@@ -1862,9 +1860,7 @@
     },
     {
       "inputSha256": "7cb11f72fa426f6eea4b1922e752840f69552d048f4b19134c067534b66c6430",
-      "actualRoots": [
-        "cynefin_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
@@ -1889,9 +1885,7 @@
     },
     {
       "inputSha256": "a19a8fe444f610e1701ac8712b9cb25014b948843be3c720c70ed4a10ae454a0",
-      "actualRoots": [
-        "git_graph_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
@@ -1926,65 +1920,49 @@
     {
       "publicId": "block",
       "inputSha256": "7fd03a2a87289549fbf833bff4b5820c0945204bafa6c1b26d53e6768c1641ce",
-      "actualRoots": [
-        "block_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "c4",
       "inputSha256": "63c49ecc612d6fc8eccbd15a1dbb54394ec280a34d963759c3d96f3c660bad03",
-      "actualRoots": [
-        "c4_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "c4",
       "inputSha256": "36b83aab46166811cd6ddeb1386a87931aa0684ee2af1720b3b4611300d601c4",
-      "actualRoots": [
-        "c4_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "c4",
       "inputSha256": "2838486dd4aa457b3579e2f0ac80fbbcd2200a9f828fcc9bbd58c0f524ccd5ea",
-      "actualRoots": [
-        "c4_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "c4",
       "inputSha256": "e9df70607ca36a6078043b343acbad99c1a8b726501899b0630793395e04f5a0",
-      "actualRoots": [
-        "c4_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "c4",
       "inputSha256": "00bf89fe64a94406e3a49899e66278d12041f241623f3b35e5425a2bc9fe426d",
-      "actualRoots": [
-        "c4_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "class",
       "inputSha256": "417505ab8c45275b4cc90eba0216e14698bfc9b3d27c19b32ee7b322d99a7867",
-      "actualRoots": [
-        "class_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "class",
       "inputSha256": "3efe59b37c432602a522d873541c22b948dd1c06c0e86e659004735b7c97859d",
-      "actualRoots": [
-        "class_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
@@ -2022,25 +2000,19 @@
     {
       "publicId": "sankey",
       "inputSha256": "6b5b2d8b78f87eec6b8208f07da3449505db8d587c0ef64eac03cca63505cf7f",
-      "actualRoots": [
-        "sankey_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "sankey",
       "inputSha256": "424d292ac0be97a6811089a526d8578c25acb0a1955951cb1e595482dff0cfbf",
-      "actualRoots": [
-        "sankey_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     },
     {
       "publicId": "sankey",
       "inputSha256": "72f285cc005f6aead3bc3f0fed9497bd1ed02c6c798bb65271c272de5664c418",
-      "actualRoots": [
-        "sankey_diagram"
-      ],
+      "actualRoots": [],
       "hasError": true
     }
   ]

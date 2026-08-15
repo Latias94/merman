@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/wardley.mmd",
+  "captures": [
+    {
+      "name": "definition.var",
+      "text": "component API [0.6, 0.7] (build)",
+      "startByte": 13,
+      "endByte": 45
+    },
+    {
+      "name": "name",
+      "text": "API",
+      "startByte": 23,
+      "endByte": 26
+    },
+    {
+      "name": "definition.var",
+      "text": "component DB [0.4, 0.5]",
+      "startByte": 46,
+      "endByte": 69
+    },
+    {
+      "name": "name",
+      "text": "DB",
+      "startByte": 56,
+      "endByte": 58
+    }
+  ]
+}

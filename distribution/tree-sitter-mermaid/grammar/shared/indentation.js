@@ -1,4 +1,4 @@
-const INDENTATION_FAMILIES = ['mindmap', 'treemap', 'tree_view'];
+const INDENTATION_FAMILIES = ['mindmap', 'treemap', 'tree_view', 'kanban'];
 
 const indentationExternals = ($) => INDENTATION_FAMILIES.flatMap((family) => [
   $[`_${family}_start`],

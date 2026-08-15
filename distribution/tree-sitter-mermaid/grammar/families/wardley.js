@@ -2,47 +2,44 @@
 // packages/parser/src/language/wardley/wardley.langium and the Mermaid bridge
 // at commit 7ecca0cd7f1658ef74f4e7e91f925724ef403bbf.
 
-const { terminatedHeader } = require('../shared/header');
-
 const statementKeyword = ($, keyword) => field(
   'keyword',
   alias(token(prec(20, keyword)), $.statement_keyword),
 );
 
+// A spaced target consumes its gap explicitly. The adjacent branch must start
+// immediately so Tree-sitter extras never become part of the captured name.
+const optionallySpacedNameField = ($, name) => choice(
+  seq(
+    $._wardley_required_gap,
+    field(name, $.wardley_name),
+  ),
+  field(name, alias($._wardley_immediate_name, $.wardley_name)),
+);
+
 const wardleyRules = {
-  wardley_diagram: ($) => choice(
-    seq(
-      field('header', $.wardley_header),
+  wardley_diagram: ($) => seq(
+    field('header', $.wardley_header),
+    optional(seq(
+      $._langium_body_boundary,
       optional(field('body', $.wardley_body)),
-    ),
-    seq(
-      field('header', alias($._wardley_inline_header, $.wardley_header)),
-      field('body', $.wardley_body),
-    ),
-    field('header', alias($._wardley_header_eof, $.wardley_header)),
+    )),
   ),
 
-  wardley_header: ($) => terminatedHeader(
-    $,
-    token(prec(20, 'wardley-beta')),
-  ),
-
-  _wardley_header_eof: ($) => field(
+  wardley_header: ($) => field(
     'keyword',
     alias(token(prec(20, 'wardley-beta')), $.diagram_keyword),
   ),
 
-  _wardley_inline_header: ($) => seq(
-    field(
-      'keyword',
-      alias(token(prec(20, 'wardley-beta')), $.diagram_keyword),
+  wardley_body: ($) => choice(
+    repeat1($._wardley_terminated_body_item),
+    seq(
+      repeat($._wardley_terminated_body_item),
+      $._wardley_eof_body_item,
     ),
-    token.immediate(/[ \t]+/),
   ),
 
-  wardley_body: ($) => repeat1(choice(
-    $.comment,
-    $._blank_line,
+  _wardley_statement: ($) => choice(
     $.wardley_title_statement,
     $.wardley_accessibility_title_statement,
     $.wardley_accessibility_description_statement,
@@ -60,15 +57,33 @@ const wardleyRules = {
     $.wardley_deaccelerator_statement,
     $.wardley_incomplete_component_statement,
     $.wardley_malformed_statement,
-  )),
+  ),
+
+  _wardley_terminated_body_item: ($) => choice(
+    $._line_ending,
+    seq(choice($.comment, $.directive), $._line_ending),
+    seq(
+      $._wardley_statement,
+      optional(choice($.comment, $.directive)),
+      $._line_ending,
+    ),
+  ),
+
+  _wardley_eof_body_item: ($) => choice(
+    $.comment,
+    $.directive,
+    seq($._wardley_statement, optional(choice($.comment, $.directive))),
+  ),
 
   wardley_title_statement: ($) => prec.right(seq(
     statementKeyword($, 'title'),
-    optional(field(
-      'text',
-      alias($._radar_wardley_title_text, $.wardley_title_text),
+    optional(seq(
+      $._langium_inline_space,
+      optional(field(
+        'text',
+        alias($._radar_wardley_title_text, $.wardley_title_text),
+      )),
     )),
-    optional($._line_ending),
   )),
 
   wardley_accessibility_title_statement: ($) => prec.right(seq(
@@ -78,7 +93,6 @@ const wardleyRules = {
       'text',
       alias($._radar_wardley_accessibility_text, $.wardley_accessibility_text),
     )),
-    optional($._line_ending),
   )),
 
   wardley_accessibility_description_statement: ($) => prec.right(choice(
@@ -89,15 +103,14 @@ const wardleyRules = {
         'text',
         alias($._radar_wardley_accessibility_text, $.wardley_accessibility_text),
       )),
-      optional($._line_ending),
     ),
     seq(
       statementKeyword($, 'accDescr'),
+      repeat($._line_ending),
       field(
         'text',
         alias($._radar_wardley_accessibility_block, $.wardley_accessibility_block),
       ),
-      optional($._line_ending),
     ),
   )),
 
@@ -108,17 +121,16 @@ const wardleyRules = {
     ',',
     field('height', $.wardley_integer),
     ']',
-    optional($._line_ending),
   )),
 
   wardley_evolution_statement: ($) => prec.right(seq(
     statementKeyword($, 'evolution'),
+    $._wardley_required_gap,
     field('stage', $.wardley_evolution_stage),
     repeat1(seq(
       field('operator', $.wardley_arrow),
       field('stage', $.wardley_evolution_stage),
     )),
-    optional($._line_ending),
   )),
 
   wardley_evolution_stage: ($) => seq(
@@ -129,9 +141,9 @@ const wardleyRules = {
 
   wardley_anchor_statement: ($) => prec.right(seq(
     statementKeyword($, 'anchor'),
+    $._wardley_required_gap,
     field('name', $.wardley_name),
     field('position', $.wardley_position),
-    optional($._line_ending),
   )),
 
   wardley_component_statement: ($) => prec.right(10, seq(
@@ -142,7 +154,6 @@ const wardleyRules = {
     optional(field('label', $.wardley_label_clause)),
     optional(field('decorator', $.wardley_strategy_decorator)),
     optional(field('inertia', $.wardley_inertia_clause)),
-    optional($._line_ending),
   )),
 
   wardley_label_clause: ($) => seq(
@@ -167,30 +178,77 @@ const wardleyRules = {
 
   wardley_link_statement: ($) => prec.right(-5, seq(
     choice(
-      prec(20, seq(
-        field('source', $.wardley_name),
-        field('from_port', $.wardley_link_port),
-        optional(field('operator', $.wardley_link_operator)),
-        field('target', $.wardley_name),
-        optional(field('to_port', $.wardley_link_port)),
-      )),
-      prec(20, seq(
-        field('source', $.wardley_name),
-        field('operator', $.wardley_link_operator),
-        field('target', $.wardley_name),
-        optional(field('to_port', $.wardley_link_port)),
-      )),
-      prec(-20, seq(
-        field('source', alias($.wardley_quoted_name, $.wardley_name)),
-        field('target', alias($.wardley_quoted_name, $.wardley_name)),
-      )),
+      seq(
+        field(
+          'source',
+          alias($._wardley_quoted_name, $.wardley_name),
+        ),
+        choice(
+          $._wardley_link_port_tail,
+          $._wardley_link_operator_tail,
+          $._wardley_link_direct_target_tail,
+        ),
+      ),
+      seq(
+        field(
+          'source',
+          alias($._wardley_bare_name, $.wardley_name),
+        ),
+        choice(
+          $._wardley_link_port_tail,
+          $._wardley_link_operator_tail,
+          $._wardley_link_quoted_target_tail,
+        ),
+      ),
     ),
-    optional(field('label', $.wardley_link_label)),
-    optional($._line_ending),
+    optional(seq(
+      optional($._wardley_required_gap),
+      field('label', $.wardley_link_label),
+    )),
   )),
 
+  _wardley_link_port_tail: ($) => prec.right(20, seq(
+    optional($._wardley_required_gap),
+    field('from_port', $.wardley_link_port),
+    optional(seq(
+      optional($._wardley_required_gap),
+      field('operator', $.wardley_link_operator),
+    )),
+    optionallySpacedNameField($, 'target'),
+    optional(seq(
+      optional($._wardley_required_gap),
+      field('to_port', $.wardley_link_port),
+    )),
+  )),
+
+  _wardley_link_operator_tail: ($) => prec.right(20, seq(
+    optional($._wardley_required_gap),
+    field('operator', $.wardley_link_operator),
+    optionallySpacedNameField($, 'target'),
+    optional(seq(
+      optional($._wardley_required_gap),
+      field('to_port', $.wardley_link_port),
+    )),
+  )),
+
+  _wardley_link_direct_target_tail: ($) => seq(
+    $._wardley_required_gap,
+    choice(
+      field(
+        'target',
+        alias($._wardley_immediate_bare_name, $.wardley_name),
+      ),
+      field('target', alias($._wardley_immediate_string, $.quoted_string)),
+    ),
+  ),
+
+  _wardley_link_quoted_target_tail: ($) => seq(
+    $._wardley_required_gap,
+    field('target', alias($._wardley_immediate_string, $.quoted_string)),
+  ),
+
   wardley_link_label: ($) => seq(
-    ';',
+    token.immediate(';'),
     field('text', $.wardley_link_label_text),
   ),
 
@@ -204,72 +262,85 @@ const wardleyRules = {
 
   wardley_evolve_statement: ($) => prec.right(seq(
     statementKeyword($, 'evolve'),
+    $._wardley_required_gap,
     field('component', $.wardley_name),
     field('target', $.wardley_decimal),
-    optional($._line_ending),
   )),
 
   wardley_pipeline_statement: ($) => prec.right(seq(
     statementKeyword($, 'pipeline'),
+    $._wardley_required_gap,
     field('parent', $.wardley_name),
     '{',
     $._line_ending,
     field('body', $.wardley_pipeline_body),
     '}',
-    optional($._line_ending),
   )),
 
-  wardley_pipeline_body: ($) => repeat1(choice(
-    $.comment,
-    $._blank_line,
-    $.wardley_pipeline_component_statement,
-    $.wardley_pipeline_malformed_statement,
-  )),
+  wardley_pipeline_body: ($) => seq(
+    repeat($._wardley_pipeline_non_component_item),
+    field('component', $.wardley_pipeline_component_statement),
+    optional(choice($.comment, $.directive)),
+    $._line_ending,
+    repeat(choice(
+      $._wardley_pipeline_non_component_item,
+      seq(
+        field('component', $.wardley_pipeline_component_statement),
+        optional(choice($.comment, $.directive)),
+        $._line_ending,
+      ),
+    )),
+  ),
+
+  _wardley_pipeline_non_component_item: ($) => choice(
+    $._line_ending,
+    seq(choice($.comment, $.directive), $._line_ending),
+    seq($.wardley_pipeline_malformed_statement, $._line_ending),
+  ),
 
   wardley_pipeline_component_statement: ($) => prec.right(seq(
     statementKeyword($, 'component'),
+    $._wardley_required_gap,
     field('name', $.wardley_name),
     '[',
     field('evolution', $.wardley_decimal),
     ']',
     optional(field('label', $.wardley_label_clause)),
-    optional($._line_ending),
   )),
 
   wardley_note_statement: ($) => prec.right(seq(
     statementKeyword($, 'note'),
-    field('text', $.quoted_string),
+    $._wardley_required_gap,
+    field('text', $._wardley_string),
     field('position', $.wardley_position),
-    optional($._line_ending),
   )),
 
   wardley_annotations_statement: ($) => prec.right(seq(
     statementKeyword($, 'annotations'),
     field('position', $.wardley_coordinate_pair),
-    optional($._line_ending),
   )),
 
   wardley_annotation_statement: ($) => prec.right(seq(
     statementKeyword($, 'annotation'),
+    $._wardley_required_gap,
     field('number', $.wardley_integer),
     ',',
     field('position', $.wardley_coordinate_pair),
-    field('text', $.quoted_string),
-    optional($._line_ending),
+    field('text', $._wardley_string),
   )),
 
   wardley_accelerator_statement: ($) => prec.right(seq(
     statementKeyword($, 'accelerator'),
+    $._wardley_required_gap,
     field('name', $.wardley_name),
     field('position', $.wardley_xy_position),
-    optional($._line_ending),
   )),
 
   wardley_deaccelerator_statement: ($) => prec.right(seq(
     statementKeyword($, 'deaccelerator'),
+    $._wardley_required_gap,
     field('name', $.wardley_name),
     field('position', $.wardley_xy_position),
-    optional($._line_ending),
   )),
 
   wardley_position: ($) => seq(
@@ -302,8 +373,38 @@ const wardleyRules = {
   ),
 
   wardley_name: ($) => choice(
+    $._wardley_string,
+    $._wardley_bare_name,
+  ),
+
+  _wardley_bare_name: ($) => prec.right(repeat1($._wardley_name_part)),
+
+  _wardley_quoted_name: ($) => seq($._wardley_string),
+
+  _wardley_immediate_name: ($) => choice(
+    alias($._wardley_immediate_string, $.quoted_string),
+    $._wardley_immediate_bare_name,
+  ),
+
+  _wardley_immediate_bare_name: ($) => prec.right(seq(
+      alias(
+        token.immediate(prec(
+          100,
+          /[A-Za-z](?:[A-Za-z0-9_&]|-[A-Za-z0-9_&])*/,
+        )),
+        $.wardley_name_word,
+      ),
+      repeat($._wardley_name_part),
+  )),
+
+  _wardley_immediate_string: (_) => token.immediate(prec(10, choice(
+    seq('"', /(?:[^"\\]|\\.)*/, '"'),
+    seq("'", /(?:[^'\\]|\\.)*/, "'"),
+  ))),
+
+  _wardley_string: ($) => alias(
+    $._radar_wardley_quoted_string,
     $.quoted_string,
-    prec.right(repeat1($._wardley_name_part)),
   ),
 
   _wardley_name_part: ($) => choice(
@@ -312,36 +413,43 @@ const wardleyRules = {
     $.wardley_parenthesized_name_part,
   ),
 
-  wardley_quoted_name: ($) => seq($.quoted_string),
-
   wardley_parenthesized_name_part: ($) => seq(
     '(',
     repeat1(choice($.wardley_name_word, $.wardley_name_hyphen)),
     ')',
   ),
 
-  wardley_incomplete_component_statement: ($) => prec.right(-10, seq(
-    statementKeyword($, 'component'),
-    optional(seq(
+  wardley_incomplete_component_statement: ($) => choice(
+    prec.dynamic(20, prec.right(-10, seq(
+      statementKeyword($, 'component'),
       $._wardley_required_gap,
-      optional(field('name', $.wardley_name)),
+      field(
+        'name',
+        alias(
+          $._radar_wardley_unclosed_quoted_string,
+          $.wardley_unclosed_quoted_string,
+        ),
+      ),
       optional(field('text', $.wardley_incomplete_component_text)),
+    ))),
+    prec.right(-10, seq(
+      statementKeyword($, 'component'),
+      $._wardley_required_gap,
+      field('text', $.wardley_unsupported_component_text),
     )),
-    $._line_ending,
-  )),
+    prec.right(-10, statementKeyword($, 'component')),
+  ),
 
   wardley_malformed_statement: ($) => prec.right(-100, choice(
     seq(
       field(
         'keyword',
-        alias($._radar_wardley_recovery_identifier, $.wardley_unknown_keyword),
+        alias($.wardley_name_word, $.wardley_unknown_keyword),
       ),
       optional(field('text', $.wardley_malformed_tail)),
-      optional($._line_ending),
     ),
     seq(
       field('text', $.wardley_malformed_text),
-      optional($._line_ending),
     ),
   )),
 
@@ -349,22 +457,20 @@ const wardleyRules = {
     seq(
       field(
         'keyword',
-        alias($._radar_wardley_recovery_identifier, $.wardley_unknown_keyword),
+        alias($.wardley_name_word, $.wardley_unknown_keyword),
       ),
       optional(field('text', $.wardley_malformed_tail)),
-      optional($._line_ending),
     ),
     seq(
       field('text', $.wardley_pipeline_malformed_text),
-      optional($._line_ending),
     ),
   )),
 
   wardley_arrow: (_) => token(prec(20, '->')),
 
-  wardley_link_port: (_) => token(prec(20, choice('+<>', '+>', '+<'))),
+  wardley_link_port: (_) => token.immediate(prec(20, choice('+<>', '+>', '+<'))),
 
-  wardley_link_operator: (_) => token(prec(20, choice(
+  wardley_link_operator: (_) => token.immediate(prec(20, choice(
     /\+'[^'\r\n]*'(?:<>|<|>)/,
     '-.->',
     '-->',
@@ -378,17 +484,31 @@ const wardleyRules = {
 
   wardley_integer: (_) => token(/0|[1-9][0-9]*/),
 
-  wardley_signed_integer: (_) => token(/-?(?:0|[1-9][0-9]*)/),
+  wardley_signed_integer: ($) => choice(
+    $.wardley_integer,
+    seq(
+      field('sign', '-'),
+      field('value', $.wardley_integer),
+    ),
+  ),
 
-  wardley_name_word: (_) => token(prec(-5, /[A-Za-z0-9_\u00c0-\uffff&]+/)),
+  wardley_name_word: (_) => token(prec(
+    5,
+    /[A-Za-z](?:[A-Za-z0-9_&]|-[A-Za-z0-9_&])*/,
+  )),
 
   wardley_name_hyphen: (_) => token(prec(-20, '-')),
 
-  _wardley_required_gap: (_) => token.immediate(/[ \t]+/),
+  _wardley_required_gap: ($) => $._langium_inline_space,
 
   wardley_link_label_value: (_) => token.immediate(prec(5, /[^\s\r\n][^\r\n]*/)),
 
   wardley_incomplete_component_text: (_) => token(prec(-50, /[^\r\n]+/)),
+
+  wardley_unsupported_component_text: (_) => token(prec(
+    -50,
+    /[^A-Za-z"'\r\n][^\r\n]*/,
+  )),
 
   wardley_malformed_tail: (_) => token(prec(-10, /[^\r\n]+/)),
 

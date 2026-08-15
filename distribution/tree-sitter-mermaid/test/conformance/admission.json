@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "artifactReceiptId": "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f",
+  "artifactReceiptId": "ab71ded522199295a4081927691a61167bd276da66f25691005dc33a3d32049a",
   "families": [
     {
       "publicId": "architecture",
@@ -207,6 +207,793 @@
           "role": "admitted-valid",
           "path": "fixtures/wardley/upstream_cypress_wardley_spec_3_should_render_pipelines_003.mmd",
           "sourceSha256": "31d76a47fcf121b9b02fa20e471f4a4990cb6c7a8452b794efcd9e004ab9f09a",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "gantt",
+      "expectedDiagramType": "gantt",
+      "rootNode": "gantt_diagram",
+      "requiredNamedNodes": [
+        "gantt_date",
+        "gantt_dependency_clause",
+        "gantt_diagram",
+        "gantt_duration",
+        "gantt_section_statement",
+        "gantt_setting_statement",
+        "gantt_task_statement",
+        "gantt_task_status",
+        "gantt_title_statement",
+        "gantt_until_clause"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/gantt/upstream_cypress_gantt_spec_example_001.mmd",
+          "sourceSha256": "7e62bc24ef765017f0370c6a28528b45adc6a1de1a2819d096c8732e449dcbc8",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/gantt/upstream_docs_gantt_syntax_005.mmd",
+          "sourceSha256": "c79e89c00972e73feed619283cf73b47d7912b38629c94c98a2b838f5fa114ca",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "ishikawa",
+      "expectedDiagramType": "ishikawa",
+      "rootNode": "ishikawa_diagram",
+      "requiredNamedNodes": [
+        "ishikawa_cause_statement",
+        "ishikawa_diagram",
+        "ishikawa_effect_statement",
+        "ishikawa_indentation"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/ishikawa/upstream_docs_ishikawa_basic.mmd",
+          "sourceSha256": "b3ea7b01b554303df1a9a770154f4c9c2481fc734f9ccd6fa31857f3cb576c61",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.mmd",
+          "sourceSha256": "9de6da366f3aa31479d050f6c8f1906d12c20107368ceb4c1035cd291a9edd64",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "journey",
+      "expectedDiagramType": "journey",
+      "rootNode": "journey_diagram",
+      "requiredNamedNodes": [
+        "journey_accessibility_description_statement",
+        "journey_accessibility_title_statement",
+        "journey_actor_list",
+        "journey_diagram",
+        "journey_score",
+        "journey_section_statement",
+        "journey_task_statement",
+        "journey_title_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/journey/upstream_cypress_journey_spec_should_render_a_user_journey_chart_002.mmd",
+          "sourceSha256": "5ae0b7ffa5521e12942e5395024aa43ec1657db8be9624459af0c64ea439ab60",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/journey/upstream_docs_accessibility_user_journey_diagram_016.mmd",
+          "sourceSha256": "19369de751f8b3087cc2c9dd1c5458a7f88314067d6fba2c32311c771012cf4c",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "quadrantchart",
+      "expectedDiagramType": "quadrantChart",
+      "rootNode": "quadrant_chart_diagram",
+      "requiredNamedNodes": [
+        "quadrant_chart_axis_statement",
+        "quadrant_chart_class_definition_statement",
+        "quadrant_chart_coordinates",
+        "quadrant_chart_diagram",
+        "quadrant_chart_point_statement",
+        "quadrant_chart_quadrant_statement",
+        "quadrant_chart_style_list",
+        "quadrant_chart_title_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_a_complete_quadrant_chart_002.mmd",
+          "sourceSha256": "008c05269b5bb2d3cca3791581781e5c004afe7f2978c1e7cfcd6557218d6aa6",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/quadrantchart/upstream_quadrant_docs_styling_example.mmd",
+          "sourceSha256": "3537815ea1f2a51865c3e2bb7afa8a731ded5fd3d6d06513a8262760f6945c00",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "requirement",
+      "expectedDiagramType": "requirement",
+      "rootNode": "requirement_diagram",
+      "requiredNamedNodes": [
+        "requirement_attribute",
+        "requirement_class_assignment_statement",
+        "requirement_class_definition_statement",
+        "requirement_declaration",
+        "requirement_diagram",
+        "requirement_element_declaration",
+        "requirement_relationship_statement",
+        "requirement_style_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/requirement/upstream_cypress_requirement_spec_example_001.mmd",
+          "sourceSha256": "651f848a61200a6f0dafc6ba36e4f1b970354fdf711b2ea145547c5b8b2a8e20",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/requirement/upstream_docs_requirementdiagram_combined_example_022.mmd",
+          "sourceSha256": "20800df0cf5254ab5c8f84b468897461c3e90048a70a1a55614726d362489bb3",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "timeline",
+      "expectedDiagramType": "timeline",
+      "rootNode": "timeline_diagram",
+      "requiredNamedNodes": [
+        "timeline_diagram",
+        "timeline_event",
+        "timeline_period_statement",
+        "timeline_section_statement",
+        "timeline_title_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/timeline/upstream_cypress_timeline_spec_example_001.mmd",
+          "sourceSha256": "e34bc7348dbe7d6406b7599d16cbc09606315f796b3334212dd8eeea95ab8348",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/timeline/upstream_docs_timeline_grouping_of_time_periods_in_sections_ages_009.mmd",
+          "sourceSha256": "523985f9a7ca3ab9d5477c18115fa8b8253f660a11c4bb49ccad873bb9fadb2b",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "xychart",
+      "expectedDiagramType": "xychart",
+      "rootNode": "xy_chart_diagram",
+      "requiredNamedNodes": [
+        "xy_chart_axis_range",
+        "xy_chart_bar_statement",
+        "xy_chart_category_array",
+        "xy_chart_diagram",
+        "xy_chart_line_statement",
+        "xy_chart_series_array",
+        "xy_chart_title_statement",
+        "xy_chart_x_axis_statement",
+        "xy_chart_y_axis_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/xychart/upstream_cypress_xychart_spec_should_render_the_simplest_possible_xy_beta_chart_001.mmd",
+          "sourceSha256": "a0fbcfdd315ff3a7a3e8d9b9b5875d1931c1a76135ea0da3ea27f8326d793634",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/xychart/upstream_cypress_xychart_spec_should_render_a_complete_chart_003.mmd",
+          "sourceSha256": "cbd65c7f26c8e2a3ff408fc41a1ff849a408f4a114cc7e3774794431812c7074",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "block",
+      "expectedDiagramType": "block",
+      "rootNode": "block_diagram",
+      "requiredNamedNodes": [
+        "block_class_assignment_statement",
+        "block_class_definition_statement",
+        "block_composite_statement",
+        "block_diagram",
+        "block_node_statement",
+        "block_style_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/block/upstream_composites.mmd",
+          "sourceSha256": "23bd1112adeff625409491c02d0d520ace9a4fc1e10988bdca47587aa11497dd",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/block/upstream_cypress_block_spec_bl14_should_style_statements_and_class_statements_014.mmd",
+          "sourceSha256": "41b359481a30ec325b199cbe1ba633270b7ea0861a6760346d265dbe1783ab62",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "c4",
+      "expectedDiagramType": "c4",
+      "rootNode": "c4_diagram",
+      "requiredNamedNodes": [
+        "c4_boundary_statement",
+        "c4_diagram",
+        "c4_entity_declaration",
+        "c4_relationship_statement",
+        "c4_style_update_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/c4/basic.mmd",
+          "sourceSha256": "8265e632cdb04653a2754cab44798673e296930868f7f690023de83f394e6de7",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/c4/nesting_updates.mmd",
+          "sourceSha256": "a485fccd15bb1d00f20c65d48ead03c9a22234131a7b94f2a03e4e26e2898aec",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "class",
+      "expectedDiagramType": "class",
+      "rootNode": "class_diagram",
+      "requiredNamedNodes": [
+        "class_declaration",
+        "class_diagram",
+        "class_direction_statement",
+        "class_member",
+        "class_member_block",
+        "class_namespace_declaration",
+        "class_relationship"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/class/basic.mmd",
+          "sourceSha256": "657197f4c304cdfe5c2eee70f8cd69c8df8f2fd04528ada78582dde13674d90a",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/class/stress_class_dense_namespaces_generics_001.mmd",
+          "sourceSha256": "c567079c148de9b3c5140517a8a893cfb78d90cb954e473ad642556b95c3382e",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "er",
+      "expectedDiagramType": "er",
+      "rootNode": "entity_relationship_diagram",
+      "requiredNamedNodes": [
+        "entity_relationship_diagram",
+        "er_attribute",
+        "er_attribute_block",
+        "er_class_assignment_statement",
+        "er_definition_statement",
+        "er_entity_alias",
+        "er_entity_declaration",
+        "er_relationship",
+        "er_style_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/er/basic.mmd",
+          "sourceSha256": "0a2bc0cdf5e7ed558c92f78b1101ae550bb29d0e0eee0f492a93adb187e22695",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/er/upstream_attributes_styles_classes.mmd",
+          "sourceSha256": "f7fd1a19efb3305a82a3f435f8a0f30dcd11ad04c42fc827691f6984b1322f5e",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "flowchart",
+      "expectedDiagramType": "flowchart-v2",
+      "rootNode": "flowchart_diagram",
+      "requiredNamedNodes": [
+        "flow_class_assignment_statement",
+        "flow_class_definition_statement",
+        "flow_edge_statement",
+        "flow_middle_edge_label",
+        "flow_subgraph",
+        "flow_vertex",
+        "flowchart_diagram"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/flowchart/basic.mmd",
+          "sourceSha256": "cbd5654e3f6524e99184339bbdac7673110e50818e10446b7fe51e6dcfcd86b7",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.mmd",
+          "sourceSha256": "22b7b9e26643b7efeba14a4a6ad048fac3a33832d8a2c7b2a965facd788614ca",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "state",
+      "expectedDiagramType": "stateDiagram",
+      "rootNode": "state_diagram",
+      "requiredNamedNodes": [
+        "state_composite_declaration",
+        "state_description_text",
+        "state_diagram",
+        "state_endpoint",
+        "state_marker",
+        "state_name",
+        "state_transition_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/state/basic.mmd",
+          "sourceSha256": "f263bae92d7767b33fcb22f7fc5b8bda74054749c7c0eb1be46f23532700988e",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/state/upstream_docs_statediagram_composite_states_020.mmd",
+          "sourceSha256": "8375051aace412a1397897e6a0125a0ac15118bc9bc1ac3c5a4a4049b809dc59",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "swimlane",
+      "expectedDiagramType": "swimlane",
+      "rootNode": "swimlane_diagram",
+      "requiredNamedNodes": [
+        "swimlane_diagram",
+        "swimlane_edge_label",
+        "swimlane_edge_statement",
+        "swimlane_node_statement",
+        "swimlane_subgraph",
+        "swimlane_vertex"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/swimlane/basic_flowchart_reuse.mmd",
+          "sourceSha256": "b9f708d3aeb53bd8da6de63e4583d4c9b746b8e4b4efcfba5c3e78d2293e600e",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/swimlane/upstream_docs_basic.mmd",
+          "sourceSha256": "867cca281590bce55e2203afaa79899f556b2af97075e5b4da927b463ceaa584",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "eventmodeling",
+      "expectedDiagramType": "eventmodeling",
+      "rootNode": "event_modeling_diagram",
+      "requiredNamedNodes": [
+        "event_data_block",
+        "event_data_reference",
+        "event_data_statement",
+        "event_frame_relation",
+        "event_frame_statement",
+        "event_inline_data",
+        "event_modeling_diagram"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd",
+          "sourceSha256": "2bcc1dbb84cbc06630732871f89a593fb555bd04df1b56f781c7542c922d8fee",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.mmd",
+          "sourceSha256": "544dd3d3df331679ee12ec0ccc31f8b185bfadb8f8903402859b4c2677251da5",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "kanban",
+      "expectedDiagramType": "kanban",
+      "rootNode": "kanban_diagram",
+      "requiredNamedNodes": [
+        "kanban_body",
+        "kanban_diagram",
+        "kanban_header",
+        "kanban_item",
+        "kanban_item_id",
+        "kanban_item_statement",
+        "kanban_label_text",
+        "kanban_metadata",
+        "kanban_metadata_bare_value",
+        "kanban_metadata_delimiter",
+        "kanban_metadata_key",
+        "kanban_metadata_pair",
+        "kanban_metadata_separator",
+        "kanban_metadata_value",
+        "kanban_plain_label",
+        "kanban_quoted_string",
+        "kanban_shape",
+        "kanban_shape_delimiter",
+        "kanban_square_shape"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/kanban/basic.mmd",
+          "sourceSha256": "50c8d344787a2a8a3e2d9fa1ccaf0c23ad55d13d65ff9d8afd1650528c73916a",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/kanban/upstream_docs_kanban_full_example_012.mmd",
+          "sourceSha256": "1463e787daaa07b25d3c55218d958a02fb0f7cf9fdec59a5aacdffb1758521e0",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "mindmap",
+      "expectedDiagramType": "mindmap",
+      "rootNode": "mindmap_diagram",
+      "requiredNamedNodes": [
+        "mindmap_body",
+        "mindmap_class_list",
+        "mindmap_class_marker",
+        "mindmap_class_statement",
+        "mindmap_decorator_delimiter",
+        "mindmap_diagram",
+        "mindmap_header",
+        "mindmap_icon_marker",
+        "mindmap_icon_name",
+        "mindmap_icon_statement",
+        "mindmap_label_text",
+        "mindmap_node",
+        "mindmap_node_id",
+        "mindmap_node_statement",
+        "mindmap_quoted_string",
+        "mindmap_round_shape",
+        "mindmap_shape",
+        "mindmap_shape_delimiter",
+        "mindmap_square_shape"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/mindmap/basic.mmd",
+          "sourceSha256": "8ed32de39a9b32e41dcab6156dfd8e3edd5e1b40d6c8c2a4f10a546d6bb4079f",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/mindmap/upstream_decorations_and_descriptions.mmd",
+          "sourceSha256": "d12c846ba3bfddde17ffbf0b5bbf71fe7636d14f2f76290be0af96c6b6ce3514",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "sankey",
+      "expectedDiagramType": "sankey",
+      "rootNode": "sankey_diagram",
+      "requiredNamedNodes": [
+        "comment",
+        "sankey_diagram",
+        "sankey_escaped_quote",
+        "sankey_field",
+        "sankey_quoted_field",
+        "sankey_record"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/sankey/upstream_docs_sankey_basic_004.mmd",
+          "sourceSha256": "9c049429c8fe41b167a6425ed901596cede800f4a46a3f9eb53b0bdd3373265a",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/sankey/upstream_sankey_beta_energy_csv_spec.mmd",
+          "sourceSha256": "148e9b32c8ec591eec1f0e00a9d2d4ad926a8a9920c40cf233e56dec6fedcede",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "venn",
+      "expectedDiagramType": "venn",
+      "rootNode": "venn_diagram",
+      "requiredNamedNodes": [
+        "venn_diagram",
+        "venn_indented_text_statement",
+        "venn_intersection_expression",
+        "venn_label",
+        "venn_set_statement",
+        "venn_style_statement",
+        "venn_union_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/venn/upstream_docs_venn_team_overlap_001.mmd",
+          "sourceSha256": "7e1f629a073676a8e78837478b7c4351f087e557dd39b9ea1d7ecd0afd9f72ce",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/venn/upstream_cypress_venn_spec_13_should_render_a_complex_venn_with_labels_text_nodes_and_style_013.mmd",
+          "sourceSha256": "bfe35ef2e145a7c0ea0f2fec3d9dd51a6f70a03137da95a7e7ff0a4d0505c86b",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "treeView",
+      "expectedDiagramType": "treeView",
+      "rootNode": "tree_view_diagram",
+      "requiredNamedNodes": [
+        "tree_view_bare_name",
+        "tree_view_class_annotation",
+        "tree_view_description_annotation",
+        "tree_view_diagram",
+        "tree_view_icon_annotation",
+        "tree_view_indentation_indent",
+        "tree_view_node",
+        "tree_view_node_statement",
+        "tree_view_quoted_name"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/treeView/upstream_docs_treeview_basic.mmd",
+          "sourceSha256": "47b72aedb6fc36c74e7a3aa8c0f17e473766a97cf0a67f66b2523ddb24e2fae1",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_combined_annotations_015.mmd",
+          "sourceSha256": "47bced291beeb6dc7a7ea34f254128b296580ecc6867a91faa1865a9c54d2c25",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "treemap",
+      "expectedDiagramType": "treemap",
+      "rootNode": "treemap_diagram",
+      "requiredNamedNodes": [
+        "treemap_class_annotation",
+        "treemap_class_definition",
+        "treemap_diagram",
+        "treemap_indentation_indent",
+        "treemap_item_statement",
+        "treemap_leaf",
+        "treemap_number",
+        "treemap_quoted_name",
+        "treemap_section",
+        "treemap_value_separator"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/treemap/upstream_docs_treemap_syntax_001.mmd",
+          "sourceSha256": "18f35fbbdaa49377d8965731fd9d826d6b1e246ec5302de20cee073a40c30a15",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/treemap/upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016.mmd",
+          "sourceSha256": "3e067d76c87fcddb5acc21829b6111b078a08bc85fc52cb1d646d8ef4c785da9",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "railroad",
+      "expectedDiagramType": "railroad",
+      "rootNode": "railroad_diagram",
+      "requiredNamedNodes": [
+        "railroad_diagram",
+        "railroad_reference",
+        "railroad_repetition",
+        "railroad_rule",
+        "railroad_sequence",
+        "railroad_terminal"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/railroad/basic_ir.mmd",
+          "sourceSha256": "0b80631185c18e748face0ab265a682c087b1d61db1a14df0c5c3fb867ce9b02",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/railroad/upstream_cypress_railroad_spec_renders_sequences_and_choices_002.mmd",
+          "sourceSha256": "39bdbe5fc825bd6ca1787a57974c5780d415df238928a737d1465207dfac1f17",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "railroadAbnf",
+      "expectedDiagramType": "railroadAbnf",
+      "rootNode": "railroad_abnf_diagram",
+      "requiredNamedNodes": [
+        "railroad_abnf_alternation",
+        "railroad_abnf_concatenation",
+        "railroad_abnf_diagram",
+        "railroad_abnf_reference",
+        "railroad_abnf_repeat",
+        "railroad_abnf_rule"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/railroadAbnf/repetition_optional_numval.mmd",
+          "sourceSha256": "487f44a8adf2240178be34f5a2b20556daf9f1d96d1056a2cd227620d1ab4074",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/railroadAbnf/upstream_cypress_railroad_spec_renders_alternation_and_repetition_008.mmd",
+          "sourceSha256": "8af1c0d8b6b5381c9241ee8441c273b8c5d3f3df5e57abe9691326e9b1fcb105",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "railroadEbnf",
+      "expectedDiagramType": "railroadEbnf",
+      "rootNode": "railroad_ebnf_diagram",
+      "requiredNamedNodes": [
+        "railroad_ebnf_choice",
+        "railroad_ebnf_diagram",
+        "railroad_ebnf_reference",
+        "railroad_ebnf_repetition_group",
+        "railroad_ebnf_rule",
+        "railroad_ebnf_sequence",
+        "railroad_ebnf_terminal"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/railroadEbnf/choice_optional_repetition.mmd",
+          "sourceSha256": "5831e5759a6b368e4542a542aafb9e5a743eff41dc76ee967f015841913f9737",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/railroadEbnf/upstream_cypress_railroad_spec_renders_iso_14977_notation_007.mmd",
+          "sourceSha256": "d87b477e2ecbe33c723845bdd62e02ed629ef36f10085532c213d533d5c8be6c",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "railroadPeg",
+      "expectedDiagramType": "railroadPeg",
+      "rootNode": "railroad_peg_diagram",
+      "requiredNamedNodes": [
+        "railroad_peg_diagram",
+        "railroad_peg_literal",
+        "railroad_peg_reference",
+        "railroad_peg_rule",
+        "railroad_peg_sequence",
+        "railroad_peg_suffix_operator"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/railroadPeg/prefix_suffix_any.mmd",
+          "sourceSha256": "a6ab8a1fefeff79413e7ded4acbbcb8834031879c00bb6afcc837f20b08d2552",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/railroadPeg/upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009.mmd",
+          "sourceSha256": "e2be125ab757a91ed05c46d95b40533a422b9617bcc96d3323889dfe97fdf8d7",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "sequence",
+      "expectedDiagramType": "sequence",
+      "rootNode": "sequence_diagram",
+      "requiredNamedNodes": [
+        "sequence_and_branch",
+        "sequence_diagram",
+        "sequence_endpoint",
+        "sequence_loop_block",
+        "sequence_message_operator",
+        "sequence_message_statement",
+        "sequence_message_text",
+        "sequence_note_statement",
+        "sequence_par_block",
+        "sequence_participant_declaration"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/sequence/upstream_docs_sequence_basic_example.mmd",
+          "sourceSha256": "b2066a62d878a2b2b1ad49be0674b68d0fb78deed9c5def176cfcb2340403d25",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010.mmd",
+          "sourceSha256": "d1ff8d6f2e12e4752a80b1bc8751405c01238ef7a31677b14d265f5dfe891b6a",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        }
+      ]
+    },
+    {
+      "publicId": "zenuml",
+      "expectedDiagramType": "zenuml",
+      "rootNode": "zenuml_diagram",
+      "requiredNamedNodes": [
+        "zenuml_assignment",
+        "zenuml_async_message_statement",
+        "zenuml_block",
+        "zenuml_call_chain",
+        "zenuml_catch_clause",
+        "zenuml_diagram",
+        "zenuml_finally_clause",
+        "zenuml_sync_message_statement",
+        "zenuml_try_statement"
+      ],
+      "fixtures": [
+        {
+          "role": "family-baseline",
+          "path": "fixtures/zenuml/upstream_docs_zenuml_reply_assignments.mmd",
+          "sourceSha256": "a342de6aed8f9818bcd88cd148b69c953a849a23accdfce5d773e4c061839163",
+          "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        {
+          "role": "admitted-valid",
+          "path": "fixtures/zenuml/upstream_docs_zenuml_try_catch_finally.mmd",
+          "sourceSha256": "e4091107927240e942290b51e131d79206cee2e4e2c320d52baeb6d0c42f56e9",
           "renderContextSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
         }
       ]

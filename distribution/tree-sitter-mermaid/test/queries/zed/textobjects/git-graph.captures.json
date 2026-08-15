@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "git-graph.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "gitGraph TB:\ncommit id:\"root\" msg:\"功能完成\" tag:\"v1\" type:HIGHLIGHT\nbranch feature/test order:2\ncheckout feature/test\nswitch main\nmerge feature/test tag:\"merged\" id:\"merge-1\" type:REVERSE\ncherry-pick id:\"root\" parent:\"base\" tag:\"backport\"\n",
+      "startByte": 0,
+      "endByte": 244
+    },
+    {
+      "name": "class.inside",
+      "text": "\ncommit id:\"root\" msg:\"功能完成\" tag:\"v1\" type:HIGHLIGHT\nbranch feature/test order:2\ncheckout feature/test\nswitch main\nmerge feature/test tag:\"merged\" id:\"merge-1\" type:REVERSE\ncherry-pick id:\"root\" parent:\"base\" tag:\"backport\"\n",
+      "startByte": 12,
+      "endByte": 244
+    },
+    {
+      "name": "function.around",
+      "text": "branch feature/test order:2",
+      "startByte": 73,
+      "endByte": 100
+    }
+  ]
+}

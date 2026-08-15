@@ -1,0 +1,1528 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "consumer": {
+    "name": "Zed",
+    "version": "1.16.0",
+    "sourceRef": "main",
+    "sourceCommit": "38ca9106c5306ef93e52c35643df015a27f15b72",
+    "sourceDate": "2026-08-07",
+    "loaderSource": "crates/language_core/src/queries.rs",
+    "loaderPrefixes": [
+      "highlights",
+      "brackets",
+      "outline",
+      "indents",
+      "injections",
+      "overrides",
+      "redactions",
+      "runnables",
+      "debugger",
+      "textobjects"
+    ],
+    "r9LoadedSurfaces": [
+      "highlights",
+      "brackets",
+      "outline",
+      "indents",
+      "injections",
+      "textobjects"
+    ]
+  },
+  "queryContract": {
+    "captureAuthority": "Zed 1.16.0 at commit 38ca9106c5306ef93e52c35643df015a27f15b72",
+    "portableSemanticTokenMapping": false,
+    "profileFiles": [
+      "highlights.scm",
+      "brackets.scm",
+      "outline.scm",
+      "indents.scm",
+      "injections.scm",
+      "textobjects.scm"
+    ],
+    "absentFiles": [
+      "folds.scm",
+      "locals.scm",
+      "tags.scm"
+    ],
+    "highlightAdapter": {
+      "comment.documentation": "comment.doc",
+      "function.macro": "function",
+      "keyword.operator": "operator",
+      "namespace": "type",
+      "variable.member": "property"
+    }
+  },
+  "families": [
+    {
+      "publicId": "architecture",
+      "fixtureSlug": "architecture",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "block",
+      "fixtureSlug": "block",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "c4",
+      "fixtureSlug": "c4",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "class",
+      "fixtureSlug": "class",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "cynefin",
+      "fixtureSlug": "cynefin",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The cynefin grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The cynefin v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "er",
+      "fixtureSlug": "entity-relationship",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "eventmodeling",
+      "fixtureSlug": "event-modeling",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "flowchart",
+      "fixtureSlug": "flowchart",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "gantt",
+      "fixtureSlug": "gantt",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "gitgraph",
+      "fixtureSlug": "git-graph",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The git-graph grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The git-graph v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "info",
+      "fixtureSlug": "info",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The info grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The info v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "ishikawa",
+      "fixtureSlug": "ishikawa",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The ishikawa grammar is indentation-sensitive and its scanner already owns semantic nesting; a Zed @indent rule on each node would double-apply indentation."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The ishikawa v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "journey",
+      "fixtureSlug": "journey",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The journey grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The journey v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "kanban",
+      "fixtureSlug": "kanban",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "mindmap",
+      "fixtureSlug": "mindmap",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "packet",
+      "fixtureSlug": "packet",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The packet grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The packet v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "pie",
+      "fixtureSlug": "pie",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The pie grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The pie v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "quadrantchart",
+      "fixtureSlug": "quadrant-chart",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "radar",
+      "fixtureSlug": "radar",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "railroad",
+      "fixtureSlug": "railroad",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "railroadAbnf",
+      "fixtureSlug": "railroad-abnf",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "railroadEbnf",
+      "fixtureSlug": "railroad-ebnf",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "railroadPeg",
+      "fixtureSlug": "railroad-peg",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "requirement",
+      "fixtureSlug": "requirement",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "sankey",
+      "fixtureSlug": "sankey",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The sankey grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "sequence",
+      "fixtureSlug": "sequence",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "state",
+      "fixtureSlug": "state",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "swimlane",
+      "fixtureSlug": "swimlane",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "timeline",
+      "fixtureSlug": "timeline",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The timeline grammar is flat or record-oriented and exposes no multiline delimiter/block parent range that can drive Zed @indent/@end coherently."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The timeline v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "treeView",
+      "fixtureSlug": "tree-view",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The tree-view grammar is indentation-sensitive and its scanner already owns semantic nesting; a Zed @indent rule on each node would double-apply indentation."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The tree-view v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "treemap",
+      "fixtureSlug": "treemap",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The treemap grammar is indentation-sensitive and its scanner already owns semantic nesting; a Zed @indent rule on each node would double-apply indentation."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "The treemap v1 CST exposes no coherent source-owned delimiter pair for Zed's required @open/@close bracket ABI; quoted payloads, where present, remain opaque."
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "venn",
+      "fixtureSlug": "venn",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "Venn label delimiters are inline label boundaries, not multiline blocks whose parent range can drive Zed @indent/@end behavior."
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "wardley",
+      "fixtureSlug": "wardley",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "xychart",
+      "fixtureSlug": "xychart",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    },
+    {
+      "publicId": "zenuml",
+      "fixtureSlug": "zenuml",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/zed/highlights.scm"
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load folds.scm, so this profile has no native Tree-sitter fold-query capture ABI."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/zed/indents.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/zed/injections.scm"
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load locals.scm, so a language extension cannot advertise it as a native query surface."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Zed 1.16.0 at the pinned commit does not load tags.scm; outline and LSP symbol paths are separate from Tree-sitter tags."
+        },
+        "brackets": {
+          "status": "applicable",
+          "query": "queries/zed/brackets.scm"
+        },
+        "outline": {
+          "status": "applicable",
+          "query": "queries/zed/outline.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/zed/textobjects.scm"
+        }
+      }
+    }
+  ]
+}

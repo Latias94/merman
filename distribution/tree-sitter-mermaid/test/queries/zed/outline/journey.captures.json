@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "journey.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "journey",
+      "startByte": 0,
+      "endByte": 7
+    },
+    {
+      "name": "item",
+      "text": "journey\ntitle 用户旅程\nsection Delivery\nBuild parser: 5: Alice, Bob\n",
+      "startByte": 0,
+      "endByte": 72
+    },
+    {
+      "name": "item",
+      "text": "section Delivery",
+      "startByte": 27,
+      "endByte": 43
+    },
+    {
+      "name": "name",
+      "text": "Delivery",
+      "startByte": 35,
+      "endByte": 43
+    },
+    {
+      "name": "name",
+      "text": "Build parser",
+      "startByte": 44,
+      "endByte": 56
+    },
+    {
+      "name": "item",
+      "text": "Build parser: 5: Alice, Bob",
+      "startByte": 44,
+      "endByte": 71
+    }
+  ]
+}

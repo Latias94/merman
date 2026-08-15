@@ -21,7 +21,7 @@ const quotedClause = ($, keyword, fieldName) => seq(
   clauseKeyword($, keyword),
   clauseSeparator($),
   optional($._langium_inline_space),
-  field(fieldName, $.langium_string),
+  field(fieldName, choice($.langium_string, $.langium_unclosed_string)),
 );
 
 const gitGraphRules = {
@@ -89,12 +89,15 @@ const gitGraphRules = {
     $._langium_newline,
     seq($.comment, $._langium_newline),
     seq($.directive, $._langium_newline),
-    $.langium_title_statement,
-    $.langium_acc_title_statement,
-    $.langium_acc_descr_statement,
+    seq($.langium_title_statement, $._langium_newline),
+    seq($.langium_acc_title_statement, $._langium_newline),
+    seq($.langium_acc_descr_statement, $._langium_newline),
     seq(
       $._git_graph_statement,
-      optional(field('comment', $.comment)),
+      optional(choice(
+        field('comment', $.comment),
+        field('directive', $.directive),
+      )),
       $._langium_newline,
     ),
   ),
@@ -102,9 +105,15 @@ const gitGraphRules = {
   _git_graph_eof_body_item: ($) => choice(
     $.comment,
     $.directive,
+    $.langium_title_statement,
+    $.langium_acc_title_statement,
+    $.langium_acc_descr_statement,
     seq(
       $._git_graph_statement,
-      optional(field('comment', $.comment)),
+      optional(choice(
+        field('comment', $.comment),
+        field('directive', $.directive),
+      )),
     ),
   ),
 
@@ -122,18 +131,43 @@ const gitGraphRules = {
 
   git_graph_commit_statement: ($) => prec.right(seq(
     statementKeyword($, 'commit'),
-    repeat(choice(
-      $.git_graph_id_clause,
-      $.git_graph_message_clause,
-      $.git_graph_tag_clause,
-      $.git_graph_type_clause,
+    optional(seq(
+      $._langium_inline_space,
+      choice(
+        $.git_graph_id_clause,
+        $.git_graph_message_clause,
+        $.git_graph_tag_clause,
+        $.git_graph_type_clause,
+        field('recovery', $.git_graph_malformed_clause),
+      ),
+      repeat(seq(
+        $._langium_inline_space,
+        choice(
+          $.git_graph_id_clause,
+          $.git_graph_message_clause,
+          $.git_graph_tag_clause,
+          $.git_graph_type_clause,
+          field('recovery', $.git_graph_malformed_clause),
+        ),
+      )),
     )),
   )),
 
   git_graph_branch_statement: ($) => prec.right(seq(
     statementKeyword($, 'branch'),
-    field('name', choice($.git_graph_reference, $.langium_string)),
-    optional(field('order', $.git_graph_order_clause)),
+    $._langium_inline_space,
+    field('name', choice(
+      $.git_graph_reference,
+      $.langium_string,
+      $.langium_unclosed_string,
+    )),
+    optional(seq(
+      $._langium_inline_space,
+      choice(
+        field('order', $.git_graph_order_clause),
+        field('recovery', $.git_graph_malformed_clause),
+      ),
+    )),
   )),
 
   git_graph_incomplete_branch_statement: ($) => prec(
@@ -143,11 +177,20 @@ const gitGraphRules = {
 
   git_graph_merge_statement: ($) => prec.right(seq(
     statementKeyword($, 'merge'),
-    field('branch', choice($.git_graph_reference, $.langium_string)),
-    repeat(choice(
-      $.git_graph_id_clause,
-      $.git_graph_tag_clause,
-      $.git_graph_type_clause,
+    $._langium_inline_space,
+    field('branch', choice(
+      $.git_graph_reference,
+      $.langium_string,
+      $.langium_unclosed_string,
+    )),
+    repeat(seq(
+      $._langium_inline_space,
+      choice(
+        $.git_graph_id_clause,
+        $.git_graph_tag_clause,
+        $.git_graph_type_clause,
+        field('recovery', $.git_graph_malformed_clause),
+      ),
     )),
   )),
 
@@ -159,38 +202,72 @@ const gitGraphRules = {
   git_graph_checkout_statement: ($) => prec.right(seq(
     field(
       'keyword',
-      alias(choice('checkout', 'switch'), $.git_graph_statement_keyword),
+      alias(
+        choice('checkout', 'switch'),
+        $.git_graph_statement_keyword,
+      ),
     ),
-    field('branch', choice($.git_graph_reference, $.langium_string)),
+    $._langium_inline_space,
+    field('branch', choice(
+      $.git_graph_reference,
+      $.langium_string,
+      $.langium_unclosed_string,
+    )),
+    optional(seq(
+      $._langium_inline_space,
+      field('recovery', $.git_graph_malformed_clause),
+    )),
   )),
 
   git_graph_incomplete_checkout_statement: ($) => prec(-10, field(
     'keyword',
-    alias(choice('checkout', 'switch'), $.git_graph_statement_keyword),
+    alias(
+      choice('checkout', 'switch'),
+      $.git_graph_statement_keyword,
+    ),
   )),
 
   git_graph_cherry_pick_statement: ($) => prec.right(seq(
     statementKeyword($, 'cherry-pick'),
-    repeat(choice(
-      $.git_graph_id_clause,
-      $.git_graph_tag_clause,
-      $.git_graph_parent_clause,
+    optional(seq(
+      $._langium_inline_space,
+      choice(
+        $.git_graph_id_clause,
+        $.git_graph_tag_clause,
+        $.git_graph_parent_clause,
+        field('recovery', $.git_graph_malformed_clause),
+      ),
+      repeat(seq(
+        $._langium_inline_space,
+        choice(
+          $.git_graph_id_clause,
+          $.git_graph_tag_clause,
+          $.git_graph_parent_clause,
+          field('recovery', $.git_graph_malformed_clause),
+        ),
+      )),
     )),
   )),
 
-  // This recovery node is restricted to one physical line and has lower
-  // lexical precedence than every valid GitGraph keyword. It preserves later
-  // siblings without becoming a whole-body or valid-statement fallback.
-  git_graph_malformed_statement: ($) => prec(-100, field(
-    'text',
-    $.git_graph_malformed_text,
+  // Recovery starts with one unknown word and remains on the same physical
+  // line. Exact GitGraph keywords win through Tree-sitter's `word` boundary,
+  // while keyword prefixes remain one malformed word instead of being split.
+  git_graph_malformed_statement: ($) => prec(-100, choice(
+    seq(
+      field(
+        'keyword',
+        alias($.identifier, $.git_graph_unknown_statement_keyword),
+      ),
+      optional(field('tail', $.git_graph_malformed_statement_tail)),
+    ),
+    field('text', $.git_graph_malformed_symbol_text),
   )),
 
   git_graph_id_clause: ($) => quotedClause($, 'id', 'id'),
 
   git_graph_message_clause: ($) => choice(
     quotedClause($, 'msg', 'message'),
-    field('message', $.langium_string),
+    field('message', choice($.langium_string, $.langium_unclosed_string)),
   ),
 
   git_graph_tag_clause: ($) => quotedClause($, 'tag', 'tag'),
@@ -222,7 +299,24 @@ const gitGraphRules = {
     /[A-Za-z0-9_](?:[-./A-Za-z0-9_]*[-A-Za-z0-9_])?/,
   )),
 
-  git_graph_malformed_text: (_) => token(prec(-100, /[^\r\n]+/)),
+  git_graph_malformed_statement_tail: (_) => token.immediate(/[^\r\n]+/),
+
+  git_graph_malformed_symbol_text: (_) => token(prec(
+    -100,
+    /[^A-Za-z0-9_\u00c0-\uffff%\r\n][^\r\n]*/,
+  )),
+
+  git_graph_malformed_clause: ($) => seq(
+    field('keyword', $.git_graph_unknown_clause_keyword),
+    optional(field('tail', $.git_graph_malformed_clause_tail)),
+  ),
+
+  git_graph_unknown_clause_keyword: (_) => token(prec(
+    -1,
+    /[A-Za-z_][A-Za-z0-9_-]*/,
+  )),
+
+  git_graph_malformed_clause_tail: (_) => token.immediate(/[^\r\n]+/),
 };
 
 const gitGraphConflicts = ($) => [

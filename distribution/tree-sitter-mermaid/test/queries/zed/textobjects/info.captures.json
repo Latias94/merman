@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "info.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "info\nshowInfo\ntitle Build information\naccTitle: Accessible build information\naccDescr: Current build metadata %% retained comment\n",
+      "startByte": 0,
+      "endByte": 130
+    },
+    {
+      "name": "class.inside",
+      "text": "showInfo\ntitle Build information\naccTitle: Accessible build information\naccDescr: Current build metadata %% retained comment\n",
+      "startByte": 5,
+      "endByte": 130
+    },
+    {
+      "name": "comment.around",
+      "text": "%% retained comment",
+      "startByte": 110,
+      "endByte": 129
+    }
+  ]
+}

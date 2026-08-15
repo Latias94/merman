@@ -1,0 +1,44 @@
+[
+  {
+    "name": "ZenUML CRLF Unicode participant alias edit",
+    "source": "zenuml\r\ntitle Checkout\r\n@Actor Customer as User\r\nCustomer->API: start\r\n",
+    "old": "User",
+    "replacement": "用户"
+  },
+  {
+    "name": "ZenUML nested condition expression edit",
+    "source": "zenuml\nif (ready && count >= 2) {\n  API.poll()\n}\n",
+    "old": "count >= 2",
+    "replacement": "count >= 3 || forced"
+  },
+  {
+    "name": "ZenUML parallel branch insertion",
+    "source": "zenuml\npar {\n  Alice->API: submit\n}\n",
+    "old": "Alice->API: submit",
+    "replacement": "Alice->API: submit\n  Alice->Audit: record"
+  },
+  {
+    "name": "ZenUML incomplete message repair",
+    "source": "zenuml\nBefore->\nAfter->Before: sibling survives\n",
+    "old": "Before->",
+    "replacement": "Before->After: repaired"
+  },
+  {
+    "name": "ZenUML unclosed argument list repair",
+    "source": "zenuml\nnew Order(id, count =\nAfter.notify()\n",
+    "old": "new Order(id, count =",
+    "replacement": "new Order(id, count = 2)"
+  },
+  {
+    "name": "ZenUML catch clause insertion",
+    "source": "zenuml\ntry {\n  API.work()\n} finally {\n  API.cleanup()\n}\n",
+    "old": "} finally {",
+    "replacement": "} catch (Failure error) {\n  API->User: failed\n} finally {"
+  },
+  {
+    "name": "ZenUML header switch to Sequence",
+    "source": "zenuml\nAlice->Bob: hello\n",
+    "old": "zenuml",
+    "replacement": "sequenceDiagram"
+  }
+]

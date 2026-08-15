@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/venn.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "venn-beta\ntitle Team overlap\nset A[\"Frontend\"]:10\nset B\nunion A,B[Shared]:4\n  text \"Implicit\"[\"display\"]\nstyle A,B fill:#ffcc00,stroke-width:2px\n",
+      "startByte": 0,
+      "endByte": 145
+    },
+    {
+      "name": "local.definition",
+      "text": "A",
+      "startByte": 33,
+      "endByte": 34
+    },
+    {
+      "name": "local.definition",
+      "text": "B",
+      "startByte": 54,
+      "endByte": 55
+    },
+    {
+      "name": "local.reference",
+      "text": "A",
+      "startByte": 62,
+      "endByte": 63
+    },
+    {
+      "name": "local.reference",
+      "text": "B",
+      "startByte": 64,
+      "endByte": 65
+    },
+    {
+      "name": "local.reference",
+      "text": "A",
+      "startByte": 111,
+      "endByte": 112
+    },
+    {
+      "name": "local.reference",
+      "text": "B",
+      "startByte": 113,
+      "endByte": 114
+    }
+  ]
+}

@@ -1,0 +1,266 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "highlights",
+  "source": "venn.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "venn-beta",
+      "startByte": 0,
+      "endByte": 9
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 10,
+      "endByte": 15
+    },
+    {
+      "name": "string",
+      "text": "Team overlap",
+      "startByte": 16,
+      "endByte": 28
+    },
+    {
+      "name": "keyword",
+      "text": "set",
+      "startByte": 29,
+      "endByte": 32
+    },
+    {
+      "name": "variable",
+      "text": "A",
+      "startByte": 33,
+      "endByte": 34
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 34,
+      "endByte": 35
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 35,
+      "endByte": 36
+    },
+    {
+      "name": "string",
+      "text": "\"Frontend\"",
+      "startByte": 35,
+      "endByte": 45
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 44,
+      "endByte": 45
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 45,
+      "endByte": 46
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 46,
+      "endByte": 47
+    },
+    {
+      "name": "number",
+      "text": "10",
+      "startByte": 47,
+      "endByte": 49
+    },
+    {
+      "name": "keyword",
+      "text": "set",
+      "startByte": 50,
+      "endByte": 53
+    },
+    {
+      "name": "variable",
+      "text": "B",
+      "startByte": 54,
+      "endByte": 55
+    },
+    {
+      "name": "keyword",
+      "text": "union",
+      "startByte": 56,
+      "endByte": 61
+    },
+    {
+      "name": "variable",
+      "text": "A",
+      "startByte": 62,
+      "endByte": 63
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 63,
+      "endByte": 64
+    },
+    {
+      "name": "variable",
+      "text": "B",
+      "startByte": 64,
+      "endByte": 65
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 65,
+      "endByte": 66
+    },
+    {
+      "name": "string",
+      "text": "Shared",
+      "startByte": 66,
+      "endByte": 72
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 72,
+      "endByte": 73
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 73,
+      "endByte": 74
+    },
+    {
+      "name": "number",
+      "text": "4",
+      "startByte": 74,
+      "endByte": 75
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 83,
+      "endByte": 84
+    },
+    {
+      "name": "string",
+      "text": "\"Implicit\"",
+      "startByte": 83,
+      "endByte": 93
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 92,
+      "endByte": 93
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 93,
+      "endByte": 94
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 94,
+      "endByte": 95
+    },
+    {
+      "name": "string",
+      "text": "\"display\"",
+      "startByte": 94,
+      "endByte": 103
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 102,
+      "endByte": 103
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 103,
+      "endByte": 104
+    },
+    {
+      "name": "keyword",
+      "text": "style",
+      "startByte": 105,
+      "endByte": 110
+    },
+    {
+      "name": "variable",
+      "text": "A",
+      "startByte": 111,
+      "endByte": 112
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 112,
+      "endByte": 113
+    },
+    {
+      "name": "variable",
+      "text": "B",
+      "startByte": 113,
+      "endByte": 114
+    },
+    {
+      "name": "property",
+      "text": "fill",
+      "startByte": 115,
+      "endByte": 119
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 119,
+      "endByte": 120
+    },
+    {
+      "name": "string.special",
+      "text": "#ffcc00",
+      "startByte": 120,
+      "endByte": 127
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 127,
+      "endByte": 128
+    },
+    {
+      "name": "property",
+      "text": "stroke-width",
+      "startByte": 128,
+      "endByte": 140
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 140,
+      "endByte": 141
+    },
+    {
+      "name": "number",
+      "text": "2",
+      "startByte": 141,
+      "endByte": 142
+    },
+    {
+      "name": "constant",
+      "text": "px",
+      "startByte": 142,
+      "endByte": 144
+    }
+  ]
+}

@@ -15,7 +15,9 @@
     "treeSitterCli": "0.26.12",
     "rustRuntime": "0.26.12",
     "nodeRuntime": "0.25.1",
-    "webRuntime": "0.26.12"
+    "webRuntime": "0.26.12",
+    "wasiSdk": "29.0",
+    "wasiClang": "21.1.4-wasi-sdk"
   },
   "sources": [
     {

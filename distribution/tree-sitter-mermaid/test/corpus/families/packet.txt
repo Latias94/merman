@@ -189,8 +189,8 @@ invalid packet statement
         (packet_bit_count
           (packet_width_operator)
           (packet_integer))
-        (packet_label_delimiter))
-      (comment)
+        (packet_label_delimiter)
+        (comment))
       (packet_block_statement
         (packet_bit_count
           (packet_width_operator)

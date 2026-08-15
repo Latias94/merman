@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "c4.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "C4Container",
+      "startByte": 0,
+      "endByte": 11
+    },
+    {
+      "name": "item",
+      "text": "C4Container\ntitle Banking containers\nContainer_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}\nRel(customer, api, \"Uses\", \"HTTPS\")\nRel_Right(api, db, \"Reads\", \"SQL\")\nUpdateElementStyle(api, $bgColor=\"blue\")\nUpdateRelStyle(api, db, $lineColor=\"red\")\n",
+      "startByte": 0,
+      "endByte": 357
+    },
+    {
+      "name": "item",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "name",
+      "text": "apps",
+      "startByte": 56,
+      "endByte": 60
+    },
+    {
+      "name": "item",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "name",
+      "text": "customer",
+      "startByte": 89,
+      "endByte": 97
+    },
+    {
+      "name": "item",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "name",
+      "text": "api",
+      "startByte": 123,
+      "endByte": 126
+    },
+    {
+      "name": "item",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    },
+    {
+      "name": "name",
+      "text": "db",
+      "startByte": 171,
+      "endByte": 173
+    }
+  ]
+}

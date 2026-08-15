@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "treemap.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "treemap\ntitle Product revenue\n\"Products\":::root\n  \"Phones\": 50:::important\nclassDef important fill:red;\n",
+      "startByte": 0,
+      "endByte": 104
+    },
+    {
+      "name": "class.inside",
+      "text": "title Product revenue\n\"Products\":::root\n  \"Phones\": 50:::important\nclassDef important fill:red;\n",
+      "startByte": 8,
+      "endByte": 104
+    },
+    {
+      "name": "function.around",
+      "text": "\"Products\":::root",
+      "startByte": 30,
+      "endByte": 47
+    },
+    {
+      "name": "function.around",
+      "text": "  \"Phones\": 50:::important",
+      "startByte": 48,
+      "endByte": 74
+    }
+  ]
+}

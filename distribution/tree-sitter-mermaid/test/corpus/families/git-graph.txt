@@ -230,7 +230,8 @@ checkout main
           (git_graph_clause_separator)
           (langium_string)))
       (git_graph_malformed_statement
-        (git_graph_malformed_text))
+        (git_graph_unknown_statement_keyword)
+        (git_graph_malformed_statement_tail))
       (git_graph_commit_statement
         (git_graph_statement_keyword)
         (git_graph_id_clause

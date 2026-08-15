@@ -1,0 +1,18 @@
+---
+title: requirement
+---
+requirementDiAgRaM
+direction LR
+functionalRequirement "secure checkout":::critical {
+  id: "REQ-1"
+  text: "Encrypt data"
+  risk: high
+  verifyMethod: analysis
+}
+element gateway {
+  type: service
+  docRef: "docs/security.md"
+}
+gateway - satisfies -> "secure checkout"
+classDef critical fill:#f96
+# requirement query comment

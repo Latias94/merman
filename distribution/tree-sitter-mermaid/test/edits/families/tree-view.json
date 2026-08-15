@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Tree View CRLF Unicode label",
+    "source": "treeView-beta\r\nRoot/\r\n  Child.txt\r\n",
+    "old": "Child.txt",
+    "replacement": "子节点💓.txt"
+  },
+  {
+    "name": "Tree View subtree reindent",
+    "source": "treeView-beta\nRoot/\n  src/\n    lib.ts\n  docs/\n    readme.md\n",
+    "old": "  src/\n    lib.ts",
+    "replacement": "    src/\n      lib.ts"
+  },
+  {
+    "name": "Tree View subtree move",
+    "source": "treeView-beta\nRoot/\n  src/\n    lib.ts\n  docs/\n    readme.md\n",
+    "old": "  src/\n    lib.ts\n  docs/\n    readme.md",
+    "replacement": "  docs/\n    readme.md\n  src/\n    lib.ts"
+  },
+  {
+    "name": "Tree View box drawing Unicode edit",
+    "source": "treeView-beta\nRoot/\n├── src/\n│   └── index.ts\n└── README.md\n",
+    "old": "index.ts",
+    "replacement": "入口💓.ts"
+  },
+  {
+    "name": "Tree View incomplete box repair",
+    "source": "treeView-beta\nbefore.txt\n  └──\nafter.txt\n",
+    "old": "  └──",
+    "replacement": "  └── recovered.txt"
+  },
+  {
+    "name": "Tree View EOF body insertion",
+    "source": "treeView-beta",
+    "old": "treeView-beta",
+    "replacement": "treeView-beta\nRoot/\n  Child.txt"
+  },
+  {
+    "name": "Tree View scanner mode switch to Treemap",
+    "source": "treeView-beta\n\"Root\"\n  \"Child\"\n",
+    "old": "treeView-beta",
+    "replacement": "treemap-beta"
+  },
+  {
+    "name": "Tree View accessibility block edit",
+    "source": "treeView-beta\r\naccDescr\r\n{Project files}\r\nRoot/\r\n",
+    "old": "Project files",
+    "replacement": "项目文件"
+  }
+]

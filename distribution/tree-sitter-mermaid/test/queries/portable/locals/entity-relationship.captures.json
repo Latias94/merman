@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/entity-relationship.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "erDiagram\nCUSTOMER[\"Customer\"]:::entity {\n  string id PK \"identifier\"\n}\nCUSTOMER ||--o{ ORDER : places\nclassDef entity fill:#eef\n",
+      "startByte": 0,
+      "endByte": 129
+    },
+    {
+      "name": "local.definition",
+      "text": "CUSTOMER",
+      "startByte": 10,
+      "endByte": 18
+    },
+    {
+      "name": "local.reference",
+      "text": "CUSTOMER",
+      "startByte": 72,
+      "endByte": 80
+    },
+    {
+      "name": "local.reference",
+      "text": "ORDER",
+      "startByte": 88,
+      "endByte": 93
+    }
+  ]
+}

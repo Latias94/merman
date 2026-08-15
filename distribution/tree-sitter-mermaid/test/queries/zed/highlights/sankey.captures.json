@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "highlights",
+  "source": "sankey.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "sankey-beta",
+      "startByte": 0,
+      "endByte": 11
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 12,
+      "endByte": 13
+    },
+    {
+      "name": "string",
+      "text": "\"Source, one\"",
+      "startByte": 12,
+      "endByte": 25
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 24,
+      "endByte": 25
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 25,
+      "endByte": 26
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 26,
+      "endByte": 27
+    },
+    {
+      "name": "string",
+      "text": "\"Target \"\"quoted\"\"\"",
+      "startByte": 26,
+      "endByte": 45
+    },
+    {
+      "name": "string.escape",
+      "text": "\"\"",
+      "startByte": 34,
+      "endByte": 36
+    },
+    {
+      "name": "string.escape",
+      "text": "\"\"",
+      "startByte": 42,
+      "endByte": 44
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 44,
+      "endByte": 45
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 45,
+      "endByte": 46
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 46,
+      "endByte": 47
+    },
+    {
+      "name": "number",
+      "text": "\"12\n.5\"",
+      "startByte": 46,
+      "endByte": 53
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "\"",
+      "startByte": 52,
+      "endByte": 53
+    },
+    {
+      "name": "string",
+      "text": "plain",
+      "startByte": 54,
+      "endByte": 59
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 59,
+      "endByte": 60
+    },
+    {
+      "name": "string",
+      "text": "target",
+      "startByte": 60,
+      "endByte": 66
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 66,
+      "endByte": 67
+    },
+    {
+      "name": "number",
+      "text": "3.25",
+      "startByte": 67,
+      "endByte": 71
+    }
+  ]
+}

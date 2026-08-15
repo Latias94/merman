@@ -5,7 +5,7 @@
   "nodes": {
     "pie_diagram": ["body", "header"],
     "pie_header": ["keyword", "option"],
-    "pie_incomplete_section": ["delimiter", "label"],
-    "pie_section": ["comment", "delimiter", "label", "value"]
+    "pie_incomplete_section": ["comment", "delimiter", "directive", "label"],
+    "pie_section": ["comment", "delimiter", "directive", "label", "value"]
   }
 }

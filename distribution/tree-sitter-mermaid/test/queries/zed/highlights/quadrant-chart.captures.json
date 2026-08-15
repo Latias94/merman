@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "highlights",
+  "source": "quadrant-chart.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "quadrantChart",
+      "startByte": 0,
+      "endByte": 13
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 14,
+      "endByte": 19
+    },
+    {
+      "name": "string",
+      "text": "Campaign reach",
+      "startByte": 20,
+      "endByte": 34
+    },
+    {
+      "name": "keyword",
+      "text": "x-axis",
+      "startByte": 35,
+      "endByte": 41
+    },
+    {
+      "name": "string",
+      "text": "Low",
+      "startByte": 42,
+      "endByte": 45
+    },
+    {
+      "name": "operator",
+      "text": "-->",
+      "startByte": 46,
+      "endByte": 49
+    },
+    {
+      "name": "string",
+      "text": "High",
+      "startByte": 50,
+      "endByte": 54
+    },
+    {
+      "name": "keyword",
+      "text": "quadrant-1",
+      "startByte": 55,
+      "endByte": 65
+    },
+    {
+      "name": "string",
+      "text": "Expand",
+      "startByte": 66,
+      "endByte": 72
+    },
+    {
+      "name": "string",
+      "text": "Campaign A",
+      "startByte": 73,
+      "endByte": 83
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":::",
+      "startByte": 83,
+      "endByte": 86
+    },
+    {
+      "name": "type",
+      "text": "focus",
+      "startByte": 86,
+      "endByte": 91
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 91,
+      "endByte": 92
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 93,
+      "endByte": 94
+    },
+    {
+      "name": "number",
+      "text": "0.3",
+      "startByte": 94,
+      "endByte": 97
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 97,
+      "endByte": 98
+    },
+    {
+      "name": "number",
+      "text": "0.6",
+      "startByte": 99,
+      "endByte": 102
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 102,
+      "endByte": 103
+    },
+    {
+      "name": "property",
+      "text": "radius",
+      "startByte": 104,
+      "endByte": 110
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 110,
+      "endByte": 111
+    },
+    {
+      "name": "string",
+      "text": "12",
+      "startByte": 112,
+      "endByte": 114
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 114,
+      "endByte": 115
+    },
+    {
+      "name": "property",
+      "text": "color",
+      "startByte": 116,
+      "endByte": 121
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 121,
+      "endByte": 122
+    },
+    {
+      "name": "string",
+      "text": "#ff0000",
+      "startByte": 123,
+      "endByte": 130
+    },
+    {
+      "name": "keyword",
+      "text": "classDef",
+      "startByte": 131,
+      "endByte": 139
+    },
+    {
+      "name": "type",
+      "text": "focus",
+      "startByte": 140,
+      "endByte": 145
+    },
+    {
+      "name": "property",
+      "text": "stroke-width",
+      "startByte": 146,
+      "endByte": 158
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 158,
+      "endByte": 159
+    },
+    {
+      "name": "string",
+      "text": "3px",
+      "startByte": 160,
+      "endByte": 163
+    }
+  ]
+}

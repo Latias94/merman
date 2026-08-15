@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "mindmap.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "((",
+      "startByte": 14,
+      "endByte": 16
+    },
+    {
+      "name": "close",
+      "text": "))",
+      "startByte": 28,
+      "endByte": 30
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 40,
+      "endByte": 41
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 70,
+      "endByte": 71
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 82,
+      "endByte": 83
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 93,
+      "endByte": 94
+    }
+  ]
+}

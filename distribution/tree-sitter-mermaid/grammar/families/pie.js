@@ -3,11 +3,6 @@
 // packages/parser/src/language/common/common.langium:6-34 via shared/langium.js.
 // commit 7ecca0cd7f1658ef74f4e7e91f925724ef403bbf.
 
-const pieStatementEnd = ($) => seq(
-  optional(field('comment', $.comment)),
-  optional(field('terminator', $._langium_newline)),
-);
-
 const pieRules = {
   pie_diagram: ($) => choice(
     prec.dynamic(10, seq(
@@ -46,31 +41,61 @@ const pieRules = {
     ),
   ),
 
-  pie_body: ($) => repeat1(choice(
+  pie_body: ($) => choice(
+    repeat1($._pie_terminated_body_item),
+    seq(
+      repeat($._pie_terminated_body_item),
+      $._pie_eof_body_item,
+    ),
+  ),
+
+  _pie_body_statement: ($) => choice(
     $.langium_title_statement,
     $.langium_acc_title_statement,
     $.langium_acc_descr_statement,
     $.pie_section,
     $.pie_incomplete_section,
+    $.pie_unclosed_section_statement,
+    $.pie_recovery_statement,
+  ),
+
+  _pie_terminated_body_item: ($) => choice(
+    $._langium_newline,
+    seq(choice($.comment, $.directive), $._langium_newline),
+    seq($._pie_body_statement, $._langium_newline),
+  ),
+
+  _pie_eof_body_item: ($) => choice(
     $.comment,
     $.directive,
-    $._blank_line,
-    $.pie_recovery_statement,
-  )),
+    $._pie_body_statement,
+  ),
 
   pie_section: ($) => prec.right(seq(
-    field('label', $.langium_string),
+    field('label', choice($.langium_string, $.langium_unclosed_string)),
     field('delimiter', alias(':', $.pie_section_delimiter)),
     optional($._langium_inline_space),
     field('value', $.pie_number),
-    pieStatementEnd($),
+    optional(choice(
+      field('comment', $.comment),
+      field('directive', $.directive),
+    )),
   )),
 
   // A missing value is an editing intermediate with a stable label field.
   pie_incomplete_section: ($) => prec(-1, seq(
-    field('label', $.langium_string),
+    field('label', choice($.langium_string, $.langium_unclosed_string)),
     field('delimiter', alias(':', $.pie_section_delimiter)),
     optional($._langium_inline_space),
+    optional(choice(
+      field('comment', $.comment),
+      field('directive', $.directive),
+    )),
+  )),
+
+  pie_unclosed_section_statement: ($) => prec(-10, field(
+    'label',
+    $.langium_unclosed_string,
   )),
 
   // NUMBER_PIE accepts signed integers and decimals. Decimal integer parts
@@ -81,7 +106,6 @@ const pieRules = {
   // sibling on the next line and never substitutes for the complete body.
   pie_recovery_statement: ($) => prec.right(seq(
     field('text', $.pie_recovery_text),
-    optional(field('terminator', $._langium_newline)),
   )),
 
   pie_recovery_text: (_) => token(prec(-100, /[^\r\n]+/)),

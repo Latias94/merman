@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/railroad.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "railroad-beta\ntitle Railroad grammar\nroot = sequence(terminal(\"世界\"), nonterminal(\"item\"), zeroOrMore(special(\"anything\"))) ;\n/* comment */\n",
+      "startByte": 0,
+      "endByte": 143
+    },
+    {
+      "name": "local.definition",
+      "text": "root",
+      "startByte": 37,
+      "endByte": 41
+    },
+    {
+      "name": "local.reference",
+      "text": "\"item\"",
+      "startByte": 85,
+      "endByte": 91
+    }
+  ]
+}

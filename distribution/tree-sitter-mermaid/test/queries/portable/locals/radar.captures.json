@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/radar.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "radar-beta\naxis speed[\"速度\"], quality\ncurve score[\"评分\"]{speed: 4, quality: 3}\nshowLegend true, ticks 5, graticule polygon\n",
+      "startByte": 0,
+      "endByte": 129
+    },
+    {
+      "name": "local.definition",
+      "text": "speed",
+      "startByte": 16,
+      "endByte": 21
+    },
+    {
+      "name": "local.definition",
+      "text": "quality",
+      "startByte": 33,
+      "endByte": 40
+    },
+    {
+      "name": "local.definition",
+      "text": "score",
+      "startByte": 47,
+      "endByte": 52
+    },
+    {
+      "name": "local.reference",
+      "text": "speed",
+      "startByte": 63,
+      "endByte": 68
+    },
+    {
+      "name": "local.reference",
+      "text": "quality",
+      "startByte": 73,
+      "endByte": 80
+    }
+  ]
+}

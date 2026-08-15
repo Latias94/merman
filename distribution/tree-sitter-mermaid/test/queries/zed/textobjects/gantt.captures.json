@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "gantt.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "gantt\ntitle Release plan\ndateFormat YYYY-MM-DD\nsection Delivery\nBuild parser:crit, build, 2026-08-15, 2d\nShip:after build, 1d\nclick build href \"https://mermaid.js.org/\" call notify()\n",
+      "startByte": 0,
+      "endByte": 183
+    },
+    {
+      "name": "class.inside",
+      "text": "title Release plan\ndateFormat YYYY-MM-DD\nsection Delivery\nBuild parser:crit, build, 2026-08-15, 2d\nShip:after build, 1d\nclick build href \"https://mermaid.js.org/\" call notify()\n",
+      "startByte": 6,
+      "endByte": 183
+    },
+    {
+      "name": "function.around",
+      "text": "section Delivery",
+      "startByte": 47,
+      "endByte": 63
+    },
+    {
+      "name": "function.around",
+      "text": "Build parser:crit, build, 2026-08-15, 2d",
+      "startByte": 64,
+      "endByte": 104
+    },
+    {
+      "name": "function.around",
+      "text": "Ship:after build, 1d",
+      "startByte": 105,
+      "endByte": 125
+    }
+  ]
+}

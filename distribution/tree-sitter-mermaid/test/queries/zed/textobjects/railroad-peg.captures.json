@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "railroad-peg.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "railroad-peg-beta\ntitle PEG grammar\n# comment\nrule <- &\"a\" !\"b\" . other? / (\"x\" item+) ;\n",
+      "startByte": 0,
+      "endByte": 89
+    },
+    {
+      "name": "class.inside",
+      "text": "\ntitle PEG grammar\n# comment\nrule <- &\"a\" !\"b\" . other? / (\"x\" item+) ;\n",
+      "startByte": 17,
+      "endByte": 89
+    },
+    {
+      "name": "function.around",
+      "text": "rule <- &\"a\" !\"b\" . other? / (\"x\" item+) ;",
+      "startByte": 46,
+      "endByte": 88
+    }
+  ]
+}

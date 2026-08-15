@@ -120,7 +120,7 @@ malformed middle sibling stays local
 
 cynefin-beta
 complex "Before"
-?
+complex -->
 clear "After"
 complex --> complicated : "Later"
 
@@ -135,8 +135,9 @@ complex --> complicated : "Later"
         (cynefin_domain_name)
         (cynefin_domain_item
           (langium_string)))
-      (ERROR
-        (UNEXPECTED '?'))
+      (cynefin_incomplete_transition_statement
+        (cynefin_domain_name)
+        (cynefin_transition_operator))
       (cynefin_domain_block
         (cynefin_domain_name)
         (cynefin_domain_item

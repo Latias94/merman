@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "event-modeling.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "eventmodeling",
+      "startByte": 0,
+      "endByte": 13
+    },
+    {
+      "name": "item",
+      "text": "eventmodeling\ntitle Checkout timeline\nentity Sales.Order\ntf 01 cmd Sales.Update ->> 007 [[payload]] `json`{ready: true}\ndata payload `json` {\n  { \"ready\": true }\n}\n",
+      "startByte": 0,
+      "endByte": 164
+    },
+    {
+      "name": "item",
+      "text": "entity Sales.Order",
+      "startByte": 38,
+      "endByte": 56
+    },
+    {
+      "name": "name",
+      "text": "Sales.Order",
+      "startByte": 45,
+      "endByte": 56
+    },
+    {
+      "name": "item",
+      "text": "tf 01 cmd Sales.Update ->> 007 [[payload]] `json`{ready: true}",
+      "startByte": 57,
+      "endByte": 119
+    },
+    {
+      "name": "name",
+      "text": "01",
+      "startByte": 60,
+      "endByte": 62
+    },
+    {
+      "name": "item",
+      "text": "data payload `json` {\n  { \"ready\": true }\n}",
+      "startByte": 120,
+      "endByte": 163
+    },
+    {
+      "name": "name",
+      "text": "payload",
+      "startByte": 125,
+      "endByte": 132
+    }
+  ]
+}

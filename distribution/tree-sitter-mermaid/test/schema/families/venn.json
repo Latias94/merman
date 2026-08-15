@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "publicId": "venn",
+  "rootNode": "venn_diagram",
+  "nodes": {
+    "venn_diagram": ["body", "header"],
+    "venn_incomplete_intersection_expression": ["delimiter", "set"],
+    "venn_incomplete_union_statement": ["expression", "keyword", "recovery"],
+    "venn_indented_text_statement": ["keyword", "label", "text"],
+    "venn_intersection_expression": ["delimiter", "set"],
+    "venn_label": ["close", "open", "text"],
+    "venn_malformed_statement": ["recovery"],
+    "venn_quoted_identifier": ["close", "content", "open"],
+    "venn_quoted_label": ["close", "content", "open"],
+    "venn_quoted_style_value": ["close", "content", "open"],
+    "venn_set_expression": ["set"],
+    "venn_set_statement": ["delimiter", "expression", "keyword", "label", "value"],
+    "venn_style_field": ["delimiter", "name", "value"],
+    "venn_style_list": ["delimiter", "property"],
+    "venn_style_statement": ["expression", "keyword", "properties"],
+    "venn_text_statement": ["expression", "keyword", "label", "text"],
+    "venn_title_statement": ["keyword", "text"],
+    "venn_unclosed_quoted_label": ["content", "open"],
+    "venn_union_statement": ["delimiter", "expression", "keyword", "label", "value"]
+  }
+}

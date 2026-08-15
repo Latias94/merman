@@ -1,0 +1,416 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "c4.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "C4Container",
+      "startByte": 0,
+      "endByte": 11
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 12,
+      "endByte": 17
+    },
+    {
+      "name": "string",
+      "text": "Banking containers",
+      "startByte": 18,
+      "endByte": 36
+    },
+    {
+      "name": "type",
+      "text": "Container_Boundary",
+      "startByte": 37,
+      "endByte": 55
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "variable",
+      "text": "apps",
+      "startByte": 56,
+      "endByte": 60
+    },
+    {
+      "name": "string",
+      "text": "\"Applications\"",
+      "startByte": 62,
+      "endByte": 76
+    },
+    {
+      "name": "type",
+      "text": "Person",
+      "startByte": 82,
+      "endByte": 88
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "variable",
+      "text": "customer",
+      "startByte": 89,
+      "endByte": 97
+    },
+    {
+      "name": "string",
+      "text": "\"Customer\"",
+      "startByte": 99,
+      "endByte": 109
+    },
+    {
+      "name": "type",
+      "text": "Container",
+      "startByte": 113,
+      "endByte": 122
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "variable",
+      "text": "api",
+      "startByte": 123,
+      "endByte": 126
+    },
+    {
+      "name": "string",
+      "text": "\"API\"",
+      "startByte": 128,
+      "endByte": 133
+    },
+    {
+      "name": "string",
+      "text": "\"Rust\"",
+      "startByte": 135,
+      "endByte": 141
+    },
+    {
+      "name": "punctuation.special",
+      "text": "$",
+      "startByte": 143,
+      "endByte": 144
+    },
+    {
+      "name": "property",
+      "text": "tags",
+      "startByte": 144,
+      "endByte": 148
+    },
+    {
+      "name": "operator",
+      "text": "=",
+      "startByte": 148,
+      "endByte": 149
+    },
+    {
+      "name": "string",
+      "text": "\"core\"",
+      "startByte": 149,
+      "endByte": 155
+    },
+    {
+      "name": "type",
+      "text": "ContainerDb",
+      "startByte": 159,
+      "endByte": 170
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    },
+    {
+      "name": "variable",
+      "text": "db",
+      "startByte": 171,
+      "endByte": 173
+    },
+    {
+      "name": "string",
+      "text": "\"Database\"",
+      "startByte": 175,
+      "endByte": 185
+    },
+    {
+      "name": "string",
+      "text": "\"PostgreSQL\"",
+      "startByte": 187,
+      "endByte": 199
+    },
+    {
+      "name": "keyword.operator",
+      "text": "Rel",
+      "startByte": 203,
+      "endByte": 206
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Rel(customer, api, \"Uses\", \"HTTPS\")",
+      "startByte": 203,
+      "endByte": 238
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Rel(customer, api, \"Uses\", \"HTTPS\")",
+      "startByte": 203,
+      "endByte": 238
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "Rel(customer, api, \"Uses\", \"HTTPS\")",
+      "startByte": 203,
+      "endByte": 238
+    },
+    {
+      "name": "variable",
+      "text": "customer",
+      "startByte": 207,
+      "endByte": 215
+    },
+    {
+      "name": "variable",
+      "text": "api",
+      "startByte": 217,
+      "endByte": 220
+    },
+    {
+      "name": "string",
+      "text": "\"Uses\"",
+      "startByte": 222,
+      "endByte": 228
+    },
+    {
+      "name": "string",
+      "text": "\"HTTPS\"",
+      "startByte": 230,
+      "endByte": 237
+    },
+    {
+      "name": "keyword.operator",
+      "text": "Rel_Right",
+      "startByte": 239,
+      "endByte": 248
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Rel_Right(api, db, \"Reads\", \"SQL\")",
+      "startByte": 239,
+      "endByte": 273
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "Rel_Right(api, db, \"Reads\", \"SQL\")",
+      "startByte": 239,
+      "endByte": 273
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "Rel_Right(api, db, \"Reads\", \"SQL\")",
+      "startByte": 239,
+      "endByte": 273
+    },
+    {
+      "name": "variable",
+      "text": "api",
+      "startByte": 249,
+      "endByte": 252
+    },
+    {
+      "name": "variable",
+      "text": "db",
+      "startByte": 254,
+      "endByte": 256
+    },
+    {
+      "name": "string",
+      "text": "\"Reads\"",
+      "startByte": 258,
+      "endByte": 265
+    },
+    {
+      "name": "string",
+      "text": "\"SQL\"",
+      "startByte": 267,
+      "endByte": 272
+    },
+    {
+      "name": "function.macro",
+      "text": "UpdateElementStyle",
+      "startByte": 274,
+      "endByte": 292
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "UpdateElementStyle(api, $bgColor=\"blue\")",
+      "startByte": 274,
+      "endByte": 314
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "UpdateElementStyle(api, $bgColor=\"blue\")",
+      "startByte": 274,
+      "endByte": 314
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "UpdateElementStyle(api, $bgColor=\"blue\")",
+      "startByte": 274,
+      "endByte": 314
+    },
+    {
+      "name": "variable",
+      "text": "api",
+      "startByte": 293,
+      "endByte": 296
+    },
+    {
+      "name": "punctuation.special",
+      "text": "$",
+      "startByte": 298,
+      "endByte": 299
+    },
+    {
+      "name": "property",
+      "text": "bgColor",
+      "startByte": 299,
+      "endByte": 306
+    },
+    {
+      "name": "operator",
+      "text": "=",
+      "startByte": 306,
+      "endByte": 307
+    },
+    {
+      "name": "string",
+      "text": "\"blue\"",
+      "startByte": 307,
+      "endByte": 313
+    },
+    {
+      "name": "function.macro",
+      "text": "UpdateRelStyle",
+      "startByte": 315,
+      "endByte": 329
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "UpdateRelStyle(api, db, $lineColor=\"red\")",
+      "startByte": 315,
+      "endByte": 356
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "UpdateRelStyle(api, db, $lineColor=\"red\")",
+      "startByte": 315,
+      "endByte": 356
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": "UpdateRelStyle(api, db, $lineColor=\"red\")",
+      "startByte": 315,
+      "endByte": 356
+    },
+    {
+      "name": "variable",
+      "text": "api",
+      "startByte": 330,
+      "endByte": 333
+    },
+    {
+      "name": "variable",
+      "text": "db",
+      "startByte": 335,
+      "endByte": 337
+    },
+    {
+      "name": "punctuation.special",
+      "text": "$",
+      "startByte": 339,
+      "endByte": 340
+    },
+    {
+      "name": "property",
+      "text": "lineColor",
+      "startByte": 340,
+      "endByte": 349
+    },
+    {
+      "name": "operator",
+      "text": "=",
+      "startByte": 349,
+      "endByte": 350
+    },
+    {
+      "name": "string",
+      "text": "\"red\"",
+      "startByte": 350,
+      "endByte": 355
+    }
+  ]
+}

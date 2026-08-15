@@ -84,10 +84,22 @@ fn metric_u64(value: &serde_json::Value, field: &str) -> usize {
         .unwrap_or_else(|| panic!("mechanics metrics lack numeric {field}")) as usize
 }
 
-fn short_flowchart(target_kib: usize) -> Vec<u8> {
-    let mut source = b"flowchart TD\n".to_vec();
-    while source.len() < target_kib * 1024 {
-        source.extend_from_slice(b"  A --> B\n");
+fn doubling_flowchart(target_kib: usize) -> Vec<u8> {
+    let header = b"flowchart TD\n";
+    let target_bytes = target_kib * 1024;
+    let full_line = [b'A', b'['];
+    let mut source = Vec::with_capacity(target_bytes);
+    source.extend_from_slice(header);
+    while source.len() + 1004 <= target_bytes {
+        source.extend_from_slice(&full_line);
+        source.extend(std::iter::repeat_n(b'x', 1000));
+        source.extend_from_slice(b"]\n");
+    }
+    let remaining = target_bytes - source.len();
+    if remaining >= 4 {
+        source.extend_from_slice(&full_line);
+        source.extend(std::iter::repeat_n(b'x', remaining - 4));
+        source.extend_from_slice(b"]\n");
     }
     source
 }
@@ -163,7 +175,7 @@ fn synthetic_doubling_work_matches_the_complexity_ratchet() {
     let mut snapshot_mismatches = Vec::new();
     for (lane, target_kib) in lanes.iter().zip([64, 128, 256, 512, 1024]) {
         assert_eq!(metric_u64(lane, "targetKiB"), target_kib);
-        let source = short_flowchart(target_kib);
+        let source = doubling_flowchart(target_kib);
         let started = Instant::now();
         let mut incremental_parser = parser();
         let mut initial = parse_with_work(&mut incremental_parser, &source, None);
@@ -172,11 +184,11 @@ fn synthetic_doubling_work_matches_the_complexity_ratchet() {
         let requested = source.len() / 2;
         let edit_byte = source[requested..]
             .iter()
-            .position(|byte| *byte == b'A')
+            .position(|byte| *byte == b'x')
             .map(|offset| requested + offset)
-            .expect("synthetic flowchart has a node after its midpoint");
+            .expect("synthetic flowchart has a label byte after its midpoint");
         let mut edited = source.clone();
-        edited[edit_byte] = b'C';
+        edited[edit_byte] = b'y';
         initial.tree.edit(&InputEdit {
             start_byte: edit_byte,
             old_end_byte: edit_byte + 1,

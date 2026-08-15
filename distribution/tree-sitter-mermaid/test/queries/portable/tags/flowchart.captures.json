@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/flowchart.mmd",
+  "captures": [
+    {
+      "name": "definition.module",
+      "text": "subgraph lane[\"Lane 世界\"]\n  direction LR\n  A[\"`Markdown **start**`\"] e1@-->|go| B{Done}\nend",
+      "startByte": 13,
+      "endByte": 107
+    },
+    {
+      "name": "name",
+      "text": "lane",
+      "startByte": 22,
+      "endByte": 26
+    },
+    {
+      "name": "name",
+      "text": "A",
+      "startByte": 59,
+      "endByte": 60
+    },
+    {
+      "name": "definition.var",
+      "text": "A[\"`Markdown **start**`\"]",
+      "startByte": 59,
+      "endByte": 84
+    },
+    {
+      "name": "name",
+      "text": "B",
+      "startByte": 96,
+      "endByte": 97
+    },
+    {
+      "name": "definition.var",
+      "text": "B{Done}",
+      "startByte": 96,
+      "endByte": 103
+    }
+  ]
+}

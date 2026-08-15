@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "xychart.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "[Q1, \"Q2\"]",
+      "startByte": 57,
+      "endByte": 67
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 66,
+      "endByte": 67
+    },
+    {
+      "name": "indent",
+      "text": "[25 \"Launch\", 90]",
+      "startByte": 107,
+      "endByte": 124
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 123,
+      "endByte": 124
+    },
+    {
+      "name": "indent",
+      "text": "[20, 80]",
+      "startByte": 129,
+      "endByte": 137
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 136,
+      "endByte": 137
+    }
+  ]
+}

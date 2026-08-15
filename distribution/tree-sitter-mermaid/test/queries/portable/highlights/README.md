@@ -28,3 +28,8 @@ Capture order is normalized by start byte, end byte, capture name, and text so t
 golden is stable across the C, Rust, Node, and WASM bindings. A family golden must
 contain at least one family-owned named capture; an empty query result is not valid
 evidence.
+
+Structural captures must not own leading or trailing whitespace. The only intentional
+exceptions are payload nodes whose Mermaid semantics preserve the source span: Railroad
+EBNF special text, multiline State note lines, raw Timeline periods/events, and the
+Tree View box-drawing prefix. The query golden runner keeps this allowlist executable.

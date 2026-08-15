@@ -1,0 +1,4 @@
+name = "Mermaid"
+grammar = "mermaid"
+path_suffixes = ["mmd", "mermaid"]
+line_comments = ["%% "]

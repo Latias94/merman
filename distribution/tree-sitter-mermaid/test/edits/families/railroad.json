@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Railroad IR terminal Unicode replacement",
+    "source": "railroad-beta\nroot = sequence(terminal(\"a\"), nonterminal(\"item\")) ;\n",
+    "old": "\"a\"",
+    "replacement": "\"世界\""
+  },
+  {
+    "name": "Railroad IR CRLF repetition constructor change",
+    "source": "railroad-beta\r\nroot = optional(nonterminal(\"item\")) ;\r\n",
+    "old": "optional",
+    "replacement": "oneOrMore"
+  },
+  {
+    "name": "Railroad IR missing definition repair",
+    "source": "railroad-beta\nbefore = terminal(\"a\") ;\nbroken = ;\nafter = terminal(\"b\") ;\n",
+    "old": "broken = ;",
+    "replacement": "broken = special(\"repaired\") ;"
+  },
+  {
+    "name": "Railroad IR nested choice insertion",
+    "source": "railroad-beta\nroot = choice(terminal(\"a\"), terminal(\"b\")) ;\n",
+    "old": "terminal(\"b\")",
+    "replacement": "sequence(terminal(\"b\"), nonterminal(\"tail\"))"
+  }
+]

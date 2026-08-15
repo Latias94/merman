@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "zenuml.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: zenuml\n---",
+      "startByte": 0,
+      "endByte": 21
+    }
+  ]
+}

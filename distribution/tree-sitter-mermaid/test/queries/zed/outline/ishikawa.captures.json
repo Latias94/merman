@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "ishikawa.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "ishikawa-beta",
+      "startByte": 0,
+      "endByte": 13
+    },
+    {
+      "name": "item",
+      "text": "ishikawa-beta\nProblem\n  Process\n    Slow review\n  People\n",
+      "startByte": 0,
+      "endByte": 57
+    },
+    {
+      "name": "item",
+      "text": "Problem",
+      "startByte": 14,
+      "endByte": 21
+    },
+    {
+      "name": "name",
+      "text": "Problem",
+      "startByte": 14,
+      "endByte": 21
+    },
+    {
+      "name": "item",
+      "text": "  Process",
+      "startByte": 22,
+      "endByte": 31
+    },
+    {
+      "name": "name",
+      "text": "Process",
+      "startByte": 24,
+      "endByte": 31
+    },
+    {
+      "name": "item",
+      "text": "    Slow review",
+      "startByte": 32,
+      "endByte": 47
+    },
+    {
+      "name": "name",
+      "text": "Slow review",
+      "startByte": 36,
+      "endByte": 47
+    },
+    {
+      "name": "item",
+      "text": "  People",
+      "startByte": 48,
+      "endByte": 56
+    },
+    {
+      "name": "name",
+      "text": "People",
+      "startByte": 50,
+      "endByte": 56
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "c4.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 55,
+      "endByte": 56
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 76,
+      "endByte": 77
+    },
+    {
+      "name": "open",
+      "text": "{",
+      "startByte": 78,
+      "endByte": 79
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 88,
+      "endByte": 89
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 109,
+      "endByte": 110
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 122,
+      "endByte": 123
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 155,
+      "endByte": 156
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 170,
+      "endByte": 171
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 199,
+      "endByte": 200
+    },
+    {
+      "name": "close",
+      "text": "}",
+      "startByte": 201,
+      "endByte": 202
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 206,
+      "endByte": 207
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 237,
+      "endByte": 238
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 248,
+      "endByte": 249
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 272,
+      "endByte": 273
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 292,
+      "endByte": 293
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 313,
+      "endByte": 314
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 329,
+      "endByte": 330
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 355,
+      "endByte": 356
+    }
+  ]
+}

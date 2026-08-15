@@ -1,0 +1,12 @@
+id = "mermaid"
+name = "Mermaid"
+version = "0.1.0"
+schema_version = 1
+authors = ["Merman contributors"]
+description = "Mermaid language support backed by tree-sitter-mermaid."
+repository = "https://github.com/Latias94/merman"
+
+[grammars.mermaid]
+repository = "https://github.com/Latias94/merman"
+rev = "62c90d064345a131936dd1c608825e09e7a4aa38"
+path = "distribution/tree-sitter-mermaid"

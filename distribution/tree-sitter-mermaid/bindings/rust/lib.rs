@@ -28,12 +28,32 @@ pub const QUERY_SCHEMA_VERSION: u32 = 1;
 pub const TREE_SITTER_RUST_RUNTIME_VERSION: &str = "0.26.12";
 /// Generated public node schema.
 pub const NODE_TYPES: &str = include_str!("../../src/node-types.json");
+/// A package-owned editor query profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QueryProfile {
+    /// Query ABI profile name.
+    pub profile: &'static str,
+    /// Query surface name.
+    pub surface: &'static str,
+    /// Package-relative query path.
+    pub path: &'static str,
+    /// Query source bound to the packaged crate.
+    pub source: &'static str,
+}
+
+include!(concat!(env!("OUT_DIR"), "/query_profiles.rs"));
+
+/// Returns a packaged query by profile and surface.
+#[must_use]
+pub fn query_profile(profile: &str, surface: &str) -> Option<&'static QueryProfile> {
+    QUERY_PROFILES
+        .iter()
+        .find(|query| query.profile == profile && query.surface == surface)
+}
+
 /// Package-relative path to the initial portable highlight query profile.
 pub const PORTABLE_HIGHLIGHTS_QUERY_PATH: &str = "queries/portable/highlights.scm";
-/// Initial portable highlight query profile.
-///
-/// This mechanics profile proves that query consumers can load the generated node schema. It is
-/// intentionally not the family-complete query contract planned for the query-complete tier.
+/// Portable highlight query profile.
 pub const PORTABLE_HIGHLIGHTS_QUERY: &str = include_str!("../../queries/portable/highlights.scm");
 /// Immutable identities and digests for this generated language release.
 pub const ARTIFACT_RECEIPT: &str = include_str!("../../metadata/artifact-receipt.json");
@@ -44,7 +64,7 @@ mod tests {
 
     use super::{
         ARTIFACT_RECEIPT, LANGUAGE, LANGUAGE_ABI, PORTABLE_HIGHLIGHTS_QUERY,
-        PORTABLE_HIGHLIGHTS_QUERY_PATH,
+        PORTABLE_HIGHLIGHTS_QUERY_PATH, QUERY_PROFILES, query_profile,
     };
 
     #[test]
@@ -105,5 +125,44 @@ mod tests {
             .expect("artifact receipt must bind the portable highlight profile");
         let digest = format!("{:x}", Sha256::digest(PORTABLE_HIGHLIGHTS_QUERY.as_bytes()));
         assert_eq!(query_profile["sha256"], digest);
+    }
+
+    #[test]
+    fn every_packaged_query_profile_is_bound_to_the_receipt_and_compiles() {
+        let language: tree_sitter::Language = LANGUAGE.into();
+        let receipt: serde_json::Value =
+            serde_json::from_str(ARTIFACT_RECEIPT).expect("artifact receipt must be valid JSON");
+        let receipt_profiles = receipt["queryProfiles"]
+            .as_array()
+            .expect("artifact receipt query profiles must be an array");
+        assert_eq!(QUERY_PROFILES.len(), receipt_profiles.len());
+
+        for profile in QUERY_PROFILES {
+            assert_eq!(
+                query_profile(profile.profile, profile.surface),
+                Some(profile)
+            );
+            tree_sitter::Query::new(&language, profile.source).unwrap_or_else(|error| {
+                panic!(
+                    "{}/{} query does not compile: {error}",
+                    profile.profile, profile.surface
+                )
+            });
+            let receipt_profile = receipt_profiles
+                .iter()
+                .find(|candidate| {
+                    candidate["profile"] == profile.profile
+                        && candidate["surface"] == profile.surface
+                        && candidate["path"] == profile.path
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "receipt lacks {}/{} query profile",
+                        profile.profile, profile.surface
+                    )
+                });
+            let digest = format!("{:x}", Sha256::digest(profile.source.as_bytes()));
+            assert_eq!(receipt_profile["sha256"], digest);
+        }
     }
 }

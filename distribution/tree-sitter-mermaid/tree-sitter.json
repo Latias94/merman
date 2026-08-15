@@ -6,6 +6,9 @@
       "scope": "source.mermaid",
       "path": ".",
       "highlights": "queries/portable/highlights.scm",
+      "injections": "queries/portable/injections.scm",
+      "locals": "queries/portable/locals.scm",
+      "tags": "queries/portable/tags.scm",
       "file-types": [
         "mmd",
         "mermaid"

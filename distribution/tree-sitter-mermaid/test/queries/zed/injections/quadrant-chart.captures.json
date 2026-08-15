@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "quadrant-chart.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: quadrant-chart\n---",
+      "startByte": 0,
+      "endByte": 29
+    }
+  ]
+}

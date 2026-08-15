@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Flowchart CRLF Unicode quoted label edit",
+    "source": "flowchart TD\r\nstart[\"Before\"] --> done[Done]\r\n",
+    "old": "Before",
+    "replacement": "开始世界"
+  },
+  {
+    "name": "Flowchart graph header alias switch",
+    "source": "flowchart LR\nA --> B\n",
+    "old": "flowchart LR",
+    "replacement": "graph TD"
+  },
+  {
+    "name": "Flowchart to Swimlane root switch",
+    "source": "flowchart TD\nsubgraph lane[Lane]\nA --> B\nend\n",
+    "old": "flowchart TD",
+    "replacement": "swimlane-beta LR"
+  },
+  {
+    "name": "Flowchart quoted to Markdown label mode",
+    "source": "flowchart TD\nA[\"plain label\"] --> B\n",
+    "old": "\"plain label\"",
+    "replacement": "\"`Markdown **label**`\""
+  },
+  {
+    "name": "Flowchart repair incomplete edge",
+    "source": "flowchart TD\nbefore --> after\nbroken -->\nlast ==> done\n",
+    "old": "broken -->",
+    "replacement": "broken --> repaired"
+  },
+  {
+    "name": "Flowchart insert nested subgraph",
+    "source": "flowchart TD\nsubgraph outer[Outer]\n  A --> B\nend\n",
+    "old": "  A --> B",
+    "replacement": "  subgraph inner[Inner]\n    A --> B\n  end"
+  },
+  {
+    "name": "Flowchart move edge across newline boundary",
+    "source": "flowchart TD\nsource --> target\n",
+    "old": "source --> target",
+    "replacement": "source\n  --> target"
+  },
+  {
+    "name": "Flowchart class style percentage edit",
+    "source": "flowchart TD\nA --> B\nclassDef active fill:#f96,font-size:50%\nclass A active\n",
+    "old": "font-size:50%",
+    "replacement": "font-size:125%,stroke-width:2px"
+  }
+]

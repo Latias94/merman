@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/block.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "block\ncolumns 3\nblock:services[\"Services\"]:2\n  api[\"API\"] db[(\"Database\")]\n  api -- \"queries\" --> db\nend\narrow<[\"flow\"]>(right, down) space:2\nclassDef core fill:#eef,stroke:#333\nclass api,db core\nstyle services fill:#fff,stroke-width:2px\n",
+      "startByte": 0,
+      "endByte": 238
+    },
+    {
+      "name": "local.definition",
+      "text": "services",
+      "startByte": 22,
+      "endByte": 30
+    },
+    {
+      "name": "local.definition",
+      "text": "api",
+      "startByte": 47,
+      "endByte": 50
+    },
+    {
+      "name": "local.definition",
+      "text": "db",
+      "startByte": 58,
+      "endByte": 60
+    },
+    {
+      "name": "local.reference",
+      "text": "api",
+      "startByte": 77,
+      "endByte": 80
+    },
+    {
+      "name": "local.reference",
+      "text": "db",
+      "startByte": 98,
+      "endByte": 100
+    },
+    {
+      "name": "local.definition",
+      "text": "arrow",
+      "startByte": 105,
+      "endByte": 110
+    }
+  ]
+}

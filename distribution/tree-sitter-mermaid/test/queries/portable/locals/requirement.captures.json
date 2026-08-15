@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/requirement.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "requirementDiAgRaM\ndirection LR\nfunctionalRequirement \"secure checkout\":::critical {\n  id: \"REQ-1\"\n  text: \"Encrypt data\"\n  risk: high\n  verifyMethod: analysis\n}\nelement gateway {\n  type: service\n  docRef: \"docs/security.md\"\n}\ngateway - satisfies -> \"secure checkout\"\nclassDef critical fill:#f96\n# requirement query comment\n",
+      "startByte": 0,
+      "endByte": 324
+    },
+    {
+      "name": "local.definition",
+      "text": "\"secure checkout\"",
+      "startByte": 54,
+      "endByte": 71
+    },
+    {
+      "name": "local.definition",
+      "text": "gateway",
+      "startByte": 170,
+      "endByte": 177
+    },
+    {
+      "name": "local.reference",
+      "text": "gateway",
+      "startByte": 227,
+      "endByte": 234
+    },
+    {
+      "name": "local.reference",
+      "text": "\"secure checkout\"",
+      "startByte": 250,
+      "endByte": 267
+    }
+  ]
+}

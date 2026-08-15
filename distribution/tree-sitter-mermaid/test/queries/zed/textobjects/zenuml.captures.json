@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "zenuml.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "zenuml\ntitle Order 流程\n@Starter(用户)\n@Actor <<boundary>> 用户 as \"Customer\" #4f81bd\nconst Order order = new Order(id, count = 2)\nif (ready && count >= 2) {\n  用户->API.create(order, timeout = 250ms)\n} else {\n  API->Queue: accepted\n}\nQueue-->用户: done\n// durable comment\n",
+      "startByte": 0,
+      "endByte": 283
+    },
+    {
+      "name": "class.inside",
+      "text": "\ntitle Order 流程\n@Starter(用户)\n@Actor <<boundary>> 用户 as \"Customer\" #4f81bd\nconst Order order = new Order(id, count = 2)\nif (ready && count >= 2) {\n  用户->API.create(order, timeout = 250ms)\n} else {\n  API->Queue: accepted\n}\nQueue-->用户: done\n// durable comment\n",
+      "startByte": 6,
+      "endByte": 283
+    },
+    {
+      "name": "function.around",
+      "text": "@Actor <<boundary>> 用户 as \"Customer\" #4f81bd",
+      "startByte": 43,
+      "endByte": 91
+    },
+    {
+      "name": "function.around",
+      "text": "用户->API.create(order, timeout = 250ms)",
+      "startByte": 166,
+      "endByte": 208
+    }
+  ]
+}

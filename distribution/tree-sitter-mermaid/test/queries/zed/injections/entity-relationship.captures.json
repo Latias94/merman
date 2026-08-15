@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "entity-relationship.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: entity-relationship\n---",
+      "startByte": 0,
+      "endByte": 34
+    }
+  ]
+}

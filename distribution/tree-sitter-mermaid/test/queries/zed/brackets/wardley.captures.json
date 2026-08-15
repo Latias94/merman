@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "wardley.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 27,
+      "endByte": 28
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 36,
+      "endByte": 37
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 38,
+      "endByte": 39
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 44,
+      "endByte": 45
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 59,
+      "endByte": 60
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 68,
+      "endByte": 69
+    }
+  ]
+}

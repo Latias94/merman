@@ -6,9 +6,47 @@
 #include "tree_sitter/api.h"
 #include "tree_sitter/tree-sitter-mermaid.h"
 
+static TSQuery *load_query(const TSLanguage *language, const char *path) {
+  FILE *query_file = fopen(path, "rb");
+  if (query_file == NULL || fseek(query_file, 0, SEEK_END) != 0) {
+    if (query_file != NULL) {
+      fclose(query_file);
+    }
+    return NULL;
+  }
+  long query_length = ftell(query_file);
+  if (query_length < 0 || (unsigned long)query_length > UINT32_MAX ||
+      fseek(query_file, 0, SEEK_SET) != 0) {
+    fclose(query_file);
+    return NULL;
+  }
+  char *query_source = malloc((size_t)query_length + 1);
+  if (query_source == NULL ||
+      fread(query_source, 1, (size_t)query_length, query_file) !=
+          (size_t)query_length) {
+    free(query_source);
+    fclose(query_file);
+    return NULL;
+  }
+  query_source[query_length] = '\0';
+  fclose(query_file);
+
+  uint32_t error_offset = 0;
+  TSQueryError error = TSQueryErrorNone;
+  TSQuery *query = ts_query_new(language, query_source, (uint32_t)query_length,
+                                &error_offset, &error);
+  free(query_source);
+  if (query == NULL) {
+    fprintf(stderr, "%s failed at %u with error %d\n", path, error_offset,
+            error);
+  }
+  return query;
+}
+
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    fprintf(stderr, "usage: c_smoke SOURCE EXPECTED_ROOT RECEIPT_ID\n");
+  if (argc < 5) {
+    fprintf(stderr,
+            "usage: c_smoke SOURCE EXPECTED_ROOT RECEIPT_ID QUERY_PATH...\n");
     return 1;
   }
   const TSLanguage *language = tree_sitter_mermaid();
@@ -22,40 +60,27 @@ int main(int argc, char **argv) {
     return 8;
   }
 
-  FILE *query_file =
-      fopen(TREE_SITTER_MERMAID_PORTABLE_HIGHLIGHTS_QUERY_PATH, "rb");
-  if (query_file == NULL) {
-    return 9;
+  TSQuery *query = NULL;
+  for (int index = 4; index < argc; index++) {
+    TSQuery *candidate = load_query(language, argv[index]);
+    if (candidate == NULL) {
+      if (query != NULL) {
+        ts_query_delete(query);
+      }
+      return 12;
+    }
+    if (strcmp(argv[index], TREE_SITTER_MERMAID_PORTABLE_HIGHLIGHTS_QUERY_PATH) ==
+        0) {
+      if (query != NULL) {
+        ts_query_delete(query);
+      }
+      query = candidate;
+    } else {
+      ts_query_delete(candidate);
+    }
   }
-  if (fseek(query_file, 0, SEEK_END) != 0) {
-    fclose(query_file);
-    return 9;
-  }
-  long query_length = ftell(query_file);
-  if (query_length < 0 || (unsigned long)query_length > UINT32_MAX ||
-      fseek(query_file, 0, SEEK_SET) != 0) {
-    fclose(query_file);
-    return 10;
-  }
-  char *query_source = malloc((size_t)query_length + 1);
-  if (query_source == NULL ||
-      fread(query_source, 1, (size_t)query_length, query_file) !=
-          (size_t)query_length) {
-    free(query_source);
-    fclose(query_file);
-    return 11;
-  }
-  query_source[query_length] = '\0';
-  fclose(query_file);
-
-  uint32_t query_error_offset = 0;
-  TSQueryError query_error = TSQueryErrorNone;
-  TSQuery *query = ts_query_new(language, query_source, (uint32_t)query_length,
-                                &query_error_offset, &query_error);
-  free(query_source);
   if (query == NULL) {
-    fprintf(stderr, "portable highlights failed at %u with error %d\n",
-            query_error_offset, query_error);
+    fprintf(stderr, "receipt did not expose portable highlights\n");
     return 12;
   }
   TSParser *parser = ts_parser_new();

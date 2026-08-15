@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "state.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "state First {\n        [*] --> fir\n        fir --> [*]\n    }",
+      "startByte": 80,
+      "endByte": 139
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 138,
+      "endByte": 139
+    },
+    {
+      "name": "indent",
+      "text": "state Second {\n        [*] --> sec\n        sec --> [*]\n    }",
+      "startByte": 144,
+      "endByte": 204
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 203,
+      "endByte": 204
+    },
+    {
+      "name": "indent",
+      "text": "state Third {\n        [*] --> thi\n        thi --> [*]\n    }",
+      "startByte": 209,
+      "endByte": 268
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 267,
+      "endByte": 268
+    }
+  ]
+}

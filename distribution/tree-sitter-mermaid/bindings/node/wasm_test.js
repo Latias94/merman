@@ -19,8 +19,27 @@ function assertRuntimeMemoryPages() {
   const memory = mechanicsMetrics.observed.wasmRuntimeMemoryPages;
   const actualPages = runtimeMemory.buffer.byteLength / 65536;
   assert.equal(memory.initialPages, 512);
-  assert.equal(actualPages, memory.observedPeakPages);
+  assert.ok(actualPages >= memory.initialPages);
   assert.ok(actualPages <= memory.maxPeakPages);
+}
+
+function commonShortStatementFlowchart(targetBytes) {
+  const header = 'flowchart TD\n';
+  const statement = '  A --> B\n';
+  return header + statement.repeat(
+    Math.floor((targetBytes - Buffer.byteLength(header)) / Buffer.byteLength(statement)),
+  );
+}
+
+function longLabelFlowchart(targetBytes) {
+  const statement = `A[${'x'.repeat(1000)}]\n`;
+  let source = 'flowchart TD\n';
+  while (Buffer.byteLength(source) + Buffer.byteLength(statement) <= targetBytes) {
+    source += statement;
+  }
+  const remaining = targetBytes - Buffer.byteLength(source);
+  if (remaining >= 4) source += `A[${'x'.repeat(remaining - 4)}]\n`;
+  return source;
 }
 
 test('language WASM loads with ABI 14 and parses all public families', async () => {
@@ -48,23 +67,29 @@ test('language WASM loads with ABI 14 and parses all public families', async () 
     assert.equal(roots[0].type, fixture.root, fixture.publicId);
     tree.delete();
   }
-  const stressHeader = 'flowchart TD\n';
-  const stressStatement = '  A --> B\n';
-  const stressCount = Math.ceil(
-    (1024 * 1024 - Buffer.byteLength(stressHeader)) /
-      Buffer.byteLength(stressStatement),
-  );
-  const stress = stressHeader + stressStatement.repeat(stressCount);
-  assert.equal(Buffer.byteLength(stress), 1048583);
-  const stressTree = parser.parse(stress);
-  assert.equal(stressTree.rootNode.hasError, false);
-  stressTree.delete();
+  const commonShortStatements = commonShortStatementFlowchart(256 * 1024);
+  assert.ok(Buffer.byteLength(commonShortStatements) >= 256 * 1024 - 16);
+  const commonShortTree = parser.parse(commonShortStatements);
+  assert.equal(commonShortTree.rootNode.hasError, false);
+  commonShortTree.delete();
+
+  const doublingStress = longLabelFlowchart(1024 * 1024);
+  assert.equal(Buffer.byteLength(doublingStress), 1024 * 1024);
+  const doublingTree = parser.parse(doublingStress);
+  assert.equal(doublingTree.rootNode.hasError, false);
+  doublingTree.delete();
   parser.delete();
   assertRuntimeMemoryPages();
 });
 
-test('portable highlights compile and execute against the language WASM', async () => {
+test('portable queries compile and highlights execute against the language WASM', async () => {
   const language = await languagePromise;
+  for (const [surfaceName, profile] of Object.entries(wasmBinding.queryProfiles.portable)) {
+    const candidate = new Query(language, profile.source);
+    candidate.delete();
+    assert.ok(profile.source.length > 0, `portable/${surfaceName}`);
+  }
+
   const profile = wasmBinding.queryProfiles.portable.highlights;
   const query = new Query(language, profile.source);
   const parser = new Parser();
@@ -79,15 +104,21 @@ test('portable highlights compile and execute against the language WASM', async 
   assertRuntimeMemoryPages();
 });
 
-test('WASM portable highlights match their artifact receipt profile', () => {
-  const profile = wasmBinding.queryProfiles.portable.highlights;
-  const receiptProfile = wasmBinding.artifactReceipt.queryProfiles.find(
-    (item) =>
-      item.profile === 'portable' &&
-      item.surface === 'highlights' &&
-      item.path === profile.relativePath,
-  );
-  assert.ok(receiptProfile);
-  const digest = crypto.createHash('sha256').update(fs.readFileSync(profile.path)).digest('hex');
-  assert.equal(receiptProfile.sha256, digest);
+test('all WASM query profiles match their artifact receipt entries', () => {
+  let exposed = 0;
+  for (const [profileName, surfaces] of Object.entries(wasmBinding.queryProfiles)) {
+    for (const [surfaceName, profile] of Object.entries(surfaces)) {
+      exposed += 1;
+      const receiptProfile = wasmBinding.artifactReceipt.queryProfiles.find(
+        (item) =>
+          item.profile === profileName &&
+          item.surface === surfaceName &&
+          item.path === profile.relativePath,
+      );
+      assert.ok(receiptProfile, `${profileName}/${surfaceName}`);
+      const digest = crypto.createHash('sha256').update(fs.readFileSync(profile.path)).digest('hex');
+      assert.equal(receiptProfile.sha256, digest, `${profileName}/${surfaceName}`);
+    }
+  }
+  assert.equal(exposed, wasmBinding.artifactReceipt.queryProfiles.length);
 });

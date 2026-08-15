@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "timeline.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "timeline TD\ntitle 产品历史\nsection Early web\n2002 : LinkedIn : [Launch](http://example.com)\n     : Follow-up\n# timeline query comment\n",
+      "startByte": 0,
+      "endByte": 138
+    },
+    {
+      "name": "class.inside",
+      "text": "title 产品历史\nsection Early web\n2002 : LinkedIn : [Launch](http://example.com)\n     : Follow-up\n# timeline query comment\n",
+      "startByte": 12,
+      "endByte": 138
+    },
+    {
+      "name": "function.around",
+      "text": "section Early web",
+      "startByte": 31,
+      "endByte": 48
+    },
+    {
+      "name": "function.around",
+      "text": ": Follow-up",
+      "startByte": 101,
+      "endByte": 112
+    }
+  ]
+}

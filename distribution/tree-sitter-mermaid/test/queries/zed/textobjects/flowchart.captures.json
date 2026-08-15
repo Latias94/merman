@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "flowchart.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "flowchart TD\nsubgraph lane[\"Lane 世界\"]\n  direction LR\n  A[\"`Markdown **start**`\"] e1@-->|go| B{Done}\nend\nclassDef active fill:#f96,stroke-width:2px\nclass A,B active\nstyle B fill:#fff\nclick A href \"https://example.com\" \"Open\" _blank\n",
+      "startByte": 0,
+      "endByte": 235
+    },
+    {
+      "name": "function.around",
+      "text": "subgraph lane[\"Lane 世界\"]\n  direction LR\n  A[\"`Markdown **start**`\"] e1@-->|go| B{Done}\nend",
+      "startByte": 13,
+      "endByte": 107
+    },
+    {
+      "name": "class.inside",
+      "text": "subgraph lane[\"Lane 世界\"]\n  direction LR\n  A[\"`Markdown **start**`\"] e1@-->|go| B{Done}\nend\nclassDef active fill:#f96,stroke-width:2px\nclass A,B active\nstyle B fill:#fff\nclick A href \"https://example.com\" \"Open\" _blank\n",
+      "startByte": 13,
+      "endByte": 235
+    }
+  ]
+}

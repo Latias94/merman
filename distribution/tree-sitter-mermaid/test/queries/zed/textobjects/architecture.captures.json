@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "architecture.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "architecture-beta\ngroup platform(cloud)[\"Platform\"]\nservice api(server)[API] in platform\njunction split in platform\napi{group}:R<-[sync]->L:split\nalign row api split\n",
+      "startByte": 0,
+      "endByte": 166
+    },
+    {
+      "name": "function.around",
+      "text": "group platform(cloud)[\"Platform\"]",
+      "startByte": 18,
+      "endByte": 51
+    },
+    {
+      "name": "class.inside",
+      "text": "group platform(cloud)[\"Platform\"]\nservice api(server)[API] in platform\njunction split in platform\napi{group}:R<-[sync]->L:split\nalign row api split\n",
+      "startByte": 18,
+      "endByte": 166
+    },
+    {
+      "name": "function.around",
+      "text": "service api(server)[API] in platform",
+      "startByte": 52,
+      "endByte": 88
+    }
+  ]
+}

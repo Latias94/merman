@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Kanban CRLF Unicode task label",
+    "source": "kanban\r\n  Todo\r\n    task[Write docs]\r\n",
+    "old": "Write docs",
+    "replacement": "编写文档"
+  },
+  {
+    "name": "Kanban subtree reindent",
+    "source": "kanban\n  Todo\n    task1\n  Done\n    task2\n",
+    "old": "    task1",
+    "replacement": "      task1"
+  },
+  {
+    "name": "Kanban multiline metadata edit",
+    "source": "kanban\n  Todo\n    task@{\n      assigned: alice\n      ticket: MM-1\n    }\n",
+    "old": "assigned: alice",
+    "replacement": "assigned: 'Alice B.'"
+  },
+  {
+    "name": "Kanban unclosed shape repair",
+    "source": "kanban\n  before[Before]\n    broken[unterminated\n    after[After]\n",
+    "old": "broken[unterminated",
+    "replacement": "recovered[Recovered]"
+  },
+  {
+    "name": "Kanban header-only body insertion",
+    "source": "kanban",
+    "old": "kanban",
+    "replacement": "kanban\n  Todo\n    task"
+  },
+  {
+    "name": "Kanban header switch to Mindmap",
+    "source": "kanban\n  Todo\n    task\n",
+    "old": "kanban",
+    "replacement": "mindmap"
+  }
+]

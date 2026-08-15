@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "publicId": "xychart",
+  "rootNode": "xy_chart_diagram",
+  "nodes": {
+    "xy_chart_accessibility_description_statement": ["delimiter", "description", "keyword", "text"],
+    "xy_chart_accessibility_title_statement": ["delimiter", "keyword", "text"],
+    "xy_chart_axis_range": ["delimiter", "maximum", "minimum"],
+    "xy_chart_bar_statement": ["data", "keyword", "title"],
+    "xy_chart_category_array": ["category", "close", "delimiter", "open"],
+    "xy_chart_data_point": ["label", "value"],
+    "xy_chart_diagram": ["body", "comment", "header", "terminator"],
+    "xy_chart_header": ["beta", "keyword", "orientation"],
+    "xy_chart_incomplete_x_axis_statement": ["categories", "keyword", "range", "title"],
+    "xy_chart_incomplete_y_axis_statement": ["keyword", "range", "title"],
+    "xy_chart_line_statement": ["data", "keyword", "title"],
+    "xy_chart_malformed_series_statement": ["data", "keyword", "title"],
+    "xy_chart_malformed_statement_sequence": ["statement", "trailing"],
+    "xy_chart_malformed_y_axis_categories_statement": ["categories", "keyword", "title"],
+    "xy_chart_series_array": ["close", "delimiter", "open", "point"],
+    "xy_chart_title_statement": ["keyword", "title"],
+    "xy_chart_x_axis_statement": ["categories", "keyword", "range", "title"],
+    "xy_chart_y_axis_statement": ["keyword", "range", "title"]
+  }
+}

@@ -26,7 +26,14 @@ test('source binding loads the ABI-14 language and parses all public families', 
   assert.equal(Mermaid.artifactReceipt.language.abi, 14);
 });
 
-test('portable highlights compile and execute in the source binding', () => {
+test('portable queries compile and highlights execute in the source binding', () => {
+  for (const [surfaceName, profile] of Object.entries(Mermaid.queryProfiles.portable)) {
+    assert.doesNotThrow(
+      () => new Parser.Query(Mermaid, profile.source),
+      `portable/${surfaceName}`,
+    );
+  }
+
   const profile = Mermaid.queryProfiles.portable.highlights;
   const query = new Parser.Query(Mermaid, profile.source);
   const parser = new Parser();
@@ -37,16 +44,21 @@ test('portable highlights compile and execute in the source binding', () => {
   assert.ok(captures.some((capture) => capture.name === 'keyword'));
 });
 
-test('portable highlights match their artifact receipt profile', () => {
-  const profile = Mermaid.queryProfiles.portable.highlights;
-  assert.equal(profile.relativePath, 'queries/portable/highlights.scm');
-  const receiptProfile = Mermaid.artifactReceipt.queryProfiles.find(
-    (item) =>
-      item.profile === 'portable' &&
-      item.surface === 'highlights' &&
-      item.path === profile.relativePath,
-  );
-  assert.ok(receiptProfile);
-  const digest = crypto.createHash('sha256').update(fs.readFileSync(profile.path)).digest('hex');
-  assert.equal(receiptProfile.sha256, digest);
+test('all source-binding query profiles match their artifact receipt entries', () => {
+  const exposed = [];
+  for (const [profileName, surfaces] of Object.entries(Mermaid.queryProfiles)) {
+    for (const [surfaceName, profile] of Object.entries(surfaces)) {
+      exposed.push(`${profileName}/${surfaceName}`);
+      const receiptProfile = Mermaid.artifactReceipt.queryProfiles.find(
+        (item) =>
+          item.profile === profileName &&
+          item.surface === surfaceName &&
+          item.path === profile.relativePath,
+      );
+      assert.ok(receiptProfile, `${profileName}/${surfaceName}`);
+      const digest = crypto.createHash('sha256').update(fs.readFileSync(profile.path)).digest('hex');
+      assert.equal(receiptProfile.sha256, digest, `${profileName}/${surfaceName}`);
+    }
+  }
+  assert.equal(exposed.length, Mermaid.artifactReceipt.queryProfiles.length);
 });

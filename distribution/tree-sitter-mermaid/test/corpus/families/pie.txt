@@ -150,8 +150,8 @@ not a pie slice
         (pie_recovery_text))
       (pie_incomplete_section
         (langium_string)
-        (pie_section_delimiter))
-      (comment)
+        (pie_section_delimiter)
+        (comment))
       (pie_section
         (langium_string)
         (pie_section_delimiter)

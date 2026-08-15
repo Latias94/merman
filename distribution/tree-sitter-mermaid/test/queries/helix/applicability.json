@@ -1,0 +1,1575 @@
+{
+  "schemaVersion": 1,
+  "profile": "helix",
+  "consumer": {
+    "name": "Helix",
+    "version": "25.07.1",
+    "sourceRef": "25.07.1",
+    "sourceCommit": "a05c151bb6e8e9c65ec390b0ae2afe7a5efd619b",
+    "loaderSource": "helix-core/src/syntax.rs",
+    "loadedSurfaces": [
+      "highlights",
+      "injections",
+      "locals",
+      "indents",
+      "textobjects"
+    ]
+  },
+  "queryContract": {
+    "captureAuthority": "Helix 25.07.1",
+    "portableSemanticTokenMapping": false,
+    "markdownLabelInjection": {
+      "status": "not_applicable",
+      "rationale": "Most Markdown-looking Mermaid label nodes still include quote/backtick delimiters, while Helix has no Neovim-style offset directive. YAML frontmatter remains safely injectable."
+    },
+    "absentFiles": [
+      "folds.scm",
+      "tags.scm",
+      "brackets.scm",
+      "outline.scm"
+    ]
+  },
+  "families": [
+    {
+      "publicId": "architecture",
+      "fixtureSlug": "architecture",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "block",
+      "fixtureSlug": "block",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "c4",
+      "fixtureSlug": "c4",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "class",
+      "fixtureSlug": "class",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "cynefin",
+      "fixtureSlug": "cynefin",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "er",
+      "fixtureSlug": "entity-relationship",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "eventmodeling",
+      "fixtureSlug": "event-modeling",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "flowchart",
+      "fixtureSlug": "flowchart",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "gantt",
+      "fixtureSlug": "gantt",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "gitgraph",
+      "fixtureSlug": "git-graph",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "info",
+      "fixtureSlug": "info",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "ishikawa",
+      "fixtureSlug": "ishikawa",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "journey",
+      "fixtureSlug": "journey",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "kanban",
+      "fixtureSlug": "kanban",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "mindmap",
+      "fixtureSlug": "mindmap",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "packet",
+      "fixtureSlug": "packet",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "pie",
+      "fixtureSlug": "pie",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "quadrantchart",
+      "fixtureSlug": "quadrant-chart",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "radar",
+      "fixtureSlug": "radar",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "railroad",
+      "fixtureSlug": "railroad",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "railroadAbnf",
+      "fixtureSlug": "railroad-abnf",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "railroadEbnf",
+      "fixtureSlug": "railroad-ebnf",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "railroadPeg",
+      "fixtureSlug": "railroad-peg",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "requirement",
+      "fixtureSlug": "requirement",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "sankey",
+      "fixtureSlug": "sankey",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "sequence",
+      "fixtureSlug": "sequence",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "state",
+      "fixtureSlug": "state",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "swimlane",
+      "fixtureSlug": "swimlane",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "timeline",
+      "fixtureSlug": "timeline",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "treeView",
+      "fixtureSlug": "tree-view",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "treemap",
+      "fixtureSlug": "treemap",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "venn",
+      "fixtureSlug": "venn",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "wardley",
+      "fixtureSlug": "wardley",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "xychart",
+      "fixtureSlug": "xychart",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "not_applicable",
+          "rationale": "The current family CST does not expose a stable diagram-local definition/reference split; labels and record values are not treated as lexical locals."
+        },
+        "indents": {
+          "status": "not_applicable",
+          "rationale": "The family is flat, record-oriented, or scanner-indented without a nested parent range that Helix's indentation traversal can use coherently."
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    },
+    {
+      "publicId": "zenuml",
+      "fixtureSlug": "zenuml",
+      "surfaces": {
+        "highlights": {
+          "status": "applicable",
+          "query": "queries/helix/highlights.scm"
+        },
+        "injections": {
+          "status": "applicable",
+          "query": "queries/helix/injections.scm",
+          "rationale": "Every family accepts the shared frontmatter preamble; delimiter-free frontmatter_content ranges are injected as combined YAML."
+        },
+        "locals": {
+          "status": "applicable",
+          "query": "queries/helix/locals.scm"
+        },
+        "indents": {
+          "status": "applicable",
+          "query": "queries/helix/indents.scm"
+        },
+        "textobjects": {
+          "status": "applicable",
+          "query": "queries/helix/textobjects.scm",
+          "rationale": "The family diagram/body pair provides class.around/class.inside and direct body children provide entry.around."
+        },
+        "folds": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load folds.scm; folding is selection-driven and has no Tree-sitter fold-query ABI."
+        },
+        "tags": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 does not load tags.scm; Tree-sitter tag captures are not an editor-native symbol source."
+        },
+        "brackets": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 uses language auto-pair configuration and syntax traversal, not brackets.scm."
+        },
+        "outline": {
+          "status": "not_applicable",
+          "rationale": "Helix 25.07.1 has no outline.scm loader; document symbols are provided through editor/LSP paths."
+        }
+      }
+    }
+  ]
+}
+

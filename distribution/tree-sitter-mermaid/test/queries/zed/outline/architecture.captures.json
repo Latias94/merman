@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "architecture.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "architecture-beta",
+      "startByte": 0,
+      "endByte": 17
+    },
+    {
+      "name": "item",
+      "text": "architecture-beta\ngroup platform(cloud)[\"Platform\"]\nservice api(server)[API] in platform\njunction split in platform\napi{group}:R<-[sync]->L:split\nalign row api split\n",
+      "startByte": 0,
+      "endByte": 166
+    },
+    {
+      "name": "item",
+      "text": "group platform(cloud)[\"Platform\"]",
+      "startByte": 18,
+      "endByte": 51
+    },
+    {
+      "name": "name",
+      "text": "platform",
+      "startByte": 24,
+      "endByte": 32
+    },
+    {
+      "name": "item",
+      "text": "service api(server)[API] in platform",
+      "startByte": 52,
+      "endByte": 88
+    },
+    {
+      "name": "name",
+      "text": "api",
+      "startByte": 60,
+      "endByte": 63
+    },
+    {
+      "name": "item",
+      "text": "junction split in platform",
+      "startByte": 89,
+      "endByte": 115
+    },
+    {
+      "name": "name",
+      "text": "split",
+      "startByte": 98,
+      "endByte": 103
+    }
+  ]
+}

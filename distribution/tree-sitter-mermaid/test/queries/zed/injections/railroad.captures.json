@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "railroad.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: railroad\n---",
+      "startByte": 0,
+      "endByte": 23
+    }
+  ]
+}

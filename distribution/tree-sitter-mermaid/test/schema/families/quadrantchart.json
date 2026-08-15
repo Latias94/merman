@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "publicId": "quadrantchart",
+  "rootNode": "quadrant_chart_diagram",
+  "nodes": {
+    "quadrant_chart_accessibility_description_statement": ["delimiter", "description", "keyword", "text"],
+    "quadrant_chart_accessibility_title_statement": ["delimiter", "keyword", "text"],
+    "quadrant_chart_axis_statement": ["axis", "delimiter", "end", "start"],
+    "quadrant_chart_class_clause": ["delimiter", "name"],
+    "quadrant_chart_class_definition_statement": ["keyword", "name", "styles"],
+    "quadrant_chart_coordinates": ["close", "delimiter", "open", "x", "y"],
+    "quadrant_chart_diagram": ["body", "header"],
+    "quadrant_chart_malformed_coordinates": ["close", "delimiter", "open", "x", "y"],
+    "quadrant_chart_malformed_point_statement": ["class", "delimiter", "label", "recovery"],
+    "quadrant_chart_point_statement": ["class", "coordinates", "delimiter", "label", "styles"],
+    "quadrant_chart_quadrant_statement": ["label", "quadrant"],
+    "quadrant_chart_style": ["delimiter", "name", "value"],
+    "quadrant_chart_style_list": ["delimiter", "style"],
+    "quadrant_chart_title_statement": ["keyword", "text"]
+  }
+}

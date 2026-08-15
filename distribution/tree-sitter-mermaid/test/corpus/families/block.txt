@@ -1,0 +1,425 @@
+==================
+block declarations edges styles and accessibility stay structural
+==================
+
+block-beta
+columns 4
+frontend["<b>Web</b>"] gateway("API") data[(Database)] space
+frontend -- "HTTPS" --> gateway --> data
+arrow<["flow"]>(right, down)
+classDef core fill:#eef,stroke:#333
+class gateway,data core
+style frontend fill:#fff,stroke-width:2px
+accTitle: Accessible block graph
+accDescr {A block graph with explicit structure.}
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (block_columns_statement
+        (block_statement_keyword)
+        (block_column_count))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_bare_label))
+            (block_shape_delimiter))))
+      (block_space_statement
+        (block_statement_keyword))
+      (block_edge_statement
+        (block_node
+          (block_identifier))
+        (block_edge
+          (block_labeled_edge
+            (block_edge_label_start)
+            (block_quoted_label)
+            (block_edge_operator)))
+        (block_node
+          (block_identifier))
+        (block_edge
+          (block_edge_operator))
+        (block_node
+          (block_identifier)))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_arrow_shape
+              (block_shape_delimiter)
+              (block_label
+                (block_quoted_label))
+              (block_shape_delimiter)
+              (block_arrow_direction)
+              (block_arrow_direction)
+              (block_shape_delimiter)))))
+      (block_class_definition_statement
+        (block_statement_keyword)
+        (block_identifier)
+        (block_style_list
+          (block_style_declaration
+            (block_style_property)
+            (block_style_value))
+          (block_style_declaration
+            (block_style_property)
+            (block_style_value))))
+      (block_class_assignment_statement
+        (block_statement_keyword)
+        (block_identifier_list
+          (block_identifier)
+          (block_identifier))
+        (block_identifier_list
+          (block_identifier)))
+      (block_style_statement
+        (block_statement_keyword)
+        (block_identifier_list
+          (block_identifier))
+        (block_style_list
+          (block_style_declaration
+            (block_style_property)
+            (block_style_value))
+          (block_style_declaration
+            (block_style_property)
+            (block_style_value))))
+      (block_accessibility_title_statement
+        (block_statement_keyword)
+        (block_line_text))
+      (block_accessibility_description_statement
+        (block_statement_keyword)
+        (block_accessibility_description_block)))))
+
+==================
+nested named and anonymous composites preserve ownership
+==================
+
+block
+columns 3
+block:platform["Platform"]:2
+  columns 2
+  api["API"] db[("Database")]
+  block
+    worker
+  end
+end
+outside
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (block_columns_statement
+        (block_statement_keyword)
+        (block_column_count))
+      (block_composite_statement
+        (block_statement_keyword)
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))
+          (block_width_clause
+            (block_width)))
+        (block_columns_statement
+          (block_statement_keyword)
+          (block_column_count))
+        (block_node_statement
+          (block_node
+            (block_identifier)
+            (block_shape
+              (block_shape_delimiter)
+              (block_label
+                (block_quoted_label))
+              (block_shape_delimiter))))
+        (block_node_statement
+          (block_node
+            (block_identifier)
+            (block_shape
+              (block_shape_delimiter)
+              (block_label
+                (block_quoted_label))
+              (block_shape_delimiter))))
+        (block_composite_statement
+          (block_statement_keyword)
+          (block_node_statement
+            (block_node
+              (block_identifier)))
+          (block_end))
+        (block_end))
+      (block_node_statement
+        (block_node
+          (block_identifier))))))
+
+==================
+documented block shape delimiters remain named
+==================
+
+block
+round("Round") stadium(["Stadium"]) sub[["Subroutine"]]
+cylinder[("Database")] circle(("Circle")) doubleCircle((("Critical")))
+asym>"Asymmetric"] diamond{"Decision"} hex{{"Hexagon"}}
+para[/"Input"/] alt[\"Output"\] crossA[/"Left"\] crossB[\"Right"/]
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter)))))))
+
+==================
+line local recovery preserves later declarations
+==================
+
+block-beta
+before["Before"]
+before -->
+after["After"]
+broken["unterminated
+last["Last"]
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_incomplete_edge_statement
+        (block_node
+          (block_identifier))
+        (block_edge_operator))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_incomplete_shape
+            (block_shape_delimiter)
+            (block_shape_recovery_text))))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_shape
+            (block_shape_delimiter)
+            (block_label
+              (block_quoted_label))
+            (block_shape_delimiter)))))))
+
+==================
+same line declarations widths and semicolons follow upstream whitespace rules
+==================
+
+block
+a b c; wide:2; classDef blue fill:#66f; class a,b blue
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (block_node_statement
+        (block_node
+          (block_identifier)))
+      (block_node_statement
+        (block_node
+          (block_identifier)))
+      (block_node_statement
+        (block_node
+          (block_identifier)))
+      (block_node_statement
+        (block_node
+          (block_identifier)
+          (block_width_clause
+            (block_width))))
+      (block_class_definition_statement
+        (block_statement_keyword)
+        (block_identifier)
+        (block_style_list
+          (block_style_declaration
+            (block_style_property)
+            (block_style_value))))
+      (block_class_assignment_statement
+        (block_statement_keyword)
+        (block_identifier_list
+          (block_identifier)
+          (block_identifier))
+        (block_identifier_list
+          (block_identifier))))))
+
+==================
+header-only beta alias is rejected without a body
+==================
+
+block-beta
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (MISSING directive))))
+
+==================
+header-only legacy alias is rejected without a body
+==================
+
+block
+
+---
+
+(source_file
+  (block_diagram
+    (block_header
+      (diagram_keyword))
+    (block_body
+      (MISSING directive))))

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "quadrant-chart.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 93,
+      "endByte": 94
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 102,
+      "endByte": 103
+    }
+  ]
+}

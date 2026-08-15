@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Treemap CRLF Unicode leaf",
+    "source": "treemap-beta\r\n\"产品\"\r\n  \"Phones\": 50\r\n",
+    "old": "Phones",
+    "replacement": "手机💓"
+  },
+  {
+    "name": "Treemap subtree reindent",
+    "source": "treemap-beta\n\"Root\"\n  \"Section\"\n    \"Leaf\": 1\n  \"Sibling\": 2\n",
+    "old": "  \"Section\"\n    \"Leaf\": 1",
+    "replacement": "    \"Section\"\n      \"Leaf\": 1"
+  },
+  {
+    "name": "Treemap subtree move",
+    "source": "treemap-beta\n\"Root\"\n  \"Section A\"\n    \"Leaf A\": 1\n  \"Section B\"\n    \"Leaf B\": 2\n",
+    "old": "  \"Section A\"\n    \"Leaf A\": 1\n  \"Section B\"\n    \"Leaf B\": 2",
+    "replacement": "  \"Section B\"\n    \"Leaf B\": 2\n  \"Section A\"\n    \"Leaf A\": 1"
+  },
+  {
+    "name": "Treemap incomplete leaf repair",
+    "source": "treemap-beta\n\"Root\"\n  \"Missing value\":\n  \"Sibling\": 2\n",
+    "old": "\"Missing value\":",
+    "replacement": "\"Recovered\": 1"
+  },
+  {
+    "name": "Treemap unclosed section repair",
+    "source": "treemap-beta\n\"Root\"\n  \"Unclosed section\n  \"Sibling\": 2\n",
+    "old": "\"Unclosed section",
+    "replacement": "\"Recovered section\""
+  },
+  {
+    "name": "Treemap EOF alias insertion",
+    "source": "treemap",
+    "old": "treemap",
+    "replacement": "treemap\n\"Root\"\n  \"Leaf\": 1"
+  },
+  {
+    "name": "Treemap scanner mode switch to Tree View",
+    "source": "treemap-beta\n\"Root\"\n  \"Child\"\n",
+    "old": "treemap-beta",
+    "replacement": "treeView-beta"
+  },
+  {
+    "name": "Treemap class annotation edit",
+    "source": "treemap-beta\n\"Root\"\n  \"Leaf\": 1:::important\nclassDef important fill:red;\n",
+    "old": "1:::important",
+    "replacement": "1:::emphasis"
+  }
+]

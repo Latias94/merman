@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/requirement.mmd",
+  "captures": [
+    {
+      "name": "definition.class",
+      "text": "functionalRequirement \"secure checkout\":::critical {\n  id: \"REQ-1\"\n  text: \"Encrypt data\"\n  risk: high\n  verifyMethod: analysis\n}",
+      "startByte": 32,
+      "endByte": 161
+    },
+    {
+      "name": "name",
+      "text": "\"secure checkout\"",
+      "startByte": 54,
+      "endByte": 71
+    },
+    {
+      "name": "definition.class",
+      "text": "element gateway {\n  type: service\n  docRef: \"docs/security.md\"\n}",
+      "startByte": 162,
+      "endByte": 226
+    },
+    {
+      "name": "name",
+      "text": "gateway",
+      "startByte": 170,
+      "endByte": 177
+    }
+  ]
+}

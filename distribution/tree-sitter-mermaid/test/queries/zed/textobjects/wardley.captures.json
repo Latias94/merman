@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "wardley.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "wardley-beta\ncomponent API [0.6, 0.7] (build)\ncomponent DB [0.4, 0.5]\nAPI +<> DB; constraint\nevolve API 0.8\n",
+      "startByte": 0,
+      "endByte": 108
+    },
+    {
+      "name": "function.around",
+      "text": "component API [0.6, 0.7] (build)",
+      "startByte": 13,
+      "endByte": 45
+    },
+    {
+      "name": "class.inside",
+      "text": "component API [0.6, 0.7] (build)\ncomponent DB [0.4, 0.5]\nAPI +<> DB; constraint\nevolve API 0.8\n",
+      "startByte": 13,
+      "endByte": 108
+    },
+    {
+      "name": "function.around",
+      "text": "component DB [0.4, 0.5]",
+      "startByte": 46,
+      "endByte": 69
+    }
+  ]
+}

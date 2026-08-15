@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "publicId": "er",
+  "rootNode": "entity_relationship_diagram",
+  "nodes": {
+    "entity_relationship_diagram": ["body", "header"],
+    "er_alias_declaration": ["alias", "class", "name", "prefix"],
+    "er_attribute": ["comment", "keys", "name", "optional", "type"],
+    "er_attribute_block": ["attribute", "close", "open", "recovery"],
+    "er_class_assignment_statement": ["classes", "keyword", "targets"],
+    "er_definition_statement": ["classes", "keyword", "styles"],
+    "er_entity_declaration": ["alias", "attributes", "class", "name"],
+    "er_incomplete_relationship": ["operator", "recovery", "source", "source_cardinality", "source_class", "target_cardinality"],
+    "er_relationship": ["delimiter", "operator", "role", "source", "source_cardinality", "source_class", "target", "target_cardinality", "target_class"],
+    "er_style_statement": ["keyword", "styles", "targets"]
+  }
+}

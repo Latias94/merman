@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Requirement CRLF Unicode attribute",
+    "source": "requirementdiagram\r\nrequirement Checkout {\r\n  id: REQ-1\r\n  text: Protect data\r\n  risk: high\r\n  verifyMethod: test\r\n}\r\n",
+    "old": "Protect data",
+    "replacement": "保护客户数据"
+  },
+  {
+    "name": "Requirement relationship insertion",
+    "source": "requirementDiagram\nrequirement Need {\n  id: N-1\n}\nelement Gateway {\n  type: service\n}\n",
+    "old": "element Gateway",
+    "replacement": "Need - satisfies -> Gateway\nelement Gateway"
+  },
+  {
+    "name": "Requirement malformed attribute repair",
+    "source": "requirementDiagram\nrequirement Need {\n  id: N-1\n  risk high\n  text: visible\n}\n",
+    "old": "risk high",
+    "replacement": "risk: high"
+  },
+  {
+    "name": "Requirement incomplete declaration repair",
+    "source": "requirementDiagram\nfunctionalRequirement MissingOpen\nelement After {\n  type: service\n}\n",
+    "old": "functionalRequirement MissingOpen",
+    "replacement": "functionalRequirement Recovered {\n  id: R-1\n  risk: low\n  verifyMethod: inspection\n}"
+  },
+  {
+    "name": "Requirement header case edit",
+    "source": "requirementDiagram\nrequirement Need {\n}\n",
+    "old": "Diagram",
+    "replacement": "dIaGrAm"
+  }
+]

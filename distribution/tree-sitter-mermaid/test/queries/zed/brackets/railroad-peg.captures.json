@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "railroad-peg.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 75,
+      "endByte": 76
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 85,
+      "endByte": 86
+    }
+  ]
+}

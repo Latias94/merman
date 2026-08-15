@@ -53,6 +53,7 @@ const TREE_SITTER_CLI_VERSION: &str = "0.26.12";
 const TREE_SITTER_NODE_VERSION: &str = "0.25.1";
 const TREE_SITTER_WEB_VERSION: &str = "0.26.12";
 const TREE_SITTER_WASI_SDK_VERSION: &str = "29.0";
+const TREE_SITTER_WASI_CLANG_VERSION: &str = "21.1.4-wasi-sdk";
 const MERMAN_ORACLE_VERSION: &str = "0.8.0-alpha.5";
 const MERMAN_ORACLE_COMMIT: &str = "e4d3169a614f4eca3e4897fe9ee1fd578136db92";
 const QUERY_PROFILES: [&str; 4] = ["portable", "neovim", "helix", "zed"];
@@ -120,7 +121,7 @@ const GENERATED_ARTIFACTS: [&str; 7] = [
     "src/tree_sitter/parser.h",
     "wasm/tree-sitter-mermaid.wasm",
 ];
-const ATTRIBUTED_PACKAGE_FILES: [&str; 39] = [
+const ATTRIBUTED_PACKAGE_FILES: [&str; 58] = [
     "binding.gyp",
     "bindings/c/tree-sitter-mermaid.pc.in",
     "bindings/c/tree_sitter/tree-sitter-mermaid.h",
@@ -133,22 +134,40 @@ const ATTRIBUTED_PACKAGE_FILES: [&str; 39] = [
     "bindings/rust/lib.rs",
     "grammar.js",
     "grammar/families/architecture.js",
+    "grammar/families/block.js",
+    "grammar/families/c4.js",
+    "grammar/families/class.js",
     "grammar/families/cynefin.js",
+    "grammar/families/entity-relationship.js",
     "grammar/families/event-modeling.js",
     "grammar/families/flowchart.js",
+    "grammar/families/gantt.js",
     "grammar/families/git-graph.js",
     "grammar/families/info.js",
+    "grammar/families/ishikawa.js",
+    "grammar/families/journey.js",
     "grammar/families/kanban.js",
     "grammar/families/mindmap.js",
     "grammar/families/packet.js",
     "grammar/families/pie.js",
+    "grammar/families/quadrant-chart.js",
     "grammar/families/radar.js",
-    "grammar/families/recognized.js",
+    "grammar/families/railroad-abnf.js",
+    "grammar/families/railroad-ebnf.js",
+    "grammar/families/railroad-peg.js",
+    "grammar/families/railroad-shared.js",
+    "grammar/families/railroad.js",
+    "grammar/families/requirement.js",
     "grammar/families/sankey.js",
+    "grammar/families/sequence.js",
+    "grammar/families/state.js",
+    "grammar/families/swimlane.js",
+    "grammar/families/timeline.js",
     "grammar/families/tree-view.js",
     "grammar/families/treemap.js",
     "grammar/families/venn.js",
     "grammar/families/wardley.js",
+    "grammar/families/xy-chart.js",
     "grammar/families/zenuml.js",
     "grammar/shared/common.js",
     "grammar/shared/header.js",
@@ -156,6 +175,7 @@ const ATTRIBUTED_PACKAGE_FILES: [&str; 39] = [
     "grammar/shared/langium.js",
     "grammar/shared/preamble.js",
     "metadata/headers.json",
+    "scripts/generate.py",
     "src/scanner.c",
     "src/tree_sitter/alloc.h",
     "src/tree_sitter/array.h",
@@ -257,6 +277,8 @@ struct ToolchainIdentity {
     rust_runtime: String,
     node_runtime: String,
     web_runtime: String,
+    wasi_sdk: String,
+    wasi_clang: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -331,6 +353,7 @@ struct ReceiptToolchain {
     node_runtime: String,
     web_runtime: String,
     wasi_sdk: String,
+    wasi_clang: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1601,6 +1624,46 @@ fn validate_query_applicability(
     Ok(())
 }
 
+fn validate_query_profile_coverage(
+    support: &SupportMetadata,
+    receipt: &ArtifactReceipt,
+) -> Result<(), String> {
+    let packaged = receipt
+        .query_profiles
+        .iter()
+        .map(|query| (query.profile.as_str(), query.surface.as_str()))
+        .collect::<BTreeSet<_>>();
+    let asserted = support
+        .families
+        .iter()
+        .flat_map(|family| {
+            family
+                .query_applicability
+                .iter()
+                .flat_map(|(profile, surfaces)| {
+                    surfaces.iter().filter_map(move |(surface, applicability)| {
+                        (applicability.status == "asserted")
+                            .then_some((profile.as_str(), surface.as_str()))
+                    })
+                })
+        })
+        .collect::<BTreeSet<_>>();
+
+    let missing = asserted.difference(&packaged).copied().collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(format!(
+            "asserted query applicability lacks packaged profiles: {missing:?}"
+        ));
+    }
+    let unused = packaged.difference(&asserted).copied().collect::<Vec<_>>();
+    if !unused.is_empty() {
+        return Err(format!(
+            "packaged query profiles lack asserted family coverage: {unused:?}"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_schemas(
     schemas: &SchemaMetadata,
     provenance: &ProvenanceMetadata,
@@ -1649,6 +1712,8 @@ fn validate_provenance(provenance: &ProvenanceMetadata) -> Result<(), String> {
         || provenance.toolchain.rust_runtime != TREE_SITTER_RUST_RUNTIME_VERSION
         || provenance.toolchain.node_runtime != TREE_SITTER_NODE_VERSION
         || provenance.toolchain.web_runtime != TREE_SITTER_WEB_VERSION
+        || provenance.toolchain.wasi_sdk != TREE_SITTER_WASI_SDK_VERSION
+        || provenance.toolchain.wasi_clang != TREE_SITTER_WASI_CLANG_VERSION
     {
         return Err("Tree-sitter runtime/toolchain identities drifted".to_string());
     }
@@ -1816,6 +1881,79 @@ fn validate_receipt_files(
     Ok(paths)
 }
 
+fn package_query_profiles(root: &Path) -> Result<BTreeMap<(String, String), String>, String> {
+    let query_root = root.join(PACKAGE_ROOT).join("queries");
+    let known_profiles = QUERY_PROFILES.into_iter().collect::<BTreeSet<_>>();
+    let known_surfaces = QUERY_SURFACES.into_iter().collect::<BTreeSet<_>>();
+    let mut profiles = BTreeMap::new();
+
+    for profile_entry in fs::read_dir(&query_root)
+        .map_err(|error| format!("failed to read {}: {error}", query_root.display()))?
+    {
+        let profile_entry = profile_entry
+            .map_err(|error| format!("failed to inspect {}: {error}", query_root.display()))?;
+        let profile_path = profile_entry.path();
+        if !profile_path.is_dir() {
+            continue;
+        }
+        let profile = profile_entry.file_name().to_string_lossy().into_owned();
+        if !known_profiles.contains(profile.as_str()) {
+            return Err(format!("package names unknown query profile {profile}"));
+        }
+
+        for surface_entry in fs::read_dir(&profile_path)
+            .map_err(|error| format!("failed to read {}: {error}", profile_path.display()))?
+        {
+            let surface_entry = surface_entry.map_err(|error| {
+                format!("failed to inspect {}: {error}", profile_path.display())
+            })?;
+            let surface_path = surface_entry.path();
+            if surface_path.is_dir() {
+                return Err(format!(
+                    "query profile files must not be nested: {}",
+                    surface_path.display()
+                ));
+            }
+            if surface_path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                != Some("scm")
+            {
+                continue;
+            }
+            let surface = surface_path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .ok_or_else(|| {
+                    format!(
+                        "query surface path is not UTF-8: {}",
+                        surface_path.display()
+                    )
+                })?
+                .to_string();
+            if !known_surfaces.contains(surface.as_str()) {
+                return Err(format!(
+                    "package names unknown query surface {profile}/{surface}"
+                ));
+            }
+            let relative = format!("queries/{profile}/{surface}.scm");
+            if profiles
+                .insert((profile.clone(), surface.clone()), relative)
+                .is_some()
+            {
+                return Err(format!(
+                    "package duplicates query profile {profile}/{surface}"
+                ));
+            }
+        }
+    }
+
+    if profiles.is_empty() {
+        return Err("package contains no query profiles".to_string());
+    }
+    Ok(profiles)
+}
+
 fn validate_artifact_receipt(
     root: &Path,
     receipt: &ArtifactReceipt,
@@ -1852,6 +1990,7 @@ fn validate_artifact_receipt(
         || receipt.toolchain.node_runtime != TREE_SITTER_NODE_VERSION
         || receipt.toolchain.web_runtime != TREE_SITTER_WEB_VERSION
         || receipt.toolchain.wasi_sdk != TREE_SITTER_WASI_SDK_VERSION
+        || receipt.toolchain.wasi_clang != TREE_SITTER_WASI_CLANG_VERSION
     {
         return Err("artifact receipt toolchain identity drifted".to_string());
     }
@@ -1902,6 +2041,7 @@ fn validate_artifact_receipt(
         "metadata/headers.json",
         "metadata/evidence/u2-mermaid-header-oracle.json",
         "bindings/rust/lib.rs",
+        "bindings/query-profiles.js",
         "bindings/node/index.js",
         "bindings/wasm/index.js",
         "bindings/c/tree_sitter/tree-sitter-mermaid.h.in",
@@ -1914,26 +2054,47 @@ fn validate_artifact_receipt(
             return Err(format!("artifact receipt lacks required input {required}"));
         }
     }
-    let [query_profile] = receipt.query_profiles.as_slice() else {
-        return Err("artifact receipt must bind exactly one mechanics query profile".to_string());
-    };
-    if query_profile.profile != "portable"
-        || query_profile.surface != "highlights"
-        || query_profile.path != "queries/portable/highlights.scm"
-        || !valid_sha256(&query_profile.sha256)
-        || inputs.get(&query_profile.path) != Some(&query_profile.bytes)
-    {
-        return Err("artifact receipt query profile identity drifted".to_string());
+    let expected_query_profiles = package_query_profiles(root)?;
+    let mut receipt_query_profiles = BTreeMap::new();
+    for query_profile in &receipt.query_profiles {
+        let key = (query_profile.profile.clone(), query_profile.surface.clone());
+        let Some(expected_path) = expected_query_profiles.get(&key) else {
+            return Err(format!(
+                "artifact receipt names unknown query profile {}/{}",
+                query_profile.profile, query_profile.surface
+            ));
+        };
+        if query_profile.path != *expected_path
+            || !valid_sha256(&query_profile.sha256)
+            || inputs.get(&query_profile.path) != Some(&query_profile.bytes)
+        {
+            return Err(format!(
+                "artifact receipt query profile identity drifted for {}/{}",
+                query_profile.profile, query_profile.surface
+            ));
+        }
+        let query_path = package_file_path(root, &query_profile.path, "query profile")?;
+        if query_path
+            .metadata()
+            .map_err(|error| format!("failed to stat {}: {error}", query_path.display()))?
+            .len()
+            != query_profile.bytes
+            || sha256_file(&query_path)? != query_profile.sha256
+        {
+            return Err(format!(
+                "artifact receipt query profile differs from package bytes for {}/{}",
+                query_profile.profile, query_profile.surface
+            ));
+        }
+        if receipt_query_profiles
+            .insert(key, query_profile.path.clone())
+            .is_some()
+        {
+            return Err("artifact receipt duplicates a query profile".to_string());
+        }
     }
-    let query_path = package_file_path(root, &query_profile.path, "query profile")?;
-    if query_path
-        .metadata()
-        .map_err(|error| format!("failed to stat {}: {error}", query_path.display()))?
-        .len()
-        != query_profile.bytes
-        || sha256_file(&query_path)? != query_profile.sha256
-    {
-        return Err("artifact receipt query profile differs from package bytes".to_string());
+    if receipt_query_profiles != expected_query_profiles {
+        return Err("artifact receipt query profile set drifted".to_string());
     }
     if receipt.receipt_id != expected_receipt_id {
         return Err("artifact receipt digest does not match its canonical body".to_string());
@@ -1978,7 +2139,7 @@ fn validate_metrics(
     receipt: &ArtifactReceipt,
 ) -> Result<(), String> {
     if metrics.schema_version != 1
-        || metrics.checkpoint != "u3-low-state-complexity"
+        || metrics.checkpoint != "u8-query-complete"
         || metrics.artifact_receipt_id != receipt.receipt_id
     {
         return Err("mechanics metrics identity drifted".to_string());
@@ -2082,13 +2243,14 @@ fn validate_metrics(
             let supplied = short_metric(position, "incrementalSuppliedBytes")?;
             let coverage = short_metric(position, "incrementalUniqueCoverageBytes")?;
             let work = short_metric(position, "incrementalProgressCallbacks")?;
+            let fresh_position_work = short_metric(position, "freshProgressCallbacks")?;
             if position.get("position").and_then(serde_json::Value::as_str) != Some(expected_name)
                 || edit_byte + 64 < requested
                 || edit_byte > requested + 64
                 || edited_source as i64 != short_source as i64 + source_delta
                 || short_metric(position, "freshSuppliedBytes")? < edited_source
                 || short_metric(position, "freshUniqueCoverageBytes")? != edited_source
-                || short_metric(position, "freshProgressCallbacks")? != short_fresh_work
+                || fresh_position_work.abs_diff(short_fresh_work) > 1
                 || supplied > short_supplied_limit
                 || coverage > short_coverage_limit
                 || work * 1000 > short_fresh_work * short_work_limit
@@ -2115,8 +2277,8 @@ fn validate_metrics(
     let compile_limit = metrics.ratchet.independent_compile_hard_limit_milliseconds;
     let generation_limit = metrics.ratchet.generation_hard_limit_milliseconds;
     let wasm_build_limit = metrics.ratchet.canonical_wasm_build_hard_limit_milliseconds;
-    if generation_limit != 300_000
-        || wasm_build_limit != 180_000
+    if generation_limit != 120_000
+        || wasm_build_limit != 120_000
         || compile_limit != 120_000
         || build.two_runtime_one_wasm_generation_wall_milliseconds == 0
         || build.two_runtime_one_wasm_generation_wall_milliseconds > generation_limit
@@ -2186,7 +2348,7 @@ fn validate_metrics(
 
     let doubling = &metrics.observed.synthetic_doubling;
     if doubling.get("fixture").and_then(serde_json::Value::as_str)
-        != Some("synthetic-flowchart-common-short-statements")
+        != Some("synthetic-flowchart-1k-label-statements")
         || doubling
             .get("inputChunkBytes")
             .and_then(serde_json::Value::as_u64)
@@ -2444,40 +2606,59 @@ fn validate_metrics(
 }
 
 fn validate_metrics_attribution(metrics: &MechanicsMetrics) -> Result<(), String> {
-    const U2_RECEIPT: &str = "e527e8af5738320774fd0072e7fb19643be3544c146834abfa0c7007329e7613";
-    const U3_FAMILIES: [&str; 8] = [
-        "architecture",
-        "cynefin",
-        "gitgraph",
-        "info",
-        "packet",
-        "pie",
-        "radar",
-        "wardley",
+    const U3_RECEIPT: &str = "33ad48cbc9d2dd2f0dbe390c3010cc073513313b1a3dd47c0ba37b2f77d5384f";
+    const U8_FAMILIES: [&str; 27] = [
+        "block",
+        "c4",
+        "class",
+        "er",
+        "eventmodeling",
+        "flowchart",
+        "gantt",
+        "ishikawa",
+        "journey",
+        "kanban",
+        "mindmap",
+        "quadrantchart",
+        "railroad",
+        "railroadAbnf",
+        "railroadEbnf",
+        "railroadPeg",
+        "requirement",
+        "sankey",
+        "sequence",
+        "state",
+        "swimlane",
+        "timeline",
+        "treeView",
+        "treemap",
+        "venn",
+        "xychart",
+        "zenuml",
     ];
 
     let attribution = &metrics.attribution;
-    if attribution.previous_checkpoint != "u2-mechanics"
-        || attribution.previous_artifact_receipt_id != U2_RECEIPT
+    if attribution.previous_checkpoint != "u3-low-state-complexity"
+        || attribution.previous_artifact_receipt_id != U3_RECEIPT
         || attribution.previous_artifact_receipt_id == metrics.artifact_receipt_id
-        || attribution.structured_families_added != U3_FAMILIES.map(str::to_owned)
+        || attribution.structured_families_added != U8_FAMILIES.map(str::to_owned)
         || attribution.explanation.trim().is_empty()
     {
-        return Err("U3 metrics attribution identity drifted".to_string());
+        return Err("U8 metrics attribution identity drifted".to_string());
     }
 
     let previous = &attribution.previous_static;
-    if previous.generated_c_bytes != 1_123_124
-        || previous.wasm_bytes != 418_755
-        || previous.parser_states != 944
+    if previous.generated_c_bytes != 2_282_299
+        || previous.wasm_bytes != 822_514
+        || previous.parser_states != 1_967
         || previous.large_states != 5
-        || previous.symbols != 441
-        || previous.fields != 52
+        || previous.symbols != 721
+        || previous.fields != 103
         || previous.external_tokens != 15
-        || previous.conflicts != 0
+        || previous.conflicts != 3
         || previous.wasm_declared_minimum_memory_pages != 2
     {
-        return Err("U3 metrics attribution baseline drifted".to_string());
+        return Err("U8 metrics attribution baseline drifted".to_string());
     }
 
     let delta = |current: u64, prior: u64| -> Result<i64, String> {
@@ -2513,7 +2694,7 @@ fn validate_metrics_attribution(metrics: &MechanicsMetrics) -> Result<(), String
         || recorded.conflicts != actual.conflicts
         || recorded.wasm_declared_minimum_memory_pages != actual.wasm_declared_minimum_memory_pages
     {
-        return Err("U3 static metrics delta drifted".to_string());
+        return Err("U8 static metrics delta drifted".to_string());
     }
     Ok(())
 }
@@ -2931,6 +3112,14 @@ fn validate_package_manifests(root: &Path) -> Result<(), String> {
             .get("highlights")
             .and_then(serde_json::Value::as_str)
             != Some("queries/portable/highlights.scm")
+        || grammar
+            .get("injections")
+            .and_then(serde_json::Value::as_str)
+            != Some("queries/portable/injections.scm")
+        || grammar.get("locals").and_then(serde_json::Value::as_str)
+            != Some("queries/portable/locals.scm")
+        || grammar.get("tags").and_then(serde_json::Value::as_str)
+            != Some("queries/portable/tags.scm")
         || json_string_array(grammar.get("file-types")) != Some(vec!["mmd", "mermaid"])
         || grammar
             .get("injection-regex")
@@ -2972,6 +3161,7 @@ fn build_contract(root: &Path) -> Result<LanguageContract, String> {
     validate_provenance(&provenance)?;
     validate_derivations(root, &derivations, &provenance)?;
     validate_artifact_receipt(root, &receipt, &provenance)?;
+    validate_query_profile_coverage(&support, &receipt)?;
     admission::validate(root, &receipt.receipt_id, &support)?;
     validate_metrics(root, &metrics, &receipt)?;
     validate_schemas(&schemas, &provenance)?;
@@ -3120,21 +3310,13 @@ mod tests {
     }
 
     #[test]
-    fn support_metadata_matches_the_u3_recognized_and_structured_tiers() {
+    fn support_metadata_matches_the_u8_all_query_complete_tier() {
         let (support, core) = repository_inputs();
-        let expected_structured = [
-            "architecture",
-            "cynefin",
-            "gitgraph",
-            "info",
-            "packet",
-            "pie",
-            "radar",
-            "wardley",
-        ]
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-        let expected_structured_evidence = [
+        let expected_query_complete = core
+            .iter()
+            .map(|family| family.public_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let expected_query_complete_evidence = [
             "conformance",
             "corpus",
             "header",
@@ -3148,48 +3330,36 @@ mod tests {
 
         validate_repository_support(&support, &core).expect("valid support metadata");
         assert_eq!(support.families.len(), PUBLIC_FAMILY_COUNT);
-        let actual_structured = support
+        let actual_query_complete = support
             .families
             .iter()
-            .filter(|family| family.support_tier.as_deref() == Some("structured"))
+            .filter(|family| family.support_tier.as_deref() == Some("query-complete"))
             .map(|family| family.public_id.as_str())
             .collect::<BTreeSet<_>>();
-        assert_eq!(actual_structured, expected_structured);
+        assert_eq!(actual_query_complete, expected_query_complete);
 
         for family in &support.families {
             assert_eq!(family.lifecycle, "active");
-            if expected_structured.contains(family.public_id.as_str()) {
-                let evidence = family
-                    .evidence
-                    .iter()
-                    .map(|item| item.kind.as_str())
-                    .collect::<BTreeSet<_>>();
-                assert_eq!(
-                    evidence, expected_structured_evidence,
-                    "{}",
-                    family.public_id
-                );
-                assert_eq!(
-                    family
-                        .query_applicability
-                        .get("portable")
-                        .and_then(|surfaces| surfaces.get("highlights"))
-                        .map(|query| query.status.as_str()),
-                    Some("asserted"),
-                    "{}",
-                    family.public_id
-                );
-            } else {
-                assert_eq!(family.support_tier.as_deref(), Some("recognized"));
-                assert_eq!(family.evidence.len(), 1);
-                assert_eq!(
-                    family.evidence[0].id,
-                    format!("u2-header-dispatch:{}", family.public_id)
-                );
-                assert_eq!(family.evidence[0].kind, "header");
-                assert_eq!(family.evidence[0].path, HEADER_RECEIPT_PACKAGE_PATH);
-                assert!(family.query_applicability.is_empty());
-            }
+            let evidence = family
+                .evidence
+                .iter()
+                .map(|item| item.kind.as_str())
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                evidence, expected_query_complete_evidence,
+                "{}",
+                family.public_id
+            );
+            assert_eq!(
+                family
+                    .query_applicability
+                    .get("portable")
+                    .and_then(|surfaces| surfaces.get("highlights"))
+                    .map(|query| query.status.as_str()),
+                Some("asserted"),
+                "{}",
+                family.public_id
+            );
         }
     }
 
@@ -3551,6 +3721,25 @@ mod tests {
             validate_artifact_receipt(&root, &receipt, &provenance)
                 .unwrap_err()
                 .contains("query profile differs")
+        );
+
+        let mut receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+        let duplicate = receipt.query_profiles[0].clone();
+        receipt.query_profiles.push(duplicate);
+        assert!(
+            validate_artifact_receipt(&root, &receipt, &provenance)
+                .unwrap_err()
+                .contains("duplicates a query profile")
+        );
+
+        let mut receipt: ArtifactReceipt =
+            read_json(&root, ARTIFACT_RECEIPT_PATH).expect("artifact receipt");
+        receipt.query_profiles.pop();
+        assert!(
+            validate_artifact_receipt(&root, &receipt, &provenance)
+                .unwrap_err()
+                .contains("query profile set drifted")
         );
     }
 

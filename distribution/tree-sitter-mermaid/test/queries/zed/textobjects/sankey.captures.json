@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "sankey.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "sankey-beta\n\"Source, one\",\"Target \"\"quoted\"\"\",\"12\n.5\"\nplain,target,3.25\n",
+      "startByte": 0,
+      "endByte": 72
+    },
+    {
+      "name": "class.inside",
+      "text": "\"Source, one\",\"Target \"\"quoted\"\"\",\"12\n.5\"\nplain,target,3.25\n",
+      "startByte": 12,
+      "endByte": 72
+    }
+  ]
+}

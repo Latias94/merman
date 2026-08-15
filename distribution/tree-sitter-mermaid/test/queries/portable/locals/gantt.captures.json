@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/gantt.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "gantt\ntitle Release plan\ndateFormat YYYY-MM-DD\nsection Delivery\nBuild parser:crit, build, 2026-08-15, 2d\nShip:after build, 1d\nclick build href \"https://mermaid.js.org/\" call notify()\n",
+      "startByte": 0,
+      "endByte": 183
+    },
+    {
+      "name": "local.definition",
+      "text": "build",
+      "startByte": 83,
+      "endByte": 88
+    },
+    {
+      "name": "local.reference",
+      "text": "build",
+      "startByte": 116,
+      "endByte": 121
+    },
+    {
+      "name": "local.reference",
+      "text": "build",
+      "startByte": 132,
+      "endByte": 137
+    }
+  ]
+}

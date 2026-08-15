@@ -48,9 +48,9 @@
     },
     {
       "name": "string",
-      "text": "Current build metadata ",
+      "text": "Current build metadata",
       "startByte": 87,
-      "endByte": 110
+      "endByte": 109
     },
     {
       "name": "comment",

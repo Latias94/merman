@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "requirement.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "requirementDiAgRaM",
+      "startByte": 0,
+      "endByte": 18
+    },
+    {
+      "name": "item",
+      "text": "requirementDiAgRaM\ndirection LR\nfunctionalRequirement \"secure checkout\":::critical {\n  id: \"REQ-1\"\n  text: \"Encrypt data\"\n  risk: high\n  verifyMethod: analysis\n}\nelement gateway {\n  type: service\n  docRef: \"docs/security.md\"\n}\ngateway - satisfies -> \"secure checkout\"\nclassDef critical fill:#f96\n# requirement query comment\n",
+      "startByte": 0,
+      "endByte": 324
+    },
+    {
+      "name": "item",
+      "text": "functionalRequirement \"secure checkout\":::critical {\n  id: \"REQ-1\"\n  text: \"Encrypt data\"\n  risk: high\n  verifyMethod: analysis\n}",
+      "startByte": 32,
+      "endByte": 161
+    },
+    {
+      "name": "name",
+      "text": "\"secure checkout\"",
+      "startByte": 54,
+      "endByte": 71
+    },
+    {
+      "name": "item",
+      "text": "element gateway {\n  type: service\n  docRef: \"docs/security.md\"\n}",
+      "startByte": 162,
+      "endByte": 226
+    },
+    {
+      "name": "name",
+      "text": "gateway",
+      "startByte": 170,
+      "endByte": 177
+    }
+  ]
+}

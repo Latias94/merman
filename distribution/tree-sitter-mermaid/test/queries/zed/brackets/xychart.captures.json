@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "xychart.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 30,
+      "endByte": 31
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 38,
+      "endByte": 39
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 47,
+      "endByte": 48
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 55,
+      "endByte": 56
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 57,
+      "endByte": 58
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 62,
+      "endByte": 63
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 65,
+      "endByte": 66
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 66,
+      "endByte": 67
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 75,
+      "endByte": 76
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 79,
+      "endByte": 80
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 96,
+      "endByte": 97
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 105,
+      "endByte": 106
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 107,
+      "endByte": 108
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 111,
+      "endByte": 112
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 118,
+      "endByte": 119
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 123,
+      "endByte": 124
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 129,
+      "endByte": 130
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 136,
+      "endByte": 137
+    }
+  ]
+}

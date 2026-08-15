@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "sankey.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 12,
+      "endByte": 13
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 24,
+      "endByte": 25
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 26,
+      "endByte": 27
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 44,
+      "endByte": 45
+    },
+    {
+      "name": "open",
+      "text": "\"",
+      "startByte": 46,
+      "endByte": 47
+    },
+    {
+      "name": "close",
+      "text": "\"",
+      "startByte": 52,
+      "endByte": 53
+    }
+  ]
+}

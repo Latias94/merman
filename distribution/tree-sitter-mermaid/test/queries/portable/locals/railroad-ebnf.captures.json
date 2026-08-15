@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/railroad-ebnf.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "railroad-ebnf-beta\ntitle EBNF grammar\n(* comment *)\nrule ::= [ sign ] , { digit | \"_\" } ;\nspecial = ? Unicode 世界 ? ;\nexcept = letter+ - \"x\" ;\n",
+      "startByte": 0,
+      "endByte": 146
+    },
+    {
+      "name": "local.definition",
+      "text": "rule",
+      "startByte": 52,
+      "endByte": 56
+    },
+    {
+      "name": "local.reference",
+      "text": "sign",
+      "startByte": 63,
+      "endByte": 67
+    },
+    {
+      "name": "local.reference",
+      "text": "digit",
+      "startByte": 74,
+      "endByte": 79
+    },
+    {
+      "name": "local.definition",
+      "text": "special",
+      "startByte": 90,
+      "endByte": 97
+    },
+    {
+      "name": "local.definition",
+      "text": "except",
+      "startByte": 121,
+      "endByte": 127
+    },
+    {
+      "name": "local.reference",
+      "text": "letter",
+      "startByte": 130,
+      "endByte": 136
+    }
+  ]
+}

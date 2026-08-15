@@ -1,0 +1,38 @@
+[
+  {
+    "name": "C4 public variant header switch",
+    "source": "C4Context\nPerson(customer, \"Customer\")\nSystem(bank, \"Bank\")\nRel(customer, bank, \"Uses\")\n",
+    "old": "C4Context",
+    "replacement": "C4Container"
+  },
+  {
+    "name": "C4 CRLF Unicode label edit",
+    "source": "C4Context\r\nPerson(customer, \"Customer\")\r\nSystem(bank, \"Bank\")\r\n",
+    "old": "Customer",
+    "replacement": "客户"
+  },
+  {
+    "name": "C4 relationship target repair",
+    "source": "C4Context\nPerson(before, \"Before\")\nRel(before,\nSystem(after, \"After\")\n",
+    "old": "Rel(before,",
+    "replacement": "Rel(before, after, \"Uses\")"
+  },
+  {
+    "name": "C4 update closing delimiter repair",
+    "source": "C4Context\nSystem(api, \"API\")\nSystemDb(db, \"Database\")\nUpdateRelStyle(api, db, $lineColor=\"blue\"\n",
+    "old": "UpdateRelStyle(api, db, $lineColor=\"blue\"",
+    "replacement": "UpdateRelStyle(api, db, $lineColor=\"blue\")"
+  },
+  {
+    "name": "C4 nested boundary entity insertion",
+    "source": "C4Deployment\nDeployment_Node(cloud, \"Cloud\") {\n  Container(api, \"API\")\n}\n",
+    "old": "  Container(api, \"API\")",
+    "replacement": "  Container(api, \"API\")\n  ContainerDb(db, \"Database\")"
+  },
+  {
+    "name": "C4 named argument insertion",
+    "source": "C4Container\nContainer(api, \"API\", \"Rust\")\n",
+    "old": "\"Rust\")",
+    "replacement": "\"Rust\", $tags=\"core,public\")"
+  }
+]

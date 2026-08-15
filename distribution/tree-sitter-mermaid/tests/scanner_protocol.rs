@@ -1,6 +1,6 @@
 use std::ffi::{c_char, c_void};
 
-const TOKEN_COUNT: usize = 15;
+const TOKEN_COUNT: usize = 21;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
 const MAX_INDENTATION: usize = 65_534;
@@ -20,6 +20,12 @@ const TREE_VIEW_INDENT: u16 = 11;
 const TREE_VIEW_REINDENT: u16 = 12;
 const TREE_VIEW_DEDENT: u16 = 13;
 const TREE_VIEW_OVERFLOW: u16 = 14;
+const KANBAN_START: u16 = 15;
+const KANBAN_INDENT: u16 = 16;
+const KANBAN_REINDENT: u16 = 17;
+const KANBAN_DEDENT: u16 = 18;
+const KANBAN_OVERFLOW: u16 = 19;
+const END_OF_INPUT: u16 = 20;
 
 #[derive(Clone, Copy)]
 struct TokenGroup {
@@ -31,7 +37,7 @@ struct TokenGroup {
     marker: &'static [u8],
 }
 
-const TOKEN_GROUPS: [TokenGroup; 3] = [
+const TOKEN_GROUPS: [TokenGroup; 4] = [
     TokenGroup {
         start: MINDMAP_START,
         indent: MINDMAP_INDENT,
@@ -54,6 +60,14 @@ const TOKEN_GROUPS: [TokenGroup; 3] = [
         reindent: TREE_VIEW_REINDENT,
         dedent: TREE_VIEW_DEDENT,
         overflow: TREE_VIEW_OVERFLOW,
+        marker: b"Node",
+    },
+    TokenGroup {
+        start: KANBAN_START,
+        indent: KANBAN_INDENT,
+        reindent: KANBAN_REINDENT,
+        dedent: KANBAN_DEDENT,
+        overflow: KANBAN_OVERFLOW,
         marker: b"Node",
     },
 ];
@@ -266,6 +280,12 @@ fn family_mask(first_token: usize) -> [bool; TOKEN_COUNT] {
     symbols
 }
 
+fn token_mask(token: u16) -> [bool; TOKEN_COUNT] {
+    let mut symbols = [false; TOKEN_COUNT];
+    symbols[usize::from(token)] = true;
+    symbols
+}
+
 fn hierarchy_row(indentation: usize, marker: &[u8]) -> Vec<u8> {
     let mut row = vec![b' '; indentation];
     row.extend_from_slice(marker);
@@ -310,6 +330,23 @@ fn scanner_state_round_trips_and_reindents_without_truncation() {
     let dedent = restored.scan(b"Root sibling", &mindmap);
     assert!(dedent.matched);
     assert_eq!(dedent.symbol, MINDMAP_DEDENT);
+}
+
+#[test]
+fn end_of_input_token_is_exact_and_stateless() {
+    let mut scanner = Scanner::new();
+    let end_of_input = token_mask(END_OF_INPUT);
+
+    let matched = scanner.scan(b"", &end_of_input);
+    assert!(matched.matched);
+    assert_eq!(matched.symbol, END_OF_INPUT);
+    assert_eq!(matched.marked_end, 0);
+    assert!(scanner.serialize().is_empty());
+
+    let rejected = scanner.scan(b";", &end_of_input);
+    assert!(!rejected.matched);
+    assert_eq!(rejected.symbol, u16::MAX);
+    assert!(scanner.serialize().is_empty());
 }
 
 #[test]
@@ -449,6 +486,7 @@ fn every_scanner_family_reports_overlong_indentation_before_row_classification()
         (usize::from(MINDMAP_START), MINDMAP_OVERFLOW, b'N'),
         (usize::from(TREEMAP_START), TREEMAP_OVERFLOW, b'"'),
         (usize::from(TREE_VIEW_START), TREE_VIEW_OVERFLOW, b'N'),
+        (usize::from(KANBAN_START), KANBAN_OVERFLOW, b'N'),
     ] {
         let mut scanner = Scanner::new();
         let symbols = family_mask(start);
@@ -472,6 +510,7 @@ fn scanner_switches_family_only_on_a_real_hierarchy_row() {
     let mindmap = family_mask(usize::from(MINDMAP_START));
     let treemap = family_mask(usize::from(TREEMAP_START));
     let tree_view = family_mask(usize::from(TREE_VIEW_START));
+    let kanban = family_mask(usize::from(KANBAN_START));
 
     assert!(scanner.scan(b"Root", &mindmap).matched);
     let before = scanner.serialize();
@@ -481,10 +520,50 @@ fn scanner_switches_family_only_on_a_real_hierarchy_row() {
     assert_eq!(scanner.serialize(), before);
     assert!(!scanner.scan("  │ Child".as_bytes(), &tree_view).matched);
     assert_eq!(scanner.serialize(), before);
+    for metadata in [
+        b"title Example".as_slice(),
+        b"accTitle: Example".as_slice(),
+        b"accDescr: Example".as_slice(),
+        b"accDescr {details}".as_slice(),
+        b"accDescr\n{details}".as_slice(),
+    ] {
+        assert!(!scanner.scan(metadata, &tree_view).matched);
+        assert_eq!(scanner.serialize(), before);
+    }
 
     let switched = scanner.scan(b"\"Section\"", &treemap);
     assert!(switched.matched);
     assert_eq!(switched.symbol, TREEMAP_START);
     let encoded = scanner.serialize();
     assert_eq!(encoded[3], 2);
+
+    let switched = scanner.scan(b"Todo", &kanban);
+    assert!(switched.matched);
+    assert_eq!(switched.symbol, KANBAN_START);
+    let encoded = scanner.serialize();
+    assert_eq!(encoded[3], 4);
+
+    let before = scanner.serialize();
+    assert!(!scanner.scan(b"  ::icon(book)", &kanban).matched);
+    assert_eq!(scanner.serialize(), before);
+    assert!(!scanner.scan(b"  :::urgent", &kanban).matched);
+    assert_eq!(scanner.serialize(), before);
+
+    let switched = scanner.scan(b"Node", &tree_view);
+    assert!(switched.matched);
+    assert_eq!(switched.symbol, TREE_VIEW_START);
+    let encoded = scanner.serialize();
+    assert_eq!(encoded[3], 3);
+
+    let before = scanner.serialize();
+    for metadata in [
+        b"  title Example".as_slice(),
+        b"  accTitle : Example".as_slice(),
+        b"  accDescr : Example".as_slice(),
+        b"  accDescr {details}".as_slice(),
+        b"  accDescr\r\n{details}".as_slice(),
+    ] {
+        assert!(!scanner.scan(metadata, &tree_view).matched);
+        assert_eq!(scanner.serialize(), before);
+    }
 }

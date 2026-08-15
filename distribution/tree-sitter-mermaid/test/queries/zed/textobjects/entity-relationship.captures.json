@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "entity-relationship.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "erDiagram\nCUSTOMER[\"Customer\"]:::entity {\n  string id PK \"identifier\"\n}\nCUSTOMER ||--o{ ORDER : places\nclassDef entity fill:#eef\n",
+      "startByte": 0,
+      "endByte": 129
+    },
+    {
+      "name": "function.around",
+      "text": "CUSTOMER[\"Customer\"]:::entity {\n  string id PK \"identifier\"\n}",
+      "startByte": 10,
+      "endByte": 71
+    },
+    {
+      "name": "class.inside",
+      "text": "CUSTOMER[\"Customer\"]:::entity {\n  string id PK \"identifier\"\n}\nCUSTOMER ||--o{ ORDER : places\nclassDef entity fill:#eef\n",
+      "startByte": 10,
+      "endByte": 129
+    }
+  ]
+}

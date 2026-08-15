@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "radar.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 21,
+      "endByte": 22
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 30,
+      "endByte": 31
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 52,
+      "endByte": 53
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 61,
+      "endByte": 62
+    },
+    {
+      "name": "open",
+      "text": "{",
+      "startByte": 62,
+      "endByte": 63
+    },
+    {
+      "name": "close",
+      "text": "}",
+      "startByte": 83,
+      "endByte": 84
+    }
+  ]
+}

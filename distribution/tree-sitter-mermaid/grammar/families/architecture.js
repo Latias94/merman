@@ -8,39 +8,31 @@ const diagramKeyword = ($) => field(
 
 const statementKeyword = ($, keyword) => field(
   'keyword',
-  alias(token(prec(1, keyword)), $.statement_keyword),
+  alias(token(keyword), $.statement_keyword),
+);
+
+const alignmentKeyword = ($) => field(
+  'keyword',
+  alias(token('align'), $.statement_keyword),
 );
 
 const architectureRules = {
-  architecture_diagram: ($) => choice(
-    seq(
-      field('header', $.architecture_header),
-      optional(field('body', $.architecture_body)),
-    ),
-    seq(
-      field(
-        'header',
-        alias($._architecture_inline_header, $.architecture_header),
+  architecture_diagram: ($) => seq(
+    field('header', $.architecture_header),
+    optional(seq(
+      choice(
+        $._langium_inline_space,
+        $._line_ending,
+        $.comment,
+        $.directive,
       ),
-      field('body', $.architecture_body),
-    ),
-    field(
-      'header',
-      alias($._architecture_header_eof, $.architecture_header),
-    ),
+      optional(field('body', $.architecture_body)),
+    )),
   ),
 
   architecture_header: ($) => seq(
     diagramKeyword($),
-    field('terminator', $._line_ending),
   ),
-
-  _architecture_inline_header: ($) => seq(
-    diagramKeyword($),
-    token.immediate(/[ \t]+/),
-  ),
-
-  _architecture_header_eof: ($) => diagramKeyword($),
 
   architecture_body: ($) => choice(
     repeat1($._architecture_line_item),
@@ -51,13 +43,17 @@ const architectureRules = {
   ),
 
   _architecture_line_item: ($) => choice(
-    seq($._architecture_statement, optional($.comment), $._line_ending),
+    seq(
+      $._architecture_statement,
+      optional(choice($.comment, $.directive)),
+      $._line_ending,
+    ),
     seq(choice($.comment, $.directive), $._line_ending),
     $._blank_line,
   ),
 
   _architecture_eof_item: ($) => choice(
-    seq($._architecture_statement, optional($.comment)),
+    seq($._architecture_statement, optional(choice($.comment, $.directive))),
     $.comment,
     $.directive,
   ),
@@ -109,7 +105,7 @@ const architectureRules = {
 
   architecture_group_statement: ($) => prec(20, seq(
     statementKeyword($, 'group'),
-    field('id', $.architecture_identifier),
+    field('id', $._architecture_identifier),
     optional(field('icon', $.architecture_icon)),
     optional(field('title', choice(
       $.architecture_title,
@@ -120,7 +116,7 @@ const architectureRules = {
 
   architecture_service_statement: ($) => prec(20, seq(
     statementKeyword($, 'service'),
-    field('id', $.architecture_identifier),
+    field('id', $._architecture_identifier),
     optional(choice(
       field('icon_text', $.architecture_quoted_string),
       field('icon_text', $.architecture_unclosed_quoted_string),
@@ -135,20 +131,24 @@ const architectureRules = {
 
   architecture_junction_statement: ($) => prec(20, seq(
     statementKeyword($, 'junction'),
-    field('id', $.architecture_identifier),
+    field('id', $._architecture_identifier),
     optional(field('parent', $.architecture_parent_clause)),
   )),
 
   architecture_alignment_statement: ($) => prec(20, seq(
-    statementKeyword($, 'align'),
+    alignmentKeyword($),
+    token.immediate(/[ \t]+/),
     field('direction', $.architecture_alignment_direction),
-    field('member', $.architecture_identifier),
-    repeat1(field('member', $.architecture_identifier)),
+    field('member', $._architecture_identifier),
+    repeat1(field('member', $._architecture_identifier)),
   )),
 
   architecture_parent_clause: ($) => seq(
-    statementKeyword($, 'in'),
-    field('parent', $.architecture_identifier),
+    field(
+      'keyword',
+      alias(token('in'), $.statement_keyword),
+    ),
+    field('parent', $._architecture_identifier),
   ),
 
   architecture_edge_statement: ($) => prec(30, seq(
@@ -174,7 +174,7 @@ const architectureRules = {
   ),
 
   architecture_edge_endpoint: ($) => seq(
-    field('id', $.architecture_identifier),
+    field('id', $._architecture_identifier),
     optional(field('group', $.architecture_group_modifier)),
   ),
 
@@ -211,27 +211,71 @@ const architectureRules = {
 
   architecture_port_direction: (_) => choice('L', 'R', 'T', 'B'),
 
-  architecture_alignment_direction: (_) => choice('row', 'column'),
+  architecture_alignment_direction: (_) => token.immediate(choice('row', 'column')),
 
   architecture_icon: ($) => seq(
     '(',
     field('name', $.architecture_icon_name),
-    ')',
+    token.immediate(')'),
   ),
 
   architecture_title: ($) => seq(
     '[',
     field('text', choice(
-      $.architecture_quoted_string,
+      alias($._architecture_title_quoted_string, $.architecture_quoted_string),
       $.architecture_bare_title,
     )),
-    ']',
+    token.immediate(']'),
   ),
 
   architecture_unclosed_title: ($) => seq(
     '[',
-    field('recovery', $.architecture_unclosed_quoted_string),
+    field(
+      'recovery',
+      alias(
+        $._architecture_title_unclosed_quoted_string,
+        $.architecture_unclosed_quoted_string,
+      ),
+    ),
   ),
+
+  _architecture_title_quoted_string: ($) => prec.dynamic(10, choice(
+    seq(
+      token.immediate('"'),
+      repeat(choice(
+        $._architecture_double_quoted_content,
+        $._architecture_escape_sequence,
+        $._line_ending,
+      )),
+      token.immediate('"'),
+    ),
+    seq(
+      token.immediate("'"),
+      repeat(choice(
+        $._architecture_single_quoted_content,
+        $._architecture_escape_sequence,
+        $._line_ending,
+      )),
+      token.immediate("'"),
+    ),
+  )),
+
+  _architecture_title_unclosed_quoted_string: ($) => prec.dynamic(-10, choice(
+    seq(
+      token.immediate('"'),
+      repeat(choice(
+        $._architecture_double_quoted_content,
+        $._architecture_escape_sequence,
+      )),
+    ),
+    seq(
+      token.immediate("'"),
+      repeat(choice(
+        $._architecture_single_quoted_content,
+        $._architecture_escape_sequence,
+      )),
+    ),
+  )),
 
   architecture_quoted_string: ($) => prec.dynamic(10, choice(
     seq(
@@ -277,13 +321,24 @@ const architectureRules = {
   )),
 
   architecture_identifier: (_) => token(prec(
-    1,
+    0,
     /[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?/,
   )),
 
-  architecture_icon_name: (_) => token(/[A-Za-z0-9_:-]+/),
+  architecture_malformed_reserved_identifier: (_) => choice(
+    'align',
+    'row',
+    'column',
+  ),
 
-  architecture_bare_title: (_) => token(prec(-1, /[A-Za-z0-9_ ]+/)),
+  _architecture_identifier: ($) => choice(
+    $.architecture_malformed_reserved_identifier,
+    $.architecture_identifier,
+  ),
+
+  architecture_icon_name: (_) => token.immediate(/[A-Za-z0-9_:-]+/),
+
+  architecture_bare_title: (_) => token.immediate(prec(-1, /[A-Za-z0-9_ ]+/)),
 
   architecture_accessibility_text: (_) => token(prec(-5, /[^}]+/)),
 
@@ -300,6 +355,7 @@ const architectureRules = {
 
 const architectureConflicts = ($) => [
   [$.architecture_quoted_string, $.architecture_unclosed_quoted_string],
+  [$._architecture_title_quoted_string, $._architecture_title_unclosed_quoted_string],
 ];
 
 module.exports = { architectureConflicts, architectureRules };

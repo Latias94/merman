@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Railroad PEG predicate and suffix edit",
+    "source": "railroad-peg-beta\nrule <- &\"a\" other? ;\n",
+    "old": "&\"a\" other?",
+    "replacement": "!\"b\" other+"
+  },
+  {
+    "name": "Railroad PEG CRLF Unicode literal edit",
+    "source": "railroad-peg-beta\r\nrule <- \"before\" / . ;\r\n",
+    "old": "before",
+    "replacement": "世界"
+  },
+  {
+    "name": "Railroad PEG missing definition repair",
+    "source": "railroad-peg-beta\nbefore <- \"a\" ;\nbroken <- ;\nafter <- . ;\n",
+    "old": "broken <- ;",
+    "replacement": "broken <- ( before / after )* ;"
+  },
+  {
+    "name": "Railroad PEG ordered choice insertion",
+    "source": "railroad-peg-beta\nrule <- \"a\" / ref ;\n",
+    "old": "/ ref",
+    "replacement": "/ ref / ( \"b\" item? )"
+  }
+]

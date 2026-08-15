@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Timeline CRLF Unicode event",
+    "source": "timeline TD\r\nsection Releases\r\n2026 : Global launch\r\n",
+    "old": "Global launch",
+    "replacement": "全球上线"
+  },
+  {
+    "name": "Timeline direction edit",
+    "source": "timeline LR\nsection Releases\n2026 : Launch\n",
+    "old": "LR",
+    "replacement": "TD"
+  },
+  {
+    "name": "Timeline event insertion",
+    "source": "timeline\nsection Releases\n2026 : Launch\n",
+    "old": "2026 : Launch",
+    "replacement": "2026 : Preview : Launch"
+  },
+  {
+    "name": "Timeline malformed event repair",
+    "source": "timeline\nsection Before\n:broken event\nsection After\n2026 : Healthy\n",
+    "old": ":broken event",
+    "replacement": ": recovered event"
+  },
+  {
+    "name": "Timeline header-only body insertion",
+    "source": "timeline",
+    "old": "timeline",
+    "replacement": "timeline TD\nsection Added\n2026 : Launch"
+  }
+]

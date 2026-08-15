@@ -1,0 +1,171 @@
+==================
+alternation concatenation repetition grouping optional and comments
+==================
+
+railroad-abnf-beta
+title URI grammar
+; standalone ABNF comment
+scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ;
+rule = 1*2"hello" / [ other-rule ] / %x41 ;
+exact = 3DIGIT ;
+
+---
+
+(source_file
+  (railroad_abnf_diagram
+    (railroad_abnf_header
+      (diagram_keyword))
+    (railroad_abnf_body
+      (railroad_title_statement
+        (railroad_statement_keyword)
+        (railroad_line_text))
+      (railroad_abnf_comment)
+      (railroad_abnf_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator)
+        (railroad_abnf_alternation
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_primary
+                (railroad_abnf_reference
+                  (railroad_abnf_rule_name))))
+            (railroad_abnf_element
+              (railroad_abnf_repeat)
+              (railroad_abnf_primary
+                (railroad_abnf_group
+                  (railroad_abnf_alternation
+                    (railroad_abnf_concatenation
+                      (railroad_abnf_element
+                        (railroad_abnf_primary
+                          (railroad_abnf_reference
+                            (railroad_abnf_rule_name)))))
+                    (railroad_abnf_alternation_operator)
+                    (railroad_abnf_concatenation
+                      (railroad_abnf_element
+                        (railroad_abnf_primary
+                          (railroad_abnf_reference
+                            (railroad_abnf_rule_name)))))
+                    (railroad_abnf_alternation_operator)
+                    (railroad_abnf_concatenation
+                      (railroad_abnf_element
+                        (railroad_abnf_primary
+                          (railroad_abnf_string))))
+                    (railroad_abnf_alternation_operator)
+                    (railroad_abnf_concatenation
+                      (railroad_abnf_element
+                        (railroad_abnf_primary
+                          (railroad_abnf_string))))
+                    (railroad_abnf_alternation_operator)
+                    (railroad_abnf_concatenation
+                      (railroad_abnf_element
+                        (railroad_abnf_primary
+                          (railroad_abnf_string)))))))))))
+      (railroad_abnf_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator)
+        (railroad_abnf_alternation
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_repeat)
+              (railroad_abnf_primary
+                (railroad_abnf_string))))
+          (railroad_abnf_alternation_operator)
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_primary
+                (railroad_abnf_optional_group
+                  (railroad_abnf_alternation
+                    (railroad_abnf_concatenation
+                      (railroad_abnf_element
+                        (railroad_abnf_primary
+                          (railroad_abnf_reference
+                            (railroad_abnf_rule_name))))))))))
+          (railroad_abnf_alternation_operator)
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_primary
+                (railroad_abnf_numeric_value))))))
+      (railroad_abnf_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator)
+        (railroad_abnf_alternation
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_repeat)
+              (railroad_abnf_primary
+                (railroad_abnf_reference
+                  (railroad_abnf_rule_name))))))))))
+
+==================
+multiline string follows pinned token language
+==================
+
+railroad-abnf-beta
+rule = "line one
+line two" ;
+
+---
+
+(source_file
+  (railroad_abnf_diagram
+    (railroad_abnf_header
+      (diagram_keyword))
+    (railroad_abnf_body
+      (railroad_abnf_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator)
+        (railroad_abnf_alternation
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_primary
+                (railroad_abnf_string)))))))))
+
+==================
+missing definition preserves later sibling
+==================
+
+railroad-abnf-beta
+before = "a" ;
+broken = ;
+after = %d48.49 ;
+
+---
+
+(source_file
+  (railroad_abnf_diagram
+    (railroad_abnf_header
+      (diagram_keyword))
+    (railroad_abnf_body
+      (railroad_abnf_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator)
+        (railroad_abnf_alternation
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_primary
+                (railroad_abnf_string))))))
+      (railroad_abnf_incomplete_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator))
+      (railroad_abnf_rule
+        (railroad_abnf_rule_name)
+        (railroad_abnf_assignment_operator)
+        (railroad_abnf_alternation
+          (railroad_abnf_concatenation
+            (railroad_abnf_element
+              (railroad_abnf_primary
+                (railroad_abnf_numeric_value)))))))))
+
+==================
+header only remains structured
+==================
+
+railroad-abnf-beta
+
+---
+
+(source_file
+  (railroad_abnf_diagram
+    (railroad_abnf_header
+      (diagram_keyword))
+    (railroad_abnf_body)))

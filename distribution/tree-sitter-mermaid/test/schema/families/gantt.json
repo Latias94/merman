@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "publicId": "gantt",
+  "rootNode": "gantt_diagram",
+  "nodes": {
+    "gantt_accessibility_description_block": ["text"],
+    "gantt_accessibility_description_statement": ["delimiter", "description", "keyword", "text"],
+    "gantt_accessibility_title_statement": ["delimiter", "keyword", "text"],
+    "gantt_call_action": ["arguments", "close", "keyword", "name", "open"],
+    "gantt_click_statement": ["action", "keyword", "task"],
+    "gantt_dependency_clause": ["keyword", "reference"],
+    "gantt_diagram": ["body", "header"],
+    "gantt_flag_statement": ["keyword"],
+    "gantt_href_action": ["keyword", "url"],
+    "gantt_incomplete_task_statement": ["delimiter", "name"],
+    "gantt_malformed_href_action": ["keyword", "url"],
+    "gantt_malformed_statement": ["text"],
+    "gantt_section_statement": ["keyword", "name"],
+    "gantt_setting_statement": ["keyword", "value"],
+    "gantt_task_item": ["constraint", "date", "duration", "status", "value"],
+    "gantt_task_metadata": ["item"],
+    "gantt_task_statement": ["delimiter", "metadata", "name"],
+    "gantt_title_statement": ["keyword", "text"],
+    "gantt_unclosed_accessibility_description_block": ["text"],
+    "gantt_until_clause": ["keyword", "reference"],
+    "gantt_weekday_statement": ["keyword", "value"],
+    "gantt_weekend_statement": ["keyword", "value"]
+  }
+}

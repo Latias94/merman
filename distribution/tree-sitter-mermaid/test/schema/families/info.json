@@ -3,9 +3,9 @@
   "publicId": "info",
   "rootNode": "info_diagram",
   "nodes": {
-    "info_body": ["show_info", "statement"],
+    "info_body": ["recovery", "show_info", "statement"],
     "info_diagram": ["body", "header"],
     "info_header": ["keyword"],
-    "info_show_statement": ["keyword"]
+    "info_show_statement": ["comment", "directive", "keyword"]
   }
 }

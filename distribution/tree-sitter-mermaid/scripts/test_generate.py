@@ -15,11 +15,13 @@ from scripts.generate import (
     GENERATED_ARTIFACTS,
     SOURCE_ARTIFACTS,
     assert_exact_generated_set,
+    build_wasm_artifact,
     cli_command,
     compare_sets,
     generate_once,
     install_artifacts_transactionally,
     package_artifact_set_failures,
+    query_profiles,
     receipt_input_drift,
     snapshot_receipt_inputs,
     validate_cli_version,
@@ -38,6 +40,46 @@ def write_artifacts(root: Path, marker: bytes = b"same") -> None:
 
 
 class GenerationBoundaryTests(unittest.TestCase):
+    def test_query_profiles_are_discovered_in_stable_profile_surface_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            for relative in (
+                Path("queries/zed/outline.scm"),
+                Path("queries/portable/highlights.scm"),
+            ):
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("(source_file) @root")
+
+            self.assertEqual(
+                query_profiles(package),
+                [
+                    (
+                        "portable",
+                        "highlights",
+                        Path("queries/portable/highlights.scm"),
+                    ),
+                    ("zed", "outline", Path("queries/zed/outline.scm")),
+                ],
+            )
+
+    def test_unknown_or_nested_query_profile_paths_are_rejected(self) -> None:
+        for relative in (
+            Path("queries/editor/highlights.scm"),
+            Path("queries/portable/semantic/highlights.scm"),
+            Path("queries/portable/colors.scm"),
+        ):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
+                package = Path(directory)
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("(source_file) @root")
+
+                with self.assertRaisesRegex(
+                    SystemExit, "query profile|unknown query profile"
+                ):
+                    query_profiles(package)
+
     def test_cli_command_uses_the_package_wrapper_through_node(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             package = Path(directory)
@@ -110,8 +152,10 @@ class GenerationBoundaryTests(unittest.TestCase):
 
     def test_canonical_generation_records_one_wasm_build(self) -> None:
         with patch("scripts.generate.copy_generation_inputs"), patch(
-            "scripts.generate.run", side_effect=[7, 11]
-        ) as run_command, patch.object(Path, "mkdir"):
+            "scripts.generate.run", return_value=7
+        ) as run_command, patch(
+            "scripts.generate.build_wasm_artifact", return_value=11
+        ) as build_wasm:
             timings = generate_once(
                 Path("package"),
                 ["node", "tree-sitter"],
@@ -119,12 +163,45 @@ class GenerationBoundaryTests(unittest.TestCase):
                 Path("destination"),
             )
 
-        self.assertEqual(run_command.call_count, 2)
-        self.assertIn("generate", run_command.call_args_list[0].args[0])
-        self.assertIn("build", run_command.call_args_list[1].args[0])
+        run_command.assert_called_once()
+        self.assertIn("generate", run_command.call_args.args[0])
+        build_wasm.assert_called_once_with(
+            Path("package"),
+            ["node", "tree-sitter"],
+            Path("destination"),
+        )
         self.assertEqual(
             timings,
             {"generateMilliseconds": 7, "wasmBuildMilliseconds": 11},
+        )
+
+    def test_wasm_build_disables_the_pathological_llvm_cfg_pass(self) -> None:
+        with patch(
+            "scripts.generate.resolve_wasi_clang", return_value=Path("wasi/bin/clang")
+        ), patch("scripts.generate.run", side_effect=[11, 3]) as run_command, patch.object(
+            Path, "mkdir"
+        ):
+            milliseconds = build_wasm_artifact(
+                Path("package"),
+                ["node", "tree-sitter"],
+                Path("destination"),
+            )
+
+        self.assertEqual(milliseconds, 11)
+        compiler = run_command.call_args_list[0].args[0]
+        self.assertEqual(compiler[0], "wasi/bin/clang")
+        self.assertIn("-mllvm", compiler)
+        self.assertIn(
+            "-wasm-disable-fix-irreducible-control-flow-pass",
+            compiler,
+        )
+        self.assertEqual(
+            run_command.call_args_list[1].args[0],
+            [
+                "node",
+                "package/scripts/validate_wasm.js",
+                "destination/wasm/tree-sitter-mermaid.wasm",
+            ],
         )
 
     def test_extra_c_binding_paths_are_rejected(self) -> None:

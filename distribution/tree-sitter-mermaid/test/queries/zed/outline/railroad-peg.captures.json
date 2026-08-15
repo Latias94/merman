@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "railroad-peg.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "railroad-peg-beta",
+      "startByte": 0,
+      "endByte": 17
+    },
+    {
+      "name": "item",
+      "text": "railroad-peg-beta\ntitle PEG grammar\n# comment\nrule <- &\"a\" !\"b\" . other? / (\"x\" item+) ;\n",
+      "startByte": 0,
+      "endByte": 89
+    },
+    {
+      "name": "name",
+      "text": "rule",
+      "startByte": 46,
+      "endByte": 50
+    },
+    {
+      "name": "item",
+      "text": "rule <- &\"a\" !\"b\" . other? / (\"x\" item+) ;",
+      "startByte": 46,
+      "endByte": 88
+    }
+  ]
+}

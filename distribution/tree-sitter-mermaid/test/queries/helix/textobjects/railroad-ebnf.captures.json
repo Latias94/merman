@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "profile": "helix",
+  "consumerVersion": "25.07.1",
+  "surface": "textobjects",
+  "source": "railroad-ebnf.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "railroad-ebnf-beta\nrule ::= [ sign ] , { digit | \"_\" } ;\nsign ::= \"+\" | \"-\" ;\n",
+      "startByte": 0,
+      "endByte": 78
+    },
+    {
+      "name": "class.inside",
+      "text": "\nrule ::= [ sign ] , { digit | \"_\" } ;\nsign ::= \"+\" | \"-\" ;\n",
+      "startByte": 18,
+      "endByte": 78
+    },
+    {
+      "name": "entry.around",
+      "text": "rule ::= [ sign ] , { digit | \"_\" } ;",
+      "startByte": 19,
+      "endByte": 56
+    },
+    {
+      "name": "function.around",
+      "text": "rule ::= [ sign ] , { digit | \"_\" } ;",
+      "startByte": 19,
+      "endByte": 56
+    },
+    {
+      "name": "function.inside",
+      "text": "[ sign ] , { digit | \"_\" }",
+      "startByte": 28,
+      "endByte": 54
+    },
+    {
+      "name": "entry.around",
+      "text": "sign ::= \"+\" | \"-\" ;",
+      "startByte": 57,
+      "endByte": 77
+    },
+    {
+      "name": "function.around",
+      "text": "sign ::= \"+\" | \"-\" ;",
+      "startByte": 57,
+      "endByte": 77
+    },
+    {
+      "name": "function.inside",
+      "text": "\"+\" | \"-\"",
+      "startByte": 66,
+      "endByte": 75
+    }
+  ]
+}
+

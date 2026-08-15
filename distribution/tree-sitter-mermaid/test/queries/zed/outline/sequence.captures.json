@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "sequence.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "sequenceDiagram",
+      "startByte": 0,
+      "endByte": 15
+    },
+    {
+      "name": "item",
+      "text": "sequenceDiagram\nactor U as 用户\nparticipant API@{ \"type\": \"boundary\" } as Checkout API\nautonumber 10 5\nU->>+API: start\nalt accepted\n  Note over U,API: processing\nelse rejected\n  API-->>-U: complete\nend\n",
+      "startByte": 0,
+      "endByte": 204
+    },
+    {
+      "name": "item",
+      "text": "actor U as 用户",
+      "startByte": 16,
+      "endByte": 33
+    },
+    {
+      "name": "name",
+      "text": "U",
+      "startByte": 22,
+      "endByte": 23
+    },
+    {
+      "name": "item",
+      "text": "participant API@{ \"type\": \"boundary\" } as Checkout API",
+      "startByte": 34,
+      "endByte": 88
+    },
+    {
+      "name": "name",
+      "text": "API",
+      "startByte": 46,
+      "endByte": 49
+    }
+  ]
+}

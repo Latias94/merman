@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "xychart.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "xychart",
+      "startByte": 0,
+      "endByte": 7
+    },
+    {
+      "name": "attribute",
+      "text": "-beta",
+      "startByte": 7,
+      "endByte": 12
+    },
+    {
+      "name": "constant",
+      "text": "horizontal",
+      "startByte": 13,
+      "endByte": 23
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 24,
+      "endByte": 29
+    },
+    {
+      "name": "string",
+      "text": "\"`**Revenue** by quarter`\"",
+      "startByte": 30,
+      "endByte": 56
+    },
+    {
+      "name": "keyword",
+      "text": "x-axis",
+      "startByte": 57,
+      "endByte": 63
+    },
+    {
+      "name": "string",
+      "text": "\"Quarter\"",
+      "startByte": 64,
+      "endByte": 73
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 74,
+      "endByte": 75
+    },
+    {
+      "name": "string",
+      "text": "Q1",
+      "startByte": 75,
+      "endByte": 77
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 77,
+      "endByte": 78
+    },
+    {
+      "name": "string",
+      "text": "\"Q2\"",
+      "startByte": 79,
+      "endByte": 83
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 83,
+      "endByte": 84
+    },
+    {
+      "name": "keyword",
+      "text": "y-axis",
+      "startByte": 85,
+      "endByte": 91
+    },
+    {
+      "name": "string",
+      "text": "\"USD\"",
+      "startByte": 92,
+      "endByte": 97
+    },
+    {
+      "name": "number",
+      "text": "0",
+      "startByte": 98,
+      "endByte": 99
+    },
+    {
+      "name": "operator",
+      "text": "-->",
+      "startByte": 100,
+      "endByte": 103
+    },
+    {
+      "name": "number",
+      "text": "100",
+      "startByte": 104,
+      "endByte": 107
+    },
+    {
+      "name": "keyword",
+      "text": "line",
+      "startByte": 108,
+      "endByte": 112
+    },
+    {
+      "name": "string",
+      "text": "\"Forecast\"",
+      "startByte": 113,
+      "endByte": 123
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 124,
+      "endByte": 125
+    },
+    {
+      "name": "number",
+      "text": "25",
+      "startByte": 125,
+      "endByte": 127
+    },
+    {
+      "name": "string",
+      "text": "\"Launch\"",
+      "startByte": 128,
+      "endByte": 136
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 136,
+      "endByte": 137
+    },
+    {
+      "name": "number",
+      "text": "90",
+      "startByte": 138,
+      "endByte": 140
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 140,
+      "endByte": 141
+    },
+    {
+      "name": "keyword",
+      "text": "bar",
+      "startByte": 142,
+      "endByte": 145
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "[",
+      "startByte": 146,
+      "endByte": 147
+    },
+    {
+      "name": "number",
+      "text": "20",
+      "startByte": 147,
+      "endByte": 149
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ",",
+      "startByte": 149,
+      "endByte": 150
+    },
+    {
+      "name": "number",
+      "text": "80",
+      "startByte": 151,
+      "endByte": 153
+    },
+    {
+      "name": "punctuation.bracket",
+      "text": "]",
+      "startByte": 153,
+      "endByte": 154
+    },
+    {
+      "name": "keyword",
+      "text": "accTitle",
+      "startByte": 155,
+      "endByte": 163
+    },
+    {
+      "name": "punctuation.delimiter",
+      "text": ":",
+      "startByte": 163,
+      "endByte": 164
+    },
+    {
+      "name": "string",
+      "text": "Revenue overview",
+      "startByte": 165,
+      "endByte": 181
+    }
+  ]
+}

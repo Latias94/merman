@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "gantt.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "call notify()",
+      "startByte": 169,
+      "endByte": 182
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 181,
+      "endByte": 182
+    }
+  ]
+}

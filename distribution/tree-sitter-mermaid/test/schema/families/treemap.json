@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "publicId": "treemap",
+  "rootNode": "treemap_diagram",
+  "nodes": {
+    "treemap_body": ["statement", "trivia"],
+    "treemap_class_annotation": ["marker", "name"],
+    "treemap_class_definition": ["keyword", "name", "style"],
+    "treemap_class_marker": [],
+    "treemap_class_name": [],
+    "treemap_diagram": ["body", "header"],
+    "treemap_header": ["keyword"],
+    "treemap_incomplete_leaf": ["name", "separator"],
+    "treemap_indentation_dedent": [],
+    "treemap_indentation_indent": [],
+    "treemap_indentation_overflow": [],
+    "treemap_indentation_reindent": [],
+    "treemap_indentation_start": [],
+    "treemap_invalid_value": [],
+    "treemap_item_statement": ["indentation", "item"],
+    "treemap_leaf": ["class", "name", "separator", "value"],
+    "treemap_malformed_leaf": ["name", "separator", "value"],
+    "treemap_number": [],
+    "treemap_quoted_name": [],
+    "treemap_section": ["class", "name"],
+    "treemap_style_text": [],
+    "treemap_unclosed_name": [],
+    "treemap_value_separator": []
+  }
+}

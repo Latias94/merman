@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "venn.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: venn\n---",
+      "startByte": 0,
+      "endByte": 19
+    }
+  ]
+}

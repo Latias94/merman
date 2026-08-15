@@ -3,17 +3,16 @@
 This directory owns Merman's independently versioned tolerant Tree-sitter language package for
 Mermaid source. It is intentionally adjacent to, and not part of, Merman's semantic parser stack.
 
-The current `0.1.0` package is a dry-run-only development surface. Architecture, Cynefin, GitGraph,
-Info, Packet, Pie, Radar, and Wardley are at the `structured` support tier; the remaining 27 public
-families are at `recognized`. Recognition proves only pinned, runtime-replayed header dispatch.
-Structured support additionally requires family-local corpus, recovery, incremental, node-schema,
-query, and conformance evidence recorded in `metadata/support.json`.
+The current `0.1.0` package is a dry-run-only development surface. All 35 public families are at
+the `structured` support tier. Structured support requires pinned, runtime-replayed header
+dispatch plus family-local corpus, recovery, incremental, node-schema, query, and conformance
+evidence recorded in `metadata/support.json`.
 
 The package includes a receipt-bound portable highlight profile at
 `queries/portable/highlights.scm`. C, Rust, Node, and language-WASM consumers compile the same
-profile, while Node and language-WASM replay the U3 capture goldens. This proves the portable
-delivery contract for the structured families only; complete family-by-surface editor coverage
-remains gated by the later `query-complete` support tier.
+profile, while Node and language-WASM replay the U3-U7 capture goldens. This proves the portable
+highlight delivery contract for all structured families; complete family-by-surface editor
+coverage remains gated by the later `query-complete` support tier.
 
 Run the boundary and contract gate from the repository root:
 

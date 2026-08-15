@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "railroad.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "railroad-beta",
+      "startByte": 0,
+      "endByte": 13
+    },
+    {
+      "name": "item",
+      "text": "railroad-beta\ntitle Railroad grammar\nroot = sequence(terminal(\"世界\"), nonterminal(\"item\"), zeroOrMore(special(\"anything\"))) ;\n/* comment */\n",
+      "startByte": 0,
+      "endByte": 143
+    },
+    {
+      "name": "name",
+      "text": "root",
+      "startByte": 37,
+      "endByte": 41
+    },
+    {
+      "name": "item",
+      "text": "root = sequence(terminal(\"世界\"), nonterminal(\"item\"), zeroOrMore(special(\"anything\"))) ;",
+      "startByte": 37,
+      "endByte": 128
+    }
+  ]
+}

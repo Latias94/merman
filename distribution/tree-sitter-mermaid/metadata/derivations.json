@@ -36,13 +36,10 @@
     },
     {
       "localPaths": [
-        "grammar/families/recognized.js",
         "grammar/shared/header.js",
         "metadata/headers.json"
       ],
       "localSymbols": [
-        "FAMILY_SPECS",
-        "recognizedFamilyRules",
         "terminatedHeader",
         "cases"
       ],
@@ -104,10 +101,75 @@
     },
     {
       "localPaths": [
-        "grammar/families/flowchart.js"
+        "grammar/families/gantt.js",
+        "grammar/families/ishikawa.js",
+        "grammar/families/journey.js",
+        "grammar/families/quadrant-chart.js",
+        "grammar/families/requirement.js",
+        "grammar/families/timeline.js",
+        "grammar/families/xy-chart.js"
       ],
       "localSymbols": [
-        "flowchartRules"
+        "ganttRules",
+        "ishikawaRules",
+        "journeyRules",
+        "quadrantChartRules",
+        "requirementRules",
+        "timelineRules",
+        "xyChartRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/gantt/parser/gantt.jison:1-188",
+            "packages/mermaid/src/diagrams/ishikawa/parser/ishikawa.jison:1-56",
+            "packages/mermaid/src/diagrams/user-journey/parser/journey.jison:1-69",
+            "packages/mermaid/src/diagrams/quadrant-chart/parser/quadrant.jison:1-189",
+            "packages/mermaid/src/diagrams/requirement/parser/requirementDiagram.jison:1-267",
+            "packages/mermaid/src/diagrams/timeline/parser/timeline.jison:1-87",
+            "packages/mermaid/src/diagrams/xychart/parser/xychart.jison:1-177"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/block.js",
+        "grammar/families/c4.js",
+        "grammar/families/class.js",
+        "grammar/families/entity-relationship.js"
+      ],
+      "localSymbols": [
+        "blockRules",
+        "c4Rules",
+        "classRules",
+        "entityRelationshipRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/block/parser/block.jison:1-293",
+            "packages/mermaid/src/diagrams/c4/parser/c4Diagram.jison:1-322",
+            "packages/mermaid/src/diagrams/class/parser/classDiagram.jison:1-440",
+            "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:1-309"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/flowchart.js",
+        "grammar/families/state.js",
+        "grammar/families/swimlane.js"
+      ],
+      "localSymbols": [
+        "flowchartRules",
+        "stateRules",
+        "swimlaneRules"
       ],
       "sources": [
         {
@@ -121,7 +183,10 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/mermaid/src/diagrams/flowchart/parser/flow.jison:116-540"
+            "packages/mermaid/src/diagrams/flowchart/parser/flow.jison:1-635",
+            "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison:1-352",
+        "packages/mermaid/src/diagrams/swimlanes/detector.ts:1-30",
+        "packages/mermaid/src/diagrams/swimlanes/swimlanesDiagram.ts:1-34"
           ]
         }
       ]
@@ -145,7 +210,7 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/mermaid/src/diagrams/mindmap/parser/mindmap.jison:21-156",
+        "packages/mermaid/src/diagrams/mindmap/parser/mindmap.jison:1-127",
             "packages/mermaid/src/diagrams/mindmap/mindmapDb.ts:62-125"
           ]
         }
@@ -163,7 +228,7 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/mermaid/src/diagrams/kanban/parser/kanban.jison:24-190",
+        "packages/mermaid/src/diagrams/kanban/parser/kanban.jison:1-166",
             "packages/mermaid/src/diagrams/kanban/kanbanDb.ts:21-48"
           ]
         }
@@ -174,14 +239,16 @@
         "grammar/families/sankey.js"
       ],
       "localSymbols": [
-        "sankeyRules"
+      "sankeyConflicts",
+      "sankeyRules"
       ],
       "sources": [
         {
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/mermaid/src/diagrams/sankey/parser/sankey.jison:29-64"
+          "packages/mermaid/src/diagrams/sankey/parser/sankey.jison:1-67",
+          "packages/mermaid/src/diagrams/sankey/sankeyDetector.ts:3-7"
           ]
         }
       ]
@@ -198,7 +265,8 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/mermaid/src/diagrams/venn/parser/venn.jison:11-146"
+          "packages/mermaid/src/diagrams/venn/parser/venn.jison:1-135",
+          "packages/mermaid/src/diagrams/venn/vennDetector.ts:7-11"
           ]
         }
       ]
@@ -208,6 +276,7 @@
         "grammar/families/event-modeling.js"
       ],
       "localSymbols": [
+        "eventModelingConflicts",
         "eventModelingRules"
       ],
       "sources": [
@@ -215,7 +284,24 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/parser/src/language/eventmodeling/event-modeling.langium:9-167"
+            "packages/parser/src/language/eventmodeling/event-modeling.langium:9-70"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/sequence.js"
+      ],
+      "localSymbols": [
+        "sequenceRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/sequence/parser/sequenceDiagram.jison:11-421"
           ]
         }
       ]
@@ -249,8 +335,45 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/parser/src/language/treeView/treeView.langium:26-75",
+          "packages/parser/src/language/treeView/treeView.langium:26-64",
             "packages/mermaid/src/diagrams/treeView/boxDrawingPreprocessor.ts:67-208"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "grammar/families/railroad-shared.js",
+        "grammar/families/railroad.js",
+        "grammar/families/railroad-abnf.js",
+        "grammar/families/railroad-ebnf.js",
+        "grammar/families/railroad-peg.js"
+      ],
+      "localSymbols": [
+        "railroadSharedRules",
+        "railroadRules",
+        "railroadAbnfRules",
+        "railroadEbnfConflicts",
+        "railroadEbnfRules",
+        "railroadPegRules"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/parser/src/language/railroad/railroad.langium:1-113",
+            "packages/parser/src/language/railroad/tokenBuilder.ts:1-7",
+            "packages/parser/src/language/railroad/valueConverter.ts:1-68",
+            "packages/parser/src/language/railroad-abnf/railroad-abnf.langium:1-114",
+            "packages/parser/src/language/railroad-abnf/tokenBuilder.ts:1-7",
+            "packages/parser/src/language/railroad-abnf/valueConverter.ts:1-37",
+            "packages/parser/src/language/railroad-ebnf/railroad-ebnf.langium:1-166",
+            "packages/parser/src/language/railroad-ebnf/tokenBuilder.ts:1-7",
+            "packages/parser/src/language/railroad-ebnf/valueConverter.ts:1-72",
+            "packages/parser/src/language/railroad-peg/railroad-peg.langium:1-111",
+            "packages/parser/src/language/railroad-peg/tokenBuilder.ts:1-7",
+            "packages/parser/src/language/railroad-peg/valueConverter.ts:1-68"
           ]
         }
       ]
@@ -267,15 +390,18 @@
           "sourceId": "mermaid",
           "relationship": "translated",
           "sourcePaths": [
-            "packages/mermaid-zenuml/src/parser.ts:1-27"
+            "packages/mermaid-zenuml/src/detector.ts:3-10",
+            "packages/mermaid-zenuml/src/parser.ts:1-11",
+            "packages/mermaid-zenuml/src/zenumlRenderer.ts:1-4",
+            "packages/mermaid-zenuml/src/zenumlRenderer.ts:63-81"
           ]
         },
         {
           "sourceId": "zenuml-core",
           "relationship": "translated",
           "sourcePaths": [
-            "src/g4/sequenceLexer.g4:7-180",
-            "src/g4/sequenceParser.g4:7-176"
+            "src/g4/sequenceLexer.g4:1-256",
+            "src/g4/sequenceParser.g4:1-352"
           ]
         }
       ]
@@ -299,7 +425,7 @@
             "packages/mermaid/src/diagrams/mindmap/mindmapDb.ts:62-125",
             "packages/mermaid/src/diagrams/kanban/kanbanDb.ts:21-48",
             "packages/parser/src/language/treemap/treemap.langium:44-65",
-            "packages/parser/src/language/treeView/treeView.langium:26-75"
+            "packages/parser/src/language/treeView/treeView.langium:26-64"
           ]
         }
       ]
@@ -365,6 +491,24 @@
             "crates/generate/src/templates/alloc.h",
             "crates/generate/src/templates/array.h",
             "crates/generate/src/parser.h.inc"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "scripts/generate.py"
+      ],
+      "localSymbols": [
+        "build_wasm_artifact",
+        "resolve_wasi_clang"
+      ],
+      "sources": [
+        {
+          "sourceId": "tree-sitter",
+          "relationship": "modified",
+          "sourcePaths": [
+            "crates/loader/src/loader.rs:1290-1467"
           ]
         }
       ]

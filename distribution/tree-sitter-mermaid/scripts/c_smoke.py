@@ -106,9 +106,13 @@ def main() -> int:
     )
     if len(fixtures) != 35:
         raise SystemExit(f"expected 35 public family fixtures, found {len(fixtures)}")
-    receipt_id = json.loads(
+    receipt = json.loads(
         (package / "metadata/artifact-receipt.json").read_text(encoding="utf-8")
-    )["receiptId"]
+    )
+    receipt_id = receipt["receiptId"]
+    query_paths = [profile["path"] for profile in receipt["queryProfiles"]]
+    if "queries/portable/highlights.scm" not in query_paths:
+        raise SystemExit("artifact receipt lacks portable highlights")
 
     output_name = (
         "tree-sitter-mermaid-c-smoke.exe"
@@ -119,9 +123,20 @@ def main() -> int:
         output = Path(directory) / output_name
         command = compiler_command(compiler, runtime, output)
         subprocess.run(command, cwd=package, check=True)
-        for fixture in fixtures:
+        for index, fixture in enumerate(fixtures):
+            fixture_queries = (
+                query_paths
+                if index == 0
+                else ["queries/portable/highlights.scm"]
+            )
             subprocess.run(
-                [str(output), fixture["source"], fixture["root"], receipt_id],
+                [
+                    str(output),
+                    fixture["source"],
+                    fixture["root"],
+                    receipt_id,
+                    *fixture_queries,
+                ],
                 cwd=package,
                 check=True,
             )

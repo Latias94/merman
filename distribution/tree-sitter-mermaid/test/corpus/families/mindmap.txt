@@ -1,17 +1,17 @@
 ==================
-relative indentation and decorators
+all shapes decorators comments and relative indentation stay structural
 ==================
 
-mindmap
-  root((Mind map))
-      Origins
-        Long history
-    Research
-      On effectiveness
+MiNdMaP
+  root((思维导图))
+      square[Square]
+        rounded(Rounded)
+    circle((Circle))
+      cloud)Cloud(
+      bang))Bang((
+      hex{{Hexagon}} %% local note
       ::icon(fa fa-book)
       :::urgent large
-    Tools
-      Pen and paper
 
 ---
 
@@ -22,39 +22,241 @@ mindmap
     (mindmap_body
       (mindmap_node_statement
         (mindmap_node
-          (identifier)
+          (mindmap_node_id)
           (mindmap_shape
             (mindmap_circle_shape
-              (mindmap_shape_text)))))
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
       (mindmap_node_statement
         (mindmap_node
-          (mindmap_plain_label
-            (identifier))))
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_square_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
       (mindmap_node_statement
         (mindmap_node
-          (mindmap_plain_label
-            (identifier)
-            (identifier))))
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_round_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
       (mindmap_node_statement
         (mindmap_node
-          (mindmap_plain_label
-            (identifier))))
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_circle_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
       (mindmap_node_statement
         (mindmap_node
-          (mindmap_plain_label
-            (identifier)
-            (identifier))))
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_cloud_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_bang_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_hexagon_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
+      (comment)
       (mindmap_icon_statement
-        (mindmap_decorator_text))
+        (mindmap_icon_marker)
+        (mindmap_decorator_delimiter)
+        (mindmap_icon_name)
+        (mindmap_decorator_delimiter))
       (mindmap_class_statement
-        (mindmap_decorator_text))
+        (mindmap_class_marker)
+        (mindmap_class_list)))))
+
+==================
+multiline Markdown and quoted delimiters stay inside labels
+==================
+
+mindmap
+  id1["`**Root** with
+a second line
+Unicode 🤓`"]
+    child["String containing [] ()"]
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))
+    (mindmap_body
       (mindmap_node_statement
         (mindmap_node
-          (mindmap_plain_label
-            (identifier))))
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_square_shape
+              (mindmap_shape_delimiter)
+              (mindmap_markdown_string)
+              (mindmap_shape_delimiter)))))
       (mindmap_node_statement
         (mindmap_node
-          (mindmap_plain_label
-            (identifier)
-            (identifier)
-            (identifier)))))))
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_square_shape
+              (mindmap_shape_delimiter)
+              (mindmap_quoted_string)
+              (mindmap_shape_delimiter))))))))
+
+==================
+multiline unquoted shapes retain continuation lines
+==================
+
+mindmap
+  root[
+    Multi-line root
+    with three lines
+  ]
+    child(
+      Rounded child
+    )
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))
+    (mindmap_body
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_square_shape
+              (mindmap_shape_delimiter)
+              (mindmap_continuation_indentation)
+              (mindmap_multiline_label_text)
+              (mindmap_continuation_indentation)
+              (mindmap_multiline_label_text)
+              (mindmap_continuation_indentation)
+              (mindmap_shape_delimiter)))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_round_shape
+              (mindmap_shape_delimiter)
+              (mindmap_continuation_indentation)
+              (mindmap_multiline_label_text)
+              (mindmap_continuation_indentation)
+              (mindmap_shape_delimiter))))))))
+
+==================
+header only at eof
+==================
+
+MINDMAP
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))))
+
+==================
+CRLF Unicode rows
+==================
+
+mindmap
+  根
+    子节点
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))
+    (mindmap_body
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label)))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label))))))
+
+==================
+unclosed shape recovery preserves following siblings
+==================
+
+mindmap
+  before[Before]
+    broken["unterminated
+    after[After]
+  final
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))
+    (mindmap_body
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_square_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
+      (mindmap_incomplete_node_statement
+        (mindmap_incomplete_node
+          (mindmap_node_id)
+          (mindmap_unclosed_square_shape
+            (mindmap_shape_delimiter)
+            (mindmap_unclosed_label_text))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_node_id)
+          (mindmap_shape
+            (mindmap_square_shape
+              (mindmap_shape_delimiter)
+              (mindmap_label_text)
+              (mindmap_shape_delimiter)))))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label))))))
+
+==================
+bare CR and eof statement
+==================
+
+mindmapRoot  Child
+
+---
+
+(source_file
+  (mindmap_diagram
+    (mindmap_header
+      (diagram_keyword))
+    (mindmap_body
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label)))
+      (mindmap_node_statement
+        (mindmap_node
+          (mindmap_plain_label))))))

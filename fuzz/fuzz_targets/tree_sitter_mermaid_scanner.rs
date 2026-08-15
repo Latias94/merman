@@ -4,10 +4,10 @@ use std::ffi::{c_char, c_void};
 
 use libfuzzer_sys::fuzz_target;
 
-const MAX_INPUT_BYTES: usize = 1029;
+const MAX_INPUT_BYTES: usize = 1031;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
-const TOKEN_COUNT: usize = 15;
+const TOKEN_COUNT: usize = 21;
 const REGRESSION_SEED_PREFIX: &[u8] = b"seed\n";
 
 #[repr(C)]
@@ -213,22 +213,27 @@ fn split_input(data: &[u8]) -> Option<FuzzInput<'_>> {
             seed_valid_state: true,
         });
     }
-    if data.len() < 4 {
+    if data.len() < 6 {
         return None;
     }
-    let available_state = (data.len() - 4).min(SERIALIZATION_BUFFER_SIZE + 1);
+    let available_state = (data.len() - 6).min(SERIALIZATION_BUFFER_SIZE + 1);
     let declared = usize::from(u16::from_le_bytes([data[0], data[1]]));
     let state_length = declared % (available_state + 1);
     let mask_start = 2 + state_length;
-    let mask = u16::from_le_bytes([data[mask_start], data[mask_start + 1]]);
+    let mask = u32::from_le_bytes([
+        data[mask_start],
+        data[mask_start + 1],
+        data[mask_start + 2],
+        data[mask_start + 3],
+    ]);
     let mut symbols = [false; TOKEN_COUNT];
     for (index, symbol) in symbols.iter_mut().enumerate() {
-        *symbol = mask & (1 << index) != 0;
+        *symbol = mask & (1_u32 << index) != 0;
     }
     Some(FuzzInput {
         state: &data[2..mask_start],
         valid_symbols: symbols,
-        rows: &data[mask_start + 2..],
+        rows: &data[mask_start + 4..],
         seed_valid_state: false,
     })
 }

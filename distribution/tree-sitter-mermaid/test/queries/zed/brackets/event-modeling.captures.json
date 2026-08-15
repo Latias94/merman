@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "event-modeling.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "{",
+      "startByte": 140,
+      "endByte": 141
+    },
+    {
+      "name": "open",
+      "text": "{",
+      "startByte": 144,
+      "endByte": 145
+    },
+    {
+      "name": "close",
+      "text": "}",
+      "startByte": 160,
+      "endByte": 161
+    },
+    {
+      "name": "close",
+      "text": "}",
+      "startByte": 162,
+      "endByte": 163
+    }
+  ]
+}

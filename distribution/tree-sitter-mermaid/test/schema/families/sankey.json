@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "publicId": "sankey",
+  "rootNode": "sankey_diagram",
+  "nodes": {
+    "sankey_diagram": ["body", "header"],
+    "sankey_field": [],
+    "sankey_header": ["keyword"],
+    "sankey_incomplete_record": ["delimiter", "source", "target"],
+    "sankey_malformed_record": ["recovery"],
+    "sankey_overflow_record": ["delimiter", "overflow", "source", "target", "value"],
+    "sankey_quoted_field": ["close", "content", "open"],
+    "sankey_record": ["delimiter", "source", "target", "value"],
+    "sankey_unclosed_quoted_field": ["content", "open"],
+    "sankey_unclosed_record": ["delimiter", "source", "target", "value"]
+  }
+}

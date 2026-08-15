@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "railroad.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "sequence(terminal(\"世界\"), nonterminal(\"item\"), zeroOrMore(special(\"anything\")))",
+      "startByte": 44,
+      "endByte": 126
+    },
+    {
+      "name": "indent",
+      "text": "terminal(\"世界\")",
+      "startByte": 53,
+      "endByte": 71
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 70,
+      "endByte": 71
+    },
+    {
+      "name": "indent",
+      "text": "nonterminal(\"item\")",
+      "startByte": 73,
+      "endByte": 92
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 91,
+      "endByte": 92
+    },
+    {
+      "name": "indent",
+      "text": "zeroOrMore(special(\"anything\"))",
+      "startByte": 94,
+      "endByte": 125
+    },
+    {
+      "name": "indent",
+      "text": "special(\"anything\")",
+      "startByte": 105,
+      "endByte": 124
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 123,
+      "endByte": 124
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 124,
+      "endByte": 125
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 125,
+      "endByte": 126
+    }
+  ]
+}

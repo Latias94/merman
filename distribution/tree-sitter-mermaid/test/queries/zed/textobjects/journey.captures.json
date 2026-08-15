@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "journey.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "journey\ntitle 用户旅程\nsection Delivery\nBuild parser: 5: Alice, Bob\n",
+      "startByte": 0,
+      "endByte": 72
+    },
+    {
+      "name": "class.inside",
+      "text": "title 用户旅程\nsection Delivery\nBuild parser: 5: Alice, Bob\n",
+      "startByte": 8,
+      "endByte": 72
+    },
+    {
+      "name": "function.around",
+      "text": "section Delivery",
+      "startByte": 27,
+      "endByte": 43
+    },
+    {
+      "name": "function.around",
+      "text": "Build parser: 5: Alice, Bob",
+      "startByte": 44,
+      "endByte": 71
+    }
+  ]
+}

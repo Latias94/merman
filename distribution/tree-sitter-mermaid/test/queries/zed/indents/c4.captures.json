@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "c4.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "indent",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 109,
+      "endByte": 110
+    },
+    {
+      "name": "indent",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 155,
+      "endByte": 156
+    },
+    {
+      "name": "indent",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 199,
+      "endByte": 200
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 201,
+      "endByte": 202
+    },
+    {
+      "name": "indent",
+      "text": "Rel(customer, api, \"Uses\", \"HTTPS\")",
+      "startByte": 203,
+      "endByte": 238
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 237,
+      "endByte": 238
+    },
+    {
+      "name": "indent",
+      "text": "Rel_Right(api, db, \"Reads\", \"SQL\")",
+      "startByte": 239,
+      "endByte": 273
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 272,
+      "endByte": 273
+    },
+    {
+      "name": "indent",
+      "text": "UpdateElementStyle(api, $bgColor=\"blue\")",
+      "startByte": 274,
+      "endByte": 314
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 313,
+      "endByte": 314
+    },
+    {
+      "name": "indent",
+      "text": "UpdateRelStyle(api, db, $lineColor=\"red\")",
+      "startByte": 315,
+      "endByte": 356
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 355,
+      "endByte": 356
+    }
+  ]
+}

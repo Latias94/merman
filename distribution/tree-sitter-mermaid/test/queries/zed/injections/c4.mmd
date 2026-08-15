@@ -1,0 +1,14 @@
+---
+title: c4
+---
+C4Container
+title Banking containers
+Container_Boundary(apps, "Applications") {
+  Person(customer, "Customer")
+  Container(api, "API", "Rust", $tags="core")
+  ContainerDb(db, "Database", "PostgreSQL")
+}
+Rel(customer, api, "Uses", "HTTPS")
+Rel_Right(api, db, "Reads", "SQL")
+UpdateElementStyle(api, $bgColor="blue")
+UpdateRelStyle(api, db, $lineColor="red")

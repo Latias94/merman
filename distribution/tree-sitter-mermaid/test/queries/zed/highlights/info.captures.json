@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "highlights",
+  "source": "info.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "info",
+      "startByte": 0,
+      "endByte": 4
+    },
+    {
+      "name": "keyword",
+      "text": "showInfo",
+      "startByte": 5,
+      "endByte": 13
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 14,
+      "endByte": 19
+    },
+    {
+      "name": "string",
+      "text": "Build information",
+      "startByte": 20,
+      "endByte": 37
+    },
+    {
+      "name": "keyword",
+      "text": "accTitle",
+      "startByte": 38,
+      "endByte": 46
+    },
+    {
+      "name": "string",
+      "text": "Accessible build information",
+      "startByte": 48,
+      "endByte": 76
+    },
+    {
+      "name": "keyword",
+      "text": "accDescr",
+      "startByte": 77,
+      "endByte": 85
+    },
+    {
+      "name": "string",
+      "text": "Current build metadata",
+      "startByte": 87,
+      "endByte": 109
+    },
+    {
+      "name": "comment",
+      "text": "%% retained comment",
+      "startByte": 110,
+      "endByte": 129
+    }
+  ]
+}

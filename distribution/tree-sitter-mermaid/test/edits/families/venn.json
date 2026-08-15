@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Venn CRLF Unicode label edit",
+    "source": "venn-beta\r\nset A[\"Before\"]:10\r\nset B\r\nunion A,B[Both]:2\r\n",
+    "old": "Before",
+    "replacement": "前端世界"
+  },
+  {
+    "name": "Venn set becomes intersection expression",
+    "source": "venn-beta\nset A\nset B\nset Focus[Only]:1\n",
+    "old": "set Focus[Only]:1",
+    "replacement": "union A,B[Shared]:2"
+  },
+  {
+    "name": "Venn higher arity intersection edit",
+    "source": "venn-beta\nset A\nset B\nset C\nunion A,B[Pair]:2\n",
+    "old": "A,B[Pair]",
+    "replacement": "A,B,C[All]"
+  },
+  {
+    "name": "Venn implicit text becomes explicit expression",
+    "source": "venn-beta\nset A\n  text \"Implicit\"[Label]\n",
+    "old": "  text \"Implicit\"[Label]",
+    "replacement": "text A Explicit[Label]"
+  },
+  {
+    "name": "Venn incomplete intersection repair",
+    "source": "venn-beta\nset Before\nunion Before,\nset After\n",
+    "old": "union Before,",
+    "replacement": "union Before,After[Recovered]:1"
+  },
+  {
+    "name": "Venn unclosed label repair",
+    "source": "venn-beta\nset Before[\"unclosed\nset After\n",
+    "old": "[\"unclosed",
+    "replacement": "[\"Recovered\"]:2"
+  },
+  {
+    "name": "Venn style color edit",
+    "source": "venn-beta\nset A\nstyle A fill:#fff,stroke:rgb(0, 0, 0)\n",
+    "old": "fill:#fff,stroke:rgb(0, 0, 0)",
+    "replacement": "fill:rgba(255, 0, 0, 0.5),stroke-width:2px"
+  },
+  {
+    "name": "Venn header-only body insertion",
+    "source": "venn-beta",
+    "old": "venn-beta",
+    "replacement": "venn-beta\nset A[Alpha]:1"
+  }
+]

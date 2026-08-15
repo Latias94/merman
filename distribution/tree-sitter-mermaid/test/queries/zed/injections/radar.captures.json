@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "radar.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: radar\n---",
+      "startByte": 0,
+      "endByte": 20
+    }
+  ]
+}

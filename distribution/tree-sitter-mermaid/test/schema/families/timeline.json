@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "publicId": "timeline",
+  "rootNode": "timeline_diagram",
+  "nodes": {
+    "timeline_diagram": ["body", "header"],
+    "timeline_event": ["delimiter", "text"],
+    "timeline_event_statement": ["event"],
+    "timeline_header": ["direction", "keyword"],
+    "timeline_period_statement": ["event", "period"],
+    "timeline_section_statement": ["keyword", "name"],
+    "timeline_title_statement": ["keyword", "text"]
+  }
+}

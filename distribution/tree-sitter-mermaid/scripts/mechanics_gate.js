@@ -23,13 +23,19 @@ const RSS_BASELINE_MULTIPLIER = 2;
 const RSS_NOISE_FLOOR_BYTES = 64 * 1024 * 1024;
 const WASM_PAGE_NOISE_FLOOR = 256;
 
-function shortFlowchart(targetKiB) {
+function doublingFlowchart(targetKiB) {
   const header = 'flowchart TD\n';
-  const statement = '  A --> B\n';
-  const statementCount = Math.ceil(
-    (targetKiB * 1024 - Buffer.byteLength(header)) / Buffer.byteLength(statement),
-  );
-  return header + statement.repeat(statementCount);
+  const targetBytes = targetKiB * 1024;
+  const fullLine = `A[${'x'.repeat(1000)}]\n`;
+  let source = header;
+  while (Buffer.byteLength(source) + Buffer.byteLength(fullLine) <= targetBytes) {
+    source += fullLine;
+  }
+  const remaining = targetBytes - Buffer.byteLength(source);
+  if (remaining >= 4) {
+    source += `A[${'x'.repeat(remaining - 4)}]\n`;
+  }
+  return source;
 }
 
 function elapsedMilliseconds(started) {
@@ -52,10 +58,20 @@ function verifyFamilyTree(tree, fixture) {
   assert.deepEqual(roots.map((node) => node.type), [fixture.root], fixture.publicId);
 }
 
+function queryProfileSources(binding) {
+  return Object.entries(binding.queryProfiles)
+    .filter(([profile]) => profile === 'portable')
+    .flatMap(([profile, surfaces]) => Object.entries(surfaces).map(([surface, query]) => ({
+      id: `${profile}/${surface}`,
+      source: query.source,
+    })))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
 function nativeObservation(targetKiB) {
   const Parser = require('tree-sitter');
   const Mermaid = require('../bindings/node');
-  const source = shortFlowchart(targetKiB);
+  const source = doublingFlowchart(targetKiB);
   const parser = new Parser();
   parser.setLanguage(Mermaid);
 
@@ -83,10 +99,10 @@ function nativeObservation(targetKiB) {
 async function wasmObservation(targetKiB) {
   const { Language, Parser, Query } = require('web-tree-sitter');
   const wasmBinding = require('../bindings/wasm');
-  const memory = new WebAssembly.Memory({ initial: 512, maximum: 2048 });
+  const memory = new WebAssembly.Memory({ initial: 512, maximum: 32768 });
   await Parser.init({ wasmMemory: memory });
   const language = await Language.load(wasmBinding.languagePath);
-  const source = shortFlowchart(targetKiB);
+  const source = doublingFlowchart(targetKiB);
   const parser = new Parser();
   parser.setLanguage(language);
 
@@ -122,7 +138,10 @@ function nativeRealCorpusObservation() {
   const parser = new Parser();
   parser.setLanguage(Mermaid);
   const compileStarted = performance.now();
-  const query = new Parser.Query(Mermaid, querySource);
+  const queries = queryProfileSources(Mermaid).map(({ id, source }) => ({
+    id,
+    query: new Parser.Query(Mermaid, source),
+  }));
   const queryCompileMilliseconds = elapsedMilliseconds(compileStarted);
   let parseMilliseconds = 0;
   let queryMilliseconds = 0;
@@ -133,12 +152,15 @@ function nativeRealCorpusObservation() {
     const tree = parser.parse(fixture.source);
     parseMilliseconds += elapsedMilliseconds(parseStarted);
     verifyFamilyTree(tree, fixture);
-    const queryStarted = performance.now();
-    query.captures(tree.rootNode);
-    queryMilliseconds += elapsedMilliseconds(queryStarted);
+    for (const { query } of queries) {
+      const queryStarted = performance.now();
+      query.captures(tree.rootNode);
+      queryMilliseconds += elapsedMilliseconds(queryStarted);
+    }
   }
   return {
     fixtureCount: familyFixtures.length,
+    queryProfileCount: queries.length,
     sourceBytes,
     parseMilliseconds,
     queryCompileMilliseconds,
@@ -150,13 +172,16 @@ function nativeRealCorpusObservation() {
 async function wasmRealCorpusObservation() {
   const { Language, Parser, Query } = require('web-tree-sitter');
   const wasmBinding = require('../bindings/wasm');
-  const memory = new WebAssembly.Memory({ initial: 512, maximum: 2048 });
+  const memory = new WebAssembly.Memory({ initial: 512, maximum: 32768 });
   await Parser.init({ wasmMemory: memory });
   const language = await Language.load(wasmBinding.languagePath);
   const parser = new Parser();
   parser.setLanguage(language);
   const compileStarted = performance.now();
-  const query = new Query(language, querySource);
+  const queries = queryProfileSources(wasmBinding).map(({ id, source }) => ({
+    id,
+    query: new Query(language, source),
+  }));
   const queryCompileMilliseconds = elapsedMilliseconds(compileStarted);
   let parseMilliseconds = 0;
   let queryMilliseconds = 0;
@@ -167,16 +192,19 @@ async function wasmRealCorpusObservation() {
     const tree = parser.parse(fixture.source);
     parseMilliseconds += elapsedMilliseconds(parseStarted);
     verifyFamilyTree(tree, fixture);
-    const queryStarted = performance.now();
-    query.captures(tree.rootNode);
-    queryMilliseconds += elapsedMilliseconds(queryStarted);
+    for (const { query } of queries) {
+      const queryStarted = performance.now();
+      query.captures(tree.rootNode);
+      queryMilliseconds += elapsedMilliseconds(queryStarted);
+    }
     tree.delete();
   }
   const memoryPages = memory.buffer.byteLength / 65536;
-  query.delete();
+  for (const { query } of queries) query.delete();
   parser.delete();
   return {
     fixtureCount: familyFixtures.length,
+    queryProfileCount: queries.length,
     sourceBytes,
     parseMilliseconds,
     queryCompileMilliseconds,
@@ -337,6 +365,7 @@ function validateRealCorpusObservations(observations) {
   for (const runtime of ['native', 'wasm']) {
     const actual = observations[runtime];
     assert.equal(actual.fixtureCount, recorded.fixtureCount);
+    assert.equal(actual.queryProfileCount, recorded.queryProfileCount);
     assert.equal(actual.sourceBytes, recorded.sourceBytes);
     const parseBaseline = runtime === 'native'
       ? metrics.observed.nativeNodeSmokeParseMilliseconds

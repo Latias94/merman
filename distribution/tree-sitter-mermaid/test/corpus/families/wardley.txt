@@ -85,16 +85,16 @@ deaccelerator Legacy-Data [0.40, 0.35]
         (statement_keyword)
         (wardley_name
           (wardley_name_word)
-          (wardley_name_hyphen)
-          (wardley_name_word)
           (wardley_name_word))
         (wardley_position
           (wardley_decimal)
           (wardley_decimal))
         (wardley_label_clause
           (statement_keyword)
-          (wardley_signed_integer)
-          (wardley_signed_integer))
+          (wardley_signed_integer
+            (wardley_integer))
+          (wardley_signed_integer
+            (wardley_integer)))
         (wardley_strategy_decorator
           (wardley_strategy))
         (wardley_inertia_clause
@@ -147,8 +147,6 @@ deaccelerator Legacy-Data [0.40, 0.35]
       (wardley_link_statement
         (wardley_name
           (wardley_name_word)
-          (wardley_name_hyphen)
-          (wardley_name_word)
           (wardley_name_word))
         (wardley_link_port)
         (wardley_name
@@ -159,13 +157,10 @@ deaccelerator Legacy-Data [0.40, 0.35]
       (wardley_link_statement
         (wardley_name
           (quoted_string))
-        (wardley_name
-          (quoted_string)))
+        (quoted_string))
       (wardley_evolve_statement
         (statement_keyword)
         (wardley_name
-          (wardley_name_word)
-          (wardley_name_hyphen)
           (wardley_name_word)
           (wardley_name_word))
         (wardley_decimal))
@@ -173,21 +168,19 @@ deaccelerator Legacy-Data [0.40, 0.35]
         (statement_keyword)
         (wardley_name
           (wardley_name_word)
-          (wardley_name_hyphen)
-          (wardley_name_word)
           (wardley_name_word))
         (wardley_pipeline_body
           (wardley_pipeline_component_statement
             (statement_keyword)
             (wardley_name
-              (wardley_name_word)
-              (wardley_name_hyphen)
               (wardley_name_word))
             (wardley_decimal)
             (wardley_label_clause
               (statement_keyword)
-              (wardley_signed_integer)
-              (wardley_signed_integer)))
+              (wardley_signed_integer
+                (wardley_integer))
+              (wardley_signed_integer
+                (wardley_integer))))
           (wardley_pipeline_component_statement
             (statement_keyword)
             (wardley_name
@@ -226,8 +219,6 @@ deaccelerator Legacy-Data [0.40, 0.35]
       (wardley_deaccelerator_statement
         (statement_keyword)
         (wardley_name
-          (wardley_name_word)
-          (wardley_name_hyphen)
           (wardley_name_word))
         (wardley_xy_position
           (wardley_decimal)
@@ -437,6 +428,38 @@ anchor Need [0.9, 0.8]
         (wardley_position
           (wardley_decimal)
           (wardley_decimal))))))
+
+==================
+quoted link endpoints remain structurally distinct
+==================
+
+wardley-beta
+"A" B
+A "B"
+"A" +<> B
+
+---
+
+(source_file
+  (wardley_diagram
+    (wardley_header
+      (diagram_keyword))
+    (wardley_body
+      (wardley_link_statement
+        (wardley_name
+          (quoted_string))
+        (wardley_name
+          (wardley_name_word)))
+      (wardley_link_statement
+        (wardley_name
+          (wardley_name_word))
+        (quoted_string))
+      (wardley_link_statement
+        (wardley_name
+          (quoted_string))
+        (wardley_link_port)
+        (wardley_name
+          (wardley_name_word))))))
 
 ==================
 same-line statement follows the header

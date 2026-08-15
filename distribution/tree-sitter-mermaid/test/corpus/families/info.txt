@@ -93,8 +93,8 @@ accTitle: After
       (langium_title_statement
         (statement_keyword)
         (langium_line_text))
-      (ERROR
-        (UNEXPECTED '?'))
+      (info_recovery_statement
+        (info_recovery_text))
       (langium_acc_title_statement
         (statement_keyword)
         (langium_line_text)))))

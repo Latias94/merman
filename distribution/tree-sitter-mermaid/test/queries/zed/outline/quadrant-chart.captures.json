@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "quadrant-chart.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "quadrantChart",
+      "startByte": 0,
+      "endByte": 13
+    },
+    {
+      "name": "item",
+      "text": "quadrantChart\ntitle Campaign reach\nx-axis Low --> High\nquadrant-1 Expand\nCampaign A:::focus: [0.3, 0.6] radius: 12, color: #ff0000\nclassDef focus stroke-width: 3px\n",
+      "startByte": 0,
+      "endByte": 164
+    },
+    {
+      "name": "name",
+      "text": "Campaign A",
+      "startByte": 73,
+      "endByte": 83
+    },
+    {
+      "name": "item",
+      "text": "Campaign A:::focus: [0.3, 0.6] radius: 12, color: #ff0000",
+      "startByte": 73,
+      "endByte": 130
+    }
+  ]
+}

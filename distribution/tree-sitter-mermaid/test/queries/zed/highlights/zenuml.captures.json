@@ -1,0 +1,272 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "highlights",
+  "source": "zenuml.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "zenuml",
+      "startByte": 0,
+      "endByte": 6
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 7,
+      "endByte": 12
+    },
+    {
+      "name": "string",
+      "text": "Order 流程",
+      "startByte": 13,
+      "endByte": 25
+    },
+    {
+      "name": "attribute",
+      "text": "@Starter",
+      "startByte": 26,
+      "endByte": 34
+    },
+    {
+      "name": "type",
+      "text": "用户",
+      "startByte": 35,
+      "endByte": 41
+    },
+    {
+      "name": "attribute",
+      "text": "@Actor",
+      "startByte": 43,
+      "endByte": 49
+    },
+    {
+      "name": "attribute",
+      "text": "<<boundary>>",
+      "startByte": 50,
+      "endByte": 62
+    },
+    {
+      "name": "type",
+      "text": "用户",
+      "startByte": 63,
+      "endByte": 69
+    },
+    {
+      "name": "keyword",
+      "text": "as",
+      "startByte": 70,
+      "endByte": 72
+    },
+    {
+      "name": "string",
+      "text": "\"Customer\"",
+      "startByte": 73,
+      "endByte": 83
+    },
+    {
+      "name": "attribute",
+      "text": "#4f81bd",
+      "startByte": 84,
+      "endByte": 91
+    },
+    {
+      "name": "keyword",
+      "text": "const",
+      "startByte": 92,
+      "endByte": 97
+    },
+    {
+      "name": "variable",
+      "text": "order",
+      "startByte": 104,
+      "endByte": 109
+    },
+    {
+      "name": "operator",
+      "text": "=",
+      "startByte": 110,
+      "endByte": 111
+    },
+    {
+      "name": "keyword",
+      "text": "new",
+      "startByte": 112,
+      "endByte": 115
+    },
+    {
+      "name": "type",
+      "text": "Order",
+      "startByte": 116,
+      "endByte": 121
+    },
+    {
+      "name": "variable",
+      "text": "id",
+      "startByte": 122,
+      "endByte": 124
+    },
+    {
+      "name": "property",
+      "text": "count",
+      "startByte": 126,
+      "endByte": 131
+    },
+    {
+      "name": "operator",
+      "text": "=",
+      "startByte": 132,
+      "endByte": 133
+    },
+    {
+      "name": "number",
+      "text": "2",
+      "startByte": 134,
+      "endByte": 135
+    },
+    {
+      "name": "keyword",
+      "text": "if",
+      "startByte": 137,
+      "endByte": 139
+    },
+    {
+      "name": "variable",
+      "text": "ready",
+      "startByte": 141,
+      "endByte": 146
+    },
+    {
+      "name": "operator",
+      "text": "&&",
+      "startByte": 147,
+      "endByte": 149
+    },
+    {
+      "name": "variable",
+      "text": "count",
+      "startByte": 150,
+      "endByte": 155
+    },
+    {
+      "name": "operator",
+      "text": ">=",
+      "startByte": 156,
+      "endByte": 158
+    },
+    {
+      "name": "number",
+      "text": "2",
+      "startByte": 159,
+      "endByte": 160
+    },
+    {
+      "name": "variable",
+      "text": "用户",
+      "startByte": 166,
+      "endByte": 172
+    },
+    {
+      "name": "operator",
+      "text": "->",
+      "startByte": 172,
+      "endByte": 174
+    },
+    {
+      "name": "variable",
+      "text": "API",
+      "startByte": 174,
+      "endByte": 177
+    },
+    {
+      "name": "function",
+      "text": "create",
+      "startByte": 178,
+      "endByte": 184
+    },
+    {
+      "name": "variable",
+      "text": "order",
+      "startByte": 185,
+      "endByte": 190
+    },
+    {
+      "name": "property",
+      "text": "timeout",
+      "startByte": 192,
+      "endByte": 199
+    },
+    {
+      "name": "operator",
+      "text": "=",
+      "startByte": 200,
+      "endByte": 201
+    },
+    {
+      "name": "number",
+      "text": "250ms",
+      "startByte": 202,
+      "endByte": 207
+    },
+    {
+      "name": "keyword",
+      "text": "else",
+      "startByte": 211,
+      "endByte": 215
+    },
+    {
+      "name": "variable",
+      "text": "API",
+      "startByte": 220,
+      "endByte": 223
+    },
+    {
+      "name": "operator",
+      "text": "->",
+      "startByte": 223,
+      "endByte": 225
+    },
+    {
+      "name": "variable",
+      "text": "Queue",
+      "startByte": 225,
+      "endByte": 230
+    },
+    {
+      "name": "string",
+      "text": "accepted",
+      "startByte": 232,
+      "endByte": 240
+    },
+    {
+      "name": "variable",
+      "text": "Queue",
+      "startByte": 243,
+      "endByte": 248
+    },
+    {
+      "name": "operator",
+      "text": "-->",
+      "startByte": 248,
+      "endByte": 251
+    },
+    {
+      "name": "variable",
+      "text": "用户",
+      "startByte": 251,
+      "endByte": 257
+    },
+    {
+      "name": "string",
+      "text": "done",
+      "startByte": 259,
+      "endByte": 263
+    },
+    {
+      "name": "comment",
+      "text": "// durable comment",
+      "startByte": 264,
+      "endByte": 282
+    }
+  ]
+}

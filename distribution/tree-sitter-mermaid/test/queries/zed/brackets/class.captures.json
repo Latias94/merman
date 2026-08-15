@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "class.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "{",
+      "startByte": 30,
+      "endByte": 31
+    },
+    {
+      "name": "open",
+      "text": "[",
+      "startByte": 48,
+      "endByte": 49
+    },
+    {
+      "name": "close",
+      "text": "]",
+      "startByte": 59,
+      "endByte": 60
+    },
+    {
+      "name": "open",
+      "text": "{",
+      "startByte": 70,
+      "endByte": 71
+    },
+    {
+      "name": "close",
+      "text": "}",
+      "startByte": 91,
+      "endByte": 92
+    },
+    {
+      "name": "close",
+      "text": "}",
+      "startByte": 93,
+      "endByte": 94
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 214,
+      "endByte": 215
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 216,
+      "endByte": 217
+    }
+  ]
+}

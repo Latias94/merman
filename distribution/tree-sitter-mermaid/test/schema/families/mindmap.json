@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "publicId": "mindmap",
+  "rootNode": "mindmap_diagram",
+  "nodes": {
+    "mindmap_bang_shape": ["close", "indentation", "label", "open"],
+    "mindmap_circle_shape": ["close", "indentation", "label", "open"],
+    "mindmap_class_statement": ["classes", "marker"],
+    "mindmap_cloud_shape": ["close", "indentation", "label", "open"],
+    "mindmap_diagram": ["body", "header"],
+    "mindmap_header": ["keyword"],
+    "mindmap_hexagon_shape": ["close", "indentation", "label", "open"],
+    "mindmap_icon_statement": ["close", "marker", "name", "open"],
+    "mindmap_incomplete_node": ["id", "shape"],
+    "mindmap_incomplete_node_statement": ["node"],
+    "mindmap_indentation_overflow": [],
+    "mindmap_node": ["id", "label", "shape"],
+    "mindmap_node_statement": ["node"],
+    "mindmap_round_shape": ["close", "indentation", "label", "open"],
+    "mindmap_square_shape": ["close", "indentation", "label", "open"],
+    "mindmap_unclosed_square_shape": ["label", "open"]
+  }
+}

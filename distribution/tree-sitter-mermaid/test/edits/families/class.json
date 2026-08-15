@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Class CRLF Unicode label edit",
+    "source": "classDiagram-v2\r\nclass Customer[\"Customer account\"]\r\nclass Order\r\nCustomer --> Order : places\r\n",
+    "old": "Customer account",
+    "replacement": "客户账户"
+  },
+  {
+    "name": "Class member insertion",
+    "source": "classDiagram\nclass Order {\n  +String id\n}\nclass After\n",
+    "old": "+String id",
+    "replacement": "+String id\n  +Decimal total"
+  },
+  {
+    "name": "Class incomplete relationship repair",
+    "source": "classDiagram\nclass Before\nBefore <|--\nclass After\nAfter --> Before : follows\n",
+    "old": "Before <|--",
+    "replacement": "Before <|-- After : extends"
+  },
+  {
+    "name": "Class unclosed note repair",
+    "source": "classDiagram\nclass Before\nnote for Before \"unfinished\nclass After\nAfter --> Before\n",
+    "old": "\"unfinished",
+    "replacement": "\"finished\""
+  },
+  {
+    "name": "Class namespace rename",
+    "source": "classDiagram\nnamespace model.core[\"Domain\"] {\n  class Item\n}\nclass After\n",
+    "old": "model.core",
+    "replacement": "domain.model"
+  },
+  {
+    "name": "Class callback arguments edit",
+    "source": "classDiagram\nclass Customer\nclick Customer call select(1) \"Run\"\nclass After\n",
+    "old": "select(1)",
+    "replacement": "select(2, \"世界\")"
+  },
+  {
+    "name": "Class header alias switch",
+    "source": "classDiagram\nclass A\nA --> B\nclass B\n",
+    "old": "classDiagram",
+    "replacement": "classDiagram-v2"
+  }
+]

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "flowchart.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "subgraph lane[\"Lane 世界\"]\n  direction LR\n  A[\"`Markdown **start**`\"] e1@-->|go| B{Done}\nend",
+      "startByte": 13,
+      "endByte": 107
+    },
+    {
+      "name": "indent",
+      "text": "[\"Lane 世界\"]",
+      "startByte": 26,
+      "endByte": 41
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 40,
+      "endByte": 41
+    },
+    {
+      "name": "indent",
+      "text": "[\"`Markdown **start**`\"]",
+      "startByte": 60,
+      "endByte": 84
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 83,
+      "endByte": 84
+    },
+    {
+      "name": "indent",
+      "text": "{Done}",
+      "startByte": 97,
+      "endByte": 103
+    },
+    {
+      "name": "end",
+      "text": "}",
+      "startByte": 102,
+      "endByte": 103
+    },
+    {
+      "name": "end",
+      "text": "end",
+      "startByte": 104,
+      "endByte": 107
+    }
+  ]
+}

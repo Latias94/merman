@@ -1,0 +1,9 @@
+---
+title: entity-relationship
+---
+erDiagram
+CUSTOMER["Customer"]:::entity {
+  string id PK "identifier"
+}
+CUSTOMER ||--o{ ORDER : places
+classDef entity fill:#eef

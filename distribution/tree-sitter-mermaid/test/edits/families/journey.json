@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Journey CRLF Unicode task label",
+    "source": "journey\r\nsection Delivery\r\nBuild parser: 5: Alice\r\n",
+    "old": "Build parser",
+    "replacement": "构建解析器"
+  },
+  {
+    "name": "Journey score becomes a signed decimal",
+    "source": "journey\nsection Research\nPrototype: 5: Alice\n",
+    "old": ": 5:",
+    "replacement": ": -1.5:"
+  },
+  {
+    "name": "Journey actor list expansion",
+    "source": "journey\nsection Delivery\nShip: 4: Alice\n",
+    "old": "Alice",
+    "replacement": "Alice, Bob, 李雷"
+  },
+  {
+    "name": "Journey incomplete task repair",
+    "source": "journey\nsection Before\nBroken task:\nsection After\nHealthy task: 5\n",
+    "old": "Broken task:",
+    "replacement": "Recovered task: 3: Editor"
+  },
+  {
+    "name": "Journey header-only body insertion",
+    "source": "journey",
+    "old": "journey",
+    "replacement": "journey section Added\nTask: 2"
+  }
+]

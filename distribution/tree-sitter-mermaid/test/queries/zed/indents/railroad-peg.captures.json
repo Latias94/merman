@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "railroad-peg.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "(\"x\" item+)",
+      "startByte": 75,
+      "endByte": 86
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 85,
+      "endByte": 86
+    }
+  ]
+}

@@ -1,170 +1,629 @@
-function flowchartKeyword($) {
-  return field(
-    'keyword',
+// Source translation: Mermaid 11.16.1
+// packages/mermaid/src/diagrams/flowchart/parser/flow.jison
+// commit 7ecca0cd7f1658ef74f4e7e91f925724ef403bbf.
+
+const familyRule = (prefix, suffix) => `${prefix}_${suffix}`;
+
+const ref = ($, prefix, suffix) => $[familyRule(prefix, suffix)];
+
+const diagramKeyword = ($, keywords) => field(
+  'keyword',
+  alias(
+    token(prec(40, keywords.length === 1 ? keywords[0] : choice(...keywords))),
+    $.diagram_keyword,
+  ),
+);
+
+const statementKeyword = ($, prefix, keyword) => field(
+  'keyword',
+  alias(token(prec(30, keyword)), ref($, prefix, 'statement_keyword')),
+);
+
+const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
+
+const headerDirection = ($) => seq(
+  token.immediate(/[ \t]+/),
+  field(
+    'direction',
     alias(
-      token(prec(20, choice('flowchart-elk', 'flowchart', 'graph'))),
-      $.diagram_keyword,
+      token.immediate(/(?:LR|RL|TB|BT|TD|BR|[<>^v])/),
+      $.direction,
     ),
-  );
-}
+  ),
+);
 
-function flowchartHeaderDirection($) {
-  return seq(
-    token.immediate(/[ \t]+/),
-    alias(token.immediate(/(?:LR|RL|TB|BT|TD|BR|[<>^v])/), $.direction),
-  );
-}
+const shapeDelimiter = ($, prefix, delimiter) => alias(
+  delimiter,
+  ref($, prefix, 'shape_delimiter'),
+);
 
-const flowchartRules = {
-  flowchart_diagram: ($) => choice(
+const shape = ($, prefix, open, close, textRule) => seq(
+  field('open', shapeDelimiter($, prefix, open)),
+  optional(field('label', choice(
+    ref($, prefix, 'markdown_label'),
+    ref($, prefix, 'quoted_label'),
+    ref($, prefix, textRule),
+  ))),
+  field('close', shapeDelimiter($, prefix, close)),
+);
+
+const quotedText = () => token(prec(30, choice(
+  seq('"', /(?:[^"\\]|\\.)*/, '"'),
+  seq("'", /(?:[^'\\]|\\.)*/, "'"),
+)));
+
+const immediateQuotedText = () => token.immediate(prec(30, choice(
+  seq('"', /(?:[^"\\]|\\.)*/, '"'),
+  seq("'", /(?:[^'\\]|\\.)*/, "'"),
+)));
+
+const clickSuffix = ($, prefix) => seq(
+  token.immediate(/[ \t]+/),
+  choice(
     seq(
-      field('header', $.flowchart_header),
-      optional(field('body', $.flowchart_body)),
+      field('tooltip', alias(
+        immediateQuotedText(),
+        ref($, prefix, 'quoted_label'),
+      )),
+      optional(seq(
+        token.immediate(/[ \t]+/),
+        field('link_target', alias(
+          token.immediate(choice('_self', '_blank', '_parent', '_top')),
+          ref($, prefix, 'link_target'),
+        )),
+      )),
     ),
-    field('header', alias($._flowchart_eof_header, $.flowchart_header)),
+    field('link_target', alias(
+      token.immediate(choice('_self', '_blank', '_parent', '_top')),
+      ref($, prefix, 'link_target'),
+    )),
+  ),
+);
+
+const clickTooltip = ($, prefix) => seq(
+  token.immediate(/[ \t]+/),
+  field('tooltip', alias(
+    immediateQuotedText(),
+    ref($, prefix, 'quoted_label'),
+  )),
+);
+
+const markdownText = () => token(prec(40, seq('"`', /[^`]*/, '`"')));
+
+const createFlowFamilyRules = ({
+  prefix,
+  diagram,
+  header,
+  headerEof,
+  keywords,
+}) => ({
+  [diagram]: ($) => choice(
+    seq(
+      field('header', $[header]),
+      optional(field('body', ref($, prefix, 'body'))),
+    ),
+    field('header', alias($[headerEof], $[header])),
   ),
 
-  flowchart_header: ($) => choice(
+  [header]: ($) => prec(50, seq(
+    diagramKeyword($, keywords),
+    choice(
+      seq(
+        headerDirection($),
+        optional(choice(
+          field('comment', $.comment),
+          field('directive', $.directive),
+        )),
+        field('terminator', $._statement_terminator),
+      ),
+      seq(
+        optional(choice(
+          field('comment', $.comment),
+          field('directive', $.directive),
+        )),
+        field('terminator', $._line_ending),
+      ),
+    ),
+  )),
+
+  [headerEof]: ($) => seq(
+    diagramKeyword($, keywords),
+    optional(headerDirection($)),
+    $._end_of_input,
+  ),
+
+  [familyRule(prefix, 'body')]: ($) => choice(
+    repeat1(ref($, prefix, 'line_item')),
     seq(
-      flowchartKeyword($),
-      field('direction', flowchartHeaderDirection($)),
+      repeat(ref($, prefix, 'line_item')),
+      ref($, prefix, 'eof_item'),
+    ),
+  ),
+
+  [familyRule(prefix, 'line_item')]: ($) => choice(
+    seq(
+      field('statement', ref($, prefix, 'statement')),
       field('terminator', $._statement_terminator),
     ),
+    seq(choice($.comment, $.directive), $._line_ending),
+    $._blank_line,
+  ),
+
+  [familyRule(prefix, 'eof_item')]: ($) => choice(
+    field('statement', ref($, prefix, 'statement')),
+    $.comment,
+    $.directive,
+  ),
+
+  [familyRule(prefix, 'statement')]: ($) => choice(
+    ref($, prefix, 'subgraph'),
+    ref($, prefix, 'edge_statement'),
+    ref($, prefix, 'incomplete_edge_statement'),
+    ref($, prefix, 'node_statement'),
+    ref($, prefix, 'direction_statement'),
+    ref($, prefix, 'class_definition_statement'),
+    ref($, prefix, 'class_assignment_statement'),
+    ref($, prefix, 'style_statement'),
+    ref($, prefix, 'link_style_statement'),
+    ref($, prefix, 'click_statement'),
+    ref($, prefix, 'accessibility_title_statement'),
+    ref($, prefix, 'accessibility_description_statement'),
+  ),
+
+  [familyRule(prefix, 'subgraph')]: ($) => prec.right(50, seq(
+    statementKeyword($, prefix, 'subgraph'),
+    optional(field('identity', choice(
+      seq(
+        field('id', alias(ref($, prefix, 'identifier'), ref($, prefix, 'node_id'))),
+        field('label', ref($, prefix, 'square_label')),
+      ),
+      field('name', ref($, prefix, 'subgraph_name')),
+    ))),
+    field('terminator', $._statement_terminator),
+    repeat(ref($, prefix, 'line_item')),
+    field('end', ref($, prefix, 'subgraph_end')),
+  )),
+
+  [familyRule(prefix, 'subgraph_name')]: ($) => choice(
+    ref($, prefix, 'identifier'),
+    ref($, prefix, 'markdown_label'),
+    ref($, prefix, 'quoted_label'),
+    ref($, prefix, 'subgraph_title'),
+  ),
+
+  [familyRule(prefix, 'subgraph_title')]: (_) => token(prec(
+    10,
+    /[^;%\[\]\s\r\n](?:[^;%\[\]\r\n]*[ \t][^;%\[\]\s\r\n][^;%\[\]\r\n]*)/,
+  )),
+
+  [familyRule(prefix, 'subgraph_end')]: (_) => token(prec(30, 'end')),
+
+  [familyRule(prefix, 'direction_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'direction'),
+    token.immediate(/[ \t]+/),
+    field('direction', alias(
+      token.immediate(/(?:LR|RL|TB|BT|TD)/),
+      ref($, prefix, 'direction'),
+    )),
+  ),
+
+  [familyRule(prefix, 'edge_statement')]: ($) => prec.right(60, seq(
+    field('source', ref($, prefix, 'node')),
+    field('edge', ref($, prefix, 'edge')),
+    optionalInlineGap(),
+    field('target', ref($, prefix, 'node')),
+    repeat(seq(
+      field('edge', ref($, prefix, 'edge')),
+      optionalInlineGap(),
+      field('target', ref($, prefix, 'node')),
+    )),
+  )),
+
+  [familyRule(prefix, 'incomplete_edge_statement')]: ($) => prec(-30, seq(
+    field('source', ref($, prefix, 'node')),
+    field('edge', ref($, prefix, 'edge')),
+    optional(field('recovery', ref($, prefix, 'edge_recovery'))),
+  )),
+
+  [familyRule(prefix, 'edge_recovery')]: (_) => token(prec(-100, /[^;%\r\n]+/)),
+
+  [familyRule(prefix, 'node_statement')]: ($) => field(
+    'node',
+    ref($, prefix, 'node'),
+  ),
+
+  [familyRule(prefix, 'node')]: ($) => seq(
+    field('vertex', ref($, prefix, 'vertex')),
+    repeat(seq(
+      field('separator', '&'),
+      field('vertex', ref($, prefix, 'vertex')),
+    )),
+  ),
+
+  [familyRule(prefix, 'vertex')]: ($) => seq(
+    field('id', alias(ref($, prefix, 'identifier'), ref($, prefix, 'node_id'))),
+    optional(field('shape', ref($, prefix, 'shape'))),
+    optional(field('data', ref($, prefix, 'shape_data'))),
+    optional(field('class', ref($, prefix, 'class_annotation'))),
+  ),
+
+  [familyRule(prefix, 'shape')]: ($) => choice(
+    ref($, prefix, 'square_label'),
+    ref($, prefix, 'round_label'),
+    ref($, prefix, 'circle_label'),
+    ref($, prefix, 'ellipse_label'),
+    ref($, prefix, 'stadium_label'),
+    ref($, prefix, 'subroutine_label'),
+    ref($, prefix, 'property_label'),
+    ref($, prefix, 'cylinder_label'),
+    ref($, prefix, 'double_circle_label'),
+    ref($, prefix, 'diamond_label'),
+    ref($, prefix, 'hexagon_label'),
+    ref($, prefix, 'odd_label'),
+    ref($, prefix, 'slash_label'),
+    ref($, prefix, 'backslash_label'),
+  ),
+
+  [familyRule(prefix, 'square_label')]: ($) => shape($, prefix, '[', ']', 'square_label_text'),
+  [familyRule(prefix, 'round_label')]: ($) => shape($, prefix, '(', ')', 'round_label_text'),
+  [familyRule(prefix, 'circle_label')]: ($) => shape($, prefix, '((', '))', 'round_label_text'),
+  [familyRule(prefix, 'ellipse_label')]: ($) => shape($, prefix, '(-', '-)', 'ellipse_label_text'),
+  [familyRule(prefix, 'stadium_label')]: ($) => shape($, prefix, '([', '])', 'square_label_text'),
+  [familyRule(prefix, 'subroutine_label')]: ($) => shape($, prefix, '[[', ']]', 'square_label_text'),
+  [familyRule(prefix, 'cylinder_label')]: ($) => shape($, prefix, '[(', ')]', 'round_label_text'),
+  [familyRule(prefix, 'double_circle_label')]: ($) => shape($, prefix, '(((', ')))', 'round_label_text'),
+  [familyRule(prefix, 'diamond_label')]: ($) => shape($, prefix, '{', '}', 'curly_label_text'),
+  [familyRule(prefix, 'hexagon_label')]: ($) => shape($, prefix, '{{', '}}', 'curly_label_text'),
+  [familyRule(prefix, 'odd_label')]: ($) => shape($, prefix, '>', ']', 'square_label_text'),
+  [familyRule(prefix, 'slash_label')]: ($) => shape(
+    $,
+    prefix,
+    '[/',
+    choice('\\]', '/]'),
+    'trap_label_text',
+  ),
+  [familyRule(prefix, 'backslash_label')]: ($) => shape(
+    $,
+    prefix,
+    '[\\',
+    choice('/]', '\\]'),
+    'trap_label_text',
+  ),
+
+  [familyRule(prefix, 'square_label_text')]: (_) => token(prec(-10, /[^\]\r\n]+/)),
+  [familyRule(prefix, 'round_label_text')]: (_) => token(prec(-10, /[^)\r\n]+/)),
+  [familyRule(prefix, 'curly_label_text')]: (_) => token(prec(-10, /[^}\r\n]+/)),
+  [familyRule(prefix, 'ellipse_label_text')]: ($) => repeat1(choice(
+    ref($, prefix, 'ellipse_label_fragment'),
+    token.immediate('-'),
+  )),
+  [familyRule(prefix, 'ellipse_label_fragment')]: (_) => token.immediate(/[^-)\r\n]+/),
+  [familyRule(prefix, 'trap_label_text')]: ($) => repeat1(choice(
+    ref($, prefix, 'trap_label_fragment'),
+    token.immediate('/'),
+    token.immediate('\\'),
+  )),
+  [familyRule(prefix, 'trap_label_fragment')]: (_) => token.immediate(/[^/\\\]\r\n]+/),
+
+  [familyRule(prefix, 'property_label')]: ($) => seq(
+    field('open', shapeDelimiter($, prefix, '[|')),
+    field('property', ref($, prefix, 'property_pair')),
+    field('separator', '|'),
+    optional(field('label', ref($, prefix, 'label'))),
+    field('close', shapeDelimiter($, prefix, ']')),
+  ),
+
+  [familyRule(prefix, 'property_pair')]: ($) => seq(
+    field('name', alias(ref($, prefix, 'identifier'), ref($, prefix, 'property_name'))),
+    field('delimiter', ':'),
+    field('value', ref($, prefix, 'property_value')),
+  ),
+
+  [familyRule(prefix, 'property_value')]: (_) => token(prec(-10, /[^|\]\r\n]+/)),
+
+  [familyRule(prefix, 'label')]: ($) => choice(
+    ref($, prefix, 'markdown_label'),
+    ref($, prefix, 'quoted_label'),
+    ref($, prefix, 'label_text'),
+  ),
+
+  [familyRule(prefix, 'markdown_label')]: (_) => markdownText(),
+  [familyRule(prefix, 'quoted_label')]: (_) => quotedText(),
+  [familyRule(prefix, 'label_text')]: (_) => token(prec(
+    -10,
+    /[^"'`\[\](){}|\r\n]+/,
+  )),
+
+  [familyRule(prefix, 'shape_data')]: ($) => seq(
+    field('open', '@{'),
+    repeat(field('content', choice(
+      ref($, prefix, 'shape_data_string'),
+      ref($, prefix, 'shape_data_content'),
+    ))),
+    field('close', '}'),
+  ),
+
+  [familyRule(prefix, 'shape_data_string')]: (_) => token(prec(30, choice(
+    seq('"', /(?:[^"\\]|\\.)*/, '"'),
+    seq("'", /(?:[^'\\]|\\.)*/, "'"),
+  ))),
+  [familyRule(prefix, 'shape_data_content')]: (_) => token(prec(-20, /[^}"']+/)),
+
+  [familyRule(prefix, 'edge')]: ($) => prec.right(choice(
+    prec(50, seq(
+      optional(field('id', ref($, prefix, 'edge_id'))),
+      field('operator', ref($, prefix, 'arrow_start')),
+      field('label', ref($, prefix, 'middle_edge_label')),
+      field('operator_end', ref($, prefix, 'arrow')),
+    )),
+    prec(50, seq(
+      field('operator', ref($, prefix, 'continued_arrow_start')),
+      field('label', ref($, prefix, 'middle_edge_label')),
+      field('operator_end', ref($, prefix, 'arrow')),
+    )),
     seq(
-      flowchartKeyword($),
-      field('terminator', $._line_ending),
+      optional(field('id', ref($, prefix, 'edge_id'))),
+      field('operator', ref($, prefix, 'arrow')),
+      optional(field('label', ref($, prefix, 'edge_label'))),
+    ),
+    seq(
+      field('operator', ref($, prefix, 'continued_arrow')),
+      optional(field('label', ref($, prefix, 'edge_label'))),
+    ),
+  )),
+
+  [familyRule(prefix, 'edge_id')]: ($) => seq(
+    field('name', alias(ref($, prefix, 'identifier'), ref($, prefix, 'edge_name'))),
+    field('delimiter', '@'),
+  ),
+
+  [familyRule(prefix, 'edge_label')]: ($) => seq(
+    field('open', '|'),
+    optional(field('text', choice(
+      ref($, prefix, 'markdown_label'),
+      ref($, prefix, 'quoted_label'),
+      ref($, prefix, 'edge_label_text'),
+    ))),
+    field('close', '|'),
+  ),
+
+  [familyRule(prefix, 'edge_label_text')]: (_) => token(prec(-10, /[^|\r\n]+/)),
+
+  [familyRule(prefix, 'middle_edge_label')]: ($) => choice(
+    ref($, prefix, 'markdown_label'),
+    ref($, prefix, 'quoted_label'),
+    ref($, prefix, 'middle_edge_label_text'),
+  ),
+
+  [familyRule(prefix, 'middle_edge_label_text')]: ($) => repeat1(choice(
+    ref($, prefix, 'middle_edge_label_fragment'),
+    token.immediate('-'),
+    token.immediate('='),
+    token.immediate('.'),
+  )),
+  [familyRule(prefix, 'middle_edge_label_fragment')]: (_) => token.immediate(/[^-=.\r\n]+/),
+
+  [familyRule(prefix, 'arrow_start')]: (_) => token(prec(
+    20,
+    /[xo<]?(?:--|==|-\.)/,
+  )),
+
+  [familyRule(prefix, 'continued_arrow_start')]: (_) => token(prec(
+    25,
+    /(?:\r\n|\n|\r)[ \t]*[xo<]?(?:--|==|-\.)/,
+  )),
+
+  [familyRule(prefix, 'arrow')]: (_) => token(prec(
+    20,
+    /[xo<]?(?:--+[-xo>]|==+[=xo>]|-?\.+-[xo>]?|~~~+)/,
+  )),
+
+  [familyRule(prefix, 'continued_arrow')]: (_) => token(prec(
+    25,
+    /(?:\r\n|\n|\r)[ \t]*[xo<]?(?:--+[-xo>]|==+[=xo>]|-?\.+-[xo>]?|~~~+)/,
+  )),
+
+  [familyRule(prefix, 'class_annotation')]: ($) => seq(
+    field('operator', ':::'),
+    field('name', alias(ref($, prefix, 'identifier'), ref($, prefix, 'class_name'))),
+  ),
+
+  [familyRule(prefix, 'class_definition_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'classDef'),
+    token.immediate(/[ \t]+/),
+    field('classes', ref($, prefix, 'identifier_list')),
+    optional(seq(
+      token.immediate(/[ \t]+/),
+      field('style', ref($, prefix, 'style_list')),
+    )),
+  ),
+
+  [familyRule(prefix, 'class_assignment_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'class'),
+    token.immediate(/[ \t]+/),
+    field('targets', ref($, prefix, 'identifier_list')),
+    token.immediate(/[ \t]+/),
+    field('class', alias(ref($, prefix, 'identifier'), ref($, prefix, 'class_name'))),
+  ),
+
+  [familyRule(prefix, 'style_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'style'),
+    token.immediate(/[ \t]+/),
+    field('target', alias(ref($, prefix, 'identifier'), ref($, prefix, 'node_id'))),
+    token.immediate(/[ \t]+/),
+    field('style', ref($, prefix, 'style_list')),
+  ),
+
+  [familyRule(prefix, 'link_style_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'linkStyle'),
+    field('targets', choice(
+      alias(token(prec(20, 'default')), ref($, prefix, 'link_style_default')),
+      ref($, prefix, 'number_list'),
+    )),
+    optional(seq(
+      statementKeyword($, prefix, 'interpolate'),
+      field('interpolation', alias(
+        ref($, prefix, 'identifier'),
+        ref($, prefix, 'interpolation'),
+      )),
+    )),
+    optional(field('style', ref($, prefix, 'style_list'))),
+  ),
+
+  [familyRule(prefix, 'identifier_list')]: ($) => seq(
+    field('item', alias(ref($, prefix, 'identifier'), ref($, prefix, 'reference'))),
+    repeat(seq(
+      field('delimiter', ','),
+      field('item', alias(ref($, prefix, 'identifier'), ref($, prefix, 'reference'))),
+    )),
+  ),
+
+  [familyRule(prefix, 'number_list')]: ($) => seq(
+    field('item', alias(/[0-9]+/, ref($, prefix, 'edge_index'))),
+    repeat(seq(
+      field('delimiter', ','),
+      field('item', alias(/[0-9]+/, ref($, prefix, 'edge_index'))),
+    )),
+  ),
+
+  [familyRule(prefix, 'style_list')]: ($) => seq(
+    field('item', ref($, prefix, 'style_item')),
+    repeat(seq(
+      optional(field('delimiter', ',')),
+      field('item', ref($, prefix, 'style_item')),
+    )),
+    optional(field('delimiter', ',')),
+  ),
+
+  [familyRule(prefix, 'style_item')]: ($) => choice(
+    prec(30, ref($, prefix, 'style_declaration')),
+    field('value', alias(
+      ref($, prefix, 'style_property'),
+      ref($, prefix, 'style_fragment'),
+    )),
+    ref($, prefix, 'style_fragment'),
+  ),
+
+  [familyRule(prefix, 'style_declaration')]: ($) => seq(
+    field('property', ref($, prefix, 'style_property')),
+    field('delimiter', ':'),
+    field('value', ref($, prefix, 'style_value')),
+  ),
+
+  [familyRule(prefix, 'style_property')]: (_) => token(prec(10, /[A-Za-z_-][A-Za-z0-9_-]*/)),
+  [familyRule(prefix, 'style_value')]: (_) => token(prec(-20, /[^,;\r\n]+/)),
+  [familyRule(prefix, 'style_fragment')]: (_) => token(prec(-40, /[^,;\r\n]+/)),
+
+  [familyRule(prefix, 'click_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'click'),
+    token.immediate(/[ \t]+/),
+    field('target', alias(ref($, prefix, 'identifier'), ref($, prefix, 'node_id'))),
+    optional(choice(
+      seq(
+        token.immediate(/[ \t]+/),
+        field('action', ref($, prefix, 'href_action')),
+        optional(clickSuffix($, prefix)),
+      ),
+      seq(
+        token.immediate(/[ \t]+/),
+        field('action', ref($, prefix, 'call_action')),
+        optional(clickTooltip($, prefix)),
+      ),
+      seq(
+        token.immediate(/[ \t]+/),
+        field('action', ref($, prefix, 'callback_action')),
+        optional(clickTooltip($, prefix)),
+      ),
+      seq(
+        token.immediate(/[ \t]+/),
+        field('action', ref($, prefix, 'quoted_label')),
+        optional(clickSuffix($, prefix)),
+      ),
+    )),
+  ),
+
+  [familyRule(prefix, 'href_action')]: ($) => seq(
+    statementKeyword($, prefix, 'href'),
+    token.immediate(/[ \t]+/),
+    field('url', ref($, prefix, 'quoted_label')),
+  ),
+
+  [familyRule(prefix, 'call_action')]: ($) => seq(
+    optional(field('keyword', ref($, prefix, 'call_keyword'))),
+    field('function', alias(
+      ref($, prefix, 'identifier'),
+      ref($, prefix, 'callback_name'),
+    )),
+    field('arguments', ref($, prefix, 'argument_list')),
+  ),
+
+  [familyRule(prefix, 'call_keyword')]: ($) => alias(
+    token(prec(30, /call[ \t]+/)),
+    ref($, prefix, 'statement_keyword'),
+  ),
+
+  [familyRule(prefix, 'callback_action')]: ($) => field(
+    'function',
+    alias(ref($, prefix, 'identifier'), ref($, prefix, 'callback_name')),
+  ),
+
+  [familyRule(prefix, 'argument_list')]: ($) => seq(
+    field('open', '('),
+    optional(field('value', ref($, prefix, 'arguments'))),
+    field('close', ')'),
+  ),
+
+  [familyRule(prefix, 'arguments')]: (_) => token(prec(-10, /[^)\r\n]+/)),
+  [familyRule(prefix, 'link_target')]: (_) => choice('_self', '_blank', '_parent', '_top'),
+
+  [familyRule(prefix, 'accessibility_title_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'accTitle'),
+    field('delimiter', ':'),
+    optional(field('text', ref($, prefix, 'accessibility_text'))),
+  ),
+
+  [familyRule(prefix, 'accessibility_description_statement')]: ($) => seq(
+    statementKeyword($, prefix, 'accDescr'),
+    choice(
+      seq(
+        field('delimiter', ':'),
+        optional(field('text', ref($, prefix, 'accessibility_text'))),
+      ),
+      field('description', ref($, prefix, 'accessibility_description_block')),
     ),
   ),
 
-  _flowchart_eof_header: ($) => seq(
-    flowchartKeyword($),
-    optional(field('direction', flowchartHeaderDirection($))),
+  [familyRule(prefix, 'accessibility_text')]: (_) => token(prec(-10, /[^;%\r\n]+/)),
+
+  [familyRule(prefix, 'accessibility_description_block')]: ($) => seq(
+    field('open', '{'),
+    optional(field('text', ref($, prefix, 'accessibility_block_text'))),
+    field('close', token.immediate('}')),
   ),
 
-  flowchart_body: ($) => repeat1($._flowchart_item),
+  [familyRule(prefix, 'accessibility_block_text')]: (_) => token.immediate(/[^}]+/),
 
-  _flowchart_item: ($) => choice(
-    $.comment,
-    $._blank_line,
-    $.flow_subgraph,
-    $.flow_edge_statement,
-    $.flow_incomplete_edge_statement,
-    $.flow_node_statement,
-    $.flow_direction_statement,
-  ),
-
-  _flow_subgraph_item: ($) => choice(
-    $.comment,
-    $._blank_line,
-    $.flow_subgraph,
-    $.flow_edge_statement,
-    $.flow_incomplete_edge_statement,
-    $.flow_node_statement,
-    $.flow_direction_statement,
-  ),
-
-  flow_direction_statement: ($) => seq(
-    field('clause', $.flow_direction_clause),
-    optional(field('trailing', $.flow_direction_trailing_text)),
-    $._statement_terminator,
-  ),
-
-  flow_direction_clause: (_) => token(prec(
-    20,
-    /direction[ \t]+(?:LR|RL|TB|BT|TD)/,
+  [familyRule(prefix, 'identifier')]: (_) => token(prec(
+    -5,
+    /[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
   )),
+});
 
-  flow_direction_trailing_text: (_) => token(prec(-100, /[^;\r\n]+/)),
+const createFlowFamilyConflicts = () => [];
 
-  flow_subgraph: ($) => prec.right(seq(
-    field('keyword', 'subgraph'),
-    optional(field('id', alias($._flow_identifier, $.identifier))),
-    optional(field('label', choice($.flow_square_label, $.quoted_string))),
-    $._statement_terminator,
-    repeat($._flow_subgraph_item),
-    field('end', $.flow_subgraph_end),
-    optional($._statement_terminator),
-  )),
+const flowchartRules = createFlowFamilyRules({
+  prefix: 'flow',
+  diagram: 'flowchart_diagram',
+  header: 'flowchart_header',
+  headerEof: '_flowchart_header_eof',
+  keywords: ['flowchart-elk', 'flowchart', 'graph'],
+});
 
-  flow_subgraph_end: (_) => 'end',
+const flowchartConflicts = ($) => createFlowFamilyConflicts($, 'flow');
 
-  flow_edge_statement: ($) => seq(
-    field('source', $.flow_node),
-    field('edge', $.flow_edge),
-    field('target', $.flow_node),
-    repeat(seq(field('edge', $.flow_edge), field('target', $.flow_node))),
-    $._statement_terminator,
-  ),
-
-  flow_incomplete_edge_statement: ($) => seq(
-    field('source', $.flow_node),
-    field('edge', $.flow_edge),
-    field('recovery', $.flow_edge_recovery),
-  ),
-
-  flow_edge_recovery: ($) => seq(
-    optional(field('text', $.flow_edge_recovery_text)),
-    $._line_ending,
-  ),
-
-  flow_edge_recovery_text: (_) => token(prec(-100, /[^\r\n]+/)),
-
-  flow_node_statement: ($) => seq(
-    field('node', $.flow_node),
-    $._statement_terminator,
-  ),
-
-  flow_node: ($) => seq(
-    field('id', alias($._flow_identifier, $.identifier)),
-    optional(field('shape', $.flow_shape)),
-    optional(field('class', $.flow_class_annotation)),
-  ),
-
-  flow_shape: ($) => choice(
-    $.flow_square_label,
-    $.flow_round_label,
-    $.flow_circle_label,
-    $.flow_diamond_label,
-    $.flow_hexagon_label,
-  ),
-
-  flow_square_label: ($) => seq('[', field('text', optional($.flow_label_text)), ']'),
-
-  flow_round_label: ($) => seq('(', field('text', optional($.flow_label_text)), ')'),
-
-  flow_circle_label: ($) => seq('((', field('text', optional($.flow_label_text)), '))'),
-
-  flow_diamond_label: ($) => seq('{', field('text', optional($.flow_label_text)), '}'),
-
-  flow_hexagon_label: ($) => seq('{{', field('text', optional($.flow_label_text)), '}}'),
-
-  flow_label_text: (_) => token(prec(-5, /[^\]\)\}|\r\n]+/)),
-
-  flow_edge: ($) => seq(
-    optional(field('id', $.flow_edge_id)),
-    field('operator', $.flow_arrow),
-    optional(field('label', $.flow_edge_label)),
-  ),
-
-  flow_edge_id: ($) => seq(
-    field('id', alias($._flow_identifier, $.identifier)),
-    '@',
-  ),
-
-  flow_edge_label: ($) => seq('|', field('text', optional($.flow_edge_label_text)), '|'),
-
-  flow_edge_label_text: (_) => token(prec(-5, /[^|\r\n]+/)),
-
-  flow_arrow: (_) => token(/[ox<]?(?:(?:--+|==+|-?\.+-)[-ox>]?|~~~+)/),
-
-  flow_class_annotation: ($) => seq(
-    ':::',
-    field('name', alias($._flow_identifier, $.identifier)),
-  ),
-
-  _flow_identifier: (_) => token(prec(-1,
-    /[A-Za-z_\u00c0-\uffff](?:[A-Za-z0-9_\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])*/,
-  )),
+module.exports = {
+  createFlowFamilyConflicts,
+  createFlowFamilyRules,
+  flowchartConflicts,
+  flowchartRules,
 };
-
-module.exports = { flowchartRules };

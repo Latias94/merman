@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "injections",
+  "source": "mindmap.mmd",
+  "captures": [
+    {
+      "name": "injection.content",
+      "text": "---\ntitle: mindmap\n---",
+      "startByte": 0,
+      "endByte": 22
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "c4.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "C4Container\ntitle Banking containers\nContainer_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}\nRel(customer, api, \"Uses\", \"HTTPS\")\nRel_Right(api, db, \"Reads\", \"SQL\")\nUpdateElementStyle(api, $bgColor=\"blue\")\nUpdateRelStyle(api, db, $lineColor=\"red\")\n",
+      "startByte": 0,
+      "endByte": 357
+    },
+    {
+      "name": "class.inside",
+      "text": "title Banking containers\nContainer_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}\nRel(customer, api, \"Uses\", \"HTTPS\")\nRel_Right(api, db, \"Reads\", \"SQL\")\nUpdateElementStyle(api, $bgColor=\"blue\")\nUpdateRelStyle(api, db, $lineColor=\"red\")\n",
+      "startByte": 12,
+      "endByte": 357
+    },
+    {
+      "name": "function.around",
+      "text": "Container_Boundary(apps, \"Applications\") {\n  Person(customer, \"Customer\")\n  Container(api, \"API\", \"Rust\", $tags=\"core\")\n  ContainerDb(db, \"Database\", \"PostgreSQL\")\n}",
+      "startByte": 37,
+      "endByte": 202
+    },
+    {
+      "name": "function.around",
+      "text": "Person(customer, \"Customer\")",
+      "startByte": 82,
+      "endByte": 110
+    },
+    {
+      "name": "function.around",
+      "text": "Container(api, \"API\", \"Rust\", $tags=\"core\")",
+      "startByte": 113,
+      "endByte": 156
+    },
+    {
+      "name": "function.around",
+      "text": "ContainerDb(db, \"Database\", \"PostgreSQL\")",
+      "startByte": 159,
+      "endByte": 200
+    }
+  ]
+}

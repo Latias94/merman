@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "highlights",
+  "source": "event-modeling.mmd",
+  "captures": [
+    {
+      "name": "keyword",
+      "text": "eventmodeling",
+      "startByte": 0,
+      "endByte": 13
+    },
+    {
+      "name": "keyword",
+      "text": "title",
+      "startByte": 14,
+      "endByte": 19
+    },
+    {
+      "name": "string",
+      "text": "Checkout timeline",
+      "startByte": 20,
+      "endByte": 37
+    },
+    {
+      "name": "keyword",
+      "text": "entity",
+      "startByte": 38,
+      "endByte": 44
+    },
+    {
+      "name": "type",
+      "text": "Sales",
+      "startByte": 45,
+      "endByte": 50
+    },
+    {
+      "name": "type",
+      "text": "Order",
+      "startByte": 51,
+      "endByte": 56
+    },
+    {
+      "name": "keyword",
+      "text": "tf",
+      "startByte": 57,
+      "endByte": 59
+    },
+    {
+      "name": "number",
+      "text": "01",
+      "startByte": 60,
+      "endByte": 62
+    },
+    {
+      "name": "type.builtin",
+      "text": "cmd",
+      "startByte": 63,
+      "endByte": 66
+    },
+    {
+      "name": "type",
+      "text": "Sales",
+      "startByte": 67,
+      "endByte": 72
+    },
+    {
+      "name": "type",
+      "text": "Update",
+      "startByte": 73,
+      "endByte": 79
+    },
+    {
+      "name": "operator",
+      "text": "->>",
+      "startByte": 80,
+      "endByte": 83
+    },
+    {
+      "name": "number",
+      "text": "007",
+      "startByte": 84,
+      "endByte": 87
+    },
+    {
+      "name": "variable",
+      "text": "payload",
+      "startByte": 90,
+      "endByte": 97
+    },
+    {
+      "name": "type.builtin",
+      "text": "json",
+      "startByte": 101,
+      "endByte": 105
+    },
+    {
+      "name": "string",
+      "text": "{ready: true}",
+      "startByte": 106,
+      "endByte": 119
+    },
+    {
+      "name": "keyword",
+      "text": "data",
+      "startByte": 120,
+      "endByte": 124
+    },
+    {
+      "name": "variable",
+      "text": "payload",
+      "startByte": 125,
+      "endByte": 132
+    },
+    {
+      "name": "type.builtin",
+      "text": "json",
+      "startByte": 134,
+      "endByte": 138
+    }
+  ]
+}

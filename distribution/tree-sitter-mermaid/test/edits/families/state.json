@@ -1,0 +1,50 @@
+[
+  {
+    "name": "State CRLF Unicode alias edit",
+    "source": "stateDiagram-v2\r\nstate \"Before\" as active\r\nactive --> [*]\r\n",
+    "old": "Before",
+    "replacement": "活动世界"
+  },
+  {
+    "name": "State legacy to v2 header switch",
+    "source": "stateDiagram\n[*] --> Ready\n",
+    "old": "stateDiagram",
+    "replacement": "stateDiagram-v2"
+  },
+  {
+    "name": "State to Flowchart root switch",
+    "source": "stateDiagram-v2\nA --> B\n",
+    "old": "stateDiagram-v2",
+    "replacement": "flowchart TD"
+  },
+  {
+    "name": "State alias to named declaration mode",
+    "source": "stateDiagram-v2\nstate \"Long lived\" as long\nlong --> [*]\n",
+    "old": "state \"Long lived\" as long",
+    "replacement": "state long"
+  },
+  {
+    "name": "State repair incomplete transition",
+    "source": "stateDiagram-v2\nBefore --> After\nBroken -->\nLast --> [*]\n",
+    "old": "Broken -->",
+    "replacement": "Broken --> Repaired: recovered"
+  },
+  {
+    "name": "State inline to multiline note mode",
+    "source": "stateDiagram-v2\nA --> B\nnote right of B: Inline note\n",
+    "old": "note right of B: Inline note",
+    "replacement": "note right of B\n  First line\n  世界\nend note"
+  },
+  {
+    "name": "State insert nested composite",
+    "source": "stateDiagram-v2\nstate Parent {\n  [*] --> Child\n}\n",
+    "old": "  [*] --> Child",
+    "replacement": "  state Child {\n    [*] --> Deep\n    Deep --> [*]\n  }"
+  },
+  {
+    "name": "State encoded colon description edit",
+    "source": "stateDiagram-v2\nA --> B: test({ foo#colon; 'far' })\n",
+    "old": "foo#colon; 'far'",
+    "replacement": "key#colon; 'value'"
+  }
+]

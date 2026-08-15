@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "injections",
+  "source": "../highlights/event-modeling.mmd",
+  "captures": [
+    {
+      "name": "_event_language",
+      "text": "json",
+      "startByte": 134,
+      "endByte": 138
+    },
+    {
+      "name": "_event_language",
+      "text": "json",
+      "startByte": 134,
+      "endByte": 138
+    },
+    {
+      "name": "_event_language",
+      "text": "json",
+      "startByte": 134,
+      "endByte": 138
+    },
+    {
+      "name": "injection.content",
+      "text": "\n  ",
+      "startByte": 141,
+      "endByte": 144
+    },
+    {
+      "name": "injection.content",
+      "text": "{ \"ready\": true }",
+      "startByte": 144,
+      "endByte": 161
+    },
+    {
+      "name": "injection.content",
+      "text": "\n",
+      "startByte": 161,
+      "endByte": 162
+    }
+  ]
+}

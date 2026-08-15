@@ -1,15 +1,15 @@
 ==================
-flat rows retain indentation and metadata
+shapes metadata decorators comments and Unicode stay structural
 ==================
 
-kanban
-  todo[Todo]
-    docs[Write documentation]@{ assigned: 'alice', priority: 'High' }
-    parser[Design grammar]@{
-      assigned: bob
-      ticket: MM-42
-    }
-  done[Done]
+KaNbAn
+  todo[待办]
+    docs["Write [] docs"]@{ assigned: 'Alice B.', ticket: MM-42, priority: 'High' } %% owner
+    ::icon(fa fa-book)
+    :::urgent large
+    %% nested note
+  cloud)Cloud lane(
+    done{{完成}}
 
 ---
 
@@ -19,53 +19,79 @@ kanban
       (diagram_keyword))
     (kanban_body
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (identifier)
-          (kanban_square_label
-            (kanban_label_text))))
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_square_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter)))))
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (identifier)
-          (kanban_square_label
-            (kanban_label_text)))
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_square_shape
+              (kanban_shape_delimiter)
+              (kanban_quoted_string)
+              (kanban_shape_delimiter))))
         (kanban_metadata
+          (kanban_metadata_delimiter)
           (kanban_metadata_pair
-            (identifier)
-            (kanban_metadata_value))
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_quoted_string)))
+          (kanban_metadata_separator)
           (kanban_metadata_pair
-            (identifier)
-            (kanban_metadata_value))))
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_metadata_bare_value)))
+          (kanban_metadata_separator)
+          (kanban_metadata_pair
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_quoted_string)))
+          (kanban_metadata_delimiter)))
+      (comment)
+      (kanban_icon_statement
+        (kanban_icon_marker)
+        (kanban_decorator_delimiter)
+        (kanban_icon_name)
+        (kanban_decorator_delimiter))
+      (kanban_class_statement
+        (kanban_class_marker)
+        (kanban_class_list))
+      (comment)
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (identifier)
-          (kanban_square_label
-            (kanban_label_text)))
-        (kanban_metadata
-          (kanban_metadata_pair
-            (identifier)
-            (kanban_metadata_value))
-          (kanban_metadata_pair
-            (identifier)
-            (kanban_metadata_value))))
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_cloud_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter)))))
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (identifier)
-          (kanban_square_label
-            (kanban_label_text)))))))
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_hexagon_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter))))))))
 
 ==================
-baseline bare labels
+multiline metadata keeps named pairs
 ==================
 
 kanban
-  Todo
-    item1
-  Doing
-    item2
+  root@{
+    icon: star
+    assigned: knsv
+    label: 'fixed value'
+  }
+  next[After]
 
 ---
 
@@ -75,18 +101,142 @@ kanban
       (diagram_keyword))
     (kanban_body
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (kanban_bare_label)))
+          (kanban_plain_label))
+        (kanban_metadata
+          (kanban_metadata_delimiter)
+          (kanban_metadata_pair
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_metadata_bare_value)))
+          (kanban_metadata_pair
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_metadata_bare_value)))
+          (kanban_metadata_pair
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_quoted_string)))
+          (kanban_metadata_delimiter)))
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (kanban_bare_label)))
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_square_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter))))))))
+
+==================
+header only at eof
+==================
+
+KANBAN
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))))
+
+==================
+CRLF Unicode rows
+==================
+
+kanban
+  待办
+    编写解析器
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))
+    (kanban_body
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (kanban_bare_label)))
+          (kanban_plain_label)))
       (kanban_item_statement
-        (kanban_indentation)
         (kanban_item
-          (kanban_bare_label))))))
+          (kanban_plain_label))))))
+
+==================
+unclosed shape recovery preserves following siblings
+==================
+
+kanban
+  before[Before]
+    broken[unterminated
+    after[After]@{ assigned: bob }
+  final[Final]
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))
+    (kanban_body
+      (kanban_item_statement
+        (kanban_item
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_square_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter)))))
+      (kanban_incomplete_item_statement
+        (kanban_incomplete_item
+          (kanban_item_id)
+          (kanban_unclosed_square_shape
+            (kanban_shape_delimiter)
+            (kanban_unclosed_label_text))))
+      (kanban_item_statement
+        (kanban_item
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_square_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter))))
+        (kanban_metadata
+          (kanban_metadata_delimiter)
+          (kanban_metadata_pair
+            (kanban_metadata_key)
+            (kanban_metadata_separator)
+            (kanban_metadata_value
+              (kanban_metadata_bare_value)))
+          (kanban_metadata_delimiter)))
+      (kanban_item_statement
+        (kanban_item
+          (kanban_item_id)
+          (kanban_shape
+            (kanban_square_shape
+              (kanban_shape_delimiter)
+              (kanban_label_text)
+              (kanban_shape_delimiter))))))))
+
+==================
+bare CR and eof statement
+==================
+
+kanbanTodo  task
+
+---
+
+(source_file
+  (kanban_diagram
+    (kanban_header
+      (diagram_keyword))
+    (kanban_body
+      (kanban_item_statement
+        (kanban_item
+          (kanban_plain_label)))
+      (kanban_item_statement
+        (kanban_item
+          (kanban_plain_label))))))

@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Gantt CRLF Unicode task label",
+    "source": "gantt\r\ndateFormat YYYY-MM-DD\r\nsection Delivery\r\nBuild parser:task1, 2026-08-15, 2d\r\n",
+    "old": "Build parser",
+    "replacement": "构建解析器"
+  },
+  {
+    "name": "Gantt dependency insertion",
+    "source": "gantt\nsection Delivery\nBuild:build, 2d\nShip:ship, 1d\n",
+    "old": "Ship:ship, 1d",
+    "replacement": "Ship:ship, after build, 1d"
+  },
+  {
+    "name": "Gantt incomplete task repair",
+    "source": "gantt\nsection Before\nBroken task:\nsection After\nHealthy:1d\n",
+    "old": "Broken task:",
+    "replacement": "Recovered task:active, recovered, 2d"
+  },
+  {
+    "name": "Gantt header-only body insertion",
+    "source": "gantt",
+    "old": "gantt",
+    "replacement": "gantt section Added\nTask:1d"
+  },
+  {
+    "name": "Gantt click callback arguments",
+    "source": "gantt\nTask:task1, 1d\nclick task1 call notify()\n",
+    "old": "notify()",
+    "replacement": "notify(\"世界\", 2)"
+  },
+  {
+    "name": "Gantt unclosed accessibility block repair",
+    "source": "gantt\nsection Before\naccDescr {unfinished\nsection After\nHealthy:1d\n",
+    "old": "accDescr {unfinished",
+    "replacement": "accDescr {\nfinished\n}"
+  },
+  {
+    "name": "Gantt malformed href spacing repair",
+    "source": "gantt\nTask:id1, 1d\nclick id1 href\"https://example.test/\"\nsection Preserved\n",
+    "old": "href\"",
+    "replacement": "href \""
+  },
+  {
+    "name": "Gantt keyword task becomes title",
+    "source": "gantt\ntitle:1d\nsection After\n",
+    "old": "title:1d",
+    "replacement": "title Release plan"
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "indents",
+  "source": "wardley.mmd",
+  "captures": [
+    {
+      "name": "indent",
+      "text": "[0.6, 0.7]",
+      "startByte": 27,
+      "endByte": 37
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 36,
+      "endByte": 37
+    },
+    {
+      "name": "indent",
+      "text": "(build)",
+      "startByte": 38,
+      "endByte": 45
+    },
+    {
+      "name": "end",
+      "text": ")",
+      "startByte": 44,
+      "endByte": 45
+    },
+    {
+      "name": "indent",
+      "text": "[0.4, 0.5]",
+      "startByte": 59,
+      "endByte": 69
+    },
+    {
+      "name": "end",
+      "text": "]",
+      "startByte": 68,
+      "endByte": 69
+    }
+  ]
+}

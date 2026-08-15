@@ -20,29 +20,151 @@ classDef important fill:#f96,stroke:#333;
       (diagram_keyword))
     (treemap_body
       (treemap_item_statement
+        (treemap_indentation_start)
         (treemap_section
-          (quoted_string)))
+          (treemap_quoted_name)))
       (treemap_item_statement
+        (treemap_indentation_indent)
         (treemap_section
-          (quoted_string)))
+          (treemap_quoted_name)))
       (treemap_item_statement
+        (treemap_indentation_indent)
         (treemap_leaf
-          (quoted_string)
+          (treemap_quoted_name)
+          (treemap_value_separator)
           (treemap_number)))
       (treemap_item_statement
+        (treemap_indentation_reindent)
         (treemap_leaf
-          (quoted_string)
+          (treemap_quoted_name)
+          (treemap_value_separator)
           (treemap_number)
           (treemap_class_annotation
-            (identifier))))
+            (treemap_class_marker)
+            (treemap_class_name))))
       (treemap_item_statement
+        (treemap_indentation_dedent)
         (treemap_section
-          (quoted_string)))
+          (treemap_quoted_name)))
       (treemap_item_statement
+        (treemap_indentation_indent)
         (treemap_leaf
-          (quoted_string)
+          (treemap_quoted_name)
+          (treemap_value_separator)
           (treemap_number)))
       (treemap_class_definition
         (statement_keyword)
-        (identifier)
+        (treemap_class_name)
         (treemap_style_text)))))
+
+==================
+metadata comments aliases unicode and EOF
+==================
+
+treemap
+title Product mix
+accTitle: Product categories
+accDescr: Unicode hierarchy
+accDescr {Nested product values}
+"产品"
+  %% localized comment
+  "电子产品"
+    "手机": 50:::important
+
+  "Clothing"
+    "Men's", 40
+classDef important fill:#f96,stroke:#333
+
+---
+
+(source_file
+  (treemap_diagram
+    (treemap_header
+      (diagram_keyword))
+    (treemap_body
+      (langium_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_title_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_line_text))
+      (langium_acc_descr_statement
+        (statement_keyword)
+        (langium_acc_descr_block
+          (langium_acc_descr_block_text)))
+      (treemap_item_statement
+        (treemap_indentation_start)
+        (treemap_section
+          (treemap_quoted_name)))
+      (comment)
+      (treemap_item_statement
+        (treemap_indentation_indent)
+        (treemap_section
+          (treemap_quoted_name)))
+      (treemap_item_statement
+        (treemap_indentation_indent)
+        (treemap_leaf
+          (treemap_quoted_name)
+          (treemap_value_separator)
+          (treemap_number)
+          (treemap_class_annotation
+            (treemap_class_marker)
+            (treemap_class_name))))
+      (treemap_item_statement
+        (treemap_indentation_dedent)
+        (treemap_section
+          (treemap_quoted_name)))
+      (treemap_item_statement
+        (treemap_indentation_indent)
+        (treemap_leaf
+          (treemap_quoted_name)
+          (treemap_value_separator)
+          (treemap_number)))
+      (treemap_class_definition
+        (statement_keyword)
+        (treemap_class_name)
+        (treemap_style_text)))))
+
+==================
+localized leaf and quote recovery preserves siblings
+==================
+
+treemap-beta
+"Root"
+  "Missing value":
+  "Invalid value": nope
+  "Unclosed section
+  "Sibling": 2
+
+---
+
+(source_file
+  (treemap_diagram
+    (treemap_header
+      (diagram_keyword))
+    (treemap_body
+      (treemap_item_statement
+        (treemap_indentation_start)
+        (treemap_section
+          (treemap_quoted_name)))
+      (treemap_item_statement
+        (treemap_indentation_indent)
+        (treemap_incomplete_leaf
+          (treemap_quoted_name)
+          (treemap_value_separator)))
+      (treemap_item_statement
+        (treemap_malformed_leaf
+          (treemap_quoted_name)
+          (treemap_value_separator)
+          (treemap_invalid_value)))
+      (treemap_item_statement
+        (treemap_section
+          (treemap_unclosed_name)))
+      (treemap_item_statement
+        (treemap_leaf
+          (treemap_quoted_name)
+          (treemap_value_separator)
+          (treemap_number))))))

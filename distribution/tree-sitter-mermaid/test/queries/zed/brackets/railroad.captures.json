@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "brackets",
+  "source": "railroad.mmd",
+  "captures": [
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 52,
+      "endByte": 53
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 61,
+      "endByte": 62
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 70,
+      "endByte": 71
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 84,
+      "endByte": 85
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 91,
+      "endByte": 92
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 104,
+      "endByte": 105
+    },
+    {
+      "name": "open",
+      "text": "(",
+      "startByte": 112,
+      "endByte": 113
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 123,
+      "endByte": 124
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 124,
+      "endByte": 125
+    },
+    {
+      "name": "close",
+      "text": ")",
+      "startByte": 125,
+      "endByte": 126
+    }
+  ]
+}

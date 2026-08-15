@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "tags",
+  "source": "../highlights/state.mmd",
+  "captures": [
+    {
+      "name": "definition.class",
+      "text": "\"Ready 世界\" as ready",
+      "startByte": 22,
+      "endByte": 45
+    },
+    {
+      "name": "name",
+      "text": "ready",
+      "startByte": 40,
+      "endByte": 45
+    },
+    {
+      "name": "definition.class",
+      "text": "state Choice <<choice>>",
+      "startByte": 46,
+      "endByte": 69
+    },
+    {
+      "name": "name",
+      "text": "Choice",
+      "startByte": 52,
+      "endByte": 58
+    }
+  ]
+}

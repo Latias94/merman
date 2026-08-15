@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "profile": "portable",
+  "surface": "locals",
+  "source": "../highlights/railroad-abnf.mmd",
+  "captures": [
+    {
+      "name": "local.scope",
+      "text": "railroad-abnf-beta\ntitle ABNF grammar\n; comment\nrule = 1*2\"hello\" / [ other-rule ] / %x41 ;\n",
+      "startByte": 0,
+      "endByte": 92
+    },
+    {
+      "name": "local.definition",
+      "text": "rule",
+      "startByte": 48,
+      "endByte": 52
+    },
+    {
+      "name": "local.reference",
+      "text": "other-rule",
+      "startByte": 70,
+      "endByte": 80
+    }
+  ]
+}

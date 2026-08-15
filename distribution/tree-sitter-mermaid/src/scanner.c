@@ -21,6 +21,12 @@ enum TokenType {
   TREE_VIEW_REINDENT,
   TREE_VIEW_DEDENT,
   TREE_VIEW_INDENTATION_OVERFLOW,
+  KANBAN_START,
+  KANBAN_INDENT,
+  KANBAN_REINDENT,
+  KANBAN_DEDENT,
+  KANBAN_INDENTATION_OVERFLOW,
+  END_OF_INPUT,
 };
 
 enum ScannerMode {
@@ -28,6 +34,7 @@ enum ScannerMode {
   MODE_MINDMAP = 1,
   MODE_TREEMAP = 2,
   MODE_TREE_VIEW = 3,
+  MODE_KANBAN = 4,
 };
 
 enum {
@@ -65,6 +72,8 @@ static const TokenGroup TOKEN_GROUPS[] = {
      TREEMAP_INDENTATION_OVERFLOW, MODE_TREEMAP},
     {TREE_VIEW_START, TREE_VIEW_INDENT, TREE_VIEW_REINDENT, TREE_VIEW_DEDENT,
      TREE_VIEW_INDENTATION_OVERFLOW, MODE_TREE_VIEW},
+    {KANBAN_START, KANBAN_INDENT, KANBAN_REINDENT, KANBAN_DEDENT,
+     KANBAN_INDENTATION_OVERFLOW, MODE_KANBAN},
 };
 
 static void scanner_reset(Scanner *scanner) {
@@ -107,7 +116,7 @@ static uint32_t checksum(const char *buffer, unsigned length) {
 }
 
 static bool mode_is_valid(uint8_t mode) {
-  return mode >= MODE_MINDMAP && mode <= MODE_TREE_VIEW;
+  return mode >= MODE_MINDMAP && mode <= MODE_KANBAN;
 }
 
 static bool token_group_requested(const bool *valid_symbols,
@@ -144,13 +153,63 @@ static bool is_hierarchy_row(enum ScannerMode mode, int32_t lookahead) {
       lookahead == '%') {
     return false;
   }
-  if (mode == MODE_MINDMAP) {
+  if (mode == MODE_MINDMAP || mode == MODE_KANBAN) {
     return lookahead != ':';
   }
   if (mode == MODE_TREEMAP) {
     return lookahead == '"' || lookahead == '\'';
   }
   return !is_box_drawing_prefix(lookahead);
+}
+
+static bool consume_literal(TSLexer *lexer, const char *literal) {
+  for (; *literal != '\0'; literal++) {
+    if (lexer->lookahead != (unsigned char)*literal) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return true;
+}
+
+static bool is_horizontal_space(int32_t lookahead) {
+  return lookahead == ' ' || lookahead == '\t' || lookahead == '\f' ||
+         lookahead == 0xa0;
+}
+
+static bool is_tree_view_metadata_row(TSLexer *lexer) {
+  if (lexer->lookahead == 't') {
+    if (!consume_literal(lexer, "title")) {
+      return false;
+    }
+    return lexer->lookahead == 0 || lexer->lookahead == '\n' ||
+           lexer->lookahead == '\r' || lexer->lookahead == '%' ||
+           is_horizontal_space(lexer->lookahead);
+  }
+
+  if (!consume_literal(lexer, "acc")) {
+    return false;
+  }
+  if (lexer->lookahead == 'T') {
+    if (!consume_literal(lexer, "Title")) {
+      return false;
+    }
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      lexer->advance(lexer, false);
+    }
+    return lexer->lookahead == ':';
+  }
+  if (lexer->lookahead == 'D') {
+    if (!consume_literal(lexer, "Descr")) {
+      return false;
+    }
+    while (is_horizontal_space(lexer->lookahead)) {
+      lexer->advance(lexer, false);
+    }
+    return lexer->lookahead == ':' || lexer->lookahead == '{' ||
+           lexer->lookahead == '\n' || lexer->lookahead == '\r';
+  }
+  return false;
 }
 
 static bool emit_transition(Scanner *scanner, TSLexer *lexer,
@@ -312,6 +371,12 @@ bool tree_sitter_mermaid_external_scanner_scan(void *payload, TSLexer *lexer,
     return false;
   }
 
+  if (valid_symbols[END_OF_INPUT] && lexer->eof(lexer)) {
+    lexer->mark_end(lexer);
+    lexer->result_symbol = END_OF_INPUT;
+    return true;
+  }
+
   const TokenGroup *group = requested_group(valid_symbols);
   if (group == NULL) {
     return false;
@@ -333,6 +398,10 @@ bool tree_sitter_mermaid_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
   if (!is_hierarchy_row(group->mode, lexer->lookahead)) {
+    return false;
+  }
+  if (group->mode == MODE_TREE_VIEW &&
+      is_tree_view_metadata_row(lexer)) {
     return false;
   }
 

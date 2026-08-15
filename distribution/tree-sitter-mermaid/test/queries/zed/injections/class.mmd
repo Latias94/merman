@@ -1,0 +1,13 @@
+---
+title: class
+---
+classDiagram
+namespace domain {
+  class Customer["Customer"]:::entity {
+    +String name
+  }
+}
+Customer "1" o-- "many" Order : places
+note for Customer "Primary"
+classDef entity fill:#eef
+click Customer call select(1) "Run"

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "outline",
+  "source": "treemap.mmd",
+  "captures": [
+    {
+      "name": "name",
+      "text": "treemap",
+      "startByte": 0,
+      "endByte": 7
+    },
+    {
+      "name": "item",
+      "text": "treemap\ntitle Product revenue\n\"Products\":::root\n  \"Phones\": 50:::important\nclassDef important fill:red;\n",
+      "startByte": 0,
+      "endByte": 104
+    },
+    {
+      "name": "name",
+      "text": "\"Products\"",
+      "startByte": 30,
+      "endByte": 40
+    },
+    {
+      "name": "item",
+      "text": "\"Products\":::root",
+      "startByte": 30,
+      "endByte": 47
+    }
+  ]
+}

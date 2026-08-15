@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "publicId": "class",
+  "rootNode": "class_diagram",
+  "nodes": {
+    "class_callback_statement": ["callback", "keyword", "target", "tooltip"],
+    "class_declaration": ["annotation", "class", "keyword", "label", "members", "name"],
+    "class_diagram": ["body", "header"],
+    "class_incomplete_relationship": ["operator", "recovery", "source", "source_cardinality", "target_cardinality"],
+    "class_interaction_statement": ["action", "keyword", "link_target", "target", "tooltip", "url"],
+    "class_member_block": ["close", "member", "open"],
+    "class_namespace_declaration": ["body", "close", "keyword", "label", "name", "open"],
+    "class_note_statement": ["keyword", "relation", "target", "text"],
+    "class_relationship": ["delimiter", "label", "operator", "source", "source_cardinality", "target", "target_cardinality"]
+  }
+}

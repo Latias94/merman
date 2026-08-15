@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "zed",
+  "surface": "textobjects",
+  "source": "state.mmd",
+  "captures": [
+    {
+      "name": "class.around",
+      "text": "stateDiagram-v2\nstate \"Ready 世界\" as ready\nstate Choice <<choice>>\nready --> Choice:::hot: decide#colon; now\nnote right of Choice: Review\nnote left of ready\n  Check again\nend note\nclassDef hot fill:#f00,color:white\nclass ready,Choice hot\nstyle Choice fill:#fff\ndirection LR\nscale 640 width\n",
+      "startByte": 0,
+      "endByte": 293
+    },
+    {
+      "name": "class.inside",
+      "text": "state \"Ready 世界\" as ready\nstate Choice <<choice>>\nready --> Choice:::hot: decide#colon; now\nnote right of Choice: Review\nnote left of ready\n  Check again\nend note\nclassDef hot fill:#f00,color:white\nclass ready,Choice hot\nstyle Choice fill:#fff\ndirection LR\nscale 640 width\n",
+      "startByte": 16,
+      "endByte": 293
+    }
+  ]
+}
