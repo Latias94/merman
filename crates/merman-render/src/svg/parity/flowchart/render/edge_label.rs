@@ -32,6 +32,7 @@ fn record_edge_label_emission(
     compiled_styles: Option<&FlowchartCompiledStyles>,
     typed_font_stack_selected: bool,
     typed_font_size_selected: bool,
+    padding_verified: bool,
     receipt: FlowchartEdgeLabelEmissionReceipt,
     sanitized_xhtml: Option<&str>,
 ) {
@@ -72,31 +73,43 @@ fn record_edge_label_emission(
             typed_font_size_selected && reach.is_verified(),
         )
     });
+    let padding_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+        crate::flowchart::FlowchartSourceFacetStatus::Absent,
+        false,
+    );
+    let padding = ctx
+        .edge_theme
+        .padding_selected(padding_precedence)
+        .then_some(crate::flowchart::FlowchartThemeFacetEmission::new(
+            padding_precedence,
+            padding_verified,
+        ));
     ctx.theme_evidence.record_edge_label_emission(
-        &ctx.edge_theme,
+        ctx.edge_theme,
         crate::flowchart::FlowchartEdgeLabelThemeEmission {
             font_stack,
             font_size,
+            padding,
         },
         &source_residuals,
     );
 }
 
-fn padded_html_edge_label_background(padding: f64, width: f64, height: f64) -> String {
-    if padding <= 0.0 || width <= 0.0 || height <= 0.0 {
+fn padded_html_edge_label_background(
+    padding: crate::flowchart::FlowchartEdgeLabelPadding,
+    width: f64,
+    height: f64,
+) -> String {
+    if padding.is_zero() || width <= 0.0 || height <= 0.0 {
         return String::new();
     }
 
-    let width = width + 2.0 * padding;
-    let height = height + 2.0 * padding;
     format!(
-        r#"<rect class="background" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+        r#"<rect class="background" x="{}" y="{}" width="{}" height="{}"/>"#,
         fmt_display(-width / 2.0),
         fmt_display(-height / 2.0),
         fmt_display(width),
         fmt_display(height),
-        fmt_display(padding),
-        fmt_display(padding),
     )
 }
 
@@ -244,6 +257,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             Some(compiled_label_styles),
             typed_font_stack_selected,
             typed_font_size_selected,
+            typography_applicable,
             receipt,
             sanitized_xhtml,
         );
@@ -286,12 +300,20 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     false,
                 ) {
                     if !label_text.is_empty() {
+                        let (layout_w, layout_h) = ctx.edge_label_padding.padded_size(4.0, 4.0);
+                        let content = ctx.edge_label_padding.content_box(layout_w, layout_h);
                         let _ = write!(
                             out,
-                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate(-2,-2)"><g><rect class="background" style="" x="-2" y="-2" width="4" height="4"/>"#,
+                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                             fmt_display(x),
                             fmt_display(y),
                             escape_xml_display(&edge.id),
+                            fmt_display(content.x),
+                            fmt_display(content.y),
+                            fmt_display(-2.0 - ctx.edge_label_padding.left()),
+                            fmt_display(-2.0 - ctx.edge_label_padding.top()),
+                            fmt_display(layout_w),
+                            fmt_display(layout_h),
                         );
                         if label_type == "markdown" {
                             write_flowchart_svg_text_markdown_wrapped_centered(
@@ -318,8 +340,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 } else {
                     let w = lbl.width.max(0.0);
                     let h = lbl.height.max(0.0);
+                    let content = ctx.edge_label_padding.content_box(w, h);
                     let (dx, dy) = if w > 0.0 && h > 0.0 {
-                        (-w / 2.0, -h / 2.0)
+                        (content.x, content.y)
                     } else {
                         (0.0, 0.0)
                     };
@@ -328,13 +351,14 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
+                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                         fmt_display(x),
                         fmt_display(y),
                         escape_xml_display(&edge.id),
                         fmt_display(dx),
                         fmt_display(dy),
-                        fmt_display(background_y),
+                        fmt_display(-2.0 - ctx.edge_label_padding.left()),
+                        fmt_display(background_y - ctx.edge_label_padding.top()),
                         fmt_display(w),
                         fmt_display(h)
                     );
@@ -370,20 +394,23 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                     crate::text::WrapMode::SvgLike,
                 );
-                let w = (metrics.width + 4.0).max(1.0);
-                let h = (metrics.height + 4.0).max(1.0);
+                let content_w = (metrics.width + 4.0).max(1.0);
+                let content_h = (metrics.height + 4.0).max(1.0);
+                let (w, h) = ctx.edge_label_padding.padded_size(content_w, content_h);
+                let content = ctx.edge_label_padding.content_box(w, h);
                 let background_y = crate::text::flowchart_svg_edge_label_background_y_px(
                     edge_metrics_style.as_ref(),
                 );
                 let _ = write!(
                     out,
-                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
+                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                     fmt_display(x),
                     fmt_display(y),
                     escape_xml_display(&edge.id),
-                    fmt_display(-w / 2.0),
-                    fmt_display(-h / 2.0),
-                    fmt_display(background_y),
+                    fmt_display(content.x),
+                    fmt_display(content.y),
+                    fmt_display(-2.0 - ctx.edge_label_padding.left()),
+                    fmt_display(background_y - ctx.edge_label_padding.top()),
                     fmt_display(w),
                     fmt_display(h)
                 );
@@ -438,8 +465,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
             let layout_w = lbl.width.max(0.0);
             let h = lbl.height.max(0.0);
+            let content = ctx.edge_label_padding.content_box(layout_w, h);
             let background = padded_html_edge_label_background(ctx.edge_label_padding, layout_w, h);
-            let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
+            let wrapped_style = if content.width >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                     mw = fmt_display(FLOWCHART_EDGE_LABEL_WRAP_WIDTH)
@@ -459,10 +487,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(y),
                 background,
                 escape_xml_display(&edge.id),
-                fmt_display(-layout_w / 2.0),
-                fmt_display(-h / 2.0),
-                fmt_display(layout_w),
-                fmt_display(h),
+                fmt_display(content.x),
+                fmt_display(content.y),
+                fmt_display(content.width),
+                fmt_display(content.height),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
                 escape_xml_display(&div_style),
                 span_style_attr,
@@ -508,10 +536,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     ctx.edge_wrap_mode,
                 )
             };
-            let layout_w = metrics.width.max(1.0);
-            let h = metrics.height.max(1.0);
+            let content_w = metrics.width.max(1.0);
+            let content_h = metrics.height.max(1.0);
+            let (layout_w, h) = ctx.edge_label_padding.padded_size(content_w, content_h);
+            let content = ctx.edge_label_padding.content_box(layout_w, h);
             let background = padded_html_edge_label_background(ctx.edge_label_padding, layout_w, h);
-            let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
+            let wrapped_style = if content.width >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                     mw = fmt_display(FLOWCHART_EDGE_LABEL_WRAP_WIDTH)
@@ -531,10 +561,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(y),
                 background,
                 escape_xml_display(&edge.id),
-                fmt_display(-layout_w / 2.0),
-                fmt_display(-h / 2.0),
-                fmt_display(layout_w),
-                fmt_display(h.max(0.0)),
+                fmt_display(content.x),
+                fmt_display(content.y),
+                fmt_display(content.width),
+                fmt_display(content.height),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
                 escape_xml_display(&div_style),
                 span_style_attr,
@@ -619,6 +649,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                 compiled_label_styles,
                 typed_font_stack_selected,
                 typed_font_size_selected,
+                typography_applicable,
                 receipt,
                 sanitized_xhtml,
             );
@@ -654,16 +685,19 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let y = position.y;
     let width = label.width.max(0.0);
     let height = label.height.max(0.0);
+    let content = ctx.edge_label_padding.content_box(width, height);
+    let background = padded_html_edge_label_background(ctx.edge_label_padding, width, height);
 
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label"{} transform="translate({}, {})"><rect/>"#,
+        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/>{}<g class="label"{} transform="translate({}, {})"><rect/>"#,
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y),
+        background,
         OptionalStyleXmlAttr(first_label_style),
-        fmt_display(-width / 2.0),
-        fmt_display(-height / 2.0),
+        fmt_display(content.x),
+        fmt_display(content.y),
     );
 
     if ctx.node_html_labels {
@@ -686,8 +720,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         let _ = write!(
             out,
             r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-            fmt_display(width),
-            fmt_display(height),
+            fmt_display(content.width),
+            fmt_display(content.height),
             escape_xml_display(&div_style),
             OptionalStyleXmlAttr(&html_label_style),
             label_html,

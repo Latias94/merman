@@ -671,6 +671,7 @@ pub(crate) struct FlowchartSvgLabelSidecarBuilder {
     prepared_text_layout: Option<PreparedTextLayout>,
     work_meter: Option<Arc<OperationWorkMeter>>,
     resolved_theme: Option<ResolvedDiagramTheme>,
+    edge_label_padding: super::FlowchartEdgeLabelPadding,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     prepared_error: RefCell<Option<TextLayoutError>>,
     prepared_resource_error: RefCell<Option<ResourceLimitExceeded>>,
@@ -718,6 +719,18 @@ impl FlowchartSvgLabelSidecarBuilder {
     ) -> Self {
         self.typography_config_ownership = ownership;
         self
+    }
+
+    pub(crate) fn with_edge_label_padding(
+        mut self,
+        padding: super::FlowchartEdgeLabelPadding,
+    ) -> Self {
+        self.edge_label_padding = padding;
+        self
+    }
+
+    pub(crate) const fn edge_label_padding(&self) -> super::FlowchartEdgeLabelPadding {
+        self.edge_label_padding
     }
 
     fn record_prepared_error(&self, error: TextLayoutError) {
@@ -1157,6 +1170,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             pending.sources,
             pending.prepared,
             pending.render_ids,
+            self.edge_label_padding,
             self.prepared_error.into_inner(),
             self.prepared_resource_error.into_inner(),
             #[cfg(test)]
@@ -1365,6 +1379,7 @@ pub(crate) struct FlowchartSvgLabelSidecar {
     subgraph_title_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     swimlane_node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     swimlane_edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
+    edge_label_padding: super::FlowchartEdgeLabelPadding,
     prepared_error: Option<TextLayoutError>,
     prepared_resource_error: Option<ResourceLimitExceeded>,
     #[cfg(test)]
@@ -1378,6 +1393,7 @@ impl FlowchartSvgLabelSidecar {
         sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
         mut prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
         render_ids: FlowchartSvgLabelSlots<Box<str>>,
+        edge_label_padding: super::FlowchartEdgeLabelPadding,
         mut prepared_error: Option<TextLayoutError>,
         prepared_resource_error: Option<ResourceLimitExceeded>,
         #[cfg(test)] source_plans_by_owner: FxHashMap<FlowchartSvgLabelOwner, usize>,
@@ -1401,6 +1417,7 @@ impl FlowchartSvgLabelSidecar {
         let mut sidecar = Self {
             sources,
             prepared,
+            edge_label_padding,
             prepared_error,
             prepared_resource_error,
             #[cfg(test)]
@@ -1443,6 +1460,10 @@ impl FlowchartSvgLabelSidecar {
 
     pub(crate) fn prepared_resource_error(&self) -> Option<&ResourceLimitExceeded> {
         self.prepared_resource_error.as_ref()
+    }
+
+    pub(crate) const fn edge_label_padding(&self) -> super::FlowchartEdgeLabelPadding {
+        self.edge_label_padding
     }
 
     pub(crate) fn prepared_text_label_ledger(

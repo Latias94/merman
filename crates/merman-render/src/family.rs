@@ -1238,6 +1238,7 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
+    edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
 }
@@ -1253,6 +1254,10 @@ impl<L> FlowchartFamilyArtifact<L> {
 
     pub(crate) const fn edge_style_plan(&self) -> &crate::svg::FlowchartEdgeStylePlan {
         &self.edge_style_plan
+    }
+
+    pub(crate) const fn edge_theme(&self) -> &crate::flowchart::FlowchartEdgeThemeStyle {
+        &self.edge_theme
     }
 
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
@@ -2251,12 +2256,15 @@ fn prepare_flowchart_artifact<L>(
         &crate::svg::FlowchartEdgeStylePlan,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
+    let edge_theme =
+        crate::flowchart::FlowchartEdgeThemeStyle::resolve(resolved_theme, work_meter.as_ref())?;
     let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
         prepared_text_layout,
         resolved_theme,
         work_meter,
     )
-    .with_typography_config_ownership(typography_config_ownership);
+    .with_typography_config_ownership(typography_config_ownership)
+    .with_edge_label_padding(edge_theme.edge_label_padding());
     let layout = layout(
         &semantic,
         &label_sources,
@@ -2274,6 +2282,7 @@ fn prepare_flowchart_artifact<L>(
         pair: FamilyPair::new(semantic, layout),
         label_sources,
         edge_style_plan,
+        edge_theme,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
     }))

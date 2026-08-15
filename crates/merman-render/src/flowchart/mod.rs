@@ -1,4 +1,5 @@
 mod config;
+mod edge_label_padding;
 mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
@@ -16,6 +17,7 @@ pub(crate) use merman_core::diagrams::flowchart::{
 };
 use std::ops::Deref;
 
+pub(crate) use edge_label_padding::FlowchartEdgeLabelPadding;
 pub(crate) use edge_occurrence::{
     FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan,
 };

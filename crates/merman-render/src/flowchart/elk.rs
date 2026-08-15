@@ -803,6 +803,10 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     } else {
         &text_style
     };
+    let edge_label_padding = svg_label_sidecar.map_or_else(
+        super::FlowchartEdgeLabelPadding::default,
+        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
+    );
 
     let mut graph = elk::Graph {
         id: "root".to_string(),
@@ -903,6 +907,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
                 edge_label_wrapping_width,
                 edge_wrap_mode,
                 edge_html_labels,
+                edge_label_padding,
                 svg_label_sidecar,
                 edge_style_plan,
             },
@@ -970,6 +975,7 @@ struct EdgeMeasureContext<'a> {
     edge_label_wrapping_width: f64,
     edge_wrap_mode: WrapMode,
     edge_html_labels: bool,
+    edge_label_padding: super::FlowchartEdgeLabelPadding,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
 }
@@ -1876,6 +1882,7 @@ fn edge_label(
             (metrics.height + 4.0).max(1.0),
         )
     };
+    let (width, height) = ctx.edge_label_padding.padded_size(width, height);
 
     Ok(Some(elk::Label { width, height }))
 }

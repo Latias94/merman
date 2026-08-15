@@ -32,7 +32,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub node_corner_radius: f64,
     pub node_corner_radius_config_override: bool,
     pub edge_corner_radius: f64,
-    pub edge_label_padding: f64,
+    pub edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
     pub compact_edge_corners: bool,
 }
 
@@ -40,6 +40,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
+    edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 ) -> FlowchartRenderConfig {
     let effective_config_value = effective_config.as_value();
     let config = FlowchartConfigView::new(effective_config_value);
@@ -115,7 +116,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
             "themeVariables.radius",
         );
     let edge_corner_radius = node_corner_radius;
-    let edge_label_padding = 0.0;
     let compact_edge_corners = false;
 
     FlowchartRenderConfig {

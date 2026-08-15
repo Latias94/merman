@@ -25,6 +25,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             svg_label_sidecar: artifact.svg_label_sidecar(),
             theme_evidence: artifact.theme_evidence(),
             edge_style_plan: artifact.edge_style_plan(),
+            edge_theme: artifact.edge_theme(),
         },
         options,
     )
@@ -41,6 +42,7 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
     pub(super) theme_evidence: &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
     pub(super) edge_style_plan: &'a FlowchartEdgeStylePlan,
+    pub(super) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
 }
 
 pub(super) fn render_flowchart_svg_model(
@@ -58,6 +60,7 @@ pub(super) fn render_flowchart_svg_model(
         svg_label_sidecar,
         theme_evidence,
         edge_style_plan,
+        edge_theme,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -127,7 +130,12 @@ pub(super) fn render_flowchart_svg_model(
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
-    } = prepare_flowchart_render_config(model, effective_config, diagram_type);
+    } = prepare_flowchart_render_config(
+        model,
+        effective_config,
+        diagram_type,
+        svg_label_sidecar.edge_label_padding(),
+    );
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
@@ -253,10 +261,6 @@ pub(super) fn render_flowchart_svg_model(
     let node_dom_index = flowchart_node_dom_indices(model);
     let node_theme_ordinals =
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
-    let edge_theme = crate::flowchart::FlowchartEdgeThemeStyle::resolve(
-        options.resolved_theme(),
-        options.work_meter(),
-    )?;
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let ctx = FlowchartRenderCtx {
         model,

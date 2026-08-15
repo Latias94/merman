@@ -5,12 +5,16 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+};
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
     TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
-use merman_render::model::FlowchartLayout;
+use merman_render::model::{FlowchartLayout, SwimlaneLayout};
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
@@ -67,6 +71,35 @@ fn render_flowchart_artifact(
 
 fn render_flowchart_svg_from_text(text: &str) -> String {
     render_flowchart_svg_from_text_with_engine(Engine::new(), text)
+}
+
+fn edge_label_padding_theme(padding: InsetsPx) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::EdgeLabel,
+                ThemeStylePatch::default().with_padding(padding),
+            ))),
+        )
+        .expect("compile edge-label padding theme")
+}
+
+fn prepare_flowchart_family_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> family::FamilyRenderArtifact {
+    let parsed = block_on(
+        merman_render::__private::install_parse_compatibility(theme, Engine::new())
+            .parse_diagram_for_render_model(source, ParseOptions::default()),
+    )
+    .expect("parse themed Flowchart family")
+    .expect("detect themed Flowchart family");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .expect("begin themed Flowchart session");
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed Flowchart family")
 }
 
 fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
@@ -2487,6 +2520,469 @@ A -->|alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu| B
     assert!(
         !edge_text_style.contains("font-size:32px !important"),
         "default style must not override the per-edge style: {styled_svg}"
+    );
+}
+
+#[test]
+fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content_box() {
+    const PADDING: InsetsPx = InsetsPx {
+        top: 3.0,
+        right: 7.0,
+        bottom: 5.0,
+        left: 11.0,
+    };
+
+    fn prepare_control(source: &str) -> family::FamilyRenderArtifact {
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse control Flowchart family")
+                .expect("detect control Flowchart family");
+        family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("begin control Flowchart session"),
+        )
+        .expect("prepare control Flowchart family")
+    }
+
+    fn parse_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
+        node.attribute(attribute)
+            .unwrap_or_else(|| panic!("missing {attribute} on {}", node.tag_name().name()))
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("numeric {attribute} on {}", node.tag_name().name()))
+    }
+
+    fn parse_translate(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+        let transform = node.attribute("transform").expect("label transform");
+        let values = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .expect("translate transform")
+            .split([',', ' '])
+            .filter(|value| !value.is_empty())
+            .map(|value| value.parse::<f64>().expect("numeric translate component"))
+            .collect::<Vec<_>>();
+        assert_eq!(values.len(), 2, "{transform}");
+        (values[0], values[1])
+    }
+
+    fn assert_close(actual: f64, expected: f64, context: &str) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-6,
+            "{context}: expected {expected}, got {actual}"
+        );
+    }
+
+    fn assert_padded_html_label(
+        svg: &str,
+        label_group: roxmltree::Node<'_, '_>,
+        total_width: f64,
+        total_height: f64,
+        content_width: f64,
+        content_height: f64,
+    ) {
+        let outer = label_group.parent().expect("outer edge-label group");
+        let background = outer
+            .children()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("background"))
+            .unwrap_or_else(|| panic!("theme-owned edge-label background: {svg}"));
+        assert_close(
+            parse_number(background, "x"),
+            -total_width / 2.0,
+            "background x",
+        );
+        assert_close(
+            parse_number(background, "y"),
+            -total_height / 2.0,
+            "background y",
+        );
+        assert_close(
+            parse_number(background, "width"),
+            total_width,
+            "background width",
+        );
+        assert_close(
+            parse_number(background, "height"),
+            total_height,
+            "background height",
+        );
+
+        let (content_x, content_y) = parse_translate(label_group);
+        assert_close(
+            content_x,
+            -total_width / 2.0 + f64::from(PADDING.left),
+            "content x",
+        );
+        assert_close(
+            content_y,
+            -total_height / 2.0 + f64::from(PADDING.top),
+            "content y",
+        );
+        let foreign_object = label_group
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .expect("edge-label foreignObject");
+        assert_close(
+            parse_number(foreign_object, "width"),
+            content_width,
+            "content width",
+        );
+        assert_close(
+            parse_number(foreign_object, "height"),
+            content_height,
+            "content height",
+        );
+    }
+
+    let theme = edge_label_padding_theme(PADDING);
+    for (family_name, source, layout_key) in [
+        (
+            "Flowchart",
+            "flowchart LR\nA padded@-->|edge label padding| B\n",
+            "FlowchartV2",
+        ),
+        (
+            "Swimlane",
+            "swimlane-beta LR\nA padded@-->|edge label padding| B\n",
+            "SwimlaneDiagram",
+        ),
+    ] {
+        let control = prepare_control(source);
+        let control_projection = control.layout_json().expect("control layout projection");
+        let control_svg = control
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render control SVG");
+        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let themed_projection = themed.layout_json().expect("themed layout projection");
+        let themed_svg = themed
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG");
+
+        let (control_width, control_height, themed_width, themed_height) =
+            if layout_key == "FlowchartV2" {
+                let control_layout: FlowchartLayout =
+                    serde_json::from_value(control_projection["layout"][layout_key].clone())
+                        .expect("control Flowchart layout");
+                let themed_layout: FlowchartLayout =
+                    serde_json::from_value(themed_projection["layout"][layout_key].clone())
+                        .expect("themed Flowchart layout");
+                let control_label = control_layout.edges[0]
+                    .label
+                    .as_ref()
+                    .expect("control Flowchart edge label");
+                let themed_label = themed_layout.edges[0]
+                    .label
+                    .as_ref()
+                    .expect("themed Flowchart edge label");
+                (
+                    control_label.width,
+                    control_label.height,
+                    themed_label.width,
+                    themed_label.height,
+                )
+            } else {
+                let control_layout: SwimlaneLayout =
+                    serde_json::from_value(control_projection["layout"][layout_key].clone())
+                        .expect("control Swimlane layout");
+                let themed_layout: SwimlaneLayout =
+                    serde_json::from_value(themed_projection["layout"][layout_key].clone())
+                        .expect("themed Swimlane layout");
+                let control_label = control_layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.is_edge_label)
+                    .expect("control Swimlane edge label");
+                let themed_label = themed_layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.is_edge_label)
+                    .expect("themed Swimlane edge label");
+                (
+                    control_label.label_width,
+                    control_label.label_height,
+                    themed_label.label_width,
+                    themed_label.label_height,
+                )
+            };
+
+        assert_close(
+            themed_width - control_width,
+            f64::from(PADDING.left + PADDING.right),
+            &format!("{family_name} padded layout width"),
+        );
+        assert_close(
+            themed_height - control_height,
+            f64::from(PADDING.top + PADDING.bottom),
+            &format!("{family_name} padded layout height"),
+        );
+
+        let document = roxmltree::Document::parse(themed_svg.svg())
+            .unwrap_or_else(|error| panic!("valid themed {family_name} SVG: {error}"));
+        let label_group = if family_name == "Flowchart" {
+            document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some("padded")
+                })
+                .expect("themed Flowchart label group")
+        } else {
+            let outer = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g") && node.attribute("id") == Some("edge-label-A-B-padded")
+                })
+                .expect("themed Swimlane edge-label group");
+            outer
+                .children()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("class")
+                            .is_some_and(|classes| classes.split_whitespace().any(|c| c == "label"))
+                })
+                .expect("themed Swimlane content label group")
+        };
+        assert_padded_html_label(
+            themed_svg.svg(),
+            label_group,
+            themed_width,
+            themed_height,
+            control_width,
+            control_height,
+        );
+        assert!(!control_svg.svg().contains(r#"class="background" x="#));
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_svg_edge_label_padding_preserves_the_inner_content_box() {
+    const PADDING: InsetsPx = InsetsPx {
+        top: 3.0,
+        right: 7.0,
+        bottom: 5.0,
+        left: 11.0,
+    };
+
+    fn parse_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
+        node.attribute(attribute)
+            .unwrap_or_else(|| panic!("missing {attribute} on {}", node.tag_name().name()))
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("numeric {attribute} on {}", node.tag_name().name()))
+    }
+
+    fn parse_translate(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+        let transform = node.attribute("transform").expect("label transform");
+        let values = transform
+            .strip_prefix("translate(")
+            .and_then(|value| value.strip_suffix(')'))
+            .expect("translate transform")
+            .split([',', ' '])
+            .filter(|value| !value.is_empty())
+            .map(|value| value.parse::<f64>().expect("numeric translate component"))
+            .collect::<Vec<_>>();
+        assert_eq!(values.len(), 2, "{transform}");
+        (values[0], values[1])
+    }
+
+    fn assert_close(actual: f64, expected: f64, context: &str) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-6,
+            "{context}: expected {expected}, got {actual}"
+        );
+    }
+
+    let theme = edge_label_padding_theme(PADDING);
+    for (family_name, source, layout_key) in [
+        (
+            "Flowchart",
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A padded@-->|edge label padding| B
+"#,
+            "FlowchartV2",
+        ),
+        (
+            "Swimlane",
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+A padded@-->|edge label padding| B
+"#,
+            "SwimlaneDiagram",
+        ),
+    ] {
+        let themed = prepare_flowchart_family_with_theme(source, &theme);
+        let projection = themed.layout_json().expect("themed layout projection");
+        let (total_width, total_height) = if layout_key == "FlowchartV2" {
+            let layout: FlowchartLayout =
+                serde_json::from_value(projection["layout"][layout_key].clone())
+                    .expect("themed Flowchart layout");
+            let label = layout.edges[0]
+                .label
+                .as_ref()
+                .expect("themed Flowchart edge label");
+            (label.width, label.height)
+        } else {
+            let layout: SwimlaneLayout =
+                serde_json::from_value(projection["layout"][layout_key].clone())
+                    .expect("themed Swimlane layout");
+            let label = layout
+                .nodes
+                .iter()
+                .find(|node| node.is_edge_label)
+                .expect("themed Swimlane edge label");
+            (label.label_width, label.label_height)
+        };
+        let svg = themed
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG");
+        assert!(
+            !svg.svg().contains("foreignObject"),
+            "{family_name} must keep the SVG-label route: {}",
+            svg.svg()
+        );
+
+        let document = roxmltree::Document::parse(svg.svg())
+            .unwrap_or_else(|error| panic!("valid themed {family_name} SVG: {error}"));
+        let (label_group, background) = if family_name == "Flowchart" {
+            let label_group = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some("padded")
+                })
+                .expect("themed Flowchart SVG label group");
+            let background = label_group
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some("background")
+                })
+                .expect("themed Flowchart SVG label background");
+            (label_group, background)
+        } else {
+            let outer = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g") && node.attribute("id") == Some("edge-label-A-B-padded")
+                })
+                .expect("themed Swimlane SVG edge-label group");
+            let label_group = outer
+                .children()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|class| class == "label")
+                        })
+                })
+                .expect("themed Swimlane SVG content label group");
+            let background = outer
+                .children()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some("background")
+                })
+                .expect("themed Swimlane SVG label background");
+            (label_group, background)
+        };
+
+        let (content_x, content_y) = parse_translate(label_group);
+        assert_close(
+            content_x,
+            -total_width / 2.0 + f64::from(PADDING.left),
+            &format!("{family_name} SVG content x"),
+        );
+        assert_close(
+            content_y,
+            -total_height / 2.0 + f64::from(PADDING.top),
+            &format!("{family_name} SVG content y"),
+        );
+        assert_close(
+            parse_number(background, "width"),
+            total_width,
+            &format!("{family_name} SVG background width"),
+        );
+        assert_close(
+            parse_number(background, "height"),
+            total_height,
+            &format!("{family_name} SVG background height"),
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_edge_label_padding_reaches_the_layout_graph_before_routing() {
+    let source = r#"---
+config:
+  layout: elk
+---
+flowchart LR
+A padded@-->|edge label padding| B
+"#;
+    let control_parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse control ELK Flowchart")
+            .expect("detect control ELK Flowchart");
+    let control = family::prepare(
+        control_parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin control ELK session"),
+    )
+    .expect("prepare control ELK Flowchart");
+    let control_projection = control
+        .layout_json()
+        .expect("control ELK layout projection");
+    let control_layout: FlowchartLayout =
+        serde_json::from_value(control_projection["layout"]["FlowchartV2"].clone())
+            .expect("control ELK Flowchart layout");
+
+    let padding = InsetsPx {
+        top: 3.0,
+        right: 7.0,
+        bottom: 5.0,
+        left: 11.0,
+    };
+    let theme = edge_label_padding_theme(padding);
+    let themed = prepare_flowchart_family_with_theme(source, &theme);
+    let themed_projection = themed.layout_json().expect("themed ELK layout projection");
+    let themed_layout: FlowchartLayout =
+        serde_json::from_value(themed_projection["layout"]["FlowchartV2"].clone())
+            .expect("themed ELK Flowchart layout");
+
+    let control_label = control_layout.edges[0]
+        .label
+        .as_ref()
+        .expect("control ELK edge label");
+    let themed_label = themed_layout.edges[0]
+        .label
+        .as_ref()
+        .expect("themed ELK edge label");
+    assert!(
+        ((themed_label.width - control_label.width) - f64::from(padding.left + padding.right))
+            .abs()
+            <= 1.0e-6,
+        "ELK width: control={control_label:?}, themed={themed_label:?}"
+    );
+    assert!(
+        ((themed_label.height - control_label.height) - f64::from(padding.top + padding.bottom))
+            .abs()
+            <= 1.0e-6,
+        "ELK height: control={control_label:?}, themed={themed_label:?}"
     );
 }
 

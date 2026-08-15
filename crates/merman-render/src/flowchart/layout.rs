@@ -1629,6 +1629,10 @@ fn layout_flowchart_with_model(
         text_style,
         html_label_text_style,
     } = FlowchartConfigView::new(effective_config_value).layout_settings();
+    let edge_label_padding = svg_label_sidecar.map_or_else(
+        super::FlowchartEdgeLabelPadding::default,
+        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
+    );
     let look_is_neo = crate::config::config_diagram_look(effective_config_value).is_neo();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
@@ -2138,6 +2142,8 @@ fn layout_flowchart_with_model(
                     (metrics.height + 4.0).max(1.0),
                 )
             };
+            let (label_width, label_height) =
+                edge_label_padding.padded_size(label_width, label_height);
 
             let minlen = e.length.max(1);
             let mut el = EdgeLabel {

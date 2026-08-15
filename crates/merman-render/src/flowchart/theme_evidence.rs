@@ -44,6 +44,27 @@ enum FlowchartScalarOutcome {
     },
 }
 
+#[derive(Debug)]
+enum FlowchartPaddingOutcome {
+    Candidate {
+        rule_index: usize,
+        value: super::FlowchartEdgeLabelPadding,
+    },
+    Residual {
+        rule_index: usize,
+        reason: FamilyThemeResidualReason,
+    },
+}
+
+impl FlowchartPaddingOutcome {
+    const fn value(&self) -> Option<super::FlowchartEdgeLabelPadding> {
+        match self {
+            Self::Candidate { value, .. } => Some(*value),
+            Self::Residual { .. } => None,
+        }
+    }
+}
+
 impl FlowchartScalarOutcome {
     const fn value(&self) -> Option<f32> {
         match self {
@@ -240,6 +261,7 @@ pub(crate) struct FlowchartEdgeThemeEmission {
 pub(crate) struct FlowchartEdgeLabelThemeEmission {
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
+    pub(crate) padding: Option<FlowchartThemeFacetEmission>,
 }
 
 impl FlowchartNodeThemeEmission {
@@ -261,6 +283,7 @@ impl FlowchartNodeThemeEmission {
 struct FlowchartLabelThemeStyle {
     font_stack: Option<FlowchartTypographyOutcome>,
     font_size: Option<FlowchartTypographyOutcome>,
+    padding: Option<FlowchartPaddingOutcome>,
     matched_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
@@ -370,6 +393,22 @@ impl FlowchartEdgeThemeStyle {
             && matches!(
                 self.label.font_size,
                 Some(FlowchartTypographyOutcome::Candidate { .. })
+            )
+    }
+
+    pub(crate) fn edge_label_padding(&self) -> super::FlowchartEdgeLabelPadding {
+        self.label
+            .padding
+            .as_ref()
+            .and_then(FlowchartPaddingOutcome::value)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn padding_selected(&self, precedence: FlowchartFacetPrecedence) -> bool {
+        !precedence.overrides_theme()
+            && matches!(
+                self.label.padding,
+                Some(FlowchartPaddingOutcome::Candidate { .. })
             )
     }
 }
@@ -634,6 +673,9 @@ fn resolve_label_theme_style(
                     ThemeTypographyProperty::FontSize,
                 );
             }
+            ResolvedStyleProperty::Padding => {
+                resolved.padding = resolve_padding(theme, rule_index, style.padding_resolution());
+            }
             ResolvedStyleProperty::Typography(property) => record_incomplete_label_facet(
                 theme,
                 &mut resolved,
@@ -667,8 +709,7 @@ fn resolve_label_theme_style(
             | ResolvedStyleProperty::Opacity
             | ResolvedStyleProperty::FillOpacity
             | ResolvedStyleProperty::StrokeOpacity
-            | ResolvedStyleProperty::Radius
-            | ResolvedStyleProperty::Padding => record_incomplete_label_facet(
+            | ResolvedStyleProperty::Radius => record_incomplete_label_facet(
                 theme,
                 &mut resolved,
                 rule_index,
@@ -677,6 +718,34 @@ fn resolve_label_theme_style(
         }
     }
     Ok(resolved)
+}
+
+fn resolve_padding(
+    theme: &ResolvedDiagramTheme,
+    rule_index: usize,
+    property: &ResolvedProperty<crate::diagram_theme::InsetsPx>,
+) -> Option<FlowchartPaddingOutcome> {
+    let facet = match property.specified() {
+        Specified::Unspecified => return None,
+        Specified::Clear | Specified::Value(_) => FamilyThemeRuleFacet::Padding,
+    };
+    match theme.rule_facet_disposition(rule_index, facet)? {
+        FamilyThemeDisposition::LegacyCompatibility => None,
+        FamilyThemeDisposition::Unsupported => Some(FlowchartPaddingOutcome::Residual {
+            rule_index,
+            reason: FamilyThemeResidualReason::UnsupportedGeometry,
+        }),
+        FamilyThemeDisposition::TypedAdapter => match property.specified() {
+            Specified::Value(value) => Some(FlowchartPaddingOutcome::Candidate {
+                rule_index,
+                value: super::FlowchartEdgeLabelPadding::from_insets(*value),
+            }),
+            Specified::Clear | Specified::Unspecified => Some(FlowchartPaddingOutcome::Residual {
+                rule_index,
+                reason: FamilyThemeResidualReason::UnsupportedGeometry,
+            }),
+        },
+    }
 }
 
 fn resolve_paint(
@@ -1172,7 +1241,10 @@ impl FlowchartThemeEvidenceRecorder {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if emission.font_stack.is_some() || emission.font_size.is_some() {
+        if emission.font_stack.is_some()
+            || emission.font_size.is_some()
+            || emission.padding.is_some()
+        {
             state.edge_label.emitted = true;
             state
                 .edge_label
@@ -1199,6 +1271,14 @@ impl FlowchartThemeEvidenceRecorder {
                     style.label.font_size.as_ref(),
                     font_size_emission.precedence,
                     font_size_emission.verified,
+                );
+            }
+            if let Some(padding_emission) = emission.padding {
+                record_padding_outcome(
+                    &mut state.edge_label,
+                    style.label.padding.as_ref(),
+                    padding_emission.precedence,
+                    padding_emission.verified,
                 );
             }
             state
@@ -1445,6 +1525,37 @@ fn record_scalar_outcome(
                 .or_insert(FamilyThemeResidualReason::UnsupportedGeometry);
         }
         Some(FlowchartScalarOutcome::Residual { rule_index, reason }) => {
+            state.residual_rules.entry(*rule_index).or_insert(*reason);
+        }
+        None => {}
+    }
+}
+
+fn record_padding_outcome(
+    state: &mut FlowchartRuleEvidenceState,
+    outcome: Option<&FlowchartPaddingOutcome>,
+    precedence: FlowchartFacetPrecedence,
+    emitted: bool,
+) {
+    if precedence.overrides_theme() {
+        return;
+    }
+    match outcome {
+        Some(FlowchartPaddingOutcome::Candidate { rule_index, .. }) if emitted => {
+            state.applied_rules.insert(*rule_index);
+            state
+                .applied_rule_capabilities
+                .entry(*rule_index)
+                .or_default()
+                .insert(ThemeCapability::ContentPadding);
+        }
+        Some(FlowchartPaddingOutcome::Candidate { rule_index, .. }) => {
+            state
+                .residual_rules
+                .entry(*rule_index)
+                .or_insert(FamilyThemeResidualReason::UnsupportedGeometry);
+        }
+        Some(FlowchartPaddingOutcome::Residual { rule_index, reason }) => {
             state.residual_rules.entry(*rule_index).or_insert(*reason);
         }
         None => {}
@@ -1808,6 +1919,30 @@ mod tests {
             .resolve(DiagramFamilyId::FLOWCHART)
     }
 
+    fn resolved_edge_label_padding_theme() -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::EdgeLabel,
+                            ThemeStylePatch::default().with_padding(
+                                crate::diagram_theme::InsetsPx {
+                                    top: 3.0,
+                                    right: 7.0,
+                                    bottom: 5.0,
+                                    left: 11.0,
+                                },
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::FLOWCHART),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart EdgeLabel padding theme")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
     fn font_stack_emission(
         precedence: FlowchartFacetPrecedence,
         verified: bool,
@@ -1837,6 +1972,7 @@ mod tests {
             font_size: font_size.map(|(precedence, verified)| {
                 FlowchartThemeFacetEmission::new(precedence, verified)
             }),
+            padding: None,
         }
     }
 
@@ -1878,6 +2014,48 @@ mod tests {
         assert_eq!(
             evidence.applied_capabilities(),
             BTreeSet::from([ThemeCapability::Typography])
+        );
+        assert!(evidence.not_applicable_mechanisms().is_empty());
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn verified_edge_label_padding_is_applied_as_content_padding() {
+        let theme = resolved_edge_label_padding_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart EdgeLabel padding");
+        let precedence = no_override();
+        let padding = style.edge_label_padding();
+
+        assert!(style.padding_selected(precedence));
+        assert_eq!(padding.padded_size(40.0, 20.0), (58.0, 28.0));
+
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_edge_label_emission(
+            &style,
+            FlowchartEdgeLabelThemeEmission {
+                font_stack: None,
+                font_size: None,
+                padding: Some(FlowchartThemeFacetEmission::new(precedence, true)),
+            },
+            &[],
+        );
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert_eq!(
+            evidence.applied(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::EdgeLabel,
+            }]
+        );
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::ContentPadding])
         );
         assert!(evidence.not_applicable_mechanisms().is_empty());
         assert!(evidence.residuals().is_empty());

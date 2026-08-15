@@ -46,11 +46,12 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_corner_radius: f64,
     pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
-    pub(in crate::svg::parity::flowchart) edge_label_padding: f64,
+    pub(in crate::svg::parity::flowchart) edge_label_padding:
+        crate::flowchart::FlowchartEdgeLabelPadding,
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
-    pub(in crate::svg::parity::flowchart) edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
+    pub(in crate::svg::parity::flowchart) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,

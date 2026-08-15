@@ -589,12 +589,12 @@ fn classify_rule_facet(
                 variant: None | Some(ThemeVariant::Default)
             }
         )
-        && matches!(
+        && (matches!(
             facet,
             FamilyThemeRuleFacet::Typography(
                 ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
             )
-        )
+        ) || (target == ThemeTarget::EdgeLabel && facet == FamilyThemeRuleFacet::Padding))
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1155,7 +1155,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_own_static_default_node_and_edge_label_font_stack_and_size_only() {
+    fn flowchart_and_swimlane_own_static_default_label_typography_and_edge_padding() {
         let font_stack = super::super::FontStack::single("Excalifont").expect("valid font stack");
         let style = ThemeStylePatch {
             typography: TextStylePatch {
@@ -1211,6 +1211,25 @@ mod tests {
 
             assert!(
                 compile_rule_routes(family, 0, &ThemeRule::new(ThemeTarget::Edge, style.clone()))
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
+
+            let edge_padding = ThemeRule::new(
+                ThemeTarget::EdgeLabel,
+                ThemeStylePatch::default().with_padding(super::super::InsetsPx::all(8.0)),
+            );
+            assert!(
+                compile_rule_routes(family, 0, &edge_padding)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+            let node_padding = ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_padding(super::super::InsetsPx::all(8.0)),
+            );
+            assert!(
+                compile_rule_routes(family, 0, &node_padding)
                     .iter()
                     .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
             );

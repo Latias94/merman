@@ -44,6 +44,7 @@ struct MeasureContext<'a> {
     title_html_labels: bool,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
+    edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 }
 
 fn measure_content_node(
@@ -176,6 +177,9 @@ fn measure_edge_label(
         FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides),
         FlowchartSvgWidthMode::Bbox,
     );
+    let (label_width, label_height) = ctx
+        .edge_label_padding
+        .padded_size(metrics.width.max(0.0), metrics.height.max(0.0));
 
     Ok(WorkingNode {
         id: label_node_id,
@@ -191,10 +195,10 @@ fn measure_edge_label(
         y: 0.0,
         // createGraphWithElements overwrites labelRect's hidden 0.1 x 0.1 SVG rect with the
         // complete label group's measured bbox before the Swimlane layout core runs.
-        width: metrics.width.max(0.0),
-        height: metrics.height.max(0.0),
-        label_width: metrics.width.max(0.0),
-        label_height: metrics.height.max(0.0),
+        width: label_width,
+        height: label_height,
+        label_width,
+        label_height,
         layer: 0,
         order: 0,
         content_top: None,
@@ -276,6 +280,10 @@ pub(super) fn prepare(
     let config_view = FlowchartConfigView::new(effective_config.as_value());
     let swimlane_title_html_labels = config_view.swimlane_title_html_labels();
     let settings = config_view.layout_settings();
+    let edge_label_padding = svg_label_sidecar.map_or_else(
+        crate::flowchart::FlowchartEdgeLabelPadding::default,
+        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
+    );
     let measure_ctx = MeasureContext {
         model,
         config: effective_config,
@@ -286,6 +294,7 @@ pub(super) fn prepare(
         title_html_labels: swimlane_title_html_labels,
         svg_label_sidecar,
         edge_style_plan,
+        edge_label_padding,
     };
 
     // FlowDB builds parentDB by walking subgraphs from last to first.
