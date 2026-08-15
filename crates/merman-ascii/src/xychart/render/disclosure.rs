@@ -5,8 +5,8 @@ use crate::resource::ResourceContext;
 use crate::safe_text::visit_quoted_terminal_text;
 use crate::text::display_width_with_profile;
 use crate::xychart::plot::{
-    ChartChars, SeriesPlan, TerminalChartPlan, TerminalDisclosurePlan, format_data_number,
-    plot_type_name,
+    ChartChars, LinearDomainPlan, SeriesPlan, TerminalChartPlan, TerminalDisclosurePlan,
+    format_data_number, plot_type_name,
 };
 use crate::{AsciiError, AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
@@ -22,6 +22,22 @@ pub(super) fn push_value_disclosure_lines(
 ) -> Result<()> {
     if disclosure.band_domain {
         let line = band_domain_disclosure_line(model, plan, options, resources)?;
+        out.push(line, resources)?;
+    }
+    if disclosure.x_linear_domain
+        && let Some(domain) = plan.x_linear_domain
+    {
+        let line =
+            linear_domain_disclosure_line(domain, LinearDomainOwner::XAxis, options, resources)?;
+        out.push(line, resources)?;
+    }
+    if disclosure.y_linear_domain {
+        let line = linear_domain_disclosure_line(
+            plan.y_linear_domain,
+            LinearDomainOwner::YAxis,
+            options,
+            resources,
+        )?;
         out.push(line, resources)?;
     }
     if !disclosure.values {
@@ -167,6 +183,117 @@ fn band_domain_disclosure_line(
         resources,
     )?;
     Ok(line)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinearDomainOwner {
+    XAxis,
+    YAxis,
+}
+
+impl LinearDomainOwner {
+    const fn prefix(self) -> &'static str {
+        match self {
+            Self::XAxis => "xDomain: linear authored=[",
+            Self::YAxis => "yDomain: linear authored=[",
+        }
+    }
+}
+
+pub(super) fn linear_domain_disclosure_line_widths(
+    plan: &TerminalChartPlan,
+    disclosure: TerminalDisclosurePlan,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<(Option<usize>, Option<usize>)> {
+    let x_width = if disclosure.x_linear_domain {
+        let domain = plan.x_linear_domain.ok_or_else(invalid_disclosure_plan)?;
+        Some(measure_linear_domain_disclosure_line(
+            domain,
+            LinearDomainOwner::XAxis,
+            options,
+            resources,
+        )?)
+    } else {
+        None
+    };
+    let y_width = if disclosure.y_linear_domain {
+        Some(measure_linear_domain_disclosure_line(
+            plan.y_linear_domain,
+            LinearDomainOwner::YAxis,
+            options,
+            resources,
+        )?)
+    } else {
+        None
+    };
+    Ok((x_width, y_width))
+}
+
+fn measure_linear_domain_disclosure_line(
+    domain: LinearDomainPlan,
+    owner: LinearDomainOwner,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<usize> {
+    let mut line = MeasuredDisclosureLine {
+        width: 0,
+        width_profile: options.terminal_width_profile,
+    };
+    write_linear_domain_disclosure_line(&mut line, domain, owner, resources)?;
+    Ok(line.width)
+}
+
+fn linear_domain_disclosure_line(
+    domain: LinearDomainPlan,
+    owner: LinearDomainOwner,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<ChartLine> {
+    let mut line = new_chart_line(options, resources);
+    write_linear_domain_disclosure_line(
+        &mut StyledDisclosureLine { line: &mut line },
+        domain,
+        owner,
+        resources,
+    )?;
+    Ok(line)
+}
+
+fn write_linear_domain_disclosure_line(
+    line: &mut impl DisclosureLine,
+    domain: LinearDomainPlan,
+    owner: LinearDomainOwner,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    line.push_text(owner.prefix(), AsciiColorRole::Text, resources)?;
+    push_optional_data_number(line, domain.authored_min, resources)?;
+    line.push_text(",", AsciiColorRole::Text, resources)?;
+    push_optional_data_number(line, domain.authored_max, resources)?;
+    line.push_text("] resolved=[", AsciiColorRole::Text, resources)?;
+    line.push_text(
+        &format_data_number(domain.resolved.min),
+        AsciiColorRole::Text,
+        resources,
+    )?;
+    line.push_text(",", AsciiColorRole::Text, resources)?;
+    line.push_text(
+        &format_data_number(domain.resolved.max),
+        AsciiColorRole::Text,
+        resources,
+    )?;
+    line.push_char(']', AsciiColorRole::Text, resources)
+}
+
+fn push_optional_data_number(
+    line: &mut impl DisclosureLine,
+    value: Option<f64>,
+    resources: &ResourceContext,
+) -> Result<()> {
+    match value {
+        Some(value) => line.push_text(&format_data_number(value), AsciiColorRole::Text, resources),
+        None => line.push_text("none", AsciiColorRole::Text, resources),
+    }
 }
 
 fn write_band_domain_disclosure_line(

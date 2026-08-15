@@ -394,7 +394,7 @@ impl StyledLine {
             &mut self.arena,
             &line.cells,
             &line.arena,
-            self.resources.policy(),
+            work_resources,
             &mut checkpoint,
         ) {
             Ok(()) => Ok(()),
@@ -414,7 +414,7 @@ impl StyledLine {
                     &mut self.arena,
                     &line.cells,
                     &line.arena,
-                    self.resources.policy(),
+                    work_resources,
                     &mut checkpoint,
                 ) {
                     Ok(()) => Ok(()),
@@ -1329,6 +1329,102 @@ mod tests {
         }
 
         assert_eq!(overwrite_work(64), overwrite_work(4_096));
+    }
+
+    #[test]
+    fn checkpointed_surface_append_charges_both_passes_against_used_work() {
+        let source = StyledLine::plain_text_with_profile("X", TerminalWidthProfile::Unicode);
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("the exact test limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let mut exact_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &exact_resources);
+        exact_target
+            .try_push_line_with_checkpoint(&source, &exact_resources, || Ok(()))
+            .expect("one existing unit plus both one-cell append passes should fit exactly");
+        assert_eq!(exact_resources.layout_work_used(), 3);
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("the N-1 test limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        below_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let before_document = below_resources.document_cells_used();
+        let mut below_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &below_resources);
+        let owner = below_resources.clone();
+        let error = owner
+            .transaction(|_| {
+                below_target.try_push_line_with_checkpoint(&source, &below_resources, || Ok(()))
+            })
+            .expect_err("N-1 cumulative work must reject before copying the source surface");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual: 3,
+                max: 2,
+                ..
+            })
+        ));
+        assert_eq!(below_resources.layout_work_used(), 1);
+        assert_eq!(below_resources.document_cells_used(), before_document);
+        assert_eq!(below_target.len(), 0);
+    }
+
+    #[test]
+    fn checkpointed_surface_append_charges_each_referenced_arena_entry() {
+        let source = StyledLine::plain_text_with_profile("e\u{301}", TerminalWidthProfile::Unicode);
+
+        let exact_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 4)
+            .expect("the exact complex-glyph limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let mut exact_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &exact_resources);
+        exact_target
+            .try_push_line_with_checkpoint(&source, &exact_resources, || Ok(()))
+            .expect("the two cell passes and one arena entry should fit exactly");
+        assert_eq!(exact_resources.layout_work_used(), 4);
+
+        let below_policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("the N-1 complex-glyph limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        below_resources
+            .charge_layout_work(1)
+            .expect("the existing work debit should fit");
+        let mut below_target =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &below_resources);
+        let owner = below_resources.clone();
+        let error = owner
+            .transaction(|_| {
+                below_target.try_push_line_with_checkpoint(&source, &below_resources, || Ok(()))
+            })
+            .expect_err("N-1 must reject before importing the complex glyph");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                limit: AsciiResourceLimitId::MaxLayoutWorkUnits,
+                actual: 4,
+                max: 3,
+                ..
+            })
+        ));
+        assert_eq!(below_resources.layout_work_used(), 1);
+        assert_eq!(below_target.len(), 0);
     }
 
     #[test]

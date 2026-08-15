@@ -1014,12 +1014,13 @@ where
     }
     let mut document_cells = 0usize;
     let mut encoder_pass_work = 0usize;
+    let preserve_color = options.color_mode != AsciiColorMode::Plain;
     for line in lines.clone() {
         if let Some(execution) = execution {
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
         }
         let row_end = if trim {
-            line.trimmed_len(true)
+            line.trimmed_len(preserve_color)
         } else {
             line.len()
         };
@@ -2153,6 +2154,63 @@ mod tests {
         canvas.write_text(0, 0, "AB");
 
         assert_eq!(canvas.finish_trimmed(), "AB\n\n");
+    }
+
+    #[test]
+    fn styled_line_document_admission_matches_each_encoder_trim_rule() {
+        let setup = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &setup);
+        line.try_push_role_text("AB ", AsciiColorRole::Text)
+            .expect("the styled fixture should fit the default policy");
+
+        for (mode, exact_cells) in [
+            (AsciiColorMode::Plain, 2usize),
+            (AsciiColorMode::Ansi16, 3usize),
+            (AsciiColorMode::Html, 3usize),
+        ] {
+            let options = AsciiRenderOptions::unicode().with_color_mode(mode);
+            let exact = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
+            let mut exact_resources = ResourceContext::new(exact);
+            let exact_probe = std::cell::Cell::new(false);
+            finish_styled_line_iter_with_probe(
+                std::iter::once(&line),
+                &options,
+                true,
+                &mut exact_resources,
+                None,
+                None,
+                || exact_probe.set(true),
+            )
+            .unwrap_or_else(|error| {
+                panic!("mode={mode:?} exact document admission failed: {error}")
+            });
+            assert!(exact_probe.get(), "mode={mode:?}");
+
+            let below = policy_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
+            let mut below_resources = ResourceContext::new(below);
+            let below_probe = std::cell::Cell::new(false);
+            let error = finish_styled_line_iter_with_probe(
+                std::iter::once(&line),
+                &options,
+                true,
+                &mut below_resources,
+                None,
+                None,
+                || below_probe.set(true),
+            )
+            .expect_err("N-1 document cells must fail before materialization");
+            assert!(!below_probe.get(), "mode={mode:?}");
+            assert!(matches!(
+                error,
+                crate::AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                    limit: AsciiResourceLimitId::MaxDocumentCells,
+                    actual,
+                    max,
+                    ..
+                }) if actual == exact_cells && max == exact_cells - 1
+            ));
+        }
     }
 
     #[test]

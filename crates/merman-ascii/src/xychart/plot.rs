@@ -4,8 +4,10 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
 };
-use crate::safe_text::terminal_text_requires_normalization;
-use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
+use crate::safe_text::{terminal_text_requires_normalization, visit_safe_line_graphemes};
+use crate::text::StyledLine;
+#[cfg(test)]
+use crate::text::display_width_with_profile;
 use crate::{AsciiCharset, AsciiError, AsciiRenderOptions, Result};
 use merman_core::OperationPhase;
 use merman_core::diagrams::xychart::{
@@ -184,6 +186,38 @@ impl XyChartPlotArea {
     ) -> Result<String> {
         self.band_labels(categories, resources, checkpoints)
     }
+
+    pub(super) fn band_labels_retained_width<T: AsRef<str>>(
+        self,
+        labels: &[T],
+        resources: &mut ResourceContext,
+    ) -> Result<usize> {
+        let stride = resources.checked_grid_add(self.category_band_width, BAND_GAP)?;
+        let mut retained_width = 0usize;
+        for (index, label) in labels.iter().enumerate() {
+            let metrics = visit_fitted_safe_line(
+                label.as_ref(),
+                self.category_band_width,
+                self.width_profile,
+                resources,
+                |_| Ok(()),
+            )?;
+            let remaining = checked_grid_sub(
+                resources,
+                self.category_band_width,
+                metrics.materialized_width,
+            )?;
+            let left_padding = remaining / 2;
+            if metrics.retained_width == 0 {
+                continue;
+            }
+            let band_start = resources.checked_grid_mul(index, stride)?;
+            let text_start = resources.checked_grid_add(band_start, left_padding)?;
+            retained_width =
+                retained_width.max(resources.checked_grid_add(text_start, metrics.retained_width)?);
+        }
+        Ok(retained_width)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -287,6 +321,19 @@ impl ChartChars {
 pub(super) struct ValueRange {
     pub(super) min: f64,
     pub(super) max: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct LinearDomainPlan {
+    pub(super) authored_min: Option<f64>,
+    pub(super) authored_max: Option<f64>,
+    pub(super) resolved: ValueRange,
+}
+
+impl LinearDomainPlan {
+    fn authored_range_matches_resolved(self) -> bool {
+        self.authored_min == Some(self.resolved.min) && self.authored_max == Some(self.resolved.max)
+    }
 }
 
 impl ValueRange {
@@ -436,19 +483,30 @@ pub(super) struct SeriesPlan {
 #[derive(Debug, Clone)]
 pub(super) struct TerminalChartPlan {
     pub(super) x_axis: AxisPlan,
+    pub(super) x_linear_domain: Option<LinearDomainPlan>,
     pub(super) y_range: ValueRange,
+    pub(super) y_linear_domain: LinearDomainPlan,
     pub(super) series: Vec<SeriesPlan>,
     pub(super) category_labels: Vec<String>,
     pub(super) horizontal_axis_labels: Vec<String>,
     pub(super) slot_count: usize,
     pub(super) bar_series_count: usize,
     pub(super) line_series_count: usize,
+    has_authored_x: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct TerminalDisclosurePlan {
     pub(super) values: bool,
     pub(super) band_domain: bool,
+    pub(super) x_linear_domain: bool,
+    pub(super) y_linear_domain: bool,
+}
+
+impl TerminalDisclosurePlan {
+    pub(super) const fn is_required(self) -> bool {
+        self.values || self.band_domain || self.x_linear_domain || self.y_linear_domain
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -494,6 +552,16 @@ impl TerminalChartPlan {
             &model.plots,
             resources,
         )?;
+        let x_linear_domain = match (&model.x_axis, &x_axis) {
+            (XyChartAxisRenderModel::Linear { min, max, .. }, AxisPlan::Linear { range }) => {
+                Some(LinearDomainPlan {
+                    authored_min: *min,
+                    authored_max: *max,
+                    resolved: *range,
+                })
+            }
+            _ => None,
+        };
         let slot_count = cardinality.slot_count;
         let category_labels = axis_labels(&x_axis, slot_count, resources)?;
 
@@ -505,8 +573,10 @@ impl TerminalChartPlan {
             })?;
         let mut bar_lane = 0;
         let mut line_series_count = 0;
+        let mut has_authored_x = false;
         for (series_index, plot) in model.plots.iter().enumerate() {
             resources.charge_layout_work(1)?;
+            has_authored_x |= !plot.data.is_empty();
             let lane = if plot.plot_type == XyChartPlotType::Bar {
                 let lane = bar_lane;
                 bar_lane = resources.checked_grid_add(bar_lane, 1)?;
@@ -533,15 +603,33 @@ impl TerminalChartPlan {
         )?;
 
         let y_range = build_value_range(&model.y_axis, &series, resources)?;
+        let XyChartAxisRenderModel::Linear {
+            min: y_min,
+            max: y_max,
+            ..
+        } = &model.y_axis
+        else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "xychart",
+                feature: "band y-axis",
+            });
+        };
         Ok(Self {
             x_axis,
+            x_linear_domain,
             y_range,
+            y_linear_domain: LinearDomainPlan {
+                authored_min: *y_min,
+                authored_max: *y_max,
+                resolved: y_range,
+            },
             series,
             category_labels,
             horizontal_axis_labels,
             slot_count,
             bar_series_count: bar_lane,
             line_series_count,
+            has_authored_x,
         })
     }
 
@@ -589,7 +677,8 @@ impl TerminalChartPlan {
         &self,
         plot_area: XyChartPlotArea,
         horizontal: bool,
-        show_axis_labels: bool,
+        show_x_axis_labels: bool,
+        show_y_axis_labels: bool,
         resources: &mut ResourceContext,
     ) -> Result<TerminalDisclosurePlan> {
         resources.charge_layout_work(1)?;
@@ -602,29 +691,48 @@ impl TerminalChartPlan {
         } else {
             &self.category_labels
         };
+        let has_band_domain = matches!(&self.x_axis, AxisPlan::Band { .. });
         let implicit_band_domain =
             matches!(&self.x_axis, AxisPlan::Band { categories } if categories.is_empty());
-        let has_band_domain = matches!(&self.x_axis, AxisPlan::Band { .. });
+        let has_linear_x_domain = matches!(&self.x_axis, AxisPlan::Linear { .. });
+        let x_linear_domain = has_linear_x_domain;
+        let y_linear_domain = !show_y_axis_labels
+            || !self.linear_y_domain_is_visible_exact(plot_area, horizontal, resources)?;
+        let disclosure = |values, band_domain| TerminalDisclosurePlan {
+            values,
+            band_domain,
+            x_linear_domain,
+            y_linear_domain,
+        };
+        if has_linear_x_domain && (values_are_ambiguous || self.has_authored_x) {
+            return Ok(disclosure(true, false));
+        }
         for (index, category) in axis_labels.iter().enumerate() {
             resources.charge_layout_work(1)?;
-            let category_loses_geometry = !horizontal
-                && display_width_with_profile(category, plot_area.width_profile)
-                    > plot_area.category_band_width;
+            let category_loses_geometry = if horizontal {
+                false
+            } else {
+                visit_fitted_safe_line(
+                    category,
+                    plot_area.category_band_width,
+                    plot_area.width_profile,
+                    resources,
+                    |_| Ok(()),
+                )?
+                .truncated
+            };
+            if category_loses_geometry {
+                return Ok(disclosure(true, has_band_domain));
+            }
             let category_changes_during_normalization =
                 has_band_domain && terminal_text_requires_normalization(category, resources)?;
-            if category_loses_geometry || category_changes_during_normalization {
-                return Ok(TerminalDisclosurePlan {
-                    values: true,
-                    band_domain: has_band_domain,
-                });
+            if category_changes_during_normalization {
+                return Ok(disclosure(true, has_band_domain));
             }
             for previous in &axis_labels[..index] {
                 resources.charge_layout_work(1)?;
                 if category == previous {
-                    return Ok(TerminalDisclosurePlan {
-                        values: true,
-                        band_domain: has_band_domain,
-                    });
+                    return Ok(disclosure(true, has_band_domain));
                 }
             }
         }
@@ -633,62 +741,47 @@ impl TerminalChartPlan {
         // vertical chart and gutter-aligned padding for a horizontal chart. A changed projection
         // can be authored directly by another model, and distinct categories can project to the
         // same field. Keep the complete framed domain whenever that channel is not injective.
-        let band_domain_disclosure = if show_axis_labels {
-            match &self.x_axis {
-                AxisPlan::Band { categories } => band_label_projection_loses_identity(
-                    categories,
-                    axis_labels,
-                    plot_area,
-                    horizontal,
-                    resources,
-                )?,
-                AxisPlan::Linear { .. } => false,
-            }
-        } else {
-            false
+        let band_domain_disclosure = match &self.x_axis {
+            AxisPlan::Band { .. } if !show_x_axis_labels => true,
+            AxisPlan::Band { categories } => band_label_projection_loses_identity(
+                categories,
+                axis_labels,
+                plot_area,
+                horizontal,
+                resources,
+            )?,
+            AxisPlan::Linear { .. } => false,
         };
 
         if values_are_ambiguous {
-            return Ok(TerminalDisclosurePlan {
-                values: true,
-                band_domain: band_domain_disclosure,
-            });
+            return Ok(disclosure(true, band_domain_disclosure));
         }
 
         for series in &self.series {
             resources.charge_layout_work(1)?;
             if series.data.is_empty() && !series.has_orphan_point_labels {
-                return Ok(TerminalDisclosurePlan {
-                    values: true,
-                    band_domain: band_domain_disclosure,
-                });
+                return Ok(disclosure(true, band_domain_disclosure));
             }
             if series.title.is_some() {
-                return Ok(TerminalDisclosurePlan {
-                    values: true,
-                    band_domain: band_domain_disclosure,
-                });
+                return Ok(disclosure(true, band_domain_disclosure));
             }
             if series.has_orphan_point_labels {
-                return Ok(TerminalDisclosurePlan {
-                    values: true,
-                    band_domain: band_domain_disclosure,
-                });
+                return Ok(disclosure(true, band_domain_disclosure));
             }
             for (index, datum) in series.data.iter().enumerate() {
                 resources.charge_layout_work(1)?;
-                if (implicit_band_domain && datum.authored_x)
+                if ((implicit_band_domain || has_linear_x_domain) && datum.authored_x)
                     || datum.value.is_none()
                     || datum.has_point_label
                     || datum
                         .value
                         .is_some_and(|value| !self.y_range.contains(value))
                     || datum.x_clipped
+                    || self.datum_projection_loses_identity(
+                        series, datum, plot_area, horizontal, resources,
+                    )?
                 {
-                    return Ok(TerminalDisclosurePlan {
-                        values: true,
-                        band_domain: band_domain_disclosure,
-                    });
+                    return Ok(disclosure(true, band_domain_disclosure));
                 }
 
                 let projected_point = if series.plot_type == XyChartPlotType::Line {
@@ -703,37 +796,129 @@ impl TerminalChartPlan {
                         && previous.value.is_some()
                         && self.sample_slot(previous) == self.sample_slot(datum)
                     {
-                        return Ok(TerminalDisclosurePlan {
-                            values: true,
-                            band_domain: band_domain_disclosure,
-                        });
+                        return Ok(disclosure(true, band_domain_disclosure));
                     }
                     if projected_point.is_some()
                         && projected_point
                             == self.projected_point(previous, plot_area, horizontal, resources)?
                     {
-                        return Ok(TerminalDisclosurePlan {
-                            values: true,
-                            band_domain: band_domain_disclosure,
-                        });
+                        return Ok(disclosure(true, band_domain_disclosure));
                     }
                     if !horizontal
                         && series.plot_type == XyChartPlotType::Bar
                         && self
                             .vertical_bars_overlap(series, datum, previous, plot_area, resources)?
                     {
-                        return Ok(TerminalDisclosurePlan {
-                            values: true,
-                            band_domain: band_domain_disclosure,
-                        });
+                        return Ok(disclosure(true, band_domain_disclosure));
                     }
                 }
             }
         }
-        Ok(TerminalDisclosurePlan {
-            values: false,
-            band_domain: band_domain_disclosure,
-        })
+        Ok(disclosure(false, band_domain_disclosure))
+    }
+
+    fn linear_y_domain_is_visible_exact(
+        &self,
+        plot_area: XyChartPlotArea,
+        horizontal: bool,
+        resources: &mut ResourceContext,
+    ) -> Result<bool> {
+        let domain = self.y_linear_domain;
+        if !domain.authored_range_matches_resolved() {
+            return Ok(false);
+        }
+        let step = if horizontal {
+            domain.resolved.span()
+        } else {
+            domain.resolved.span() / plot_area.vertical_height as f64
+        };
+        let displayed_min = format_tick_number(domain.resolved.min, step);
+        let displayed_max = format_tick_number(domain.resolved.max, step);
+        if displayed_min != format_data_number(domain.resolved.min)
+            || displayed_max != format_data_number(domain.resolved.max)
+        {
+            return Ok(false);
+        }
+        if !horizontal {
+            return Ok(true);
+        }
+        let min_metrics = visit_fitted_safe_line(
+            &displayed_min,
+            plot_area.horizontal_width,
+            plot_area.width_profile,
+            resources,
+            |_| Ok(()),
+        )?;
+        let max_metrics = visit_fitted_safe_line(
+            &displayed_max,
+            plot_area.horizontal_width,
+            plot_area.width_profile,
+            resources,
+            |_| Ok(()),
+        )?;
+        let max_start = checked_grid_sub(
+            resources,
+            plot_area.horizontal_width,
+            max_metrics.materialized_width,
+        )?;
+        Ok(!min_metrics.truncated
+            && !max_metrics.truncated
+            && min_metrics.materialized_width <= max_start)
+    }
+
+    fn datum_projection_loses_identity(
+        &self,
+        series: &SeriesPlan,
+        datum: &SeriesDatum,
+        plot_area: XyChartPlotArea,
+        horizontal: bool,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+            return Ok(false);
+        };
+        let value_steps = if horizontal {
+            plot_area.horizontal_width
+        } else {
+            plot_area.vertical_height
+        };
+        let projected_value = match series.plot_type {
+            XyChartPlotType::Bar => bar_height(value, self.y_range, value_steps),
+            XyChartPlotType::Line => line_level(value, self.y_range, value_steps),
+        };
+        let canonical_value = projected_value as f64 / value_steps as f64;
+        if self.y_range.normalized(value) != canonical_value {
+            return Ok(true);
+        }
+
+        let AxisPlan::Linear { .. } = self.x_axis else {
+            return Ok(false);
+        };
+        if horizontal {
+            return Ok(false);
+        }
+        let Some(normalized_x) = datum.normalized_x else {
+            return Ok(true);
+        };
+        let plot_width = plot_area.vertical_plot_width(self.slot_count, resources)?;
+        if plot_width <= 1 {
+            return Ok(normalized_x != 0.0);
+        }
+        let first = plot_area
+            .vertical_band_center(0, resources)?
+            .min(plot_width - 1);
+        let last = plot_area
+            .vertical_band_center(self.slot_count.saturating_sub(1), resources)?
+            .min(plot_width - 1);
+        let span = checked_grid_sub(resources, last, first)?;
+        let column = self.sample_vertical_column(datum, plot_width, plot_area, resources)?;
+        let offset = checked_grid_sub(resources, column, first)?;
+        let canonical_x = if span == 0 {
+            0.0
+        } else {
+            offset as f64 / span as f64
+        };
+        Ok(normalized_x != canonical_x)
     }
 
     fn projected_point(
@@ -805,24 +990,46 @@ fn band_label_projection_loses_identity(
     horizontal: bool,
     resources: &mut ResourceContext,
 ) -> Result<bool> {
-    let mut horizontal_gutter = 0;
+    if authored_labels.len() != displayed_labels.len() {
+        return Ok(true);
+    }
     if horizontal {
-        for label in displayed_labels {
-            resources.charge_layout_work(1)?;
-            horizontal_gutter =
-                horizontal_gutter.max(display_width_with_profile(label, plot_area.width_profile));
+        let mut projected_width = None;
+        for (authored, displayed) in authored_labels.iter().zip(displayed_labels) {
+            let metrics = visit_fitted_safe_line(
+                displayed,
+                usize::MAX,
+                plot_area.width_profile,
+                resources,
+                |_| Ok(()),
+            )?;
+            if metrics.truncated || displayed != authored || displayed.ends_with(' ') {
+                return Ok(true);
+            }
+            if projected_width.is_some_and(|width| width != metrics.materialized_width) {
+                return Ok(true);
+            }
+            projected_width = Some(metrics.materialized_width);
         }
+        return Ok(false);
     }
     for (index, (authored, displayed)) in authored_labels.iter().zip(displayed_labels).enumerate() {
-        resources.charge_layout_work(1)?;
-        let displayed_width = display_width_with_profile(displayed, plot_area.width_profile);
-        let padding = if horizontal {
-            checked_grid_sub(resources, horizontal_gutter, displayed_width)?
-        } else {
-            checked_grid_sub(resources, plot_area.category_band_width, displayed_width)?
-        };
-        let loses_trailing_spaces =
-            displayed.ends_with(' ') && (horizontal || index + 1 == displayed_labels.len());
+        let metrics = visit_fitted_safe_line(
+            displayed,
+            plot_area.category_band_width,
+            plot_area.width_profile,
+            resources,
+            |_| Ok(()),
+        )?;
+        if metrics.truncated {
+            return Ok(true);
+        }
+        let padding = checked_grid_sub(
+            resources,
+            plot_area.category_band_width,
+            metrics.materialized_width,
+        )?;
+        let loses_trailing_spaces = displayed.ends_with(' ') && index + 1 == displayed_labels.len();
         if padding != 0 || displayed != authored || loses_trailing_spaces {
             return Ok(true);
         }
@@ -1037,7 +1244,7 @@ fn build_series_plan(
                 x: x.clone(),
                 value: *value,
                 has_point_label: plot.point_labels.get(index).is_some(),
-                authored_x: !x.trim().is_empty(),
+                authored_x: true,
                 slot,
                 normalized_x,
                 x_clipped,
@@ -1133,6 +1340,122 @@ pub(super) struct VerticalPlotAdmissionPlan {
 impl VerticalPlotAdmissionPlan {
     pub(super) fn row_widths(&self) -> &[usize] {
         &self.row_widths
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RetainedInterval {
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug)]
+struct RetainedCellMask {
+    extent: LogicalExtent,
+    cells: Vec<u8>,
+}
+
+impl RetainedCellMask {
+    fn try_new(
+        extent: LogicalExtent,
+        resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        resources.check(AsciiResourceLimitId::MaxGridCells, extent.cells())?;
+        resources.charge_layout_work(extent.cells())?;
+        let mut cells = Vec::new();
+        cells
+            .try_reserve_exact(extent.cells())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Layout.as_str(),
+            })?;
+        for _ in 0..extent.cells() {
+            checkpoints.tick(OperationPhase::Layout)?;
+            cells.push(0);
+        }
+        Ok(Self { extent, cells })
+    }
+
+    fn fill(
+        &mut self,
+        row: usize,
+        start: usize,
+        width: usize,
+        resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
+    ) -> Result<()> {
+        let end = resources.checked_grid_add(start, width)?;
+        self.overwrite(
+            row,
+            RetainedInterval { start, end },
+            Some(RetainedInterval { start, end }),
+            resources,
+            checkpoints,
+        )
+    }
+
+    fn overwrite(
+        &mut self,
+        row: usize,
+        target: RetainedInterval,
+        replacement: Option<RetainedInterval>,
+        resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
+    ) -> Result<()> {
+        if row >= self.extent.height()
+            || target.start > target.end
+            || target.end > self.extent.width()
+            || replacement.is_some_and(|value| {
+                value.start > value.end || value.start < target.start || value.end > target.end
+            })
+        {
+            return Err(resources.grid_overflow());
+        }
+        let target_width = checked_grid_sub(resources, target.end, target.start)?;
+        resources.charge_layout_work(target_width)?;
+        let row_start = resources.checked_grid_mul(row, self.extent.width())?;
+        for col in target.start..target.end {
+            checkpoints.tick(OperationPhase::Layout)?;
+            let index = resources.checked_grid_add(row_start, col)?;
+            let cell = self
+                .cells
+                .get_mut(index)
+                .ok_or_else(|| resources.grid_overflow())?;
+            *cell =
+                u8::from(replacement.is_some_and(|value| value.start <= col && col < value.end));
+        }
+        Ok(())
+    }
+
+    fn write_row_widths(
+        &self,
+        widths: &mut [usize],
+        resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
+    ) -> Result<()> {
+        if widths.len() != self.extent.height() {
+            return Err(resources.grid_overflow());
+        }
+        for (row, width) in widths.iter_mut().enumerate() {
+            resources.charge_layout_work(self.extent.width())?;
+            let row_start = resources.checked_grid_mul(row, self.extent.width())?;
+            let mut retained_width = 0;
+            for col in 0..self.extent.width() {
+                checkpoints.tick(OperationPhase::Layout)?;
+                let index = resources.checked_grid_add(row_start, col)?;
+                if self
+                    .cells
+                    .get(index)
+                    .copied()
+                    .ok_or_else(|| resources.grid_overflow())?
+                    != 0
+                {
+                    retained_width = resources.checked_grid_add(col, 1)?;
+                }
+            }
+            *width = retained_width;
+        }
+        Ok(())
     }
 }
 
@@ -1388,6 +1711,8 @@ pub(super) fn plan_vertical_plot_admission(
     plan: &TerminalChartPlan,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
+    compact_inside_labels: bool,
+    preserve_color: bool,
     resources: &mut ResourceContext,
     checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<VerticalPlotAdmissionPlan> {
@@ -1397,6 +1722,11 @@ pub(super) fn plan_vertical_plot_admission(
         .map_err(|_| AsciiError::AllocationFailed {
             phase: AsciiResourceLimitPhase::Layout.as_str(),
         })?;
+    let track_plain_label_overwrites = compact_inside_labels
+        && !preserve_color
+        && plan.series.len() == 1
+        && plan.series[0].plot_type == XyChartPlotType::Bar;
+    let mut retained_mask = None;
     for _ in 0..plot_extent.height() {
         checkpoints.tick(OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
@@ -1418,6 +1748,13 @@ pub(super) fn plan_vertical_plot_admission(
             if height == 0 {
                 continue;
             }
+            if track_plain_label_overwrites && retained_mask.is_none() {
+                retained_mask = Some(RetainedCellMask::try_new(
+                    plot_extent,
+                    resources,
+                    checkpoints,
+                )?);
+            }
             let (band_start, band_width) = vertical_bar_span(
                 plan,
                 series,
@@ -1426,12 +1763,33 @@ pub(super) fn plan_vertical_plot_admission(
                 plot_area,
                 resources,
             )?;
-            let retained_width = resources.checked_grid_add(band_start, band_width)?;
+            let full_retained_width = resources.checked_grid_add(band_start, band_width)?;
+            let label_retained_width = if compact_inside_labels && retained_mask.is_none() {
+                Some(vertical_inside_label_retained_width(
+                    value,
+                    band_start,
+                    band_width,
+                    preserve_color,
+                    plot_area.width_profile,
+                    resources,
+                )?)
+            } else {
+                None
+            };
             for level in 1..=height {
                 checkpoints.tick(OperationPhase::Layout)?;
                 resources.charge_layout_work(1)?;
                 let row = checked_grid_sub(resources, plot_area.vertical_height, level)?;
-                include_horizontal_row_width(&mut widths, row, retained_width, resources)?;
+                if let Some(mask) = retained_mask.as_mut() {
+                    mask.fill(row, band_start, band_width, resources, checkpoints)?;
+                } else {
+                    let retained_width = if level == height {
+                        label_retained_width.unwrap_or(full_retained_width)
+                    } else {
+                        full_retained_width
+                    };
+                    include_horizontal_row_width(&mut widths, row, retained_width, resources)?;
+                }
             }
         }
     }
@@ -1473,7 +1831,84 @@ pub(super) fn plan_vertical_plot_admission(
         }
     }
 
+    if let Some(mask) = retained_mask.as_mut() {
+        let bar_series = &plan.series[0];
+        for datum in &bar_series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                continue;
+            };
+            let height = bar_height(value, plan.y_range, plot_area.vertical_height);
+            if height == 0 {
+                continue;
+            }
+            let row = checked_grid_sub(resources, plot_area.vertical_height, height)?;
+            let (band_start, band_width) = vertical_bar_span(
+                plan,
+                bar_series,
+                datum,
+                plot_extent.width(),
+                plot_area,
+                resources,
+            )?;
+            let target = RetainedInterval {
+                start: band_start,
+                end: resources.checked_grid_add(band_start, band_width)?,
+            };
+            let replacement = vertical_inside_label_retained_interval(
+                value,
+                band_start,
+                band_width,
+                plot_area.width_profile,
+                resources,
+            )?;
+            mask.overwrite(row, target, replacement, resources, checkpoints)?;
+        }
+        mask.write_row_widths(&mut widths, resources, checkpoints)?;
+    }
+
     Ok(VerticalPlotAdmissionPlan { row_widths: widths })
+}
+
+fn vertical_inside_label_retained_width(
+    value: f64,
+    band_start: usize,
+    band_width: usize,
+    preserve_color: bool,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<usize> {
+    if preserve_color {
+        return resources.checked_grid_add(band_start, band_width);
+    }
+    Ok(vertical_inside_label_retained_interval(
+        value,
+        band_start,
+        band_width,
+        width_profile,
+        resources,
+    )?
+    .map_or(0, |interval| interval.end))
+}
+
+fn vertical_inside_label_retained_interval(
+    value: f64,
+    band_start: usize,
+    band_width: usize,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<Option<RetainedInterval>> {
+    let label = format_data_number(value);
+    let metrics = visit_fitted_safe_line(&label, band_width, width_profile, resources, |_| Ok(()))?;
+    if metrics.retained_width == 0 {
+        return Ok(None);
+    }
+    let remaining = checked_grid_sub(resources, band_width, metrics.materialized_width)?;
+    let left_padding = remaining / 2;
+    let start = resources.checked_grid_add(band_start, left_padding)?;
+    let end = resources.checked_grid_add(start, metrics.retained_width)?;
+    Ok(Some(RetainedInterval { start, end }))
 }
 
 fn include_horizontal_connection_widths(
@@ -2129,22 +2564,92 @@ fn write_band_text(
 }
 
 fn fit_centered(
-    value: &str,
+    source: &str,
     width: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<String> {
-    let value = truncate_display_width_with_profile(value, width, width_profile);
-    let value_width = display_width_with_profile(&value, width_profile);
-    let remaining = checked_grid_sub(resources, width, value_width)?;
+    let mut value = String::new();
+    let mut scan_resources = resources.clone();
+    let metrics = visit_fitted_safe_line(
+        source,
+        width,
+        width_profile,
+        &mut scan_resources,
+        |grapheme| {
+            value
+                .try_reserve(grapheme.len())
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
+            value.push_str(grapheme);
+            Ok(())
+        },
+    )?;
+    let remaining = checked_grid_sub(resources, width, metrics.materialized_width)?;
     let left = remaining / 2;
     let right = checked_grid_sub(resources, remaining, left)?;
-    Ok(format!(
-        "{}{}{}",
-        " ".repeat(left),
+    let capacity = left
+        .checked_add(value.len())
+        .and_then(|capacity| capacity.checked_add(right))
+        .ok_or_else(|| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    let mut fitted = String::new();
+    fitted
+        .try_reserve_exact(capacity)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    fitted.extend(std::iter::repeat_n(' ', left));
+    fitted.push_str(&value);
+    fitted.extend(std::iter::repeat_n(' ', right));
+    Ok(fitted)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FittedSafeLineMetrics {
+    materialized_width: usize,
+    retained_width: usize,
+    truncated: bool,
+}
+
+fn visit_fitted_safe_line(
+    value: &str,
+    width: usize,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+    mut visit: impl FnMut(&str) -> Result<()>,
+) -> Result<FittedSafeLineMetrics> {
+    let mut materialized_width = 0usize;
+    let mut retained_width = 0usize;
+    let mut truncated = false;
+    let policy = resources.policy();
+    visit_safe_line_graphemes(
+        resources,
         value,
-        " ".repeat(right)
-    ))
+        width_profile,
+        |grapheme, grapheme_width| {
+            let next_width = materialized_width
+                .checked_add(grapheme_width)
+                .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxGridCells))?;
+            if next_width > width {
+                truncated = true;
+                return Ok(false);
+            }
+            visit(grapheme)?;
+            materialized_width = next_width;
+            if !grapheme.as_bytes().iter().all(|byte| *byte == b' ') {
+                retained_width = materialized_width;
+            }
+            Ok(true)
+        },
+    )?;
+    Ok(FittedSafeLineMetrics {
+        materialized_width,
+        retained_width,
+        truncated,
+    })
 }
 
 pub(super) fn checked_grid_sub(
@@ -2326,6 +2831,116 @@ mod tests {
     }
 
     #[test]
+    fn retained_band_width_stops_after_the_first_overflowing_grapheme() {
+        let policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 3)
+            .expect("the exact bounded scan limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let label = format!("{}\u{1b}", "A".repeat(4_096));
+        let plot_area = XyChartPlotArea::from_options(
+            &AsciiRenderOptions::ascii().with_xychart_category_band_width(1),
+        );
+
+        let retained = plot_area
+            .band_labels_retained_width(&[label], &mut resources)
+            .expect("the retained-width scan should stop after one fitted cell");
+
+        assert_eq!(retained, 1);
+        assert_eq!(resources.layout_work_used(), 3);
+    }
+
+    #[test]
+    fn retained_cell_mask_large_fixture_has_linear_work_boundary() {
+        const WIDTH: usize = 600;
+        const HEIGHT: usize = 10;
+        const REQUIRED_WORK: usize = 18_600;
+
+        let run = |limit| -> Result<(Vec<usize>, usize)> {
+            let policy = default_resources()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .expect("the retained-mask work limit should be valid");
+            let mut resources = ResourceContext::new(policy);
+            let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::standalone(&policy));
+            let extent = LogicalExtent::checked(WIDTH, HEIGHT, policy)?;
+            let mut mask = RetainedCellMask::try_new(extent, &mut resources, &mut checkpoints)?;
+
+            for col in 0..WIDTH {
+                for row in 0..HEIGHT {
+                    mask.fill(row, col, 1, &mut resources, &mut checkpoints)?;
+                }
+            }
+            for col in 0..WIDTH {
+                mask.overwrite(
+                    0,
+                    RetainedInterval {
+                        start: col,
+                        end: col + 1,
+                    },
+                    None,
+                    &mut resources,
+                    &mut checkpoints,
+                )?;
+            }
+
+            let mut widths = vec![0; HEIGHT];
+            mask.write_row_widths(&mut widths, &mut resources, &mut checkpoints)?;
+            Ok((widths, resources.layout_work_used()))
+        };
+
+        let (widths, used) = run(REQUIRED_WORK).expect("the exact linear work limit should fit");
+        assert_eq!(widths[0], 0);
+        assert!(widths[1..].iter().all(|width| *width == WIDTH));
+        assert_eq!(used, REQUIRED_WORK);
+
+        let error = run(REQUIRED_WORK - 1).expect_err("N-1 must reject the final linear scan");
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a resource-limit error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, REQUIRED_WORK);
+        assert_eq!(details.max, REQUIRED_WORK - 1);
+    }
+
+    #[test]
+    fn disclosure_stops_after_the_first_overflowing_category_grapheme() {
+        let policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 5)
+            .expect("the exact disclosure scan limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let category = format!("{}\u{1b}", "A".repeat(4_096));
+        let plan = TerminalChartPlan {
+            x_axis: AxisPlan::Band {
+                categories: vec![category.clone()],
+            },
+            x_linear_domain: None,
+            y_range: ValueRange { min: 0.0, max: 1.0 },
+            y_linear_domain: LinearDomainPlan {
+                authored_min: Some(0.0),
+                authored_max: Some(1.0),
+                resolved: ValueRange { min: 0.0, max: 1.0 },
+            },
+            series: Vec::new(),
+            category_labels: vec![category],
+            horizontal_axis_labels: Vec::new(),
+            slot_count: 1,
+            bar_series_count: 0,
+            line_series_count: 0,
+            has_authored_x: false,
+        };
+        let plot_area = XyChartPlotArea::from_options(
+            &AsciiRenderOptions::ascii().with_xychart_category_band_width(1),
+        );
+
+        let disclosure = plan
+            .disclosure_plan(plot_area, false, true, true, &mut resources)
+            .expect("the disclosure scan should stop at the first overflowing grapheme");
+
+        assert!(disclosure.values);
+        assert!(disclosure.band_domain);
+        assert_eq!(resources.layout_work_used(), 5);
+    }
+
+    #[test]
     fn topology_initialization_observes_cancellation_inside_the_cell_loop() {
         let policy = default_resources();
         let mut resources = ResourceContext::new(policy);
@@ -2342,6 +2957,34 @@ mod tests {
                 if cancelled.phase == OperationPhase::Layout
                     && cancelled.reason == CancelReason::Requested
         ));
+    }
+
+    #[test]
+    fn topology_initialization_admits_source_and_mask_exactly() {
+        let exact_policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 42)
+            .expect("the exact topology grid limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_checkpoints =
+            XyChartCheckpointCursor::new(AsciiExecution::standalone(&exact_policy));
+        LineTopology::new(7, 3, &mut exact_resources, &mut exact_checkpoints)
+            .expect("the exact source-plus-mask grid should fit");
+
+        let below_policy = default_resources()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, 41)
+            .expect("the N-1 topology grid limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let mut below_checkpoints =
+            XyChartCheckpointCursor::new(AsciiExecution::standalone(&below_policy));
+        let error = LineTopology::new(7, 3, &mut below_resources, &mut below_checkpoints)
+            .expect_err("N-1 must reject before the topology mask is allocated");
+
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a resource-limit error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+        assert_eq!(details.actual, 42);
+        assert_eq!(details.max, 41);
     }
 
     #[test]

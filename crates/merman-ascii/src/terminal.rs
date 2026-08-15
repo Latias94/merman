@@ -14,7 +14,7 @@ const SURFACE_CHECKPOINT_PRIMARY_CELLS: usize = 64;
 // Conservative full-cell pass counts charged to max layout work before each bounded operation.
 const CELL_COMPACTION_WORK_PASSES: usize = 3;
 const SURFACE_COMPACTION_WORK_PASSES: usize = 1 + CELL_COMPACTION_WORK_PASSES;
-const SURFACE_APPEND_WORK_PASSES: usize = 2;
+const SURFACE_APPEND_CELL_WORK_PASSES: usize = 2;
 const OVERWRITE_COMPACTION_WORK_PASSES: usize = 8;
 #[cfg(test)]
 const CELL_MIRROR_WORK_PASSES: usize = 2;
@@ -159,7 +159,26 @@ impl GlyphArena {
         source: &Self,
         cells: &[TerminalCell],
         policy: AsciiResourcePolicy,
+        include: impl FnMut(usize, &[TerminalCell]) -> Result<bool>,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<HashMap<GlyphId, GlyphId>> {
+        self.try_import_referenced_cells_where_with_admission_and_checkpoint(
+            source,
+            cells,
+            policy,
+            include,
+            |_| Ok(()),
+            checkpoint,
+        )
+    }
+
+    fn try_import_referenced_cells_where_with_admission_and_checkpoint(
+        &mut self,
+        source: &Self,
+        cells: &[TerminalCell],
+        policy: AsciiResourcePolicy,
         mut include: impl FnMut(usize, &[TerminalCell]) -> Result<bool>,
+        admit_import: impl FnOnce(usize) -> Result<()>,
         mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<HashMap<GlyphId, GlyphId>> {
         let capacity = cells.len().min(source.entries.len());
@@ -211,6 +230,7 @@ impl GlyphArena {
             .ok_or_else(glyph_allocation_failed)?;
         check_retained_glyph_bytes(policy, final_byte_len)?;
         u32::try_from(final_byte_len).map_err(|_| glyph_allocation_failed())?;
+        admit_import(referenced.len())?;
 
         self.entries
             .try_reserve(referenced.len())
@@ -247,6 +267,24 @@ impl GlyphArena {
             cells,
             policy,
             |_, _| Ok(true),
+            checkpoint,
+        )
+    }
+
+    fn try_import_referenced_cells_with_admission_and_checkpoint(
+        &mut self,
+        source: &Self,
+        cells: &[TerminalCell],
+        policy: AsciiResourcePolicy,
+        admit_import: impl FnOnce(usize) -> Result<()>,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<HashMap<GlyphId, GlyphId>> {
+        self.try_import_referenced_cells_where_with_admission_and_checkpoint(
+            source,
+            cells,
+            policy,
+            |_, _| Ok(true),
+            admit_import,
             checkpoint,
         )
     }
@@ -768,12 +806,17 @@ pub(crate) fn try_append_cells_from_surface(
     source_arena: &GlyphArena,
     policy: AsciiResourcePolicy,
 ) -> Result<()> {
-    try_append_cells_from_surface_with_checkpoint(
+    check_cell_work(policy, source_cells.len(), 1)?;
+    try_append_cells_from_surface_after_admission(
         cells,
         arena,
         source_cells,
         source_arena,
         policy,
+        |referenced_entries| {
+            let work = surface_append_work(policy, source_cells.len(), referenced_entries)?;
+            policy.check(AsciiResourceLimitId::MaxLayoutWorkUnits, work)
+        },
         || Ok(()),
     )
 }
@@ -783,10 +826,34 @@ pub(crate) fn try_append_cells_from_surface_with_checkpoint(
     arena: &mut GlyphArena,
     source_cells: &[TerminalCell],
     source_arena: &GlyphArena,
-    policy: AsciiResourcePolicy,
+    resources: &ResourceContext,
     mut checkpoint: impl FnMut() -> Result<()>,
 ) -> Result<()> {
     checkpoint()?;
+    resources.charge_layout_work(source_cells.len())?;
+    try_append_cells_from_surface_after_admission(
+        cells,
+        arena,
+        source_cells,
+        source_arena,
+        resources.policy(),
+        |referenced_entries| {
+            let remaining = resources.checked_work_add(source_cells.len(), referenced_entries)?;
+            resources.charge_layout_work(remaining)
+        },
+        checkpoint,
+    )
+}
+
+fn try_append_cells_from_surface_after_admission(
+    cells: &mut Vec<TerminalCell>,
+    arena: &mut GlyphArena,
+    source_cells: &[TerminalCell],
+    source_arena: &GlyphArena,
+    policy: AsciiResourcePolicy,
+    admit_import: impl FnOnce(usize) -> Result<()>,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<()> {
     let final_len = cells
         .len()
         .checked_add(source_cells.len())
@@ -794,14 +861,16 @@ pub(crate) fn try_append_cells_from_surface_with_checkpoint(
     check_document_cell_extent(policy, final_len)?;
     check_primary_cell_extent(policy, final_len)?;
     check_concurrent_cell_extent(policy, final_len, source_cells.len())?;
-    check_cell_work(policy, source_cells.len(), SURFACE_APPEND_WORK_PASSES)?;
-    cells
-        .try_reserve(source_cells.len())
-        .map_err(|_| document_allocation_failed())?;
-    let source_to_target = arena.try_import_referenced_cells_with_checkpoint(
+    let source_to_target = arena.try_import_referenced_cells_with_admission_and_checkpoint(
         source_arena,
         source_cells,
         policy,
+        |referenced_entries| {
+            admit_import(referenced_entries)?;
+            cells
+                .try_reserve(source_cells.len())
+                .map_err(|_| document_allocation_failed())
+        },
         &mut checkpoint,
     )?;
     let mut cells_until_checkpoint = 0usize;
@@ -810,6 +879,17 @@ pub(crate) fn try_append_cells_from_surface_with_checkpoint(
         cells.push(try_remap_cell(source_cell, &source_to_target)?);
     }
     Ok(())
+}
+
+fn surface_append_work(
+    policy: AsciiResourcePolicy,
+    source_cells: usize,
+    referenced_entries: usize,
+) -> Result<usize> {
+    source_cells
+        .checked_mul(SURFACE_APPEND_CELL_WORK_PASSES)
+        .and_then(|work| work.checked_add(referenced_entries))
+        .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits))
 }
 
 #[cfg(test)]

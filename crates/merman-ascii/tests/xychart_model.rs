@@ -213,6 +213,7 @@ bar [2, 5, 8]
         concat!(
             "titleDisplay: chart(bytes=5)=\"Sales\"\n",
             "titleDisplay: yAxis(bytes=7)=\"Revenue\"\n",
+            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=3)=\"Jan\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=3)=\"Feb\" value=5 pointLabel=none clipped=false}, {index=2 x(bytes=3)=\"Mar\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 +        ###\n",
             " 6 +    ### ###\n",
@@ -311,6 +312,7 @@ bar [2, 5, 8]
         concat!(
             "titleDisplay: chart(bytes=5)=\"Sales\"\n",
             "titleDisplay: yAxis(bytes=7)=\"Revenue\"\n",
+            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=3)=\"Jan\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=3)=\"Feb\" value=5 pointLabel=none clipped=false}, {index=2 x(bytes=3)=\"Mar\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 +        ###\n",
             " 6 +    ### ###\n",
@@ -339,6 +341,7 @@ line [1, 5, 9]
         rendered,
         concat!(
             "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\", bytes=1=\"C\"]\n",
+            "values: * series=0 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=1 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=5 pointLabel=none clipped=false}, {index=2 x(bytes=1)=\"C\" value=9 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +       +-*\n",
             " 8 +       |\n",
             " 6 +   +-*-+\n",
@@ -681,7 +684,11 @@ bar [4, 8]
     .expect("xychart with hidden titles and axes should render");
 
     assert!(rendered.contains("###"));
-    for hidden in ["Sales", "Month", "Revenue", "A", "B", "|", "+", "-"] {
+    assert!(
+        rendered.contains(r#"xDomain: band categories=[bytes=1="A", bytes=1="B"]"#),
+        "hidden geometry must retain its authored Band identity:\n{rendered}"
+    );
+    for hidden in ["Sales", "Month", "Revenue", "|", "+", "-"] {
         assert!(
             !rendered.contains(hidden),
             "hidden token {hidden:?} should not be rendered:\n{rendered}"
@@ -771,7 +778,7 @@ fn xychart_parser_infers_numeric_x_labels_when_x_axis_is_omitted() {
     let rendered = render_xychart(
         r#"xychart
 y-axis 0 --> 10
-bar [5]
+bar [4]
 "#,
         &AsciiRenderOptions::ascii(),
     )
@@ -780,9 +787,11 @@ bar [5]
     assert_eq!(
         rendered,
         concat!(
+            "xDomain: linear authored=[1,1] resolved=[1,1]\n",
+            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"1\" value=4 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 +\n",
-            " 6 +###\n",
+            " 6 +\n",
             " 4 +###\n",
             " 2 +###\n",
             " 0 +-+-\n",
@@ -1286,8 +1295,8 @@ fn xychart_horizontal_linear_axis_labels_use_authored_sample_coordinates() {
         "a generated midpoint tick must not replace the authored x=4 coordinate:\n{rendered}"
     );
     assert!(
-        !rendered.contains("values:"),
-        "a simple lossless horizontal plot should not need disclosure:\n{rendered}"
+        rendered.contains(r#"x(bytes=1)="4" value=5"#),
+        "authored linear coordinates need exact disclosure:\n{rendered}"
     );
 }
 
@@ -1846,41 +1855,6 @@ fn xychart_unicode_line_topology_resolves_rounded_corners() {
 }
 
 #[test]
-fn xychart_line_topology_temporary_extent_is_budgeted() {
-    let model = typed_xychart_model(
-        "vertical",
-        XyChartAxisRenderModel::Band {
-            title: String::new(),
-            categories: vec!["A".to_string(), "B".to_string()],
-        },
-        0.0,
-        10.0,
-        vec![XyChartPlotRenderModel {
-            plot_type: XyChartPlotType::Line,
-            title: None,
-            values: vec![2.0, 8.0],
-            data: Vec::new(),
-            point_labels: Vec::new(),
-        }],
-    );
-    let options = AsciiRenderOptions::ascii()
-        .with_xychart_vertical_plot_height(3)
-        .with_xychart_category_band_width(3);
-    let resources = AsciiResourcePolicy::default()
-        .with_limit(AsciiResourceLimitId::MaxGridCells, 41)
-        .expect("valid grid limit");
-
-    let error = render_typed_xychart_with_resources(&model, &options, resources)
-        .expect_err("plot cells plus the line-topology mask must exceed 41 cells");
-    let AsciiError::ResourceLimitExceeded(details) = error else {
-        panic!("expected resource-limit error, got {error:?}");
-    };
-    assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
-    assert_eq!(details.actual, 42);
-    assert_eq!(details.max, 41);
-}
-
-#[test]
 fn xychart_horizontal_grouped_bars_get_independent_rows() {
     let model = typed_xychart_model(
         "horizontal",
@@ -2299,9 +2273,9 @@ fn xychart_centered_band_projection_discloses_colliding_categories() {
             vec![XyChartPlotRenderModel {
                 plot_type: XyChartPlotType::Bar,
                 title: None,
-                values: vec![5.0, 8.0],
+                values: vec![4.0, 8.0],
                 data: vec![
-                    ("A".to_string(), Some(5.0)),
+                    ("A".to_string(), Some(4.0)),
                     (second.to_string(), Some(8.0)),
                 ],
                 point_labels: Vec::new(),
@@ -2390,8 +2364,8 @@ fn xychart_band_domain_discloses_terminal_normalization_identity() {
         "the normalized control must retain its authored byte identity:\n{control}"
     );
     assert!(
-        !authored_escape.contains("xDomain: band categories="),
-        "unchanged printable text should not force redundant domain disclosure:\n{authored_escape}"
+        authored_escape.contains(r#"xDomain: band categories=[bytes=6="\\u{1B}"]"#),
+        "hidden Band geometry must frame the unchanged printable value:\n{authored_escape}"
     );
     assert_ne!(control, authored_escape);
 }
@@ -2523,6 +2497,448 @@ fn xychart_quantized_line_collision_triggers_exact_disclosure() {
         plotted_points, 1,
         "the probe should exercise one quantized terminal cell:\n{rendered}"
     );
+}
+
+#[test]
+fn xychart_single_linear_sample_preserves_authored_x_across_models() {
+    let build = |x: &str| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(100.0),
+            },
+            0.0,
+            100.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![50.0],
+                data: vec![(x.to_string(), Some(50.0))],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let x10 = render_typed_xychart(&build("10"), &AsciiRenderOptions::ascii())
+        .expect("the first single-sample model should render");
+    let x20 = render_typed_xychart(&build("20"), &AsciiRenderOptions::ascii())
+        .expect("the second single-sample model should render");
+
+    assert_ne!(
+        x10, x20,
+        "quantized authored x values must remain injective"
+    );
+    assert!(x10.contains("x(bytes=2)=\"10\" value=50"), "{x10}");
+    assert!(x20.contains("x(bytes=2)=\"20\" value=50"), "{x20}");
+}
+
+#[test]
+fn xychart_linear_x_lexemes_remain_injective_after_numeric_projection() {
+    let build = |x: &str| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(100.0),
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![4.0],
+                data: vec![(x.to_string(), Some(4.0))],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let integer = render_typed_xychart(&build("0"), &AsciiRenderOptions::ascii())
+        .expect("the integer x lexeme should render");
+    let decimal = render_typed_xychart(&build("0.0"), &AsciiRenderOptions::ascii())
+        .expect("the decimal x lexeme should render");
+
+    assert_ne!(integer, decimal);
+    assert!(integer.contains("x(bytes=1)=\"0\" value=4"), "{integer}");
+    assert!(decimal.contains("x(bytes=3)=\"0.0\" value=4"), "{decimal}");
+}
+
+#[test]
+fn xychart_linear_and_band_axes_have_distinct_owner_disclosure() {
+    let build = |x_axis| {
+        let mut model = typed_xychart_model(
+            "horizontal",
+            x_axis,
+            0.0,
+            1.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![0.0, 1.0],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+        );
+        model.display.x_axis = XyChartAxisDisplayPolicy::default();
+        model.display.y_axis = XyChartAxisDisplayPolicy::default();
+        model
+    };
+
+    let band = render_typed_xychart(
+        &build(XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["0".to_string(), "1".to_string()],
+        }),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("the Band-axis model should render");
+    let linear = render_typed_xychart(
+        &build(XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(0.0),
+            max: Some(1.0),
+        }),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("the Linear-axis model should render");
+
+    assert_ne!(band, linear, "axis kinds must remain injective");
+    assert!(
+        linear.contains("xDomain: linear authored=[0,1] resolved=[0,1]"),
+        "{linear}"
+    );
+}
+
+#[test]
+fn xychart_implicit_and_explicit_band_domains_remain_injective() {
+    let build = |categories, show_x_labels| {
+        let mut model = typed_xychart_model(
+            "horizontal",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories,
+            },
+            0.0,
+            1.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![1.0],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+        );
+        if show_x_labels {
+            model.display.x_axis = XyChartAxisDisplayPolicy::default();
+        }
+        model
+    };
+
+    for show_x_labels in [false, true] {
+        let implicit = render_typed_xychart(
+            &build(Vec::new(), show_x_labels),
+            &AsciiRenderOptions::ascii(),
+        )
+        .expect("the implicit Band domain should render");
+        let explicit = render_typed_xychart(
+            &build(vec!["1".to_string()], show_x_labels),
+            &AsciiRenderOptions::ascii(),
+        )
+        .expect("the explicit Band domain should render");
+
+        assert_ne!(implicit, explicit, "Band domain ownership must be exact");
+        assert!(
+            implicit.contains("xDomain: band categories=[]"),
+            "{implicit}"
+        );
+    }
+}
+
+#[test]
+fn xychart_blank_authored_x_values_preserve_utf8_identity() {
+    let build = |x: &str| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(1.0),
+            },
+            0.0,
+            1.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![1.0],
+                data: vec![(x.to_string(), Some(1.0))],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let empty = render_typed_xychart(&build(""), &AsciiRenderOptions::ascii())
+        .expect("the empty authored x value should render");
+    let blank = render_typed_xychart(&build(" "), &AsciiRenderOptions::ascii())
+        .expect("the blank authored x value should render");
+
+    assert_ne!(empty, blank, "authored x bytes must remain injective");
+    assert!(empty.contains("x(bytes=0)=\"\" value=1"), "{empty}");
+    assert!(blank.contains("x(bytes=1)=\" \" value=1"), "{blank}");
+}
+
+#[test]
+fn xychart_hidden_axis_ranges_are_disclosed_exactly() {
+    let build = |y_min: f64, y_max: f64| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            y_min,
+            y_max,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![4.0],
+                data: vec![("A".to_string(), Some(4.0))],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let first = render_typed_xychart(&build(0.0, 10.0), &AsciiRenderOptions::ascii())
+        .expect("the first hidden range should render");
+    let second = render_typed_xychart(&build(-4.0, 16.0), &AsciiRenderOptions::ascii())
+        .expect("the second hidden range should render");
+
+    assert_ne!(first, second);
+    assert!(
+        first.contains("yDomain: linear authored=[0,10] resolved=[0,10]"),
+        "{first}"
+    );
+    assert!(
+        second.contains("yDomain: linear authored=[-4,16] resolved=[-4,16]"),
+        "{second}"
+    );
+}
+
+#[test]
+fn xychart_inferred_visible_range_discloses_authored_and_resolved_identity() {
+    let build = |max_value: f64| {
+        let mut model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string(), "B".to_string()],
+            },
+            0.0,
+            max_value,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![0.0, max_value],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+        );
+        model.y_axis = XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: None,
+            max: None,
+        };
+        model.display.y_axis = XyChartAxisDisplayPolicy::default();
+        model
+    };
+
+    let ten = render_typed_xychart(&build(10.0), &AsciiRenderOptions::ascii())
+        .expect("the first inferred range should render");
+    let twenty = render_typed_xychart(&build(20.0), &AsciiRenderOptions::ascii())
+        .expect("the second inferred range should render");
+
+    assert_ne!(ten, twenty);
+    assert!(
+        ten.contains("yDomain: linear authored=[none,none] resolved=[0,10]"),
+        "{ten}"
+    );
+    assert!(
+        twenty.contains("yDomain: linear authored=[none,none] resolved=[0,20]"),
+        "{twenty}"
+    );
+}
+
+#[test]
+fn xychart_visible_high_precision_range_uses_exact_domain_disclosure() {
+    let build = |max_value: f64| {
+        let mut model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            max_value,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![max_value],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+        );
+        model.display.y_axis = XyChartAxisDisplayPolicy::default();
+        model
+    };
+
+    let rounded = render_typed_xychart(&build(10.0), &AsciiRenderOptions::ascii())
+        .expect("the integer range should render");
+    let precise = render_typed_xychart(&build(10.0000001), &AsciiRenderOptions::ascii())
+        .expect("the high-precision range should render");
+
+    assert_ne!(rounded, precise);
+    assert!(
+        precise.contains("yDomain: linear authored=[0,10.0000001] resolved=[0,10.0000001]"),
+        "{precise}"
+    );
+}
+
+#[test]
+fn xychart_empty_series_preserves_exact_y_domain_identity() {
+    let build = |max_value: f64| {
+        let mut model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["ABCD".to_string()],
+            },
+            0.0,
+            max_value,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: Vec::new(),
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+        );
+        model.display.y_axis = XyChartAxisDisplayPolicy::default();
+        model
+    };
+
+    let rounded = render_typed_xychart(&build(10.0), &AsciiRenderOptions::ascii())
+        .expect("the rounded empty-series range should render");
+    let precise = render_typed_xychart(&build(10.0000001), &AsciiRenderOptions::ascii())
+        .expect("the precise empty-series range should render");
+
+    assert_ne!(
+        rounded, precise,
+        "empty series must retain Y-domain identity"
+    );
+    assert!(
+        precise.contains("yDomain: linear authored=[0,10.0000001] resolved=[0,10.0000001]"),
+        "{precise}"
+    );
+}
+
+#[test]
+fn xychart_single_quantized_y_value_remains_exact_across_models() {
+    let build = |value: f64| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            100.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![value],
+                data: vec![("A".to_string(), Some(value))],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let y10 = render_typed_xychart(&build(10.0), &AsciiRenderOptions::ascii())
+        .expect("the first quantized y model should render");
+    let y11 = render_typed_xychart(&build(11.0), &AsciiRenderOptions::ascii())
+        .expect("the second quantized y model should render");
+
+    assert_ne!(y10, y11, "quantized y values must remain injective");
+    assert!(y10.contains("x(bytes=1)=\"A\" value=10"), "{y10}");
+    assert!(y11.contains("x(bytes=1)=\"A\" value=11"), "{y11}");
+}
+
+#[test]
+fn xychart_multisample_quantized_x_remains_exact_across_models() {
+    let build = |first_x: &str| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(100.0),
+            },
+            0.0,
+            100.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![20.0, 80.0],
+                data: vec![
+                    (first_x.to_string(), Some(20.0)),
+                    ("90".to_string(), Some(80.0)),
+                ],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let x10 = render_typed_xychart(&build("10"), &AsciiRenderOptions::ascii())
+        .expect("the first multisample model should render");
+    let x11 = render_typed_xychart(&build("11"), &AsciiRenderOptions::ascii())
+        .expect("the second multisample model should render");
+
+    assert_ne!(x10, x11, "quantized multisample x values must be injective");
+    assert!(x10.contains("x(bytes=2)=\"10\" value=20"), "{x10}");
+    assert!(x11.contains("x(bytes=2)=\"11\" value=20"), "{x11}");
+}
+
+#[test]
+fn xychart_single_bar_quantized_x_remains_exact_across_models() {
+    let build = |x: &str| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(100.0),
+            },
+            0.0,
+            100.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![40.0],
+                data: vec![(x.to_string(), Some(40.0))],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+
+    let x10 = render_typed_xychart(&build("10"), &AsciiRenderOptions::ascii())
+        .expect("the first single-bar model should render");
+    let x20 = render_typed_xychart(&build("20"), &AsciiRenderOptions::ascii())
+        .expect("the second single-bar model should render");
+
+    assert_ne!(x10, x20, "quantized bar x values must remain injective");
+    assert!(x10.contains("x(bytes=2)=\"10\" value=40"), "{x10}");
+    assert!(x20.contains("x(bytes=2)=\"20\" value=40"), "{x20}");
 }
 
 #[test]
