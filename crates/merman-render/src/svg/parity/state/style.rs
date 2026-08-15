@@ -67,7 +67,7 @@ pub(super) fn write_state_theme_effect_application(
     // native resvg path, while `linearRGB` preserves the authored color within 8-bit quantization.
     let _ = write!(
         out,
-        r#"<defs><filter id="{}" filterUnits="objectBoundingBox" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{}" dy="{}" stdDeviation="0" flood-color="{}"/></filter></defs>"#,
+        r#"<defs><filter id="{}" filterUnits="objectBoundingBox" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{}" dy="{}" stdDeviation="{}" flood-color="{}"/></filter></defs>"#,
         id,
         x,
         y,
@@ -75,6 +75,7 @@ pub(super) fn write_state_theme_effect_application(
         height,
         effect.offset_x(),
         effect.offset_y(),
+        effect.std_deviation(),
         color,
     );
     format!("url(#{scoped_filter_id})")
@@ -978,8 +979,27 @@ fn state_svg_text_label_lines<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagram_theme::{EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue};
     use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
+
+    fn state_theme_effect(std_deviation: f32) -> crate::state::StateSvgEffect {
+        crate::state::StateSvgEffect::from_graph_for_test(
+            &EffectGraph::new(
+                "soft-shadow",
+                [EffectPrimitive::DropShadow {
+                    input: EffectInput::SourceGraphic,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    blur_radius: std_deviation,
+                    spread: 0.0,
+                    color: ThemeColorValue::parse("rgba(0, 242, 255, 0.5)").unwrap(),
+                }],
+            )
+            .unwrap(),
+        )
+        .expect("supported State drop shadow")
+    }
 
     fn model_with_hot_class() -> StateSvgModel {
         let mut model = StateSvgModel::default();
@@ -1014,6 +1034,25 @@ mod tests {
         let mut css = String::new();
         write_state_css(&mut css, diagram_id, config, plan).expect("write State CSS");
         css
+    }
+
+    #[test]
+    fn state_theme_effect_emits_the_authored_std_deviation() {
+        let effect = state_theme_effect(8.0);
+        let region = crate::state::StateSvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
+            .expect("bounded soft-shadow region");
+        let mut svg = String::new();
+
+        let reference = write_state_theme_effect_application(
+            &mut svg,
+            "diagram-state-theme-effect-soft-shadow",
+            &effect,
+            region,
+        );
+
+        assert_eq!(reference, "url(#diagram-state-theme-effect-soft-shadow)");
+        assert!(svg.contains(r#"stdDeviation="8""#));
+        assert!(svg.contains(r#"color-interpolation-filters="linearRGB""#));
     }
 
     #[test]

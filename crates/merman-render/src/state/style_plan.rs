@@ -4642,44 +4642,82 @@ mod tests {
     }
 
     #[test]
-    fn state_effect_binding_is_residual_when_graph_or_surface_is_not_supported() {
-        for (config, graph) in [
-            (json!({}), hard_shadow_graph("soft-shadow", 1.0)),
-            (
-                json!({ "look": "handDrawn" }),
-                hard_shadow_graph("hand-drawn-shadow", 0.0),
-            ),
-        ] {
-            let effect_id = graph.id().to_string();
-            let theme = DiagramThemeCompiler::new()
-                .compile(
-                    DiagramThemeSpec::new().with_effects(
-                        DiagramEffectSet::default()
-                            .with_graph(graph)
-                            .unwrap()
-                            .with_binding(
-                                EffectBinding::new(ThemeTarget::State, effect_id.clone()).unwrap(),
-                            )
-                            .unwrap(),
-                    ),
-                )
-                .unwrap();
-            let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
-            let mut model = StateDiagramRenderModel::default();
-            model.nodes.push(semantic_node("Ready", "rect"));
-            let (plan, evidence) =
-                resolve_theme_plan_with_evidence(&model, &config, &resolved, None);
-            let key = FamilyThemeMechanismKey::EffectBinding {
-                target: ThemeTarget::State,
-                effect_id,
-            };
+    fn state_soft_shadow_binding_applies_to_the_classic_surface() {
+        let graph = hard_shadow_graph("soft-shadow", 1.0);
+        let effect_id = graph.id().to_string();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_effects(
+                    DiagramEffectSet::default()
+                        .with_graph(graph)
+                        .unwrap()
+                        .with_binding(
+                            EffectBinding::new(ThemeTarget::State, effect_id.clone()).unwrap(),
+                        )
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+        let key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::State,
+            effect_id,
+        };
 
-            assert!(plan.node("Ready").unwrap().effect().is_none());
-            assert!(evidence.residuals().iter().any(|residual| {
-                residual.key() == &key
-                    && residual.reason() == FamilyThemeResidualReason::UnsupportedEffect
-            }));
-            assert!(evidence.applied_capabilities().is_empty());
-        }
+        assert_eq!(
+            plan.node("Ready")
+                .and_then(StateNodeStylePlan::effect)
+                .map(StateNodeEffectPlan::effect_id),
+            Some("soft-shadow")
+        );
+        assert!(evidence.applied().contains(&key));
+        assert!(evidence.residuals().is_empty());
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::Shadow, ThemeCapability::SvgFilter])
+        );
+    }
+
+    #[test]
+    fn state_effect_binding_is_residual_when_the_surface_is_not_supported() {
+        let graph = hard_shadow_graph("hand-drawn-shadow", 0.0);
+        let effect_id = graph.id().to_string();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_effects(
+                    DiagramEffectSet::default()
+                        .with_graph(graph)
+                        .unwrap()
+                        .with_binding(
+                            EffectBinding::new(ThemeTarget::State, effect_id.clone()).unwrap(),
+                        )
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) = resolve_theme_plan_with_evidence(
+            &model,
+            &json!({ "look": "handDrawn" }),
+            &resolved,
+            None,
+        );
+        let key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::State,
+            effect_id,
+        };
+
+        assert!(plan.node("Ready").unwrap().effect().is_none());
+        assert!(evidence.residuals().iter().any(|residual| {
+            residual.key() == &key
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedEffect
+        }));
+        assert!(evidence.applied_capabilities().is_empty());
     }
 }

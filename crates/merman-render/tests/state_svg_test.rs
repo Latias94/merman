@@ -142,24 +142,41 @@ fn state_hard_shadow_theme_with(
     offset_y: f32,
     style: Option<ThemeStylePatch>,
 ) -> DiagramTheme {
-    let graph = EffectGraph::new(
+    state_drop_shadow_theme_with(
+        compiler,
         "state-hard-shadow",
+        offset_x,
+        offset_y,
+        0.0,
+        style,
+    )
+}
+
+fn state_drop_shadow_theme_with(
+    compiler: DiagramThemeCompiler,
+    effect_id: &str,
+    offset_x: f32,
+    offset_y: f32,
+    blur_radius: f32,
+    style: Option<ThemeStylePatch>,
+) -> DiagramTheme {
+    let graph = EffectGraph::new(
+        effect_id,
         [EffectPrimitive::DropShadow {
             input: EffectInput::SourceGraphic,
             offset_x,
             offset_y,
-            blur_radius: 0.0,
+            blur_radius,
             spread: 0.0,
             color: ThemeColorValue::parse("#111827").expect("valid shadow color"),
         }],
     )
-    .expect("valid bounded hard-shadow graph");
+    .expect("valid bounded drop-shadow graph");
     let effects = DiagramEffectSet::default()
         .with_graph(graph)
         .expect("unique effect graph")
         .with_binding(
-            EffectBinding::new(ThemeTarget::State, "state-hard-shadow")
-                .expect("valid State effect binding"),
+            EffectBinding::new(ThemeTarget::State, effect_id).expect("valid State effect binding"),
         )
         .expect("unique State effect binding");
     let mut spec = DiagramThemeSpec::new().with_effects(effects);
@@ -170,7 +187,7 @@ fn state_hard_shadow_theme_with(
     }
     compiler
         .compile(spec)
-        .expect("compile State hard-shadow theme")
+        .expect("compile State drop-shadow theme")
 }
 
 fn assert_filter_region_matches_outsets(
@@ -417,6 +434,77 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .render_svg(&SvgRenderOptions::default(), &debug)
         .expect("hidden edges must not invalidate emitted State node effects");
     assert!(rendered.svg().contains("theme-effect-state-hard-shadow"));
+}
+
+#[test]
+fn state_svg_soft_shadow_uses_four_sigma_regions_and_expands_the_root_viewbox() {
+    let theme = state_drop_shadow_theme_with(
+        DiagramThemeCompiler::new(),
+        "state-soft-shadow",
+        0.0,
+        0.0,
+        8.0,
+        Some(
+            ThemeStylePatch::default()
+                .with_stroke_width(2.0)
+                .expect("valid State stroke width"),
+        ),
+    );
+    let source = "stateDiagram-v2\n[*] --> Ready\nReady --> ExtraordinarilyWideStateName\nExtraordinarilyWideStateName --> [*]\n";
+    let svg = render_state_svg_from_text_with_theme(source, &theme);
+    let document = roxmltree::Document::parse(&svg).expect("valid soft-shadow State SVG XML");
+
+    let filters = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("filter")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-theme-effect-state-soft-shadow"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(filters.len(), 2);
+    assert!(filters.iter().all(|filter| {
+        filter
+            .children()
+            .find(|node| node.is_element() && node.has_tag_name("feDropShadow"))
+            .is_some_and(|shadow| shadow.attribute("stdDeviation") == Some("8"))
+    }));
+
+    let regions = state_effect_filter_regions(&svg);
+    assert_eq!(regions.len(), 2);
+    assert!(regions[0].0 < regions[1].0, "node widths must differ");
+    for (width, height, region) in regions {
+        assert_filter_region_matches_outsets(width, height, region, [33.0; 4]);
+    }
+
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::State,
+                    ThemeStylePatch::default()
+                        .with_stroke_width(2.0)
+                        .expect("valid comparison stroke width"),
+                )),
+            ),
+        )
+        .expect("compile comparison theme");
+    let baseline_view_box = svg_view_box(&render_state_svg_from_text_with_theme(
+        source,
+        &baseline_theme,
+    ));
+    let effect_view_box = svg_view_box(&svg);
+    assert!(effect_view_box[2] >= baseline_view_box[2] + 66.0 - 1.0e-6);
+    assert!(effect_view_box[3] >= baseline_view_box[3] + 66.0 - 1.0e-6);
+
+    let strict_svg = render_state_svg_from_text_with_theme_in_environment(
+        source,
+        &theme,
+        &RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+    );
+    assert!(strict_svg.contains(r#"stdDeviation="8""#));
 }
 
 #[test]

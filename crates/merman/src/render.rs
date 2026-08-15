@@ -18,6 +18,9 @@ use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
 
+#[cfg(feature = "svg")]
+const TARGET_EVIDENCE_DIGEST_DOMAIN: &[u8] = b"merman-target-evidence-experimental-v3";
+
 #[cfg(feature = "ascii")]
 use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -1560,7 +1563,7 @@ fn document_digest(
     evidence: &RenderEvidence,
     portability: &DocumentPortabilityReport,
 ) -> [u8; 32] {
-    render_digest(b"merman-rendered-document-experimental-v3", |hasher| {
+    render_digest(b"merman-rendered-document-experimental-v4", |hasher| {
         update_digest_field(hasher, &public_svg_digest);
         update_digest_field(hasher, &native_svg_digest);
         update_digest_field(hasher, resource_fingerprint.as_bytes());
@@ -1772,8 +1775,9 @@ fn update_native_filter_digest(
 ) {
     update_digest_bool(hasher, receipt.is_some());
     if let Some(receipt) = receipt {
-        update_digest_u64(hasher, u64::from(receipt.hard_shadow_count()));
+        update_digest_u64(hasher, u64::from(receipt.drop_shadow_count()));
         update_digest_u64(hasher, u64::from(receipt.reference_count()));
+        update_digest_field(hasher, receipt.identity_digest());
     }
 }
 
@@ -1829,7 +1833,7 @@ fn standalone_target_evidence_digest(
     reasons: &[TargetAdmissionReason],
     font_source: TargetFontSource,
 ) -> [u8; 32] {
-    render_digest(b"merman-target-evidence-experimental-v2", |hasher| {
+    render_digest(TARGET_EVIDENCE_DIGEST_DOMAIN, |hasher| {
         update_target_admission_digest(hasher, RenderArtifactKind::Svg, status, reasons);
         update_digest_field(hasher, font_source.id().as_bytes());
         let report = svg.finalization_report();
@@ -1945,7 +1949,7 @@ fn raster_target_evidence_digest(
     status: TargetAdmissionStatus,
     reasons: &[TargetAdmissionReason],
 ) -> [u8; 32] {
-    render_digest(b"merman-target-evidence-experimental-v2", |hasher| {
+    render_digest(TARGET_EVIDENCE_DIGEST_DOMAIN, |hasher| {
         update_target_admission_digest(hasher, artifact_kind, status, reasons);
         update_digest_field(hasher, report.resource_fingerprint().as_bytes());
         update_native_filter_digest(hasher, expected_native_filter);
@@ -1979,7 +1983,7 @@ fn pdf_target_evidence_digest(
     status: TargetAdmissionStatus,
     reasons: &[TargetAdmissionReason],
 ) -> [u8; 32] {
-    render_digest(b"merman-target-evidence-experimental-v2", |hasher| {
+    render_digest(TARGET_EVIDENCE_DIGEST_DOMAIN, |hasher| {
         update_target_admission_digest(hasher, RenderArtifactKind::Pdf, status, reasons);
         update_digest_field(hasher, report.resource_fingerprint().as_bytes());
         update_native_filter_digest(hasher, expected_native_filter);
@@ -2921,8 +2925,10 @@ mod tests {
         ThemeEvidenceScopeProjection, ThemeEvidenceStatus, ThemeEvidenceSummary, render_digest,
         standalone_target_evidence_digest, summarize_theme_evidence,
         target_admission_receipt_digest, update_digest_field, update_digest_sequence,
+        update_native_filter_digest,
     };
     use merman_core::OperationControl;
+    use merman_render::__private::{NativeSvgFilterReceipt, NativeSvgHardShadow};
 
     #[test]
     fn theme_resource_environment_error_maps_to_resource_limit_exceeded() {
@@ -3061,6 +3067,35 @@ mod tests {
                 receipt.artifact_digest(),
             )
         );
+    }
+
+    #[test]
+    fn native_filter_digest_distinguishes_equal_counts_with_different_blur() {
+        fn receipt(std_deviation: f32) -> NativeSvgFilterReceipt {
+            NativeSvgFilterReceipt::from_drop_shadows([NativeSvgHardShadow::new(
+                "state-theme-effect-shadow",
+                [-0.2, -0.2, 1.4, 1.4],
+                [5.0, 5.0],
+                [std_deviation, std_deviation],
+                "#111827",
+                1,
+            )
+            .expect("valid drop shadow")])
+            .expect("valid native filter receipt")
+        }
+
+        fn digest(receipt: NativeSvgFilterReceipt) -> [u8; 32] {
+            render_digest(b"native-filter-digest-test", |hasher| {
+                update_native_filter_digest(hasher, Some(receipt));
+            })
+        }
+
+        let sharp = receipt(0.0);
+        let blurred = receipt(8.0);
+
+        assert_eq!(sharp.drop_shadow_count(), blurred.drop_shadow_count());
+        assert_eq!(sharp.reference_count(), blurred.reference_count());
+        assert_ne!(digest(sharp), digest(blurred));
     }
 
     #[test]

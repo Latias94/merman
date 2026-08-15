@@ -10,7 +10,7 @@ struct StateSvgEffectEvidenceState {
     invalid: bool,
 }
 
-/// Records hard-shadow applications only after the State writer appended both the definition and
+/// Records drop-shadow applications only after the State writer appended both the definition and
 /// the matching `filter` reference.
 #[derive(Debug, Default)]
 pub(crate) struct StateSvgEffectEvidenceRecorder {
@@ -29,6 +29,7 @@ impl StateSvgEffectEvidenceRecorder {
             scoped_filter_id,
             region,
             [effect.offset_x(), effect.offset_y()],
+            [effect.std_deviation(), effect.std_deviation()],
             &effect.color().as_css(),
             1,
         ) else {
@@ -45,7 +46,7 @@ impl StateSvgEffectEvidenceRecorder {
             return None;
         }
         let had_applications = !applications.is_empty();
-        let receipt = NativeSvgFilterReceipt::from_hard_shadows(applications);
+        let receipt = NativeSvgFilterReceipt::from_drop_shadows(applications);
         if had_applications && receipt.is_none() {
             state.invalid = true;
         }
@@ -60,7 +61,7 @@ mod tests {
 
     use super::*;
 
-    fn effect() -> StateSvgEffect {
+    fn effect(std_deviation: f32) -> StateSvgEffect {
         StateSvgEffect::from_graph_for_test(
             &EffectGraph::new(
                 "hard-shadow",
@@ -68,7 +69,7 @@ mod tests {
                     input: EffectInput::SourceGraphic,
                     offset_x: 5.0,
                     offset_y: 5.0,
-                    blur_radius: 0.0,
+                    blur_radius: std_deviation,
                     spread: 0.0,
                     color: ThemeColorValue::parse("#111827").unwrap(),
                 }],
@@ -80,7 +81,7 @@ mod tests {
 
     #[test]
     fn receipt_requires_unique_actual_filter_applications() {
-        let effect = effect();
+        let effect = effect(0.0);
         let region = StateSvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4)
             .expect("valid effect region");
         let recorder = StateSvgEffectEvidenceRecorder::default();
@@ -97,14 +98,14 @@ mod tests {
             region,
         );
         let receipt = recorder.finish().expect("complete receipt");
-        assert_eq!(receipt.hard_shadow_count(), 2);
+        assert_eq!(receipt.drop_shadow_count(), 2);
         assert_eq!(receipt.reference_count(), 2);
         assert!(recorder.finish().is_none());
     }
 
     #[test]
     fn duplicate_filter_ids_invalidate_the_receipt() {
-        let effect = effect();
+        let effect = effect(0.0);
         let region = StateSvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4)
             .expect("valid effect region");
         let recorder = StateSvgEffectEvidenceRecorder::default();
@@ -122,7 +123,7 @@ mod tests {
 
     #[test]
     fn receipt_order_is_independent_of_application_order() {
-        let effect = effect();
+        let effect = effect(0.0);
         let region = StateSvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4)
             .expect("valid effect region");
         let forward = StateSvgEffectEvidenceRecorder::default();
@@ -133,5 +134,17 @@ mod tests {
         reverse.record_application(&effect, "alpha", region);
 
         assert_eq!(forward.finish(), reverse.finish());
+    }
+
+    #[test]
+    fn receipt_is_sensitive_to_the_emitted_standard_deviation() {
+        let region = StateSvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
+            .expect("valid soft-shadow region");
+        let hard = StateSvgEffectEvidenceRecorder::default();
+        hard.record_application(&effect(0.0), "drop-shadow", region);
+        let soft = StateSvgEffectEvidenceRecorder::default();
+        soft.record_application(&effect(8.0), "drop-shadow", region);
+
+        assert_ne!(hard.finish(), soft.finish());
     }
 }

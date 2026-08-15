@@ -6,6 +6,8 @@ use crate::diagram_theme::{
     ThemeResourcePolicy,
 };
 
+const DROP_SHADOW_PAINT_BOUNDS_SIGMAS: f64 = 4.0;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct StateSvgFilterRegion {
     x: f32,
@@ -51,11 +53,18 @@ impl StateEffectOutsets {
         self.left = self.left.max(other.left);
     }
 
-    fn for_hard_shadow(stroke_width: f64, offset_x: f32, offset_y: f32) -> Option<Self> {
+    fn for_drop_shadow(
+        stroke_width: f64,
+        offset_x: f32,
+        offset_y: f32,
+        std_deviation: f32,
+    ) -> Option<Self> {
         if !stroke_width.is_finite()
             || stroke_width < 0.0
             || !offset_x.is_finite()
             || !offset_y.is_finite()
+            || !std_deviation.is_finite()
+            || std_deviation < 0.0
         {
             return None;
         }
@@ -63,11 +72,14 @@ impl StateEffectOutsets {
         let half_stroke = stroke_width / 2.0;
         let offset_x = f64::from(offset_x);
         let offset_y = f64::from(offset_y);
+        // Gaussian support is mathematically unbounded. Merman deliberately materializes a finite
+        // four-sigma paint envelope so every target receives the same bounded clipping contract.
+        let blur_support = f64::from(std_deviation) * DROP_SHADOW_PAINT_BOUNDS_SIGMAS;
         let outsets = Self {
-            top: half_stroke + (-offset_y).max(0.0),
-            right: half_stroke + offset_x.max(0.0),
-            bottom: half_stroke + offset_y.max(0.0),
-            left: half_stroke + (-offset_x).max(0.0),
+            top: half_stroke + blur_support + (-offset_y).max(0.0),
+            right: half_stroke + blur_support + offset_x.max(0.0),
+            bottom: half_stroke + blur_support + offset_y.max(0.0),
+            left: half_stroke + blur_support + (-offset_x).max(0.0),
         };
         [outsets.top, outsets.right, outsets.bottom, outsets.left]
             .into_iter()
@@ -81,6 +93,7 @@ pub(crate) struct StateSvgEffect {
     id: String,
     offset_x: f32,
     offset_y: f32,
+    std_deviation: f32,
     color: ThemeColorValue,
 }
 
@@ -99,7 +112,7 @@ impl StateSvgEffect {
         else {
             return None;
         };
-        if *blur_radius != 0.0 || *spread != 0.0 {
+        if *spread != 0.0 {
             return None;
         }
 
@@ -107,6 +120,7 @@ impl StateSvgEffect {
             id: graph.id().to_string(),
             offset_x: *offset_x,
             offset_y: *offset_y,
+            std_deviation: *blur_radius,
             color: color.clone(),
         })
     }
@@ -127,14 +141,17 @@ impl StateSvgEffect {
         height: f64,
         stroke_width: f64,
     ) -> Result<Option<StateMaterializedEffect>, ThemeResourceLimitExceeded> {
-        // State derives the exact hard-shadow envelope from the final emitted paint geometry.
+        // State derives the bounded drop-shadow envelope from the final emitted paint geometry.
         if !width.is_finite() || width <= 0.0 || !height.is_finite() || height <= 0.0 {
             return Ok(None);
         }
 
-        let Some(outsets) =
-            StateEffectOutsets::for_hard_shadow(stroke_width, self.offset_x, self.offset_y)
-        else {
+        let Some(outsets) = StateEffectOutsets::for_drop_shadow(
+            stroke_width,
+            self.offset_x,
+            self.offset_y,
+            self.std_deviation,
+        ) else {
             return Ok(None);
         };
         let min_x = -outsets.left / width;
@@ -183,6 +200,10 @@ impl StateSvgEffect {
 
     pub(crate) const fn offset_y(&self) -> f32 {
         self.offset_y
+    }
+
+    pub(crate) const fn std_deviation(&self) -> f32 {
+        self.std_deviation
     }
 
     pub(crate) const fn color(&self) -> &ThemeColorValue {
@@ -301,15 +322,19 @@ mod tests {
         EffectGraph::new("shadow", primitives).expect("valid effect graph")
     }
 
-    fn hard_shadow(offset_x: f32, offset_y: f32) -> EffectGraph {
+    fn drop_shadow(offset_x: f32, offset_y: f32, blur_radius: f32) -> EffectGraph {
         graph([EffectPrimitive::DropShadow {
             input: EffectInput::SourceGraphic,
             offset_x,
             offset_y,
-            blur_radius: 0.0,
+            blur_radius,
             spread: 0.0,
             color: ThemeColorValue::parse("#111827").unwrap(),
         }])
+    }
+
+    fn hard_shadow(offset_x: f32, offset_y: f32) -> EffectGraph {
+        drop_shadow(offset_x, offset_y, 0.0)
     }
 
     fn plan_with_shadow(
@@ -331,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn admits_only_single_source_graphic_hard_shadows() {
+    fn admits_only_single_source_graphic_drop_shadows_without_spread() {
         let color = ThemeColorValue::parse("#111827").unwrap();
         let mut plan = StateEffectPlan::default();
         let admitted = plan
@@ -377,32 +402,68 @@ mod tests {
                 ]))
                 .is_none()
         );
+        let mut soft_plan = StateEffectPlan::default();
+        let soft = soft_plan
+            .admit(&graph([EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 1.0,
+                offset_y: -2.0,
+                blur_radius: 2.0,
+                spread: 0.0,
+                color,
+            }]))
+            .expect("a bounded single soft shadow should be admitted");
+        let (_, materialized) = soft_plan
+            .materialize_classic_rect(soft.effect_id(), 50.0, 20.0, 0.0)
+            .expect("materialization resource admission")
+            .expect("valid soft-shadow region");
+        assert_eq!(
+            materialized.outsets(),
+            StateEffectOutsets {
+                top: 10.0,
+                right: 9.0,
+                bottom: 8.0,
+                left: 8.0,
+            }
+        );
+
         assert!(
             StateEffectPlan::default()
                 .admit(&graph([EffectPrimitive::DropShadow {
                     input: EffectInput::SourceGraphic,
                     offset_x: 1.0,
                     offset_y: 1.0,
-                    blur_radius: 1.0,
-                    spread: 0.0,
-                    color,
+                    blur_radius: 0.0,
+                    spread: f32::EPSILON,
+                    color: ThemeColorValue::parse("#111827").unwrap(),
                 }]))
                 .is_none()
         );
-        for (blur_radius, spread) in [(f32::EPSILON, 0.0), (0.0, f32::EPSILON)] {
-            assert!(
-                StateEffectPlan::default()
-                    .admit(&graph([EffectPrimitive::DropShadow {
-                        input: EffectInput::SourceGraphic,
-                        offset_x: 1.0,
-                        offset_y: 1.0,
-                        blur_radius,
-                        spread,
-                        color: ThemeColorValue::parse("#111827").unwrap(),
-                    }]))
-                    .is_none()
-            );
-        }
+    }
+
+    #[test]
+    fn materializes_four_sigma_soft_shadow_paint_bounds() {
+        let mut plan = StateEffectPlan::default();
+        plan.admit(&drop_shadow(0.0, 0.0, 8.0))
+            .expect("soft shadow admitted");
+        let (_, materialized) = plan
+            .materialize_classic_rect("shadow", 50.0, 20.0, 2.0)
+            .expect("materialization resource admission")
+            .expect("soft-shadow region");
+
+        assert_eq!(
+            materialized.outsets(),
+            StateEffectOutsets {
+                top: 33.0,
+                right: 33.0,
+                bottom: 33.0,
+                left: 33.0,
+            }
+        );
+        assert_approx(materialized.region().x, -0.66);
+        assert_approx(materialized.region().y, -1.65);
+        assert_approx(materialized.region().width, 2.32);
+        assert_approx(materialized.region().height, 4.3);
     }
 
     #[test]
@@ -507,6 +568,28 @@ mod tests {
             error.profile,
             Some(merman_core::resources::ResourceProfile::Interactive)
         );
+    }
+
+    #[test]
+    fn soft_shadow_blur_is_rejected_when_its_materialized_region_exceeds_the_ceiling() {
+        let policy = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxEffectFilterRegionMagnitude, 4)
+            .expect("valid terminal region limit");
+        let mut plan = StateEffectPlan::with_resource_policy(Arc::new(policy));
+        plan.admit(&drop_shadow(0.0, 0.0, 8.0))
+            .expect("soft shadow admitted");
+
+        let error = plan
+            .materialize_classic_rect("shadow", 50.0, 20.0, 2.0)
+            .expect_err("four-sigma region height must cross the terminal policy");
+
+        assert_eq!(
+            error.limit,
+            ThemeResourceLimitId::MaxEffectFilterRegionMagnitude.as_str()
+        );
+        assert_eq!(error.phase, ThemeResourceLimitPhase::EffectMaterialize);
+        assert!(error.actual > error.max);
+        assert_eq!(error.max, 4);
     }
 
     #[test]

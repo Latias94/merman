@@ -18,6 +18,7 @@ struct FilterDefinition {
 #[derive(Debug)]
 struct DropShadowDefinition {
     offset: [f32; 2],
+    std_deviation: [f32; 2],
     color_css: String,
 }
 
@@ -41,14 +42,14 @@ pub(super) fn preflight_native_filter_receipt(
     svg: &str,
     tree: &usvg::Tree,
 ) -> Option<NativeSvgFilterReceipt> {
-    let shadows = parse_raw_hard_shadows(svg)?;
+    let shadows = parse_raw_drop_shadows(svg)?;
     if !resolved_tree_matches(tree, &shadows) {
         return None;
     }
-    NativeSvgFilterReceipt::from_hard_shadows(shadows)
+    NativeSvgFilterReceipt::from_drop_shadows(shadows)
 }
 
-fn parse_raw_hard_shadows(svg: &str) -> Option<Vec<NativeSvgHardShadow>> {
+fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgHardShadow>> {
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
@@ -122,6 +123,7 @@ fn parse_raw_hard_shadows(svg: &str) -> Option<Vec<NativeSvgHardShadow>> {
             filter_id,
             definition.region,
             definition.primitive.offset,
+            definition.primitive.std_deviation,
             &definition.primitive.color_css,
             1,
         )?);
@@ -301,18 +303,29 @@ fn parse_drop_shadow(
     }
 
     valid &= input.as_deref() == Some("SourceGraphic");
-    valid &= std_deviation.as_deref() == Some("0");
     let offset = dx
         .as_deref()
         .and_then(parse_finite_number)
         .zip(dy.as_deref().and_then(parse_finite_number))
         .map(|(dx, dy)| [dx, dy]);
-    valid &= offset.is_some() && flood_color.is_some();
+    let std_deviation = std_deviation.as_deref().and_then(parse_std_deviation);
+    valid &= offset.is_some() && std_deviation.is_some() && flood_color.is_some();
 
     Ok(valid.then(|| DropShadowDefinition {
-        offset: offset.expect("validated hard-shadow offset"),
-        color_css: flood_color.expect("validated hard-shadow color"),
+        offset: offset.expect("validated drop-shadow offset"),
+        std_deviation: std_deviation.expect("validated drop-shadow standard deviation"),
+        color_css: flood_color.expect("validated drop-shadow color"),
     }))
+}
+
+fn parse_std_deviation(value: &str) -> Option<[f32; 2]> {
+    let mut values = svgtypes::NumberListParser::from(value);
+    let first = values.next()?.ok()? as f32;
+    let second = match values.next() {
+        Some(value) => value.ok()? as f32,
+        None => first,
+    };
+    values.next().is_none().then_some([first, second])
 }
 
 fn parse_finite_number(value: &str) -> Option<f32> {
@@ -432,12 +445,13 @@ fn resolved_filter_matches(filter: &usvg::filter::Filter, shadow: &NativeSvgHard
         return false;
     };
     let [expected_dx, expected_dy] = shadow.offset();
+    let [expected_std_dev_x, expected_std_dev_y] = shadow.std_deviation();
     let [red, green, blue, alpha] = shadow.color_rgba();
     matches!(drop_shadow.input(), usvg::filter::Input::SourceGraphic)
         && same_f32(drop_shadow.dx(), expected_dx)
         && same_f32(drop_shadow.dy(), expected_dy)
-        && drop_shadow.std_dev_x().get() == 0.0
-        && drop_shadow.std_dev_y().get() == 0.0
+        && same_f32(drop_shadow.std_dev_x().get(), expected_std_dev_x)
+        && same_f32(drop_shadow.std_dev_y().get(), expected_std_dev_y)
         && drop_shadow.color() == usvg::Color::new_rgb(red, green, blue)
         && drop_shadow.opacity() == usvg::Opacity::new_u8(alpha)
 }
@@ -568,17 +582,17 @@ mod tests {
     const FIRST_ID: &str = "diagram-state-ready-theme-effect-hard-shadow";
     const SECOND_ID: &str = "diagram-state-done-theme-effect-hard-shadow";
 
-    fn filter(id: &str, dx: i32, color: &str) -> String {
+    fn filter(id: &str, dx: i32, std_deviation: &str, color: &str) -> String {
         format!(
-            r#"<filter id="{id}" filterUnits="objectBoundingBox" x="-0.2" y="-0.2" width="1.4" height="1.4" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{dx}" dy="5" stdDeviation="0" flood-color="{color}"/></filter>"#
+            r#"<filter id="{id}" filterUnits="objectBoundingBox" x="-0.2" y="-0.2" width="1.4" height="1.4" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="{dx}" dy="5" stdDeviation="{std_deviation}" flood-color="{color}"/></filter>"#
         )
     }
 
     fn exact_svg() -> String {
         format!(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><defs>{}{}</defs><g filter="url(#{FIRST_ID})"><rect x="10" y="10" width="50" height="30" fill="#fff"/></g><g filter="url(#{SECOND_ID})"><rect x="100" y="10" width="50" height="30" fill="#fff"/></g></svg>"##,
-            filter(FIRST_ID, 4, "#112233"),
-            filter(SECOND_ID, -3, "rgba(68, 85, 102, 0.5)"),
+            filter(FIRST_ID, 4, "0", "#112233"),
+            filter(SECOND_ID, -3, "8", "rgba(68, 85, 102, 0.5)"),
         )
     }
 
@@ -587,12 +601,12 @@ mod tests {
     }
 
     #[test]
-    fn exact_two_unique_applications_pass() {
+    fn exact_hard_and_soft_shadow_applications_pass() {
         let svg = exact_svg();
         let tree = parse_tree(&svg);
         let receipt = preflight_native_filter_receipt(&svg, &tree).expect("exact receipt");
 
-        assert_eq!(receipt.hard_shadow_count(), 2);
+        assert_eq!(receipt.drop_shadow_count(), 2);
         assert_eq!(receipt.reference_count(), 2);
     }
 
@@ -614,17 +628,19 @@ mod tests {
         let wrong_dx = svg.replacen("dx=\"4\"", "dx=\"6\"", 1);
         let wrong_color = svg.replacen("#112233", "#abcdef", 1);
         let wrong_region = svg.replacen("x=\"-0.2\"", "x=\"-0.1\"", 1);
+        let wrong_std_deviation = svg.replacen("stdDeviation=\"8\"", "stdDeviation=\"4\"", 1);
 
         assert!(preflight_native_filter_receipt(&wrong_dx, &tree).is_none());
         assert!(preflight_native_filter_receipt(&wrong_color, &tree).is_none());
         assert!(preflight_native_filter_receipt(&wrong_region, &tree).is_none());
+        assert!(preflight_native_filter_receipt(&wrong_std_deviation, &tree).is_none());
     }
 
     #[test]
-    fn nonzero_stddev_and_extra_primitive_fail() {
-        let nonzero_stddev = exact_svg().replacen("stdDeviation=\"0\"", "stdDeviation=\"1\"", 1);
-        let tree = parse_tree(&nonzero_stddev);
-        assert!(preflight_native_filter_receipt(&nonzero_stddev, &tree).is_none());
+    fn invalid_stddev_and_extra_primitive_fail() {
+        let negative_stddev = exact_svg().replacen("stdDeviation=\"8\"", "stdDeviation=\"-1\"", 1);
+        let tree = parse_tree(&negative_stddev);
+        assert!(preflight_native_filter_receipt(&negative_stddev, &tree).is_none());
 
         let extra_primitive = exact_svg().replacen(
             "</filter>",
@@ -670,7 +686,7 @@ mod tests {
             "</defs>",
             &format!(
                 "{}</defs>",
-                filter("diagram-state-unused-theme-effect-shadow", 2, "#000")
+                filter("diagram-state-unused-theme-effect-shadow", 2, "1", "#000")
             ),
             1,
         );
