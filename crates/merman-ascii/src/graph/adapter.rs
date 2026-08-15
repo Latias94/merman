@@ -25,7 +25,14 @@ pub(crate) fn from_flowchart_model(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<AsciiGraph> {
-    from_flowchart_model_impl(model, options, resources, || {})
+    let policy = resources.policy();
+    let control = merman_core::OperationControl::new();
+    from_flowchart_model_with_execution(
+        model,
+        options,
+        resources,
+        AsciiExecution::new(&control, &policy),
+    )
 }
 
 pub(crate) fn from_flowchart_model_with_execution(
@@ -34,40 +41,8 @@ pub(crate) fn from_flowchart_model_with_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
-    from_flowchart_model_impl_controlled(model, options, resources, Some(execution), || {})
-}
-
-#[cfg(test)]
-fn from_flowchart_model_impl(
-    model: &FlowchartModel,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    before_edge_label_allocation: impl FnOnce(),
-) -> Result<AsciiGraph> {
-    from_flowchart_model_impl_controlled(
-        model,
-        options,
-        resources,
-        None,
-        before_edge_label_allocation,
-    )
-}
-
-fn from_flowchart_model_impl_controlled(
-    model: &FlowchartModel,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
-    before_edge_label_allocation: impl FnOnce(),
-) -> Result<AsciiGraph> {
     resources.transaction(|resources| {
-        from_flowchart_model_transactional(
-            model,
-            options,
-            resources,
-            execution,
-            before_edge_label_allocation,
-        )
+        from_flowchart_model_transactional(model, options, resources, execution)
     })
 }
 
@@ -75,8 +50,7 @@ fn from_flowchart_model_transactional(
     model: &FlowchartModel,
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
-    before_edge_label_allocation: impl FnOnce(),
+    execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
     let memberships = preflight_flowchart_projection(model, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
@@ -102,7 +76,6 @@ fn from_flowchart_model_transactional(
         options.terminal_width_profile,
         resources,
         execution,
-        before_edge_label_allocation,
     )?;
 
     let mut graph = AsciiGraph::new(direction);
@@ -196,24 +169,16 @@ fn from_flowchart_model_transactional(
     Ok(graph)
 }
 
-fn checkpoint_projection(execution: Option<AsciiExecution<'_>>, iteration: usize) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)?;
-    }
-    Ok(())
+fn checkpoint_projection(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
+    execution.checkpoint_loop(merman_core::OperationPhase::Semantic, iteration)
 }
 
 fn projection_scratch_resources(
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> ResourceContext {
     let scratch = ResourceContext::new(resources.policy());
-    match execution {
-        Some(execution) => {
-            execution.resource_context(&scratch, merman_core::OperationPhase::Semantic)
-        }
-        None => scratch,
-    }
+    execution.resource_context(&scratch, merman_core::OperationPhase::Semantic)
 }
 
 fn parse_flow_edge_marker(marker: CoreFlowEdgeMarker) -> GraphEdgeMarker {
@@ -242,7 +207,7 @@ fn parse_flow_edge_stroke(
 fn preflight_flowchart_projection<'a>(
     model: &'a FlowchartModel,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<FlowchartMembershipIndex<'a>> {
     resources.charge_layout_work(1)?;
     if let Some(direction) = model.direction.as_deref() {
@@ -335,7 +300,7 @@ impl<'a> FlowchartMembershipIndex<'a> {
     fn try_new(
         model: &'a FlowchartModel,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let member_count = model.subgraphs.iter().try_fold(0usize, |total, group| {
             resources.checked_work_add(total, group.nodes.len())
@@ -455,7 +420,7 @@ fn preflight_subgraph_nesting(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     // Every group is inspected once by the outer pass and resolved at most once.
     let traversal_work = resources.checked_work_mul(model.subgraphs.len(), 2)?;
@@ -549,8 +514,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
         direction: GraphDirection,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
-        execution: Option<AsciiExecution<'_>>,
-        before_edge_label_allocation: impl FnOnce(),
+        execution: AsciiExecution<'_>,
     ) -> Result<Self> {
         let mut work_units = 0usize;
         let mut document_cells = 0usize;
@@ -613,7 +577,6 @@ impl<'a> FlowchartProjectionPlan<'a> {
         resources.check(AsciiResourceLimitId::MaxOutputBytes, output_bytes)?;
         resources.charge_usage(work_units, document_cells)?;
 
-        before_edge_label_allocation();
         let mut edge_labels = Vec::new();
         edge_labels
             .try_reserve_exact(model.edges.len())
@@ -676,7 +639,7 @@ fn validate_supported_flowchart_model(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
+    execution: AsciiExecution<'_>,
 ) -> Result<()> {
     for (index, member_id) in memberships.member_ids().enumerate() {
         checkpoint_projection(execution, index)?;
@@ -739,7 +702,6 @@ mod tests {
     };
     use merman_core::resources::ResourceProfile;
     use merman_core::{OperationControl, OperationPhase};
-    use std::cell::Cell;
 
     fn flow_node(id: &str) -> FlowNode {
         FlowNode {
@@ -839,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_admits_exact_and_rejects_n_minus_one_before_edge_label_allocation() {
+    fn flowchart_projection_admits_exact_and_rejects_n_minus_one_atomically() {
         const PRIOR_WORK: usize = 11;
         const PRIOR_DOCUMENT_CELLS: usize = 2;
         const EXPECTED_LAYOUT_WORK: usize = 208;
@@ -880,18 +842,10 @@ mod tests {
             exact_resources
                 .charge_document_cells(PRIOR_DOCUMENT_CELLS)
                 .expect("prior document cells should fit the exact policy");
-            let exact_materialized = Cell::new(false);
-            from_flowchart_model_impl(
-                &model,
-                &AsciiRenderOptions::default(),
-                &mut exact_resources,
-                || exact_materialized.set(true),
-            )
-            .unwrap_or_else(|error| panic!("exact {description} limit should admit: {error:?}"));
-            assert!(
-                exact_materialized.get(),
-                "exact {description} limit should reach allocation"
-            );
+            from_flowchart_model(&model, &AsciiRenderOptions::default(), &mut exact_resources)
+                .unwrap_or_else(|error| {
+                    panic!("exact {description} limit should admit: {error:?}")
+                });
             assert_eq!(exact_resources.layout_work_used(), EXPECTED_LAYOUT_WORK);
             assert_eq!(
                 exact_resources.document_cells_used(),
@@ -910,21 +864,15 @@ mod tests {
             below_resources
                 .charge_document_cells(PRIOR_DOCUMENT_CELLS)
                 .expect("prior document cells should fit below the combined boundary");
-            let below_materialized = Cell::new(false);
-            let error = match from_flowchart_model_impl(
+            let error = match from_flowchart_model(
                 &model,
                 &AsciiRenderOptions::default(),
                 &mut below_resources,
-                || below_materialized.set(true),
             ) {
                 Ok(_) => panic!("max-minus-one {description} limit unexpectedly admitted"),
                 Err(error) => error,
             };
 
-            assert!(
-                !below_materialized.get(),
-                "{description} rejection must precede allocation"
-            );
             assert!(matches!(
                 error,
                 AsciiError::ResourceLimitExceeded(details)
@@ -932,6 +880,8 @@ mod tests {
                         && details.max == exact - 1
                         && details.actual == exact
             ));
+            assert_eq!(below_resources.layout_work_used(), PRIOR_WORK);
+            assert_eq!(below_resources.document_cells_used(), PRIOR_DOCUMENT_CELLS);
         }
     }
 
@@ -944,7 +894,7 @@ mod tests {
         let control = OperationControl::new();
         control.cancel();
         let execution = AsciiExecution::new(&control, &policy);
-        let scratch = projection_scratch_resources(&resources, Some(execution));
+        let scratch = projection_scratch_resources(&resources, execution);
 
         let error = try_plan_normalized_trimmed_text(
             "long edge label",
@@ -978,9 +928,12 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact layout-work limit should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &exact_resources, None)
-            .expect("exact membership construction work should pass");
-        preflight_subgraph_nesting(&model, &memberships, &exact_resources, None)
+        let exact_control = OperationControl::new();
+        let exact_execution = AsciiExecution::new(&exact_control, &exact_policy);
+        let memberships =
+            FlowchartMembershipIndex::try_new(&model, &exact_resources, exact_execution)
+                .expect("exact membership construction work should pass");
+        preflight_subgraph_nesting(&model, &memberships, &exact_resources, exact_execution)
             .expect("exact nesting traversal work should pass");
         assert_eq!(exact_resources.layout_work_used(), exact_work);
 
@@ -988,10 +941,14 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one layout-work limit should be valid");
         let below_resources = ResourceContext::new(below_policy);
-        let memberships = FlowchartMembershipIndex::try_new(&model, &below_resources, None)
-            .expect("membership construction should fit below the combined work boundary");
-        let error = preflight_subgraph_nesting(&model, &memberships, &below_resources, None)
-            .expect_err("max-minus-one work should fail before nesting-state allocation");
+        let below_control = OperationControl::new();
+        let below_execution = AsciiExecution::new(&below_control, &below_policy);
+        let memberships =
+            FlowchartMembershipIndex::try_new(&model, &below_resources, below_execution)
+                .expect("membership construction should fit below the combined work boundary");
+        let error =
+            preflight_subgraph_nesting(&model, &memberships, &below_resources, below_execution)
+                .expect_err("max-minus-one work should fail before nesting-state allocation");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
         };
