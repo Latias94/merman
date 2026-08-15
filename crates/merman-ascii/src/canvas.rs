@@ -881,16 +881,28 @@ impl Canvas {
 /// Row-oriented renderers such as Sequence already own complete `StyledLine` values. Building a
 /// same-sized canvas would duplicate their cells and grapheme arenas. This entry point reuses the
 /// final canvas encoding rules so every color mode keeps identical escaping and output budgeting,
-/// while the document budget is checked before the first encoded byte is emitted.
-pub(crate) fn finish_styled_lines_with_resources(
+/// while the document budget is checked before the first encoded byte is emitted. The required
+/// execution remains active through extent counting, encoded-byte counting, and materialization.
+pub(crate) fn finish_styled_lines_with_resources_with_execution(
     lines: &[crate::text::StyledLine],
     options: &AsciiRenderOptions,
     trim: bool,
     resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> crate::Result<String> {
-    finish_styled_line_iter_with_resources(lines.iter(), options, trim, resources)
+    debug_assert_eq!(resources.policy(), *execution.resources());
+    finish_styled_line_iter_with_probe(
+        lines.iter(),
+        options,
+        trim,
+        resources,
+        None,
+        Some(execution),
+        || {},
+    )
 }
 
+#[cfg(test)]
 pub(crate) fn finish_styled_line_iter_with_resources<'a, I>(
     lines: I,
     options: &AsciiRenderOptions,
@@ -1000,11 +1012,15 @@ fn finish_styled_line_iter_after_transaction<'a, I>(
 where
     I: Clone + Iterator<Item = &'a crate::text::StyledLine>,
 {
-    let (line_count, width) = lines
-        .clone()
-        .fold((0usize, 0usize), |(count, width), line| {
-            (count + 1, width.max(line.len()))
-        });
+    let mut line_count = 0usize;
+    let mut width = 0usize;
+    for line in lines.clone() {
+        if let Some(execution) = execution {
+            execution.checkpoint(merman_core::OperationPhase::Emit)?;
+        }
+        line_count = resources.checked_grid_add(line_count, 1)?;
+        width = width.max(line.len());
+    }
     if line_count == 0 {
         return Ok(String::new());
     }
@@ -1020,7 +1036,7 @@ where
             execution.checkpoint(merman_core::OperationPhase::Emit)?;
         }
         let row_end = if trim {
-            line.trimmed_len(preserve_color)
+            controlled_styled_line_trimmed_len(line, preserve_color, execution)?
         } else {
             line.len()
         };
@@ -1098,7 +1114,7 @@ where
                     execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 }
                 let row_end = if trim {
-                    line.trimmed_len(false)
+                    controlled_styled_line_trimmed_len(line, false, execution)?
                 } else {
                     line.len()
                 };
@@ -1113,7 +1129,7 @@ where
                     execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 }
                 let row_end = if trim {
-                    line.trimmed_len(true)
+                    controlled_styled_line_trimmed_len(line, true, execution)?
                 } else {
                     line.len()
                 };
@@ -1135,7 +1151,7 @@ where
                     execution.checkpoint(merman_core::OperationPhase::Emit)?;
                 }
                 let row_end = if trim {
-                    line.trimmed_len(true)
+                    controlled_styled_line_trimmed_len(line, true, execution)?
                 } else {
                     line.len()
                 };
@@ -1152,6 +1168,28 @@ where
         }
     }
     Ok(())
+}
+
+fn controlled_styled_line_trimmed_len(
+    line: &crate::text::StyledLine,
+    preserve_color: bool,
+    execution: Option<AsciiExecution<'_>>,
+) -> crate::Result<usize> {
+    let Some(execution) = execution else {
+        return Ok(line.trimmed_len(preserve_color));
+    };
+    let cells = line.surface_cells();
+    let mut row_end = cells.len();
+    let mut inspected = 0usize;
+    while let Some(cell) = row_end.checked_sub(1).and_then(|index| cells.get(index)) {
+        execution.checkpoint_loop(merman_core::OperationPhase::Emit, inspected)?;
+        if !cell.is_trimmable_blank(preserve_color) {
+            break;
+        }
+        row_end -= 1;
+        inspected += 1;
+    }
+    Ok(row_end)
 }
 
 fn encode_styled_line_plain(
@@ -2083,8 +2121,8 @@ mod tests {
             line.try_push_role_text("AB", AsciiColorRole::Text)
                 .expect("test cells should fit");
             let control = OperationControl::new();
-            // Admission consumes five checkpoints and the count pass consumes one row plus the
-            // first primary cell. Cancellation must be observed before encoding the second cell.
+            // Leave enough successful checkpoints to enter encoded-cell traversal; the
+            // controlled finalizer must still stop before either pass publishes output.
             control.cancel_after_checkpoints(7);
             let execution = AsciiExecution::new(&control, &policy);
 
@@ -2112,6 +2150,201 @@ mod tests {
     }
 
     #[test]
+    fn controlled_styled_finish_checks_the_initial_line_count() {
+        let options = AsciiRenderOptions::unicode();
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let line_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut first =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &line_resources);
+        first
+            .try_push_role_text("A", AsciiColorRole::Text)
+            .expect("the first fixture line should fit");
+        let mut second =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &line_resources);
+        second
+            .try_push_role_text("B", AsciiColorRole::Text)
+            .expect("the second fixture line should fit");
+        let lines = [first, second];
+
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the existing ledger debit should fit");
+        let work_before = resources.layout_work_used();
+        let document_before = resources.document_cells_used();
+        let control = OperationControl::new();
+        let yielded = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let cancel_control = control.clone();
+        let cancel_yielded = std::rc::Rc::clone(&yielded);
+        let lines = lines.iter().inspect(move |_| {
+            let next = cancel_yielded.get() + 1;
+            cancel_yielded.set(next);
+            if next == 2 {
+                cancel_control.cancel();
+            }
+        });
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = finish_styled_line_iter_with_probe(
+            lines,
+            &options,
+            true,
+            &mut resources,
+            None,
+            Some(execution),
+            || {},
+        )
+        .expect_err("line counting must observe cancellation before later output admission");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(yielded.get(), 2);
+        assert_eq!(resources.layout_work_used(), work_before);
+        assert_eq!(resources.document_cells_used(), document_before);
+    }
+
+    #[test]
+    fn controlled_styled_finish_checks_long_trim_scans() {
+        let options = AsciiRenderOptions::unicode();
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let line_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &line_resources);
+        line.try_push_role_text("A", AsciiColorRole::Text)
+            .expect("the fixture prefix should fit");
+        line.try_push_spaces(128)
+            .expect("the fixture trailing spaces should fit");
+
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the existing ledger debit should fit");
+        let work_before = resources.layout_work_used();
+        let document_before = resources.document_cells_used();
+        let control = OperationControl::new();
+        // Line counting, row admission, and the first trim checkpoint succeed. The next bounded
+        // trim checkpoint must observe cancellation before the undersized output budget is read.
+        control.cancel_after_checkpoints(3);
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = finish_styled_line_iter_with_probe(
+            std::iter::once(&line),
+            &options,
+            true,
+            &mut resources,
+            None,
+            Some(execution),
+            || {},
+        )
+        .expect_err("a long final trim scan must remain cooperatively cancellable");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), work_before);
+        assert_eq!(resources.document_cells_used(), document_before);
+    }
+
+    #[test]
+    fn controlled_styled_finish_rolls_back_when_count_encoding_is_cancelled() {
+        let options = AsciiRenderOptions::unicode();
+        let policy = policy_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let line_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &line_resources);
+        line.try_push_role_text("AB", AsciiColorRole::Text)
+            .expect("the fixture line should fit");
+        let lines = [line];
+
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the existing ledger debit should fit");
+        let work_before = resources.layout_work_used();
+        let document_before = resources.document_cells_used();
+        let control = OperationControl::new();
+        let yielded = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let cancel_control = control.clone();
+        let cancel_yielded = std::rc::Rc::clone(&yielded);
+        let lines = lines.iter().inspect(move |_| {
+            let next = cancel_yielded.get() + 1;
+            cancel_yielded.set(next);
+            if next == 3 {
+                cancel_control.cancel();
+            }
+        });
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = finish_styled_line_iter_with_probe(
+            lines,
+            &options,
+            true,
+            &mut resources,
+            None,
+            Some(execution),
+            || {},
+        )
+        .expect_err("count encoding must prefer cancellation to the output ceiling");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(yielded.get(), 3);
+        assert_eq!(resources.layout_work_used(), work_before);
+        assert_eq!(resources.document_cells_used(), document_before);
+    }
+
+    #[test]
+    fn controlled_styled_finish_rolls_back_when_materialization_is_cancelled() {
+        let options = AsciiRenderOptions::unicode();
+        let policy = AsciiResourcePolicy::default();
+        let line_resources = ResourceContext::new(policy);
+        let mut line =
+            crate::text::StyledLine::with_resources(TerminalWidthProfile::Unicode, &line_resources);
+        line.try_push_role_text("AB", AsciiColorRole::Text)
+            .expect("the fixture line should fit");
+
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the existing ledger debit should fit");
+        let work_before = resources.layout_work_used();
+        let document_before = resources.document_cells_used();
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = finish_styled_line_iter_with_probe(
+            std::iter::once(&line),
+            &options,
+            true,
+            &mut resources,
+            None,
+            Some(execution),
+            || control.cancel(),
+        )
+        .expect_err("final materialization must observe cancellation before publishing output");
+
+        assert!(matches!(
+            error,
+            crate::AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), work_before);
+        assert_eq!(resources.document_cells_used(), document_before);
+    }
+
+    #[test]
     fn controlled_styled_finish_prefers_cancellation_to_work_ceiling() {
         let options = AsciiRenderOptions::unicode();
         let policy = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1);
@@ -2122,8 +2355,8 @@ mod tests {
             .expect("test cell should fit");
         let mut resources = ResourceContext::new(policy);
         let control = OperationControl::new();
-        // The line inspection succeeds once; the next checkpoint is immediately before the
-        // compound work/document admission that would otherwise exceed the one-unit ceiling.
+        // The initial line-count checkpoint succeeds once. Cancellation during the following
+        // admission scan must win over the one-unit work ceiling.
         control.cancel_after_checkpoints(1);
         let execution = AsciiExecution::new(&control, &policy);
 

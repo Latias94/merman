@@ -8,7 +8,7 @@ use super::plot::{
     checked_grid_sub, format_data_number, format_tick_number, horizontal_bar_width,
     plan_horizontal_plot_admission, plan_vertical_plot_admission,
 };
-use crate::canvas::finish_styled_lines_with_resources;
+use crate::canvas::finish_styled_lines_with_resources_with_execution;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
@@ -1813,19 +1813,6 @@ fn write_horizontal_tick_label(
     Ok(())
 }
 
-fn finish_chart_lines(
-    document: ChartDocument,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-) -> Result<String> {
-    if document.lines.is_empty() {
-        return Ok(String::new());
-    }
-
-    resources.grid_extent(document.width, document.lines.len())?;
-    finish_styled_lines_with_resources(&document.lines, options, true, resources)
-}
-
 fn new_chart_line(options: &AsciiRenderOptions, resources: &ResourceContext) -> ChartLine {
     ChartLine::with_resources(options.terminal_width_profile, resources)
 }
@@ -1836,14 +1823,17 @@ fn finish_chart_lines_controlled(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let cells = document.width.saturating_mul(document.lines.len());
-    execution.admit_grid(cells)?;
-    for _ in &document.lines {
-        execution.checkpoint(merman_core::OperationPhase::Emit)?;
+    if document.lines.is_empty() {
+        return Ok(String::new());
     }
-    let mut emit_resources =
-        execution.resource_context(resources, merman_core::OperationPhase::Emit);
-    finish_chart_lines(document, options, &mut emit_resources)
+
+    finish_styled_lines_with_resources_with_execution(
+        &document.lines,
+        options,
+        true,
+        resources,
+        execution,
+    )
 }
 
 fn checkpoint_emitted_lines(rendered: &str, execution: AsciiExecution<'_>) -> Result<()> {
@@ -1901,8 +1891,8 @@ fn charge_category_text(
 #[cfg(test)]
 mod tests {
     use super::{
-        horizontal_tick_label_line_for_labels, render_xychart_diagram_with_materializer,
-        render_xychart_diagram_with_resources,
+        ChartDocument, finish_chart_lines_controlled, horizontal_tick_label_line_for_labels,
+        render_xychart_diagram_with_materializer, render_xychart_diagram_with_resources,
     };
     use crate::operation::AsciiExecution;
     use crate::resource::ResourceContext;
@@ -2901,6 +2891,41 @@ mod tests {
         let error = render_xychart_diagram_with_resources(&model, &options, rejected)
             .expect_err("the final newline should cross the output-byte boundary");
         assert_resource_error(error, AsciiResourceLimitId::MaxOutputBytes, 89, 88);
+    }
+
+    #[test]
+    fn xychart_final_styled_line_count_prefers_cancellation_to_output_ceiling() {
+        let options = compact_options(AsciiColorMode::Plain);
+        let policy = resources_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let line_resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut line = StyledLine::with_resources(options.terminal_width_profile, &line_resources);
+        line.try_push_role_text("AB", AsciiColorRole::Text)
+            .expect("the fixture chart line should fit");
+        let document = ChartDocument {
+            width: line.len(),
+            lines: vec![line],
+        };
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the existing ledger debit should fit");
+        let work_before = resources.layout_work_used();
+        let document_before = resources.document_cells_used();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(0);
+        let execution = AsciiExecution::new(&control, &policy);
+
+        let error = finish_chart_lines_controlled(document, &options, &mut resources, execution)
+            .expect_err("the XYChart finalizer must keep execution through line counting");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), work_before);
+        assert_eq!(resources.document_cells_used(), document_before);
     }
 
     #[test]

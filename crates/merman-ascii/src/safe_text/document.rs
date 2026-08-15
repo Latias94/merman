@@ -9,9 +9,9 @@ use crate::Result;
 use crate::color::AsciiColorMode;
 use crate::error::AsciiError;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
-};
+#[cfg(test)]
+use crate::resource::AsciiResourcePolicy;
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use std::fmt;
 
 /// Normalizes and encodes a family-owned line document.
@@ -62,6 +62,7 @@ struct NormalizedTextRange {
 }
 
 impl BudgetedTextDocument {
+    #[cfg(test)]
     pub(crate) fn new(options: &AsciiRenderOptions, resources: AsciiResourcePolicy) -> Self {
         Self::from_resources(ResourceContext::new(resources), options)
     }
