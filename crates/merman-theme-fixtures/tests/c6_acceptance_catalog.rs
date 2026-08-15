@@ -147,8 +147,8 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
         C6_ACCEPTANCE_CELL_COUNT
     );
     assert_eq!(C6_ACCEPTANCE_CELL_COUNT, 18);
-    assert_eq!(catalog.enforced_tranche().cells().len(), 2);
-    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 16);
+    assert_eq!(catalog.enforced_tranche().cells().len(), 4);
+    assert_eq!(catalog.enforced_tranche().deferred_cells().count(), 14);
     assert_eq!(actual_keys, expected_keys);
     assert_ne!(catalog.manifest_digest(), &[0; 32]);
 
@@ -182,10 +182,21 @@ fn committed_catalog_is_the_exact_native_c6a_ledger() {
                 .map(|cell| cell.source_fixture_id()),
             Some("fixture-c6-brutalist-state")
         );
+
+        let key = C6CellKey::new(C6ProofTheme::Brutalist, C6ProofFamily::Sequence, target);
+        assert_eq!(
+            catalog
+                .enforced_tranche()
+                .cell(key)
+                .map(|cell| cell.source_fixture_id()),
+            Some("fixture-sequence-proof")
+        );
     }
     for theme in C6_PROOF_THEMES {
         for family in C6_PROOF_FAMILIES {
-            if theme == C6ProofTheme::Brutalist && family == C6ProofFamily::State {
+            if theme == C6ProofTheme::Brutalist
+                && matches!(family, C6ProofFamily::Sequence | C6ProofFamily::State)
+            {
                 continue;
             }
             for target in C6_NATIVE_OUTPUT_TARGETS {
@@ -407,11 +418,11 @@ fn enforcement_and_portable_expectation_invariants_fail_closed() {
         "standalone-svg",
     )["enforcement"] = json!({
         "kind": "enforced",
-        "sourceFixtureId": "fixture-token-baseline"
+        "sourceFixtureId": "fixture-ordinal-palette"
     });
     match parse_value(&incomplete_input, &source_catalog) {
         Err(CatalogError::InvalidC6AcceptanceCell { reason, .. }) => {
-            assert!(reason.contains("do not exactly match the reference theme"));
+            assert!(reason.contains("not covered by the typed theme input"));
         }
         other => panic!("incomplete theme input was accepted: {other:?}"),
     }

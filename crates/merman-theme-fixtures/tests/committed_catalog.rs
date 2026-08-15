@@ -89,12 +89,26 @@ fn sequence_proof_fixture_registers_the_closed_family_and_source_inventory() {
         FixtureEvidenceKind::TypedCapability
     );
     assert!(fixture.source_reference_mechanisms().is_empty());
+    let mechanisms = fixture
+        .theme_input()
+        .expect("Sequence typed theme input")
+        .mechanisms();
+    assert_eq!(mechanisms, *fixture.expectation().reference_mechanisms());
     assert_eq!(
-        fixture
-            .theme_input()
-            .expect("Sequence typed theme input")
-            .mechanisms(),
-        *fixture.expectation().reference_mechanisms()
+        mechanisms,
+        BTreeSet::from([
+            ReferenceThemeMechanism::CanvasSolid,
+            ReferenceThemeMechanism::FontStack,
+            ReferenceThemeMechanism::StrokeStyling,
+            ReferenceThemeMechanism::ThemeVariables,
+        ])
+    );
+    assert!(
+        catalog
+            .theme("brutalist")
+            .expect("Brutalist reference theme")
+            .fixture_ids()
+            .contains(fixture.id())
     );
 
     let visible_text = fixture

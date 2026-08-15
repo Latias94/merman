@@ -344,7 +344,12 @@ impl C6AcceptanceCatalog {
             validate_expectation_against_source(cell.key, &cell.expectation, theme_catalog)?;
         }
         for cell in self.enforced_tranche.cells() {
-            validate_enforced_source_fixture(cell, theme_catalog)?;
+            let expectation = self
+                .specification
+                .cell(cell.key())
+                .expect("every enforced cell belongs to the validated specification")
+                .expectation();
+            validate_enforced_source_fixture(cell, expectation, theme_catalog)?;
         }
         Ok(())
     }
@@ -504,6 +509,7 @@ fn validate_expectation_against_source(
 
 fn validate_enforced_source_fixture(
     cell: &C6EnforcedCell,
+    expectation: &C6CellExpectation,
     theme_catalog: &ThemeFixtureCatalog,
 ) -> Result<(), CatalogError> {
     let expected_family = cell.key.family.fixture_family();
@@ -555,10 +561,22 @@ fn validate_enforced_source_fixture(
             "typed theme input fixture id does not match the enforced source fixture",
         );
     }
-    if input.mechanisms() != *theme.source_mechanisms() {
+    let input_mechanisms = input.mechanisms();
+    if !input_mechanisms.is_subset(theme.source_mechanisms()) {
         return invalid_cell(
             cell.key,
-            "typed theme input mechanisms do not exactly match the reference theme",
+            "typed theme input includes a mechanism absent from the reference theme",
+        );
+    }
+    let required_mechanisms = expectation
+        .mechanism_requirements()
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if !required_mechanisms.is_subset(&input_mechanisms) {
+        return invalid_cell(
+            cell.key,
+            "cell mechanism requirements are not covered by the typed theme input",
         );
     }
     Ok(())

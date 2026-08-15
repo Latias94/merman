@@ -396,7 +396,8 @@ fn render_sequence_diagram_svg_inner(
     }
 
     out.push_str("</svg>\n");
-    root_metrics.document.complete(out.finish()?)
+    let svg = prepared.text_sidecar().bind_terminal_svg(out.finish()?)?;
+    root_metrics.document.complete(svg)
 }
 
 struct SequenceActorThemeResolution {

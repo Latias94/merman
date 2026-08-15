@@ -245,6 +245,18 @@ impl C6TargetProof {
         Self::seal("brutalist-state-png-v1", mechanisms)
     }
 
+    pub(crate) fn brutalist_sequence_standalone_svg(
+        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    ) -> Self {
+        Self::seal("brutalist-sequence-standalone-svg-v1", mechanisms)
+    }
+
+    pub(crate) fn brutalist_sequence_png(
+        mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    ) -> Self {
+        Self::seal("brutalist-sequence-png-v1", mechanisms)
+    }
+
     fn seal(
         semantic_assertion_id: &'static str,
         mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
@@ -960,23 +972,30 @@ mod tests {
         themes: &ThemeFixtureCatalog,
         acceptance: &C6AcceptanceCatalog,
     ) -> C6ReceiptBook {
-        let first = acceptance
-            .enforced_tranche()
-            .cells()
-            .next()
-            .expect("enforced cell");
-        let group = synthetic_group(first, themes, 1);
+        let mut groups = BTreeMap::new();
+        for cell in acceptance.enforced_tranche().cells() {
+            let key = C6RenderGroupKey::for_cell(cell);
+            if groups.contains_key(&key) {
+                continue;
+            }
+            let seed = u8::try_from(groups.len() + 1).expect("synthetic group count fits u8");
+            groups.insert(key, synthetic_group(cell, themes, seed));
+        }
         let cells = acceptance
             .enforced_tranche()
             .cells()
-            .map(|cell| synthetic_cell(cell, acceptance, &group))
+            .map(|cell| {
+                let key = C6RenderGroupKey::for_cell(cell);
+                let group = groups.get(&key).expect("synthetic render group");
+                synthetic_cell(cell, acceptance, group)
+            })
             .collect::<Vec<_>>();
         C6ReceiptBook::from_receipts(
             acceptance
                 .enforced_tranche()
                 .cells()
                 .map(C6EnforcedCell::key),
-            [group],
+            groups.into_values(),
             cells,
         )
         .expect("synthetic receipt book")
@@ -1000,8 +1019,8 @@ mod tests {
             .evaluate(&acceptance, &themes)
             .expect("complete synthetic receipts");
 
-        assert_eq!(report.verified_cell_count(), 2);
-        assert_eq!(report.render_group_count(), 1);
+        assert_eq!(report.verified_cell_count(), 4);
+        assert_eq!(report.render_group_count(), 2);
         assert_eq!(report.manifest_digest(), acceptance.manifest_digest());
         assert_ne!(report.execution_digest(), &[0; 32]);
     }

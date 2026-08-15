@@ -1556,6 +1556,10 @@ impl BuiltinFamilyArtifact {
                     sidecar.take_prepared_text_retained_reservations(),
                 )
             }
+            Self::Sequence(artifact) => (
+                artifact.layout.prepared_text_label_ledger(),
+                artifact.layout.take_prepared_text_retained_reservations(),
+            ),
             _ => (Vec::new(), Vec::new()),
         };
         PreparedTextEvidenceLease::new(entries, retained_reservations)
@@ -2593,9 +2597,10 @@ fn prepare_non_class_render(
                     model,
                     title,
                     effective_config,
+                    execution.prepared_text_layout(),
                     execution.text_measurer(),
                     execution.math_renderer(),
-                    execution.work_meter_ref(),
+                    execution.work_meter(),
                 )
             })?)
         }

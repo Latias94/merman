@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use merman::svg::{
@@ -106,6 +107,11 @@ impl FamilyEvidenceRequirements {
         require_root_theme: true,
     };
 
+    const BRUTALIST_SEQUENCE: Self = Self {
+        require_prepared_text: true,
+        require_root_theme: true,
+    };
+
     pub(crate) const ROUTE_CUTOVER: Self = Self {
         require_prepared_text: false,
         require_root_theme: false,
@@ -137,27 +143,56 @@ mod c6_raster_proof;
 mod c6_pdf_proof;
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[path = "support/c6_sequence_proof.rs"]
+mod c6_sequence_proof;
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 use c6_pdf_proof::prove_brutalist_state_pdf;
 use c6_raster_proof::{PngArtifactProof, prove_brutalist_state_jpeg, prove_brutalist_state_png};
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub(crate) use c6_raster_proof::{RasterImage as C6RasterImage, decode_bounded_png_artifact};
+use c6_sequence_proof::{
+    BrutalistSequenceSvgProof, prove_brutalist_sequence_png, prove_brutalist_sequence_svg,
+};
 
 const SHADOW_EFFECT_ID: &str = "c6-brutalist-state-shadow";
 const BRUTALIST_STATE_FIXTURE_ID: &str = "fixture-c6-brutalist-state";
+const BRUTALIST_SEQUENCE_FIXTURE_ID: &str = "fixture-sequence-proof";
+const COMMON_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 4] = [
+    ReferenceThemeMechanism::CanvasSolid,
+    ReferenceThemeMechanism::FontStack,
+    ReferenceThemeMechanism::StrokeStyling,
+    ReferenceThemeMechanism::ThemeVariables,
+];
+const COMPLETE_BRUTALIST_MECHANISMS: [ReferenceThemeMechanism; 7] = [
+    ReferenceThemeMechanism::CanvasSolid,
+    ReferenceThemeMechanism::CssFilter,
+    ReferenceThemeMechanism::FontStack,
+    ReferenceThemeMechanism::NthChildSelector,
+    ReferenceThemeMechanism::RoundedCorners,
+    ReferenceThemeMechanism::StrokeStyling,
+    ReferenceThemeMechanism::ThemeVariables,
+];
 
-struct BrutalistStateFixtureContract<'a> {
+struct BrutalistCommonFixtureContract<'a> {
     tokens: &'a ReferenceThemeTokens,
     font_stack: &'a ReferenceFontStack,
     font_asset_id: &'a str,
     canvas_color: &'a str,
     border: &'a ReferenceBorderInput,
-    radius_px: u16,
-    palette_colors: &'a [String],
-    shadow: &'a ReferenceShadowInput,
     mechanisms: BTreeSet<ReferenceThemeMechanism>,
 }
 
-impl<'a> BrutalistStateFixtureContract<'a> {
+struct BrutalistStateFixtureContract<'a> {
+    common: BrutalistCommonFixtureContract<'a>,
+    radius_px: u16,
+    palette_colors: &'a [String],
+    shadow: &'a ReferenceShadowInput,
+}
+
+type BrutalistSequenceFixtureContract<'a> = BrutalistCommonFixtureContract<'a>;
+
+impl<'a> BrutalistCommonFixtureContract<'a> {
     fn from_input(input: &'a ReferenceThemeInput) -> C6ProofResult<Self> {
         let tokens = input.tokens().ok_or_else(|| {
             C6ProofError::new("fixture-contract", "Brutalist requires typed tokens")
@@ -215,21 +250,80 @@ impl<'a> BrutalistStateFixtureContract<'a> {
         );
 
         let node_style = input.node_style().ok_or_else(|| {
-            C6ProofError::new("fixture-contract", "Brutalist requires a State node style")
+            C6ProofError::new("fixture-contract", "Brutalist requires a node style")
         })?;
         c6_ensure!(
             "fixture-contract",
             node_style.dash_pattern().is_empty(),
-            "Brutalist State node style must not use a dash pattern"
+            "Brutalist node style must not use a dash pattern"
         );
         let border = node_style.border().ok_or_else(|| {
             C6ProofError::new("fixture-contract", "Brutalist requires a node border")
         })?;
+
+        Ok(Self {
+            tokens,
+            font_stack,
+            font_asset_id,
+            canvas_color,
+            border,
+            mechanisms: input.mechanisms(),
+        })
+    }
+
+    fn from_sequence_input(input: &'a ReferenceThemeInput) -> C6ProofResult<Self> {
+        let contract = Self::from_input(input)?;
+        let node_style = input
+            .node_style()
+            .expect("the common Brutalist contract requires a node style");
+        c6_ensure!(
+            "fixture-contract",
+            node_style.corner_radius_px().is_none() && node_style.shadow().is_none(),
+            "Brutalist Sequence admits only the common border surface"
+        );
+        c6_ensure!(
+            "fixture-contract",
+            input.semantic_rules().is_empty(),
+            "Brutalist Sequence does not admit State ordinal rules"
+        );
+        let expected_mechanisms = COMMON_BRUTALIST_MECHANISMS.into_iter().collect();
+        c6_ensure!(
+            "fixture-contract",
+            contract.mechanisms == expected_mechanisms,
+            "Brutalist Sequence mechanisms differ: expected={expected_mechanisms:?}, actual={:?}",
+            contract.mechanisms
+        );
+        Ok(contract)
+    }
+
+    fn actor_fill(&self) -> &str {
+        self.tokens.primary()
+    }
+
+    fn note_fill(&self) -> &str {
+        self.tokens.surface()
+    }
+
+    fn stroke(&self) -> &str {
+        self.border.color()
+    }
+
+    fn font_family(&self) -> &str {
+        &self.font_stack.families()[0]
+    }
+}
+
+impl<'a> BrutalistStateFixtureContract<'a> {
+    fn from_input(input: &'a ReferenceThemeInput) -> C6ProofResult<Self> {
+        let common = BrutalistCommonFixtureContract::from_input(input)?;
+        let node_style = input
+            .node_style()
+            .expect("the common Brutalist contract requires a node style");
         let radius_px = node_style.corner_radius_px().ok_or_else(|| {
-            C6ProofError::new("fixture-contract", "Brutalist requires rounded State nodes")
+            C6ProofError::new("fixture-contract", "Brutalist State requires rounded nodes")
         })?;
         let shadow = node_style.shadow().ok_or_else(|| {
-            C6ProofError::new("fixture-contract", "Brutalist requires a hard shadow")
+            C6ProofError::new("fixture-contract", "Brutalist State requires a hard shadow")
         })?;
         c6_ensure!(
             "fixture-contract",
@@ -258,14 +352,14 @@ impl<'a> BrutalistStateFixtureContract<'a> {
                 c6_ensure!(
                     "fixture-contract",
                     *target == ReferenceSemanticTarget::Node,
-                    "ordinal palette targets {target:?}, not State nodes"
+                    "ordinal palette targets {target:?}, not nodes"
                 );
                 colors.as_slice()
             }
             _ => {
                 return Err(C6ProofError::new(
                     "fixture-contract",
-                    "Brutalist proof requires exactly one State node ordinal palette",
+                    "Brutalist proof requires exactly one family node ordinal palette",
                 ));
             }
         };
@@ -277,21 +371,32 @@ impl<'a> BrutalistStateFixtureContract<'a> {
         );
         c6_ensure!(
             "fixture-contract",
-            palette_colors.first().map(String::as_str) == Some(tokens.primary()),
+            palette_colors.first().map(String::as_str) == Some(common.tokens.primary()),
             "first ordinal color does not match the primary token"
         );
 
+        let mechanisms = input.mechanisms();
+        let expected_mechanisms = COMPLETE_BRUTALIST_MECHANISMS.into_iter().collect();
+        c6_ensure!(
+            "fixture-contract",
+            mechanisms == expected_mechanisms,
+            "Brutalist source mechanisms differ: expected={expected_mechanisms:?}, actual={mechanisms:?}"
+        );
+
         Ok(Self {
-            tokens,
-            font_stack,
-            font_asset_id,
-            canvas_color,
-            border,
+            common,
             radius_px,
             palette_colors,
             shadow,
-            mechanisms: input.mechanisms(),
         })
+    }
+}
+
+impl<'a> Deref for BrutalistStateFixtureContract<'a> {
+    type Target = BrutalistCommonFixtureContract<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.common
     }
 }
 
@@ -424,7 +529,19 @@ const BRUTALIST_STATE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
     execute: execute_brutalist_state_group,
 };
 
-static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] = &[BRUTALIST_STATE_ADAPTER];
+const BRUTALIST_SEQUENCE_ADAPTER: C6RenderGroupAdapter = C6RenderGroupAdapter {
+    theme: C6ProofTheme::Brutalist,
+    family: C6ProofFamily::Sequence,
+    source_fixture_id: BRUTALIST_SEQUENCE_FIXTURE_ID,
+    supported_targets: &[
+        ExpectedOutputTarget::StandaloneSvg,
+        ExpectedOutputTarget::Png,
+    ],
+    execute: execute_brutalist_sequence_group,
+};
+
+static C6_RENDER_GROUP_ADAPTERS: &[C6RenderGroupAdapter] =
+    &[BRUTALIST_SEQUENCE_ADAPTER, BRUTALIST_STATE_ADAPTER];
 
 #[derive(Debug)]
 struct C6RenderGroupWork {
@@ -587,6 +704,89 @@ fn execute_brutalist_state_group(
     })
 }
 
+fn execute_brutalist_sequence_group(
+    theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
+    group: C6RenderGroupWork,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
+    let fixture = theme_catalog
+        .fixture(group.key.source_fixture_id())
+        .ok_or_else(|| render_group_error(&group.key, "source-fixture"))?;
+    let input = fixture
+        .theme_input()
+        .ok_or_else(|| render_group_error(&group.key, "theme-input"))?;
+    let source = theme_catalog.source_text(fixture.id()).map_err(|error| {
+        C6RuntimeError::RenderGroupProofFailed {
+            group: group.key.label(),
+            stage: "source-fixture-read",
+            detail: error.to_string(),
+        }
+    })?;
+    let rendered = prove_render_group(
+        &group.key,
+        prove_brutalist_sequence_rendered_document(theme_catalog, input, &source),
+    )?;
+    let png_dependents = group
+        .cells
+        .iter()
+        .map(|cell| cell.key().target())
+        .filter(|target| *target == ExpectedOutputTarget::Png)
+        .collect::<Vec<_>>();
+    let png_observation = (!png_dependents.is_empty())
+        .then(|| {
+            observe_brutalist_sequence_png(
+                &group.key,
+                &png_dependents,
+                &rendered.contract,
+                &rendered.svg_proof,
+                &rendered.document,
+                &rendered.identity,
+            )
+        })
+        .transpose()?;
+
+    prove_shared_document_identity(
+        &group.key,
+        rendered.document.standalone_svg_admission(),
+        png_observation.as_ref(),
+    )?;
+    let group_receipt = C6RenderGroupReceipt::seal(
+        group.key.clone(),
+        theme_catalog,
+        &rendered.identity,
+        rendered.document.standalone_svg_admission(),
+    )?;
+    let svg_observation = C6TargetObservation::from_target_receipt(
+        rendered.identity.clone(),
+        rendered.document.standalone_svg_admission(),
+        C6TargetProof::brutalist_sequence_standalone_svg(rendered.svg_proof.mechanisms()),
+    );
+
+    let mut cells = Vec::with_capacity(group.cells.len());
+    for enforced in &group.cells {
+        let observation = match enforced.key().target() {
+            ExpectedOutputTarget::StandaloneSvg => svg_observation.clone(),
+            ExpectedOutputTarget::Png => png_observation
+                .as_ref()
+                .ok_or_else(|| render_group_error(&group.key, "png-support-plan"))?
+                .clone(),
+            ExpectedOutputTarget::BrowserSvg
+            | ExpectedOutputTarget::Jpeg
+            | ExpectedOutputTarget::Pdf => {
+                return Err(C6RuntimeError::UnsupportedEnforcedCell {
+                    key: enforced.key(),
+                });
+            }
+        };
+        cells.push(observation.seal(acceptance, enforced, &group_receipt)?);
+    }
+
+    Ok(C6CompletedRenderGroup {
+        receipt: group_receipt,
+        cells,
+    })
+}
+
 struct BrutalistStateRenderedDocument<'a> {
     contract: BrutalistStateFixtureContract<'a>,
     document: RenderedDocument,
@@ -604,17 +804,48 @@ fn prove_brutalist_state_rendered_document<'a>(
     prove_brutalist_state_capabilities(&theme)?;
 
     let renderer = brutalist_state_renderer();
-    let document =
-        render_brutalist_state_document(&renderer, source, &theme, portable_svg_request())?;
+    let document = render_brutalist_document(&renderer, source, &theme, portable_svg_request())?;
     let identity = prove_brutalist_state_evidence(document.evidence(), &theme)?;
     let mechanisms = prove_brutalist_state_svg(&contract, document.svg())?;
-    prove_mechanism_coverage(&contract.mechanisms, &mechanisms)?;
+    prove_mechanism_coverage(&contract.common.mechanisms, &mechanisms)?;
 
     Ok(BrutalistStateRenderedDocument {
         contract,
         document,
         identity,
         mechanisms,
+    })
+}
+
+struct BrutalistSequenceRenderedDocument<'a> {
+    contract: BrutalistSequenceFixtureContract<'a>,
+    document: RenderedDocument,
+    identity: crate::observation::C6RenderIdentity,
+    svg_proof: BrutalistSequenceSvgProof,
+}
+
+fn prove_brutalist_sequence_rendered_document<'a>(
+    theme_catalog: &ThemeFixtureCatalog,
+    input: &'a ReferenceThemeInput,
+    source: &str,
+) -> C6ProofResult<BrutalistSequenceRenderedDocument<'a>> {
+    let contract = BrutalistSequenceFixtureContract::from_sequence_input(input)?;
+    let theme = compile_brutalist_sequence_theme(theme_catalog, &contract)?;
+    let renderer = brutalist_sequence_renderer(contract.font_family());
+    let document = render_brutalist_document(&renderer, source, &theme, portable_svg_request())?;
+    let identity = prove_portable_family_evidence(
+        document.evidence(),
+        &theme,
+        DiagramFamilyId::SEQUENCE,
+        FamilyEvidenceRequirements::BRUTALIST_SEQUENCE,
+    )?;
+    let svg_proof = prove_brutalist_sequence_svg(&contract, document.svg())?;
+
+    Ok(BrutalistSequenceRenderedDocument {
+        contract,
+        document,
+        identity,
+        svg_proof,
     })
 }
 
@@ -1058,10 +1289,62 @@ fn observe_brutalist_state_png(
     ))
 }
 
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn prove_brutalist_sequence_png_projection(
+    contract: &BrutalistSequenceFixtureContract<'_>,
+    svg_proof: &BrutalistSequenceSvgProof,
+    document: &RenderedDocument,
+) -> C6ProofResult<ProvenNativeProjection> {
+    let output = document
+        .export_png(
+            &RasterOptions::default().with_scale(2.0),
+            OperationControl::new(),
+        )
+        .map_err(|error| C6ProofError::new("sequence-png-render", error.to_string()))?;
+    prove_brutalist_sequence_png(contract, svg_proof, output.bytes(), output.plan())?;
+    Ok(ProvenNativeProjection {
+        target_receipt: output.admission().clone(),
+    })
+}
+
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn observe_brutalist_sequence_png(
+    key: &C6RenderGroupKey,
+    required_by: &[ExpectedOutputTarget],
+    contract: &BrutalistSequenceFixtureContract<'_>,
+    svg_proof: &BrutalistSequenceSvgProof,
+    document: &RenderedDocument,
+    identity: &crate::observation::C6RenderIdentity,
+) -> Result<C6TargetObservation, C6RuntimeError> {
+    let projection = prove_target(
+        key,
+        ExpectedOutputTarget::Png,
+        required_by,
+        prove_brutalist_sequence_png_projection(contract, svg_proof, document),
+    )?;
+    Ok(C6TargetObservation::from_target_receipt(
+        identity.clone(),
+        &projection.target_receipt,
+        C6TargetProof::brutalist_sequence_png(svg_proof.mechanisms()),
+    ))
+}
+
 fn brutalist_state_renderer() -> Renderer {
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({
             "htmlLabels": false
+        }),
+    )))
+}
+
+fn brutalist_sequence_renderer(font_family: &str) -> Renderer {
+    Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({
+            "htmlLabels": false,
+            "fontFamily": font_family,
+            "themeVariables": {
+                "fontFamily": font_family
+            }
         }),
     )))
 }
@@ -1075,7 +1358,7 @@ pub(crate) fn portable_svg_request() -> SvgRequest {
     }
 }
 
-fn render_brutalist_state_document(
+fn render_brutalist_document(
     renderer: &Renderer,
     source: &str,
     theme: &DiagramTheme,
@@ -1100,33 +1383,6 @@ fn compile_brutalist_state_theme(
     theme_catalog: &ThemeFixtureCatalog,
     contract: &BrutalistStateFixtureContract<'_>,
 ) -> C6ProofResult<DiagramTheme> {
-    let family_stack = FontStack::new(contract.font_stack.families().iter().cloned())
-        .map_err(|error| C6ProofError::new("fixture-font-stack", error.to_string()))?;
-    let asset = theme_catalog
-        .font_asset(contract.font_asset_id)
-        .ok_or_else(|| {
-            C6ProofError::new(
-                "fixture-font-asset",
-                format!("font asset `{}` does not exist", contract.font_asset_id),
-            )
-        })?;
-    c6_ensure!(
-        "fixture-font-asset",
-        asset.family() == contract.font_stack.families()[0],
-        "font asset family `{}` differs from requested family `{}`",
-        asset.family(),
-        contract.font_stack.families()[0]
-    );
-    let bytes = theme_catalog
-        .asset_bytes(contract.font_asset_id)
-        .map_err(|error| C6ProofError::new("fixture-font-bytes", error.to_string()))?;
-    let font_catalog = FontCatalogSpec::new([FontAssetSpec::new(asset.id(), bytes)])
-        .with_available_sources([FontSource::Embedded])
-        .with_embedding_requirement(FontEmbeddingRequirement::FullFont);
-    let default_text = ThemeTextStyle::default().with_font_stack(family_stack);
-
-    let canvas = CanvasSpec::solid(contract.canvas_color)
-        .map_err(|error| C6ProofError::new("fixture-canvas", error.to_string()))?;
     let mut state_patch = ThemeStylePatch::default()
         .with_stroke(
             CanvasPaint::solid(contract.border.color())
@@ -1198,14 +1454,104 @@ fn compile_brutalist_state_theme(
 
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new()
-                .with_typography(TypographySpec::default().with_default(default_text))
-                .with_assets(ThemeAssets::default().with_font_catalog(font_catalog))
-                .with_canvas(canvas)
-                .with_styles(styles)
+            materialize_brutalist_spec(theme_catalog, contract, styles, true)?
                 .with_effects(effects),
         )
         .map_err(|error| C6ProofError::new("theme-compile", error.to_string()))
+}
+
+fn compile_brutalist_sequence_theme(
+    theme_catalog: &ThemeFixtureCatalog,
+    contract: &BrutalistSequenceFixtureContract<'_>,
+) -> C6ProofResult<DiagramTheme> {
+    let actor = ThemeStylePatch::default()
+        .with_fill(brutalist_solid(
+            contract.actor_fill(),
+            "sequence-actor-fill",
+        )?)
+        .with_stroke(brutalist_solid(contract.stroke(), "sequence-actor-stroke")?);
+    let note = ThemeStylePatch::default()
+        .with_fill(brutalist_solid(contract.note_fill(), "sequence-note-fill")?)
+        .with_stroke(brutalist_solid(contract.stroke(), "sequence-note-stroke")?);
+    let activation = ThemeStylePatch::default()
+        .with_fill(brutalist_solid(
+            contract.actor_fill(),
+            "sequence-activation-fill",
+        )?)
+        .with_stroke(brutalist_solid(
+            contract.stroke(),
+            "sequence-activation-stroke",
+        )?);
+    let message = ThemeStylePatch::default().with_stroke(brutalist_solid(
+        contract.stroke(),
+        "sequence-message-stroke",
+    )?);
+    let styles = ThemeRuleSet::default()
+        .with_rule(ThemeRule::new(ThemeTarget::Actor, actor).for_family(DiagramFamilyId::SEQUENCE))
+        .with_rule(ThemeRule::new(ThemeTarget::Note, note).for_family(DiagramFamilyId::SEQUENCE))
+        .with_rule(
+            ThemeRule::new(ThemeTarget::Activation, activation)
+                .for_family(DiagramFamilyId::SEQUENCE),
+        )
+        .with_rule(
+            ThemeRule::new(ThemeTarget::Message, message).for_family(DiagramFamilyId::SEQUENCE),
+        );
+
+    DiagramThemeCompiler::new()
+        .compile(materialize_brutalist_spec(
+            theme_catalog,
+            contract,
+            styles,
+            false,
+        )?)
+        .map_err(|error| C6ProofError::new("sequence-theme-compile", error.to_string()))
+}
+
+fn materialize_brutalist_spec(
+    theme_catalog: &ThemeFixtureCatalog,
+    contract: &BrutalistCommonFixtureContract<'_>,
+    styles: ThemeRuleSet,
+    family_typography: bool,
+) -> C6ProofResult<DiagramThemeSpec> {
+    let family_stack = FontStack::new(contract.font_stack.families().iter().cloned())
+        .map_err(|error| C6ProofError::new("fixture-font-stack", error.to_string()))?;
+    let asset = theme_catalog
+        .font_asset(contract.font_asset_id)
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "fixture-font-asset",
+                format!("font asset `{}` does not exist", contract.font_asset_id),
+            )
+        })?;
+    c6_ensure!(
+        "fixture-font-asset",
+        asset.family() == contract.font_family(),
+        "font asset family `{}` differs from requested family `{}`",
+        asset.family(),
+        contract.font_family()
+    );
+    let bytes = theme_catalog
+        .asset_bytes(contract.font_asset_id)
+        .map_err(|error| C6ProofError::new("fixture-font-bytes", error.to_string()))?;
+    let font_catalog = FontCatalogSpec::new([FontAssetSpec::new(asset.id(), bytes)])
+        .with_available_sources([FontSource::Embedded])
+        .with_embedding_requirement(FontEmbeddingRequirement::FullFont);
+    let canvas = CanvasSpec::solid(contract.canvas_color)
+        .map_err(|error| C6ProofError::new("fixture-canvas", error.to_string()))?;
+    let default_text = if family_typography {
+        ThemeTextStyle::default().with_font_stack(family_stack)
+    } else {
+        ThemeTextStyle::default()
+    };
+    Ok(DiagramThemeSpec::new()
+        .with_typography(TypographySpec::default().with_default(default_text))
+        .with_assets(ThemeAssets::default().with_font_catalog(font_catalog))
+        .with_canvas(canvas)
+        .with_styles(styles))
+}
+
+fn brutalist_solid(value: &str, stage: &'static str) -> C6ProofResult<CanvasPaint> {
+    CanvasPaint::solid(value).map_err(|error| C6ProofError::new(stage, error.to_string()))
 }
 
 fn prove_brutalist_state_svg(

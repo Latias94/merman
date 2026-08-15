@@ -223,13 +223,16 @@
       "sourcePath": "sources/sequence-proof.mmd",
       "sourceSha256": "dbac54565c93b5e2d733b350e4cde7ecb7b464a79daf28d1ed6a0dc51b367d91",
       "expectationPath": "expectations/sequence-proof.json",
-      "expectationSha256": "777c6dada6fcd1c8cd4fd54b2fc6920c80625c6a6f0bdb4fd79ddfc3043e676a",
+      "expectationSha256": "8e53f5b56e3f4b642cdcf8733cfc39db96159a704093a581a5107f6f0f4f68e7",
       "themeInputPath": "inputs/sequence-proof.json",
-      "themeInputSha256": "16d1a40ee83778ccfac77b65af56d3c2e9f7bc4d65917f37cb871eec89bf5733",
+      "themeInputSha256": "6d20a26e8b84ea2b77bf9fdc51897c7471458c53c59130a521ef0b7edf0a68ab",
       "evidenceSourceIds": [
+        "source-excalidraw",
         "source-modern-mermaid"
       ],
-      "assetIds": []
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
     },
     {
       "id": "fixture-mixed-script-typography",
@@ -666,6 +669,7 @@
         "fixture-layered-canvas",
         "fixture-mixed-script-typography",
         "fixture-ordinal-palette",
+        "fixture-sequence-proof",
         "fixture-token-baseline"
       ],
       "targetPolicy": {

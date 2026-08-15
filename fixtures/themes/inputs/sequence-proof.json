@@ -2,15 +2,38 @@
   "themeInputVersion": 2,
   "fixtureId": "fixture-sequence-proof",
   "tokens": {
-    "background": "#ffffff",
-    "surface": "#f8fafc",
-    "primary": "#2563eb",
-    "text": "#0f172a"
+    "background": "#f7f3e8",
+    "surface": "#ffffff",
+    "primary": "#facc15",
+    "text": "#111111"
   },
-  "typography": null,
-  "canvas": [],
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#f7f3e8"
+    }
+  ],
   "blendMode": null,
-  "nodeStyle": null,
+  "nodeStyle": {
+    "border": {
+      "color": "#111111",
+      "widthPx": 3
+    },
+    "dashPattern": []
+  },
   "semanticRules": [],
   "svgEffects": [],
   "residualMechanisms": []

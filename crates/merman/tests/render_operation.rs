@@ -470,6 +470,72 @@ fn rendered_document_retains_terminal_resource_identity() {
 
 #[cfg(feature = "svg")]
 #[test]
+fn sequence_document_seals_prepared_text_with_the_embedded_full_font() {
+    let font_bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let font_catalog = merman::svg::FontCatalogSpec::new([merman::svg::FontAssetSpec::new(
+        "sequence-excalifont",
+        font_bytes,
+    )])
+    .with_available_sources([merman::svg::FontSource::Embedded])
+    .with_embedding_requirement(merman::svg::FontEmbeddingRequirement::FullFont);
+    let theme = merman::svg::DiagramThemeCompiler::new()
+        .compile(
+            merman::svg::DiagramThemeSpec::new()
+                .with_assets(merman::svg::ThemeAssets::default().with_font_catalog(font_catalog))
+                .with_canvas(
+                    merman::svg::CanvasSpec::solid("#f7f3e8").expect("valid Sequence canvas"),
+                ),
+        )
+        .expect("compile Sequence full-font theme");
+    let renderer = Renderer::new().with_engine(merman::Engine::new().with_site_config(
+        merman::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false,
+            "fontFamily": "Excalifont",
+            "themeVariables": {
+                "fontFamily": "Excalifont"
+            }
+        })),
+    ));
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
+        ..merman::SvgRequest::default()
+    };
+    let output = renderer
+        .render(
+            RenderRequest::document(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Prepared message\nNote over Alice,Bob: Prepared note",
+                OperationControl::new(),
+                request,
+            )
+            .with_theme(theme),
+        )
+        .expect("portable Sequence document should complete");
+    let RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a completed Sequence document");
+    };
+
+    assert!(document.portability().prepared_text_evidence_valid());
+    assert!(document.portability().is_evidence_valid());
+    assert!(!document.portability().is_host_dependent());
+    assert!(document.portability().reasons().is_empty());
+
+    let admission = document.standalone_svg_admission();
+    assert_eq!(admission.status(), merman::TargetAdmissionStatus::Portable);
+    assert_eq!(admission.font_source(), merman::TargetFontSource::Embedded);
+    assert!(admission.reasons().is_empty());
+    assert!(document.svg().contains("data-merman-typed-fonts=\"v1\""));
+    assert!(document.svg().contains("@font-face{"));
+    assert!(!document.svg().contains("merman-prepared-"));
+}
+
+#[cfg(feature = "svg")]
+#[test]
 fn rendered_document_digests_are_deterministic_for_one_operation_identity() {
     fn render() -> merman::RenderedDocument {
         let output = Renderer::new()

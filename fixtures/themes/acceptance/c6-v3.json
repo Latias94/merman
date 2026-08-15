@@ -94,8 +94,8 @@
         "semanticAssertionId": "brutalist-sequence-standalone-svg-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "family-adapter-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-sequence-proof"
       }
     },
     {
@@ -111,8 +111,8 @@
         "semanticAssertionId": "brutalist-sequence-png-v1"
       },
       "enforcement": {
-        "kind": "deferred",
-        "blocker": "family-adapter-incomplete"
+        "kind": "enforced",
+        "sourceFixtureId": "fixture-sequence-proof"
       }
     },
     {

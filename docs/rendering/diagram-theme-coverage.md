@@ -19,7 +19,7 @@ theme-to-family path and its visible residuals.
 | --- | --- | --- | --- |
 | State | Direct crate-private `ResolvedDiagramTheme` consumption in `state/style_plan.rs` and `state/label_artifact.rs`, including semantic targets, ordinal resolution, typography, and source-style provenance | Typed family adapter | The representative State output is one part of C6a; it does not prove the complete 18-cell Flowchart/State/Sequence by Standalone SVG/PNG ledger. |
 | Flowchart and Swimlane | A family-local program is prepared with the render operation. Node and Edge paint, Edge dash arrays, selected Node geometry, NodeLabel/EdgeLabel font stack and size, and Node ordinal palettes have narrow direct consumers; remaining Mermaid/CSS surfaces still receive a family-scoped compatibility overlay. | Partial typed adapter plus legacy compatibility | HTML/Markdown edge labels, base typography, remaining geometry and surfaces, canvas/effects, and the representative SVG/PNG ledger remain open before C6a can close. |
-| Sequence | Static unqualified Actor, Note, and Activation fill/stroke plus Message stroke (solid/transparent) are consumed directly by the Sequence CSS/shape writers and reconciled from terminal emission receipts. Message fill, signal/message text, loop, typography, label, variant, ordinal, and non-scalar paint routes remain compatibility-only or unsupported. | Partial typed adapter plus legacy compatibility | Actor/Note/Activation/Message cutover routes have private SVG/PNG authorization witnesses and strict portability coverage; they do not count as C6 cells, and the representative Sequence matrix remains open. |
+| Sequence | Static unqualified Actor, Note, and Activation fill/stroke plus Message stroke (solid/transparent) are consumed directly by the Sequence CSS/shape writers and reconciled from terminal emission receipts. Native terminal text now carries prepared-text evidence into the final font seal. Message fill, signal/message text, loop, family typography, label, variant, ordinal, and non-scalar paint routes remain compatibility-only or unsupported. | Partial typed adapter plus legacy compatibility | Actor/Note/Activation/Message cutover routes have private SVG/PNG authorization witnesses. Brutalist Sequence now has representative Standalone SVG and PNG C6 cells from one `RenderedDocument`; the remaining Sequence theme slices and other proof themes remain open. |
 | Class and Block | Node-family semantic targets are projected through `LegacyFamilyThemeBridge`; renderers continue to consume final Mermaid variables and CSS | Legacy compatibility | Source/property provenance and family-owned typed emission are not yet complete. |
 | Mindmap, Tree View, and GitGraph | Node/palette targets are projected through the family-local compatibility bridge, then consumed through final resolved Mermaid variables | Legacy compatibility | Palette projection is not direct ordinal-palette evidence at the SVG consumer. |
 | Gantt and Kanban | Task, status, text, line, and palette targets are projected through the task-family bridge | Legacy compatibility | Family-local fixed colors and status details still require typed classification. |
@@ -49,12 +49,11 @@ These stages are monotonic: a later stage may preserve or weaken earlier evidenc
 unevaluated family or output cannot be upgraded to portable. C6a is not yet proven because the
 representative Flowchart/State/Sequence by Standalone SVG/PNG positive-output ledger is incomplete.
 
-The current private cutover manifest contains 26 route-level authorization witnesses: six
-Flowchart, six Swimlane, four Sequence Actor, four Sequence Note, four Sequence Activation, and two
-Sequence Message routes, producing 34 artifact witnesses. These witnesses prove only that the named
-bridge projections may be retired; they do not increase C6a's 18-cell count.
-The active `acceptance/c6-v3.json` representative ledger remains C6a `2/18` (Standalone SVG and
-PNG for Brutalist State).
+The current private cutover manifest contains 30 route-level authorization witnesses producing 42
+artifact witnesses. These witnesses prove only that the named bridge projections may be retired;
+they do not increase C6a's 18-cell count.
+The active `acceptance/c6-v3.json` representative ledger is C6a `4/18`: Standalone SVG and PNG for
+Brutalist State plus Standalone SVG and PNG for Brutalist Sequence.
 Four historical cross-target observations exist for the same render group, but C6b equal-depth
 certification is paused and has no active completion percentage. Browser SVG remains unstarted.
 

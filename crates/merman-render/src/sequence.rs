@@ -8,6 +8,7 @@ use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 const SEQUENCE_ACTOR_LAYOUT_WORK_UNITS: usize = 12;
 const SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS: usize = 8;
@@ -26,6 +27,7 @@ mod notes;
 mod orchestration;
 mod rect;
 mod root_bounds;
+mod text_artifact;
 mod theme_evidence;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
@@ -38,6 +40,7 @@ pub(crate) use metrics::{
     SequenceMathHeightMode, measure_sequence_math_label, wrap_sequence_label_like_mermaid_lines,
 };
 pub(crate) use notes::sequence_note_final_wrapped_lines;
+pub(crate) use text_artifact::SequenceTextSidecar;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
@@ -59,6 +62,7 @@ pub(crate) use theme_evidence::{
 pub(crate) struct SequencePreparedArtifact {
     layout: SequenceDiagramLayout,
     message_metrics: SequenceMessageMetricSidecar,
+    text_sidecar: SequenceTextSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
 }
 
@@ -69,6 +73,22 @@ impl SequencePreparedArtifact {
 
     pub(crate) const fn theme_evidence(&self) -> &SequenceThemeEvidenceRecorder {
         &self.theme_evidence
+    }
+
+    pub(crate) const fn text_sidecar(&self) -> &SequenceTextSidecar {
+        &self.text_sidecar
+    }
+
+    pub(crate) fn prepared_text_label_ledger(
+        &self,
+    ) -> Vec<crate::text::PreparedTextLabelLedgerEntry> {
+        self.text_sidecar.prepared_text_label_ledger()
+    }
+
+    pub(crate) fn take_prepared_text_retained_reservations(
+        &self,
+    ) -> Vec<crate::resources::PreparedTextRetainedReservation> {
+        self.text_sidecar.take_prepared_text_retained_reservations()
     }
 }
 
@@ -197,9 +217,10 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
+    prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    work_meter: &OperationWorkMeter,
+    work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SequencePreparedArtifact> {
     work_meter.policy().check_sequence_complexity(model)?;
     let work_units =
@@ -338,6 +359,11 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
             block_layouts_by_id,
         },
         message_metrics,
+        text_sidecar: SequenceTextSidecar::new(
+            prepared_text_layout,
+            effective_config,
+            Arc::clone(&work_meter),
+        ),
         theme_evidence: SequenceThemeEvidenceRecorder::default(),
     })
 }
@@ -368,6 +394,7 @@ mod resource_tests {
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use serde_json::json;
     use std::cell::Cell;
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct CountingTextMeasurer {
@@ -418,14 +445,15 @@ mod resource_tests {
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
             .unwrap();
-        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let narrow_meter = Arc::new(OperationWorkMeter::new(narrow_policy));
         let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
             &json!({}),
+            None,
             &measurer,
             None,
-            &narrow_meter,
+            Arc::clone(&narrow_meter),
         )
         .unwrap_err();
         let Error::ResourceLimitExceeded(error) = error else {
@@ -439,14 +467,15 @@ mod resource_tests {
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
             .unwrap();
-        let exact_meter = OperationWorkMeter::new(exact_policy);
+        let exact_meter = Arc::new(OperationWorkMeter::new(exact_policy));
         prepare_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
             &json!({}),
+            None,
             &measurer,
             None,
-            &exact_meter,
+            Arc::clone(&exact_meter),
         )
         .unwrap();
         assert_eq!(exact_meter.used(), expected_work);
