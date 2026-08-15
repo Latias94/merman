@@ -17,13 +17,15 @@ pub(super) fn render_timeline_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options, *execution.resources());
+    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let section_plan = plan_sectioned_text(
         "timeline",
         &model.sections,
         &model.tasks,
         document.resources_mut(),
     )?;
+    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;

@@ -39,6 +39,12 @@ impl<'a> AsciiExecution<'a> {
         self.resources
     }
 
+    /// Creates a new render-wide resource ledger bound to one operation phase.
+    pub(crate) fn new_resource_context(self, phase: OperationPhase) -> ResourceContext {
+        let resources = ResourceContext::new(*self.resources);
+        self.resource_context(&resources, phase)
+    }
+
     pub(crate) fn cloned_control(self) -> Option<OperationControl> {
         self.control.cloned()
     }
@@ -54,6 +60,16 @@ impl<'a> AsciiExecution<'a> {
             Some(control) => resources.controlled(control, phase),
             None => resources.clone(),
         }
+    }
+
+    /// Rebinds one shared resource ledger before entering a different operation phase.
+    pub(crate) fn rebind_resource_context(
+        self,
+        resources: &mut ResourceContext,
+        phase: OperationPhase,
+    ) {
+        let rebound = self.resource_context(resources, phase);
+        *resources = rebound;
     }
 
     pub fn checkpoint(self, phase: OperationPhase) -> Result<()> {

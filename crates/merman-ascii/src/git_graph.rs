@@ -2,7 +2,6 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
-use crate::resource::ResourceContext;
 use crate::safe_text::{
     BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
     push_optional_document_field,
@@ -14,8 +13,8 @@ pub(super) fn render_git_graph_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let resources = ResourceContext::new(*execution.resources());
-    resources.charge_layout_work(model.commits.len())?;
+    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    layout_resources.charge_layout_work(model.commits.len())?;
     if model
         .commits
         .iter()
@@ -26,7 +25,8 @@ pub(super) fn render_git_graph_diagram(
             feature: "unknown commit types",
         });
     }
-    let mut document = BudgetedTextDocument::from_resources(resources, options);
+    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
+    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
     document.push_line_with(|line| {
         push_line_field(line, "gitGraph ", "direction", &model.direction)?;
@@ -124,6 +124,7 @@ mod tests {
     use super::*;
     use crate::error::AsciiError;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::OperationControl;
     use merman_core::diagrams::git_graph::GitGraphBranchRenderModel;
     use merman_core::resources::ResourceProfile;
 
@@ -162,12 +163,13 @@ mod tests {
         let exact = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
             .expect("exact validation-work limit should be valid");
+        let exact_control = OperationControl::new();
 
         assert_eq!(
             render_git_graph_diagram(
                 &model,
                 &AsciiRenderOptions::ascii(),
-                AsciiExecution::standalone(&exact),
+                AsciiExecution::new(&exact_control, &exact),
             )
             .expect_err("exact validation work should reach the unknown-type boundary"),
             AsciiError::UnsupportedFeature {
@@ -179,10 +181,11 @@ mod tests {
         let below = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
             .expect("N-1 validation-work limit should be valid");
+        let below_control = OperationControl::new();
         let error = render_git_graph_diagram(
             &model,
             &AsciiRenderOptions::ascii(),
-            AsciiExecution::standalone(&below),
+            AsciiExecution::new(&below_control, &below),
         )
         .expect_err("N-1 validation work should reject before scanning commit types");
         assert!(matches!(
@@ -216,8 +219,9 @@ mod tests {
             warning_facts: Vec::new(),
         };
 
+        let control = OperationControl::new();
         let error =
-            render_git_graph_diagram(&model, &options, AsciiExecution::standalone(&resources))
+            render_git_graph_diagram(&model, &options, AsciiExecution::new(&control, &resources))
                 .expect_err("the branch row must fail at its first document cell");
 
         assert!(matches!(

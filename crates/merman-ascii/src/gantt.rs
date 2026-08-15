@@ -20,12 +20,14 @@ pub(super) fn render_gantt_diagram(
     local_time_zone: &merman_core::time::LocalTimeZone,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options, *execution.resources());
+    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let task_index = admit_then_materialize_gantt_structure(
         model,
         document.resources_mut(),
         |admission, resources| GanttTaskIndex::materialize(model, admission, resources),
     )?;
+    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;

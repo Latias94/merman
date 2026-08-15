@@ -61,7 +61,9 @@ fn render_mindmap_with_resources(
     resources: ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::from_resources(resources, options);
+    let layout_resources =
+        execution.resource_context(&resources, merman_core::OperationPhase::Layout);
+    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let chars = MindmapChars::from_options(options);
     let nodes_by_id = index_nodes(&model.nodes, document.resources_mut(), execution)?;
     let children_by_id = build_children_map(
@@ -96,6 +98,7 @@ fn render_mindmap_with_resources(
         .try_reserve(nodes_by_id.len())
         .map_err(|_| layout_allocation_error())?;
     let mut stack = Vec::new();
+    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
     for (index, root_id) in roots.iter().enumerate() {
         if index > 0 {
@@ -545,6 +548,7 @@ fn layout_allocation_error() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::OperationControl;
     use merman_core::resources::ResourceProfile;
 
     const DEEP_NESTING: usize = 256;
@@ -653,7 +657,8 @@ mod tests {
     fn children_map_work(model: &MindmapDiagramRenderModel) -> usize {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let mut resources = ResourceContext::new(policy);
-        let execution = AsciiExecution::standalone(&policy);
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
         let nodes_by_id = index_nodes(&model.nodes, &mut resources, execution)
             .expect("node indexing should pass");
         build_children_map(&model.edges, &nodes_by_id, &mut resources, execution)
@@ -665,11 +670,12 @@ mod tests {
         let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
         let options = AsciiRenderOptions::ascii();
         let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
         render_mindmap_with_resources(
             model,
             &options,
             resources.clone(),
-            AsciiExecution::standalone(&policy),
+            AsciiExecution::new(&control, &policy),
         )
         .expect("unbounded mindmap render should succeed");
         resources.layout_work_used()
@@ -679,10 +685,11 @@ mod tests {
     fn mindmap_accepts_exact_nesting_limit() {
         let options = AsciiRenderOptions::ascii();
         let resources = policy_with_nesting_limit(DEEP_NESTING);
+        let control = OperationControl::new();
         let rendered = render_mindmap_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&resources),
+            AsciiExecution::new(&control, &resources),
         )
         .expect("deep nesting equal to the limit should render iteratively");
 
@@ -693,10 +700,11 @@ mod tests {
     fn mindmap_rejects_limit_minus_one_before_descending() {
         let options = AsciiRenderOptions::ascii();
         let resources = policy_with_nesting_limit(DEEP_NESTING - 1);
+        let control = OperationControl::new();
         let error = render_mindmap_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&resources),
+            AsciiExecution::new(&control, &resources),
         )
         .expect_err("deep nesting above the limit should fail before the final descent");
 

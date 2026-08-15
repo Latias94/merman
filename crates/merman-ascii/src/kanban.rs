@@ -14,7 +14,8 @@ pub(super) fn render_kanban_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options, *execution.resources());
+    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let mut group_ids = HashSet::new();
     let mut node_ids = HashSet::new();
     let mut children_by_parent: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
@@ -72,6 +73,8 @@ pub(super) fn render_kanban_diagram(
             }
         }
     }
+
+    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
 
     let has_groups = !group_ids.is_empty();
     for group in model.nodes.iter().filter(|node| node.is_group) {

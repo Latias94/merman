@@ -45,9 +45,11 @@ pub(super) fn render_tree_view_diagram(
     options: &AsciiRenderOptions,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options, *execution.resources());
+    let layout_resources = execution.new_resource_context(merman_core::OperationPhase::Layout);
+    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     validate_tree_view_model(&model.root, document.resources_mut())?;
     let chars = TreeViewChars::from_options(options);
+    execution.rebind_resource_context(document.resources_mut(), merman_core::OperationPhase::Emit);
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
     push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
     push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
@@ -262,6 +264,7 @@ fn push_wrapped_node(
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::OperationControl;
     use merman_core::resources::ResourceProfile;
 
     const DEEP_NESTING: usize = 256;
@@ -301,10 +304,11 @@ mod tests {
     fn tree_view_accepts_exact_nesting_limit() {
         let options = AsciiRenderOptions::ascii();
         let resources = policy_with_nesting_limit(DEEP_NESTING);
+        let control = OperationControl::new();
         let rendered = render_tree_view_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&resources),
+            AsciiExecution::new(&control, &resources),
         )
         .expect("deep nesting equal to the limit should render iteratively");
 
@@ -315,10 +319,11 @@ mod tests {
     fn tree_view_rejects_limit_minus_one_before_descending() {
         let options = AsciiRenderOptions::ascii();
         let resources = policy_with_nesting_limit(DEEP_NESTING - 1);
+        let control = OperationControl::new();
         let error = render_tree_view_diagram(
             &chain(DEEP_NESTING),
             &options,
-            AsciiExecution::standalone(&resources),
+            AsciiExecution::new(&control, &resources),
         )
         .expect_err("deep nesting above the limit should fail before the final descent");
 
@@ -344,8 +349,9 @@ mod tests {
 
         let options = AsciiRenderOptions::ascii();
         let resources = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
         let error =
-            render_tree_view_diagram(&model, &options, AsciiExecution::standalone(&resources))
+            render_tree_view_diagram(&model, &options, AsciiExecution::new(&control, &resources))
                 .expect_err("duplicate public node identities must not be rendered ambiguously");
 
         assert_eq!(

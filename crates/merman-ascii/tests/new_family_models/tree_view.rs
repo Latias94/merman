@@ -211,7 +211,9 @@ fn tree_view_recursive_emit_observes_operation_cancellation() {
         root: tree_node(100, -1, "/", vec![node]),
     };
 
-    let error = render_with_scheduled_cancellation(RenderSemanticModel::TreeView(model), 5);
+    // The controlled layout ledger now checkpoints the complete iterative validation pass before
+    // output begins. Schedule beyond that pass so this remains an Emit traversal regression.
+    let error = render_with_scheduled_cancellation(RenderSemanticModel::TreeView(model), 160);
     assert!(matches!(
         error,
         AsciiError::Cancelled(cancelled)
