@@ -377,7 +377,7 @@ fn compile_sequence_family(
         [("actorTextColor", reader.text_fill(ThemeTarget::ActorLabel))],
     );
     contributions.add_theme_variables(
-        "lifeline.stroke",
+        ThemeRouteCutoverProjection::LifelineStroke.contribution_id(),
         [(
             "actorLineColor",
             reader.stroke_or_fill(ThemeTarget::Lifeline),
@@ -1880,6 +1880,30 @@ mod tests {
                 .get_str("themeVariables.signalColor"),
             Some("#ef4444")
         );
+    }
+
+    #[test]
+    fn typed_sequence_lifeline_paint_suppresses_its_shared_legacy_projection() {
+        for style in [
+            ThemeStylePatch::default().with_fill(solid("#ef4444")),
+            ThemeStylePatch::default().with_stroke(solid("#2563eb")),
+            ThemeStylePatch::default()
+                .with_fill(solid("#ef4444"))
+                .with_stroke(solid("#2563eb")),
+        ] {
+            let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(ThemeTarget::Lifeline, style).for_family(DiagramFamilyId::SEQUENCE),
+            ));
+            let bridge = bridge(&spec);
+            let artifact = bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
+
+            assert!(artifact.overlay.is_empty());
+            assert!(artifact.contribution_ids.is_empty());
+            assert!(
+                !bridge
+                    .owns_contribution_id("merman.legacy-family-theme.v1.sequence.lifeline.stroke")
+            );
+        }
     }
 
     #[test]

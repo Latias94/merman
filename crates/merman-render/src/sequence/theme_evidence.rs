@@ -18,6 +18,7 @@ struct SequenceThemeEvidenceState {
     actor_stroke_unhandled: bool,
     actor_stroke_overridden: bool,
     actor_style_receipt: SequenceActorThemeReceipt,
+    lifeline: SequenceLifelineThemeState,
     message: SequenceMessageThemeState,
     note: SequenceStaticRectThemeState,
     activation: SequenceStaticRectThemeState,
@@ -67,6 +68,101 @@ impl SequenceActorThemeReceipt {
             FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => {
                 false
             }
+        }
+    }
+}
+
+/// Winner and terminal-emission facts produced by the Sequence Lifeline writer.
+///
+/// Mermaid maps both Lifeline fill and stroke to `actorLineColor`, with an explicit stroke winner
+/// taking precedence over fill. Candidate and emitted counts remain separate so missing actor or
+/// layout paths cannot manufacture positive evidence from the generated CSS alone.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SequenceLifelineThemeReceipt {
+    static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    line_candidates: usize,
+    emitted_lines: usize,
+}
+
+impl SequenceLifelineThemeReceipt {
+    pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
+        record_style_winners(&mut self.static_winners, style);
+    }
+
+    pub(crate) fn record_line_candidate(&mut self) {
+        self.line_candidates = self.line_candidates.saturating_add(1);
+    }
+
+    pub(crate) fn record_line_emission(&mut self) {
+        self.emitted_lines = self.emitted_lines.saturating_add(1);
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.static_winners.extend(other.static_winners);
+        self.line_candidates = self.line_candidates.max(other.line_candidates);
+        self.emitted_lines = self.emitted_lines.max(other.emitted_lines);
+    }
+
+    fn route_won(
+        &self,
+        rule_index: usize,
+        selector: FamilyThemeSelectorShape,
+        facet: FamilyThemeRuleFacet,
+    ) -> bool {
+        matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+            && self
+                .static_winners
+                .contains(&(rule_index, style_property_for_facet(facet)))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct SequenceLifelineThemeState {
+    paint_emitted: bool,
+    paint_overridden: bool,
+    selected_property: Option<ResolvedStyleProperty>,
+    receipt: SequenceLifelineThemeReceipt,
+}
+
+impl SequenceLifelineThemeState {
+    fn merge(&mut self, emission: SequenceLifelineThemeEmission) {
+        self.paint_emitted |= emission.paint_emitted;
+        self.paint_overridden |= emission.paint_overridden;
+        if let Some(selected_property) = emission.selected_property {
+            debug_assert!(
+                self.selected_property.is_none()
+                    || self.selected_property == Some(selected_property),
+                "one Sequence artifact must resolve one stable Lifeline paint winner"
+            );
+            self.selected_property.get_or_insert(selected_property);
+        }
+        self.receipt.merge(emission.receipt);
+    }
+}
+
+/// Complete writer-owned emission facts for the Sequence Lifeline paint tranche.
+#[derive(Debug)]
+pub(crate) struct SequenceLifelineThemeEmission {
+    paint_emitted: bool,
+    paint_overridden: bool,
+    selected_property: Option<ResolvedStyleProperty>,
+    receipt: SequenceLifelineThemeReceipt,
+}
+
+impl SequenceLifelineThemeEmission {
+    pub(crate) fn from_terminal_writer(
+        typed_stroke: Option<&str>,
+        selected_property: Option<ResolvedStyleProperty>,
+        paint_overridden: bool,
+        receipt: SequenceLifelineThemeReceipt,
+    ) -> Self {
+        let has_lines = receipt.line_candidates != 0;
+        let complete_line_emission = has_lines && receipt.emitted_lines == receipt.line_candidates;
+        Self {
+            paint_emitted: complete_line_emission && typed_stroke.is_some(),
+            paint_overridden: has_lines && paint_overridden,
+            selected_property,
+            receipt,
         }
     }
 }
@@ -355,6 +451,57 @@ fn observe_message_rule(
     }
 }
 
+fn observe_lifeline_rule(
+    lifeline: &SequenceLifelineThemeState,
+    observation: &mut SequenceRuleObservation,
+    disposition: FamilyThemeDisposition,
+    rule_index: usize,
+    selector: FamilyThemeSelectorShape,
+    facet: FamilyThemeRuleFacet,
+) {
+    if lifeline.receipt.line_candidates == 0
+        || !lifeline.receipt.route_won(rule_index, selector, facet)
+    {
+        return;
+    }
+    observation.applicable = true;
+    if matches!(
+        facet,
+        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
+    ) {
+        if lifeline.paint_overridden {
+            return;
+        }
+        if lifeline.selected_property != Some(style_property_for_facet(facet)) {
+            return;
+        }
+    }
+    match (disposition, facet) {
+        (
+            FamilyThemeDisposition::TypedAdapter,
+            FamilyThemeRuleFacet::Fill(
+                kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
+            )
+            | FamilyThemeRuleFacet::Stroke(
+                kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
+            ),
+        ) => {
+            if !lifeline.paint_emitted {
+                observation.incomplete = true;
+                return;
+            }
+            observation.capabilities.insert(capability_for_paint(kind));
+        }
+        (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
+        (FamilyThemeDisposition::Unsupported, facet) => {
+            observation
+                .residual
+                .get_or_insert(unsupported_reason_for_facet(facet));
+        }
+        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
+    }
+}
+
 fn capability_for_paint(kind: FamilyThemePaintKind) -> ThemeCapability {
     match kind {
         FamilyThemePaintKind::Transparent => ThemeCapability::TransparentPaint,
@@ -408,6 +555,14 @@ impl SequenceThemeEvidenceRecorder {
         state.note.merge(emission);
     }
 
+    pub(crate) fn record_lifeline_emission(&self, emission: SequenceLifelineThemeEmission) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.lifeline.merge(emission);
+    }
+
     pub(crate) fn record_message_emission(&self, emission: SequenceMessageThemeEmission) {
         let mut state = self
             .state
@@ -436,6 +591,7 @@ impl SequenceThemeEvidenceRecorder {
         };
 
         let mut actor_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
+        let mut lifeline_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut message_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut note_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut activation_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
@@ -453,6 +609,15 @@ impl SequenceThemeEvidenceRecorder {
             } = route.mechanism()
             {
                 actor_rules.entry(rule_index).or_default();
+            }
+            if let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::Lifeline,
+                selector: FamilyThemeSelectorShape::Static { variant: None },
+                facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+            } = route.mechanism()
+            {
+                lifeline_rules.entry(rule_index).or_default();
             }
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
@@ -504,6 +669,24 @@ impl SequenceThemeEvidenceRecorder {
                         }
                         FamilyThemeDisposition::LegacyCompatibility => {}
                     }
+                }
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::Lifeline,
+                    selector,
+                    facet,
+                } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
+                    let Some(observation) = lifeline_rules.get_mut(&rule_index) else {
+                        continue;
+                    };
+                    observe_lifeline_rule(
+                        &state.lifeline,
+                        observation,
+                        route.disposition(),
+                        rule_index,
+                        selector,
+                        facet,
+                    );
                 }
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
@@ -678,11 +861,11 @@ impl SequenceThemeEvidenceRecorder {
                 FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {
-                    // This narrow adapter owns Actor, unqualified static Message stroke, and
-                    // unqualified static Note/Activation paint evidence. Message fill is observed
-                    // only to account for its participation in the shared signalColor projection.
-                    // Other Sequence targets and selector classes remain unaccounted unless
-                    // compatibility rejects them.
+                    // This narrow adapter owns Actor, unqualified static Lifeline paint, Message
+                    // stroke, and Note/Activation paint evidence. Message fill is observed only to
+                    // account for its participation in the shared signalColor projection. Other
+                    // Sequence targets and selector classes remain unaccounted unless compatibility
+                    // rejects them.
                 }
             }
         }
@@ -704,6 +887,7 @@ impl SequenceThemeEvidenceRecorder {
                 evidence.mark_applied_with_capabilities(key, observation.capabilities);
             }
         }
+        finish_lifeline_rules(&mut evidence, &state.lifeline, lifeline_rules);
         finish_message_rules(&mut evidence, &state.message, message_rules);
         finish_static_rect_rules(&mut evidence, ThemeTarget::Note, &state.note, note_rules);
         finish_static_rect_rules(
@@ -713,6 +897,30 @@ impl SequenceThemeEvidenceRecorder {
             activation_rules,
         );
         evidence
+    }
+}
+
+fn finish_lifeline_rules(
+    evidence: &mut FamilyThemeEvidence,
+    lifeline: &SequenceLifelineThemeState,
+    rules: BTreeMap<usize, SequenceRuleObservation>,
+) {
+    for (rule_index, observation) in rules {
+        let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+            index: rule_index,
+            target: ThemeTarget::Lifeline,
+        };
+        if lifeline.receipt.line_candidates == 0 || !observation.applicable {
+            evidence.mark_not_applicable(key);
+        } else if let Some(reason) = observation.residual {
+            evidence.mark_residual(key, reason);
+        } else if observation.incomplete {
+            // A selected Lifeline paint reached a candidate without a complete actor-line seal.
+        } else if observation.capabilities.is_empty() {
+            evidence.mark_not_applicable(key);
+        } else {
+            evidence.mark_applied_with_capabilities(key, observation.capabilities);
+        }
     }
 }
 
@@ -819,7 +1027,7 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeRule, ThemeRuleSet,
         ThemeStylePatch,
     };
 
@@ -939,6 +1147,101 @@ mod tests {
             assert!(evidence.not_applicable_mechanisms().is_empty());
             assert!(evidence.residuals().is_empty());
         }
+    }
+
+    #[test]
+    fn lifeline_winner_without_complete_actor_line_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Lifeline theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (line_candidates, emitted_lines) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceLifelineThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Lifeline,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..line_candidates {
+                receipt.record_line_candidate();
+            }
+            for _ in 0..emitted_lines {
+                receipt.record_line_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+                Some("#2563eb"),
+                Some(ResolvedStyleProperty::Stroke),
+                false,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn lifeline_mixed_typed_paint_and_unsupported_geometry_remains_residual() {
+        let mut style = ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"));
+        style.geometry.radius = Specified::Value(6.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(ThemeTarget::Lifeline, style)
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile mixed Sequence Lifeline theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        let mut receipt = SequenceLifelineThemeReceipt::default();
+        receipt.record_static_style(&resolved.style(
+            ThemeTarget::Lifeline,
+            ThemeVariant::Default,
+            None,
+        ));
+        receipt.record_line_candidate();
+        receipt.record_line_emission();
+        let recorder = SequenceThemeEvidenceRecorder::default();
+        recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+            Some("#2563eb"),
+            Some(ResolvedStyleProperty::Stroke),
+            false,
+            receipt,
+        ));
+
+        let evidence = recorder.finish(Some(&resolved));
+        assert!(evidence.applied().is_empty());
+        let [residual] = evidence.residuals() else {
+            panic!("mixed Lifeline rule must retain exactly one residual")
+        };
+        assert_eq!(
+            residual.key(),
+            &crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Lifeline,
+            }
+        );
+        assert_eq!(
+            residual.reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
     }
 
     #[test]

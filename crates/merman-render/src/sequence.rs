@@ -50,8 +50,9 @@ use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_seque
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 pub(crate) use theme_evidence::{
-    SequenceActorThemeReceipt, SequenceMessageThemeEmission, SequenceMessageThemeReceipt,
-    SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder,
+    SequenceActorThemeReceipt, SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt,
+    SequenceMessageThemeEmission, SequenceMessageThemeReceipt, SequenceStaticRectThemeEmission,
+    SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder,
 };
 
 /// Private Sequence render artifact that keeps operation-owned measurements attached to layout.

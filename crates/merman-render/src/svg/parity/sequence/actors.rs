@@ -77,7 +77,8 @@ pub(super) fn render_sequence_bottom_actors(
 pub(super) fn render_sequence_top_actors_and_lifelines(
     out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
-) {
+    theme_receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
+) -> crate::Result<()> {
     let label_ctx = ActorLabelContext::new(
         ctx.actor_wrap_width,
         ctx.measurer,
@@ -87,6 +88,7 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
     );
 
     for (idx, actor_id) in ctx.model.actor_order.iter().enumerate().rev() {
+        theme_receipt.record_line_candidate();
         let Some(actor) = ctx.model.actors.get(actor_id) else {
             continue;
         };
@@ -111,27 +113,38 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
         match actor_type {
             actor_type if is_actor_man_variant(actor_type) => {
                 write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id);
+                out.checkpoint()?;
+                theme_receipt.record_line_emission();
             }
             "collections" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                out.checkpoint()?;
+                theme_receipt.record_line_emission();
                 write_collection_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx);
                 out.push_str("</g></g>");
             }
             "queue" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                out.checkpoint()?;
+                theme_receipt.record_line_emission();
                 write_queue_actor_shape(out, top, actor, "actor-top", &label_ctx);
                 out.push_str("</g></g>");
             }
             "database" => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                out.checkpoint()?;
+                theme_receipt.record_line_emission();
                 write_database_top_actor_shape(out, top, actor, ctx.actor_height, &label_ctx);
                 out.push_str("</g></g>");
             }
             _ => {
                 write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
+                out.checkpoint()?;
+                theme_receipt.record_line_emission();
                 write_rect_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx);
                 out.push_str("</g></g>");
             }
         }
     }
+    Ok(())
 }

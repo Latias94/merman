@@ -255,6 +255,11 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_STROKE)
         }
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Lifeline,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_LIFELINE_STROKE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE)
         }
@@ -636,6 +641,20 @@ fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
+        && target == ThemeTarget::Lifeline
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -1527,6 +1546,63 @@ mod tests {
     }
 
     #[test]
+    fn sequence_lifeline_owns_unqualified_scalar_fill_and_stroke() {
+        for paint in [
+            CanvasPaint::Transparent,
+            CanvasPaint::solid("#123456").expect("valid Lifeline paint"),
+        ] {
+            let rule = ThemeRule::new(
+                ThemeTarget::Lifeline,
+                ThemeStylePatch::default()
+                    .with_fill(paint.clone())
+                    .with_stroke(paint.clone()),
+            );
+            assert!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+
+            let explicit_default = ThemeRule::new(
+                ThemeTarget::Lifeline,
+                ThemeStylePatch::default()
+                    .with_fill(paint.clone())
+                    .with_stroke(paint),
+            )
+            .with_variant(ThemeVariant::Default);
+            assert!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)
+                    .iter()
+                    .all(|route| {
+                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                    })
+            );
+        }
+
+        for paint_kind in [
+            FamilyThemePaintKind::Clear,
+            FamilyThemePaintKind::LinearGradient,
+            FamilyThemePaintKind::RadialGradient,
+            FamilyThemePaintKind::Pattern,
+        ] {
+            for facet in [
+                FamilyThemeRuleFacet::Fill(paint_kind),
+                FamilyThemeRuleFacet::Stroke(paint_kind),
+            ] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::SEQUENCE,
+                        ThemeTarget::Lifeline,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+        }
+    }
+
+    #[test]
     fn flowchart_cluster_only_owns_unqualified_scalar_paints() {
         for paint in [
             CanvasPaint::Transparent,
@@ -1711,6 +1787,34 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["actor.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Lifeline,
+                Fill,
+                Transparent,
+                vec!["lifeline.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Lifeline,
+                Fill,
+                Solid,
+                vec!["lifeline.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Lifeline,
+                Stroke,
+                Transparent,
+                vec!["lifeline.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Lifeline,
+                Stroke,
+                Solid,
+                vec!["lifeline.stroke"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,

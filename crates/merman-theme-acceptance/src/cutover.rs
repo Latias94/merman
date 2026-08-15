@@ -132,6 +132,11 @@ participant Collection@{"type":"collections"}
 participant Queue@{"type":"queue"}
 Plain->>Queue: Hello
 "#;
+const SEQUENCE_LIFELINE_SOURCE: &str = r#"sequenceDiagram
+actor Alice
+participant Bob
+Alice->>Bob: Hello
+"#;
 const SEQUENCE_NOTE_SOURCE: &str = r#"sequenceDiagram
 participant Alice
 participant Bob
@@ -280,6 +285,7 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SEQUENCE_STROKE_SOURCE)
         }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Lifeline, _) => Ok(SEQUENCE_LIFELINE_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, _) => Ok(SEQUENCE_NOTE_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, _) => Ok(SEQUENCE_ACTIVATION_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
@@ -744,6 +750,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 ThemeTarget::Node
                 | ThemeTarget::Cluster
                 | ThemeTarget::Actor
+                | ThemeTarget::Lifeline
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
                 | ThemeTarget::Message => SOLID_STROKE.css,
@@ -1059,6 +1066,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             ThemeTarget::Node
             | ThemeTarget::Cluster
             | ThemeTarget::Actor
+            | ThemeTarget::Lifeline
             | ThemeTarget::Note
             | ThemeTarget::Activation,
             ThemeRouteCutoverFacet::Fill,
@@ -1067,6 +1075,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             ThemeTarget::Node
             | ThemeTarget::Cluster
             | ThemeTarget::Actor
+            | ThemeTarget::Lifeline
             | ThemeTarget::Note
             | ThemeTarget::Activation
             | ThemeTarget::Message,
@@ -1101,6 +1110,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 ThemeTarget::Node
                 | ThemeTarget::Cluster
                 | ThemeTarget::Actor
+                | ThemeTarget::Lifeline
                 | ThemeTarget::Note
                 | ThemeTarget::Activation,
                 ThemeRouteCutoverFacet::Fill,
@@ -1109,6 +1119,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 ThemeTarget::Node
                 | ThemeTarget::Cluster
                 | ThemeTarget::Actor
+                | ThemeTarget::Lifeline
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
                 | ThemeTarget::Message,
@@ -1277,11 +1288,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_thirty_routes_and_forty_two_artifact_witnesses() {
+    fn route_inventory_retains_thirty_four_routes_and_forty_six_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 30);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 42);
+        assert_eq!(inventory.len(), 34);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 46);
     }
 
     #[test]

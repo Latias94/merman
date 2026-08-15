@@ -1053,6 +1053,7 @@ fn sequence_route_observation(
 ) -> C6ProofResult<SequenceRouteObservation> {
     match route.target() {
         ThemeTarget::Actor => sequence_actor_route_observation(document, route),
+        ThemeTarget::Lifeline => sequence_lifeline_route_observation(document, route),
         ThemeTarget::Note | ThemeTarget::Activation => {
             sequence_static_rect_route_observation(document, route)
         }
@@ -1201,6 +1202,98 @@ fn sequence_actor_route_observation(
 
     Ok(SequenceRouteObservation {
         value: actor_value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
+fn sequence_lifeline_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<SequenceRouteObservation> {
+    c6_ensure!(
+        "route-svg-proof",
+        route.target() == ThemeTarget::Lifeline,
+        "unsupported Sequence cutover target {}",
+        route.target().id()
+    );
+    let root_id = document
+        .root_element()
+        .attribute("id")
+        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Sequence SVG root lacks an id"))?;
+    let selector = format!("#{root_id} .actor-line");
+    let value = sequence_stylesheet_property(document, &selector, "stroke")?;
+    let lines = document
+        .descendants()
+        .filter(|node| node.attribute("data-et") == Some("life-line"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        lines.len() == 2,
+        "Sequence Lifeline witness expected two terminal lines, found {}",
+        lines.len()
+    );
+    let actual_ids = lines
+        .iter()
+        .filter_map(|line| line.attribute("data-id"))
+        .collect::<BTreeSet<_>>();
+    let expected_ids = ["Alice", "Bob"].into_iter().collect::<BTreeSet<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        actual_ids == expected_ids,
+        "Sequence Lifeline terminal identities differ: actual={actual_ids:?}, expected={expected_ids:?}"
+    );
+
+    let mut terminal = b"merman.c6-route-sequence-lifeline-surfaces.v1\0".to_vec();
+    let mut target_regions = Vec::with_capacity(lines.len());
+    for line in lines {
+        c6_ensure!(
+            "route-svg-proof",
+            line.has_tag_name("line") && class_contains(line, "actor-line"),
+            "Sequence Lifeline terminal is not an actor-line"
+        );
+        c6_ensure!(
+            "route-svg-proof",
+            style_value(line, "stroke").is_none(),
+            "Sequence Lifeline terminal overrides the typed actor-line stroke inline"
+        );
+        let base_stroke = line.attribute("stroke").ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                "Sequence Lifeline terminal lacks its source-backed stroke",
+            )
+        })?;
+        c6_ensure!(
+            "route-svg-proof",
+            !base_stroke.trim().is_empty() && base_stroke != value,
+            "Sequence Lifeline terminal does not rely on the final actor-line stroke winner"
+        );
+        let region = element_bounds(line, ThemeRouteCutoverFacet::Stroke)?;
+        append_len_prefixed(
+            &mut terminal,
+            line.attribute("data-id").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, base_stroke.as_bytes());
+        append_len_prefixed(
+            &mut terminal,
+            line.attribute("stroke-width")
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        for attribute in ["x1", "y1", "x2", "y2"] {
+            append_len_prefixed(
+                &mut terminal,
+                line.attribute(attribute).unwrap_or_default().as_bytes(),
+            );
+        }
+        append_rect(&mut terminal, region);
+        target_regions.push(region);
+    }
+    append_len_prefixed(&mut terminal, selector.as_bytes());
+    append_len_prefixed(&mut terminal, value.as_bytes());
+
+    Ok(SequenceRouteObservation {
+        value: value.to_owned(),
         terminal_digest: sha256(terminal),
         target_regions,
     })

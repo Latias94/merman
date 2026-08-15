@@ -8381,6 +8381,355 @@ style Empty font-weight:banana
     }
 
     #[test]
+    fn require_portable_accepts_sequence_lifeline_scalar_paint_after_actor_line_emission() {
+        for (facet, paint, expected_stroke) in [
+            (
+                "fill-solid",
+                CanvasPaint::solid("#ef4444").expect("valid Lifeline fill"),
+                "#ef4444",
+            ),
+            ("fill-transparent", CanvasPaint::Transparent, "transparent"),
+            (
+                "stroke-solid",
+                CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"),
+                "#2563eb",
+            ),
+            (
+                "stroke-transparent",
+                CanvasPaint::Transparent,
+                "transparent",
+            ),
+        ] {
+            let style = if facet.starts_with("fill") {
+                ThemeStylePatch::default().with_fill(paint)
+            } else {
+                ThemeStylePatch::default().with_stroke(paint)
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(ThemeTarget::Lifeline, style)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .expect("compile Sequence Lifeline theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict portable Sequence Lifeline session"),
+            )
+            .expect("Sequence Lifeline theme should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("every actor Lifeline should be proven by its terminal writer");
+
+            assert!(
+                rendered
+                    .svg()
+                    .contains(&format!("#merman .actor-line{{stroke:{expected_stroke};}}")),
+                "{facet}: {}",
+                rendered.svg()
+            );
+            assert_eq!(
+                rendered.svg().matches(r#"data-et="life-line""#).count(),
+                2,
+                "{facet} must cover the actor-man and regular participant lifelines"
+            );
+            assert!(rendered.svg().contains(r#"data-id="Alice""#));
+            assert!(rendered.svg().contains(r#"data-id="Bob""#));
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Lifeline,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_lifeline_stroke_wins_over_fill_independent_of_rule_order() {
+        for stroke_first in [false, true] {
+            let fill_rule = ThemeRule::new(
+                ThemeTarget::Lifeline,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ef4444").expect("valid Lifeline fill")),
+            )
+            .for_family(DiagramFamilyId::SEQUENCE);
+            let stroke_rule = ThemeRule::new(
+                ThemeTarget::Lifeline,
+                ThemeStylePatch::default()
+                    .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke")),
+            )
+            .for_family(DiagramFamilyId::SEQUENCE);
+            let rules = if stroke_first {
+                ThemeRuleSet::default()
+                    .with_rule(stroke_rule)
+                    .with_rule(fill_rule)
+            } else {
+                ThemeRuleSet::default()
+                    .with_rule(fill_rule)
+                    .with_rule(stroke_rule)
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(rules))
+                .expect("compile combined Sequence Lifeline theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict combined Sequence Lifeline session"),
+            )
+            .expect("combined Sequence Lifeline theme should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("shadowed Lifeline fill must not leave strict evidence incomplete");
+
+            let stroke_index = usize::from(!stroke_first);
+            let fill_index = usize::from(stroke_first);
+            assert!(
+                rendered
+                    .svg()
+                    .contains("#merman .actor-line{stroke:#2563eb;}")
+            );
+            assert!(!rendered.svg().contains(".actor-line{stroke:#ef4444;}"));
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: stroke_index,
+                    target: ThemeTarget::Lifeline,
+                }]
+            );
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: fill_index,
+                    target: ThemeTarget::Lifeline,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_explicit_actor_line_color_owns_precedence_over_typed_lifeline_paint() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Lifeline theme");
+        let cases = [
+            (
+                "site config",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "themeVariables": {"actorLineColor": "#22c55e"}
+                }))),
+                "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ),
+            (
+                "init directive",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                }))),
+                r##"%%{init: {"themeVariables": {"actorLineColor": "#22c55e"}}}%%
+sequenceDiagram
+actor Alice
+participant Bob
+Alice->>Bob: Hello
+"##,
+            ),
+        ];
+
+        for (case, engine, source) in cases {
+            let parsed = theme
+                .install_parse_compatibility(engine)
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("configured Sequence source should produce a render model");
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .config
+                    .get_str("themeVariables.actorLineColor"),
+                (case == "init directive").then_some("#22c55e"),
+                "{case} source ownership probe"
+            );
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.actorLineColor"),
+                Some("#22c55e"),
+                "{case} must retain explicit actorLineColor"
+            );
+            assert!(
+                merman_core::__private::config_path_overrides_typed_default(
+                    &parsed.metadata().effective_config,
+                    "themeVariables.actorLineColor",
+                ),
+                "{case} must retain actorLineColor ownership"
+            );
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin configured strict Sequence Lifeline session"),
+            )
+            .expect("explicit actorLineColor should remain evaluable")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("explicit actorLineColor should satisfy strict portability");
+
+            assert!(
+                rendered
+                    .svg()
+                    .contains("#merman .actor-line{stroke:#22c55e;}"),
+                "{case}: {}",
+                rendered.svg()
+            );
+            assert!(!rendered.svg().contains(".actor-line{stroke:#ef4444;}"));
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Lifeline,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_unsupported_lifeline_gradient_fails_closed_after_actor_line_emission() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#000000").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#ffffff").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::LinearGradient(gradient)),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile unsupported Sequence Lifeline gradient");
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model")
+        };
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Sequence Lifeline session"),
+        )
+        .expect("best-effort preparation should retain unsupported Lifeline evidence")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort Sequence Lifeline output should remain renderable");
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Lifeline,
+                },
+                reason: FamilyThemeResidualReason::UnsupportedPaint,
+            }]
+        );
+
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Sequence Lifeline session"),
+        )
+        .expect("strict verification waits for terminal Lifeline evidence");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("unsupported Sequence Lifeline gradient must fail closed"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::SEQUENCE, 1))
+        );
+    }
+
+    #[test]
     fn require_portable_accepts_sequence_message_scalar_strokes_after_line_emission() {
         for (paint, expected_stroke) in [
             (

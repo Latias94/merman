@@ -116,6 +116,10 @@ fn render_sequence_diagram_svg_inner(
         sanitize_config,
         "themeVariables.actorBorder",
     );
+    let lifeline_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorLineColor",
+    );
     let message_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.signalColor",
@@ -138,6 +142,11 @@ fn render_sequence_diagram_svg_inner(
     );
     let mut actor_theme =
         resolve_sequence_actor_theme(options, sanitize_config, !model.actor_order.is_empty())?;
+    let mut lifeline_theme = resolve_sequence_lifeline_theme(
+        options,
+        !model.actor_order.is_empty(),
+        lifeline_stroke_overridden,
+    )?;
     let mut message_theme = resolve_sequence_message_theme(
         options,
         has_sequence_message_line_candidates(model),
@@ -216,7 +225,7 @@ fn render_sequence_diagram_svg_inner(
     }
 
     // Top actors + lifelines.
-    render_sequence_top_actors_and_lifelines(&mut out, &actor_ctx);
+    render_sequence_top_actors_and_lifelines(&mut out, &actor_ctx, &mut lifeline_theme.receipt)?;
     out.checkpoint()?;
 
     out.push_str("<style>");
@@ -228,6 +237,7 @@ fn render_sequence_diagram_svg_inner(
         SequenceThemeCssAdapter {
             actor_fill: actor_theme.typed_fill.as_deref(),
             actor_stroke: actor_theme.typed_stroke.as_deref(),
+            lifeline_stroke: lifeline_theme.typed_stroke.as_deref(),
             message_stroke: message_theme.typed_stroke.as_deref(),
             note_fill: note_theme.typed_fill.as_deref(),
             note_stroke: note_theme.typed_stroke.as_deref(),
@@ -237,6 +247,14 @@ fn render_sequence_diagram_svg_inner(
     );
     out.push_str("</style><g/>");
     out.checkpoint()?;
+    prepared.theme_evidence().record_lifeline_emission(
+        crate::sequence::SequenceLifelineThemeEmission::from_terminal_writer(
+            lifeline_theme.typed_stroke.as_deref(),
+            lifeline_theme.selected_property,
+            lifeline_stroke_overridden,
+            lifeline_theme.receipt,
+        ),
+    );
     let mut actor_fill_emitted = false;
     let mut actor_fill_unhandled = false;
     let mut actor_stroke_emitted = false;
@@ -405,6 +423,13 @@ struct SequenceActorThemeResolution {
     typed_stroke: Option<String>,
     has_ordinal_routes: bool,
     receipt: crate::sequence::SequenceActorThemeReceipt,
+}
+
+#[derive(Default)]
+struct SequenceLifelineThemeResolution {
+    typed_stroke: Option<String>,
+    selected_property: Option<crate::diagram_theme::ResolvedStyleProperty>,
+    receipt: crate::sequence::SequenceLifelineThemeReceipt,
 }
 
 #[derive(Default)]
@@ -596,6 +621,88 @@ fn resolve_sequence_message_theme(
         .flatten();
     Ok(SequenceMessageThemeResolution {
         typed_stroke,
+        receipt,
+    })
+}
+
+fn resolve_sequence_lifeline_theme(
+    options: &SvgExecution<'_>,
+    has_lifelines: bool,
+    paint_overridden: bool,
+) -> Result<SequenceLifelineThemeResolution> {
+    use crate::diagram_theme::{
+        FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
+        FamilyThemeSelectorShape, ResolvedStyleProperty, ThemeTarget, ThemeVariant,
+    };
+
+    if !has_lifelines {
+        return Ok(SequenceLifelineThemeResolution::default());
+    }
+    let Some(theme) = options.resolved_theme() else {
+        return Ok(SequenceLifelineThemeResolution::default());
+    };
+    let mut has_rule_routes = false;
+    let mut has_typed_fill = false;
+    let mut has_typed_stroke = false;
+    for route in theme.family_mechanism_routes().iter().copied() {
+        let FamilyThemeMechanism::RuleFacet {
+            target: ThemeTarget::Lifeline,
+            selector: FamilyThemeSelectorShape::Static { variant: None },
+            facet,
+            ..
+        } = route.mechanism()
+        else {
+            continue;
+        };
+        match facet {
+            FamilyThemeRuleFacet::Fill(kind) => {
+                has_rule_routes = true;
+                has_typed_fill |= route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    && matches!(
+                        kind,
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                    );
+            }
+            FamilyThemeRuleFacet::Stroke(kind) => {
+                has_rule_routes = true;
+                has_typed_stroke |= route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    && matches!(
+                        kind,
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                    );
+            }
+            _ => {}
+        }
+    }
+    if !has_rule_routes {
+        return Ok(SequenceLifelineThemeResolution::default());
+    }
+
+    let style = theme.style_with_work_meter(
+        ThemeTarget::Lifeline,
+        ThemeVariant::Default,
+        None,
+        options.work_meter(),
+    )?;
+    let mut receipt = crate::sequence::SequenceLifelineThemeReceipt::default();
+    receipt.record_static_style(&style);
+    let selected_property = if style.stroke_resolution().winner().is_some() {
+        Some(ResolvedStyleProperty::Stroke)
+    } else if style.fill_resolution().winner().is_some() {
+        Some(ResolvedStyleProperty::Fill)
+    } else {
+        None
+    };
+    let typed_stroke = (!paint_overridden)
+        .then(|| match selected_property {
+            Some(ResolvedStyleProperty::Stroke) if has_typed_stroke => css_paint(style.stroke()),
+            Some(ResolvedStyleProperty::Fill) if has_typed_fill => css_paint(style.fill()),
+            _ => None,
+        })
+        .flatten();
+    Ok(SequenceLifelineThemeResolution {
+        typed_stroke,
+        selected_property,
         receipt,
     })
 }

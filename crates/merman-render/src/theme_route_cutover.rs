@@ -100,11 +100,12 @@ pub enum ThemeRouteCutoverProjection {
     MessageStroke = 10,
     ClusterFill = 11,
     ClusterStroke = 12,
+    LifelineStroke = 13,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 13] = [
+    const ALL: [Self; 14] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -118,6 +119,7 @@ impl ThemeRouteCutoverProjection {
         Self::MessageStroke,
         Self::ClusterFill,
         Self::ClusterStroke,
+        Self::LifelineStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -135,6 +137,7 @@ impl ThemeRouteCutoverProjection {
             Self::MessageStroke => "message.stroke",
             Self::ClusterFill => "cluster.fill",
             Self::ClusterStroke => "cluster.stroke",
+            Self::LifelineStroke => "lifeline.stroke",
         }
     }
 
@@ -153,7 +156,8 @@ impl ThemeRouteCutoverProjection {
             | Self::ActivationStroke
             | Self::MessageStroke
             | Self::ClusterFill
-            | Self::ClusterStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::ClusterStroke
+            | Self::LifelineStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -206,6 +210,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::ClusterFill);
     pub const REPLACE_CLUSTER_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::ClusterStroke);
+    pub const REPLACE_LIFELINE_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -338,6 +344,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(projection.contribution_id(), "message.stroke");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn sequence_lifeline_paint_projection_is_one_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::LifelineStroke;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_LIFELINE_STROKE
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "lifeline.stroke");
         assert_eq!(
             projection.action(),
             ThemeRouteCutoverProjectionAction::Replace
