@@ -29,13 +29,17 @@ const generatorConfigPath = path.join(temporaryRoot, "generate-license-file.json
 try {
   const replacements = {};
   const exclusions = [];
-  // Keep first-party file dependencies stable before and after package assembly.
-  if (Object.hasOwn(packageManifest.dependencies ?? {}, "@mermanjs/web")) {
-    const webLicense = path.join(repositoryRoot, "platforms/web/LICENSE");
-    if (!fs.statSync(webLicense, { throwIfNoEntry: false })?.isFile()) {
-      fail("missing canonical @mermanjs/web license: platforms/web/LICENSE");
+  // Avoid filesystem-order and package-assembly differences in ambiguous packages.
+  for (const [packageName, relativeLicense] of Object.entries({
+    "@mermanjs/web": "platforms/web/LICENSE",
+    cytoscape: "THIRD_PARTY_LICENSES/cytoscape/LICENSE",
+    dompurify: "THIRD_PARTY_LICENSES/dompurify/LICENSE",
+  })) {
+    const license = path.join(repositoryRoot, relativeLicense);
+    if (!fs.statSync(license, { throwIfNoEntry: false })?.isFile()) {
+      fail(`missing canonical ${packageName} license: ${relativeLicense}`);
     }
-    replacements["@mermanjs/web"] = path.relative(temporaryRoot, webLicense);
+    replacements[packageName] = path.relative(temporaryRoot, license);
   }
   // Native canvas artifacts are host tooling, not part of the browser payload.
   if (packageManifest.name === "merman-playground") {
