@@ -1,47 +1,18 @@
 use super::super::*;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
-fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn write_packet_css(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let font = crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS;
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
-    let mut out = String::new();
+    write_mermaid_default_base_css_prefix(out, &id, font)?;
     let _ = write!(
-        &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
-    );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
-        id, font, id
-    );
-    let _ = write!(
-        &mut out,
+        out,
         r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
         id,
         style.byte_font_size,
@@ -60,12 +31,9 @@ fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
         style.block_stroke_width,
         style.block_fill_color
     );
-    let _ = write!(
-        &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
-    );
-    out
+    out.checkpoint()?;
+    let _ = write!(out, r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
+    out.checkpoint()
 }
 
 pub(crate) fn render_packet_diagram_svg_model(
@@ -89,7 +57,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = model
         .acc_title
         .as_deref()
@@ -118,6 +86,7 @@ pub(crate) fn render_packet_diagram_svg_model(
             id = diagram_id_esc,
             text = escape_xml(t)
         );
+        out.checkpoint()?;
     }
     if let Some(d) = model.acc_descr.as_deref() {
         let _ = write!(
@@ -126,14 +95,18 @@ pub(crate) fn render_packet_diagram_svg_model(
             id = diagram_id_esc,
             text = escape_xml(d)
         );
+        out.checkpoint()?;
     }
 
-    let css = packet_css(diagram_id, effective_config);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str("<style>");
+    write_packet_css(&mut out, diagram_id, effective_config)?;
+    out.push_str("</style>");
     out.push_str(r#"<g/>"#);
+    out.checkpoint()?;
 
     for word in &layout.words {
         out.push_str("<g>");
+        out.checkpoint()?;
         for b in &word.blocks {
             let _ = write!(
                 &mut out,
@@ -152,6 +125,7 @@ pub(crate) fn render_packet_diagram_svg_model(
             );
 
             if !layout.show_bits {
+                out.checkpoint()?;
                 continue;
             }
             let is_single_block = b.start == b.end;
@@ -179,8 +153,10 @@ pub(crate) fn render_packet_diagram_svg_model(
                     text = b.end
                 );
             }
+            out.checkpoint()?;
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     let total_row_height = layout.row_height + layout.padding_y;
@@ -210,9 +186,10 @@ pub(crate) fn render_packet_diagram_svg_model(
             );
         }
     }
+    out.checkpoint()?;
 
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -222,7 +199,9 @@ mod tests {
 
     #[test]
     fn packet_css_honors_mermaid_11_15_packet_style_options() {
-        let css = packet_css(
+        let mut css = String::new();
+        write_packet_css(
+            &mut css,
             "pkt",
             &json!({
                 "packet": {
@@ -238,7 +217,8 @@ mod tests {
                     "blockFillColor": "#666666"
                 }
             }),
-        );
+        )
+        .expect("write Packet CSS");
 
         assert!(css.contains("#pkt .packetByte{font-size:11px;}"));
         assert!(css.contains("#pkt .packetByte.start{fill:#111111;}"));

@@ -15,40 +15,71 @@ struct MermaidBaseCss<'a> {
     error_text: &'a str,
 }
 
-fn write_mermaid_base_css_prefix(out: &mut String, id: &str, css: MermaidBaseCss<'_>) {
+fn write_mermaid_base_css_prefix(
+    out: &mut impl SvgOutput,
+    id: &str,
+    css: MermaidBaseCss<'_>,
+) -> Result<()> {
     let _ = write!(
         out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
         id, css.font_family, css.font_size_css, css.text_color
     );
+    out.checkpoint()?;
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
         id, id
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
         id, css.error_bkg, id, css.error_text, css.error_text
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} .edge-thickness-normal{{stroke-width:{};}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
         id, css.normal_edge_stroke_width_css, id, id, id, id, id
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
         id, css.line_color, css.line_color, id, css.line_color
     );
+    out.checkpoint()?;
     let _ = write!(
         out,
         r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
         id, css.font_family, css.font_size_css, id
     );
+    out.checkpoint()
+}
+
+pub(super) fn write_mermaid_default_base_css_prefix(
+    out: &mut impl SvgOutput,
+    id: &str,
+    font_family: &str,
+) -> Result<()> {
+    write_mermaid_base_css_prefix(
+        out,
+        id,
+        MermaidBaseCss {
+            font_family,
+            font_size_css: "16px",
+            normal_edge_stroke_width_css: "1px",
+            text_color: "#333",
+            line_color: "#333333",
+            error_bkg: "#552222",
+            error_text: "#552222",
+        },
+    )
 }
 
 fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
@@ -136,20 +167,9 @@ fn mermaid_base_css_root_rule(id: &str, font_family: &str) -> String {
 
 pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    write_mermaid_base_css_prefix(
-        out,
-        &id,
-        MermaidBaseCss {
-            font_family: font,
-            font_size_css: "16px",
-            normal_edge_stroke_width_css: "1px",
-            text_color: "#333",
-            line_color: "#333333",
-            error_bkg: "#552222",
-            error_text: "#552222",
-        },
-    );
+    let font = crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS;
+    write_mermaid_default_base_css_prefix(out, &id, font)
+        .expect("String-backed Mermaid base CSS emission cannot fail");
     write_mermaid_common_neo_css(out, &id, &serde_json::Value::Null);
     out.push_str(&mermaid_base_css_root_rule(&id, font));
 }
@@ -245,7 +265,8 @@ fn info_css_parts_with_font_size_source(
             error_bkg: &error_bkg,
             error_text: &error_text,
         },
-    );
+    )
+    .expect("String-backed Mermaid base CSS emission cannot fail");
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     let mut root_rule = String::new();
     write_mermaid_common_neo_css(&mut root_rule, &id, effective_config);
@@ -331,7 +352,8 @@ pub(super) fn architecture_css_parts_with_config(
             error_bkg: &error_bkg,
             error_text: &error_text,
         },
-    );
+    )
+    .expect("String-backed Mermaid base CSS emission cannot fail");
     let _ = write!(
         &mut out,
         r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}"#,
@@ -523,7 +545,8 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
             error_bkg: &error_bkg,
             error_text: &error_text,
         },
-    );
+    )
+    .expect("String-backed Mermaid base CSS emission cannot fail");
     let _ = write!(
         &mut out,
         r#"#{} .entityBox{{fill:{};stroke:{};}}"#,
