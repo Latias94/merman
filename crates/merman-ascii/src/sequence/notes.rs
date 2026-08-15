@@ -270,6 +270,7 @@ pub(super) fn render_note(
             resources.checked_grid_add(1, left_padding)?,
             &line,
             AsciiColorRole::Text,
+            resources,
             || checkpoints.tick(),
         )?;
         row.try_set_role(

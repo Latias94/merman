@@ -218,6 +218,18 @@ fn render_sequence_diagram_inner(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        render_sequence_diagram_transactional(diagram, options, resources, execution)
+    })
+}
+
+fn render_sequence_diagram_transactional(
+    diagram: &AsciiSequenceDiagram,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
     options.validate()?;
     if diagram.participants.is_empty() {
         return Err(AsciiError::UnsupportedFeature {
@@ -344,7 +356,7 @@ pub(super) fn render_overlay_row(
         width,
         checkpoints,
     )?;
-    line.try_write_line(left, overlay)?;
+    line.try_write_line_with_checkpoint(left, overlay, resources, || checkpoints.checkpoint())?;
     trim_right(line)
 }
 
@@ -466,6 +478,42 @@ mod tests {
                 if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
                     && details.actual > details.max
         ));
+    }
+
+    #[test]
+    fn final_output_failure_restores_layout_and_document_ledgers() {
+        let mut diagram = single_participant_diagram();
+        diagram.participants[0].label =
+            SequenceParticipantLabel::from_raw("P", false, TerminalWidthProfile::Unicode);
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
+            .expect("one output byte should be a valid limit");
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(5)
+            .expect("the pre-existing work debit should fit");
+        resources
+            .charge_document_cells(3)
+            .expect("the pre-existing document debit should fit");
+        let control = merman_core::OperationControl::new();
+
+        let error = render_sequence_diagram_with_execution(
+            &diagram,
+            &options,
+            &mut resources,
+            AsciiExecution::new(&control, &policy),
+        )
+        .expect_err("the complete rendered document should exceed one output byte");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual > details.max
+        ));
+        assert_eq!(resources.layout_work_used(), 5);
+        assert_eq!(resources.document_cells_used(), 3);
     }
 
     fn single_participant_diagram() -> AsciiSequenceDiagram {

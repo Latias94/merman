@@ -1,8 +1,8 @@
 use super::boxes::render_sequence_boxes;
 use super::control::{
-    SequenceControlBoundaryState, SequenceControlFrame, SequenceControlFrameForest,
-    SequenceControlFrameNode, SequenceControlFrameSeparator, SequenceControlFrameTree,
-    prepare_sequence_control_frames,
+    PreparedSequenceControlFrames, SequenceControlBoundaryState, SequenceControlFrame,
+    SequenceControlFrameForest, SequenceControlFrameNode, SequenceControlFrameSeparator,
+    SequenceControlFrameTree, prepare_sequence_control_frames,
 };
 use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at};
 use super::model::{AsciiSequenceDiagram, SequenceEvent};
@@ -345,6 +345,11 @@ pub(super) struct SequenceRowPlan {
     lines: Vec<SequenceLine>,
 }
 
+struct PreparedSequenceRowPlan<'diagram> {
+    body: SequencePreparedBody<'diagram>,
+    controls: Option<PreparedSequenceControlFrames<'diagram>>,
+}
+
 impl SequenceRowPlan {
     pub(super) fn build(
         diagram: &AsciiSequenceDiagram,
@@ -354,17 +359,18 @@ impl SequenceRowPlan {
         resources: &mut ResourceContext,
         checkpoints: &mut SequenceCheckpointCursor<'_>,
     ) -> Result<Self> {
-        Self::build_with_materialization_probe(
+        let prepared = Self::prepare(
             diagram,
             layout,
             chars,
             mirror_actors,
             resources,
             checkpoints,
-            || {},
-        )
+        )?;
+        Self::materialize(prepared, diagram, layout, chars, resources, checkpoints)
     }
 
+    #[cfg(test)]
     fn build_with_materialization_probe(
         diagram: &AsciiSequenceDiagram,
         layout: &SequenceLayout,
@@ -374,6 +380,29 @@ impl SequenceRowPlan {
         checkpoints: &mut SequenceCheckpointCursor<'_>,
         before_materialize: impl FnOnce(),
     ) -> Result<Self> {
+        let transaction = resources.clone();
+        transaction.transaction(|_| {
+            let prepared = Self::prepare(
+                diagram,
+                layout,
+                chars,
+                mirror_actors,
+                resources,
+                checkpoints,
+            )?;
+            before_materialize();
+            Self::materialize(prepared, diagram, layout, chars, resources, checkpoints)
+        })
+    }
+
+    fn prepare<'diagram>(
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<PreparedSequenceRowPlan<'diagram>> {
         checkpoints.before_charge()?;
         let mut planner = SequenceRowPlanner::new(diagram, resources, checkpoints)?;
         let mut prepared = SequencePreparedBody::new(
@@ -477,9 +506,25 @@ impl SequenceRowPlan {
         };
         charge_materialization_work(materialization_work, resources, checkpoints)?;
         checkpoints.tick()?;
-        before_materialize();
-        let mut lines = prepared.materialize(diagram, layout, chars, resources, checkpoints)?;
-        if let Some(control) = prepared_controls {
+        Ok(PreparedSequenceRowPlan {
+            body: prepared,
+            controls: prepared_controls,
+        })
+    }
+
+    fn materialize(
+        prepared: PreparedSequenceRowPlan<'_>,
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+        checkpoints: &mut SequenceCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        let mut lines =
+            prepared
+                .body
+                .materialize(diagram, layout, chars, resources, checkpoints)?;
+        if let Some(control) = prepared.controls {
             checkpoints.tick()?;
             lines = control.materialize(lines, layout, chars, resources, checkpoints)?;
         }
@@ -623,7 +668,9 @@ fn render_title_line(
     let title_width = display_width_with_profile(title, width_profile);
     let left = width.saturating_sub(title_width) / 2;
     let mut line = blank_line_with_checkpoints(left, width_profile, resources, checkpoints)?;
-    line.try_push_role_text_with_checkpoint(title, AsciiColorRole::Text, || checkpoints.tick())?;
+    line.try_push_role_text_with_checkpoint(title, AsciiColorRole::Text, resources, || {
+        checkpoints.tick()
+    })?;
     trim_right(line)
 }
 
@@ -910,6 +957,43 @@ mod tests {
                     && details.actual == aggregate_cells
                     && details.max == aggregate_cells - 1
         ));
+    }
+
+    #[test]
+    fn row_plan_materialization_failure_rolls_back_shared_ledgers() {
+        let diagram = diagram(1);
+        let options = AsciiRenderOptions::ascii();
+        let policy = AsciiResourcePolicy::default();
+        let base_resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        let execution = AsciiExecution::new(&control, &policy);
+        let mut resources = execution.resource_context(&base_resources, OperationPhase::Layout);
+        let mut checkpoints = SequenceCheckpointCursor::new(execution, OperationPhase::Layout);
+        let layout =
+            calculate_layout_with_resources(&diagram, &options, &mut resources, &mut checkpoints)
+                .expect("the row-plan fixture layout should fit");
+        let before_work = base_resources.layout_work_used();
+        let before_cells = base_resources.document_cells_used();
+
+        let error = SequenceRowPlan::build_with_materialization_probe(
+            &diagram,
+            &layout,
+            &ascii_chars(),
+            false,
+            &mut resources,
+            &mut checkpoints,
+            || control.cancel(),
+        )
+        .expect_err("cancellation at the materialization seam should abort the row plan");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == merman_core::CancelReason::Requested
+        ));
+        assert_eq!(base_resources.layout_work_used(), before_work);
+        assert_eq!(base_resources.document_cells_used(), before_cells);
     }
 
     #[test]

@@ -937,6 +937,7 @@ mod tests {
         resources
             .charge_layout_work(materialization_work)
             .expect("control-frame materialization work should fit");
+        let before_materialization = resources.layout_work_used();
         let control = OperationControl::new();
         control.cancel_after_checkpoints(3);
         let mut checkpoints = SequenceCheckpointCursor::new(
@@ -944,14 +945,17 @@ mod tests {
             OperationPhase::Layout,
         );
 
-        let error = prepared
-            .materialize(
-                lines,
-                &test_layout(),
-                &ascii_chars(),
-                &mut resources,
-                &mut checkpoints,
-            )
+        let transaction = resources.clone();
+        let error = transaction
+            .transaction(|_| {
+                prepared.materialize(
+                    lines,
+                    &test_layout(),
+                    &ascii_chars(),
+                    &mut resources,
+                    &mut checkpoints,
+                )
+            })
             .expect_err("control-frame materialization should observe scheduled cancellation");
 
         assert!(matches!(
@@ -960,6 +964,7 @@ mod tests {
                 if cancelled.phase == OperationPhase::Layout
                     && cancelled.reason == merman_core::CancelReason::Requested
         ));
+        assert_eq!(resources.layout_work_used(), before_materialization);
     }
 
     fn render_disjoint_frames_with_limit(

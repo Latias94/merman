@@ -413,6 +413,16 @@ impl ResourceContext {
         }
     }
 
+    /// Rebinds an existing controlled ledger view to a different operation phase.
+    pub(crate) fn with_operation_phase(&self, phase: OperationPhase) -> Self {
+        let mut scoped = self.clone();
+        scoped.operation = self.operation.as_ref().map(|operation| ResourceOperation {
+            control: operation.control.clone(),
+            phase,
+        });
+        scoped
+    }
+
     /// Starts a new document/grid scope while preserving the render-wide work ledger.
     pub(crate) fn scoped(&self) -> Self {
         Self {
@@ -421,6 +431,31 @@ impl ResourceContext {
             document_cells_used: Rc::new(Cell::new(0)),
             operation: self.operation.clone(),
         }
+    }
+
+    /// Starts a disposable materialization scope after the retained document has been admitted.
+    ///
+    /// Renderers may build padded rows whose temporary cell count exceeds the final trimmed
+    /// document count. The caller must first admit both the retained document cells and a grid
+    /// extent covering `materialized_cells`; this scope then prevents the retained-document limit
+    /// from rejecting that already-bounded temporary representation a second time.
+    pub(crate) fn scoped_after_document_admission(
+        &self,
+        materialized_cells: usize,
+    ) -> Result<Self> {
+        let policy = match self.policy.value(AsciiResourceLimitId::MaxDocumentCells) {
+            Some(current) if current < materialized_cells => self
+                .policy
+                .with_limit(
+                    AsciiResourceLimitId::MaxDocumentCells,
+                    materialized_cells.max(1),
+                )
+                .map_err(|_| self.overflow(AsciiResourceLimitId::MaxDocumentCells))?,
+            _ => self.policy,
+        };
+        let mut scoped = self.scoped();
+        scoped.policy = policy;
+        Ok(scoped)
     }
 
     pub(crate) const fn policy(&self) -> AsciiResourcePolicy {

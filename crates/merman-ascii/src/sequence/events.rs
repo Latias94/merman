@@ -343,6 +343,7 @@ pub(super) fn render_message(
             start,
             &label,
             AsciiColorRole::EdgeLabel,
+            resources,
             checkpoints,
         )?;
         lines.push(trim_right(line)?);
@@ -624,6 +625,7 @@ pub(super) fn render_self_message(
             start,
             &label,
             AsciiColorRole::EdgeLabel,
+            resources,
             checkpoints,
         )?;
         lines.push(trim_right(line)?);

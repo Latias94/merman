@@ -375,13 +375,14 @@ pub(super) fn write_text_role(
     start: usize,
     text: &str,
     role: AsciiColorRole,
+    resources: &ResourceContext,
     checkpoints: &mut SequenceCheckpointCursor<'_>,
 ) -> Result<()> {
-    line.try_write_text_role_with_checkpoint(start, text, role, || checkpoints.tick())
+    line.try_write_text_role_with_checkpoint(start, text, role, resources, || checkpoints.tick())
 }
 
 pub(super) fn trim_right(line: SequenceLine) -> Result<SequenceLine> {
-    Ok(line.trim_right())
+    line.try_trim_right()
 }
 
 #[cfg(test)]
@@ -586,7 +587,7 @@ mod tests {
         let callback_count = Cell::new(0usize);
 
         let error = line
-            .try_write_text_role_with_checkpoint(0, &text, AsciiColorRole::Text, || {
+            .try_write_text_role_with_checkpoint(0, &text, AsciiColorRole::Text, &resources, || {
                 let next = callback_count.get() + 1;
                 callback_count.set(next);
                 if next == WIDTH + 65 {

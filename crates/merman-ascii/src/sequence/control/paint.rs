@@ -454,6 +454,7 @@ fn render_border_row(
             resources.checked_grid_add(left_index, 1)?,
             label,
             AsciiColorRole::Text,
+            resources,
             || checkpoints.tick(),
         )?;
     }

@@ -724,7 +724,9 @@ fn render_participant_box_rows(
                 resource_view,
                 checkpoints,
             )?;
-            line.try_push_line(&segment)?;
+            line.try_push_line_with_checkpoint(&segment, resource_view, || {
+                checkpoints.checkpoint()
+            })?;
         }
         rendered.push(line);
     }
@@ -849,6 +851,7 @@ fn build_participant_box_row(
                     label_start,
                     label,
                     AsciiColorRole::Text,
+                    resources,
                     || checkpoints.tick(),
                 )?;
             }
@@ -944,7 +947,12 @@ fn render_lifecycle_participants(
                 resources,
                 checkpoints,
             )?;
-            line.try_write_line(participant_left(layout, *index, resources)?, &segment)?;
+            line.try_write_line_with_checkpoint(
+                participant_left(layout, *index, resources)?,
+                &segment,
+                resources,
+                || checkpoints.checkpoint(),
+            )?;
         }
         rendered.push(trim_right(line)?);
     }

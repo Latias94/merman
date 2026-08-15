@@ -142,7 +142,7 @@ fn render_sequence_boxes_transactional(
         row.try_push_spaces_with_checkpoint(SEQUENCE_BOX_CONTENT_OFFSET, || {
             checkpoints.checkpoint()
         })?;
-        row.try_push_line(&line)?;
+        row.try_push_line_with_checkpoint(&line, resources, || checkpoints.checkpoint())?;
         row.try_push_spaces_with_checkpoint(SEQUENCE_BOX_CONTENT_OFFSET, || {
             checkpoints.checkpoint()
         })?;
@@ -501,7 +501,7 @@ fn draw_sequence_box_label(
     let index = resources.checked_grid_add(bounds.left, SEQUENCE_BOX_LABEL_MARGIN)?;
     let available = bounds.right.saturating_sub(index);
     let label = truncate_display_width_with_profile(&label, available, row.width_profile());
-    row.try_write_text_role_with_checkpoint(index, &label, AsciiColorRole::Text, || {
+    row.try_write_text_role_with_checkpoint(index, &label, AsciiColorRole::Text, resources, || {
         checkpoints.tick()
     })
 }

@@ -1,12 +1,15 @@
 use crate::color::{AsciiColorRole, AsciiColorTheme, AsciiRgb};
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy};
+use crate::resource::{
+    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
+};
 use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
 
 // This maintenance cadence bounds unreachable overwrite history even for the explicit unbounded
 // profile. It is not a seventh user-configurable resource limit.
 const STALE_GLYPH_COMPACTION_THRESHOLD: usize = 64;
+const SURFACE_CHECKPOINT_PRIMARY_CELLS: usize = 64;
 
 // Conservative full-cell pass counts charged to max layout work before each bounded operation.
 const CELL_COMPACTION_WORK_PASSES: usize = 3;
@@ -140,7 +143,24 @@ impl GlyphArena {
         source: &Self,
         cells: &[TerminalCell],
         policy: AsciiResourcePolicy,
+        include: impl FnMut(usize, &[TerminalCell]) -> Result<bool>,
+    ) -> Result<HashMap<GlyphId, GlyphId>> {
+        self.try_import_referenced_cells_where_with_checkpoint(
+            source,
+            cells,
+            policy,
+            include,
+            || Ok(()),
+        )
+    }
+
+    fn try_import_referenced_cells_where_with_checkpoint(
+        &mut self,
+        source: &Self,
+        cells: &[TerminalCell],
+        policy: AsciiResourcePolicy,
         mut include: impl FnMut(usize, &[TerminalCell]) -> Result<bool>,
+        mut checkpoint: impl FnMut() -> Result<()>,
     ) -> Result<HashMap<GlyphId, GlyphId>> {
         let capacity = cells.len().min(source.entries.len());
         let mut source_to_target = HashMap::new();
@@ -154,7 +174,9 @@ impl GlyphArena {
         let target_base = self.entries.len();
         let mut referenced_bytes = 0usize;
 
+        let mut cells_until_checkpoint = 0usize;
         for (index, cell) in cells.iter().copied().enumerate() {
+            checkpoint_primary_cell(cell, &mut cells_until_checkpoint, &mut checkpoint)?;
             let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
                 continue;
             };
@@ -194,13 +216,16 @@ impl GlyphArena {
             .try_reserve(referenced.len())
             .map_err(|_| glyph_allocation_failed())?;
         self.try_prepare_text_append(referenced_bytes)?;
+        let mut entries_until_checkpoint = 0usize;
         for source_id in referenced {
+            checkpoint_surface_item(&mut entries_until_checkpoint, &mut checkpoint)?;
             let grapheme = source.get(source_id).ok_or_else(glyph_allocation_failed)?;
             self.append_complex_prepared(grapheme)?;
         }
         Ok(source_to_target)
     }
 
+    #[cfg(test)]
     fn try_import_referenced_cells(
         &mut self,
         source: &Self,
@@ -208,6 +233,22 @@ impl GlyphArena {
         policy: AsciiResourcePolicy,
     ) -> Result<HashMap<GlyphId, GlyphId>> {
         self.try_import_referenced_cells_where(source, cells, policy, |_, _| Ok(true))
+    }
+
+    fn try_import_referenced_cells_with_checkpoint(
+        &mut self,
+        source: &Self,
+        cells: &[TerminalCell],
+        policy: AsciiResourcePolicy,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<HashMap<GlyphId, GlyphId>> {
+        self.try_import_referenced_cells_where_with_checkpoint(
+            source,
+            cells,
+            policy,
+            |_, _| Ok(true),
+            checkpoint,
+        )
     }
 
     #[cfg(test)]
@@ -234,11 +275,46 @@ impl GlyphArena {
         cells: &mut [TerminalCell],
         policy: AsciiResourcePolicy,
     ) -> Result<Self> {
+        Self::try_compact_cells_from_source_with_checkpoint(source, cells, policy, || Ok(()))
+    }
+
+    fn try_compact_cells_from_source_with_checkpoint(
+        source: &Self,
+        cells: &mut [TerminalCell],
+        policy: AsciiResourcePolicy,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
+        checkpoint()?;
         check_cell_work(policy, cells.len(), CELL_COMPACTION_WORK_PASSES)?;
         let mut arena = Self::default();
-        let source_to_target = arena.try_import_referenced_cells(source, cells, policy)?;
-        validate_cell_remap(cells, &source_to_target)?;
-        apply_validated_cell_remap(cells, &source_to_target)?;
+        let source_to_target = arena.try_import_referenced_cells_with_checkpoint(
+            source,
+            cells,
+            policy,
+            &mut checkpoint,
+        )?;
+        validate_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
+        apply_validated_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
+        Ok(arena)
+    }
+
+    fn try_compact_cells_from_source_with_resources(
+        source: &Self,
+        cells: &mut [TerminalCell],
+        resources: &ResourceContext,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<Self> {
+        checkpoint()?;
+        resources.charge_layout_work_product(cells.len(), CELL_COMPACTION_WORK_PASSES)?;
+        let mut arena = Self::default();
+        let source_to_target = arena.try_import_referenced_cells_with_checkpoint(
+            source,
+            cells,
+            resources.policy(),
+            &mut checkpoint,
+        )?;
+        validate_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
+        apply_validated_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
         Ok(arena)
     }
 
@@ -248,6 +324,18 @@ impl GlyphArena {
         policy: AsciiResourcePolicy,
     ) -> Result<()> {
         let compacted = Self::try_compact_cells_from_source(self, cells, policy)?;
+        *self = compacted;
+        Ok(())
+    }
+
+    pub(crate) fn try_compact_in_place_with_resources_and_checkpoint(
+        &mut self,
+        cells: &mut [TerminalCell],
+        resources: &ResourceContext,
+        checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let compacted =
+            Self::try_compact_cells_from_source_with_resources(self, cells, resources, checkpoint)?;
         *self = compacted;
         Ok(())
     }
@@ -601,6 +689,45 @@ pub(crate) fn try_push_primary_grapheme_style_with_policy(
     Ok(())
 }
 
+pub(crate) fn try_push_primary_grapheme_style_with_resources_and_checkpoint(
+    cells: &mut Vec<TerminalCell>,
+    arena: &mut GlyphArena,
+    grapheme: &str,
+    width: usize,
+    style: CanvasStyle,
+    resources: &ResourceContext,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    if width == 0 {
+        return Ok(());
+    }
+    let final_len = cells
+        .len()
+        .checked_add(width)
+        .ok_or_else(document_allocation_failed)?;
+    check_document_cell_extent(resources.policy(), final_len)?;
+    check_primary_cell_extent(resources.policy(), final_len)?;
+    validate_continuation_width(width)?;
+    cells
+        .try_reserve(width)
+        .map_err(|_| document_allocation_failed())?;
+    let glyph = match arena.try_store(grapheme, resources.policy()) {
+        Ok(glyph) => glyph,
+        Err(error) if is_retained_glyph_budget_error(&error) => {
+            arena.try_compact_in_place_with_resources_and_checkpoint(
+                cells,
+                resources,
+                &mut checkpoint,
+            )?;
+            checkpoint()?;
+            arena.try_store(grapheme, resources.policy())?
+        }
+        Err(error) => return Err(error),
+    };
+    push_terminal_glyph_prepared(cells, glyph, width, style)?;
+    Ok(())
+}
+
 pub(crate) fn try_push_primary_deferred_style_with_policy(
     cells: &mut Vec<TerminalCell>,
     id: DeferredTextId,
@@ -641,6 +768,25 @@ pub(crate) fn try_append_cells_from_surface(
     source_arena: &GlyphArena,
     policy: AsciiResourcePolicy,
 ) -> Result<()> {
+    try_append_cells_from_surface_with_checkpoint(
+        cells,
+        arena,
+        source_cells,
+        source_arena,
+        policy,
+        || Ok(()),
+    )
+}
+
+pub(crate) fn try_append_cells_from_surface_with_checkpoint(
+    cells: &mut Vec<TerminalCell>,
+    arena: &mut GlyphArena,
+    source_cells: &[TerminalCell],
+    source_arena: &GlyphArena,
+    policy: AsciiResourcePolicy,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    checkpoint()?;
     let final_len = cells
         .len()
         .checked_add(source_cells.len())
@@ -652,8 +798,15 @@ pub(crate) fn try_append_cells_from_surface(
     cells
         .try_reserve(source_cells.len())
         .map_err(|_| document_allocation_failed())?;
-    let source_to_target = arena.try_import_referenced_cells(source_arena, source_cells, policy)?;
+    let source_to_target = arena.try_import_referenced_cells_with_checkpoint(
+        source_arena,
+        source_cells,
+        policy,
+        &mut checkpoint,
+    )?;
+    let mut cells_until_checkpoint = 0usize;
     for source_cell in source_cells.iter().copied() {
+        checkpoint_primary_cell(source_cell, &mut cells_until_checkpoint, &mut checkpoint)?;
         cells.push(try_remap_cell(source_cell, &source_to_target)?);
     }
     Ok(())
@@ -719,6 +872,48 @@ pub(crate) fn try_write_primary_grapheme_style_with_policy(
     Ok(wrote)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn try_write_primary_grapheme_style_with_resources_and_checkpoint(
+    cells: &mut [TerminalCell],
+    arena: &mut GlyphArena,
+    index: usize,
+    grapheme: &str,
+    width: usize,
+    style: CanvasStyle,
+    resources: &ResourceContext,
+    checkpoint: impl FnMut() -> Result<()>,
+) -> Result<bool> {
+    if !can_write(cells, index, width) {
+        return Ok(false);
+    }
+    validate_continuation_width(width)?;
+    let stale_entries = overwritten_arena_entries(cells, index, width)?;
+    let Some(stale_entries_after_write) = arena.stale_entries_after_overwrite(stale_entries) else {
+        return try_write_grapheme_after_compaction_with_resources(
+            cells, arena, index, grapheme, width, style, resources, checkpoint,
+        );
+    };
+    if stale_entries_after_write >= STALE_GLYPH_COMPACTION_THRESHOLD {
+        return try_write_grapheme_after_compaction_with_resources(
+            cells, arena, index, grapheme, width, style, resources, checkpoint,
+        );
+    }
+    let glyph = match arena.try_store(grapheme, resources.policy()) {
+        Ok(glyph) => glyph,
+        Err(error) if is_retained_glyph_budget_error(&error) => {
+            return try_write_grapheme_after_compaction_with_resources(
+                cells, arena, index, grapheme, width, style, resources, checkpoint,
+            );
+        }
+        Err(error) => return Err(error),
+    };
+    let wrote = write_terminal_glyph(cells, index, glyph, width, style)?;
+    if wrote {
+        arena.stale_entries_since_compaction = stale_entries_after_write;
+    }
+    Ok(wrote)
+}
+
 fn try_write_grapheme_after_compaction(
     cells: &mut [TerminalCell],
     arena: &mut GlyphArena,
@@ -750,6 +945,50 @@ fn try_write_grapheme_after_compaction(
     *arena = compacted_arena;
     let wrote = write_terminal_glyph_to_cleared_range(cells, index, glyph, width, style)?;
     Ok(wrote)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_write_grapheme_after_compaction_with_resources(
+    cells: &mut [TerminalCell],
+    arena: &mut GlyphArena,
+    index: usize,
+    grapheme: &str,
+    width: usize,
+    style: CanvasStyle,
+    resources: &ResourceContext,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<bool> {
+    checkpoint()?;
+    let end = index
+        .checked_add(width)
+        .filter(|end| *end <= cells.len())
+        .ok_or_else(document_allocation_failed)?;
+    resources.charge_layout_work_product(cells.len(), OVERWRITE_COMPACTION_WORK_PASSES)?;
+    let mut compacted_arena = GlyphArena::default();
+    let source_to_target = compacted_arena.try_import_referenced_cells_where_with_checkpoint(
+        arena,
+        cells,
+        resources.policy(),
+        |owner, cells| cell_survives_overwrite(cells, owner, index, end),
+        &mut checkpoint,
+    )?;
+    let glyph = compacted_arena.try_store(grapheme, resources.policy())?;
+    validate_surviving_cell_remap_with_checkpoint(
+        cells,
+        index,
+        end,
+        &source_to_target,
+        &mut checkpoint,
+    )?;
+
+    let mut positions_until_checkpoint = 0usize;
+    for position in index..end {
+        checkpoint_surface_item(&mut positions_until_checkpoint, &mut checkpoint)?;
+        clear_owner_at(cells, position);
+    }
+    apply_validated_cell_remap_with_checkpoint(cells, &source_to_target, &mut checkpoint)?;
+    *arena = compacted_arena;
+    write_terminal_glyph_to_cleared_range(cells, index, glyph, width, style)
 }
 
 fn overwritten_arena_entries(cells: &[TerminalCell], index: usize, width: usize) -> Result<usize> {
@@ -794,7 +1033,25 @@ fn validate_surviving_cell_remap(
     overwrite_end: usize,
     source_to_target: &HashMap<GlyphId, GlyphId>,
 ) -> Result<()> {
+    validate_surviving_cell_remap_with_checkpoint(
+        cells,
+        overwrite_start,
+        overwrite_end,
+        source_to_target,
+        || Ok(()),
+    )
+}
+
+fn validate_surviving_cell_remap_with_checkpoint(
+    cells: &[TerminalCell],
+    overwrite_start: usize,
+    overwrite_end: usize,
+    source_to_target: &HashMap<GlyphId, GlyphId>,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    let mut cells_until_checkpoint = 0usize;
     for (owner, cell) in cells.iter().copied().enumerate() {
+        checkpoint_primary_cell(cell, &mut cells_until_checkpoint, &mut checkpoint)?;
         let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
             continue;
         };
@@ -807,11 +1064,14 @@ fn validate_surviving_cell_remap(
     Ok(())
 }
 
-fn validate_cell_remap(
+fn validate_cell_remap_with_checkpoint(
     cells: &[TerminalCell],
     source_to_target: &HashMap<GlyphId, GlyphId>,
+    mut checkpoint: impl FnMut() -> Result<()>,
 ) -> Result<()> {
+    let mut cells_until_checkpoint = 0usize;
     for cell in cells.iter().copied() {
+        checkpoint_primary_cell(cell, &mut cells_until_checkpoint, &mut checkpoint)?;
         if let TerminalGlyph::Arena(source_id, _) = cell.glyph
             && !source_to_target.contains_key(&source_id)
         {
@@ -825,8 +1085,18 @@ fn apply_validated_cell_remap(
     cells: &mut [TerminalCell],
     source_to_target: &HashMap<GlyphId, GlyphId>,
 ) -> Result<()> {
+    apply_validated_cell_remap_with_checkpoint(cells, source_to_target, || Ok(()))
+}
+
+fn apply_validated_cell_remap_with_checkpoint(
+    cells: &mut [TerminalCell],
+    source_to_target: &HashMap<GlyphId, GlyphId>,
+    mut checkpoint: impl FnMut() -> Result<()>,
+) -> Result<()> {
     // The validation pass makes missing ids impossible without allocating a full staged surface.
-    for cell in cells {
+    let mut cells_until_checkpoint = 0usize;
+    for cell in cells.iter_mut() {
+        checkpoint_primary_cell(*cell, &mut cells_until_checkpoint, &mut checkpoint)?;
         let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
             continue;
         };
@@ -836,6 +1106,29 @@ fn apply_validated_cell_remap(
             .ok_or_else(glyph_allocation_failed)?;
         *cell = (*cell).with_arena_id(target_id);
     }
+    Ok(())
+}
+
+fn checkpoint_primary_cell(
+    cell: TerminalCell,
+    cells_until_checkpoint: &mut usize,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    if cell.is_continuation() {
+        return Ok(());
+    }
+    checkpoint_surface_item(cells_until_checkpoint, checkpoint)
+}
+
+fn checkpoint_surface_item(
+    items_until_checkpoint: &mut usize,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+) -> Result<()> {
+    if *items_until_checkpoint == 0 {
+        checkpoint()?;
+        *items_until_checkpoint = SURFACE_CHECKPOINT_PRIMARY_CELLS;
+    }
+    *items_until_checkpoint -= 1;
     Ok(())
 }
 
@@ -901,6 +1194,61 @@ pub(crate) fn try_write_primary_cell_from_surface(
             source_cell.raw_style(),
             policy,
         ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn try_write_primary_cell_from_surface_with_resources_and_checkpoint(
+    cells: &mut [TerminalCell],
+    arena: &mut GlyphArena,
+    index: usize,
+    source_cell: TerminalCell,
+    width: usize,
+    source_arena: &GlyphArena,
+    resources: &ResourceContext,
+    checkpoint: impl FnMut() -> Result<()>,
+) -> Result<bool> {
+    if source_cell.is_continuation() {
+        return Ok(false);
+    }
+    if let Some(id) = source_cell.deferred_text_id() {
+        return write_terminal_glyph(
+            cells,
+            index,
+            TerminalGlyph::Deferred(id),
+            width,
+            source_cell.raw_style(),
+        );
+    }
+    let Some(text) = source_cell.try_output_text(source_arena)? else {
+        return Ok(false);
+    };
+    match text {
+        TerminalCellText::Scalar(ch) => {
+            let mut encoded = [0; 4];
+            try_write_primary_grapheme_style_with_resources_and_checkpoint(
+                cells,
+                arena,
+                index,
+                ch.encode_utf8(&mut encoded),
+                width,
+                source_cell.raw_style(),
+                resources,
+                checkpoint,
+            )
+        }
+        TerminalCellText::Grapheme(grapheme) => {
+            try_write_primary_grapheme_style_with_resources_and_checkpoint(
+                cells,
+                arena,
+                index,
+                grapheme,
+                width,
+                source_cell.raw_style(),
+                resources,
+                checkpoint,
+            )
+        }
     }
 }
 

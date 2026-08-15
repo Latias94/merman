@@ -300,9 +300,13 @@ impl SequenceTreeBuilder {
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
-        Self::new_with_probe(expected_items, resources, execution, || {})
+        resources.transaction(|resources| {
+            Self::admit_new(expected_items, resources, execution)?;
+            Self::allocate(expected_items)
+        })
     }
 
+    #[cfg(test)]
     fn new_with_probe(
         expected_items: usize,
         resources: &ResourceContext,
@@ -310,20 +314,32 @@ impl SequenceTreeBuilder {
         before_allocate: impl FnOnce(),
     ) -> Result<Self> {
         resources.transaction(|resources| {
-            execution.checkpoint(OperationPhase::Semantic)?;
-            resources.charge_layout_work_product(expected_items, 2)?;
+            Self::admit_new(expected_items, resources, execution)?;
             before_allocate();
-            let mut body = SequenceBody::default();
-            body.items
-                .try_reserve_exact(expected_items)
-                .map_err(|_| allocation_failed())?;
-            body.roots
-                .try_reserve_exact(expected_items)
-                .map_err(|_| allocation_failed())?;
-            Ok(Self {
-                body,
-                stack: Vec::new(),
-            })
+            Self::allocate(expected_items)
+        })
+    }
+
+    fn admit_new(
+        expected_items: usize,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<()> {
+        execution.checkpoint(OperationPhase::Semantic)?;
+        resources.charge_layout_work_product(expected_items, 2)
+    }
+
+    fn allocate(expected_items: usize) -> Result<Self> {
+        let mut body = SequenceBody::default();
+        body.items
+            .try_reserve_exact(expected_items)
+            .map_err(|_| allocation_failed())?;
+        body.roots
+            .try_reserve_exact(expected_items)
+            .map_err(|_| allocation_failed())?;
+        Ok(Self {
+            body,
+            stack: Vec::new(),
         })
     }
 
