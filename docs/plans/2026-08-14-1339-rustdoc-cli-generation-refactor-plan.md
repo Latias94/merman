@@ -29,7 +29,7 @@ Add `merman-cli rustdoc build` and `merman-cli rustdoc check` to generate commit
 
 ### Problem Frame
 
-`merman-rustdoc` is a proc-macro crate that links the renderer into the host compilation graph. Its default `complete-svg` feature enables SVG, Cytoscape, ELK, and math. A feature gate around `cfg_attr(doc, ...)` controls macro expansion, but Cargo has already selected and built enabled dependencies by then. Current locked closure probes report 168 normal packages and 173 normal-plus-build packages for the default crate. The `svg`-only path still reports 112 and 116 packages.
+`merman-rustdoc` is a proc-macro crate that links the renderer into the host compilation graph. Its default `complete-svg` feature enables SVG, Cytoscape, ELK, and math. A feature gate around `cfg_attr(doc, ...)` controls macro expansion, but Cargo has already selected and built enabled dependencies by then. Current locked closure probes report 214 normal packages and 222 normal-plus-build packages for the default crate. The `svg`-only path still reports 142 and 149 packages.
 
 The heavy graph is therefore a placement defect, not a default-feature tuning defect. Browser-rendered alternatives avoid the graph but give up Merman's distinguishing properties: deterministic static SVG, offline operation, build-time diagnostics, strict validation, fixed Mermaid semantics, and immediate light/dark switching without JavaScript.
 
@@ -92,7 +92,7 @@ The CLI already owns Merman's full native renderer, Markdown scanners, resource 
 - SC3. Every stale, missing, extra-managed, and tampered fixture makes `rustdoc check` exit 1 without filesystem mutation.
 - SC4. A packaged fixture documents successfully from unpacked, read-only source with Cargo offline, no CLI on `PATH`, and no network.
 - SC5. The exact CLI distribution recipe passes 1, 10, and 100 diagram Rustdoc workloads without unbounded memory growth and within existing resource-policy limits.
-- SC6. The CLI consumer path changes the attributable Rustdoc closure from the measured native macro baseline of 168 normal packages and 173 normal-plus-build packages to zero; the retained macro closure remains separately measured and is not represented as fixed by this plan.
+- SC6. The CLI consumer path changes the attributable Rustdoc closure from the measured native macro baseline of 214 normal packages and 222 normal-plus-build packages to zero; the retained macro closure remains separately measured and is not represented as fixed by this plan.
 - SC7. The WASM evidence records a reproducible verdict against pre-registered gates of host closure at or below 30 packages, final `.crate` projection below 8 MiB, full layout/math/theme parity, warm render no slower than 2x the native oracle, and bounded failure behavior; passing the gates is not required for this refactor, and any missed gate is recorded without retaining backend code.
 
 ### Key Flows
@@ -412,7 +412,7 @@ cargo tree --locked --manifest-path <fixture>/Cargo.toml --edges normal,build
 cargo doc --locked --offline --no-deps --manifest-path <unpacked-fixture>/Cargo.toml
 ```
 
-The tree output must satisfy R1. The unpacked fixture must be read-only, have no CLI in `PATH`, and use no network. Record the pre-refactor 168/173 default package counts and the final zero-attributable result in the research report or release evidence.
+The tree output must satisfy R1. The unpacked fixture must be read-only, have no CLI in `PATH`, and use no network. Record the pre-refactor 214/222 default package counts and the final zero-attributable result in the research report or release evidence.
 
 ### Determinism, safety, and performance
 

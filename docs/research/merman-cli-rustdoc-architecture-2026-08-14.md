@@ -23,13 +23,15 @@ proc-macro target and complete renderer aggregate ([`Cargo.toml`](../../crates/m
 and the crate documentation explicitly notes that `cfg_attr(doc, ...)` prevents expansion but does
 not prevent Cargo from compiling the selected dependency ([`lib.rs`](../../crates/merman-rustdoc/src/lib.rs)).
 
-At this snapshot, the locked package-closure proxy is:
+The package-closure proxy was re-measured on 2026-08-15 at revision
+`f55baa19a6833c11483b80ced11bb812c8230833` with `Cargo.lock` SHA-256
+`ee22330d16c7bc79ad45121be6fe0c8bc2e789150372b4d7390a83d282ded7e2`:
 
 | `merman-rustdoc` configuration | Unique normal packages | Normal + build packages | Macro usable |
 | --- | ---: | ---: | --- |
 | `--no-default-features` | 1 | 1 | No; emits a missing-`svg` error |
-| `--no-default-features --features svg` | 112 | 116 | Yes |
-| default `complete-svg` | 168 | 173 | Yes |
+| `--no-default-features --features svg` | 142 | 149 | Yes |
+| default `complete-svg` | 214 | 222 | Yes |
 
 These counts are `cargo tree --locked` package/version counts after removing repeated `(*)`
 markers. They are not clean-build time, peak RSS, or disk measurements, but they demonstrate why
@@ -155,7 +157,7 @@ should not each understand all stage-slot details.
 This is the only option that preserves the current source locality and build-time failure behavior
 without a migration. It is also the option causing the complaint. `default = complete-svg` maps
 directly to `svg`, Cytoscape, ELK, and math ([`Cargo.toml`](../../crates/merman-rustdoc/Cargo.toml)).
-Changing the default to `svg` is a reasonable release stopgap (168 normal packages to 112 in the
+Changing the default to `svg` is a reasonable release stopgap (214 normal packages to 142 in the
 current proxy), but it still leaves the broad base renderer in every enabled proc-macro build.
 More diagram-family features increase interface and matrix cost without moving the Seam.
 
