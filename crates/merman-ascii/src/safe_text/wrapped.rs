@@ -8,16 +8,18 @@ use crate::Result;
 use crate::color::AsciiColorMode;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
-use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::fmt;
 use unicode_segmentation::UnicodeSegmentation;
+
+const WRAPPED_CHECKPOINT_INTERVAL: usize = 64;
 
 /// Plans or materializes one wrapped structured-text row through the same wrapping state machine.
 ///
 /// The planning pass retains no authored text. A successful plan is replayed into local rows only
 /// after its complete work, document-cell, output-byte, and grapheme surface has been admitted.
 pub(crate) struct BudgetedWrappedText<'prefix> {
-    policy: AsciiResourcePolicy,
+    resources: ResourceContext,
     width_profile: TerminalWidthProfile,
     color_mode: AsciiColorMode,
     first_prefix: &'prefix str,
@@ -39,7 +41,7 @@ pub(crate) struct BudgetedWrappedText<'prefix> {
 
 #[derive(Clone)]
 pub(super) struct WrappedPassConfig<'prefix> {
-    pub(super) policy: AsciiResourcePolicy,
+    pub(super) resources: ResourceContext,
     pub(super) width_profile: TerminalWidthProfile,
     pub(super) color_mode: AsciiColorMode,
     pub(super) first_prefix: &'prefix str,
@@ -118,6 +120,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
         config: WrappedPassConfig<'prefix>,
         expected_rows: usize,
     ) -> Result<Self> {
+        config.resources.checkpoint()?;
         let mut rows = Vec::new();
         rows.try_reserve_exact(expected_rows)
             .map_err(|_| document_allocation_error())?;
@@ -134,7 +137,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
 
     fn new(config: WrappedPassConfig<'prefix>, storage: WrappedStorage) -> Self {
         Self {
-            policy: config.policy,
+            resources: config.resources,
             width_profile: config.width_profile,
             color_mode: config.color_mode,
             first_prefix: config.first_prefix,
@@ -201,19 +204,23 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
                 _ => segment.text(&mut buffer),
             };
             encoded_bytes = encoded_bytes
-                .checked_add(super::encode::encoded_text_len(
+                .checked_add(super::encode::encoded_text_len_with_resources(
                     text,
                     self.color_mode,
-                    self.policy,
+                    &self.resources,
                 )?)
-                .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+                .ok_or_else(|| {
+                    self.resources
+                        .overflow(AsciiResourceLimitId::MaxOutputBytes)
+                })?;
             let segment_width = match segment.kind {
                 NormalizedSegmentKind::LineBreak => 2,
                 _ => segment.display_width(self.width_profile),
             };
-            width = width
-                .checked_add(segment_width)
-                .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            width = width.checked_add(segment_width).ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
             Ok::<(), AsciiError>(())
         })?;
 
@@ -229,10 +236,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             };
             self.push_word_text(text)
         })?;
-        self.word_width = self
-            .word_width
-            .checked_add(width)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.word_width = self.word_width.checked_add(width).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
         if self.long_word && self.word_width >= self.available {
             self.emit_word_chunk()?;
         }
@@ -241,7 +248,8 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
 
     fn push_normalized_text(&mut self, value: &str) -> Result<()> {
         let mut word_start = 0usize;
-        for (index, ch) in value.char_indices() {
+        for (iteration, (index, ch)) in value.char_indices().enumerate() {
+            self.checkpoint_loop(iteration)?;
             if !ch.is_whitespace() {
                 continue;
             }
@@ -264,10 +272,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
         self.charge_document_cells(width)?;
         self.charge_output_text(value)?;
         self.push_word_text(value)?;
-        self.word_width = self
-            .word_width
-            .checked_add(width)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.word_width = self.word_width.checked_add(width).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
         if self.long_word && self.word_width >= self.available {
             self.emit_word_chunk()?;
         }
@@ -275,10 +283,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     fn prepare_atomic_word_fragment(&mut self, width: usize) -> Result<()> {
-        let prospective = self
-            .word_width
-            .checked_add(width)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        let prospective = self.word_width.checked_add(width).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
         if prospective > self.available && self.word_width > 0 {
             if !self.long_word {
                 if self.current_width > 0 {
@@ -303,7 +311,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
         let prospective = self
             .word_width
             .checked_add(grapheme.width())
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            .ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
 
         if prospective > self.available && self.word_width > 0 {
             if !self.long_word {
@@ -320,7 +331,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
         self.word_width = self
             .word_width
             .checked_add(grapheme.width())
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            .ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
         if self.long_word && self.word_width >= self.available {
             self.emit_word_chunk()?;
         }
@@ -343,7 +357,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             .current_width
             .checked_add(separator)
             .and_then(|width| width.checked_add(self.word_width))
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            .ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
         if prospective > self.available && self.current_width > 0 {
             self.emit_current()?;
         }
@@ -351,22 +368,26 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             self.charge_document_cells(1)?;
             self.charge_output_text(" ")?;
             self.push_current_text(" ")?;
-            self.current_width = self
-                .current_width
-                .checked_add(1)
-                .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            self.current_width = self.current_width.checked_add(1).ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
         }
 
         self.move_word_to_current()?;
         self.current_width = self
             .current_width
             .checked_add(self.word_width)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+            .ok_or_else(|| {
+                self.resources
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
         self.word_width = 0;
         Ok(())
     }
 
     fn emit_word_chunk(&mut self) -> Result<()> {
+        self.resources.checkpoint()?;
         if self.word_width == 0 {
             return Ok(());
         }
@@ -376,6 +397,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     fn emit_current(&mut self) -> Result<()> {
+        self.resources.checkpoint()?;
         if self.current_width == 0 {
             return Ok(());
         }
@@ -385,6 +407,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     fn emit_row(&mut self, mut content: String) -> Result<()> {
+        self.resources.checkpoint()?;
         let prefix = if self.emitted {
             self.continuation_prefix
         } else {
@@ -415,11 +438,10 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             rows.push(content);
         }
         self.note_replay_event(ReplayEventKind::Row, &[])?;
-        self.metrics.rows = self
-            .metrics
-            .rows
-            .checked_add(1)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        self.metrics.rows = self.metrics.rows.checked_add(1).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
         self.emitted = true;
         Ok(())
     }
@@ -435,12 +457,15 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
             self.check_grapheme_bytes(grapheme.len())?;
             self.charge_document_cells(grapheme_display_width(grapheme, self.width_profile))?;
         }
-        let prefix_bytes = super::encode::encoded_text_len(prefix, self.color_mode, self.policy)?;
-        self.charge_output_bytes(
-            separator
-                .checked_add(prefix_bytes)
-                .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?,
+        let prefix_bytes = super::encode::encoded_text_len_with_resources(
+            prefix,
+            self.color_mode,
+            &self.resources,
         )?;
+        self.charge_output_bytes(separator.checked_add(prefix_bytes).ok_or_else(|| {
+            self.resources
+                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+        })?)?;
         self.note_replay_event(ReplayEventKind::Prefix, prefix.as_bytes())?;
         Ok(())
     }
@@ -451,6 +476,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     pub(super) fn finish(mut self) -> Result<FinishedWrappedPass> {
+        self.resources.checkpoint()?;
         self.finish_paragraph()?;
         if !self.emitted {
             self.emit_row(String::new())?;
@@ -487,74 +513,97 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     pub(super) fn charge_layout_work(&mut self, delta: usize) -> Result<()> {
+        self.resources.checkpoint()?;
         self.metrics.layout_work =
             self.metrics.layout_work.checked_add(delta).ok_or_else(|| {
-                self.policy
+                self.resources
                     .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
             })?;
         let replay_work = self.metrics.layout_work.checked_mul(2).ok_or_else(|| {
-            self.policy
+            self.resources
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
-        self.policy.check(
+        self.resources.check(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.base_layout_work
                 .checked_add(self.fixed_layout_work)
                 .ok_or_else(|| {
-                    self.policy
+                    self.resources
                         .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
                 })?
                 .checked_add(replay_work)
                 .ok_or_else(|| {
-                    self.policy
+                    self.resources
                         .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
                 })?,
         )
     }
 
+    fn checkpoint_loop(&self, iteration: usize) -> Result<()> {
+        if iteration.is_multiple_of(WRAPPED_CHECKPOINT_INTERVAL) {
+            self.resources.checkpoint()?;
+        }
+        Ok(())
+    }
+
     fn charge_document_cells(&mut self, delta: usize) -> Result<()> {
-        self.metrics.document_cells = self
-            .metrics
-            .document_cells
-            .checked_add(delta)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
-        self.policy.check(
+        self.resources.checkpoint()?;
+        self.metrics.document_cells =
+            self.metrics
+                .document_cells
+                .checked_add(delta)
+                .ok_or_else(|| {
+                    self.resources
+                        .overflow(AsciiResourceLimitId::MaxDocumentCells)
+                })?;
+        self.resources.check(
             AsciiResourceLimitId::MaxDocumentCells,
             self.base_document_cells
                 .checked_add(self.metrics.document_cells)
-                .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?,
+                .ok_or_else(|| {
+                    self.resources
+                        .overflow(AsciiResourceLimitId::MaxDocumentCells)
+                })?,
         )
     }
 
     fn charge_output_text(&mut self, value: &str) -> Result<()> {
-        self.charge_output_bytes(super::encode::encoded_text_len(
+        self.charge_output_bytes(super::encode::encoded_text_len_with_resources(
             value,
             self.color_mode,
-            self.policy,
+            &self.resources,
         )?)
     }
 
     fn charge_output_bytes(&mut self, delta: usize) -> Result<()> {
-        self.metrics.output_bytes = self
-            .metrics
-            .output_bytes
-            .checked_add(delta)
-            .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
-        self.policy.check(
+        self.resources.checkpoint()?;
+        self.metrics.output_bytes =
+            self.metrics
+                .output_bytes
+                .checked_add(delta)
+                .ok_or_else(|| {
+                    self.resources
+                        .overflow(AsciiResourceLimitId::MaxOutputBytes)
+                })?;
+        self.resources.check(
             AsciiResourceLimitId::MaxOutputBytes,
             self.base_output_bytes
                 .checked_add(self.metrics.output_bytes)
-                .ok_or_else(|| self.policy.overflow(AsciiResourceLimitId::MaxOutputBytes))?,
+                .ok_or_else(|| {
+                    self.resources
+                        .overflow(AsciiResourceLimitId::MaxOutputBytes)
+                })?,
         )
     }
 
     fn check_grapheme_bytes(&self, bytes: usize) -> Result<()> {
-        self.policy
+        self.resources
             .check(AsciiResourceLimitId::MaxGraphemeBytes, bytes)
     }
 
     fn push_word_text(&mut self, value: &str) -> Result<()> {
         self.note_replay_event(ReplayEventKind::Text, value.as_bytes())?;
+        self.resources.checkpoint()?;
         #[cfg(test)]
         let retain_probe = self.retain_probe.clone();
         if let WrappedStorage::Materialize { word, .. } = &mut self.storage {
@@ -569,6 +618,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
 
     fn push_current_text(&mut self, value: &str) -> Result<()> {
         self.note_replay_event(ReplayEventKind::Text, value.as_bytes())?;
+        self.resources.checkpoint()?;
         #[cfg(test)]
         let retain_probe = self.retain_probe.clone();
         if let WrappedStorage::Materialize { current, .. } = &mut self.storage {
@@ -582,24 +632,27 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     fn note_replay_event(&mut self, kind: ReplayEventKind, value: &[u8]) -> Result<()> {
+        self.resources.checkpoint()?;
         let value_len = u64::try_from(value.len()).map_err(|_| {
-            self.policy
+            self.resources
                 .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
         })?;
         let work = 1usize
             .checked_add(std::mem::size_of::<u64>())
             .and_then(|work| work.checked_add(value.len()))
             .ok_or_else(|| {
-                self.policy
+                self.resources
                     .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
             })?;
         self.charge_layout_work(work)?;
 
         let mut hash = self.metrics.replay_fingerprint;
-        for byte in std::iter::once(kind as u8)
+        for (index, byte) in std::iter::once(kind as u8)
             .chain(value_len.to_le_bytes())
             .chain(value.iter().copied())
+            .enumerate()
         {
+            self.checkpoint_loop(index)?;
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(FNV_PRIME);
         }
@@ -608,6 +661,7 @@ impl<'prefix> BudgetedWrappedText<'prefix> {
     }
 
     fn move_word_to_current(&mut self) -> Result<()> {
+        self.resources.checkpoint()?;
         if let WrappedStorage::Materialize { word, current, .. } = &mut self.storage {
             current
                 .try_reserve(word.len())
@@ -637,24 +691,26 @@ pub(super) fn measure_wrapped_prefix_widths(
     first_prefix: &str,
     continuation_prefix: &str,
     width_profile: TerminalWidthProfile,
-    policy: AsciiResourcePolicy,
-    base_layout_work: usize,
+    resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
+    resources.checkpoint()?;
+    let base_layout_work = resources.layout_work_used();
     let mut work = 0usize;
     let mut width = 0usize;
     for prefix in [first_prefix, continuation_prefix] {
         let mut prefix_width = 0usize;
         for grapheme in measured_graphemes(prefix, width_profile) {
+            resources.checkpoint()?;
             work = work
                 .checked_add(1)
-                .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits))?;
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits))?;
             let actual = base_layout_work
                 .checked_add(work)
-                .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits))?;
-            policy.check(AsciiResourceLimitId::MaxLayoutWorkUnits, actual)?;
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxLayoutWorkUnits))?;
+            resources.check(AsciiResourceLimitId::MaxLayoutWorkUnits, actual)?;
             prefix_width = prefix_width
                 .checked_add(grapheme.width())
-                .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+                .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
         }
         width = width.max(prefix_width);
     }
@@ -673,5 +729,147 @@ fn invalid_wrapped_text_plan() -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "structured_text",
         feature: "wrapped text replay",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::AsciiResourcePolicy;
+    use merman_core::{OperationControl, OperationPhase};
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    fn pass_config(
+        resources: ResourceContext,
+        retain_probe: Rc<Cell<usize>>,
+    ) -> WrappedPassConfig<'static> {
+        let base_layout_work = resources.layout_work_used();
+        let base_document_cells = resources.document_cells_used();
+        WrappedPassConfig {
+            resources,
+            width_profile: TerminalWidthProfile::Unicode,
+            color_mode: AsciiColorMode::Plain,
+            first_prefix: "",
+            continuation_prefix: "",
+            available: 80,
+            base_layout_work,
+            fixed_layout_work: 0,
+            base_document_cells,
+            base_output_bytes: 0,
+            retain_probe: Some(retain_probe),
+        }
+    }
+
+    fn resources_with_prior_usage() -> ResourceContext {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        resources
+            .charge_usage(2, 3)
+            .expect("prior structured-text usage should fit");
+        resources
+    }
+
+    #[test]
+    fn wrapped_prefix_counting_prioritizes_cancellation_without_debiting_ledgers() {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("one work unit is a valid limit");
+        let resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let controlled = resources.controlled(control, OperationPhase::Emit);
+
+        let error = measure_wrapped_prefix_widths(
+            "prefix",
+            "continuation",
+            TerminalWidthProfile::Unicode,
+            &controlled,
+        )
+        .expect_err("prefix counting should observe cancellation before the next work ceiling");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(details) if details.phase == OperationPhase::Emit
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn wrapped_measure_replay_observes_cancellation_without_debiting_ledgers() {
+        let resources = resources_with_prior_usage();
+        let control = OperationControl::new();
+        let controlled = resources.controlled(control.clone(), OperationPhase::Emit);
+        let retain_probe = Rc::new(Cell::new(0));
+        let mut planner = BudgetedWrappedText::measure(pass_config(controlled, retain_probe));
+        planner
+            .charge_layout_work(1)
+            .expect("initial virtual work should fit");
+        planner
+            .admit_first_prefix(0)
+            .expect("empty prefix should fit");
+
+        control.cancel_after_checkpoints(8);
+        let error = planner
+            .push_str(&"measure".repeat(128))
+            .expect_err("measure replay should observe scheduled cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(details) if details.phase == OperationPhase::Emit
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn wrapped_materialize_replay_cancellation_discards_speculative_debits() {
+        let resources = resources_with_prior_usage();
+        let planning_control = OperationControl::new();
+        let planning_resources = resources.controlled(planning_control, OperationPhase::Emit);
+        let retain_probe = Rc::new(Cell::new(0));
+        let mut planner =
+            BudgetedWrappedText::measure(pass_config(planning_resources, Rc::clone(&retain_probe)));
+        planner
+            .charge_layout_work(1)
+            .expect("initial virtual work should fit");
+        planner
+            .admit_first_prefix(0)
+            .expect("empty prefix should fit");
+        planner
+            .push_str("retainedmore")
+            .expect("measurement should succeed");
+        let plan = planner.finish().expect("measurement should finish").metrics;
+
+        let materialize_control = OperationControl::new();
+        let materialize_resources =
+            resources.controlled(materialize_control.clone(), OperationPhase::Emit);
+        let mut materializer = BudgetedWrappedText::materialize(
+            pass_config(materialize_resources, Rc::clone(&retain_probe)),
+            plan.rows,
+        )
+        .expect("materializer allocation should succeed");
+        materializer
+            .charge_layout_work(1)
+            .expect("initial materialize work should fit");
+        materializer
+            .admit_first_prefix(0)
+            .expect("empty prefix should fit");
+        materializer
+            .push_str("retained")
+            .expect("the first replay fragment should be retained locally");
+        assert!(retain_probe.get() > 0);
+
+        materialize_control.cancel();
+        let error = materializer
+            .push_str("more")
+            .expect_err("materialize replay should observe cancellation");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(details) if details.phase == OperationPhase::Emit
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 3);
     }
 }

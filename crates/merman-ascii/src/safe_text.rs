@@ -624,35 +624,41 @@ mod tests {
 
     #[test]
     fn wrapped_layout_work_is_admitted_at_exact_and_limit_minus_one() {
-        let mut document = ascii_document(unbounded_policy());
-        document
-            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
-            .expect("the work probe should render");
-        let total_work = document.resources_mut().layout_work_used();
+        const PRIOR_WORK: usize = 2;
+        const WRAPPED_TWO_PASS_WORK: usize = 60;
+        const COMPLETE_WORK: usize = PRIOR_WORK + WRAPPED_TWO_PASS_WORK;
 
-        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work);
+        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK);
         let mut document = ascii_document(exact);
+        document
+            .resources_mut()
+            .charge_layout_work(PRIOR_WORK)
+            .expect("prior structured-text work should fit");
         document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
             .expect("the exact planning and replay work should fit");
-        assert_eq!(document.resources_mut().layout_work_used(), total_work);
+        assert_eq!(document.resources_mut().layout_work_used(), COMPLETE_WORK);
 
-        let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work - 1);
+        let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK - 1);
         let retained = std::rc::Rc::new(Cell::new(0));
         let mut document = ascii_document(below);
+        document
+            .resources_mut()
+            .charge_layout_work(PRIOR_WORK)
+            .expect("prior structured-text work should fit below the complete boundary");
         document.set_retain_probe(std::rc::Rc::clone(&retained));
         let error = document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
             .expect_err("one unit below the complete two-pass work must reject during planning");
 
         assert_eq!(retained.get(), 0);
-        assert_eq!(document.resources_mut().layout_work_used(), 0);
+        assert_eq!(document.resources_mut().layout_work_used(), PRIOR_WORK);
         assert_eq!(document.resources_mut().document_cells_used(), 0);
         assert_limit_error(
             error,
             AsciiResourceLimitId::MaxLayoutWorkUnits,
-            total_work,
-            total_work - 1,
+            COMPLETE_WORK,
+            COMPLETE_WORK - 1,
         );
     }
 
@@ -716,18 +722,31 @@ mod tests {
 
     #[test]
     fn structured_rows_debit_layout_work_at_exact_boundary() {
+        const EXPECTED_TOTAL_WORK: usize = 26;
+
         let lines = vec!["one".to_string(), "two".to_string()];
         let options = AsciiRenderOptions::ascii();
-        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 8);
+        let exact = policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_TOTAL_WORK,
+        );
         let rendered = encode_text_lines(lines.clone(), &options, exact)
-            .expect("two row scans should fit their exact layout work budget");
+            .expect("row planning plus both encoder passes should fit exactly");
 
         assert_eq!(rendered, "one\ntwo");
 
-        let below = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 7);
+        let below = policy_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_TOTAL_WORK - 1,
+        );
         let error = encode_text_lines(lines, &options, below)
-            .expect_err("one work unit below the row scans should fail");
-        assert_limit_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 8, 7);
+            .expect_err("one work unit below the complete document should fail");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            EXPECTED_TOTAL_WORK,
+            EXPECTED_TOTAL_WORK - 1,
+        );
     }
 
     #[test]
@@ -878,21 +897,32 @@ mod tests {
 
     #[test]
     fn optional_text_escape_expansion_hits_layout_limit_at_exact_plus_one() {
-        let exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 14);
-        let mut document = ascii_document(exact);
+        const LINE_WORK: usize = 14;
+        const COMPLETE_WORK: usize = 28;
+
+        let complete_exact =
+            policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, COMPLETE_WORK);
+        let mut document = ascii_document(complete_exact);
         document
             .push_optional_line(Some("\u{1b}"))
             .expect("raw scan plus streamed visible escape should fit");
+        assert_eq!(document.resources_mut().layout_work_used(), LINE_WORK);
         assert_eq!(
             document.finish().expect("document should encode"),
             "\\u{1B}"
         );
 
-        let mut document = ascii_document(exact);
+        let line_exact = policy_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, LINE_WORK);
+        let mut document = ascii_document(line_exact);
         let error = document
             .push_optional_line(Some("\u{1b}x"))
             .expect_err("one additional streamed grapheme should exceed the exact limit");
-        assert_limit_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 15, 14);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            LINE_WORK + 1,
+            LINE_WORK,
+        );
     }
 
     #[test]

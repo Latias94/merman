@@ -667,7 +667,7 @@ impl ResourceContext {
         self.overflow(AsciiResourceLimitId::MaxNestingDepth)
     }
 
-    fn checkpoint(&self) -> Result<()> {
+    pub(crate) fn checkpoint(&self) -> Result<()> {
         self.operation.as_ref().map_or(Ok(()), |operation| {
             operation
                 .control

@@ -1,4 +1,6 @@
 use super::encode::encode_budgeted_lines_with_expected;
+#[cfg(test)]
+use super::encode::encode_budgeted_lines_with_expected_and_probe;
 use super::normalization::{
     NormalizedSegment, NormalizedSegmentKind, try_append_normalized_segment, visible_escape,
     visible_escape_len, visit_normalized_segments,
@@ -159,8 +161,7 @@ impl BudgetedTextDocument {
             first_prefix,
             continuation_prefix,
             self.width_profile,
-            self.resources.policy(),
-            self.resources.layout_work_used(),
+            &self.resources,
         )?;
         let available = if prefix_width < max_width {
             max_width - prefix_width
@@ -172,7 +173,7 @@ impl BudgetedTextDocument {
         let base_document_cells = self.resources.document_cells_used();
         let base_output_bytes = self.encoded_bytes_used;
         let pass_config = WrappedPassConfig {
-            policy: self.resources.policy(),
+            resources: self.resources.clone(),
             width_profile: self.width_profile,
             color_mode: self.color_mode,
             first_prefix,
@@ -233,23 +234,20 @@ impl BudgetedTextDocument {
     }
 
     pub(crate) fn finish(self) -> Result<String> {
-        let policy = self.resources.policy();
         encode_budgeted_lines_with_expected(
             self.lines,
             self.color_mode,
-            policy,
+            &self.resources,
             self.encoded_bytes_used,
-            || {},
         )
     }
 
     #[cfg(test)]
     pub(crate) fn finish_with_probe(self, materialized: &std::cell::Cell<bool>) -> Result<String> {
-        let policy = self.resources.policy();
-        encode_budgeted_lines_with_expected(
+        encode_budgeted_lines_with_expected_and_probe(
             self.lines,
             self.color_mode,
-            policy,
+            &self.resources,
             self.encoded_bytes_used,
             || materialized.set(true),
         )
