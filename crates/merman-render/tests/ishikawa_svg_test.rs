@@ -6,10 +6,76 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::IshikawaDiagramLayout;
-use merman_render::resources::RenderResourcePolicy;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
+
+fn try_render_ishikawa_svg_with_resource_policy(
+    source: &str,
+    policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Ishikawa resource-bound fixture")
+        .expect("detect Ishikawa diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .expect("render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    Ok(artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("ishikawa-bounded".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )?
+        .svg()
+        .to_owned())
+}
+
+#[test]
+fn ishikawa_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source =
+        "ishikawa-beta\n Root cause\n  Process\n   Slow step\n  People\n   Missing owner\n";
+    let baseline = try_render_ishikawa_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render unbounded Ishikawa SVG");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1);
+
+    let exact = try_render_ishikawa_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+            .expect("valid exact Ishikawa SVG ceiling"),
+    )
+    .expect("exact Ishikawa SVG ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let error = try_render_ishikawa_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+            .expect("valid below-exact Ishikawa SVG ceiling"),
+    )
+    .expect_err("one byte below the Ishikawa SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Ishikawa MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+}
 
 fn deep_ishikawa_source(depth: usize) -> String {
     let mut source = String::from("ishikawa-beta\n Root\n");

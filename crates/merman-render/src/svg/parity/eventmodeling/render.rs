@@ -25,7 +25,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = MermaidThemeAdapter::new(effective_config).eventmodeling();
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -56,11 +56,14 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             escape_xml(description)
         );
     }
+    out.checkpoint()?;
 
     let css = eventmodeling_css(&theme);
     let marker_id = format!("em-arrowhead-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
+    drop(css);
     out.push_str("<g/>");
+    out.checkpoint()?;
 
     for swimlane in &layout.swimlanes {
         let _ = write!(
@@ -77,6 +80,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         );
         escape_xml_into(&mut out, &swimlane.label);
         out.push_str("</text></g>");
+        out.checkpoint()?;
     }
 
     for box_layout in &layout.boxes {
@@ -94,8 +98,9 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
             fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0))
         );
-        push_box_html_label(&mut out, &box_layout.text);
+        push_box_html_label(&mut out, &box_layout.text)?;
         out.push_str("</span></div></foreignObject></g>");
+        out.checkpoint()?;
     }
 
     for relation in &layout.relations {
@@ -109,6 +114,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
             fmt(relation.x2),
             fmt(relation.y2)
         );
+        out.checkpoint()?;
     }
 
     let marker_fill = &theme.arrowhead_fill;
@@ -120,10 +126,10 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
-fn push_box_html_label(out: &mut String, text: &str) {
+fn push_box_html_label(out: &mut impl SvgOutput, text: &str) -> Result<()> {
     let mut lines = text.lines();
     let title = lines.next().unwrap_or(text);
     let rest = lines.collect::<Vec<_>>().join("\n");
@@ -131,10 +137,11 @@ fn push_box_html_label(out: &mut String, text: &str) {
     out.push_str("<b>");
     escape_xml_into(out, title);
     out.push_str("</b>");
+    out.checkpoint()?;
 
     let code = normalize_eventmodeling_code_text(&rest);
     if code.is_empty() {
-        return;
+        return Ok(());
     }
 
     out.push_str(r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#);
@@ -143,6 +150,7 @@ fn push_box_html_label(out: &mut String, text: &str) {
         out.push_str("<br/>");
     }
     out.push_str("</code>");
+    out.checkpoint()
 }
 
 fn normalize_eventmodeling_code_text(raw: &str) -> String {

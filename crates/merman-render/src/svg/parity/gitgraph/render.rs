@@ -565,7 +565,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     const THEME_COLOR_LIMIT: i64 = 8;
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
-    const TITLE_X_PLACEHOLDER: &str = "__MERMAID_GITGRAPH_TITLE_X__";
     const VIEWBOX_PADDING_PX: f64 = 8.0;
     const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
@@ -621,7 +620,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let aria_title_id = format!("chart-title-{diagram_id}");
     let aria_desc_id = format!("chart-desc-{diagram_id}");
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_describedby = acc_descr.is_some().then_some(aria_desc_id.as_str());
     let aria_labelledby = acc_title.is_some().then_some(aria_title_id.as_str());
     let root_context =
@@ -656,6 +655,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             escape_xml(d)
         );
     }
+    out.checkpoint()?;
 
     let theme_name = gitgraph_theme_name(effective_config);
     let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
@@ -674,6 +674,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     out.push_str(&css.defs);
     out.push_str(r#"<g class="commit-bullets"/>"#);
     out.push_str(r#"<g class="commit-labels"/>"#);
+    out.checkpoint()?;
 
     let mut branch_idx: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
     for b in &layout.branches {
@@ -858,8 +859,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     name = name
                 );
             }
+            out.checkpoint()?;
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     out.push_str(r#"<g class="commit-arrows">"#);
@@ -870,6 +873,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             d = escape_attr(&a.d),
             idx = a.class_index % THEME_COLOR_LIMIT
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
 
@@ -1021,6 +1025,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 );
             }
         }
+        out.checkpoint()?;
     }
     out.push_str("</g>");
 
@@ -1228,8 +1233,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         txt = escape_xml(tag_value)
                     );
                 }
+                out.checkpoint()?;
             }
         }
+        out.checkpoint()?;
     }
     out.push_str("</g>");
 
@@ -1239,22 +1246,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         .max(0.0);
     let title_y = -title_top_margin;
 
-    if let Some(title) = title {
-        let _ = write!(
-            &mut out,
-            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
-            x = TITLE_X_PLACEHOLDER,
-            y = fmt(title_y),
-            text = escape_xml(title),
-        );
-    }
-
     out.push_str("</svg>\n");
+    out.checkpoint()?;
 
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
     // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`
     // by computing a headless SVG bbox and patching the root viewBox/max-width.
-    let mut b = svg_emitted_bounds_from_svg_inner(&out, None).unwrap_or(Bounds {
+    let mut b = svg_emitted_bounds_from_svg_inner(out.as_str(), None).unwrap_or(Bounds {
         min_x: vb_min_x,
         min_y: vb_min_y,
         max_x: vb_min_x + vb_w,
@@ -1286,14 +1284,33 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         root_svg::RootViewportSpec::responsive(root_bounds)
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width)),
     )?;
-    out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(title_anchor_x), 1);
-    root_document.complete(out)
+    if let Some(title) = title {
+        let mut title_element = String::new();
+        let _ = write!(
+            &mut title_element,
+            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
+            x = fmt_string(title_anchor_x),
+            y = fmt(title_y),
+            text = escape_xml(title),
+        );
+        let close_start =
+            out.as_str()
+                .rfind("</svg>")
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: "gitGraph SVG is missing its closing root element".to_string(),
+                })?;
+        out.replace_range(close_start..close_start, &title_element)?;
+    }
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::DiagramFamilyId;
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
     use serde_json::json;
 
     fn lr_merge_layout(commit_y: f64) -> crate::model::GitGraphDiagramLayout {
@@ -1341,21 +1358,81 @@ mod tests {
         layout: &crate::model::GitGraphDiagramLayout,
         config: &serde_json::Value,
     ) -> String {
-        let request = SvgRenderOptions::default();
-        with_test_svg_execution(DiagramFamilyId::GIT_GRAPH, &request, |options| {
-            render_gitgraph_diagram_svg_with_accessibility(
-                layout,
-                None,
-                None,
-                config,
-                None,
-                &crate::text::DeterministicTextMeasurer::default(),
-                options,
-            )
-        })
+        render_geometry_fixture_with_policy(
+            layout,
+            config,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
         .expect("render gitGraph SVG")
         .into_string_for(DiagramFamilyId::GIT_GRAPH)
         .expect("gitGraph root provenance")
+    }
+
+    fn render_geometry_fixture_with_policy(
+        layout: &crate::model::GitGraphDiagramLayout,
+        config: &serde_json::Value,
+        policy: RenderResourcePolicy,
+    ) -> crate::Result<root_svg::RootedSvg> {
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("render session");
+        let execution =
+            SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::GIT_GRAPH)
+                .expect("SVG execution");
+        render_gitgraph_diagram_svg_with_accessibility(
+            layout,
+            None,
+            None,
+            config,
+            None,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &execution,
+        )
+    }
+
+    #[test]
+    fn gitgraph_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+        let layout = lr_merge_layout(-2.0);
+        let config = json!({});
+        let baseline = render_geometry_fixture_with_policy(
+            &layout,
+            &config,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("render unbounded gitGraph SVG");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1);
+
+        let exact = render_geometry_fixture_with_policy(
+            &layout,
+            &config,
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+                .expect("valid exact gitGraph SVG ceiling"),
+        )
+        .expect("exact gitGraph SVG ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+        let below_exact = exact_bytes - 1;
+        let error = render_geometry_fixture_with_policy(
+            &layout,
+            &config,
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+                .expect("valid below-exact gitGraph SVG ceiling"),
+        )
+        .expect_err("one byte below the gitGraph SVG size must fail");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected gitGraph MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
     }
 
     #[test]

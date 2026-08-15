@@ -25,7 +25,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("ishikawa");
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
         layout.viewbox_y,
@@ -41,7 +41,9 @@ pub(crate) fn render_ishikawa_diagram_svg(
 
     let css = ishikawa_css(layout, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
+    drop(css);
     out.push_str(r#"<g/><g class="ishikawa">"#);
+    out.checkpoint()?;
     if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
         let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
         let rough = RoughContext {
@@ -55,25 +57,30 @@ pub(crate) fn render_ishikawa_diagram_svg(
             line_color: theme.line_color,
             fill_color: theme.main_bkg,
         };
-        push_hand_drawn_diagram(&mut out, layout, &rough);
+        push_hand_drawn_diagram(&mut out, layout, &rough)?;
     } else {
         let marker_id = format!("ishikawa-arrow-{diagram_id}");
-        push_classic_diagram(&mut out, layout, &marker_id);
+        push_classic_diagram(&mut out, layout, &marker_id)?;
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
-fn push_classic_diagram(out: &mut String, layout: &IshikawaDiagramLayout, marker_id: &str) {
+fn push_classic_diagram(
+    out: &mut impl SvgOutput,
+    layout: &IshikawaDiagramLayout,
+    marker_id: &str,
+) -> Result<()> {
     let _ = write!(out, r#"<defs><marker id=""#);
     escape_xml_into(out, marker_id);
     out.push_str(
         r#"" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
+    out.checkpoint()?;
 
     if let Some(spine) = &layout.spine {
-        push_line(out, spine, marker_id);
+        push_line(out, spine, marker_id)?;
     }
     if let Some(head) = &layout.head {
         let _ = write!(
@@ -84,20 +91,27 @@ fn push_classic_diagram(out: &mut String, layout: &IshikawaDiagramLayout, marker
         );
         escape_attr_into(out, &head.path_d);
         out.push_str(r#""></path>"#);
-        push_ishikawa_head_text(out, &head.label, -head.x, -head.y);
+        push_ishikawa_head_text(out, &head.label, -head.x, -head.y)?;
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     for pair in &layout.pairs {
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_branch(out, &pair.upper, marker_id);
+        push_branch(out, &pair.upper, marker_id)?;
         if let Some(lower) = &pair.lower {
-            push_branch(out, lower, marker_id);
+            push_branch(out, lower, marker_id)?;
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
+    Ok(())
 }
 
-fn push_hand_drawn_diagram(out: &mut String, layout: &IshikawaDiagramLayout, rough: &RoughContext) {
+fn push_hand_drawn_diagram(
+    out: &mut impl SvgOutput,
+    layout: &IshikawaDiagramLayout,
+    rough: &RoughContext,
+) -> Result<()> {
     if let Some(head) = &layout.head {
         let _ = write!(
             out,
@@ -105,32 +119,43 @@ fn push_hand_drawn_diagram(out: &mut String, layout: &IshikawaDiagramLayout, rou
             fmt(head.x),
             fmt(head.y)
         );
-        push_rough_hachure_path(out, "ishikawa-head", &head.path_d, rough);
-        push_ishikawa_head_text(out, &head.label, -head.x, -head.y);
+        push_rough_hachure_path(out, "ishikawa-head", &head.path_d, rough)?;
+        push_ishikawa_head_text(out, &head.label, -head.x, -head.y)?;
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     for pair in &layout.pairs {
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_hand_drawn_branch(out, &pair.upper, rough);
+        push_hand_drawn_branch(out, &pair.upper, rough)?;
         if let Some(lower) = &pair.lower {
-            push_hand_drawn_branch(out, lower, rough);
+            push_hand_drawn_branch(out, lower, rough)?;
         }
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     if let Some(spine) = &layout.spine {
-        push_rough_line(out, spine, rough);
+        push_rough_line(out, spine, rough)?;
     }
+    Ok(())
 }
 
-fn push_branch(out: &mut String, branch: &IshikawaBranchLayout, marker_id: &str) {
-    push_line(out, &branch.line, marker_id);
-    push_cause_label_group(out, &branch.label_group);
+fn push_branch(
+    out: &mut impl SvgOutput,
+    branch: &IshikawaBranchLayout,
+    marker_id: &str,
+) -> Result<()> {
+    push_line(out, &branch.line, marker_id)?;
+    push_cause_label_group(out, &branch.label_group)?;
     for sub_group in &branch.sub_groups {
-        push_sub_group(out, sub_group, marker_id);
+        push_sub_group(out, sub_group, marker_id)?;
     }
+    Ok(())
 }
 
-fn push_cause_label_group(out: &mut String, group: &IshikawaCauseLabelGroupLayout) {
+fn push_cause_label_group(
+    out: &mut impl SvgOutput,
+    group: &IshikawaCauseLabelGroupLayout,
+) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-label-group">"#);
     let label_box = &group.label_box;
     let _ = write!(
@@ -141,51 +166,64 @@ fn push_cause_label_group(out: &mut String, group: &IshikawaCauseLabelGroupLayou
         fmt(label_box.width),
         fmt(label_box.height)
     );
-    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn push_sub_group(out: &mut String, group: &IshikawaSubGroupLayout, marker_id: &str) {
+fn push_sub_group(
+    out: &mut impl SvgOutput,
+    group: &IshikawaSubGroupLayout,
+    marker_id: &str,
+) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-sub-group">"#);
-    push_line(out, &group.line, marker_id);
-    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    push_line(out, &group.line, marker_id)?;
+    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn push_hand_drawn_branch(out: &mut String, branch: &IshikawaBranchLayout, rough: &RoughContext) {
-    push_rough_line(out, &branch.line, rough);
-    push_rough_arrow_marker(out, &branch.line, rough);
-    push_hand_drawn_cause_label_group(out, &branch.label_group, rough);
+fn push_hand_drawn_branch(
+    out: &mut impl SvgOutput,
+    branch: &IshikawaBranchLayout,
+    rough: &RoughContext,
+) -> Result<()> {
+    push_rough_line(out, &branch.line, rough)?;
+    push_rough_arrow_marker(out, &branch.line, rough)?;
+    push_hand_drawn_cause_label_group(out, &branch.label_group, rough)?;
     for sub_group in &branch.sub_groups {
-        push_hand_drawn_sub_group(out, sub_group, rough);
+        push_hand_drawn_sub_group(out, sub_group, rough)?;
     }
+    Ok(())
 }
 
 fn push_hand_drawn_cause_label_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     group: &IshikawaCauseLabelGroupLayout,
     rough: &RoughContext,
-) {
+) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-label-group">"#);
     let label_box = &group.label_box;
-    push_rough_hachure_rect(out, "ishikawa-label-box", label_box, rough);
-    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    push_rough_hachure_rect(out, "ishikawa-label-box", label_box, rough)?;
+    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
 fn push_hand_drawn_sub_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     group: &IshikawaSubGroupLayout,
     rough: &RoughContext,
-) {
+) -> Result<()> {
     out.push_str(r#"<g class="ishikawa-sub-group">"#);
-    push_rough_line(out, &group.line, rough);
-    push_rough_arrow_marker(out, &group.line, rough);
-    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    push_rough_line(out, &group.line, rough)?;
+    push_rough_arrow_marker(out, &group.line, rough)?;
+    push_text_with_offset(out, &group.label, 0.0, 0.0)?;
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
+fn push_line(out: &mut impl SvgOutput, line: &IshikawaLineLayout, marker_id: &str) -> Result<()> {
     let _ = write!(
         out,
         r#"<line class="{}" x1="{}" y1="{}" x2="{}" y2="{}""#,
@@ -203,9 +241,14 @@ fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
         );
     }
     out.push_str("></line>");
+    out.checkpoint()
 }
 
-fn push_rough_line(out: &mut String, line: &IshikawaLineLayout, rough: &RoughContext) {
+fn push_rough_line(
+    out: &mut impl SvgOutput,
+    line: &IshikawaLineLayout,
+    rough: &RoughContext,
+) -> Result<()> {
     let options = roughr::core::OptionsBuilder::default()
         .randomness(rough.randomness.clone())
         .roughness(1.5)
@@ -230,10 +273,15 @@ fn push_rough_line(out: &mut String, line: &IshikawaLineLayout, rough: &RoughCon
             stroke_width: 2.0,
             fill_weight: 0.0,
         },
-    );
+    )
 }
 
-fn push_rough_hachure_path(out: &mut String, class_name: &str, path_d: &str, rough: &RoughContext) {
+fn push_rough_hachure_path(
+    out: &mut impl SvgOutput,
+    class_name: &str,
+    path_d: &str,
+    rough: &RoughContext,
+) -> Result<()> {
     let drawable = roughr::generator::Generator::default()
         .path::<f64>(path_d.to_string(), &Some(rough_hachure_options(rough)));
     push_rough_group(
@@ -246,15 +294,15 @@ fn push_rough_hachure_path(out: &mut String, class_name: &str, path_d: &str, rou
             stroke_width: 2.0,
             fill_weight: 2.5,
         },
-    );
+    )
 }
 
 fn push_rough_hachure_rect(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     class_name: &str,
     label_box: &IshikawaLabelBoxLayout,
     rough: &RoughContext,
-) {
+) -> Result<()> {
     let drawable = roughr::generator::Generator::default().rectangle::<f64>(
         label_box.x,
         label_box.y,
@@ -272,18 +320,22 @@ fn push_rough_hachure_rect(
             stroke_width: 2.0,
             fill_weight: 2.5,
         },
-    );
+    )
 }
 
-fn push_rough_arrow_marker(out: &mut String, line: &IshikawaLineLayout, rough: &RoughContext) {
+fn push_rough_arrow_marker(
+    out: &mut impl SvgOutput,
+    line: &IshikawaLineLayout,
+    rough: &RoughContext,
+) -> Result<()> {
     if !line.marker_start {
-        return;
+        return Ok(());
     }
     let dx = line.x1 - line.x2;
     let dy = line.y1 - line.y2;
     let len = dx.hypot(dy);
     if len == 0.0 {
-        return;
+        return Ok(());
     }
 
     let ux = dx / len;
@@ -321,7 +373,7 @@ fn push_rough_arrow_marker(out: &mut String, line: &IshikawaLineLayout, rough: &
             stroke_width: 1.0,
             fill_weight: 0.0,
         },
-    );
+    )
 }
 
 fn rough_hachure_options(rough: &RoughContext) -> roughr::core::Options {
@@ -343,11 +395,11 @@ fn rough_color(css: &str) -> roughr::Srgba {
 }
 
 fn push_rough_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     class_name: Option<&str>,
     sets: Vec<roughr::core::OpSet<f64>>,
     paint: RoughPaint<'_>,
-) {
+) -> Result<()> {
     out.push_str("<g");
     if let Some(class_name) = class_name {
         out.push_str(r#" class=""#);
@@ -369,11 +421,18 @@ fn push_rough_group(
         let _ = write!(out, r#"" stroke-width="{stroke_width}" fill=""#);
         escape_attr_into(out, fill);
         out.push_str(r#""></path>"#);
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()
 }
 
-fn push_ishikawa_head_text(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {
+fn push_ishikawa_head_text(
+    out: &mut impl SvgOutput,
+    text: &IshikawaTextLayout,
+    dx: f64,
+    dy: f64,
+) -> Result<()> {
     let transform_x = text.x + dx;
     let transform_y = text.y + dy;
     let first_y = -((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
@@ -400,11 +459,18 @@ fn push_ishikawa_head_text(out: &mut String, text: &IshikawaTextLayout, dx: f64,
         );
         escape_xml_into(out, line);
         out.push_str("</tspan>");
+        out.checkpoint()?;
     }
     out.push_str("</text>");
+    out.checkpoint()
 }
 
-fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {
+fn push_text_with_offset(
+    out: &mut impl SvgOutput,
+    text: &IshikawaTextLayout,
+    dx: f64,
+    dy: f64,
+) -> Result<()> {
     let first_y =
         text.y + dy - ((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
     let _ = write!(
@@ -431,9 +497,11 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
             );
             escape_xml_into(out, line);
             out.push_str("</tspan>");
+            out.checkpoint()?;
         }
     }
     out.push_str("</text>");
+    out.checkpoint()
 }
 
 fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {

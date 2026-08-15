@@ -6,7 +6,73 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::EventModelingDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+fn try_render_eventmodeling_svg_with_resource_policy(
+    source: &str,
+    policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Event Modeling resource-bound fixture")
+        .expect("detect Event Modeling diagram");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .expect("render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    Ok(artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("eventmodeling-bounded".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )?
+        .svg()
+        .to_owned())
+}
+
+#[test]
+fn eventmodeling_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = "eventmodeling\ntf 01 event Start\ntf 02 cmd Continue ->> 01 { id: 42 }\n";
+    let baseline = try_render_eventmodeling_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render unbounded Event Modeling SVG");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1);
+
+    let exact = try_render_eventmodeling_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+            .expect("valid exact Event Modeling SVG ceiling"),
+    )
+    .expect("exact Event Modeling SVG ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let error = try_render_eventmodeling_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+            .expect("valid below-exact Event Modeling SVG ceiling"),
+    )
+    .expect_err("one byte below the Event Modeling SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected Event Modeling MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+}
 
 #[test]
 fn eventmodeling_typed_render_model_outputs_svg() {
