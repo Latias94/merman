@@ -89,7 +89,6 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         source_edges,
     ))?;
     work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
-    crate::flowchart::reject_duplicate_edge_ids_for_adapter(model, "Swimlane")?;
     let config = config::SwimlaneConfig::from_config(effective_config);
     let mut working = prepare::prepare(
         model,
@@ -121,7 +120,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         .filter(|curve| !curve.is_empty())
         .or(config_curve.as_deref())
         .unwrap_or("basis");
-    let curve_by_id: std::collections::HashMap<&str, &str> = model
+    let curve_by_owner = model
         .edges
         .iter()
         .map(|edge| {
@@ -130,9 +129,19 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                 .as_deref()
                 .filter(|curve| !curve.is_empty())
                 .unwrap_or(default_curve);
-            (edge.id.as_str(), curve)
+            curve
         })
-        .collect();
+        .collect::<Vec<_>>();
+
+    if working.original_edges.len() != model.edges.len() {
+        return Err(crate::Error::InvalidModel {
+            message: format!(
+                "Swimlane edge-owner count {} does not match semantic edge count {}",
+                working.original_edges.len(),
+                model.edges.len()
+            ),
+        });
+    }
 
     let bounds = output_bounds(&working);
     let nodes = working
@@ -182,33 +191,58 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
             requested_dir: lane.requested_dir.clone(),
         })
         .collect();
+    let mut edge_owners = Vec::with_capacity(working.original_edges.len());
     let edges = working
         .original_edges
         .iter()
-        .map(|edge| SwimlaneEdgeLayout {
-            id: edge.id.clone(),
-            from: edge.from.clone(),
-            to: edge.to.clone(),
-            points: edge.points.clone(),
-            label_node_id: edge.label_node_id.clone(),
-            reversed_for_layout: edge.reversed_for_layout,
-            curve: match curve_by_id
-                .get(edge.id.as_str())
-                .copied()
-                .unwrap_or("basis")
-            {
-                "basis" => "rounded",
-                curve => curve,
+        .enumerate()
+        .map(|(semantic_index, edge)| {
+            let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
+            let semantic_edge = &model.edges[semantic_index];
+            let expected_adapter_id = key.adapter_id();
+            if edge.id != expected_adapter_id || edge.reference_id != expected_adapter_id {
+                return Err(crate::Error::InvalidModel {
+                    message: format!(
+                        "Swimlane working edge `{}` is not bound to semantic owner {}",
+                        edge.id, semantic_index
+                    ),
+                });
             }
-            .to_string(),
+            if edge.from != semantic_edge.from || edge.to != semantic_edge.to {
+                return Err(crate::Error::InvalidModel {
+                    message: format!(
+                        "Swimlane working edge `{}` endpoints do not match semantic owner {}",
+                        edge.id, semantic_index
+                    ),
+                });
+            }
+            edge_owners.push(key);
+            Ok(SwimlaneEdgeLayout {
+                id: semantic_edge.id.clone(),
+                from: semantic_edge.from.clone(),
+                to: semantic_edge.to.clone(),
+                points: edge.points.clone(),
+                label_node_id: edge.label_node_id.clone(),
+                reversed_for_layout: edge.reversed_for_layout,
+                curve: match curve_by_owner
+                    .get(semantic_index)
+                    .copied()
+                    .unwrap_or("basis")
+                {
+                    "basis" => "rounded",
+                    curve => curve,
+                }
+                .to_string(),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(SwimlaneLayout {
         direction: working.direction,
         nodes,
         lanes,
         edges,
+        edge_owners: crate::flowchart::FlowchartEdgeOwners::new(edge_owners),
         bounds,
     })
 }
@@ -219,8 +253,8 @@ fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {
         .saturating_add(edges.saturating_mul(5));
 
     // This is the stable, family-accounted cost for prepare, Sugiyama, and routing. The linear
-    // baseline covers their source-item passes plus duplicate edge-id admission. Routing adds edges
-    // incrementally and can compare each new route with every earlier route, so charge one
+    // baseline covers their source-item passes plus occurrence-identity preparation. Routing adds
+    // edges incrementally and can compare each new route with every earlier route, so charge one
     // conservative unit per unordered source-edge pair. Direction post-processing and SVG line
     // hops charge the shared meter independently and must not be included here.
     baseline.saturating_add(work_budget::unordered_pair_count(edges))
@@ -262,7 +296,7 @@ mod tests {
 
     #[test]
     fn core_layout_cost_accounts_routing_pairs_once() {
-        // Four nodes plus three edges consume 31 linear units, including duplicate-id admission;
+        // Four nodes plus three edges consume 31 linear units, including occurrence preparation;
         // routing can inspect three unordered edge pairs.
         assert_eq!(swimlane_core_layout_work_units(4, 3), 34);
     }

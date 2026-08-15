@@ -142,7 +142,11 @@ Cancellation is cooperative. Merman checks the same control through parse, seman
 layout adapters, ASCII/SVG emission, postprocessing, and export boundaries. An opaque host callback
 or third-party encoder may finish its current call before the next checkpoint.
 
-Duplicate raw Flowchart edge IDs are occurrence-safe in the default Dagre renderer. The alpha ELK
-and Swimlane adapters currently reject those inputs rather than aliasing geometry, styles, labels,
-or marker evidence across occurrences. Treat that rejection as an explicit prerelease limitation,
-not as a stable Mermaid compatibility contract.
+Duplicate raw Flowchart edge IDs are occurrence-safe across the Dagre, ELK, and Swimlane adapters.
+Layout transport IDs remain private while the rendered SVG preserves Mermaid's raw edge ID, so
+geometry, styles, labels, markers, curves, and line hops stay bound to the semantic occurrence.
+
+The render-only `FlowchartLayout::edge_owner_indices` sidecar is no longer public. Downstream Rust
+code must not construct layout structs with or inspect naked semantic indices; treat
+`FlowchartLayout` and `SwimlaneLayout` as renderer-owned results and consume their public geometry
+fields instead. This is an intentional alpha source correction and does not change serialized JSON.

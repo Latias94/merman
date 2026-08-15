@@ -802,60 +802,99 @@ fn duplicate_flowchart_self_loop_ids_merge_each_semantic_occurrence_independentl
     assert!(svg.contains("second loop"), "{svg}");
 }
 
-#[test]
-fn swimlane_duplicate_raw_edge_ids_fail_closed() {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(
-            "swimlane-beta LR\nX L_A_B_0@--> Y\nA --> B\n",
-            ParseOptions::strict(),
-        )
-        .expect("parse Swimlane")
-        .expect("detect Swimlane");
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("begin session");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
-        Ok(_) => panic!("Swimlane duplicate raw edge ids must fail closed"),
-        Err(error) => error,
-    };
-    assert!(
-        error
-            .to_string()
-            .contains("Swimlane does not support duplicate Flowchart edge id `L_A_B_0`"),
-        "{error}"
+fn assert_duplicate_raw_edge_occurrences_are_isolated(svg: &str) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart-family SVG");
+    let paths = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("L_A_B_0")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths.len(),
+        2,
+        "both semantic occurrences must render: {svg}"
     );
+    assert_ne!(
+        paths[0].attribute("d"),
+        paths[1].attribute("d"),
+        "duplicate raw ids must not alias routed geometry"
+    );
+
+    let styles = paths
+        .iter()
+        .filter_map(|path| path.attribute("style"))
+        .collect::<Vec<_>>();
+    assert!(styles.iter().any(|style| style.contains("stroke:#ef4444")));
+    assert!(styles.iter().any(|style| style.contains("stroke:#2563eb")));
+
+    let marker_ends = paths
+        .iter()
+        .filter_map(|path| path.attribute("marker-end"))
+        .collect::<Vec<_>>();
+    assert!(marker_ends.iter().any(|marker| marker.contains("crossEnd")));
+    assert!(marker_ends.iter().any(|marker| marker.contains("pointEnd")));
+
+    let labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "edgeLabel")
+                })
+        })
+        .map(|label| {
+            label
+                .descendants()
+                .filter_map(|node| node.text().filter(|_| node.is_text()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        labels.iter().any(|label| label == "first owner"),
+        "{labels:?}\n{svg}"
+    );
+    assert!(
+        labels.iter().any(|label| label == "second owner"),
+        "{labels:?}\n{svg}"
+    );
+}
+
+#[test]
+fn swimlane_duplicate_raw_edge_ids_keep_occurrence_bound_geometry_styles_labels_and_markers() {
+    let svg = render_flowchart_svg_from_text(
+        r##"swimlane-beta LR
+X L_A_B_0@--x|first owner| Y
+A -->|second owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+"##,
+    );
+
+    assert_duplicate_raw_edge_occurrences_are_isolated(&svg);
 }
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn flowchart_elk_duplicate_raw_edge_ids_fail_closed() {
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(
-            r#"---
+fn flowchart_elk_duplicate_raw_edge_ids_keep_occurrence_bound_geometry_styles_labels_and_markers() {
+    let svg = render_flowchart_svg_from_text(
+        r##"---
 config:
   layout: elk
 ---
 flowchart LR
-X L_A_B_0@--> Y
-A --> B
-"#,
-            ParseOptions::strict(),
-        )
-        .expect("parse ELK Flowchart")
-        .expect("detect ELK Flowchart");
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("begin session");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
-        Ok(_) => panic!("ELK duplicate raw edge ids must fail closed"),
-        Err(error) => error,
-    };
-    assert!(
-        error
-            .to_string()
-            .contains("Flowchart ELK does not support duplicate Flowchart edge id `L_A_B_0`"),
-        "{error}"
+X L_A_B_0@--x|first owner| Y
+A -->|second owner| B
+linkStyle 0 stroke:#ef4444
+linkStyle 1 stroke:#2563eb
+"##,
     );
+
+    assert_duplicate_raw_edge_occurrences_are_isolated(&svg);
 }
 
 fn flowchart_svg_edge_data_points(

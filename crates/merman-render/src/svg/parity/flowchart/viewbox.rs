@@ -111,9 +111,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
         &mut include_rect,
     );
 
-    for (owner_index, e) in layout.edge_owner_indices.iter().copied().zip(&layout.edges) {
-        let root =
-            hierarchy_plan.edge_root(crate::flowchart::FlowchartEdgeKey::new(owner_index))?;
+    for (key, e) in layout.edge_owners.iter().zip(&layout.edges) {
+        let root = hierarchy_plan.edge_root(key)?;
         let y_off = y_offset_for_root(root);
         for lbl in [
             e.label.as_ref(),

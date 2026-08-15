@@ -1,4 +1,5 @@
 mod config;
+mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
 mod label;
@@ -15,41 +16,7 @@ pub(crate) use merman_core::diagrams::flowchart::{
 };
 use std::ops::Deref;
 
-/// Operation-local identity for one semantic Flowchart edge occurrence.
-///
-/// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout,
-/// style, and SVG caches must therefore use the stable semantic model index instead of the raw
-/// DOM id.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct FlowchartEdgeKey(usize);
-
-impl FlowchartEdgeKey {
-    pub(crate) const fn new(semantic_index: usize) -> Self {
-        Self(semantic_index)
-    }
-
-    pub(crate) const fn semantic_index(self) -> usize {
-        self.0
-    }
-}
-
-pub(crate) fn reject_duplicate_edge_ids_for_adapter(
-    model: &FlowchartModel,
-    adapter: &str,
-) -> crate::Result<()> {
-    let mut seen = std::collections::HashSet::with_capacity(model.edges.len());
-    for edge in &model.edges {
-        if !seen.insert(edge.id.as_str()) {
-            return Err(crate::Error::InvalidModel {
-                message: format!(
-                    "{adapter} does not support duplicate Flowchart edge id `{}`",
-                    edge.id
-                ),
-            });
-        }
-    }
-    Ok(())
-}
+pub(crate) use edge_occurrence::{FlowchartEdgeKey, FlowchartEdgeOwners};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartRenderModelRef<'a> {

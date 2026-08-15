@@ -232,17 +232,27 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let source_edge_by_id: HashMap<&str, &elk::Edge> = graph
-        .edges
-        .iter()
-        .map(|edge| (edge.id.as_str(), edge))
-        .collect();
-    let source_edge_owner_by_id: HashMap<&str, usize> = graph
-        .edges
-        .iter()
-        .enumerate()
-        .map(|(semantic_index, edge)| (edge.id.as_str(), semantic_index))
-        .collect();
+    if graph.edges.len() != model.edges.len() {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "ELK transport edge count {} does not match semantic edge count {}",
+                graph.edges.len(),
+                model.edges.len()
+            ),
+        });
+    }
+    let mut source_edge_by_transport_id = HashMap::with_capacity(graph.edges.len());
+    for (semantic_index, edge) in graph.edges.iter().enumerate() {
+        let owner = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
+        if source_edge_by_transport_id
+            .insert(edge.id.as_str(), (edge, owner))
+            .is_some()
+        {
+            return Err(Error::InvalidModel {
+                message: format!("ELK graph contains duplicate transport edge {}", edge.id),
+            });
+        }
+    }
 
     charge_adapter_work(&mut work_control, layout.nodes.len())?;
     let mut out_nodes = Vec::with_capacity(layout.nodes.len());
@@ -335,18 +345,32 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     // Reject the complete user-sized projection tranche before reserving its output vector.
     charge_adapter_work(&mut work_control, edge_projection_work)?;
     let mut out_edges = Vec::with_capacity(layout.edges.len());
-    let mut edge_owner_indices = Vec::with_capacity(layout.edges.len());
+    let mut edge_owners = Vec::with_capacity(layout.edges.len());
     for edge in layout.edges {
-        let Some(source) = source_edge_by_id.get(edge.id.as_str()).copied() else {
+        let Some((source, owner)) = source_edge_by_transport_id.get(edge.id.as_str()).copied()
+        else {
             return Err(Error::InvalidModel {
                 message: format!("ELK layout returned unknown edge {}", edge.id),
             });
         };
-        let Some(owner_index) = source_edge_owner_by_id.get(edge.id.as_str()).copied() else {
+        let Some(semantic_edge) = model.edges.get(owner.semantic_index()) else {
             return Err(Error::InvalidModel {
-                message: format!("ELK layout returned unbound edge {}", edge.id),
+                message: format!(
+                    "ELK layout edge {} references missing semantic owner {}",
+                    edge.id,
+                    owner.semantic_index()
+                ),
             });
         };
+        if source.source != semantic_edge.from || source.target != semantic_edge.to {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "ELK transport edge {} endpoints do not match semantic owner {}",
+                    edge.id,
+                    owner.semantic_index()
+                ),
+            });
+        }
         let points = edge
             .points
             .into_iter()
@@ -362,11 +386,11 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
                 .or_else(|| edge_label_position(&points, source_label))
         });
         out_edges.push(LayoutEdge {
-            id: edge.id,
-            from: source.source.clone(),
-            to: source.target.clone(),
-            from_cluster: endpoint_cluster(source.source.as_str(), &layout_node_by_id),
-            to_cluster: endpoint_cluster(source.target.as_str(), &layout_node_by_id),
+            id: semantic_edge.id.clone(),
+            from: semantic_edge.from.clone(),
+            to: semantic_edge.to.clone(),
+            from_cluster: endpoint_cluster(semantic_edge.from.as_str(), &layout_node_by_id),
+            to_cluster: endpoint_cluster(semantic_edge.to.as_str(), &layout_node_by_id),
             points,
             label,
             start_label_left: None,
@@ -377,7 +401,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
             end_marker: None,
             stroke_dasharray: None,
         });
-        edge_owner_indices.push(owner_index);
+        edge_owners.push(owner);
     }
 
     let bounds_points = out_edges.iter().try_fold(
@@ -405,7 +429,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
-        edge_owner_indices,
+        edge_owners: crate::flowchart::FlowchartEdgeOwners::new(edge_owners),
         clusters,
         bounds,
         dom_node_order_by_root,
@@ -688,7 +712,6 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
     charge_adapter_work(&mut work_control, model.edges.len())?;
-    super::reject_duplicate_edge_ids_for_adapter(model, "Flowchart ELK")?;
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
     // Shape validation only walks nodes. Charge that tranche before the validation scan; the
@@ -840,8 +863,9 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
                 edge_style_plan,
             },
         )?;
+        let key = crate::flowchart::FlowchartEdgeKey::new(edge_index);
         edges.push(elk::Edge {
-            id: edge.id.clone(),
+            id: key.adapter_id(),
             source: edge.from.clone(),
             target: edge.to.clone(),
             label,

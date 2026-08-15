@@ -573,12 +573,12 @@ pub struct QuadrantChartDiagramLayout {
 pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
-    /// Semantic Flowchart edge index for each entry in `edges`.
+    /// Render-only occurrence ownership for `edges`.
     ///
-    /// This render-only sidecar keeps duplicate Mermaid edge ids occurrence-safe without changing
-    /// the public layout JSON or SVG ids.
+    /// The typed sidecar is intentionally crate-private: compatibility JSON exposes Mermaid's raw
+    /// edge id, while render internals bind geometry to the semantic occurrence key.
     #[serde(skip)]
-    pub edge_owner_indices: Vec<usize>,
+    pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
@@ -683,6 +683,9 @@ pub struct SwimlaneLayout {
     pub nodes: Vec<SwimlaneNodeLayout>,
     pub lanes: Vec<SwimlaneLaneLayout>,
     pub edges: Vec<SwimlaneEdgeLayout>,
+    /// Render-only semantic occurrence ownership aligned with `edges`.
+    #[serde(skip)]
+    pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
     pub bounds: Option<Bounds>,
 }
 

@@ -3920,7 +3920,7 @@ fn layout_flowchart_with_model(
         &diagram_direction,
         out_edge_candidates,
     );
-    let edge_owner_indices = merged_edges
+    let edge_owner_indices: Vec<usize> = merged_edges
         .iter()
         .map(|candidate| candidate.owner_index)
         .collect();
@@ -4014,7 +4014,9 @@ fn layout_flowchart_with_model(
     Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
-        edge_owner_indices,
+        edge_owners: crate::flowchart::FlowchartEdgeOwners::from_semantic_indices(
+            edge_owner_indices,
+        ),
         clusters,
         bounds,
         dom_node_order_by_root,

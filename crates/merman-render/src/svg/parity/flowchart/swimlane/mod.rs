@@ -38,12 +38,6 @@ fn adapt_swimlane_layout(
     model: &crate::flowchart::FlowchartModel,
     layout: &SwimlaneLayout,
 ) -> FlowchartLayout {
-    let edge_owner_by_id: FxHashMap<&str, usize> = model
-        .edges
-        .iter()
-        .enumerate()
-        .map(|(semantic_index, edge)| (edge.id.as_str(), semantic_index))
-        .collect();
     let label_nodes: FxHashMap<&str, &crate::model::SwimlaneNodeLayout> = layout
         .nodes
         .iter()
@@ -99,16 +93,6 @@ fn adapt_swimlane_layout(
             }
         })
         .collect();
-    let edge_owner_indices = layout
-        .edges
-        .iter()
-        .map(|edge| {
-            *edge_owner_by_id
-                .get(edge.id.as_str())
-                .expect("prepared Swimlane edge references a semantic edge")
-        })
-        .collect();
-
     let clusters = layout
         .lanes
         .iter()
@@ -149,7 +133,7 @@ fn adapt_swimlane_layout(
     FlowchartLayout {
         nodes,
         edges,
-        edge_owner_indices,
+        edge_owners: layout.edge_owners.clone(),
         clusters,
         bounds: layout.bounds.clone(),
         dom_node_order_by_root,
@@ -161,13 +145,14 @@ pub(super) fn apply_swimlane_edge_curves<'a>(
     render_edges: &mut [super::render_input::FlowchartRenderEdge<'a>],
     layout: &SwimlaneLayout,
 ) {
-    let curve_by_id: FxHashMap<&str, &str> = layout
+    let curve_by_owner: FxHashMap<crate::flowchart::FlowchartEdgeKey, &str> = layout
         .edges
         .iter()
-        .map(|edge| (edge.id.as_str(), edge.curve.as_str()))
+        .zip(layout.edge_owners.iter())
+        .map(|(edge, owner)| (owner, edge.curve.as_str()))
         .collect();
     for edge in render_edges {
-        let Some(curve) = curve_by_id.get(edge.edge.as_ref().id.as_str()).copied() else {
+        let Some(curve) = curve_by_owner.get(&edge.key).copied() else {
             continue;
         };
         edge.edge.to_mut().interpolate = Some(curve.to_string());
@@ -200,6 +185,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
 
     struct OwnedLineHopEdge<'a> {
         key: crate::flowchart::FlowchartEdgeKey,
+        adapter_id: String,
         semantic: &'a crate::flowchart::FlowEdge,
         points: Vec<crate::model::LayoutPoint>,
         arrow_type_start: Option<&'static str>,
@@ -225,6 +211,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
                 super::edge_geom::arrow_types_for_edge(semantic.edge_type.as_deref());
             Some(OwnedLineHopEdge {
                 key: edge.key,
+                adapter_id: edge.key.adapter_id(),
                 semantic,
                 points: cache_entry.geom.data_points.clone(),
                 arrow_type_start,
@@ -234,12 +221,12 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .collect();
     let edge_key_by_id: FxHashMap<&str, crate::flowchart::FlowchartEdgeKey> = owned_edges
         .iter()
-        .map(|edge| (edge.semantic.id.as_str(), edge.key))
+        .map(|edge| (edge.adapter_id.as_str(), edge.key))
         .collect();
     let edges: Vec<_> = owned_edges
         .iter()
         .map(|edge| LineHopEdge {
-            id: edge.semantic.id.as_str(),
+            id: edge.adapter_id.as_str(),
             points: &edge.points,
             curve: edge.semantic.interpolate.as_deref(),
             arrow_type_start: edge.arrow_type_start,
@@ -361,15 +348,21 @@ mod tests {
     }
 
     #[test]
-    fn line_hops_post_process_final_cached_geometry_without_changing_data_points() {
+    fn line_hops_keep_duplicate_raw_ids_bound_to_their_occurrence_keys() {
+        let mut vertical = semantic_edge("duplicate");
+        vertical.from = "vertical-from".to_string();
+        vertical.to = "vertical-to".to_string();
+        let mut horizontal = semantic_edge("duplicate");
+        horizontal.from = "horizontal-from".to_string();
+        horizontal.to = "horizontal-to".to_string();
         let render_edges = vec![
             super::super::render_input::FlowchartRenderEdge {
                 key: crate::flowchart::FlowchartEdgeKey::new(0),
-                edge: std::borrow::Cow::Owned(semantic_edge("vertical")),
+                edge: std::borrow::Cow::Owned(vertical),
             },
             super::super::render_input::FlowchartRenderEdge {
                 key: crate::flowchart::FlowchartEdgeKey::new(1),
-                edge: std::borrow::Cow::Owned(semantic_edge("horizontal")),
+                edge: std::borrow::Cow::Owned(horizontal),
             },
         ];
         let vertical_points = vec![point(0.0, -10.0), point(0.0, 10.0)];

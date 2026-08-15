@@ -70,33 +70,7 @@ pub(super) fn render_flowchart_svg_model(
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
     }
-    if layout.edge_owner_indices.len() != layout.edges.len() {
-        return Err(crate::Error::InvalidModel {
-            message: format!(
-                "Flowchart layout edge-owner count {} does not match edge count {}",
-                layout.edge_owner_indices.len(),
-                layout.edges.len()
-            ),
-        });
-    }
-    for (layout_edge, owner_index) in layout.edges.iter().zip(&layout.edge_owner_indices) {
-        let Some(semantic_edge) = model.edges.get(*owner_index) else {
-            return Err(crate::Error::InvalidModel {
-                message: format!(
-                    "Flowchart layout edge `{}` references missing semantic owner {}",
-                    layout_edge.id, owner_index
-                ),
-            });
-        };
-        if layout_edge.id != semantic_edge.id {
-            return Err(crate::Error::InvalidModel {
-                message: format!(
-                    "Flowchart layout edge `{}` is not bound to semantic owner {} (`{}`)",
-                    layout_edge.id, owner_index, semantic_edge.id
-                ),
-            });
-        }
-    }
+    layout.edge_owners.validate(&layout.edges, &model.edges)?;
 
     let render_timing = options.timing();
     let measurer = options.text_measurer();
@@ -118,11 +92,7 @@ pub(super) fn render_flowchart_svg_model(
     let FlowchartRenderInputs {
         mut render_edges,
         extra_nodes,
-    } = prepare_flowchart_render_inputs(
-        model,
-        &layout.edge_owner_indices,
-        layout.uses_elk_adapter_dom,
-    );
+    } = prepare_flowchart_render_inputs(model, &layout.edge_owners, layout.uses_elk_adapter_dom);
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
     }
@@ -175,11 +145,13 @@ pub(super) fn render_flowchart_svg_model(
     // internal reordering. `render_edges` already reflects the source-backed ordering rules.
     let edge_order: Vec<super::render_input::FlowchartRenderEdgeRef<'_>> =
         render_edges.iter().map(|edge| edge.as_ref()).collect();
-    let mut edges_by_id: FxHashMap<&str, super::render_input::FlowchartRenderEdgeRef<'_>> =
-        FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
+    let mut edges_by_key: FxHashMap<
+        crate::flowchart::FlowchartEdgeKey,
+        super::render_input::FlowchartRenderEdgeRef<'_>,
+    > = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
         let edge = e.as_ref();
-        edges_by_id.insert(edge.edge.id.as_str(), edge);
+        edges_by_key.insert(edge.key, edge);
     }
 
     let swimlane_direction = swimlane_layout.map(|layout| layout.direction);
@@ -193,10 +165,10 @@ pub(super) fn render_flowchart_svg_model(
         super::render_input::FlowchartRenderEdgeRef<'_>,
     > = swimlane_layout
         .into_iter()
-        .flat_map(|layout| layout.edges.iter())
-        .filter_map(|layout_edge| {
+        .flat_map(|layout| layout.edges.iter().zip(layout.edge_owners.iter()))
+        .filter_map(|(layout_edge, owner)| {
             let label_node_id = layout_edge.label_node_id.as_deref()?;
-            let edge = edges_by_id.get(layout_edge.id.as_str()).copied()?;
+            let edge = edges_by_key.get(&owner).copied()?;
             Some((label_node_id, edge))
         })
         .collect();
@@ -255,12 +227,12 @@ pub(super) fn render_flowchart_svg_model(
         crate::flowchart::FlowchartEdgeKey,
         &crate::model::LayoutEdge,
     > = FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
-    for (owner_index, edge) in layout.edge_owner_indices.iter().copied().zip(&layout.edges) {
-        let key = crate::flowchart::FlowchartEdgeKey::new(owner_index);
+    for (key, edge) in layout.edge_owners.iter().zip(&layout.edges) {
         if layout_edges_by_key.insert(key, edge).is_some() {
             return Err(crate::Error::InvalidModel {
                 message: format!(
-                    "Flowchart layout contains multiple edges for semantic owner {owner_index}"
+                    "Flowchart layout contains multiple edges for semantic owner {}",
+                    key.semantic_index()
                 ),
             });
         }

@@ -41,15 +41,18 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
-    layout_edge_owner_indices: &[usize],
+    layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
-    let renderable_edges: FxHashSet<usize> = layout_edge_owner_indices.iter().copied().collect();
+    let renderable_edges: FxHashSet<crate::flowchart::FlowchartEdgeKey> =
+        layout_edge_owners.iter().collect();
     let semantic_edges = model
         .edges
         .iter()
         .enumerate()
-        .filter(|(semantic_index, _)| renderable_edges.contains(semantic_index))
+        .filter(|(semantic_index, _)| {
+            renderable_edges.contains(&crate::flowchart::FlowchartEdgeKey::new(*semantic_index))
+        })
         .map(|(semantic_index, edge)| FlowchartRenderEdge {
             key: crate::flowchart::FlowchartEdgeKey::new(semantic_index),
             edge: Cow::Borrowed(edge),
