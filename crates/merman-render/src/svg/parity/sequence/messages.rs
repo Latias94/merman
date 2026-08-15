@@ -17,6 +17,21 @@ const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
 const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
 const CENTRAL_CONNECTION_CIRCLE_OFFSET: f64 = 16.5;
 
+pub(super) fn has_sequence_message_line_candidates(model: &SequenceSvgModel) -> bool {
+    model.messages.iter().any(|message| {
+        !matches!(
+            message.message_type,
+            LINETYPE_NOTE
+                | LINETYPE_ACTIVE_START
+                | LINETYPE_ACTIVE_END
+                | LINETYPE_AUTONUMBER
+                | LINETYPE_CENTRAL_CONNECTION
+                | LINETYPE_CENTRAL_CONNECTION_REVERSE
+        ) && message.from.is_some()
+            && message.to.is_some()
+    })
+}
+
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
@@ -282,6 +297,7 @@ fn write_central_connection_circles(
 pub(super) fn render_sequence_messages(
     out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
+    theme_receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
 ) -> crate::Result<()> {
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
@@ -328,6 +344,7 @@ pub(super) fn render_sequence_messages(
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
+        theme_receipt.record_line_candidate();
         let edge_id = format!("msg-{}", msg.id);
         let Some(edge) = ctx.edges_by_id.get(edge_id.as_str()).copied() else {
             continue;
@@ -527,6 +544,7 @@ pub(super) fn render_sequence_messages(
 
         let _ = (from, to);
         out.checkpoint()?;
+        theme_receipt.record_line_emission();
     }
 
     Ok(())
@@ -579,6 +597,12 @@ fn render_sequence_message_text_lines<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget, ThemeVariant,
+    };
+    use crate::model::{LayoutEdge, LayoutPoint};
     use std::fmt;
     use std::ops::Range;
 
@@ -692,13 +716,128 @@ mod tests {
         };
         let mut out = RejectAfterFirstWrite::default();
 
-        let error = render_sequence_messages(&mut out, &ctx)
-            .expect_err("the rejecting sink must stop message rendering");
+        let error = render_sequence_messages(
+            &mut out,
+            &ctx,
+            &mut crate::sequence::SequenceMessageThemeReceipt::default(),
+        )
+        .expect_err("the rejecting sink must stop message rendering");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "message rendering must stop at the first failed sink checkpoint"
         );
+    }
+
+    #[test]
+    fn semantic_message_without_complete_layout_line_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Message theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+
+        for edge_points in [None, Some(vec![LayoutPoint { x: 10.0, y: 20.0 }])] {
+            let model = SequenceSvgModel {
+                acc_title: None,
+                acc_descr: None,
+                title: None,
+                actor_order: Vec::new(),
+                actors: BTreeMap::new(),
+                boxes: Vec::new(),
+                messages: vec![merman_core::diagrams::sequence::SequenceMessage {
+                    id: "0".to_string(),
+                    from: Some("Alice".to_string()),
+                    to: Some("Bob".to_string()),
+                    message_type: 0,
+                    message: SequenceSvgMessagePayload::Text("Hello".to_string()),
+                    wrap: false,
+                    activate: false,
+                    placement: None,
+                    central_connection: 0,
+                }],
+                notes: Vec::new(),
+                created_actors: BTreeMap::new(),
+                destroyed_actors: BTreeMap::new(),
+            };
+            let edges = edge_points
+                .into_iter()
+                .map(|points| LayoutEdge {
+                    id: "msg-0".to_string(),
+                    from: "Alice".to_string(),
+                    to: "Bob".to_string(),
+                    from_cluster: None,
+                    to_cluster: None,
+                    points,
+                    label: None,
+                    start_label_left: None,
+                    start_label_right: None,
+                    end_label_left: None,
+                    end_label_right: None,
+                    start_marker: None,
+                    end_marker: None,
+                    stroke_dasharray: None,
+                })
+                .collect::<Vec<_>>();
+            let edges_by_id = edges
+                .iter()
+                .map(|edge| (edge.id.as_str(), edge))
+                .collect::<FxHashMap<_, _>>();
+            let nodes_by_id = FxHashMap::default();
+            let sanitize_config = merman_core::MermaidConfig::default();
+            let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+            let loop_text_style = TextStyle::default();
+            let ctx = SequenceMessageRenderContext {
+                model: &model,
+                nodes_by_id: &nodes_by_id,
+                edges_by_id: &edges_by_id,
+                sanitize_config: &sanitize_config,
+                math_renderer: None,
+                measurer: &measurer,
+                message_align: "center",
+                diagram_id: "sequence-incomplete-layout",
+                actor_height: 65.0,
+                actor_label_font_size: 16.0,
+                sequence_width: 150.0,
+                activation_width: 10.0,
+                wrap_padding: 10.0,
+                right_angles: false,
+                loop_text_style: &loop_text_style,
+            };
+            let mut receipt = crate::sequence::SequenceMessageThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Message,
+                ThemeVariant::Default,
+                None,
+            ));
+
+            render_sequence_messages(&mut String::new(), &ctx, &mut receipt)
+                .expect("incomplete layout should remain a renderable best-effort case");
+
+            let recorder = crate::sequence::SequenceThemeEvidenceRecorder::default();
+            recorder.record_message_emission(
+                crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
+                    Some("#2563eb"),
+                    false,
+                    receipt,
+                ),
+            );
+            let evidence = recorder.finish(Some(&resolved));
+
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
     }
 }

@@ -384,7 +384,7 @@ fn compile_sequence_family(
         )],
     );
     contributions.add_theme_variables(
-        "message.stroke",
+        ThemeRouteCutoverProjection::MessageStroke.contribution_id(),
         [("signalColor", reader.stroke_or_fill(ThemeTarget::Message))],
     );
     contributions.add_theme_variables(
@@ -1807,6 +1807,46 @@ mod tests {
                 family.as_str()
             )));
         }
+    }
+
+    #[test]
+    fn typed_sequence_message_stroke_suppresses_only_its_legacy_projection() {
+        let stroke_spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Message,
+                    ThemeStylePatch::default().with_stroke(solid("#2563eb")),
+                )
+                .for_family(DiagramFamilyId::SEQUENCE),
+            ),
+        );
+        let bridge = bridge(&stroke_spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(
+            !bridge.owns_contribution_id("merman.legacy-family-theme.v1.sequence.message.stroke")
+        );
+
+        let fill_spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Message,
+                    ThemeStylePatch::default().with_fill(solid("#ef4444")),
+                )
+                .for_family(DiagramFamilyId::SEQUENCE),
+            ),
+        );
+        let parsed = parse(&fill_spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
+
+        assert_eq!(fallback_contribution_count(&parsed), 1);
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.signalColor"),
+            Some("#ef4444")
+        );
     }
 
     #[test]

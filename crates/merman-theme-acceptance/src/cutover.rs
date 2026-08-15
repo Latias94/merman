@@ -26,11 +26,13 @@ use merman_render::__private::{
 };
 
 mod png_proof;
+mod sequence_message_proof;
 mod svg_proof;
 
 use png_proof::prove_terminal_png_pair;
 #[cfg(test)]
 use png_proof::require_marker_pixel_counts;
+use sequence_message_proof::prove_sequence_message_svg;
 #[cfg(test)]
 use svg_proof::transformed_path_terminals;
 use svg_proof::{prove_flowchart_markers_svg, prove_svg_routes};
@@ -151,6 +153,18 @@ deactivate Bob
 Bob-->>Alice: Outer response
 deactivate Bob
 "#;
+const SEQUENCE_MESSAGE_SOURCE: &str = r#"sequenceDiagram
+autonumber
+participant A
+participant B
+A<<->>B: bidirectional arrow
+B--xA: dotted cross
+A--)B: dotted filled
+B-|\A: solid top
+A-|/B: solid bottom
+B-\\A: stick top
+A-//B: stick bottom
+"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
@@ -249,6 +263,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, _) => Ok(SEQUENCE_NOTE_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, _) => Ok(SEQUENCE_ACTIVATION_SOURCE),
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(SEQUENCE_MESSAGE_SOURCE)
+        }
         _ => Err(C6ProofError::new(
             "route-source",
             format!("no route-cutover witness source for {}", route_label(route)),
@@ -648,7 +665,14 @@ fn render_cutover_case(
         }
         _ => Vec::new(),
     };
-    let svg_proof = prove_svg_routes(case, &routes, svg, &markers)?;
+    let svg_proof = if expected_route.family_id() == DiagramFamilyId::SEQUENCE
+        && expected_route.target() == ThemeTarget::Message
+        && expected_route.facet() == ThemeRouteCutoverFacet::Stroke
+    {
+        prove_sequence_message_svg(case, &routes, svg)?
+    } else {
+        prove_svg_routes(case, &routes, svg, &markers)?
+    };
 
     let raster_options = RasterOptions::default().with_scale(2.0);
     let png_output = document
@@ -697,7 +721,8 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
                 ThemeTarget::Node
                 | ThemeTarget::Actor
                 | ThemeTarget::Note
-                | ThemeTarget::Activation => SOLID_STROKE.css,
+                | ThemeTarget::Activation
+                | ThemeTarget::Message => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
                         "route-theme",
@@ -1011,7 +1036,11 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
         (
-            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation,
+            ThemeTarget::Node
+            | ThemeTarget::Actor
+            | ThemeTarget::Note
+            | ThemeTarget::Activation
+            | ThemeTarget::Message,
             ThemeRouteCutoverFacet::Stroke,
         ) => Ok(SOLID_STROKE),
         (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE),
@@ -1050,7 +1079,8 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
                 ThemeTarget::Node
                 | ThemeTarget::Actor
                 | ThemeTarget::Note
-                | ThemeTarget::Activation,
+                | ThemeTarget::Activation
+                | ThemeTarget::Message,
                 ThemeRouteCutoverFacet::Stroke,
             ) => Ok(SOLID_STROKE.css),
             (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE.css),
@@ -1216,11 +1246,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_twenty_four_routes_and_thirty_two_artifact_witnesses() {
+    fn route_inventory_retains_twenty_six_routes_and_thirty_four_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 24);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 32);
+        assert_eq!(inventory.len(), 26);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 34);
     }
 
     #[test]

@@ -18,6 +18,7 @@ struct SequenceThemeEvidenceState {
     actor_stroke_unhandled: bool,
     actor_stroke_overridden: bool,
     actor_style_receipt: SequenceActorThemeReceipt,
+    message: SequenceMessageThemeState,
     note: SequenceStaticRectThemeState,
     activation: SequenceStaticRectThemeState,
 }
@@ -66,6 +67,91 @@ impl SequenceActorThemeReceipt {
             FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => {
                 false
             }
+        }
+    }
+}
+
+/// Winner and terminal-emission facts produced by the Sequence Message line writer.
+///
+/// Message directly owns only unqualified static stroke in this tranche. The receipt also retains
+/// fill winners because Mermaid's legacy `signalColor` projection selects stroke-or-fill, and a
+/// direct stroke winner must explicitly account for any shadowed fill rule. Candidate and emitted
+/// counts stay separate so a compiled route cannot claim evidence unless every concrete terminal
+/// line or path reached the writer-owned checkpoint.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SequenceMessageThemeReceipt {
+    static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    line_candidates: usize,
+    emitted_lines: usize,
+}
+
+impl SequenceMessageThemeReceipt {
+    pub(crate) fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
+        record_style_winners(&mut self.static_winners, style);
+    }
+
+    pub(crate) fn record_line_candidate(&mut self) {
+        self.line_candidates = self.line_candidates.saturating_add(1);
+    }
+
+    pub(crate) fn record_line_emission(&mut self) {
+        self.emitted_lines = self.emitted_lines.saturating_add(1);
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.static_winners.extend(other.static_winners);
+        self.line_candidates = self.line_candidates.max(other.line_candidates);
+        self.emitted_lines = self.emitted_lines.max(other.emitted_lines);
+    }
+
+    fn route_won(
+        &self,
+        rule_index: usize,
+        selector: FamilyThemeSelectorShape,
+        facet: FamilyThemeRuleFacet,
+    ) -> bool {
+        matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+            && self
+                .static_winners
+                .contains(&(rule_index, style_property_for_facet(facet)))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct SequenceMessageThemeState {
+    stroke_emitted: bool,
+    stroke_overridden: bool,
+    receipt: SequenceMessageThemeReceipt,
+}
+
+impl SequenceMessageThemeState {
+    fn merge(&mut self, emission: SequenceMessageThemeEmission) {
+        self.stroke_emitted |= emission.stroke_emitted;
+        self.stroke_overridden |= emission.stroke_overridden;
+        self.receipt.merge(emission.receipt);
+    }
+}
+
+/// Complete writer-owned emission facts for the Sequence Message stroke tranche.
+#[derive(Debug)]
+pub(crate) struct SequenceMessageThemeEmission {
+    stroke_emitted: bool,
+    stroke_overridden: bool,
+    receipt: SequenceMessageThemeReceipt,
+}
+
+impl SequenceMessageThemeEmission {
+    pub(crate) fn from_terminal_writer(
+        typed_stroke: Option<&str>,
+        stroke_overridden: bool,
+        receipt: SequenceMessageThemeReceipt,
+    ) -> Self {
+        let has_lines = receipt.line_candidates != 0;
+        let complete_line_emission = has_lines && receipt.emitted_lines == receipt.line_candidates;
+        Self {
+            stroke_emitted: complete_line_emission && typed_stroke.is_some(),
+            stroke_overridden: has_lines && stroke_overridden,
+            receipt,
         }
     }
 }
@@ -224,6 +310,51 @@ fn observe_static_rect_rule(
     }
 }
 
+fn observe_message_rule(
+    message: &SequenceMessageThemeState,
+    observation: &mut SequenceRuleObservation,
+    disposition: FamilyThemeDisposition,
+    rule_index: usize,
+    selector: FamilyThemeSelectorShape,
+    facet: FamilyThemeRuleFacet,
+) {
+    if message.receipt.line_candidates == 0
+        || !message.receipt.route_won(rule_index, selector, facet)
+    {
+        return;
+    }
+    observation.applicable = true;
+    if message.stroke_overridden
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
+        )
+    {
+        return;
+    }
+    match (disposition, facet) {
+        (
+            FamilyThemeDisposition::TypedAdapter,
+            FamilyThemeRuleFacet::Stroke(
+                kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
+            ),
+        ) => {
+            if !message.stroke_emitted {
+                observation.incomplete = true;
+                return;
+            }
+            observation.capabilities.insert(capability_for_paint(kind));
+        }
+        (FamilyThemeDisposition::TypedAdapter, _) => observation.incomplete = true,
+        (FamilyThemeDisposition::Unsupported, facet) => {
+            observation
+                .residual
+                .get_or_insert(unsupported_reason_for_facet(facet));
+        }
+        (FamilyThemeDisposition::LegacyCompatibility, _) => {}
+    }
+}
+
 fn capability_for_paint(kind: FamilyThemePaintKind) -> ThemeCapability {
     match kind {
         FamilyThemePaintKind::Transparent => ThemeCapability::TransparentPaint,
@@ -232,7 +363,7 @@ fn capability_for_paint(kind: FamilyThemePaintKind) -> ThemeCapability {
         | FamilyThemePaintKind::LinearGradient
         | FamilyThemePaintKind::RadialGradient
         | FamilyThemePaintKind::Pattern => {
-            unreachable!("only typed scalar paints reach a static rectangle writer")
+            unreachable!("only typed scalar paints reach direct Sequence paint writers")
         }
     }
 }
@@ -277,6 +408,14 @@ impl SequenceThemeEvidenceRecorder {
         state.note.merge(emission);
     }
 
+    pub(crate) fn record_message_emission(&self, emission: SequenceMessageThemeEmission) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.message.merge(emission);
+    }
+
     pub(crate) fn record_activation_emission(&self, emission: SequenceStaticRectThemeEmission) {
         let mut state = self
             .state
@@ -297,11 +436,12 @@ impl SequenceThemeEvidenceRecorder {
         };
 
         let mut actor_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
+        let mut message_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut note_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut activation_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
 
-        // Seed every Actor rule and every static unqualified Note/Activation rule before checking
-        // winners.
+        // Seed every Actor rule plus every static unqualified Message signal paint and directly
+        // owned Note/Activation rule before checking winners.
         // This keeps superseded rules, unmatched ordinal selectors, and empty terminal models in
         // the ledger so the final pass can classify them as explicitly not applicable instead of
         // leaving required keys unaccounted.
@@ -313,6 +453,15 @@ impl SequenceThemeEvidenceRecorder {
             } = route.mechanism()
             {
                 actor_rules.entry(rule_index).or_default();
+            }
+            if let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::Message,
+                selector: FamilyThemeSelectorShape::Static { variant: None },
+                facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
+            } = route.mechanism()
+            {
+                message_rules.entry(rule_index).or_default();
             }
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
@@ -355,6 +504,24 @@ impl SequenceThemeEvidenceRecorder {
                         }
                         FamilyThemeDisposition::LegacyCompatibility => {}
                     }
+                }
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::Message,
+                    selector,
+                    facet,
+                } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
+                    let Some(observation) = message_rules.get_mut(&rule_index) else {
+                        continue;
+                    };
+                    observe_message_rule(
+                        &state.message,
+                        observation,
+                        route.disposition(),
+                        rule_index,
+                        selector,
+                        facet,
+                    );
                 }
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
@@ -511,9 +678,11 @@ impl SequenceThemeEvidenceRecorder {
                 FamilyThemeMechanism::RuleFacet { .. }
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => {
-                    // This narrow adapter owns Actor plus unqualified static Note and Activation
-                    // paint evidence. Other Sequence targets and selector classes remain
-                    // unaccounted unless the compatibility lane rejects them first.
+                    // This narrow adapter owns Actor, unqualified static Message stroke, and
+                    // unqualified static Note/Activation paint evidence. Message fill is observed
+                    // only to account for its participation in the shared signalColor projection.
+                    // Other Sequence targets and selector classes remain unaccounted unless
+                    // compatibility rejects them.
                 }
             }
         }
@@ -535,6 +704,7 @@ impl SequenceThemeEvidenceRecorder {
                 evidence.mark_applied_with_capabilities(key, observation.capabilities);
             }
         }
+        finish_message_rules(&mut evidence, &state.message, message_rules);
         finish_static_rect_rules(&mut evidence, ThemeTarget::Note, &state.note, note_rules);
         finish_static_rect_rules(
             &mut evidence,
@@ -543,6 +713,30 @@ impl SequenceThemeEvidenceRecorder {
             activation_rules,
         );
         evidence
+    }
+}
+
+fn finish_message_rules(
+    evidence: &mut FamilyThemeEvidence,
+    message: &SequenceMessageThemeState,
+    rules: BTreeMap<usize, SequenceRuleObservation>,
+) {
+    for (rule_index, observation) in rules {
+        let key = crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+            index: rule_index,
+            target: ThemeTarget::Message,
+        };
+        if message.receipt.line_candidates == 0 || !observation.applicable {
+            evidence.mark_not_applicable(key);
+        } else if let Some(reason) = observation.residual {
+            evidence.mark_residual(key, reason);
+        } else if observation.incomplete {
+            // A direct Message stroke reached a terminal candidate without a complete line seal.
+        } else if observation.capabilities.is_empty() {
+            evidence.mark_not_applicable(key);
+        } else {
+            evidence.mark_applied_with_capabilities(key, observation.capabilities);
+        }
     }
 }
 
@@ -692,6 +886,50 @@ mod tests {
                 Some("#ef4444"),
                 false,
                 None,
+                false,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn message_winner_without_complete_line_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Message theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (line_candidates, emitted_lines) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceMessageThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Message,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..line_candidates {
+                receipt.record_line_candidate();
+            }
+            for _ in 0..emitted_lines {
+                receipt.record_line_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_message_emission(SequenceMessageThemeEmission::from_terminal_writer(
+                Some("#2563eb"),
                 false,
                 receipt,
             ));

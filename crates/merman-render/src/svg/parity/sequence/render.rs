@@ -11,7 +11,9 @@ use super::actors::{
 };
 use super::frames::render_sequence_box_frames_and_rect_blocks;
 use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
-use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
+use super::messages::{
+    SequenceMessageRenderContext, has_sequence_message_line_candidates, render_sequence_messages,
+};
 use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
@@ -114,6 +116,10 @@ fn render_sequence_diagram_svg_inner(
         sanitize_config,
         "themeVariables.actorBorder",
     );
+    let message_stroke_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.signalColor",
+    );
     let note_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
         sanitize_config,
         "themeVariables.noteBkgColor",
@@ -132,6 +138,11 @@ fn render_sequence_diagram_svg_inner(
     );
     let mut actor_theme =
         resolve_sequence_actor_theme(options, sanitize_config, !model.actor_order.is_empty())?;
+    let mut message_theme = resolve_sequence_message_theme(
+        options,
+        has_sequence_message_line_candidates(model),
+        message_stroke_overridden,
+    )?;
     let note_count = model
         .messages
         .iter()
@@ -217,6 +228,7 @@ fn render_sequence_diagram_svg_inner(
         SequenceThemeCssAdapter {
             actor_fill: actor_theme.typed_fill.as_deref(),
             actor_stroke: actor_theme.typed_stroke.as_deref(),
+            message_stroke: message_theme.typed_stroke.as_deref(),
             note_fill: note_theme.typed_fill.as_deref(),
             note_stroke: note_theme.typed_stroke.as_deref(),
             activation_fill: activation_theme.typed_fill.as_deref(),
@@ -336,7 +348,14 @@ fn render_sequence_diagram_svg_inner(
         right_angles: settings.right_angles,
         loop_text_style: &settings.loop_text_style,
     };
-    render_sequence_messages(&mut out, &message_ctx)?;
+    render_sequence_messages(&mut out, &message_ctx, &mut message_theme.receipt)?;
+    prepared.theme_evidence().record_message_emission(
+        crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
+            message_theme.typed_stroke.as_deref(),
+            message_stroke_overridden,
+            message_theme.receipt,
+        ),
+    );
 
     render_sequence_actor_popup_menus(
         &mut out,
@@ -385,6 +404,12 @@ struct SequenceActorThemeResolution {
     typed_stroke: Option<String>,
     has_ordinal_routes: bool,
     receipt: crate::sequence::SequenceActorThemeReceipt,
+}
+
+#[derive(Default)]
+struct SequenceMessageThemeResolution {
+    typed_stroke: Option<String>,
+    receipt: crate::sequence::SequenceMessageThemeReceipt,
 }
 
 #[derive(Default)]
@@ -508,6 +533,68 @@ fn resolve_sequence_actor_theme(
         typed_fill,
         typed_stroke,
         has_ordinal_routes,
+        receipt,
+    })
+}
+
+fn resolve_sequence_message_theme(
+    options: &SvgExecution<'_>,
+    has_lines: bool,
+    stroke_overridden: bool,
+) -> Result<SequenceMessageThemeResolution> {
+    use crate::diagram_theme::{
+        FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
+        FamilyThemeSelectorShape, ThemeTarget, ThemeVariant,
+    };
+
+    if !has_lines {
+        return Ok(SequenceMessageThemeResolution::default());
+    }
+    let Some(theme) = options.resolved_theme() else {
+        return Ok(SequenceMessageThemeResolution::default());
+    };
+    let mut has_rule_routes = false;
+    let mut has_typed_stroke = false;
+    for route in theme.family_mechanism_routes().iter().copied() {
+        let FamilyThemeMechanism::RuleFacet {
+            target: ThemeTarget::Message,
+            selector: FamilyThemeSelectorShape::Static { variant: None },
+            facet,
+            ..
+        } = route.mechanism()
+        else {
+            continue;
+        };
+        match facet {
+            FamilyThemeRuleFacet::Fill(_) => has_rule_routes = true,
+            FamilyThemeRuleFacet::Stroke(kind) => {
+                has_rule_routes = true;
+                has_typed_stroke |= route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    && matches!(
+                        kind,
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                    );
+            }
+            _ => {}
+        }
+    }
+    if !has_rule_routes {
+        return Ok(SequenceMessageThemeResolution::default());
+    }
+
+    let style = theme.style_with_work_meter(
+        ThemeTarget::Message,
+        ThemeVariant::Default,
+        None,
+        options.work_meter(),
+    )?;
+    let mut receipt = crate::sequence::SequenceMessageThemeReceipt::default();
+    receipt.record_static_style(&style);
+    let typed_stroke = (!stroke_overridden && has_typed_stroke)
+        .then(|| css_paint(style.stroke()))
+        .flatten();
+    Ok(SequenceMessageThemeResolution {
+        typed_stroke,
         receipt,
     })
 }

@@ -8376,6 +8376,522 @@ style Empty font-weight:banana
     }
 
     #[test]
+    fn require_portable_accepts_sequence_message_scalar_strokes_after_line_emission() {
+        for (paint, expected_stroke) in [
+            (
+                CanvasPaint::solid("#2563eb").expect("valid Message stroke"),
+                "#2563eb",
+            ),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Message,
+                                ThemeStylePatch::default().with_stroke(paint),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .expect("compile Sequence Message theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\nBob-->>Alice: Back\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict portable Sequence Message session"),
+            )
+            .expect("Sequence Message theme should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Sequence Message stroke should be proven by the terminal writer");
+
+            let expected_css =
+                format!("#merman .messageLine0,#merman .messageLine1{{stroke:{expected_stroke};}}");
+            assert!(
+                rendered.svg().contains(&expected_css),
+                "Sequence SVG should contain the typed Message stroke: {}",
+                rendered.svg()
+            );
+            assert!(
+                rendered.svg().contains(r#"data-et="message""#),
+                "Sequence SVG should contain terminal Message lines: {}",
+                rendered.svg()
+            );
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_message_stroke_winner_accounts_for_shadowed_fill_rule() {
+        for stroke_first in [false, true] {
+            let fill_rule = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ef4444").expect("valid Message fill")),
+            )
+            .for_family(DiagramFamilyId::SEQUENCE);
+            let stroke_rule = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default()
+                    .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Message stroke")),
+            )
+            .for_family(DiagramFamilyId::SEQUENCE);
+            let rules = if stroke_first {
+                ThemeRuleSet::default()
+                    .with_rule(stroke_rule)
+                    .with_rule(fill_rule)
+            } else {
+                ThemeRuleSet::default()
+                    .with_rule(fill_rule)
+                    .with_rule(stroke_rule)
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(rules))
+                .expect("compile combined Sequence Message theme");
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict combined Sequence Message session"),
+            )
+            .expect("combined Sequence Message theme should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("shadowed Message fill must not leave strict evidence incomplete");
+
+            let stroke_index = usize::from(!stroke_first);
+            let fill_index = usize::from(stroke_first);
+            assert!(
+                rendered
+                    .svg()
+                    .contains("#merman .messageLine0,#merman .messageLine1{stroke:#2563eb;}")
+            );
+            assert!(!rendered.svg().contains("stroke:#ef4444"));
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: stroke_index,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: fill_index,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_message_stroke_rule_without_a_terminal_line_is_not_applicable() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Message theme");
+        for source in [
+            "sequenceDiagram\nparticipant Alice\nparticipant Bob\n",
+            "sequenceDiagram\nautonumber\nparticipant Alice\nparticipant Bob\nNote over Alice,Bob: Ready\n",
+        ] {
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict Sequence Message session"),
+            )
+            .expect("Sequence Message rule without lines should prepare")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("Sequence Message rule without terminal lines should be not applicable");
+
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_explicit_signal_color_owns_precedence_over_typed_message_stroke() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Message theme");
+        let cases = [
+            (
+                "site config",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "themeVariables": {"signalColor": "#22c55e"}
+                }))),
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ),
+            (
+                "init directive",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                }))),
+                r##"%%{init: {"themeVariables": {"signalColor": "#22c55e"}}}%%
+sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Hello
+"##,
+            ),
+        ];
+
+        for (case, engine, source) in cases {
+            let parsed = theme
+                .install_parse_compatibility(engine)
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("configured Sequence source should produce a render model");
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .config
+                    .get_str("themeVariables.signalColor"),
+                (case == "init directive").then_some("#22c55e"),
+                "{case} source ownership probe"
+            );
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.signalColor"),
+                Some("#22c55e"),
+                "{case} must retain explicit signalColor"
+            );
+            assert!(
+                merman_core::__private::config_path_overrides_typed_default(
+                    &parsed.metadata().effective_config,
+                    "themeVariables.signalColor",
+                ),
+                "{case} must retain signalColor ownership"
+            );
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin configured strict Sequence Message session"),
+            )
+            .expect("explicit signalColor should remain evaluable")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("explicit signalColor should satisfy strict portability");
+
+            assert!(
+                rendered.svg().contains("stroke:#22c55e"),
+                "{case}: {}",
+                rendered.svg()
+            );
+            assert!(
+                !rendered
+                    .svg()
+                    .contains("#merman .messageLine0,#merman .messageLine1{stroke:#ef4444;}")
+            );
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_text_color_derivation_owns_precedence_over_typed_message_stroke() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Message theme");
+        let cases = [
+            (
+                "site config",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "themeVariables": {"textColor": "#22c55e"}
+                }))),
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+            ),
+            (
+                "init directive",
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "secure": [
+                        "secure",
+                        "securityLevel",
+                        "startOnLoad",
+                        "maxTextSize",
+                        "suppressErrorRendering",
+                        "maxEdges"
+                    ]
+                }))),
+                r##"%%{init: {"themeVariables": {"textColor": "#22c55e"}}}%%
+sequenceDiagram
+participant Alice
+participant Bob
+Alice->>Bob: Hello
+"##,
+            ),
+        ];
+
+        for (case, engine, source) in cases {
+            let parsed = theme
+                .install_parse_compatibility(engine)
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("configured Sequence source should produce a render model");
+            assert_eq!(
+                parsed.metadata().config.get_str("themeVariables.textColor"),
+                (case == "init directive").then_some("#22c55e"),
+                "{case} source ownership probe"
+            );
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.textColor"),
+                Some("#22c55e"),
+                "{case} must retain explicit textColor"
+            );
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.signalColor"),
+                Some("#22c55e"),
+                "{case} must derive signalColor from textColor"
+            );
+            assert!(
+                merman_core::__private::config_path_overrides_typed_default(
+                    &parsed.metadata().effective_config,
+                    "themeVariables.signalColor",
+                ),
+                "{case} must propagate ownership to signalColor"
+            );
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin configured strict Sequence Message session"),
+            )
+            .expect("derived signalColor should remain evaluable")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("derived signalColor should satisfy strict portability");
+
+            assert!(
+                rendered.svg().contains("stroke:#22c55e"),
+                "{case}: {}",
+                rendered.svg()
+            );
+            assert!(
+                !rendered
+                    .svg()
+                    .contains("#merman .messageLine0,#merman .messageLine1{stroke:#ef4444;}")
+            );
+            assert_eq!(
+                rendered.style_report().theme_not_applicable_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                }]
+            );
+            assert!(
+                rendered
+                    .style_report()
+                    .theme_applied_mechanisms()
+                    .is_empty()
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_unsupported_message_gradient_fails_closed_after_line_emission() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#000000").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#ffffff").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::LinearGradient(gradient)),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile unsupported Sequence Message gradient");
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model")
+        };
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Sequence Message session"),
+        )
+        .expect("best-effort preparation should retain unsupported Message evidence")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort Sequence Message output should remain renderable");
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Message,
+                },
+                reason: FamilyThemeResidualReason::UnsupportedPaint,
+            }]
+        );
+
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Sequence Message session"),
+        )
+        .expect("strict verification waits for terminal Message evidence");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("unsupported Sequence Message gradient must fail closed"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::SEQUENCE, 1))
+        );
+    }
+
+    #[test]
     fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
         for (style, expected_css) in [
             (

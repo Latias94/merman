@@ -97,11 +97,12 @@ pub enum ThemeRouteCutoverProjection {
     NoteStroke = 7,
     ActivationFill = 8,
     ActivationStroke = 9,
+    MessageStroke = 10,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -112,6 +113,7 @@ impl ThemeRouteCutoverProjection {
         Self::NoteStroke,
         Self::ActivationFill,
         Self::ActivationStroke,
+        Self::MessageStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -126,6 +128,7 @@ impl ThemeRouteCutoverProjection {
             Self::NoteStroke => "note.stroke",
             Self::ActivationFill => "activation.fill",
             Self::ActivationStroke => "activation.stroke",
+            Self::MessageStroke => "message.stroke",
         }
     }
 
@@ -141,7 +144,8 @@ impl ThemeRouteCutoverProjection {
             | Self::NoteFill
             | Self::NoteStroke
             | Self::ActivationFill
-            | Self::ActivationStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::ActivationStroke
+            | Self::MessageStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -188,6 +192,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::ActivationFill);
     pub const REPLACE_ACTIVATION_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::ActivationStroke);
+    pub const REPLACE_MESSAGE_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::MessageStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -307,3 +313,23 @@ impl fmt::Display for ThemeRouteCutoverInventoryError {
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 impl std::error::Error for ThemeRouteCutoverInventoryError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sequence_message_stroke_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::MessageStroke;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "message.stroke");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
+    }
+}

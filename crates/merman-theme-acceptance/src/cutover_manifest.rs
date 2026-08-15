@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 3;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 4;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 10] = [
+); 11] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -54,6 +54,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::ActivationStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::MessageStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -105,6 +109,8 @@ const ACTIVATION_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActivationFill];
 const ACTIVATION_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActivationStroke];
+const MESSAGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::MessageStroke];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -119,7 +125,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 24] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 26] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -287,6 +293,20 @@ const ACTIVE_ROUTES: [RouteAuthorization; 24] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         ACTIVATION_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Message,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        MESSAGE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Message,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        MESSAGE_STROKE_PROJECTIONS,
     ),
 ];
 

@@ -249,6 +249,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_STROKE)
         }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE)
+        }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_NOTE_FILL)
         }
@@ -615,6 +618,18 @@ fn classify_rule_facet(
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
+        && target == ThemeTarget::Message
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -1447,6 +1462,44 @@ mod tests {
     }
 
     #[test]
+    fn sequence_message_only_owns_unqualified_scalar_strokes() {
+        for paint in [
+            CanvasPaint::Transparent,
+            CanvasPaint::solid("#123456").expect("valid Message stroke"),
+        ] {
+            let stroke = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_stroke(paint.clone()),
+            );
+            assert_eq!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &stroke)[0].disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+
+            let explicit_default = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_stroke(paint),
+            )
+            .with_variant(ThemeVariant::Default);
+            assert_eq!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)[0]
+                    .disposition(),
+                FamilyThemeDisposition::LegacyCompatibility
+            );
+        }
+
+        let fill = ThemeRule::new(
+            ThemeTarget::Message,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#abcdef").expect("valid Message fill")),
+        );
+        assert_eq!(
+            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &fill)[0].disposition(),
+            FamilyThemeDisposition::LegacyCompatibility
+        );
+    }
+
+    #[test]
     fn legacy_replacing_typed_routes_are_derived_from_the_matrix() {
         use ThemeRouteCutoverFacet::{Fill, Stroke};
         use ThemeRouteCutoverValue::{Solid, Transparent};
@@ -1538,6 +1591,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["actor.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Message,
+                Stroke,
+                Transparent,
+                vec!["message.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Message,
+                Stroke,
+                Solid,
+                vec!["message.stroke"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,

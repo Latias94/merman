@@ -1672,7 +1672,11 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
         get_truthy_string(&tv, "actorTextColor").unwrap_or_else(|| "black".to_string());
     set_if_missing(&mut tv, "actorLineColor", Value::String(border1.clone()));
     set_if_missing(&mut tv, "labelBoxBkgColor", Value::String(main_bkg.clone()));
+    let derives_signal_color_from_text = value_is_missing(&tv, "signalColor");
     set_if_missing(&mut tv, "signalColor", Value::String(text_color.clone()));
+    if derives_signal_color_from_text {
+        config.propagate_theme_variable_ownership("textColor", "signalColor");
+    }
     set_if_missing(
         &mut tv,
         "signalTextColor",
@@ -3374,6 +3378,85 @@ mod tests {
         apply_theme_defaults(&mut config).unwrap();
 
         assert!(!config.config_path_overrides_typed_default("themeVariables.mainBkg"));
+    }
+
+    #[test]
+    fn signal_color_ownership_follows_only_the_theme_that_derives_it_from_text_color() {
+        for (theme, text_color, derives_signal_color) in [
+            (MermaidThemeId::Default, "#22c55e", true),
+            (MermaidThemeId::Base, "#333", false),
+            (MermaidThemeId::Dark, "lightgrey", false),
+            (MermaidThemeId::Forest, "#333", false),
+            (MermaidThemeId::Neutral, "#333", false),
+            (MermaidThemeId::Neo, "#333", false),
+            (MermaidThemeId::NeoDark, "#ccc", false),
+            (MermaidThemeId::Redux, "#28253D", false),
+            (MermaidThemeId::ReduxDark, "#FFFFFF", false),
+            (MermaidThemeId::ReduxColor, "#28253D", false),
+            (MermaidThemeId::ReduxDarkColor, "#FFFFFF", false),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme.as_str() }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": { "textColor": text_color }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            assert_eq!(
+                config.get_str("themeVariables.signalColor"),
+                Some(text_color),
+                "theme {theme} intentionally uses an equal final value in this provenance probe"
+            );
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.signalColor"),
+                derives_signal_color,
+                "theme {theme}"
+            );
+        }
+    }
+
+    #[test]
+    fn init_text_color_derives_owned_signal_color_through_the_parse_pipeline() {
+        let metadata = crate::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "secure": [
+                    "secure",
+                    "securityLevel",
+                    "startOnLoad",
+                    "maxTextSize",
+                    "suppressErrorRendering",
+                    "maxEdges"
+                ]
+            })))
+            .parse_metadata_sync(
+                r##"%%{init: {"themeVariables": {"textColor": "#22c55e"}}}%%
+sequenceDiagram
+Alice->>Bob: Hello
+"##,
+            )
+            .expect("parse Sequence init textColor");
+
+        assert_eq!(
+            metadata.config.get_str("themeVariables.textColor"),
+            Some("#22c55e")
+        );
+        assert_eq!(
+            metadata
+                .effective_config
+                .get_str("themeVariables.textColor"),
+            Some("#22c55e")
+        );
+        assert_eq!(
+            metadata
+                .effective_config
+                .get_str("themeVariables.signalColor"),
+            Some("#22c55e")
+        );
+        assert!(
+            metadata
+                .effective_config
+                .config_path_overrides_typed_default("themeVariables.signalColor")
+        );
     }
 
     #[test]

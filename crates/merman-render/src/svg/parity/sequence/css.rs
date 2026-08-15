@@ -4,6 +4,7 @@ use super::super::*;
 pub(super) struct SequenceThemeCssAdapter<'a> {
     pub(super) actor_fill: Option<&'a str>,
     pub(super) actor_stroke: Option<&'a str>,
+    pub(super) message_stroke: Option<&'a str>,
     pub(super) note_fill: Option<&'a str>,
     pub(super) note_stroke: Option<&'a str>,
     pub(super) activation_fill: Option<&'a str>,
@@ -250,6 +251,23 @@ pub(super) fn write_sequence_css_with_theme_adapter(
             id, typed_actor_stroke, id, id, id, id, typed_actor_stroke
         );
     }
+    if let Some(typed_message_stroke) = typed.message_stroke {
+        let _ = write!(
+            &mut out,
+            r#"#{} .messageLine0,#{} .messageLine1{{stroke:{};}}"#,
+            id, id, typed_message_stroke
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} [id$="-arrowhead"] path,#{} [id$="-crosshead"] path,#{} [id$="-filled-head"] path,#{} [id$="-solidTopArrowHead"] path,#{} [id$="-solidBottomArrowHead"] path{{fill:{};stroke:{};}}"#,
+            id, id, id, id, id, typed_message_stroke, typed_message_stroke
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} [id$="-stickTopArrowHead"] path,#{} [id$="-stickBottomArrowHead"] path{{stroke:{};}}#{} [id$="-sequencenumber"]{{fill:{};}}"#,
+            id, id, typed_message_stroke, id, typed_message_stroke
+        );
+    }
     if let Some(typed_note_fill) = typed.note_fill {
         let _ = write!(&mut out, r#"#{} .note{{fill:{};}}"#, id, typed_note_fill);
     }
@@ -449,6 +467,29 @@ mod tests {
         assert!(!css.contains(r#"#seq line{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq .messageLine0{fill:#dc2626;"#));
         assert!(!css.contains(r#"#seq [id$="-sequencenumber"]{fill:#dc2626;"#));
+    }
+
+    #[test]
+    fn sequence_message_stroke_css_covers_lines_and_their_marker_table() {
+        let css = sequence_css_with_theme_adapter(
+            "seq",
+            16.0,
+            &json!({"themeVariables": {"signalColor": "#555555"}}),
+            SequenceThemeCssAdapter {
+                message_stroke: Some("#2563eb"),
+                ..SequenceThemeCssAdapter::default()
+            },
+        );
+
+        assert!(css.contains(r#"#seq .messageLine0,#seq .messageLine1{stroke:#2563eb;}"#));
+        assert!(css.contains(
+            r#"#seq [id$="-arrowhead"] path,#seq [id$="-crosshead"] path,#seq [id$="-filled-head"] path,#seq [id$="-solidTopArrowHead"] path,#seq [id$="-solidBottomArrowHead"] path{fill:#2563eb;stroke:#2563eb;}"#
+        ));
+        assert!(css.contains(
+            r#"#seq [id$="-stickTopArrowHead"] path,#seq [id$="-stickBottomArrowHead"] path{stroke:#2563eb;}#seq [id$="-sequencenumber"]{fill:#2563eb;}"#
+        ));
+        assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));
+        assert!(!css.contains(r#"#seq .activation0{stroke:#2563eb;}"#));
     }
 
     #[test]
