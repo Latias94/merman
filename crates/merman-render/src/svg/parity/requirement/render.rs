@@ -117,7 +117,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         max_width_px: i64,
     }
 
-    fn mk_label_foreign_object(out: &mut String, spec: LabelForeignObject<'_>) {
+    fn mk_label_foreign_object(out: &mut impl SvgOutput, spec: LabelForeignObject<'_>) {
         let LabelForeignObject {
             html,
             width,
@@ -467,7 +467,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let vb_y = content_bounds.min_y - viewport_padding;
     let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
     let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
     let mut a11y_nodes = String::new();
@@ -949,11 +949,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
     push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 fn push_requirement_shadow_defs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
 ) {
@@ -979,7 +979,10 @@ mod tests {
     use super::super::*;
     use crate::DiagramFamilyId;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+    use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions, with_test_svg_execution};
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
     };
@@ -1260,6 +1263,77 @@ mod tests {
             )
         })
         .and_then(|svg| svg.into_string_for(DiagramFamilyId::REQUIREMENT))
+    }
+
+    fn render_requirement_with_policy(policy: RenderResourcePolicy) -> crate::Result<String> {
+        let model = prepared_requirement_model();
+        let effective_config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            effective_config.as_value(),
+            &measurer,
+            policy,
+        )?;
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("render session");
+        let request = SvgRenderOptions {
+            diagram_id: Some("requirement-bounded".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            DiagramFamilyId::REQUIREMENT,
+        )
+        .expect("SVG execution");
+
+        render_requirement_diagram_svg_model(
+            &prepared,
+            &model,
+            &effective_config,
+            None,
+            &measurer,
+            &execution,
+        )?
+        .into_string_for(DiagramFamilyId::REQUIREMENT)
+    }
+
+    #[test]
+    fn requirement_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+        let baseline =
+            render_requirement_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+                .expect("render unbounded Requirement SVG");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1);
+
+        let exact = render_requirement_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+                .expect("valid exact Requirement SVG ceiling"),
+        )
+        .expect("exact Requirement SVG ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+        let below_exact = exact_bytes - 1;
+        let error = render_requirement_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+                .expect("valid below-exact Requirement SVG ceiling"),
+        )
+        .expect_err("one byte below the Requirement SVG size must fail");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Requirement MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
     }
 
     #[test]
