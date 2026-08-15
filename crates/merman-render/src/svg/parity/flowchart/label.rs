@@ -555,7 +555,8 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
 mod tests {
     use super::{
         flowchart_label_html_impl, is_single_img_label, normalize_flowchart_img_tags,
-        wrap_flowchart_svg_source_word_lines, write_flowchart_svg_source_word_lines,
+        starts_with_ascii_case_insensitive, wrap_flowchart_svg_source_word_lines,
+        write_flowchart_svg_source_word_lines,
     };
 
     #[test]
@@ -590,6 +591,21 @@ mod tests {
             r#"<img src="tail.svg" style="display: flex; flex-direction: column; "#,
             r#"width: 100%;">"#,
         )));
+    }
+
+    #[test]
+    fn flowchart_img_prefix_match_handles_mixed_case_and_truncated_boundaries() {
+        for input in ["<img", "<IMG", "<ImG src='diagram.svg'>"] {
+            assert!(starts_with_ascii_case_insensitive(input, b"<img"));
+        }
+        for input in ["", "<", "<i", "<im", "<imx"] {
+            assert!(!starts_with_ascii_case_insensitive(input, b"<img"));
+            assert_eq!(normalize_flowchart_img_tags(input, false), input);
+            assert!(!is_single_img_label(input));
+        }
+
+        assert_eq!(normalize_flowchart_img_tags("<IMG", false), "<IMG");
+        assert!(!is_single_img_label("<IMG"));
     }
 
     #[test]
