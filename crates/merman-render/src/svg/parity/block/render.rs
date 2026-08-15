@@ -205,64 +205,79 @@ pub(crate) fn render_block_diagram_svg_model(
         }
     }
 
-    fn block_class_css(
+    fn important_declarations(styles: &[String]) -> impl Iterator<Item = (&str, &str)> {
+        styles.iter().filter_map(|style| parse_style_decl(style))
+    }
+
+    fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
+        if write!(out, "{key}:").is_err() {
+            return out.checkpoint();
+        }
+        escape_xml_into(out, value);
+        out.checkpoint()?;
+        out.push_str("!important;");
+        out.checkpoint()
+    }
+
+    fn write_important_declarations<'a>(
+        out: &mut impl SvgOutput,
+        declarations: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<()> {
+        for (key, value) in declarations {
+            write_important_declaration(out, key, value)?;
+        }
+        Ok(())
+    }
+
+    fn write_block_class_css(
+        out: &mut impl SvgOutput,
         diagram_id: &str,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
-    ) -> String {
-        fn important_declarations(styles: &[String]) -> String {
-            let mut out = String::new();
-            for style in styles {
-                let Some((key, value)) = parse_style_decl(style) else {
-                    continue;
-                };
-                let _ = write!(&mut out, "{key}:{}!important;", escape_xml(value));
-            }
-            out
-        }
-
+    ) -> Result<()> {
         let id = escape_xml(diagram_id);
-        let mut out = String::new();
         for class_def in class_defs.values() {
             let class = escape_xml(&class_def.id);
-            let shape_style = important_declarations(&class_def.styles);
-            if !shape_style.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                    id.as_str(),
-                    class.as_str(),
-                    shape_style,
-                    id.as_str(),
-                    class.as_str(),
-                    shape_style
-                );
+            let mut shape_declarations = important_declarations(&class_def.styles);
+            if let Some((key, value)) = shape_declarations.next() {
+                if write!(out, r#"#{} .{}&gt;*{{"#, id.as_str(), class.as_str(),).is_err() {
+                    return out.checkpoint();
+                }
+                write_important_declaration(out, key, value)?;
+                write_important_declarations(out, shape_declarations)?;
+                if write!(out, r#"}}#{} .{} span{{"#, id.as_str(), class.as_str(),).is_err() {
+                    return out.checkpoint();
+                }
+                write_important_declarations(out, important_declarations(&class_def.styles))?;
+                out.push('}');
+                out.checkpoint()?;
             }
 
-            let text_style = important_declarations(&class_def.text_styles);
-            if !text_style.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"#{} .{} tspan{{{}}}"#,
-                    id.as_str(),
-                    class.as_str(),
-                    text_style
-                );
+            let mut text_declarations = important_declarations(&class_def.text_styles);
+            if let Some((key, value)) = text_declarations.next() {
+                if write!(out, r#"#{} .{} tspan{{"#, id.as_str(), class.as_str(),).is_err() {
+                    return out.checkpoint();
+                }
+                write_important_declaration(out, key, value)?;
+                write_important_declarations(out, text_declarations)?;
+                out.push('}');
+                out.checkpoint()?;
             }
         }
-        out
+        Ok(())
     }
 
-    fn block_css(
+    fn write_block_css(
+        out: &mut impl SvgOutput,
         diagram_id: &str,
         effective_config: &serde_json::Value,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
-    ) -> Result<String> {
+    ) -> Result<()> {
         let id = escape_xml(diagram_id);
         let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
@@ -281,17 +296,17 @@ pub(crate) fn render_block_diagram_svg_model(
         let cluster_bkg = css_rgba_fade(cluster_bkg, 0.5)?;
         let cluster_border = css_rgba_fade(cluster_border, 0.2)?;
 
-        let mut out = String::new();
         let _ = write!(
-            &mut out,
+            out,
             r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
             id.as_str(),
             font_family,
             fmt(font_size),
             node_text_color
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
             id.as_str(),
             stroke_width,
@@ -301,8 +316,9 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             id.as_str()
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
             id.as_str(),
             font_family,
@@ -314,8 +330,9 @@ pub(crate) fn render_block_diagram_svg_model(
             node_text_color,
             node_text_color
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span,#{} .cluster-label p{{color:{};}}"#,
             id.as_str(),
             title_color,
@@ -323,8 +340,9 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             title_color
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
             id.as_str(),
             id.as_str(),
@@ -337,8 +355,9 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             id.as_str()
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePath .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
             id.as_str(),
             id.as_str(),
@@ -349,8 +368,9 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             line_color
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
             id.as_str(),
             edge_label_background,
@@ -361,8 +381,9 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             edge_label_background
         );
+        out.checkpoint()?;
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
             id.as_str(),
             cluster_bkg,
@@ -377,8 +398,8 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             font_family
         );
-        out.push_str(&block_class_css(diagram_id, class_defs));
-        Ok(out)
+        out.checkpoint()?;
+        write_block_class_css(out, diagram_id, class_defs)
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -393,7 +414,7 @@ pub(crate) fn render_block_diagram_svg_model(
         .unwrap_or(5.0)
         .max(0.0);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_extents(
         bounds.min_x,
         bounds.min_y,
@@ -411,41 +432,50 @@ pub(crate) fn render_block_diagram_svg_model(
     )
     .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
-    out.push_str(&block_css(diagram_id, effective_config, &model.class_defs)?);
+    out.checkpoint()?;
+    write_block_css(&mut out, diagram_id, effective_config, &model.class_defs)?;
     out.push_str("</style><g/>");
+    out.checkpoint()?;
 
     let _ = write!(
         &mut out,
         r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "pointEnd"))
     );
+    out.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "pointStart"))
     );
+    out.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "circleEnd"))
     );
+    out.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "circleStart"))
     );
+    out.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "crossEnd"))
     );
+    out.checkpoint()?;
     let _ = write!(
         &mut out,
         r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "crossStart"))
     );
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="block">"#);
+    out.checkpoint()?;
 
     for n in &layout.nodes {
         let Some(node) = nodes_by_id.get(&n.id) else {
@@ -635,6 +665,7 @@ pub(crate) fn render_block_diagram_svg_model(
         );
 
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     for e in &model.edges {
@@ -691,6 +722,7 @@ pub(crate) fn render_block_diagram_svg_model(
             );
         }
         out.push_str("/>");
+        out.checkpoint()?;
     }
 
     for e in &model.edges {
@@ -712,8 +744,95 @@ pub(crate) fn render_block_diagram_svg_model(
             fmt(lbl.height),
             escape_xml(&decode_block_label_html(&e.label))
         );
+        out.checkpoint()?;
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+    use crate::text::DeterministicTextMeasurer;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    const BOUNDED_BLOCK_SOURCE: &str = r#"block
+  A["Alpha"] --> B["Beta"]
+  classDef branded fill:#696,stroke:#333
+  class A branded
+"#;
+
+    fn render_block_direct_with_policy(
+        policy: RenderResourcePolicy,
+    ) -> crate::Result<root_svg::RootedSvg> {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(BOUNDED_BLOCK_SOURCE, ParseOptions::strict())
+            .expect("parse Block resource-bound fixture")
+            .expect("detect Block resource-bound fixture");
+        let RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("expected a typed Block render model");
+        };
+        let effective_config = parsed.metadata().effective_config.as_value();
+        let layout = crate::block::layout_block_diagram_typed(
+            model,
+            effective_config,
+            &DeterministicTextMeasurer::default(),
+        )?;
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .expect("render session");
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::BLOCK,
+        )
+        .expect("SVG execution");
+
+        render_block_diagram_svg_model(&layout, model, effective_config, &execution)
+    }
+
+    #[test]
+    fn block_svg_sink_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+        let baseline =
+            render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+                .expect("render unbounded Block SVG directly");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1);
+
+        let exact = render_block_direct_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+                .expect("valid exact Block SVG ceiling"),
+        )
+        .expect("exact Block SVG sink ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+        let below_exact = exact_bytes - 1;
+        let error = render_block_direct_with_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+                .expect("valid below-exact Block SVG ceiling"),
+        )
+        .expect_err("one byte below the direct Block SVG size must fail inside the renderer");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Block MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
+        assert!(limit.explicit_overrides.iter().any(|resource_override| {
+            resource_override.id == ResourceLimitId::MaxSvgBytes
+                && resource_override.value == below_exact
+        }));
+    }
 }
