@@ -349,6 +349,28 @@ impl<'a> DeferredTextRegistry<'a> {
         })
     }
 
+    pub(crate) fn try_register_framed_value(
+        &mut self,
+        prefix: &'static str,
+        value: &'a str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<DeferredTextLine> {
+        resources.transaction(|resources| {
+            let value_line = self.try_register(
+                ComposedTextPlan::try_new(resources, 1, |push| push(value))?,
+                width_profile,
+                resources,
+            )?;
+            self.try_register_parts(width_profile, resources, 4, |push| {
+                push(DeferredTextPart::Static(prefix))?;
+                push(DeferredTextPart::Decimal(value.len()))?;
+                push(DeferredTextPart::Static(")="))?;
+                push(DeferredTextPart::QuotedLine(&value_line))
+            })
+        })
+    }
+
     pub(crate) fn try_register_parts<'part>(
         &mut self,
         width_profile: TerminalWidthProfile,

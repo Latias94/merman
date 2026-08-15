@@ -215,6 +215,15 @@ impl EndpointLabelRole {
             Self::Second => "endpoint 2: ",
         }
     }
+
+    const fn summary_open(self, leading_space: bool) -> &'static str {
+        match (self, leading_space) {
+            (Self::First, false) => "endpoint1=[",
+            (Self::Second, false) => "endpoint2=[",
+            (Self::First, true) => " endpoint1=[",
+            (Self::Second, true) => " endpoint2=[",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -997,6 +1006,7 @@ fn class_sections<'a>(
         .annotations
         .len()
         .checked_add(1)
+        .and_then(|capacity| capacity.checked_add(usize::from(class.text != class.id)))
         .ok_or_else(|| work_overflow(resources))?;
     let mut header = Vec::new();
     header
@@ -1015,6 +1025,14 @@ fn class_sections<'a>(
         width_profile,
         resources,
     )?);
+    if class.text != class.id {
+        header.push(deferred_text.try_register_framed_value(
+            "id(bytes=",
+            &class.id,
+            width_profile,
+            resources,
+        )?);
+    }
 
     let mut sections = Vec::new();
     sections
@@ -1977,7 +1995,9 @@ fn class_relation_summary_connector(
         + 5;
     deferred_text.try_register_parts(width_profile, resources, producer_work, |push| {
         if let Some(lines) = top_lines.as_ref() {
-            push(DeferredTextPart::Static("endpoint1=["))?;
+            push(DeferredTextPart::Static(
+                layout.top_endpoint_role.summary_open(false),
+            ))?;
             visit_endpoint_label_summary_parts(lines, push)?;
             push(DeferredTextPart::Static("] "))?;
         }
@@ -2006,7 +2026,9 @@ fn class_relation_summary_connector(
         }
 
         if let Some(lines) = bottom_lines.as_ref() {
-            push(DeferredTextPart::Static(" endpoint2=["))?;
+            push(DeferredTextPart::Static(
+                layout.bottom_endpoint_role.summary_open(true),
+            ))?;
             visit_endpoint_label_summary_parts(lines, push)?;
             push(DeferredTextPart::Static("]"))?;
         }

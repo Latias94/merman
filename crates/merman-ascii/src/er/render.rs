@@ -199,9 +199,10 @@ fn render_er_diagram_impl(
     boxes
         .try_reserve_exact(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
-    for entity in model.entities.values() {
+    for (authored_identity, entity) in &model.entities {
         execution.checkpoint(merman_core::OperationPhase::Layout)?;
         boxes.push(render_entity_box(
+            authored_identity,
             entity,
             options,
             charset,
@@ -393,6 +394,7 @@ fn render_er_components<'model>(
 }
 
 fn render_entity_box<'a>(
+    authored_identity: &'a str,
     entity: &'a ErEntityRenderModel,
     options: &AsciiRenderOptions,
     charset: ErCharset,
@@ -400,6 +402,7 @@ fn render_entity_box<'a>(
     resources: &mut ResourceContext,
 ) -> Result<RenderedEntityBox> {
     let sections = entity_sections(
+        authored_identity,
         entity,
         options.terminal_width_profile,
         deferred_text,
@@ -438,18 +441,27 @@ fn render_box_sections(
 }
 
 fn entity_sections<'a>(
+    authored_identity: &'a str,
     entity: &'a ErEntityRenderModel,
     width_profile: TerminalWidthProfile,
     deferred_text: &mut DeferredTextRegistry<'a>,
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<DeferredTextLine>>> {
     let mut header = Vec::new();
+    let display_label = entity_display_label(entity);
     header
-        .try_reserve_exact(1)
+        .try_reserve_exact(1 + usize::from(display_label != authored_identity))
         .map_err(|_| layout_allocation_failed())?;
-    let header_plan =
-        ComposedTextPlan::try_new(resources, 1, |push| push(entity_display_label(entity)))?;
+    let header_plan = ComposedTextPlan::try_new(resources, 1, |push| push(display_label))?;
     header.push(deferred_text.try_register(header_plan, width_profile, resources)?);
+    if display_label != authored_identity {
+        header.push(deferred_text.try_register_framed_value(
+            "id(bytes=",
+            authored_identity,
+            width_profile,
+            resources,
+        )?);
+    }
     let mut sections = Vec::new();
     sections
         .try_reserve_exact(2)
@@ -517,51 +529,26 @@ fn register_er_attribute_line<'a>(
     resources: &ResourceContext,
 ) -> Result<DeferredTextLine> {
     resources.transaction(|resources| {
-        let ty = register_er_framed_field(
+        let ty = deferred.try_register_framed_value(
             "type(bytes=",
             &attribute.ty,
             width_profile,
-            deferred,
             resources,
         )?;
-        let name = register_er_framed_field(
+        let name = deferred.try_register_framed_value(
             " name(bytes=",
             &attribute.name,
             width_profile,
-            deferred,
             resources,
         )?;
         let keys = register_er_framed_keys(&attribute.keys, width_profile, deferred, resources)?;
-        let comment = register_er_framed_field(
+        let comment = deferred.try_register_framed_value(
             " comment(bytes=",
             &attribute.comment,
             width_profile,
-            deferred,
             resources,
         )?;
         DeferredTextLine::try_concat(&[&ty, &name, &keys, &comment], resources)
-    })
-}
-
-fn register_er_framed_field<'a>(
-    prefix: &'static str,
-    value: &'a str,
-    width_profile: TerminalWidthProfile,
-    deferred: &mut DeferredTextRegistry<'a>,
-    resources: &ResourceContext,
-) -> Result<DeferredTextLine> {
-    resources.transaction(|resources| {
-        let value_line = deferred.try_register(
-            ComposedTextPlan::try_new(resources, 1, |push| push(value))?,
-            width_profile,
-            resources,
-        )?;
-        deferred.try_register_parts(width_profile, resources, 4, |push| {
-            push(DeferredTextPart::Static(prefix))?;
-            push(DeferredTextPart::Decimal(value.len()))?;
-            push(DeferredTextPart::Static(")="))?;
-            push(DeferredTextPart::QuotedLine(&value_line))
-        })
     })
 }
 
@@ -964,8 +951,12 @@ fn er_relationship_summary_row<'model>(
     let right_cardinality =
         horizontal_cardinality_marker(layout.bottom_cardinality, RelationPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
-    let source =
-        register_er_summary_endpoint(layout.top_identity, width_profile, deferred, resources)?;
+    let source = deferred.try_register_framed_value(
+        "id(bytes=",
+        layout.top_identity,
+        width_profile,
+        resources,
+    )?;
     let connector = deferred.try_register(
         ComposedTextPlan::try_new(resources, 3, |push| {
             push(left_cardinality)?;
@@ -975,8 +966,12 @@ fn er_relationship_summary_row<'model>(
         width_profile,
         resources,
     )?;
-    let target =
-        register_er_summary_endpoint(layout.bottom_identity, width_profile, deferred, resources)?;
+    let target = deferred.try_register_framed_value(
+        "id(bytes=",
+        layout.bottom_identity,
+        width_profile,
+        resources,
+    )?;
     let label = layout
         .label
         .as_ref()
@@ -1002,27 +997,6 @@ fn er_relationship_summary_row_for_reason<'model>(
             er_relationship_summary_row(layout, charset, width_profile, resources, deferred)
         }
     }
-}
-
-fn register_er_summary_endpoint<'a>(
-    id: &'a str,
-    width_profile: TerminalWidthProfile,
-    deferred: &mut DeferredTextRegistry<'a>,
-    resources: &ResourceContext,
-) -> Result<DeferredTextLine> {
-    resources.transaction(|resources| {
-        let id_line = deferred.try_register(
-            ComposedTextPlan::try_new(resources, 1, |push| push(id))?,
-            width_profile,
-            resources,
-        )?;
-        deferred.try_register_parts(width_profile, resources, 4, |push| {
-            push(DeferredTextPart::Static("id(bytes="))?;
-            push(DeferredTextPart::Decimal(id.len()))?;
-            push(DeferredTextPart::Static(")="))?;
-            push(DeferredTextPart::QuotedLine(&id_line))
-        })
-    })
 }
 
 fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
@@ -1549,6 +1523,7 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let mut deferred = DeferredTextRegistry::new();
         let relation_box = render_entity_box(
+            &entity.id,
             entity,
             options,
             ErCharset::for_options(options),
@@ -1641,10 +1616,17 @@ mod tests {
         boxes
             .try_reserve_exact(model.entities.len())
             .expect("ER summary box allocation should succeed");
-        for entity in model.entities.values() {
+        for (authored_identity, entity) in &model.entities {
             boxes.push(
-                render_entity_box(entity, options, charset, &mut deferred, &mut resources)
-                    .expect("ER summary box should plan"),
+                render_entity_box(
+                    authored_identity,
+                    entity,
+                    options,
+                    charset,
+                    &mut deferred,
+                    &mut resources,
+                )
+                .expect("ER summary box should plan"),
             );
         }
         let authored_entity_identities = er_authored_entity_identities(model, &resources)
@@ -1726,9 +1708,10 @@ mod tests {
         let mut resources = ResourceContext::new(policy);
         let mut deferred_text = DeferredTextRegistry::new();
         let mut boxes = Vec::new();
-        for entity in model.entities.values() {
+        for (authored_identity, entity) in &model.entities {
             boxes.push(
                 render_entity_box(
+                    authored_identity,
                     entity,
                     &options,
                     charset,

@@ -405,11 +405,13 @@ fn class_parser_class_and_namespace_same_id_keep_distinct_route_ownership() {
 #[test]
 fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
     let mut model = parse_class_model("classDiagram\nclass A");
-    model
+    let mut class = model
         .classes
-        .get_mut("A")
-        .expect("class A should exist")
-        .text = "👩‍💻·".to_string();
+        .shift_remove("A")
+        .expect("class A should exist");
+    class.id = "👩‍💻·".to_string();
+    class.text = "👩‍💻·".to_string();
+    model.classes.insert("👩‍💻·".to_string(), class);
 
     let unicode = render_class_model(
         &model,
@@ -1924,6 +1926,23 @@ fn class_parser_endpoint_labels_are_routed_without_fallback_summary() {
 }
 
 #[test]
+fn class_routed_aliases_disclose_authored_endpoint_identities() {
+    let rendered = render_class(
+        "classDiagram\nclass A[\"X\"]\nclass B[\"X\"]\nA --> B : calls",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class aliases with one relation should render diagrammatically");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for identity in [r#"id(bytes=1)="A""#, r#"id(bytes=1)="B""#] {
+        assert!(
+            rendered.contains(identity),
+            "routed class aliases must preserve {identity:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn class_local_semantic_fixture_covers_wide_members_and_relation_labels() {
     let input = read_local_semantic_fixture("class/wide_members_and_summary_labels.mmd");
     let options = AsciiRenderOptions::ascii();
@@ -2190,6 +2209,7 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
         format!(
             concat!(
                 "classDiagram\n",
+                "direction BT\n",
                 "class A\n",
                 "class B\n",
                 "class C\n",
@@ -2211,11 +2231,11 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
     assert!(literal_slash.contains("relations:"), "{literal_slash}");
     assert!(authored_break.contains("relations:"), "{authored_break}");
     assert!(
-        literal_slash.contains("endpoint1=[bytes=3 \"a/b\"] -->"),
+        literal_slash.contains("<-- endpoint1=[bytes=3 \"a/b\"]"),
         "literal slash identity should remain framed:\n{literal_slash}"
     );
     assert!(
-        authored_break.contains("endpoint1=[bytes=1 \"a\", bytes=1 \"b\"] -->"),
+        authored_break.contains("<-- endpoint1=[bytes=1 \"a\", bytes=1 \"b\"]"),
         "authored line boundaries should remain framed:\n{authored_break}"
     );
     assert_ne!(literal_slash, authored_break);

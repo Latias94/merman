@@ -381,11 +381,14 @@ fn er_render_model_rejects_duplicate_rendered_entity_ids() {
 #[test]
 fn er_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
     let mut model = parse_er_model("erDiagram\nA");
-    model
+    let mut entity = model
         .entities
-        .get_mut("A")
-        .expect("entity A should exist")
-        .alias = "👩‍💻·".to_string();
+        .shift_remove("A")
+        .expect("entity A should exist");
+    entity.id = "👩‍💻·".to_string();
+    entity.label = "👩‍💻·".to_string();
+    entity.alias.clear();
+    model.entities.insert("👩‍💻·".to_string(), entity);
 
     let unicode = render_er_model(
         &model,
@@ -1366,7 +1369,7 @@ fn er_parser_mixed_parallel_relationship_layout_preserves_all_facts_in_summary()
 }
 
 #[test]
-fn er_summary_uses_authored_entity_identities_when_display_aliases_collide() {
+fn er_aliases_preserve_authored_entity_identities_when_display_labels_collide() {
     let rendered = render_er(
         concat!(
             "erDiagram\n",
@@ -1381,21 +1384,15 @@ fn er_summary_uses_authored_entity_identities_when_display_aliases_collide() {
     )
     .expect("colliding ER aliases should keep lossless relationship identities");
 
-    assert!(rendered.contains("relations:\n"), "{rendered}");
-    for relationship in [
-        framed_er_summary_relation("A", "||--||", "B", "first"),
-        framed_er_summary_relation("A", "||..o{", "B", "second"),
-        framed_er_summary_relation("A", "||--||", "C", "third"),
-    ] {
+    for identity in ["A", "B", "C"].map(framed_er_summary_endpoint) {
         assert!(
-            rendered.contains(&relationship),
-            "summary must preserve authored endpoint identities for {relationship:?}:\n{rendered}"
+            rendered.contains(&identity),
+            "ER boxes must preserve authored endpoint identity {identity:?}:\n{rendered}"
         );
     }
-    assert!(
-        !rendered.lines().any(|line| line.starts_with("X ||")),
-        "display aliases must not replace endpoint identities in summaries:\n{rendered}"
-    );
+    for label in ["first", "second", "third"] {
+        assert!(rendered.contains(label), "missing {label:?}:\n{rendered}");
+    }
     for generated_id in ["entity-A-0", "entity-B-1", "entity-C-2"] {
         assert!(
             !rendered.contains(generated_id),
@@ -1473,7 +1470,14 @@ fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
         .expect("direct ER identities should remain recoverable");
 
     assert!(rendered.contains("relations:"), "{rendered}");
-    assert_eq!(rendered.matches("| Same |").count(), 2, "{rendered}");
+    assert_eq!(
+        rendered
+            .lines()
+            .filter(|line| line.contains("| Same"))
+            .count(),
+        2,
+        "{rendered}"
+    );
     assert!(
         rendered.contains(r#"id(bytes=1)="\\u{1B}""#),
         "the normalized control id must retain its authored byte identity:\n{rendered}"
