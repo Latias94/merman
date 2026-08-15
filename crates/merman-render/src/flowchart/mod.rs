@@ -131,8 +131,8 @@ pub(crate) use svg_label_artifact::{
     measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
 pub(crate) use theme_evidence::{
-    FlowchartEdgeLabelThemeEmission, FlowchartEdgeThemeEmission, FlowchartEdgeThemeStyle,
-    FlowchartFacetPrecedence, FlowchartNodeThemeEmission, FlowchartNodeThemeStyle,
-    FlowchartShapeFacetEmissionReceipt, FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder,
-    FlowchartThemeFacetEmission,
+    FlowchartClusterThemeEmission, FlowchartClusterThemeStyle, FlowchartEdgeLabelThemeEmission,
+    FlowchartEdgeThemeEmission, FlowchartEdgeThemeStyle, FlowchartFacetPrecedence,
+    FlowchartNodeThemeEmission, FlowchartNodeThemeStyle, FlowchartShapeFacetEmissionReceipt,
+    FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder, FlowchartThemeFacetEmission,
 };

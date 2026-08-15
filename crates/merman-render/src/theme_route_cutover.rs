@@ -98,11 +98,13 @@ pub enum ThemeRouteCutoverProjection {
     ActivationFill = 8,
     ActivationStroke = 9,
     MessageStroke = 10,
+    ClusterFill = 11,
+    ClusterStroke = 12,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 13] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -114,6 +116,8 @@ impl ThemeRouteCutoverProjection {
         Self::ActivationFill,
         Self::ActivationStroke,
         Self::MessageStroke,
+        Self::ClusterFill,
+        Self::ClusterStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -129,6 +133,8 @@ impl ThemeRouteCutoverProjection {
             Self::ActivationFill => "activation.fill",
             Self::ActivationStroke => "activation.stroke",
             Self::MessageStroke => "message.stroke",
+            Self::ClusterFill => "cluster.fill",
+            Self::ClusterStroke => "cluster.stroke",
         }
     }
 
@@ -145,7 +151,9 @@ impl ThemeRouteCutoverProjection {
             | Self::NoteStroke
             | Self::ActivationFill
             | Self::ActivationStroke
-            | Self::MessageStroke => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::MessageStroke
+            | Self::ClusterFill
+            | Self::ClusterStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -194,6 +202,10 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::ActivationStroke);
     pub const REPLACE_MESSAGE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::MessageStroke);
+    pub const REPLACE_CLUSTER_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ClusterFill);
+    pub const REPLACE_CLUSTER_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ClusterStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -331,5 +343,28 @@ mod tests {
             ThemeRouteCutoverProjectionAction::Replace
         );
         assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn cluster_paint_projections_are_exact_replacements() {
+        for (projection, set, contribution_id) in [
+            (
+                ThemeRouteCutoverProjection::ClusterFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_FILL,
+                "cluster.fill",
+            ),
+            (
+                ThemeRouteCutoverProjection::ClusterStroke,
+                ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_STROKE,
+                "cluster.stroke",
+            ),
+        ] {
+            assert_eq!(projection.contribution_id(), contribution_id);
+            assert_eq!(
+                projection.action(),
+                ThemeRouteCutoverProjectionAction::Replace
+            );
+            assert_eq!(set.iter().collect::<Vec<_>>(), vec![projection]);
+        }
     }
 }

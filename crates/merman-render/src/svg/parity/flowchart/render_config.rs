@@ -29,6 +29,10 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub node_fill_config_override: bool,
     pub node_stroke_width_config_override: bool,
     pub edge_stroke_config_override: bool,
+    pub cluster_fill_color: String,
+    pub cluster_stroke_color: String,
+    pub cluster_fill_config_override: bool,
+    pub cluster_stroke_config_override: bool,
     pub node_corner_radius: f64,
     pub node_corner_radius_config_override: bool,
     pub edge_corner_radius: f64,
@@ -107,6 +111,17 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         effective_config,
         "themeVariables.lineColor",
     );
+    let cluster_fill_color = config.theme_token("clusterBkg", "#ffffde");
+    let cluster_stroke_color = config.theme_token("clusterBorder", "#aaaa33");
+    let cluster_fill_config_override = merman_core::__private::config_path_overrides_typed_default(
+        effective_config,
+        "themeVariables.clusterBkg",
+    );
+    let cluster_stroke_config_override =
+        merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.clusterBorder",
+        );
     let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
         .unwrap_or(5.0)
         .max(0.0);
@@ -143,6 +158,10 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,
+        cluster_fill_color,
+        cluster_stroke_color,
+        cluster_fill_config_override,
+        cluster_stroke_config_override,
         node_corner_radius,
         node_corner_radius_config_override,
         edge_corner_radius,

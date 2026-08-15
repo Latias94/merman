@@ -25,10 +25,12 @@ use merman_render::__private::{
     legacy_replacing_typed_theme_routes,
 };
 
+mod flowchart_cluster_proof;
 mod png_proof;
 mod sequence_message_proof;
 mod svg_proof;
 
+use flowchart_cluster_proof::prove_flowchart_cluster_svg;
 use png_proof::prove_terminal_png_pair;
 #[cfg(test)]
 use png_proof::require_marker_pixel_counts;
@@ -72,6 +74,7 @@ const FLOWCHART_NODE_SOURCE: &str = "flowchart LR\nA[Alpha]\nB[Beta]\n";
 const FLOWCHART_EDGE_SOURCE: &str =
     "flowchart LR\nA[Alpha] o--o B[Beta]\nB x--x C[Gamma]\nC <--> D[Delta]\n";
 const FLOWCHART_ANIMATED_EDGE_SOURCE: &str = "flowchart LR\nA[Alpha] circles@o--o B[Beta]\nB crosses@x--x C[Gamma]\nC points@<--> D[Delta]\ncircles@{ animate: true }\ncrosses@{ animate: true }\npoints@{ animate: true }\n";
+const FLOWCHART_CLUSTER_SOURCE: &str = "flowchart TD\nsubgraph Group[Group]\nA[Alpha]\nend\n";
 const SWIMLANE_NODE_SOURCE: &str = r#"---
 config:
   layout: swimlane
@@ -169,19 +172,30 @@ A-//B: stick bottom
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
     ClassicStatic,
+    HandDrawnStatic,
     NeoStatic,
     NeoAnimated,
 }
 
 impl CutoverWitnessProfile {
     const CLASSIC: [Self; 1] = [Self::ClassicStatic];
+    const CLUSTER: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
     const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
 
     const fn id(self) -> &'static str {
         match self {
             Self::ClassicStatic => "classic-static",
+            Self::HandDrawnStatic => "hand-drawn-static",
             Self::NeoStatic => "neo-static",
             Self::NeoAnimated => "neo-animated",
+        }
+    }
+
+    const fn look(self) -> &'static str {
+        match self {
+            Self::ClassicStatic => "classic",
+            Self::HandDrawnStatic => "handDrawn",
+            Self::NeoStatic | Self::NeoAnimated => "neo",
         }
     }
 
@@ -204,6 +218,10 @@ impl CutoverWitnessProfile {
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
         if route.target() == ThemeTarget::Edge {
             &Self::EDGE
+        } else if route.family_id() == DiagramFamilyId::FLOWCHART
+            && route.target() == ThemeTarget::Cluster
+        {
+            &Self::CLUSTER
         } else {
             &Self::CLASSIC
         }
@@ -251,6 +269,7 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(FLOWCHART_EDGE_SOURCE)
         }
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, _) => Ok(FLOWCHART_CLUSTER_SOURCE),
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Node, _) => Ok(SWIMLANE_NODE_SOURCE),
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SWIMLANE_EDGE_SOURCE)
@@ -665,7 +684,11 @@ fn render_cutover_case(
         }
         _ => Vec::new(),
     };
-    let svg_proof = if expected_route.family_id() == DiagramFamilyId::SEQUENCE
+    let svg_proof = if expected_route.family_id() == DiagramFamilyId::FLOWCHART
+        && expected_route.target() == ThemeTarget::Cluster
+    {
+        prove_flowchart_cluster_svg(case, &routes, svg)?
+    } else if expected_route.family_id() == DiagramFamilyId::SEQUENCE
         && expected_route.target() == ThemeTarget::Message
         && expected_route.facet() == ThemeRouteCutoverFacet::Stroke
     {
@@ -719,6 +742,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
             let solid = match route.target() {
                 ThemeTarget::Edge => SOLID_EDGE.css,
                 ThemeTarget::Node
+                | ThemeTarget::Cluster
                 | ThemeTarget::Actor
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
@@ -783,7 +807,7 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({
             "htmlLabels": false,
-            "look": if profile.is_neo() { "neo" } else { "classic" },
+            "look": profile.look(),
             "flowchart": { "htmlLabels": false },
             "themeVariables": theme_variables
         }),
@@ -1032,11 +1056,16 @@ fn cutover_witness_shape_label(shape: CutoverWitnessShape) -> String {
 fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<ControlColor> {
     match (route.target(), route.facet()) {
         (
-            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note | ThemeTarget::Activation,
+            ThemeTarget::Node
+            | ThemeTarget::Cluster
+            | ThemeTarget::Actor
+            | ThemeTarget::Note
+            | ThemeTarget::Activation,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(SOLID_FILL),
         (
             ThemeTarget::Node
+            | ThemeTarget::Cluster
             | ThemeTarget::Actor
             | ThemeTarget::Note
             | ThemeTarget::Activation
@@ -1070,6 +1099,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
         ThemeRouteCutoverValue::Solid => match (route.target(), route.facet()) {
             (
                 ThemeTarget::Node
+                | ThemeTarget::Cluster
                 | ThemeTarget::Actor
                 | ThemeTarget::Note
                 | ThemeTarget::Activation,
@@ -1077,6 +1107,7 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             ) => Ok(SOLID_FILL.css),
             (
                 ThemeTarget::Node
+                | ThemeTarget::Cluster
                 | ThemeTarget::Actor
                 | ThemeTarget::Note
                 | ThemeTarget::Activation
@@ -1246,11 +1277,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_twenty_six_routes_and_thirty_four_artifact_witnesses() {
+    fn route_inventory_retains_thirty_routes_and_forty_two_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 26);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 34);
+        assert_eq!(inventory.len(), 30);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 42);
     }
 
     #[test]

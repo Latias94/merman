@@ -1,7 +1,10 @@
 //! Flowchart cluster renderer.
 
 use super::super::*;
-use crate::flowchart::FlowchartShapeFacetEmissionReceipt;
+use crate::flowchart::{
+    FlowchartClusterThemeEmission, FlowchartFacetPrecedence, FlowchartShapeFacetEmissionReceipt,
+    FlowchartThemeFacetEmission,
+};
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 use std::borrow::Cow;
 
@@ -78,15 +81,14 @@ fn write_flowchart_cluster_shape(
     ctx: &FlowchartRenderCtx<'_>,
     compiled_styles: &FlowchartCompiledStyles,
     rect_style: &str,
+    fill: &str,
+    stroke: &str,
     left: f64,
     top: f64,
     rect_w: f64,
     rect_h: f64,
 ) -> FlowchartShapeFacetEmissionReceipt {
     if flowchart_config_look(ctx.config) == "handDrawn" {
-        let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
-        let fill = theme.cluster_bkg.as_str();
-        let stroke = theme.cluster_border.as_str();
         let stroke_width = parse_css_px_f32(compiled_styles.stroke_width.as_ref(), 1.3);
         let stroke_dasharray = compiled_styles
             .stroke_dasharray
@@ -143,6 +145,26 @@ fn write_flowchart_cluster_shape(
     FlowchartShapeFacetEmissionReceipt::all()
 }
 
+fn record_cluster_shape_emission(
+    ctx: &FlowchartRenderCtx<'_>,
+    compiled_styles: &FlowchartCompiledStyles,
+    cluster_id: &str,
+    receipt: FlowchartShapeFacetEmissionReceipt,
+    fill_precedence: FlowchartFacetPrecedence,
+    stroke_precedence: FlowchartFacetPrecedence,
+) {
+    let source_residuals =
+        compiled_styles.emitted_shape_source_residuals_with_receipt(cluster_id, receipt);
+    ctx.theme_evidence.record_cluster_emission(
+        ctx.cluster_theme,
+        FlowchartClusterThemeEmission {
+            fill: FlowchartThemeFacetEmission::new(fill_precedence, receipt.fill),
+            stroke: FlowchartThemeFacetEmission::new(stroke_precedence, receipt.stroke),
+        },
+        &source_residuals,
+    );
+}
+
 pub(in crate::svg::parity) fn render_flowchart_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
@@ -169,7 +191,25 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     }
 
     let compiled_styles = flowchart_compile_styles(ctx.class_defs, &sg.classes, &sg.styles, &[]);
-    let rect_style = compiled_styles.node_style.trim();
+    let fill_precedence = FlowchartFacetPrecedence::new(
+        compiled_styles.source_fill_status(),
+        ctx.cluster_fill_config_override,
+    );
+    let stroke_precedence = FlowchartFacetPrecedence::new(
+        compiled_styles.source_stroke_status(),
+        ctx.cluster_stroke_config_override,
+    );
+    let mut rect_style = compiled_styles.node_style.trim().to_string();
+    ctx.cluster_theme
+        .append_inline_style(&mut rect_style, fill_precedence, stroke_precedence);
+    let fill = ctx
+        .cluster_theme
+        .fill_value(fill_precedence, true)
+        .unwrap_or(&ctx.cluster_fill_color);
+    let stroke = ctx
+        .cluster_theme
+        .stroke_value(stroke_precedence, true)
+        .unwrap_or(&ctx.cluster_stroke_color);
     let label_style = compiled_styles.label_style.trim();
 
     let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
@@ -221,17 +261,21 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             out,
             ctx,
             &compiled_styles,
-            rect_style,
+            &rect_style,
+            fill,
+            stroke,
             left,
             top,
             rect_w,
             rect_h,
         );
-        ctx.theme_evidence.record_source_residuals(
-            &compiled_styles.emitted_shape_source_residuals_with_receipt(
-                cluster.id.as_str(),
-                shape_source_receipt,
-            ),
+        record_cluster_shape_emission(
+            ctx,
+            &compiled_styles,
+            cluster.id.as_str(),
+            shape_source_receipt,
+            fill_precedence,
+            stroke_precedence,
         );
         let _ = write!(
             out,
@@ -302,15 +346,21 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         out,
         ctx,
         &compiled_styles,
-        rect_style,
+        &rect_style,
+        fill,
+        stroke,
         left,
         top,
         rect_w,
         rect_h,
     );
-    ctx.theme_evidence.record_source_residuals(
-        &compiled_styles
-            .emitted_shape_source_residuals_with_receipt(cluster.id.as_str(), shape_source_receipt),
+    record_cluster_shape_emission(
+        ctx,
+        &compiled_styles,
+        cluster.id.as_str(),
+        shape_source_receipt,
+        fill_precedence,
+        stroke_precedence,
     );
     let _ = write!(
         out,

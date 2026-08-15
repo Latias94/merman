@@ -248,14 +248,14 @@ fn compile_node_family(
         )],
     );
     contributions.add_theme_variables(
-        "cluster.fill",
+        ThemeRouteCutoverProjection::ClusterFill.contribution_id(),
         [
             ("clusterBkg", reader.fill(ThemeTarget::Cluster)),
             ("secondaryColor", reader.fill(ThemeTarget::Cluster)),
         ],
     );
     contributions.add_theme_variables(
-        "cluster.stroke",
+        ThemeRouteCutoverProjection::ClusterStroke.contribution_id(),
         [("clusterBorder", reader.stroke(ThemeTarget::Cluster))],
     );
     contributions.add_theme_variables(
@@ -1775,6 +1775,39 @@ mod tests {
                 .get_str("themeVariables.arrowheadColor"),
             Some("#22c55e")
         );
+    }
+
+    #[test]
+    fn typed_flowchart_cluster_paint_does_not_create_legacy_assignments() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Cluster,
+                    ThemeStylePatch::default()
+                        .with_fill(solid("#ef4444"))
+                        .with_stroke(solid("#2563eb")),
+                )
+                .for_family(DiagramFamilyId::FLOWCHART),
+            ),
+        );
+        let parsed = parse(&spec, "flowchart TD\nsubgraph Group\nA\nend\n");
+        let baseline = parse(
+            &DiagramThemeSpec::default(),
+            "flowchart TD\nsubgraph Group\nA\nend\n",
+        );
+
+        assert_eq!(fallback_contribution_count(&parsed), 0);
+        for path in [
+            "themeVariables.clusterBkg",
+            "themeVariables.secondaryColor",
+            "themeVariables.clusterBorder",
+        ] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "typed Cluster paint must not mutate legacy `{path}`"
+            );
+        }
     }
 
     #[test]

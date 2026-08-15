@@ -243,6 +243,12 @@ fn legacy_bridge_projections(
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK),
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_FILL)
+        }
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_CLUSTER_STROKE)
+        }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTOR_FILL)
         }
@@ -630,6 +636,20 @@ fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::FLOWCHART
+        && target == ThemeTarget::Cluster
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -1500,6 +1520,71 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_cluster_only_owns_unqualified_scalar_paints() {
+        for paint in [
+            CanvasPaint::Transparent,
+            CanvasPaint::solid("#123456").expect("valid Cluster paint"),
+        ] {
+            let rule = ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default()
+                    .with_fill(paint.clone())
+                    .with_stroke(paint.clone()),
+            );
+            assert!(
+                compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+
+            let explicit_default = ThemeRule::new(
+                ThemeTarget::Cluster,
+                ThemeStylePatch::default()
+                    .with_fill(paint.clone())
+                    .with_stroke(paint.clone()),
+            )
+            .with_variant(ThemeVariant::Default);
+            assert!(
+                compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &explicit_default)
+                    .iter()
+                    .all(|route| {
+                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                    })
+            );
+
+            assert!(
+                compile_rule_routes(DiagramFamilyId::SWIMLANE, 0, &rule)
+                    .iter()
+                    .all(|route| {
+                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                    })
+            );
+        }
+
+        for paint_kind in [
+            FamilyThemePaintKind::Clear,
+            FamilyThemePaintKind::LinearGradient,
+            FamilyThemePaintKind::RadialGradient,
+            FamilyThemePaintKind::Pattern,
+        ] {
+            for facet in [
+                FamilyThemeRuleFacet::Fill(paint_kind),
+                FamilyThemeRuleFacet::Stroke(paint_kind),
+            ] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::FLOWCHART,
+                        ThemeTarget::Cluster,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+        }
+    }
+
+    #[test]
     fn legacy_replacing_typed_routes_are_derived_from_the_matrix() {
         use ThemeRouteCutoverFacet::{Fill, Stroke};
         use ThemeRouteCutoverValue::{Solid, Transparent};
@@ -1563,6 +1648,34 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["edge.stroke", "marker.paint-from-edge"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Cluster,
+                Fill,
+                Transparent,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Cluster,
+                Fill,
+                Solid,
+                vec!["cluster.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Cluster,
+                Stroke,
+                Transparent,
+                vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Cluster,
+                Stroke,
+                Solid,
+                vec!["cluster.stroke"],
             ),
             (
                 DiagramFamilyId::SEQUENCE,
@@ -1749,6 +1862,38 @@ mod tests {
             projections[1].action(),
             crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::RetireFallback
         );
+    }
+
+    #[test]
+    fn cluster_cutover_replaces_each_paint_projection_exactly() {
+        for (facet, expected) in [
+            (
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::ClusterFill,
+            ),
+            (
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::ClusterStroke,
+            ),
+        ] {
+            let route = legacy_replacing_typed_routes()
+                .expect("derive typed legacy-replacing routes")
+                .into_iter()
+                .find(|route| {
+                    route.family_id() == DiagramFamilyId::FLOWCHART
+                        && route.target() == ThemeTarget::Cluster
+                        && route.facet() == facet
+                        && route.value() == ThemeRouteCutoverValue::Solid
+                })
+                .expect("Flowchart Cluster scalar route");
+            let projections = route.projections().iter().collect::<Vec<_>>();
+
+            assert_eq!(projections, vec![expected]);
+            assert_eq!(
+                projections[0].action(),
+                crate::theme_route_cutover::ThemeRouteCutoverProjectionAction::Replace
+            );
+        }
     }
 
     #[test]

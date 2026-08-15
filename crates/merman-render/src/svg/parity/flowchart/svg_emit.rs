@@ -125,6 +125,10 @@ pub(super) fn render_flowchart_svg_model(
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,
+        cluster_fill_color,
+        cluster_stroke_color,
+        cluster_fill_config_override,
+        cluster_stroke_config_override,
         node_corner_radius,
         node_corner_radius_config_override,
         edge_corner_radius,
@@ -262,6 +266,14 @@ pub(super) fn render_flowchart_svg_model(
     let node_theme_ordinals =
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
+    let cluster_theme = if swimlane_layout.is_none() {
+        crate::flowchart::FlowchartClusterThemeStyle::resolve(
+            options.resolved_theme(),
+            options.work_meter(),
+        )?
+    } else {
+        crate::flowchart::FlowchartClusterThemeStyle::default()
+    };
     let ctx = FlowchartRenderCtx {
         model,
         diagram_id,
@@ -292,6 +304,10 @@ pub(super) fn render_flowchart_svg_model(
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,
+        cluster_fill_color,
+        cluster_stroke_color,
+        cluster_fill_config_override,
+        cluster_stroke_config_override,
         node_corner_radius,
         node_corner_radius_config_override,
         edge_corner_radius,
@@ -300,6 +316,7 @@ pub(super) fn render_flowchart_svg_model(
         default_edge_interpolate,
         default_edge_style,
         edge_theme,
+        cluster_theme: &cluster_theme,
         trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),
         trace_collector: flowchart_edge_trace.map(|(_, collector)| collector),
         subgraph_order,
