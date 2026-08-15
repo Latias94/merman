@@ -868,6 +868,7 @@ impl RasterImage {
         expected: [u8; 3],
         color_tolerance: u8,
         transparent_alpha_tolerance: u8,
+        excluded_rects: &[[f64; 4]],
     ) -> Option<(usize, usize)> {
         if self.dimensions() != control.dimensions() {
             return None;
@@ -881,6 +882,9 @@ impl RasterImage {
             || rect_height <= 0.0
             || self.width == 0
             || self.height == 0
+            || excluded_rects.iter().any(|rect| {
+                !rect.iter().all(|value| value.is_finite()) || rect[2] < 0.0 || rect[3] < 0.0
+            })
         {
             return None;
         }
@@ -909,6 +913,14 @@ impl RasterImage {
             let y = u32::try_from(index / u64::from(self.width)).ok()?;
             let svg_x = view_left + (f64::from(x) + 0.5) * view_width / width;
             let svg_y = view_top + (f64::from(y) + 0.5) * view_height / height;
+            if excluded_rects.iter().any(|excluded| {
+                svg_x >= excluded[0]
+                    && svg_x <= excluded[0] + excluded[2]
+                    && svg_y >= excluded[1]
+                    && svg_y <= excluded[1] + excluded[3]
+            }) {
+                continue;
+            }
             if svg_x >= rect_left
                 && svg_x <= rect_right
                 && svg_y >= rect_top
@@ -923,13 +935,14 @@ impl RasterImage {
         Some((control_pixels, non_transparent_pixels))
     }
 
-    pub(crate) fn control_mask_color_counts_in_svg_rect(
+    pub(crate) fn control_mask_colors_counts_in_svg_rect(
         &self,
         control: &Self,
         view_box: [f64; 4],
         rect: [f64; 4],
         control_match: ([u8; 3], u8),
-        expected_match: ([u8; 3], u8),
+        expected_matches: &[([u8; 3], u8)],
+        excluded_rects: &[[f64; 4]],
     ) -> Option<(usize, usize)> {
         if self.dimensions() != control.dimensions() {
             return None;
@@ -943,6 +956,9 @@ impl RasterImage {
             || rect_height <= 0.0
             || self.width == 0
             || self.height == 0
+            || excluded_rects.iter().any(|rect| {
+                !rect.iter().all(|value| value.is_finite()) || rect[2] < 0.0 || rect[3] < 0.0
+            })
         {
             return None;
         }
@@ -952,7 +968,6 @@ impl RasterImage {
         let width = f64::from(self.width);
         let height = f64::from(self.height);
         let (control_color, control_tolerance) = control_match;
-        let (expected_color, expected_tolerance) = expected_match;
         let mut control_pixels = 0usize;
         let mut expected_pixels = 0usize;
         for (index, (actual, control)) in self
@@ -973,20 +988,80 @@ impl RasterImage {
             let y = u32::try_from(index / u64::from(self.width)).ok()?;
             let svg_x = view_left + (f64::from(x) + 0.5) * view_width / width;
             let svg_y = view_top + (f64::from(y) + 0.5) * view_height / height;
+            if excluded_rects.iter().any(|excluded| {
+                svg_x >= excluded[0]
+                    && svg_x <= excluded[0] + excluded[2]
+                    && svg_y >= excluded[1]
+                    && svg_y <= excluded[1] + excluded[3]
+            }) {
+                continue;
+            }
             if svg_x < rect_left || svg_x > rect_right || svg_y < rect_top || svg_y > rect_bottom {
                 continue;
             }
             control_pixels += 1;
-            if actual[3] > 2
-                && actual[0].abs_diff(expected_color[0]) <= expected_tolerance
-                && actual[1].abs_diff(expected_color[1]) <= expected_tolerance
-                && actual[2].abs_diff(expected_color[2]) <= expected_tolerance
-            {
+            if actual[3] > 2 && rgb_matches_palette_or_blend(actual, expected_matches) {
                 expected_pixels += 1;
             }
         }
         Some((control_pixels, expected_pixels))
     }
+}
+
+fn rgb_matches_palette_or_blend(actual: &[u8], expected: &[([u8; 3], u8)]) -> bool {
+    if expected.iter().any(|(color, tolerance)| {
+        actual[0].abs_diff(color[0]) <= *tolerance
+            && actual[1].abs_diff(color[1]) <= *tolerance
+            && actual[2].abs_diff(color[2]) <= *tolerance
+    }) {
+        return true;
+    }
+    expected.iter().enumerate().any(|(left_index, left)| {
+        expected
+            .iter()
+            .skip(left_index + 1)
+            .any(|right| rgb_near_segment(actual, *left, *right))
+    })
+}
+
+fn rgb_near_segment(actual: &[u8], left: ([u8; 3], u8), right: ([u8; 3], u8)) -> bool {
+    let start = left.0.map(f64::from);
+    let end = right.0.map(f64::from);
+    let pixel = [
+        f64::from(actual[0]),
+        f64::from(actual[1]),
+        f64::from(actual[2]),
+    ];
+    let direction = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+    let length_squared = direction.iter().map(|value| value * value).sum::<f64>();
+    if length_squared == 0.0 {
+        return false;
+    }
+    let offset = [
+        pixel[0] - start[0],
+        pixel[1] - start[1],
+        pixel[2] - start[2],
+    ];
+    let interpolation = offset
+        .iter()
+        .zip(direction)
+        .map(|(value, direction)| value * direction)
+        .sum::<f64>()
+        / length_squared;
+    if !(0.0..=1.0).contains(&interpolation) {
+        return false;
+    }
+    let distance_squared = pixel
+        .iter()
+        .zip(start)
+        .zip(direction)
+        .map(|((value, start), direction)| {
+            let distance = value - (start + interpolation * direction);
+            distance * distance
+        })
+        .sum::<f64>();
+    let tolerance = f64::from(left.1.max(right.1));
+    distance_squared <= 3.0 * tolerance * tolerance
 }
 
 #[derive(Clone, Copy)]
@@ -2214,9 +2289,37 @@ mod tests {
                 [0xdc, 0x26, 0x26],
                 0,
                 2,
+                &[],
             ),
             Some((2, 1))
         );
+
+        assert_eq!(
+            transparent.control_mask_alpha_counts_in_svg_rect(
+                &control,
+                [0.0, 0.0, 3.0, 1.0],
+                [0.0, 0.0, 2.0, 1.0],
+                [0xdc, 0x26, 0x26],
+                0,
+                2,
+                &[[0.0, 0.0, 1.0, 1.0]],
+            ),
+            Some((1, 0))
+        );
+    }
+
+    #[test]
+    fn underlay_palette_accepts_antialiased_blends_but_rejects_third_party_colors() {
+        let underlays = [([0xec, 0xec, 0xff], 6), ([0xff, 0xff, 0xde], 6)];
+
+        assert!(rgb_matches_palette_or_blend(
+            &[0xf6, 0xf6, 0xef, u8::MAX],
+            &underlays,
+        ));
+        assert!(!rgb_matches_palette_or_blend(
+            &[0x11, 0x11, 0x11, u8::MAX],
+            &underlays,
+        ));
     }
 
     #[test]

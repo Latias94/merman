@@ -9,6 +9,8 @@ use merman_theme_fixtures::{
     ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 
+use crate::cutover::usize_to_u64;
+
 // Frozen input to the v1 operation digest. The public execution-path enum was removed, but the
 // canonical renderer tag remains byte-for-byte stable for existing acceptance receipts.
 const C6_V1_RENDERER_TAG: &[u8] = b"renderer";
@@ -45,6 +47,7 @@ pub(crate) struct C6RenderIdentity {
     actual_family: DiagramFamilyId,
     recipe_fingerprint: Option<ThemeRecipeFingerprint>,
     operation_digest: [u8; 32],
+    admission_digest: [u8; 32],
 }
 
 impl C6RenderIdentity {
@@ -95,11 +98,177 @@ impl C6RenderIdentity {
             actual_family: evidence.family_id(),
             recipe_fingerprint: evidence.theme_recipe_fingerprint(),
             operation_digest: sha256(value),
+            admission_digest: render_admission_digest(evidence),
         }
     }
 
     pub(crate) const fn operation_digest(&self) -> &[u8; 32] {
         &self.operation_digest
+    }
+
+    pub(crate) const fn admission_digest(&self) -> &[u8; 32] {
+        &self.admission_digest
+    }
+}
+
+fn render_admission_digest(evidence: &RenderEvidence) -> [u8; 32] {
+    let acceptance = merman::__theme_acceptance::theme_acceptance_evidence(evidence);
+    let public = evidence.theme_evidence();
+    let mut value = b"merman.c6-render-admission.v2\0".to_vec();
+
+    append_theme_scope(&mut value, acceptance.root());
+    append_theme_scope(&mut value, acceptance.family());
+    value.extend_from_slice(&usize_to_u64(acceptance.source_residual_count()).to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(acceptance.compatibility_residual_count()).to_be_bytes());
+    value.extend_from_slice(
+        &usize_to_u64(acceptance.mermaid_compatibility_residual_count()).to_be_bytes(),
+    );
+
+    match acceptance.recipe_report() {
+        Some(report) => {
+            value.push(1);
+            value.extend_from_slice(report.theme_recipe_fingerprint().as_bytes());
+        }
+        None => value.push(0),
+    }
+    append_theme_host_admission(&mut value, acceptance.host_admission_report());
+    match acceptance.prepared_text_layout() {
+        Some(prepared) => {
+            value.push(1);
+            value
+                .extend_from_slice(&usize_to_u64(prepared.used_font_sources().len()).to_be_bytes());
+            for source in prepared.used_font_sources() {
+                append_len_prefixed(&mut value, source.id().as_bytes());
+            }
+        }
+        None => value.push(0),
+    }
+    value.push(u8::from(acceptance.text_layout_failure().is_some()));
+    append_theme_resource_policy(&mut value, acceptance.effective_theme_resource_policy());
+    append_len_prefixed(
+        &mut value,
+        theme_evidence_status_id(public.status()).as_bytes(),
+    );
+    value.push(u8::from(public.output_mutated()));
+
+    let host_measurement_count = evidence
+        .measurement()
+        .entries()
+        .iter()
+        .filter(|entry| entry.provenance().source == merman::svg::TextMeasurementSource::Host)
+        .map(|entry| entry.count())
+        .sum::<u64>();
+    value.extend_from_slice(&host_measurement_count.to_be_bytes());
+    sha256(value)
+}
+
+fn append_theme_resource_policy(value: &mut Vec<u8>, policy: &merman::svg::ThemeResourcePolicy) {
+    match policy.profile() {
+        Some(profile) => {
+            value.push(1);
+            append_len_prefixed(value, profile.id().as_bytes());
+        }
+        None => value.push(0),
+    }
+    for limit in merman::svg::ThemeResourceLimitId::ALL {
+        append_len_prefixed(value, limit.as_str().as_bytes());
+        append_optional_usize(value, policy.base_value(*limit));
+        append_optional_usize(value, policy.value(*limit));
+        append_optional_usize(value, policy.explicit_override(*limit));
+    }
+}
+
+fn append_theme_host_admission(
+    value: &mut Vec<u8>,
+    report: Option<&merman_render::diagram_theme::ThemeHostAdmissionReport>,
+) {
+    let Some(report) = report else {
+        value.push(0);
+        return;
+    };
+    value.push(1);
+
+    let capabilities = report.host_allowed_capabilities().collect::<Vec<_>>();
+    value.extend_from_slice(&usize_to_u64(capabilities.len()).to_be_bytes());
+    for capability in capabilities {
+        append_len_prefixed(value, capability.id().as_bytes());
+    }
+
+    let text_capabilities = report.host_allowed_text_capabilities().collect::<Vec<_>>();
+    value.extend_from_slice(&usize_to_u64(text_capabilities.len()).to_be_bytes());
+    for capability in text_capabilities {
+        append_len_prefixed(value, capability.id().as_bytes());
+    }
+
+    let font_sources = report.font_source_policy().priority().collect::<Vec<_>>();
+    value.extend_from_slice(&usize_to_u64(font_sources.len()).to_be_bytes());
+    for source in font_sources {
+        append_len_prefixed(value, source.id().as_bytes());
+    }
+
+    let measurement_fallbacks = report
+        .measurement_fallback_policy()
+        .priority()
+        .collect::<Vec<_>>();
+    value.extend_from_slice(&usize_to_u64(measurement_fallbacks.len()).to_be_bytes());
+    for fallback in measurement_fallbacks {
+        append_len_prefixed(value, fallback.id().as_bytes());
+    }
+
+    append_len_prefixed(
+        value,
+        portability_requirement_id(Some(report.portability_requirement())).as_bytes(),
+    );
+
+    let trusted_lanes = report.trusted_lanes().allowed().collect::<Vec<_>>();
+    value.extend_from_slice(&usize_to_u64(trusted_lanes.len()).to_be_bytes());
+    for lane in trusted_lanes {
+        append_len_prefixed(value, lane.id().as_bytes());
+    }
+}
+
+fn append_optional_usize(value: &mut Vec<u8>, item: Option<usize>) {
+    match item {
+        Some(item) => {
+            value.push(1);
+            value.extend_from_slice(&usize_to_u64(item).to_be_bytes());
+        }
+        None => value.push(0),
+    }
+}
+
+fn append_theme_scope(
+    value: &mut Vec<u8>,
+    scope: merman::__theme_acceptance::ThemeAcceptanceScopeEvidence,
+) {
+    append_len_prefixed(value, theme_evidence_status_id(scope.status()).as_bytes());
+    value.extend_from_slice(&usize_to_u64(scope.required_count()).to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(scope.accounted_count()).to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(scope.applied_count()).to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(scope.not_applicable_count()).to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(scope.incomplete_count()).to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(scope.residual_count()).to_be_bytes());
+    value.push(u8::from(scope.output_mutated()));
+}
+
+fn theme_evidence_status_id(status: merman::ThemeEvidenceStatus) -> &'static str {
+    match status {
+        merman::ThemeEvidenceStatus::NotApplicable => "not-applicable",
+        merman::ThemeEvidenceStatus::Verified => "verified",
+        merman::ThemeEvidenceStatus::Residual => "residual",
+        merman::ThemeEvidenceStatus::Incomplete => "incomplete",
+        _ => "unknown",
+    }
+}
+
+fn portability_requirement_id(
+    requirement: Option<merman::svg::ThemePortabilityRequirement>,
+) -> &'static str {
+    match requirement {
+        None => "none",
+        Some(merman::svg::ThemePortabilityRequirement::BestEffort) => "best-effort",
+        Some(merman::svg::ThemePortabilityRequirement::RequirePortable) => "require-portable",
+        Some(_) => "unknown",
     }
 }
 
@@ -157,8 +326,9 @@ impl C6RenderGroupKey {
 /// Receipt for one deterministic render group shared by one or more target cells.
 ///
 /// The receipt is sealed from the hash-validated fixture, typed theme input, compiled recipe,
-/// terminal standalone SVG and native export resource fingerprint. Target adapters can only
-/// refer to this receipt by its canonical digest; they cannot substitute a batch-global identity.
+/// render admission evidence, terminal standalone SVG and native export resource fingerprint.
+/// Target adapters can only refer to this receipt by its canonical digest; they cannot substitute
+/// a batch-global identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct C6RenderGroupReceipt {
     key: C6RenderGroupKey,
@@ -166,6 +336,7 @@ pub(crate) struct C6RenderGroupReceipt {
     theme_input_sha256: [u8; 32],
     recipe_fingerprint: [u8; 32],
     operation_digest: [u8; 32],
+    admission_digest: [u8; 32],
     document_digest: [u8; 32],
     resource_fingerprint: [u8; 32],
     digest: [u8; 32],
@@ -212,6 +383,7 @@ impl C6RenderGroupReceipt {
             theme_input_sha256,
             recipe_fingerprint: *recipe_fingerprint.as_bytes(),
             operation_digest: identity.operation_digest,
+            admission_digest: identity.admission_digest,
             document_digest: sha256(sealed_svg),
             resource_fingerprint,
             digest: [0; 32],
@@ -227,6 +399,7 @@ impl C6RenderGroupReceipt {
                 .map(|fingerprint| *fingerprint.as_bytes() == self.recipe_fingerprint)
                 .unwrap_or(false)
             && identity.operation_digest == self.operation_digest
+            && identity.admission_digest == self.admission_digest
             && resource_fingerprint == self.resource_fingerprint
     }
 
@@ -257,12 +430,13 @@ impl C6RenderGroupReceipt {
     }
 
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-render-group-receipt.v3\0".to_vec();
+        let mut value = b"merman.c6-render-group-receipt.v4\0".to_vec();
         encode_render_group_key(&mut value, &self.key);
         value.extend_from_slice(&self.source_sha256);
         value.extend_from_slice(&self.theme_input_sha256);
         value.extend_from_slice(&self.recipe_fingerprint);
         value.extend_from_slice(&self.operation_digest);
+        value.extend_from_slice(&self.admission_digest);
         value.extend_from_slice(&self.document_digest);
         value.extend_from_slice(&self.resource_fingerprint);
         sha256(value)
@@ -379,6 +553,7 @@ pub(crate) struct C6CellReceipt {
     render_group_key: C6RenderGroupKey,
     render_group_digest: [u8; 32],
     operation_digest: [u8; 32],
+    admission_digest: [u8; 32],
     admission_target: C6TargetKind,
     admission: C6RequiredAdmission,
     admission_reason_ids: Vec<String>,
@@ -450,6 +625,7 @@ pub(crate) fn seal_cell_from_evidence(
         render_group_key: group.key.clone(),
         render_group_digest: group.digest,
         operation_digest: identity.operation_digest,
+        admission_digest: identity.admission_digest,
         admission_target: render_target_for_expected(key.target()),
         admission,
         admission_reason_ids,
@@ -468,11 +644,12 @@ pub(crate) fn seal_cell_from_evidence(
 
 impl C6CellReceipt {
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-cell-receipt.v3\0".to_vec();
+        let mut value = b"merman.c6-cell-receipt.v4\0".to_vec();
         encode_cell_key(&mut value, self.key);
         encode_render_group_key(&mut value, &self.render_group_key);
         value.extend_from_slice(&self.render_group_digest);
         value.extend_from_slice(&self.operation_digest);
+        value.extend_from_slice(&self.admission_digest);
         append_len_prefixed(&mut value, self.admission_target.id().as_bytes());
         append_len_prefixed(&mut value, admission_status_id(self.admission).as_bytes());
         for reason_id in &self.admission_reason_ids {
@@ -540,6 +717,11 @@ impl C6ReceiptBook {
                 cell.key,
                 "render-group-reference",
                 cell.render_group_digest == group.digest,
+            )?;
+            require_evidence(
+                cell.key,
+                "render-admission-digest",
+                cell.admission_digest == group.admission_digest,
             )?;
             referenced_groups.insert(cell.render_group_key.clone());
         }
@@ -611,6 +793,11 @@ impl C6ReceiptBook {
                 "render-group-digest",
                 receipt.render_group_digest == group.digest
                     && receipt.operation_digest == group.operation_digest,
+            )?;
+            require_evidence(
+                key,
+                "render-admission-digest",
+                receipt.admission_digest == group.admission_digest,
             )?;
             require_evidence(
                 key,
@@ -690,13 +877,15 @@ impl C6ReceiptBook {
             )?;
         }
 
-        let mut digest_input = b"merman.c6-execution-report.v3\0".to_vec();
+        let mut digest_input = b"merman.c6-execution-report.v4\0".to_vec();
         for group in self.groups.values() {
             encode_render_group_key(&mut digest_input, &group.key);
+            digest_input.extend_from_slice(&group.admission_digest);
             digest_input.extend_from_slice(&group.digest);
         }
         for receipt in self.cells.values() {
             encode_cell_key(&mut digest_input, receipt.key);
+            digest_input.extend_from_slice(&receipt.admission_digest);
             digest_input.extend_from_slice(&receipt.digest);
         }
         Ok(C6ExecutionReport {
@@ -1057,7 +1246,12 @@ fn require_group_evidence(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+    use merman::svg::{
+        DiagramThemeCompiler, DiagramThemeSpec, ThemeResourceLimitId, ThemeResourcePolicy,
+    };
+    use merman::{
+        OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest,
+    };
     use serde_json::json;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1108,6 +1302,57 @@ mod tests {
         (themes, acceptance)
     }
 
+    fn themed_state_identity() -> C6RenderIdentity {
+        themed_state_identity_with_ceiling(ThemeResourcePolicy::interactive())
+    }
+
+    fn themed_state_identity_with_ceiling(ceiling: ThemeResourcePolicy) -> C6RenderIdentity {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile synthetic theme");
+        let renderer = Renderer::new().with_runtime_policy(
+            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42),
+        );
+        let mut svg_request = SvgRequest::default();
+        svg_request.environment =
+            SvgEnvironment::deterministic().with_theme_resource_ceiling(ceiling);
+        let output = renderer
+            .render(
+                RenderRequest::svg(
+                    "stateDiagram-v2\n[*] --> Ready\n",
+                    OperationControl::new(),
+                    svg_request,
+                )
+                .with_theme(theme),
+            )
+            .expect("deterministic themed state SVG should render");
+        let RenderOutput::Svg(Some(output)) = output else {
+            panic!("expected deterministic themed SVG output");
+        };
+        C6RenderIdentity::from_evidence(output.evidence())
+    }
+
+    #[test]
+    fn admission_digest_binds_the_effective_theme_resource_policy() {
+        let limit = ThemeResourceLimitId::MaxEffectFilterRegionMagnitude;
+        let policy = |maximum| {
+            ThemeResourcePolicy::interactive()
+                .with_limit(limit, maximum)
+                .expect("valid filter-region ceiling")
+        };
+
+        let tighter = themed_state_identity_with_ceiling(policy(8));
+        let looser = themed_state_identity_with_ceiling(policy(12));
+        let same_as_tighter = themed_state_identity_with_ceiling(policy(8));
+
+        assert_eq!(tighter.operation_digest(), looser.operation_digest());
+        assert_ne!(tighter.admission_digest(), looser.admission_digest());
+        assert_eq!(
+            tighter.admission_digest(),
+            same_as_tighter.admission_digest()
+        );
+    }
+
     #[test]
     fn c6_v1_operation_digest_keeps_its_canonical_renderer_vector() {
         let renderer = Renderer::new().with_runtime_policy(
@@ -1133,6 +1378,7 @@ mod tests {
                 38, 99, 69, 44, 49, 59, 179, 76, 88, 217, 8, 31, 208, 80,
             ]
         );
+        assert_ne!(identity.admission_digest(), &[0; 32]);
     }
 
     fn synthetic_group(
@@ -1154,6 +1400,7 @@ mod tests {
             .expect("theme input digest"),
             recipe_fingerprint: [seed; 32],
             operation_digest: [seed.wrapping_add(3); 32],
+            admission_digest: [seed.wrapping_add(4); 32],
             document_digest: [seed.wrapping_add(1); 32],
             resource_fingerprint: [seed.wrapping_add(2); 32],
             digest: [0; 32],
@@ -1194,6 +1441,7 @@ mod tests {
             render_group_key: group.key.clone(),
             render_group_digest: group.digest,
             operation_digest: group.operation_digest,
+            admission_digest: group.admission_digest,
             admission_target: render_target_for_expected(key.target()),
             admission: expectation.required_admission(),
             admission_reason_ids: Vec::new(),
@@ -1240,6 +1488,26 @@ mod tests {
         .expect("synthetic receipt book")
     }
 
+    fn reseal_book_admission(book: &mut C6ReceiptBook, admission_digest: [u8; 32]) {
+        for group in book.groups.values_mut() {
+            group.admission_digest = admission_digest;
+            group.digest = group.canonical_digest();
+        }
+        let group_bindings = book
+            .groups
+            .iter()
+            .map(|(key, group)| (key.clone(), (group.digest, group.admission_digest)))
+            .collect::<BTreeMap<_, _>>();
+        for receipt in book.cells.values_mut() {
+            let (group_digest, group_admission_digest) = group_bindings
+                .get(&receipt.render_group_key)
+                .expect("cell render group");
+            receipt.render_group_digest = *group_digest;
+            receipt.admission_digest = *group_admission_digest;
+            receipt.digest = receipt.canonical_digest();
+        }
+    }
+
     fn assert_evidence_field(error: C6RuntimeError, expected: &'static str) {
         match error {
             C6RuntimeError::EvidenceMismatch { field, .. }
@@ -1254,7 +1522,6 @@ mod tests {
     fn evaluator_accepts_receipts_bound_to_their_render_group() {
         let (themes, acceptance) = load_catalogs();
         let book = synthetic_valid_book(&themes, &acceptance);
-
         let report = book
             .evaluate(&acceptance, &themes)
             .expect("complete synthetic receipts");
@@ -1262,6 +1529,85 @@ mod tests {
         assert_eq!(report.verified_cell_count(), 4);
         assert_eq!(report.render_group_count(), 1);
         assert_ne!(report.execution_digest(), &[0; 32]);
+    }
+
+    #[test]
+    fn render_group_matching_fails_closed_on_admission_digest_mismatch() {
+        let (themes, acceptance) = load_catalogs();
+        let enforced = acceptance
+            .enforced_tranche()
+            .cells()
+            .next()
+            .expect("enforced cell");
+        let identity = themed_state_identity();
+        let resource_fingerprint = [0x5a; 32];
+        let group = C6RenderGroupReceipt::seal(
+            C6RenderGroupKey::for_cell(enforced),
+            &themes,
+            &identity,
+            "<svg/>",
+            resource_fingerprint,
+        )
+        .expect("seal synthetic render group");
+
+        assert!(group.matches_render(&identity, resource_fingerprint));
+
+        let mut mismatched = identity;
+        mismatched.admission_digest[0] ^= 1;
+        assert!(!group.matches_render(&mismatched, resource_fingerprint));
+    }
+
+    #[test]
+    fn receipt_canonical_digests_are_sensitive_to_admission_digest() {
+        let (themes, acceptance) = load_catalogs();
+        let book = synthetic_valid_book(&themes, &acceptance);
+        let group = book.groups.values().next().expect("render group");
+        let cell = book.cells.values().next().expect("cell receipt");
+
+        let mut changed_group = group.clone();
+        changed_group.admission_digest[0] ^= 1;
+        assert_ne!(group.canonical_digest(), changed_group.canonical_digest());
+
+        let mut changed_cell = cell.clone();
+        changed_cell.admission_digest[0] ^= 1;
+        assert_ne!(cell.canonical_digest(), changed_cell.canonical_digest());
+    }
+
+    #[test]
+    fn evaluator_fails_closed_on_resealed_admission_digest_mismatch() {
+        let (themes, acceptance) = load_catalogs();
+        let mut book = synthetic_valid_book(&themes, &acceptance);
+        let key = acceptance
+            .enforced_tranche()
+            .cells()
+            .next()
+            .expect("enforced cell")
+            .key();
+        let cell = book.cells.get_mut(&key).expect("cell receipt");
+        cell.admission_digest[0] ^= 1;
+        cell.digest = cell.canonical_digest();
+
+        assert_evidence_field(
+            book.evaluate(&acceptance, &themes)
+                .expect_err("re-sealed admission mismatch must fail closed"),
+            "render-admission-digest",
+        );
+    }
+
+    #[test]
+    fn execution_digest_is_sensitive_to_admission_digest() {
+        let (themes, acceptance) = load_catalogs();
+        let first_book = synthetic_valid_book(&themes, &acceptance);
+        let mut second_book = first_book.clone();
+        reseal_book_admission(&mut second_book, [0x7b; 32]);
+        let first = first_book
+            .evaluate(&acceptance, &themes)
+            .expect("first admission binding");
+        let second = second_book
+            .evaluate(&acceptance, &themes)
+            .expect("second admission binding");
+
+        assert_ne!(first.execution_digest(), second.execution_digest());
     }
 
     #[test]

@@ -10,12 +10,12 @@ use merman_render::__private::{
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 1;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 2;
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 6] = [
+); 8] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -38,6 +38,14 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::ActorStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::NoteFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::NoteStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -81,6 +89,10 @@ const ACTOR_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActorFill];
 const ACTOR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActorStroke];
+const NOTE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::NoteFill];
+const NOTE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::NoteStroke];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -95,7 +107,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 16] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 20] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -207,6 +219,34 @@ const ACTIVE_ROUTES: [RouteAuthorization; 16] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         ACTOR_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NOTE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NOTE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NOTE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NOTE_STROKE_PROJECTIONS,
     ),
 ];
 
@@ -217,6 +257,25 @@ const MANIFEST: CutoverAuthorizationManifest<'static> = CutoverAuthorizationMani
     active: &ACTIVE_ROUTES,
     tombstones: &TOMBSTONES,
 };
+
+pub(super) struct AuthorizedCutoverRoutes {
+    manifest_version: u16,
+    routes: Vec<ThemeRouteCutoverDescriptor>,
+}
+
+impl AuthorizedCutoverRoutes {
+    pub(super) const fn manifest_version(&self) -> u16 {
+        self.manifest_version
+    }
+
+    pub(super) fn routes(&self) -> &[ThemeRouteCutoverDescriptor] {
+        &self.routes
+    }
+
+    pub(super) fn into_routes(self) -> Vec<ThemeRouteCutoverDescriptor> {
+        self.routes
+    }
+}
 
 const fn route(
     family: DiagramFamilyId,
@@ -230,7 +289,7 @@ const fn route(
 
 pub(super) fn authorize_cutover_routes(
     inventory: Vec<ThemeRouteCutoverDescriptor>,
-) -> C6ProofResult<Vec<ThemeRouteCutoverDescriptor>> {
+) -> C6ProofResult<AuthorizedCutoverRoutes> {
     let entries = inventory
         .iter()
         .map(|route| (route.id(), route.projections()))
@@ -240,7 +299,7 @@ pub(super) fn authorize_cutover_routes(
         .into_iter()
         .map(|route| (route.id(), route))
         .collect::<BTreeMap<_, _>>();
-    authorized_ids
+    let routes = authorized_ids
         .into_iter()
         .map(|id| {
             routes.remove(&id).ok_or_else(|| {
@@ -253,7 +312,11 @@ pub(super) fn authorize_cutover_routes(
                 )
             })
         })
-        .collect()
+        .collect::<C6ProofResult<Vec<_>>>()?;
+    Ok(AuthorizedCutoverRoutes {
+        manifest_version: MANIFEST.version,
+        routes,
+    })
 }
 
 fn reconcile_manifest(
@@ -455,9 +518,9 @@ mod tests {
     };
 
     use super::{
-        ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CutoverAuthorizationManifest, MANIFEST,
-        PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone, authorize_cutover_routes,
-        reconcile_manifest, validate_projection_actions,
+        ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
+        CutoverAuthorizationManifest, MANIFEST, PROJECTION_ACTIONS, RouteAuthorization,
+        RouteTombstone, authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -475,7 +538,7 @@ mod tests {
         )
         .expect("authorize current route inventory");
 
-        assert_eq!(routes.len(), ACTIVE_ROUTES.len());
+        assert_eq!(routes.routes().len(), ACTIVE_ROUTES.len());
     }
 
     #[test]
@@ -504,7 +567,7 @@ mod tests {
         let current = current_inventory();
         let duplicate_active = [ACTIVE_ROUTES[0], ACTIVE_ROUTES[0]];
         let duplicate_manifest = CutoverAuthorizationManifest {
-            version: 1,
+            version: CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
             active: &duplicate_active,
             tombstones: &[],
         };
@@ -516,7 +579,7 @@ mod tests {
             reason: "test",
         }];
         let tombstoned_manifest = CutoverAuthorizationManifest {
-            version: 1,
+            version: CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
             active: &ACTIVE_ROUTES[1..],
             tombstones: &tombstone,
         };

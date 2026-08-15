@@ -17,7 +17,7 @@ pub(super) fn prove_svg_routes(
     let mut assertions = BTreeMap::new();
     let mut proof_regions = None;
     for &route in routes {
-        let (actual, terminal_digest, target_regions) = match case.route.family_id() {
+        let (actual, terminal_digest, target_regions) = match case.id.route().family_id() {
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE => {
                 let observation = flowchart_route_observation(&document, route)?;
                 (
@@ -37,7 +37,7 @@ pub(super) fn prove_svg_routes(
             _ => {
                 return Err(C6ProofError::new(
                     "route-svg-proof",
-                    format!("unsupported route family {}", case.route.family_id()),
+                    format!("unsupported route family {}", case.id.route().family_id()),
                 ));
             }
         };
@@ -48,8 +48,9 @@ pub(super) fn prove_svg_routes(
             "{} emitted `{actual}`, expected `{expected}`",
             route_label(route)
         );
-        let mut value = b"merman.c6-route-svg-assertion.v2\0".to_vec();
-        append_route(&mut value, route);
+        let witness = case.id;
+        let mut value = b"merman.c6-route-svg-assertion.v3\0".to_vec();
+        append_witness(&mut value, witness);
         append_len_prefixed(&mut value, actual.as_bytes());
         value.extend_from_slice(&terminal_digest);
         if matches!(route.target(), ThemeTarget::Edge) {
@@ -57,7 +58,7 @@ pub(super) fn prove_svg_routes(
                 "route-svg-proof",
                 !markers.is_empty(),
                 "{} lacks its Marker isolation receipts",
-                route_label(route)
+                witness_label(witness)
             );
             for marker in markers {
                 value.extend_from_slice(&marker.digest);
@@ -82,7 +83,7 @@ pub(super) fn prove_svg_routes(
         "route case produced an empty target region set"
     );
     let target_underlay_colors =
-        target_underlay_colors(&document, case.route, target_regions.len())?;
+        target_underlay_colors(&document, case.id.route(), target_regions.len())?;
     Ok(SvgCutoverProof {
         assertions,
         view_box,
@@ -95,8 +96,8 @@ fn target_underlay_colors(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
     region_count: usize,
-) -> C6ProofResult<Vec<Option<[u8; 3]>>> {
-    let underlay = match (route.family_id(), route.target(), route.facet()) {
+) -> C6ProofResult<Vec<Vec<[u8; 3]>>> {
+    let underlays: Vec<Vec<[u8; 3]>> = match (route.family_id(), route.target(), route.facet()) {
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
             let root_id = document
                 .root_element()
@@ -104,15 +105,99 @@ fn target_underlay_colors(
                 .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks an id"))?;
             let selector = format!("#{root_id} .cluster rect");
             let raw = stylesheet_property(document, &selector, "fill")?;
-            Some(parse_css_rgb(raw)?)
+            std::iter::repeat_n(vec![parse_css_rgb(raw)?], region_count).collect()
         }
-        _ => None,
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Node,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => {
+            let root_id = document
+                .root_element()
+                .attribute("id")
+                .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks an id"))?;
+            let selector = format!(
+                "#{root_id} .node rect,#{root_id} .node circle,#{root_id} .node ellipse,#{root_id} .node polygon,#{root_id} .node path"
+            );
+            let surface_underlay =
+                parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?;
+            let surrounding_underlay = if route.family_id() == DiagramFamilyId::SWIMLANE {
+                let selector = format!("#{root_id} .cluster rect");
+                parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?
+            } else {
+                None
+            };
+            document
+                .descendants()
+                .filter(|node| {
+                    node.is_element()
+                        && class_contains(*node, "label-container")
+                        && style_value(*node, "stroke").is_some()
+                })
+                .map(|node| {
+                    let node_underlay = style_value(node, "fill")
+                        .or_else(|| node.attribute("fill"))
+                        .map_or(Ok(surface_underlay), parse_optional_css_rgb)?;
+                    let mut colors = Vec::with_capacity(2);
+                    for color in [node_underlay, surrounding_underlay].into_iter().flatten() {
+                        if !colors.contains(&color) {
+                            colors.push(color);
+                        }
+                    }
+                    Ok(colors)
+                })
+                .collect::<C6ProofResult<Vec<_>>>()?
+        }
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Actor | ThemeTarget::Note,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => {
+            let root_id = document
+                .root_element()
+                .attribute("id")
+                .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks an id"))?;
+            let selector = match route.target() {
+                ThemeTarget::Actor => format!("#{root_id} .actor"),
+                ThemeTarget::Note => format!("#{root_id} .note"),
+                _ => unreachable!("guarded by the Sequence underlay route"),
+            };
+            let underlay =
+                parse_optional_css_rgb(sequence_stylesheet_property(document, &selector, "fill")?)?;
+            std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
+        }
+        (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            let root_id = document
+                .root_element()
+                .attribute("id")
+                .ok_or_else(|| C6ProofError::new("route-svg-proof", "SVG root lacks an id"))?;
+            let selector = format!("#{root_id} .cluster rect");
+            let underlay =
+                parse_optional_css_rgb(stylesheet_property(document, &selector, "fill")?)?;
+            std::iter::repeat_n(underlay.into_iter().collect(), region_count).collect()
+        }
+        _ => std::iter::repeat_n(Vec::new(), region_count).collect(),
     };
-    Ok(std::iter::repeat_n(underlay, region_count).collect())
+    c6_ensure!(
+        "route-svg-proof",
+        underlays.len() == region_count,
+        "{} underlay count differs from its target regions: {} != {region_count}",
+        route_label(route),
+        underlays.len()
+    );
+    Ok(underlays)
+}
+
+fn parse_optional_css_rgb(raw: &str) -> C6ProofResult<Option<[u8; 3]>> {
+    match raw.trim() {
+        "none" | "transparent" => Ok(None),
+        value => parse_css_rgb(value).map(Some),
+    }
 }
 
 pub(super) fn prove_flowchart_markers_svg(
     svg: &str,
+    profile: CutoverWitnessProfile,
 ) -> C6ProofResult<Vec<FlowchartMarkerObservation>> {
     let document = roxmltree::Document::parse(svg)
         .map_err(|error| C6ProofError::new("route-marker-svg", error.to_string()))?;
@@ -132,6 +217,7 @@ pub(super) fn prove_flowchart_markers_svg(
         !edges.is_empty(),
         "missing Flowchart edge paths"
     );
+    prove_flowchart_edge_profile(&edges, profile)?;
 
     let marker_selector = format!("#{root_id} .marker");
     let fill = last_stylesheet_property(&document, &marker_selector, "fill")?.to_owned();
@@ -142,7 +228,11 @@ pub(super) fn prove_flowchart_markers_svg(
         "Flowchart Marker isolation drifted: fill=`{fill}`, stroke=`{stroke}`"
     );
     let mut observations = Vec::new();
+    let mut marker_bindings = std::collections::BTreeSet::new();
     for edge in edges {
+        let edge_id = edge.attribute("data-id").ok_or_else(|| {
+            C6ProofError::new("route-marker-svg", "Flowchart edge path lacks a data-id")
+        })?;
         let edge_path = edge.attribute("d").ok_or_else(|| {
             C6ProofError::new("route-marker-svg", "Flowchart edge path lacks geometry")
         })?;
@@ -160,12 +250,26 @@ pub(super) fn prove_flowchart_markers_svg(
                         format!("invalid Flowchart marker reference `{marker_reference}`"),
                     )
                 })?;
-            let marker_kind = canonical_marker_kind(marker_id).ok_or_else(|| {
-                C6ProofError::new(
-                    "route-marker-svg",
-                    format!("Flowchart edge references non-base marker `{marker_id}`"),
-                )
-            })?;
+            let (marker_kind, marker_margin) =
+                canonical_marker_kind(marker_id).ok_or_else(|| {
+                    C6ProofError::new(
+                        "route-marker-svg",
+                        format!("Flowchart edge references non-base marker `{marker_id}`"),
+                    )
+                })?;
+            c6_ensure!(
+                "route-marker-svg",
+                marker_margin == profile.expects_marker_margin(),
+                "{} Edge witness referenced marker `{marker_id}` with margin={marker_margin}",
+                profile.id()
+            );
+            c6_ensure!(
+                "route-marker-svg",
+                marker_bindings.insert((edge_id, attribute, marker_kind, marker_margin)),
+                "{} Edge witness emitted duplicate marker binding for {} {attribute}",
+                profile.id(),
+                edge_id
+            );
             let marker = document
                 .descendants()
                 .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
@@ -212,8 +316,10 @@ pub(super) fn prove_flowchart_markers_svg(
                 MARKER_PROBE_RADIUS * 2.0,
                 MARKER_PROBE_RADIUS * 2.0,
             ];
-            let mut geometry = b"merman.c6-route-marker-geometry.v2\0".to_vec();
+            let mut geometry = b"merman.c6-route-marker-geometry.v3\0".to_vec();
+            append_len_prefixed(&mut geometry, profile.id().as_bytes());
             append_len_prefixed(&mut geometry, marker_kind.as_bytes());
+            geometry.push(u8::from(marker_margin));
             for shape in shapes {
                 append_len_prefixed(&mut geometry, shape.tag_name().name().as_bytes());
                 append_len_prefixed(
@@ -249,13 +355,12 @@ pub(super) fn prove_flowchart_markers_svg(
             }
             let geometry_digest = sha256(geometry);
 
-            let mut assertion = b"merman.c6-route-marker-svg.v2\0".to_vec();
-            append_len_prefixed(
-                &mut assertion,
-                edge.attribute("data-id").unwrap_or_default().as_bytes(),
-            );
+            let mut assertion = b"merman.c6-route-marker-svg.v4\0".to_vec();
+            append_len_prefixed(&mut assertion, profile.id().as_bytes());
+            append_len_prefixed(&mut assertion, edge_id.as_bytes());
             append_len_prefixed(&mut assertion, attribute.as_bytes());
             append_len_prefixed(&mut assertion, marker_kind.as_bytes());
+            assertion.push(u8::from(marker_margin));
             assertion.extend_from_slice(&geometry_digest);
             append_len_prefixed(&mut assertion, fill.as_bytes());
             append_len_prefixed(&mut assertion, stroke.as_bytes());
@@ -272,16 +377,82 @@ pub(super) fn prove_flowchart_markers_svg(
             });
         }
     }
+    let expected_bindings = expected_flowchart_marker_bindings(profile);
     c6_ensure!(
         "route-marker-svg",
-        observations.len() >= 6,
-        "Flowchart marker witness covered only {} references",
-        observations.len()
+        marker_bindings == expected_bindings,
+        "{} Edge witness marker mapping drifted: actual={marker_bindings:?}, expected={expected_bindings:?}",
+        profile.id()
     );
     Ok(observations)
 }
 
-fn canonical_marker_kind(marker_id: &str) -> Option<&'static str> {
+type FlowchartMarkerBinding<'a> = (&'a str, &'static str, &'static str, bool);
+
+fn expected_flowchart_marker_bindings(
+    profile: CutoverWitnessProfile,
+) -> std::collections::BTreeSet<FlowchartMarkerBinding<'static>> {
+    let (circle_edge, cross_edge, point_edge) = if profile.is_animated() {
+        ("circles", "crosses", "points")
+    } else {
+        ("L_A_B_0", "L_B_C_0", "L_C_D_0")
+    };
+    let margin = profile.expects_marker_margin();
+    [
+        (circle_edge, "marker-start", "circleStart", margin),
+        (circle_edge, "marker-end", "circleEnd", margin),
+        (cross_edge, "marker-start", "crossStart", margin),
+        (cross_edge, "marker-end", "crossEnd", margin),
+        (point_edge, "marker-start", "pointStart", margin),
+        (point_edge, "marker-end", "pointEnd", margin),
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn prove_flowchart_edge_profile(
+    edges: &[roxmltree::Node<'_, '_>],
+    profile: CutoverWitnessProfile,
+) -> C6ProofResult<()> {
+    let expected_look = if profile.is_neo() { "neo" } else { "classic" };
+    for edge in edges {
+        let edge_id = edge.attribute("data-id").unwrap_or_default();
+        let animated = edge.attribute("class").is_some_and(|classes| {
+            classes
+                .split_ascii_whitespace()
+                .any(|class| matches!(class, "edge-animation-fast" | "edge-animation-slow"))
+        });
+        let masked = style_value(*edge, "stroke-dasharray")
+            .is_some_and(|dasharray| dasharray.starts_with("0 "));
+        c6_ensure!(
+            "route-marker-svg",
+            edge.attribute("data-look") == Some(expected_look),
+            "{} Edge witness emitted `{}` look for `{edge_id}`",
+            profile.id(),
+            edge.attribute("data-look").unwrap_or_default()
+        );
+        c6_ensure!(
+            "route-marker-svg",
+            animated == profile.is_animated(),
+            "{} Edge witness emitted animation={animated} for `{edge_id}`",
+            profile.id()
+        );
+        c6_ensure!(
+            "route-marker-svg",
+            masked == profile.expects_neo_mask(),
+            "{} Edge witness emitted Neo marker mask={masked} for `{edge_id}` style={:?} class={:?}",
+            profile.id(),
+            edge.attribute("style"),
+            edge.attribute("class")
+        );
+    }
+    Ok(())
+}
+
+fn canonical_marker_kind(marker_id: &str) -> Option<(&'static str, bool)> {
+    let (base_id, margin) = marker_id
+        .strip_suffix("-margin")
+        .map_or((marker_id, false), |base_id| (base_id, true));
     [
         "pointEnd",
         "pointStart",
@@ -291,7 +462,8 @@ fn canonical_marker_kind(marker_id: &str) -> Option<&'static str> {
         "crossStart",
     ]
     .into_iter()
-    .find(|kind| marker_id.ends_with(kind))
+    .find(|kind| base_id.ends_with(kind))
+    .map(|kind| (kind, margin))
 }
 
 fn last_stylesheet_property<'a>(
@@ -878,6 +1050,20 @@ fn sequence_route_observation(
     document: &roxmltree::Document<'_>,
     route: ThemeRouteCutoverDescriptor,
 ) -> C6ProofResult<SequenceRouteObservation> {
+    match route.target() {
+        ThemeTarget::Actor => sequence_actor_route_observation(document, route),
+        ThemeTarget::Note => sequence_note_route_observation(document, route),
+        target => Err(C6ProofError::new(
+            "route-svg-proof",
+            format!("unsupported Sequence cutover target {}", target.id()),
+        )),
+    }
+}
+
+fn sequence_actor_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<SequenceRouteObservation> {
     c6_ensure!(
         "route-svg-proof",
         route.target() == ThemeTarget::Actor,
@@ -1017,6 +1203,74 @@ fn sequence_route_observation(
     })
 }
 
+fn sequence_note_route_observation(
+    document: &roxmltree::Document<'_>,
+    route: ThemeRouteCutoverDescriptor,
+) -> C6ProofResult<SequenceRouteObservation> {
+    let root = document.root_element();
+    let root_id = root
+        .attribute("id")
+        .ok_or_else(|| C6ProofError::new("route-svg-proof", "Sequence SVG root lacks an id"))?;
+    let notes = document
+        .descendants()
+        .filter(|node| node.attribute("data-et") == Some("note"))
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "route-svg-proof",
+        notes.len() == 3,
+        "Sequence Note witness expected 3 terminal groups, found {}",
+        notes.len()
+    );
+
+    let property = facet_property(route.facet());
+    let note_selector = format!("#{root_id} .note");
+    let note_value = sequence_stylesheet_property(document, &note_selector, property)?;
+    let mut target_regions = Vec::with_capacity(notes.len());
+    let mut terminal = b"merman.c6-route-sequence-note-surfaces.v1\0".to_vec();
+    for note in notes {
+        let rects = note
+            .children()
+            .filter(|node| node.has_tag_name("rect") && class_contains(*node, "note"))
+            .collect::<Vec<_>>();
+        c6_ensure!(
+            "route-svg-proof",
+            rects.len() == 1,
+            "Sequence Note group expected one terminal rect, found {}",
+            rects.len()
+        );
+        let rect = rects[0];
+        if let Some(inline) = style_value(rect, property) {
+            c6_ensure!(
+                "route-svg-proof",
+                inline == note_value,
+                "Sequence Note rect overrides typed {property} with `{inline}`"
+            );
+        }
+        let base_value = rect.attribute(property).ok_or_else(|| {
+            C6ProofError::new(
+                "route-svg-proof",
+                format!("Sequence Note rect lacks its base {property} attribute"),
+            )
+        })?;
+        let region = element_bounds(rect, route.facet())?;
+        append_len_prefixed(
+            &mut terminal,
+            note.attribute("data-id").unwrap_or_default().as_bytes(),
+        );
+        append_len_prefixed(&mut terminal, base_value.as_bytes());
+        append_rect(&mut terminal, region);
+        target_regions.push(region);
+    }
+    append_len_prefixed(&mut terminal, note_selector.as_bytes());
+    append_len_prefixed(&mut terminal, note_value.as_bytes());
+
+    Ok(SequenceRouteObservation {
+        value: note_value.to_owned(),
+        terminal_digest: sha256(terminal),
+        target_regions,
+    })
+}
+
 fn sequence_stylesheet_property<'a>(
     document: &'a roxmltree::Document<'a>,
     selector: &str,
@@ -1034,4 +1288,34 @@ fn sequence_stylesheet_property<'a>(
                 format!("Sequence stylesheet lacks {selector} {property}"),
             )
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL_POINT_MARKER_SVG: &str = r##"<svg id="fixture" viewBox="0 0 100 100">
+<style>#fixture .marker{fill:#333333;stroke:#333333;}</style>
+<defs>
+  <marker id="fixture-pointStart" class="marker" viewBox="0 0 10 10" refX="4.5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="arrowMarkerPath" d="M 0 5 L 10 10 L 10 0 z"/></marker>
+  <marker id="fixture-pointEnd" class="marker" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="arrowMarkerPath" d="M 0 0 L 10 5 L 0 10 z"/></marker>
+</defs>
+<path data-edge="true" data-id="L_A_B_0" data-look="classic" d="M 0 10 L 10 10" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
+<path data-edge="true" data-id="L_B_C_0" data-look="classic" d="M 0 20 L 10 20" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
+<path data-edge="true" data-id="L_C_D_0" data-look="classic" d="M 0 30 L 10 30" marker-start="url(#fixture-pointStart)" marker-end="url(#fixture-pointEnd)"/>
+</svg>"##;
+
+    #[test]
+    fn marker_witness_rejects_all_shapes_mapped_to_point() {
+        let result =
+            prove_flowchart_markers_svg(ALL_POINT_MARKER_SVG, CutoverWitnessProfile::ClassicStatic);
+
+        let error = match result {
+            Ok(_) => panic!(
+                "the fixed marker witness must reject circle and cross edges mapped to point markers"
+            ),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("marker mapping drifted"));
+    }
 }

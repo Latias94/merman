@@ -67,6 +67,7 @@ const MINIMUM_MARKER_PIXELS: usize = 6;
 const FLOWCHART_NODE_SOURCE: &str = "flowchart LR\nA[Alpha]\nB[Beta]\n";
 const FLOWCHART_EDGE_SOURCE: &str =
     "flowchart LR\nA[Alpha] o--o B[Beta]\nB x--x C[Gamma]\nC <--> D[Delta]\n";
+const FLOWCHART_ANIMATED_EDGE_SOURCE: &str = "flowchart LR\nA[Alpha] circles@o--o B[Beta]\nB crosses@x--x C[Gamma]\nC points@<--> D[Delta]\ncircles@{ animate: true }\ncrosses@{ animate: true }\npoints@{ animate: true }\n";
 const SWIMLANE_NODE_SOURCE: &str = r#"---
 config:
   layout: swimlane
@@ -90,6 +91,21 @@ A[Alpha] o--o B[Beta]
 B x--x C[Gamma]
 C <--> D[Delta]
 "#;
+const SWIMLANE_ANIMATED_EDGE_SOURCE: &str = r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TD
+A[Alpha] circles@o--o B[Beta]
+B crosses@x--x C[Gamma]
+C points@<--> D[Delta]
+circles@{ animate: true }
+crosses@{ animate: true }
+points@{ animate: true }
+"#;
 const SEQUENCE_FILL_SOURCE: &str = r#"sequenceDiagram
 participant Plain
 participant Stick@{"type":"actor"}
@@ -109,6 +125,93 @@ participant Collection@{"type":"collections"}
 participant Queue@{"type":"queue"}
 Plain->>Queue: Hello
 "#;
+const SEQUENCE_NOTE_SOURCE: &str = r#"sequenceDiagram
+participant Alice
+participant Bob
+Note left of Alice: Left note
+Note over Alice,Bob: Shared note
+Note right of Bob: Right note
+Alice->>Bob: Hello
+"#;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum CutoverWitnessProfile {
+    ClassicStatic,
+    NeoStatic,
+    NeoAnimated,
+}
+
+impl CutoverWitnessProfile {
+    const CLASSIC: [Self; 1] = [Self::ClassicStatic];
+    const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
+
+    const fn id(self) -> &'static str {
+        match self {
+            Self::ClassicStatic => "classic-static",
+            Self::NeoStatic => "neo-static",
+            Self::NeoAnimated => "neo-animated",
+        }
+    }
+
+    const fn is_neo(self) -> bool {
+        matches!(self, Self::NeoStatic | Self::NeoAnimated)
+    }
+
+    const fn is_animated(self) -> bool {
+        matches!(self, Self::NeoAnimated)
+    }
+
+    const fn expects_marker_margin(self) -> bool {
+        matches!(self, Self::NeoStatic)
+    }
+
+    const fn expects_neo_mask(self) -> bool {
+        matches!(self, Self::NeoStatic)
+    }
+
+    fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
+        if route.target() == ThemeTarget::Edge {
+            &Self::EDGE
+        } else {
+            &Self::CLASSIC
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct CutoverWitnessId {
+    route: ThemeRouteCutoverDescriptor,
+    profile: CutoverWitnessProfile,
+}
+
+impl CutoverWitnessId {
+    const fn new(route: ThemeRouteCutoverDescriptor, profile: CutoverWitnessProfile) -> Self {
+        Self { route, profile }
+    }
+
+    const fn route(self) -> ThemeRouteCutoverDescriptor {
+        self.route
+    }
+
+    const fn profile(self) -> CutoverWitnessProfile {
+        self.profile
+    }
+}
+
+fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<CutoverWitnessId> {
+    let mut witnesses = routes
+        .iter()
+        .copied()
+        .flat_map(|route| {
+            CutoverWitnessProfile::for_route(route)
+                .iter()
+                .copied()
+                .map(move |profile| CutoverWitnessId::new(route, profile))
+        })
+        .collect::<Vec<_>>();
+    witnesses.sort_unstable();
+    witnesses
+}
 
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
@@ -126,6 +229,7 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SEQUENCE_STROKE_SOURCE)
         }
+        (DiagramFamilyId::SEQUENCE, ThemeTarget::Note, _) => Ok(SEQUENCE_NOTE_SOURCE),
         _ => Err(C6ProofError::new(
             "route-source",
             format!("no route-cutover witness source for {}", route_label(route)),
@@ -133,9 +237,34 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
     }
 }
 
+fn source_for_witness(witness: CutoverWitnessId) -> C6ProofResult<&'static str> {
+    if witness.profile() != CutoverWitnessProfile::NeoAnimated {
+        return source_for_route(witness.route());
+    }
+    match (
+        witness.route().family_id(),
+        witness.route().target(),
+        witness.route().facet(),
+    ) {
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(FLOWCHART_ANIMATED_EDGE_SOURCE)
+        }
+        (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(SWIMLANE_ANIMATED_EDGE_SOURCE)
+        }
+        _ => Err(C6ProofError::new(
+            "route-source",
+            format!(
+                "no animated route-cutover witness source for {}",
+                witness_label(witness)
+            ),
+        )),
+    }
+}
+
 #[derive(Clone, Copy)]
 struct CutoverCase {
-    route: ThemeRouteCutoverDescriptor,
+    id: CutoverWitnessId,
     source: &'static str,
 }
 
@@ -144,6 +273,8 @@ struct RenderedCutoverCase {
     source_digest: [u8; 32],
     recipe_digest: [u8; 32],
     operation_digest: [u8; 32],
+    admission_digest: [u8; 32],
+    png_admission_digest: [u8; 32],
     document_digest: [u8; 32],
     resource_fingerprint: [u8; 32],
     svg_artifact_digest: [u8; 32],
@@ -151,7 +282,7 @@ struct RenderedCutoverCase {
     svg_assertions: BTreeMap<ThemeRouteCutoverDescriptor, [u8; 32]>,
     svg_view_box: [f64; 4],
     target_regions: Vec<[f64; 4]>,
-    target_underlay_colors: Vec<Option<[u8; 3]>>,
+    target_underlay_colors: Vec<Vec<[u8; 3]>>,
     markers: Vec<FlowchartMarkerObservation>,
     raster: C6RasterImage,
 }
@@ -176,7 +307,68 @@ struct SvgCutoverProof {
     assertions: BTreeMap<ThemeRouteCutoverDescriptor, [u8; 32]>,
     view_box: [f64; 4],
     target_regions: Vec<[f64; 4]>,
-    target_underlay_colors: Vec<Option<[u8; 3]>>,
+    target_underlay_colors: Vec<Vec<[u8; 3]>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RouteCutoverAuthorizationReceipt {
+    manifest_digest: [u8; 32],
+    route_report_digest: [u8; 32],
+    digest: [u8; 32],
+}
+
+impl RouteCutoverAuthorizationReceipt {
+    fn seal(manifest_digest: [u8; 32], route_report_digest: [u8; 32]) -> C6ProofResult<Self> {
+        c6_ensure!(
+            "route-authorization",
+            manifest_digest != [0; 32],
+            "cutover manifest digest is zero"
+        );
+        c6_ensure!(
+            "route-authorization",
+            route_report_digest != [0; 32],
+            "aggregate route report digest is zero"
+        );
+        let digest = Self::canonical_digest(manifest_digest, route_report_digest);
+        c6_ensure!(
+            "route-authorization",
+            digest != [0; 32],
+            "route authorization digest is zero"
+        );
+        Ok(Self {
+            manifest_digest,
+            route_report_digest,
+            digest,
+        })
+    }
+
+    fn canonical_digest(manifest_digest: [u8; 32], route_report_digest: [u8; 32]) -> [u8; 32] {
+        let mut value = b"merman.c6-route-cutover-authorization.v1\0".to_vec();
+        append_len_prefixed(&mut value, b"manifest");
+        value.extend_from_slice(&manifest_digest);
+        append_len_prefixed(&mut value, b"aggregate-route-report");
+        value.extend_from_slice(&route_report_digest);
+        sha256(value)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn digest(&self) -> &[u8; 32] {
+        &self.digest
+    }
+
+    pub(crate) fn validated_digest(&self) -> Option<[u8; 32]> {
+        (self.manifest_digest != [0; 32]
+            && self.route_report_digest != [0; 32]
+            && self.digest != [0; 32]
+            && self.digest
+                == Self::canonical_digest(self.manifest_digest, self.route_report_digest))
+        .then_some(self.digest)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(manifest_digest: [u8; 32], route_report_digest: [u8; 32]) -> Self {
+        Self::seal(manifest_digest, route_report_digest).expect("seal test route authorization")
+    }
 }
 
 struct C6RouteCutoverReceipt {
@@ -185,21 +377,36 @@ struct C6RouteCutoverReceipt {
 
 impl C6RouteCutoverReceipt {
     fn seal(
-        route: ThemeRouteCutoverDescriptor,
+        witness: CutoverWitnessId,
         rendered: &RenderedCutoverCase,
         png_assertion_digest: [u8; 32],
     ) -> C6ProofResult<Self> {
+        let route = witness.route();
         let svg_assertion_digest = rendered.svg_assertions.get(&route).ok_or_else(|| {
             C6ProofError::new(
                 "route-svg-receipt",
-                format!("missing SVG assertion for {}", route_label(route)),
+                format!("missing SVG assertion for {}", witness_label(witness)),
             )
         })?;
-        let mut value = b"merman.c6-route-cutover-receipt.v1\0".to_vec();
-        append_route(&mut value, route);
+        c6_ensure!(
+            "route-admission-receipt",
+            rendered.admission_digest != [0; 32],
+            "route admission digest is zero for {}",
+            witness_label(witness)
+        );
+        c6_ensure!(
+            "route-admission-receipt",
+            rendered.png_admission_digest != [0; 32],
+            "PNG route admission digest is zero for {}",
+            witness_label(witness)
+        );
+        let mut value = b"merman.c6-route-cutover-receipt.v3\0".to_vec();
+        append_witness(&mut value, witness);
         value.extend_from_slice(&rendered.source_digest);
         value.extend_from_slice(&rendered.recipe_digest);
         value.extend_from_slice(&rendered.operation_digest);
+        value.extend_from_slice(&rendered.admission_digest);
+        value.extend_from_slice(&rendered.png_admission_digest);
         value.extend_from_slice(&rendered.document_digest);
         value.extend_from_slice(&rendered.resource_fingerprint);
         value.extend_from_slice(&rendered.svg_artifact_digest);
@@ -212,33 +419,36 @@ impl C6RouteCutoverReceipt {
     }
 }
 
-pub(crate) fn run_route_cutover_witnesses() -> Result<(), C6RuntimeError> {
-    prove_route_cutover_witnesses().map(drop)
-}
-
-fn prove_route_cutover_witnesses() -> Result<[u8; 32], C6RuntimeError> {
+pub(crate) fn run_route_cutover_witnesses()
+-> Result<RouteCutoverAuthorizationReceipt, C6RuntimeError> {
     let inventory = legacy_replacing_typed_theme_routes().map_err(|error| {
         C6ProofError::new("route-inventory", error.to_string()).into_route_runtime("inventory")
     })?;
-    let authorized = prove_route("manifest", authorize_cutover_routes(inventory))?;
-    if authorized.is_empty() {
+    let authorized_manifest = prove_route("manifest", authorize_cutover_routes(inventory))?;
+    if authorized_manifest.routes().is_empty() {
         return Err(C6ProofError::new(
             "route-inventory",
             "typed legacy-replacing route inventory is empty",
         )
         .into_route_runtime("inventory"));
     }
+    let manifest_digest = authorized_manifest_digest(
+        authorized_manifest.manifest_version(),
+        authorized_manifest.routes(),
+    );
+    let authorized = authorized_manifest.into_routes();
 
     let mut rendered = BTreeMap::new();
-    for &route in &authorized {
+    for witness_id in expected_cutover_witnesses(&authorized) {
+        let route = witness_id.route();
         let case = CutoverCase {
-            route,
-            source: source_for_route(route)
-                .map_err(|error| error.into_route_runtime(route_label(route)))?,
+            id: witness_id,
+            source: source_for_witness(witness_id)
+                .map_err(|error| error.into_route_runtime(witness_label(witness_id)))?,
         };
         let witness = case_label(case);
         let completed = prove_route(&witness, render_cutover_case(case, vec![route]))?;
-        if rendered.insert(route, completed).is_some() {
+        if rendered.insert(witness_id, completed).is_some() {
             return Err(C6RuntimeError::DuplicateRouteCutoverReceipt { route: witness });
         }
     }
@@ -247,71 +457,81 @@ fn prove_route_cutover_witnesses() -> Result<[u8; 32], C6RuntimeError> {
     let shapes = rendered
         .keys()
         .copied()
-        .map(route_shape)
+        .map(cutover_witness_shape)
         .collect::<BTreeSet<_>>();
     for shape in shapes {
-        let pair_label = route_shape_label(shape);
-        let solid_route = rendered
+        let pair_label = cutover_witness_shape_label(shape);
+        let solid_witness = rendered
             .keys()
             .copied()
-            .find(|route| {
-                route_shape(*route) == shape && route.value() == ThemeRouteCutoverValue::Solid
+            .find(|witness| {
+                cutover_witness_shape(*witness) == shape
+                    && witness.route().value() == ThemeRouteCutoverValue::Solid
             })
             .ok_or_else(|| C6RuntimeError::RouteCutoverCoverageMismatch {
                 missing: vec![format!("{pair_label}/solid")],
                 unexpected: Vec::new(),
             })?;
-        let transparent_route = rendered
+        let transparent_witness = rendered
             .keys()
             .copied()
-            .find(|route| {
-                route_shape(*route) == shape && route.value() == ThemeRouteCutoverValue::Transparent
+            .find(|witness| {
+                cutover_witness_shape(*witness) == shape
+                    && witness.route().value() == ThemeRouteCutoverValue::Transparent
             })
             .ok_or_else(|| C6RuntimeError::RouteCutoverCoverageMismatch {
                 missing: vec![format!("{pair_label}/transparent")],
                 unexpected: Vec::new(),
             })?;
-        let solid = rendered.get(&solid_route).ok_or_else(|| {
+        let solid = rendered.get(&solid_witness).ok_or_else(|| {
             C6RuntimeError::RouteCutoverCoverageMismatch {
-                missing: vec![route_label(solid_route)],
+                missing: vec![witness_label(solid_witness)],
                 unexpected: Vec::new(),
             }
         })?;
-        let transparent = rendered.get(&transparent_route).ok_or_else(|| {
+        let transparent = rendered.get(&transparent_witness).ok_or_else(|| {
             C6RuntimeError::RouteCutoverCoverageMismatch {
-                missing: vec![route_label(transparent_route)],
+                missing: vec![witness_label(transparent_witness)],
                 unexpected: Vec::new(),
             }
         })?;
         let png_assertions = prove_route(&pair_label, prove_terminal_png_pair(solid, transparent))?;
-        for rendered_case in [solid, transparent] {
-            for &route in &rendered_case.routes {
-                let png_assertion = png_assertions.get(&route).copied().ok_or_else(|| {
-                    C6RuntimeError::RouteCutoverCoverageMismatch {
-                        missing: vec![route_label(route)],
-                        unexpected: Vec::new(),
-                    }
-                })?;
-                let receipt = prove_route(
-                    &route_label(route),
-                    C6RouteCutoverReceipt::seal(route, rendered_case, png_assertion),
-                )?;
-                if receipts.insert(route, receipt).is_some() {
-                    return Err(C6RuntimeError::DuplicateRouteCutoverReceipt {
-                        route: route_label(route),
-                    });
+        for (witness_id, rendered_case) in
+            [(solid_witness, solid), (transparent_witness, transparent)]
+        {
+            let route = witness_id.route();
+            let png_assertion = png_assertions.get(&route).copied().ok_or_else(|| {
+                C6RuntimeError::RouteCutoverCoverageMismatch {
+                    missing: vec![witness_label(witness_id)],
+                    unexpected: Vec::new(),
                 }
+            })?;
+            let receipt = prove_route(
+                &witness_label(witness_id),
+                C6RouteCutoverReceipt::seal(witness_id, rendered_case, png_assertion),
+            )?;
+            if receipts.insert(witness_id, receipt).is_some() {
+                return Err(C6RuntimeError::DuplicateRouteCutoverReceipt {
+                    route: witness_label(witness_id),
+                });
             }
         }
     }
 
-    evaluate_route_receipts(authorized, receipts)
+    let route_report_digest = evaluate_route_receipts(authorized, receipts)?;
+    prove_route(
+        "authorization",
+        RouteCutoverAuthorizationReceipt::seal(manifest_digest, route_report_digest),
+    )
 }
 
 fn render_cutover_case(
     case: CutoverCase,
     mut routes: Vec<ThemeRouteCutoverDescriptor>,
 ) -> C6ProofResult<RenderedCutoverCase> {
+    let witness_id = case.id;
+    let expected_route = witness_id.route();
+    let profile = witness_id.profile();
     routes.sort_unstable();
     c6_ensure!(
         "route-inventory",
@@ -322,14 +542,15 @@ fn render_cutover_case(
     c6_ensure!(
         "route-inventory",
         routes.iter().all(|route| {
-            route.selector() == ThemeRouteCutoverSelector::StaticUnqualified && *route == case.route
-        }),
+            route.selector() == ThemeRouteCutoverSelector::StaticUnqualified
+                && *route == expected_route
+        }) && CutoverWitnessProfile::for_route(expected_route).contains(&profile),
         "{} contains a route outside its canonical selector/family/value",
         case_label(case)
     );
 
     let theme = compile_cutover_theme(case)?;
-    let renderer = cutover_renderer();
+    let renderer = cutover_renderer(profile);
     let svg_request = portable_svg_request();
     let svg_output = renderer
         .render(
@@ -347,13 +568,27 @@ fn render_cutover_case(
     let render_identity = prove_portable_family_evidence(
         &render_evidence,
         &theme,
-        case.route.family_id(),
+        expected_route.family_id(),
         FamilyEvidenceRequirements::ROUTE_CUTOVER,
     )?;
+    let family_evidence =
+        merman::__theme_acceptance::theme_acceptance_evidence(&render_evidence).family();
+    c6_ensure!(
+        "route-family-disposition",
+        family_evidence.required_count() == 1
+            && family_evidence.applied_count() == 1
+            && family_evidence.not_applicable_count() == 0
+            && family_evidence.residual_count() == 0,
+        "route witness did not prove one exact Applied family mechanism: required={} applied={} not_applicable={} residual={}",
+        family_evidence.required_count(),
+        family_evidence.applied_count(),
+        family_evidence.not_applicable_count(),
+        family_evidence.residual_count()
+    );
     let svg = sealed_svg.as_str();
-    let markers = match (case.route.family_id(), case.route.target()) {
+    let markers = match (expected_route.family_id(), expected_route.target()) {
         (DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE, ThemeTarget::Edge) => {
-            prove_flowchart_markers_svg(svg)?
+            prove_flowchart_markers_svg(svg, profile)?
         }
         _ => Vec::new(),
     };
@@ -376,7 +611,7 @@ fn render_cutover_case(
         .encode_png_with_report()
         .map_err(|error| C6ProofError::new("route-png-encode", error.to_string()))?;
     let png_plan = report.raster();
-    prove_cutover_png_report(report, png_plan, &render_evidence)?;
+    let png_admission_digest = prove_cutover_png_report(report, png_plan, &render_evidence)?;
     let raster = decode_bounded_png_artifact(&png_bytes, png_plan)?;
 
     let png_resource = *report.resource_fingerprint().as_bytes();
@@ -387,7 +622,8 @@ fn render_cutover_case(
     );
 
     let svg_artifact_digest = sha256(svg);
-    let mut document_identity = b"merman.c6-route-cutover-document.v1\0".to_vec();
+    let mut document_identity = b"merman.c6-route-cutover-document.v2\0".to_vec();
+    append_witness(&mut document_identity, witness_id);
     document_identity.extend_from_slice(theme.recipe_fingerprint().as_bytes());
     document_identity.extend_from_slice(render_identity.operation_digest());
     document_identity.extend_from_slice(&svg_resource);
@@ -398,6 +634,8 @@ fn render_cutover_case(
         source_digest: sha256(case.source),
         recipe_digest: *theme.recipe_fingerprint().as_bytes(),
         operation_digest: *render_identity.operation_digest(),
+        admission_digest: *render_identity.admission_digest(),
+        png_admission_digest,
         document_digest: sha256(document_identity),
         resource_fingerprint: svg_resource,
         svg_artifact_digest,
@@ -413,7 +651,7 @@ fn render_cutover_case(
 
 fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
     let mut styles = ThemeRuleSet::default();
-    let route = case.route;
+    let route = case.id.route();
     let style = match route.facet() {
         ThemeRouteCutoverFacet::Fill => {
             ThemeStylePatch::default().with_fill(cutover_paint(route.value(), SOLID_FILL.css)?)
@@ -421,7 +659,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
         ThemeRouteCutoverFacet::Stroke => {
             let solid = match route.target() {
                 ThemeTarget::Edge => SOLID_EDGE.css,
-                ThemeTarget::Node | ThemeTarget::Actor => SOLID_STROKE.css,
+                ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note => SOLID_STROKE.css,
                 target => {
                     return Err(C6ProofError::new(
                         "route-theme",
@@ -458,7 +696,7 @@ fn compile_cutover_theme(case: CutoverCase) -> C6ProofResult<DiagramTheme> {
 }
 
 fn cutover_rule(case: CutoverCase, target: ThemeTarget, style: ThemeStylePatch) -> ThemeRule {
-    ThemeRule::new(target, style).for_family(case.route.family_id())
+    ThemeRule::new(target, style).for_family(case.id.route().family_id())
 }
 
 fn cutover_paint(value: ThemeRouteCutoverValue, solid: &str) -> C6ProofResult<CanvasPaint> {
@@ -469,10 +707,11 @@ fn cutover_paint(value: ThemeRouteCutoverValue, solid: &str) -> C6ProofResult<Ca
     }
 }
 
-fn cutover_renderer() -> Renderer {
+fn cutover_renderer(profile: CutoverWitnessProfile) -> Renderer {
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({
             "htmlLabels": false,
+            "look": if profile.is_neo() { "neo" } else { "classic" },
             "flowchart": { "htmlLabels": false }
         }),
     )))
@@ -482,7 +721,7 @@ fn prove_cutover_png_report(
     report: RasterExportReport,
     expected_plan: RasterPlan,
     evidence: &merman::RenderEvidence,
-) -> C6ProofResult<()> {
+) -> C6ProofResult<[u8; 32]> {
     c6_ensure!(
         "route-png-report",
         report.output() == RasterOutputKind::Png && report.raster() == expected_plan,
@@ -521,7 +760,98 @@ fn prove_cutover_png_report(
         report.matte().is_none() && !report.matte_defaulted(),
         "PNG route witness unexpectedly applied an output matte"
     );
-    prove_cutover_font_plan(report.fonts())
+    prove_cutover_font_plan(report.fonts())?;
+    Ok(cutover_png_admission_digest(report))
+}
+
+fn cutover_png_admission_digest(report: RasterExportReport) -> [u8; 32] {
+    let mut value = b"merman.c6-route-png-admission.v1\0".to_vec();
+    append_len_prefixed(&mut value, b"png");
+    value.extend_from_slice(report.resource_fingerprint().as_bytes());
+
+    match report.native_filter_receipt() {
+        Some(receipt) => {
+            value.push(1);
+            value.extend_from_slice(&receipt.hard_shadow_count().to_be_bytes());
+            value.extend_from_slice(&receipt.reference_count().to_be_bytes());
+        }
+        None => value.push(0),
+    }
+
+    let raster = report.raster();
+    for number in [
+        raster.requested_width_px,
+        raster.requested_height_px,
+        raster.requested_scale,
+        raster.effective_scale,
+    ] {
+        value.extend_from_slice(&number.to_bits().to_be_bytes());
+    }
+    value.extend_from_slice(&raster.width_px.to_be_bytes());
+    value.extend_from_slice(&raster.height_px.to_be_bytes());
+    value.push(u8::from(raster.limited));
+
+    let images = report.embedded_images();
+    for count in [images.data_resources, images.raster_images] {
+        value.extend_from_slice(&usize_to_u64(count).to_be_bytes());
+    }
+    for bytes in [
+        images.largest_data_bytes,
+        images.total_data_bytes,
+        images.largest_raster_pixels,
+        images.total_pixels,
+    ] {
+        value.extend_from_slice(&bytes.to_be_bytes());
+    }
+
+    let conversion = report.conversion();
+    for count in [
+        conversion.tree_nodes,
+        conversion.max_tree_depth,
+        conversion.max_isolation_depth,
+        conversion.filtered_groups,
+        conversion.filter_primitives,
+        conversion.subroots,
+        conversion.nested_svg_images,
+    ] {
+        value.extend_from_slice(&usize_to_u64(count).to_be_bytes());
+    }
+
+    let fonts = report.fonts();
+    value.extend_from_slice(fonts.catalog_fingerprint().as_bytes());
+    append_len_prefixed(&mut value, fonts.source_mode().id().as_bytes());
+    for count in [
+        fonts.loaded_embedded_face_count(),
+        fonts.prepared_label_expected_count(),
+        fonts.prepared_label_verified_count(),
+        fonts.prepared_label_mismatch_count(),
+        fonts.prepared_label_host_dependent_count(),
+        fonts.prepared_label_terminal_incomplete_count(),
+        fonts.unclassified_face_count(),
+        fonts.notdef_glyph_count(),
+    ] {
+        value.extend_from_slice(&usize_to_u64(count).to_be_bytes());
+    }
+    for flag in [
+        fonts.used_embedded_fonts(),
+        fonts.used_system_fonts(),
+        fonts.family_fallback_used(),
+        fonts.glyph_fallback_used(),
+        fonts.unresolved_font_request(),
+        fonts.unresolved_glyph_fallback(),
+    ] {
+        value.push(u8::from(flag));
+    }
+
+    match report.matte() {
+        Some(matte) => {
+            value.push(1);
+            value.extend_from_slice(&[matte.red(), matte.green(), matte.blue(), matte.alpha()]);
+        }
+        None => value.push(0),
+    }
+    value.push(u8::from(report.matte_defaulted()));
+    sha256(value)
 }
 
 fn prove_cutover_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
@@ -551,31 +881,47 @@ fn prove_cutover_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
 
 fn evaluate_route_receipts(
     inventory: Vec<ThemeRouteCutoverDescriptor>,
-    receipts: BTreeMap<ThemeRouteCutoverDescriptor, C6RouteCutoverReceipt>,
+    receipts: BTreeMap<CutoverWitnessId, C6RouteCutoverReceipt>,
 ) -> Result<[u8; 32], C6RuntimeError> {
-    let expected = inventory.into_iter().collect::<BTreeSet<_>>();
+    let expected = expected_cutover_witnesses(&inventory)
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     let actual = receipts.keys().copied().collect::<BTreeSet<_>>();
     if expected != actual {
         return Err(C6RuntimeError::RouteCutoverCoverageMismatch {
             missing: expected
                 .difference(&actual)
                 .copied()
-                .map(route_label)
+                .map(witness_label)
                 .collect(),
             unexpected: actual
                 .difference(&expected)
                 .copied()
-                .map(route_label)
+                .map(witness_label)
                 .collect(),
         });
     }
 
-    let mut value = b"merman.c6-route-cutover-report.v1\0".to_vec();
-    for (&route, receipt) in &receipts {
-        append_route(&mut value, route);
+    let mut value = b"merman.c6-route-cutover-report.v2\0".to_vec();
+    value.extend_from_slice(&usize_to_u64(receipts.len()).to_be_bytes());
+    for (&witness, receipt) in &receipts {
+        append_witness(&mut value, witness);
         value.extend_from_slice(&receipt.digest);
     }
     Ok(sha256(value))
+}
+
+fn authorized_manifest_digest(
+    manifest_version: u16,
+    routes: &[ThemeRouteCutoverDescriptor],
+) -> [u8; 32] {
+    let mut value = b"merman.c6-route-cutover-manifest.v1\0".to_vec();
+    value.extend_from_slice(&manifest_version.to_be_bytes());
+    value.extend_from_slice(&usize_to_u64(routes.len()).to_be_bytes());
+    for &route in routes {
+        append_route(&mut value, route);
+    }
+    sha256(value)
 }
 
 type RouteShape = (
@@ -611,12 +957,26 @@ fn route_shape_label(shape: RouteShape) -> String {
     )
 }
 
+type CutoverWitnessShape = (RouteShape, CutoverWitnessProfile);
+
+fn cutover_witness_shape(witness: CutoverWitnessId) -> CutoverWitnessShape {
+    (route_shape(witness.route()), witness.profile())
+}
+
+fn cutover_witness_shape_label(shape: CutoverWitnessShape) -> String {
+    format!("{}/{}", route_shape_label(shape.0), shape.1.id())
+}
+
 fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<ControlColor> {
     match (route.target(), route.facet()) {
-        (ThemeTarget::Node | ThemeTarget::Actor, ThemeRouteCutoverFacet::Fill) => Ok(SOLID_FILL),
-        (ThemeTarget::Node | ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(SOLID_STROKE)
-        }
+        (
+            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(SOLID_FILL),
+        (
+            ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+            ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(SOLID_STROKE),
         (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE),
         _ => Err(C6ProofError::new(
             "route-png-proof",
@@ -627,8 +987,7 @@ fn route_control_color(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<Cont
 
 fn minimum_control_pixels_per_region(route: ThemeRouteCutoverDescriptor) -> usize {
     match route.facet() {
-        ThemeRouteCutoverFacet::Fill => 8,
-        ThemeRouteCutoverFacet::Stroke => 1,
+        ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke => 8,
     }
 }
 
@@ -643,12 +1002,14 @@ fn expected_svg_value(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'sta
             )),
         },
         ThemeRouteCutoverValue::Solid => match (route.target(), route.facet()) {
-            (ThemeTarget::Node | ThemeTarget::Actor, ThemeRouteCutoverFacet::Fill) => {
-                Ok(SOLID_FILL.css)
-            }
-            (ThemeTarget::Node | ThemeTarget::Actor, ThemeRouteCutoverFacet::Stroke) => {
-                Ok(SOLID_STROKE.css)
-            }
+            (
+                ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+                ThemeRouteCutoverFacet::Fill,
+            ) => Ok(SOLID_FILL.css),
+            (
+                ThemeTarget::Node | ThemeTarget::Actor | ThemeTarget::Note,
+                ThemeRouteCutoverFacet::Stroke,
+            ) => Ok(SOLID_STROKE.css),
             (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => Ok(SOLID_EDGE.css),
             _ => Err(C6ProofError::new(
                 "route-svg-proof",
@@ -705,8 +1066,16 @@ fn route_label(route: ThemeRouteCutoverDescriptor) -> String {
     )
 }
 
+fn witness_label(witness: CutoverWitnessId) -> String {
+    format!(
+        "{}/{}",
+        route_label(witness.route()),
+        witness.profile().id()
+    )
+}
+
 fn case_label(case: CutoverCase) -> String {
-    route_label(case.route)
+    witness_label(case.id)
 }
 
 fn selector_id(selector: ThemeRouteCutoverSelector) -> &'static str {
@@ -743,10 +1112,16 @@ fn append_route(output: &mut Vec<u8>, route: ThemeRouteCutoverDescriptor) {
     append_len_prefixed(output, selector_id(route.selector()).as_bytes());
     append_len_prefixed(output, facet_id(route.facet()).as_bytes());
     append_len_prefixed(output, value_id(route.value()).as_bytes());
+    output.extend_from_slice(&usize_to_u64(route.projections().len()).to_be_bytes());
     for projection in route.projections().iter() {
         append_len_prefixed(output, projection.contribution_id().as_bytes());
         append_len_prefixed(output, projection.action().id().as_bytes());
     }
+}
+
+fn append_witness(output: &mut Vec<u8>, witness: CutoverWitnessId) {
+    append_route(output, witness.route());
+    append_len_prefixed(output, witness.profile().id().as_bytes());
 }
 
 fn append_rect(output: &mut Vec<u8>, rect: [f64; 4]) {
@@ -755,7 +1130,7 @@ fn append_rect(output: &mut Vec<u8>, rect: [f64; 4]) {
     }
 }
 
-fn usize_to_u64(value: usize) -> u64 {
+pub(crate) fn usize_to_u64(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
@@ -765,18 +1140,68 @@ fn prove_route<T>(witness: &str, result: C6ProofResult<T>) -> Result<T, C6Runtim
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use merman::DiagramFamilyId;
+    use merman::svg::ThemeTarget;
+
     use super::{
-        legacy_replacing_typed_theme_routes, prove_route_cutover_witnesses,
-        require_marker_pixel_counts, transformed_path_terminals,
+        C6RouteCutoverReceipt, CutoverWitnessId, CutoverWitnessProfile,
+        RouteCutoverAuthorizationReceipt, evaluate_route_receipts, expected_cutover_witnesses,
+        legacy_replacing_typed_theme_routes, require_marker_pixel_counts,
+        run_route_cutover_witnesses, transformed_path_terminals,
     };
 
     #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
-        let digest = prove_route_cutover_witnesses().expect("prove typed bridge cutovers");
+        let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
         assert!(!inventory.is_empty());
-        assert_ne!(digest, [0; 32]);
+        assert!(authorization.validated_digest().is_some());
+    }
+
+    #[test]
+    fn route_authorization_binds_manifest_and_aggregate_report_digests() {
+        let baseline = RouteCutoverAuthorizationReceipt::for_test([1; 32], [2; 32]);
+        let changed_manifest = RouteCutoverAuthorizationReceipt::for_test([3; 32], [2; 32]);
+        let changed_report = RouteCutoverAuthorizationReceipt::for_test([1; 32], [4; 32]);
+
+        assert_ne!(baseline.digest(), changed_manifest.digest());
+        assert_ne!(baseline.digest(), changed_report.digest());
+    }
+
+    #[test]
+    fn edge_route_receipts_require_classic_and_both_neo_profiles() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
+        let edge_route = inventory
+            .iter()
+            .copied()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::FLOWCHART
+                    && route.target() == ThemeTarget::Edge
+            })
+            .expect("Flowchart Edge route");
+        let complete_receipts = || {
+            expected_cutover_witnesses(&inventory)
+                .into_iter()
+                .map(|witness| (witness, C6RouteCutoverReceipt { digest: [0x5a; 32] }))
+                .collect::<BTreeMap<_, _>>()
+        };
+
+        assert!(evaluate_route_receipts(inventory.clone(), complete_receipts()).is_ok());
+        for profile in [
+            CutoverWitnessProfile::ClassicStatic,
+            CutoverWitnessProfile::NeoStatic,
+            CutoverWitnessProfile::NeoAnimated,
+        ] {
+            let mut incomplete = complete_receipts();
+            incomplete.remove(&CutoverWitnessId::new(edge_route, profile));
+            assert!(
+                evaluate_route_receipts(inventory.clone(), incomplete).is_err(),
+                "missing {profile:?} Edge witness must reject cutover authorization"
+            );
+        }
     }
 
     #[test]

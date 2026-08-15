@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler,
-    DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
-    FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement, FontSource, FontStack,
-    OrdinalPalette, Specified, SvgPipeline, TextMeasurementSource, ThemeAssets, ThemeCapability,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, TypographySpec,
+    DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontAssetSpec,
+    FontCatalogSpec, FontEmbeddingRequirement, FontSource, FontStack, OrdinalPalette, Specified,
+    SvgPipeline, TextMeasurementSource, ThemeAssets, ThemeCapability, ThemeColorValue,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, TypographySpec,
 };
 use merman::{
     DiagramFamilyId, Engine, JpegRequest, MermaidConfig, OperationControl, PdfRequest, PngRequest,
@@ -1406,7 +1406,6 @@ fn compile_brutalist_state_theme(
 
     let graph = EffectGraph::new(
         SHADOW_EFFECT_ID,
-        FilterRegion::bounded(-0.2, -0.2, 1.4, 1.4),
         [EffectPrimitive::DropShadow {
             input: EffectInput::SourceGraphic,
             offset_x: f32::from(contract.shadow.offset_x_px()),
@@ -1529,12 +1528,8 @@ fn prove_brutalist_state_svg(
     for filter in &effect_filters {
         c6_ensure!(
             "standalone-svg-filter-region",
-            filter.attribute("filterUnits") == Some("objectBoundingBox")
-                && number_attribute(*filter, "x") == Some(-0.2)
-                && number_attribute(*filter, "y") == Some(-0.2)
-                && number_attribute(*filter, "width") == Some(1.4)
-                && number_attribute(*filter, "height") == Some(1.4),
-            "hard-shadow filter region differs from the fixture contract"
+            filter.attribute("filterUnits") == Some("objectBoundingBox"),
+            "hard-shadow filter must use objectBoundingBox units"
         );
         c6_ensure!(
             "standalone-svg-filter-color-space",
@@ -1593,6 +1588,17 @@ fn prove_brutalist_state_svg(
                     "State node does not reference one hard-shadow filter",
                 )
             })?;
+        let filter = effect_filters
+            .iter()
+            .copied()
+            .find(|filter| filter.attribute("id") == Some(id))
+            .ok_or_else(|| {
+                C6ProofError::new(
+                    "standalone-svg-filter-reference",
+                    format!("State node references missing hard-shadow filter `{id}`"),
+                )
+            })?;
+        prove_state_hard_shadow_filter_region(*node, filter)?;
         referenced_effect_ids.insert(id);
     }
     c6_ensure!(
@@ -1697,6 +1703,103 @@ fn style_number(node: roxmltree::Node<'_, '_>, property: &str) -> Option<f32> {
 
 fn number_attribute(node: roxmltree::Node<'_, '_>, attribute: &str) -> Option<f32> {
     node.attribute(attribute)?.parse().ok()
+}
+
+fn prove_state_hard_shadow_filter_region(
+    rect: roxmltree::Node<'_, '_>,
+    filter: roxmltree::Node<'_, '_>,
+) -> C6ProofResult<()> {
+    let width = required_positive_number_attribute(rect, "width")?;
+    let height = required_positive_number_attribute(rect, "height")?;
+    let stroke_width = style_number(rect, "stroke-width").ok_or_else(|| {
+        C6ProofError::new(
+            "standalone-svg-filter-region",
+            "State node has no numeric painting stroke width",
+        )
+    })?;
+    c6_ensure!(
+        "standalone-svg-filter-region",
+        stroke_width.is_finite() && stroke_width >= 0.0,
+        "State node has an invalid painting stroke width `{stroke_width}`"
+    );
+
+    let drop_shadow = filter
+        .children()
+        .find(|node| node.is_element() && node.has_tag_name("feDropShadow"))
+        .ok_or_else(|| {
+            C6ProofError::new(
+                "standalone-svg-filter-region",
+                "hard-shadow filter has no feDropShadow primitive",
+            )
+        })?;
+    let offset_x = required_number_attribute(drop_shadow, "dx")?;
+    let offset_y = required_number_attribute(drop_shadow, "dy")?;
+    let region = [
+        required_number_attribute(filter, "x")?,
+        required_number_attribute(filter, "y")?,
+        required_positive_number_attribute(filter, "width")?,
+        required_positive_number_attribute(filter, "height")?,
+    ];
+
+    let half_stroke = stroke_width / 2.0;
+    let expected_outsets = [
+        half_stroke + (-offset_y).max(0.0),
+        half_stroke + offset_x.max(0.0),
+        half_stroke + offset_y.max(0.0),
+        half_stroke + (-offset_x).max(0.0),
+    ];
+    let actual_outsets = [
+        -region[1] * height,
+        (region[0] + region[2] - 1.0) * width,
+        (region[1] + region[3] - 1.0) * height,
+        -region[0] * width,
+    ];
+    for (side, actual, expected) in ["top", "right", "bottom", "left"]
+        .into_iter()
+        .zip(actual_outsets)
+        .zip(expected_outsets)
+        .map(|((side, actual), expected)| (side, actual, expected))
+    {
+        c6_ensure!(
+            "standalone-svg-filter-region",
+            actual >= expected - 1.0e-4 && actual <= expected + 1.0e-2,
+            "hard-shadow {side} outset must tightly contain {expected}px, got {actual}px"
+        );
+    }
+    Ok(())
+}
+
+fn required_number_attribute(node: roxmltree::Node<'_, '_>, attribute: &str) -> C6ProofResult<f32> {
+    let value = number_attribute(node, attribute).ok_or_else(|| {
+        C6ProofError::new(
+            "standalone-svg-filter-region",
+            format!(
+                "{} has no numeric `{attribute}` attribute",
+                node.tag_name().name()
+            ),
+        )
+    })?;
+    c6_ensure!(
+        "standalone-svg-filter-region",
+        value.is_finite(),
+        "{} has a non-finite `{attribute}` attribute",
+        node.tag_name().name()
+    );
+    Ok(value)
+}
+
+fn required_positive_number_attribute(
+    node: roxmltree::Node<'_, '_>,
+    attribute: &str,
+) -> C6ProofResult<f32> {
+    let value = required_number_attribute(node, attribute)?;
+    c6_ensure!(
+        "standalone-svg-filter-region",
+        value > 0.0,
+        "{} must have a positive `{attribute}` attribute, got {value}",
+        node.tag_name().name()
+    );
+    Ok(value)
 }
 
 #[cfg(test)]
