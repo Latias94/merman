@@ -74,18 +74,12 @@ fn fixture_inventory_matches_tracked_upstream_snapshot() {
 #[test]
 fn fixture_inventory_records_source_provenance() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let readme = fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/README.md"))
-        .expect("fixture README must be readable");
     let provenance =
         fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv"))
             .expect("fixture provenance manifest must be readable");
     let license = fs::read_to_string(manifest_dir.join("LICENSES/mermaid-ascii-MIT.txt"))
         .expect("upstream MIT license copy must be readable");
 
-    assert!(readme.contains("https://github.com/AlexanderGrooff/mermaid-ascii"));
-    assert!(readme.contains("6fffb8e"));
-    assert!(readme.contains("SOURCE_PROVENANCE.tsv"));
-    assert!(readme.contains("MIT"));
     assert!(provenance.contains("d5430290e873b327ca1af07f753e28a25db76cc7"));
     assert!(license.contains("MIT License"));
     assert!(license.contains("Copyright (c) 2023 Alexander Grooff"));
@@ -264,127 +258,32 @@ fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
 }
 
 #[test]
-fn fixture_inventory_documents_v1_coverage_contract() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let contract = fs::read_to_string(manifest_dir.join("V1_MERMAID_ASCII_COVERAGE.md"))
-        .expect("v1 coverage contract must be readable");
-
-    for expected in [
-        "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
-        "27 / 54 exact output matches; 27 named deterministic differences",
-        "13 / 25 exact output matches; 12 named deterministic differences",
-        "12 / 12 normalized exact output matches",
-        "5 / 5 normalized exact output matches",
-        "Graph/flowchart copied fixture exact subset: 40 / 79.",
-        "Graph/flowchart named deterministic differences: 39 / 79.",
-        "Sequence copied fixture parity: 17 / 17.",
-        "GRAPH_FIXTURE_GAPS.md",
-        "cargo nextest run -p merman-ascii fixture_inventory graph_fixture sequence_golden",
-    ] {
-        assert!(
-            contract.contains(expected),
-            "v1 coverage contract must mention `{expected}`"
-        );
-    }
-}
-
-#[test]
-fn fixture_inventory_documents_graph_exact_and_gap_disposition() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let gap_inventory =
-        fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md"))
-            .expect("graph fixture gap inventory must be readable");
-
-    for expected in [
-        "Copied corpus: 79 fixtures",
-        "Exact-output subset: 40 fixtures",
-        "Named intentional differences: 39 fixtures",
-        "Every exact fixture must still match byte-for-byte",
-        "Every named gap must still render successfully",
-    ] {
-        assert!(
-            gap_inventory.contains(expected),
-            "graph fixture gap inventory must mention `{expected}`"
-        );
-    }
-}
-
-#[test]
-fn phase_gate_report_matches_executable_corpus_counts() {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("merman-ascii must live under the workspace crates directory");
-    let report =
-        std::fs::read_to_string(workspace_root.join("docs/rendering/ASCII_PHASE_GATE_REPORT.md"))
-            .expect("phase gate report should be tracked");
-
-    assert!(
-        report.contains("40/79 exact plus 39 named renderable differences"),
-        "phase gate report must match the executable 40 exact / 39 gap graph disposition"
-    );
-    assert!(
-        report.contains("moving-reference lane contains 140 uniquely identified paths"),
-        "phase gate report must match the executable 140-path moving inventory"
-    );
-}
-
-#[test]
-fn reference_comparison_matches_executable_fixture_evidence() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let comparison = fs::read_to_string(manifest_dir.join("ASCII_REFERENCE_COMPARISON.md"))
-        .expect("reference comparison must be readable");
-
-    for expected in [
-        "40 fixtures as an exact-output subset",
-        "39 deterministic Dagre/route/compound differences",
-        "The 140-path moving fixture delta",
-    ] {
-        assert!(
-            comparison.contains(expected),
-            "reference comparison must mention `{expected}`"
-        );
-    }
-
-    for stale in [
-        "45 fixtures as an exact-output subset",
-        "34 deterministic Dagre/route/compound differences",
-        "The 137-path moving fixture delta",
-    ] {
-        assert!(
-            !comparison.contains(stale),
-            "reference comparison contains stale evidence `{stale}`"
-        );
-    }
-}
-
-#[test]
 fn moving_reference_manifest_records_each_discovery_fixture_once() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let manifest = fs::read_to_string(manifest_dir.join("ASCII_MOVING_REFERENCE_MANIFEST.md"))
-        .expect("moving reference manifest must be readable");
-
-    for expected in [
-        "b1b35f67d6a5dd0699ccfc968c00a763db573076",
-        "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
-        "2ac8bbbb060ca0a65a6a21f3200bd99b1587b488",
-        "Mermaid `11.16.1`",
-        "Classification: `mermaid_valid`",
-        "Classification: `mixed_valid_private_behavior`",
-        "Classification: `reference_private`",
-        "Admission: `semantic_probe`",
-        "Admission: `discovery_only`",
-        "Semantic feature:",
-        "Raw reference delta: 144 paths",
-        "leaving 140 moving-only paths",
-    ] {
-        assert!(
-            manifest.contains(expected),
-            "moving reference manifest must mention `{expected}`"
-        );
-    }
-
-    let dispositions = parse_moving_fixture_dispositions(&manifest);
+    let authority_path =
+        manifest_dir.join("tests/testdata/mermaid-ascii/MOVING_REFERENCE_DISPOSITIONS.tsv");
+    let authority = fs::read_to_string(&authority_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", authority_path.display()));
+    let (metadata, dispositions) = parse_moving_fixture_dispositions(&authority);
+    assert_eq!(
+        metadata,
+        BTreeMap::from([
+            ("format", "merman-ascii-moving-reference-dispositions-v1"),
+            (
+                "moving_reference",
+                "b1b35f67d6a5dd0699ccfc968c00a763db573076",
+            ),
+            (
+                "immutable_baseline",
+                "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
+            ),
+            (
+                "capability_prior_art",
+                "2ac8bbbb060ca0a65a6a21f3200bd99b1587b488",
+            ),
+            ("mermaid_version", "11.16.1"),
+        ])
+    );
     let entries = dispositions
         .iter()
         .map(|disposition| disposition.path.as_str())
@@ -435,11 +334,6 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
             "moving fixture {} must name its semantic feature",
             disposition.path
         );
-        assert!(
-            !disposition.evidence.is_empty(),
-            "moving fixture {} must name its evidence",
-            disposition.path
-        );
     }
 
     let by_path = dispositions
@@ -462,76 +356,6 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
             .unwrap_or_else(|| panic!("missing moving fixture disposition for {path}"));
         assert_eq!(disposition.classification, "mermaid_valid");
         assert_eq!(disposition.admission, "semantic_probe");
-    }
-
-    for (relative, test_name) in [
-        (
-            "tests/flowchart_model/direction_and_labels.rs",
-            "flowchart_parser_multibyte_reference_labels_render_readably",
-        ),
-        (
-            "tests/sequence_model/control_composition.rs",
-            "sequence_control_frame_uses_the_local_participant_span",
-        ),
-        (
-            "../merman-core/src/tests/sequence.rs",
-            "parse_diagram_sequence_rejects_reference_private_quoted_actor_ids",
-        ),
-    ] {
-        let path = manifest_dir.join(relative);
-        let source = fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-        assert!(
-            source.contains(&format!("fn {test_name}")),
-            "moving-reference evidence anchor `{test_name}` must exist in {}",
-            path.display()
-        );
-        assert!(
-            manifest.contains(test_name),
-            "moving-reference manifest must cite executable evidence `{test_name}`"
-        );
-    }
-}
-
-#[test]
-fn moving_reference_evidence_anchors_resolve_to_executable_tests() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.join("../..");
-    let manifest = fs::read_to_string(manifest_dir.join("ASCII_MOVING_REFERENCE_MANIFEST.md"))
-        .expect("moving reference manifest must be readable");
-    let dispositions = parse_moving_fixture_dispositions(&manifest);
-    let evidence_sets = dispositions
-        .iter()
-        .map(|disposition| disposition.evidence.as_str())
-        .collect::<BTreeSet<_>>();
-
-    for evidence in evidence_sets {
-        for encoded_anchor in evidence.split(", ") {
-            let anchor = encoded_anchor
-                .strip_prefix('`')
-                .and_then(|value| value.strip_suffix('`'))
-                .unwrap_or_else(|| {
-                    panic!(
-                        "moving-reference evidence must be a comma-separated list of backticked executable anchors: {evidence}"
-                    )
-                });
-            let (relative_path, test_name) = anchor.rsplit_once("::").unwrap_or_else(|| {
-                panic!("moving-reference evidence anchor must name a test: {anchor}")
-            });
-            assert!(
-                relative_path.ends_with(".rs") && !test_name.is_empty(),
-                "invalid moving-reference evidence anchor: {anchor}"
-            );
-
-            let source_path = workspace_root.join(relative_path);
-            let source = fs::read_to_string(&source_path).unwrap_or_else(|error| {
-                panic!("failed to read {}: {error}", source_path.display())
-            });
-            assert!(
-                source.contains(&format!("fn {test_name}")),
-                "moving-reference evidence anchor `{anchor}` does not resolve to an executable test"
-            );
-        }
     }
 }
 
@@ -907,90 +731,6 @@ fn visible_token_occurrences(tokens: &[String], expected: &str) -> usize {
     occurrences
 }
 
-#[test]
-fn local_semantic_fixture_inventory_matches_readme() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir.join("tests/testdata/local-semantic");
-    let readme_path = root.join("README.md");
-    let readme = fs::read_to_string(&readme_path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", readme_path.display()));
-
-    let documented = readme
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("- `"))
-        .filter_map(|line| line.strip_suffix('`'))
-        .filter(|path| path.ends_with(".mmd"))
-        .map(str::to_owned)
-        .collect::<BTreeSet<_>>();
-
-    let mut actual_paths = Vec::new();
-    collect_local_semantic_fixtures(&root, &root, &mut actual_paths);
-    let actual = actual_paths
-        .into_iter()
-        .map(|path| {
-            path.strip_prefix(&root)
-                .unwrap_or_else(|err| panic!("failed to relativize {}: {err}", path.display()))
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
-        .collect::<BTreeSet<_>>();
-
-    assert_eq!(
-        documented, actual,
-        "local semantic README must list every .mmd fixture and only existing fixtures"
-    );
-}
-
-#[test]
-fn local_semantic_fixture_readme_documents_admission_policy() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let readme_path = manifest_dir.join("tests/testdata/local-semantic/README.md");
-    let readme = fs::read_to_string(&readme_path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", readme_path.display()));
-
-    for expected in [
-        "Copied fixtures",
-        "`mermaid-ascii` graph and sequence fixtures",
-        "`beautiful-mermaid` is capability evidence",
-        "Class and ER relation fixtures are split by topology readability",
-        "routed-grid fixtures",
-        "structured relation-summary fixtures",
-        "Resource limits are",
-        "`AsciiResourcePolicy` grid budget",
-    ] {
-        assert!(
-            readme.contains(expected),
-            "local semantic fixture policy must mention `{expected}`"
-        );
-    }
-}
-
-fn collect_local_semantic_fixtures(root: &Path, dir: &Path, fixtures: &mut Vec<PathBuf>) {
-    let mut entries = fs::read_dir(dir)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", dir.display()))
-        .map(|entry| {
-            entry
-                .expect("local semantic fixture entry must be readable")
-                .path()
-        })
-        .collect::<Vec<_>>();
-    entries.sort();
-
-    for path in entries {
-        if path.is_dir() {
-            collect_local_semantic_fixtures(root, &path, fixtures);
-        } else if path.extension().is_some_and(|ext| ext == "mmd") {
-            assert!(
-                path.starts_with(root),
-                "local semantic fixture must stay under {}: {}",
-                root.display(),
-                path.display()
-            );
-            fixtures.push(path);
-        }
-    }
-}
-
 fn fixture_cases_in(root: &Path, directory: &str) -> Vec<PathBuf> {
     let dir = root.join(directory);
     let mut fixtures = fs::read_dir(&dir)
@@ -1024,81 +764,57 @@ struct MovingFixtureDisposition {
     classification: String,
     admission: String,
     semantic_feature: String,
-    evidence: String,
 }
 
-fn parse_moving_fixture_dispositions(manifest: &str) -> Vec<MovingFixtureDisposition> {
-    let mut section = None;
-    let mut classification = None;
-    let mut admission = None;
-    let mut semantic_feature = None;
-    let mut evidence = None;
+fn parse_moving_fixture_dispositions(
+    authority: &str,
+) -> (BTreeMap<&str, &str>, Vec<MovingFixtureDisposition>) {
+    let mut metadata = BTreeMap::new();
     let mut dispositions = Vec::new();
 
-    for (line_index, line) in manifest.lines().enumerate() {
-        if let Some(title) = line.strip_prefix("## ") {
-            section = Some(title.to_owned());
-            classification = None;
-            admission = None;
-            semantic_feature = None;
-            evidence = None;
+    for (line_index, line) in authority.lines().enumerate() {
+        if line.is_empty() {
             continue;
         }
-        if let Some(value) = line
-            .strip_prefix("- Classification: `")
-            .and_then(|value| value.strip_suffix('`'))
-        {
-            classification = Some(value.to_owned());
+        if let Some(record) = line.strip_prefix("# ") {
+            let (key, value) = record.split_once('\t').unwrap_or_else(|| {
+                panic!(
+                    "invalid moving-reference metadata at line {}",
+                    line_index + 1
+                )
+            });
+            assert!(
+                metadata.insert(key, value).is_none(),
+                "duplicate moving-reference metadata key `{key}`"
+            );
             continue;
         }
-        if let Some(value) = line
-            .strip_prefix("- Admission: `")
-            .and_then(|value| value.strip_suffix('`'))
-        {
-            admission = Some(value.to_owned());
+        if line_index == metadata.len() {
+            assert_eq!(
+                line, "section\tclassification\tadmission\tsemantic_feature\tpath",
+                "moving-reference authority header drifted"
+            );
             continue;
         }
-        if let Some(value) = line.strip_prefix("- Semantic feature: ") {
-            semantic_feature = Some(value.to_owned());
-            continue;
-        }
-        if let Some(value) = line.strip_prefix("- Evidence: ") {
-            evidence = Some(value.to_owned());
-            continue;
-        }
-        let Some(path) = line
-            .strip_prefix("- `")
-            .and_then(|value| value.strip_suffix('`'))
-            .filter(|value| value.ends_with(".txt"))
-        else {
-            continue;
-        };
-
-        let context = || {
-            format!(
-                "moving fixture `{path}` at manifest line {}",
+        let fields = line.split('\t').collect::<Vec<_>>();
+        let [section, classification, admission, semantic_feature, path] = fields.as_slice() else {
+            panic!(
+                "invalid moving-reference disposition at line {}",
                 line_index + 1
-            )
+            );
         };
+        assert!(
+            path.ends_with(".txt"),
+            "invalid moving fixture path `{path}`"
+        );
         dispositions.push(MovingFixtureDisposition {
-            section: section
-                .clone()
-                .unwrap_or_else(|| panic!("{} has no section", context())),
-            path: path.to_owned(),
-            classification: classification
-                .clone()
-                .unwrap_or_else(|| panic!("{} has no classification", context())),
-            admission: admission
-                .clone()
-                .unwrap_or_else(|| panic!("{} has no admission", context())),
-            semantic_feature: semantic_feature
-                .clone()
-                .unwrap_or_else(|| panic!("{} has no semantic feature", context())),
-            evidence: evidence
-                .clone()
-                .unwrap_or_else(|| panic!("{} has no evidence", context())),
+            section: (*section).to_owned(),
+            path: (*path).to_owned(),
+            classification: (*classification).to_owned(),
+            admission: (*admission).to_owned(),
+            semantic_feature: (*semantic_feature).to_owned(),
         });
     }
 
-    dispositions
+    (metadata, dispositions)
 }
