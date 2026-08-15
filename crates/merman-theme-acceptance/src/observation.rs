@@ -310,9 +310,9 @@ impl C6RenderGroupKey {
 /// Receipt for one deterministic render group shared by one or more target cells.
 ///
 /// The receipt is sealed from the hash-validated fixture, typed theme input, compiled recipe,
-/// render admission evidence, terminal standalone SVG and native export resource fingerprint.
-/// Target adapters can only refer to this receipt by its canonical digest; they cannot substitute
-/// a batch-global identity.
+/// render admission evidence, completed document identity, and the target-owned standalone SVG
+/// receipt. Target adapters can only refer to this receipt by its canonical digest; they cannot
+/// substitute a batch-global identity or reconstruct the target receipt protocol.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct C6RenderGroupReceipt {
     key: C6RenderGroupKey,
@@ -321,11 +321,9 @@ pub(crate) struct C6RenderGroupReceipt {
     recipe_fingerprint: [u8; 32],
     operation_digest: [u8; 32],
     admission_digest: [u8; 32],
-    document_digest: [u8; 32],
-    svg_target_evidence_digest: [u8; 32],
-    svg_artifact_digest: [u8; 32],
-    resource_fingerprint: [u8; 32],
-    font_catalog_fingerprint: [u8; 32],
+    // Cross-target join key for projections of the same completed document.
+    shared_document_digest: [u8; 32],
+    svg_target_receipt_digest: [u8; 32],
     digest: [u8; 32],
 }
 
@@ -383,17 +381,20 @@ impl C6RenderGroupReceipt {
             "artifact-digest",
             standalone_receipt.artifact_digest() != [0; 32],
         )?;
-        let resource_fingerprint = *standalone_receipt.resource_fingerprint().as_bytes();
-        let font_catalog_fingerprint = *standalone_receipt.font_catalog_fingerprint().as_bytes();
         require_group_evidence(
             &key,
             "resource-fingerprint",
-            resource_fingerprint != [0; 32],
+            standalone_receipt.resource_fingerprint().as_bytes() != &[0; 32],
         )?;
         require_group_evidence(
             &key,
             "font-catalog-fingerprint",
-            font_catalog_fingerprint != [0; 32],
+            standalone_receipt.font_catalog_fingerprint().as_bytes() != &[0; 32],
+        )?;
+        require_group_evidence(
+            &key,
+            "target-receipt-digest",
+            standalone_receipt.receipt_digest() != [0; 32],
         )?;
         let mut receipt = Self {
             key,
@@ -402,11 +403,8 @@ impl C6RenderGroupReceipt {
             recipe_fingerprint: *recipe_fingerprint.as_bytes(),
             operation_digest: identity.operation_digest,
             admission_digest: identity.admission_digest,
-            document_digest: standalone_receipt.document_digest(),
-            svg_target_evidence_digest: standalone_receipt.target_evidence_digest(),
-            svg_artifact_digest: standalone_receipt.artifact_digest(),
-            resource_fingerprint,
-            font_catalog_fingerprint,
+            shared_document_digest: standalone_receipt.document_digest(),
+            svg_target_receipt_digest: standalone_receipt.receipt_digest(),
             digest: [0; 32],
         };
         receipt.digest = receipt.canonical_digest();
@@ -425,10 +423,7 @@ impl C6RenderGroupReceipt {
                 .unwrap_or(false)
             && identity.operation_digest == self.operation_digest
             && identity.admission_digest == self.admission_digest
-            && target_receipt.document_digest() == self.document_digest
-            && *target_receipt.resource_fingerprint().as_bytes() == self.resource_fingerprint
-            && *target_receipt.font_catalog_fingerprint().as_bytes()
-                == self.font_catalog_fingerprint
+            && target_receipt.document_digest() == self.shared_document_digest
     }
 
     fn validate(&self, catalog: &ThemeFixtureCatalog) -> Result<(), C6RuntimeError> {
@@ -458,18 +453,15 @@ impl C6RenderGroupReceipt {
     }
 
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-render-group-receipt.v5\0".to_vec();
+        let mut value = b"merman.c6-render-group-receipt.v6\0".to_vec();
         encode_render_group_key(&mut value, &self.key);
         value.extend_from_slice(&self.source_sha256);
         value.extend_from_slice(&self.theme_input_sha256);
         value.extend_from_slice(&self.recipe_fingerprint);
         value.extend_from_slice(&self.operation_digest);
         value.extend_from_slice(&self.admission_digest);
-        value.extend_from_slice(&self.document_digest);
-        value.extend_from_slice(&self.svg_target_evidence_digest);
-        value.extend_from_slice(&self.svg_artifact_digest);
-        value.extend_from_slice(&self.resource_fingerprint);
-        value.extend_from_slice(&self.font_catalog_fingerprint);
+        value.extend_from_slice(&self.shared_document_digest);
+        value.extend_from_slice(&self.svg_target_receipt_digest);
         sha256(value)
     }
 }
@@ -584,15 +576,13 @@ pub(crate) struct C6CellReceipt {
     render_group_digest: [u8; 32],
     operation_digest: [u8; 32],
     admission_digest: [u8; 32],
-    admission_target: RenderArtifactKind,
     admission: TargetAdmissionStatus,
-    admission_reason_ids: Vec<String>,
-    document_digest: [u8; 32],
-    target_evidence_digest: [u8; 32],
-    resource_fingerprint: [u8; 32],
-    font_catalog_fingerprint: [u8; 32],
+    admission_reason_count: usize,
+    // Target-owned identity; observation never re-encodes its constituent fields.
+    target_receipt_digest: [u8; 32],
     artifact_assertion: C6ArtifactAssertion,
     proof_predicate: C6ProofPredicate,
+    // Acceptance-owned artifact witness, checked against the target receipt before sealing.
     artifact_digest: [u8; 32],
     witness_digest: [u8; 32],
     mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
@@ -635,27 +625,25 @@ pub(crate) fn seal_cell_from_evidence(
         "render-group-evidence",
         group.matches_render(&identity, &target_receipt),
     )?;
-    let admission_reason_ids = target_receipt
-        .reasons()
-        .iter()
-        .map(|reason| reason.id().to_owned())
-        .collect::<Vec<_>>();
     require_evidence(
         key,
         "portable-admission-reasons",
         target_receipt.status() != TargetAdmissionStatus::Portable
-            || admission_reason_ids.is_empty(),
+            || target_receipt.reasons().is_empty(),
     )?;
-    if key.target() == ExpectedOutputTarget::StandaloneSvg {
+    require_evidence(
+        key,
+        "target-receipt-digest",
+        target_receipt.receipt_digest() != [0; 32],
+    )?;
+    if matches!(
+        key.target(),
+        ExpectedOutputTarget::BrowserSvg | ExpectedOutputTarget::StandaloneSvg
+    ) {
         require_evidence(
             key,
-            "render-group-target-evidence",
-            target_receipt.target_evidence_digest() == group.svg_target_evidence_digest,
-        )?;
-        require_evidence(
-            key,
-            "render-group-document",
-            proof.artifact_digest == group.svg_artifact_digest,
+            "target-receipt-digest",
+            target_receipt.receipt_digest() == group.svg_target_receipt_digest,
         )?;
     }
     require_evidence(
@@ -671,16 +659,12 @@ pub(crate) fn seal_cell_from_evidence(
         render_group_digest: group.digest,
         operation_digest: identity.operation_digest,
         admission_digest: identity.admission_digest,
-        admission_target: target_receipt.artifact_kind(),
         admission: target_receipt.status(),
-        admission_reason_ids,
-        document_digest: target_receipt.document_digest(),
-        target_evidence_digest: target_receipt.target_evidence_digest(),
-        resource_fingerprint: *target_receipt.resource_fingerprint().as_bytes(),
-        font_catalog_fingerprint: *target_receipt.font_catalog_fingerprint().as_bytes(),
+        admission_reason_count: target_receipt.reasons().len(),
+        target_receipt_digest: target_receipt.receipt_digest(),
         artifact_assertion: artifact_assertion_for_target(proof.predicate.target()),
         proof_predicate: proof.predicate,
-        artifact_digest: target_receipt.artifact_digest(),
+        artifact_digest: proof.artifact_digest,
         witness_digest: proof.witness_digest,
         mechanism_dispositions: proof.mechanism_dispositions,
         residual_ids,
@@ -693,23 +677,15 @@ pub(crate) fn seal_cell_from_evidence(
 
 impl C6CellReceipt {
     fn canonical_digest(&self) -> [u8; 32] {
-        let mut value = b"merman.c6-cell-receipt.v5\0".to_vec();
+        let mut value = b"merman.c6-cell-receipt.v6\0".to_vec();
         encode_cell_key(&mut value, self.key);
         encode_render_group_key(&mut value, &self.render_group_key);
         value.extend_from_slice(&self.render_group_digest);
         value.extend_from_slice(&self.operation_digest);
         value.extend_from_slice(&self.admission_digest);
-        append_len_prefixed(&mut value, self.admission_target.id().as_bytes());
         append_len_prefixed(&mut value, self.admission.id().as_bytes());
-        append_len_prefixed(&mut value, b"admission-reasons");
-        value.extend_from_slice(&usize_to_u64(self.admission_reason_ids.len()).to_be_bytes());
-        for reason_id in &self.admission_reason_ids {
-            append_len_prefixed(&mut value, reason_id.as_bytes());
-        }
-        value.extend_from_slice(&self.document_digest);
-        value.extend_from_slice(&self.target_evidence_digest);
-        value.extend_from_slice(&self.resource_fingerprint);
-        value.extend_from_slice(&self.font_catalog_fingerprint);
+        value.extend_from_slice(&usize_to_u64(self.admission_reason_count).to_be_bytes());
+        value.extend_from_slice(&self.target_receipt_digest);
         append_len_prefixed(
             &mut value,
             artifact_assertion_id(self.artifact_assertion).as_bytes(),
@@ -781,29 +757,14 @@ impl C6ReceiptBook {
                 "render-admission-digest",
                 cell.admission_digest == group.admission_digest,
             )?;
-            require_evidence(
-                cell.key,
-                "target-document-digest",
-                cell.document_digest == group.document_digest,
-            )?;
-            require_evidence(
-                cell.key,
-                "target-resource-fingerprint",
-                cell.resource_fingerprint == group.resource_fingerprint,
-            )?;
-            require_evidence(
-                cell.key,
-                "target-font-catalog-fingerprint",
-                cell.font_catalog_fingerprint == group.font_catalog_fingerprint,
-            )?;
             if matches!(
                 cell.key.target(),
                 ExpectedOutputTarget::BrowserSvg | ExpectedOutputTarget::StandaloneSvg
             ) {
                 require_evidence(
                     cell.key,
-                    "target-evidence-digest",
-                    cell.target_evidence_digest == group.svg_target_evidence_digest,
+                    "target-receipt-digest",
+                    cell.target_receipt_digest == group.svg_target_receipt_digest,
                 )?;
             }
             referenced_groups.insert(cell.render_group_key.clone());
@@ -882,36 +843,20 @@ impl C6ReceiptBook {
                 "render-admission-digest",
                 receipt.admission_digest == group.admission_digest,
             )?;
-            require_evidence(
-                key,
-                "target-document-digest",
-                receipt.document_digest == group.document_digest,
-            )?;
-            require_evidence(
-                key,
-                "target-resource-fingerprint",
-                receipt.resource_fingerprint == group.resource_fingerprint,
-            )?;
-            require_evidence(
-                key,
-                "target-font-catalog-fingerprint",
-                receipt.font_catalog_fingerprint == group.font_catalog_fingerprint,
-            )?;
             if matches!(
                 key.target(),
                 ExpectedOutputTarget::BrowserSvg | ExpectedOutputTarget::StandaloneSvg
             ) {
                 require_evidence(
                     key,
-                    "target-evidence-digest",
-                    receipt.target_evidence_digest == group.svg_target_evidence_digest,
+                    "target-receipt-digest",
+                    receipt.target_receipt_digest == group.svg_target_receipt_digest,
                 )?;
             }
             require_evidence(
                 key,
                 "target",
-                receipt.artifact_assertion == artifact_assertion_for_target(key.target())
-                    && render_target_for_expected(key.target()) == receipt.admission_target,
+                receipt.artifact_assertion == artifact_assertion_for_target(key.target()),
             )?;
             require_evidence(
                 key,
@@ -947,12 +892,12 @@ impl C6ReceiptBook {
                 key,
                 "target-admission-reasons",
                 receipt.admission != TargetAdmissionStatus::Portable
-                    || receipt.admission_reason_ids.is_empty(),
+                    || receipt.admission_reason_count == 0,
             )?;
             require_evidence(
                 key,
-                "target-evidence-digest",
-                receipt.target_evidence_digest != [0; 32],
+                "target-receipt-digest",
+                receipt.target_receipt_digest != [0; 32],
             )?;
             require_evidence(
                 key,
@@ -975,16 +920,6 @@ impl C6ReceiptBook {
                         &receipt.mechanism_dispositions,
                     ),
             )?;
-            if matches!(
-                key.target(),
-                ExpectedOutputTarget::BrowserSvg | ExpectedOutputTarget::StandaloneSvg
-            ) {
-                require_evidence(
-                    key,
-                    "render-group-document",
-                    receipt.artifact_digest == group.svg_artifact_digest,
-                )?;
-            }
             require_evidence(
                 key,
                 "cell-receipt-digest",
@@ -992,7 +927,7 @@ impl C6ReceiptBook {
             )?;
         }
 
-        let mut digest_input = b"merman.c6-execution-report.v5\0".to_vec();
+        let mut digest_input = b"merman.c6-execution-report.v6\0".to_vec();
         for group in self.groups.values() {
             encode_render_group_key(&mut digest_input, &group.key);
             digest_input.extend_from_slice(&group.admission_digest);
@@ -1530,11 +1465,8 @@ mod tests {
             recipe_fingerprint: [seed; 32],
             operation_digest: [seed.wrapping_add(3); 32],
             admission_digest: [seed.wrapping_add(4); 32],
-            document_digest: [seed.wrapping_add(1); 32],
-            svg_target_evidence_digest: [seed.wrapping_add(5); 32],
-            svg_artifact_digest: [seed.wrapping_add(6); 32],
-            resource_fingerprint: [seed.wrapping_add(2); 32],
-            font_catalog_fingerprint: [seed.wrapping_add(7); 32],
+            shared_document_digest: [seed.wrapping_add(1); 32],
+            svg_target_receipt_digest: [seed.wrapping_add(5); 32],
             digest: [0; 32],
         };
         receipt.digest = receipt.canonical_digest();
@@ -1564,17 +1496,17 @@ mod tests {
             key.target(),
             ExpectedOutputTarget::BrowserSvg | ExpectedOutputTarget::StandaloneSvg
         ) {
-            group.svg_artifact_digest
+            sha256(format!("synthetic-svg-artifact-{key:?}"))
         } else {
             sha256(format!("synthetic-artifact-{key:?}"))
         };
-        let target_evidence_digest = if matches!(
+        let target_receipt_digest = if matches!(
             key.target(),
             ExpectedOutputTarget::BrowserSvg | ExpectedOutputTarget::StandaloneSvg
         ) {
-            group.svg_target_evidence_digest
+            group.svg_target_receipt_digest
         } else {
-            sha256(format!("synthetic-target-evidence-{key:?}"))
+            sha256(format!("synthetic-target-receipt-{key:?}"))
         };
         let mut receipt = C6CellReceipt {
             key,
@@ -1582,13 +1514,9 @@ mod tests {
             render_group_digest: group.digest,
             operation_digest: group.operation_digest,
             admission_digest: group.admission_digest,
-            admission_target: render_target_for_expected(key.target()),
             admission: target_admission_for_required(expectation.required_admission()),
-            admission_reason_ids: Vec::new(),
-            document_digest: group.document_digest,
-            target_evidence_digest,
-            resource_fingerprint: group.resource_fingerprint,
-            font_catalog_fingerprint: group.font_catalog_fingerprint,
+            admission_reason_count: 0,
+            target_receipt_digest,
             artifact_assertion: expectation.required_artifact_assertion(),
             proof_predicate,
             artifact_digest,
@@ -1717,83 +1645,31 @@ mod tests {
     }
 
     #[test]
-    fn receipt_canonical_digests_bind_target_owned_identity() {
+    fn receipt_canonical_digests_bind_opaque_target_receipt_identity() {
         let (themes, acceptance) = load_catalogs();
         let book = synthetic_valid_book(&themes, &acceptance);
         let group = book.groups.values().next().expect("render group");
         let cell = book.cells.values().next().expect("cell receipt");
 
-        for changed in [
-            {
-                let mut changed = group.clone();
-                changed.document_digest[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = group.clone();
-                changed.svg_target_evidence_digest[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = group.clone();
-                changed.svg_artifact_digest[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = group.clone();
-                changed.resource_fingerprint[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = group.clone();
-                changed.font_catalog_fingerprint[0] ^= 1;
-                changed
-            },
-        ] {
-            assert_ne!(group.canonical_digest(), changed.canonical_digest());
-        }
+        let mut changed_group = group.clone();
+        changed_group.svg_target_receipt_digest[0] ^= 1;
+        assert_ne!(group.canonical_digest(), changed_group.canonical_digest());
 
-        let mut changed = cell.clone();
-        changed.admission_target = RenderArtifactKind::Pdf;
-        assert_ne!(cell.canonical_digest(), changed.canonical_digest());
+        let mut changed_group = group.clone();
+        changed_group.shared_document_digest[0] ^= 1;
+        assert_ne!(group.canonical_digest(), changed_group.canonical_digest());
 
         let mut changed = cell.clone();
         changed.admission = TargetAdmissionStatus::Rejected;
         assert_ne!(cell.canonical_digest(), changed.canonical_digest());
 
         let mut changed = cell.clone();
-        changed.admission_reason_ids.push("synthetic-reason".into());
+        changed.admission_reason_count += 1;
         assert_ne!(cell.canonical_digest(), changed.canonical_digest());
 
-        for changed in [
-            {
-                let mut changed = cell.clone();
-                changed.document_digest[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = cell.clone();
-                changed.target_evidence_digest[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = cell.clone();
-                changed.artifact_digest[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = cell.clone();
-                changed.resource_fingerprint[0] ^= 1;
-                changed
-            },
-            {
-                let mut changed = cell.clone();
-                changed.font_catalog_fingerprint[0] ^= 1;
-                changed
-            },
-        ] {
-            assert_ne!(cell.canonical_digest(), changed.canonical_digest());
-        }
+        let mut changed = cell.clone();
+        changed.target_receipt_digest[0] ^= 1;
+        assert_ne!(cell.canonical_digest(), changed.canonical_digest());
 
         let mut changed = cell.clone();
         changed.font_source = TargetFontSource::Mixed;
@@ -1838,7 +1714,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_digest_is_sensitive_to_target_evidence_digest() {
+    fn execution_digest_is_sensitive_to_target_receipt_digest() {
         let (themes, acceptance) = load_catalogs();
         let first_book = synthetic_valid_book(&themes, &acceptance);
         let mut second_book = first_book.clone();
@@ -1852,21 +1728,21 @@ mod tests {
                 )
             })
             .expect("native target cell receipt");
-        cell.target_evidence_digest[0] ^= 1;
+        cell.target_receipt_digest[0] ^= 1;
         cell.digest = cell.canonical_digest();
 
         let first = first_book
             .evaluate(&acceptance, &themes)
-            .expect("first target evidence binding");
+            .expect("first target receipt binding");
         let second = second_book
             .evaluate(&acceptance, &themes)
-            .expect("second target evidence binding");
+            .expect("second target receipt binding");
 
         assert_ne!(first.execution_digest(), second.execution_digest());
     }
 
     #[test]
-    fn evaluator_rejects_resealed_svg_target_evidence_mismatch() {
+    fn evaluator_rejects_resealed_svg_target_receipt_mismatch() {
         let (themes, acceptance) = load_catalogs();
         let mut book = synthetic_valid_book(&themes, &acceptance);
         let cell = book
@@ -1879,58 +1755,13 @@ mod tests {
                 )
             })
             .expect("SVG target cell receipt");
-        cell.target_evidence_digest[0] ^= 1;
+        cell.target_receipt_digest[0] ^= 1;
         cell.digest = cell.canonical_digest();
 
         assert_evidence_field(
             book.evaluate(&acceptance, &themes)
-                .expect_err("re-sealed SVG target evidence mismatch must fail closed"),
-            "target-evidence-digest",
-        );
-    }
-
-    #[test]
-    fn evaluator_rejects_resealed_target_document_mismatch() {
-        let (themes, acceptance) = load_catalogs();
-        let mut book = synthetic_valid_book(&themes, &acceptance);
-        let cell = book.cells.values_mut().next().expect("cell receipt");
-        cell.document_digest[0] ^= 1;
-        cell.digest = cell.canonical_digest();
-
-        assert_evidence_field(
-            book.evaluate(&acceptance, &themes)
-                .expect_err("target document mismatch must fail closed"),
-            "target-document-digest",
-        );
-    }
-
-    #[test]
-    fn evaluator_rejects_resealed_target_resource_fingerprint_mismatch() {
-        let (themes, acceptance) = load_catalogs();
-        let mut book = synthetic_valid_book(&themes, &acceptance);
-        let cell = book.cells.values_mut().next().expect("cell receipt");
-        cell.resource_fingerprint[0] ^= 1;
-        cell.digest = cell.canonical_digest();
-
-        assert_evidence_field(
-            book.evaluate(&acceptance, &themes)
-                .expect_err("target resource fingerprint mismatch must fail closed"),
-            "target-resource-fingerprint",
-        );
-    }
-
-    #[test]
-    fn evaluator_rejects_resealed_target_font_catalog_fingerprint_mismatch() {
-        let (themes, acceptance) = load_catalogs();
-        let mut book = synthetic_valid_book(&themes, &acceptance);
-        let cell = book.cells.values_mut().next().expect("cell receipt");
-        cell.font_catalog_fingerprint[0] ^= 1;
-        cell.digest = cell.canonical_digest();
-
-        assert_evidence_field(
-            book.evaluate(&acceptance, &themes)
-                .expect_err("target font catalog fingerprint mismatch must fail closed"),
-            "target-font-catalog-fingerprint",
+                .expect_err("re-sealed SVG target receipt mismatch must fail closed"),
+            "target-receipt-digest",
         );
     }
 
@@ -2088,7 +1919,7 @@ mod tests {
     }
 
     #[test]
-    fn receipt_book_rejects_resealed_target_resource_identities() {
+    fn receipt_book_rejects_resealed_svg_target_receipt_identity() {
         let (themes, acceptance) = load_catalogs();
         let expected = acceptance
             .enforced_tranche()
@@ -2096,26 +1927,20 @@ mod tests {
             .map(C6EnforcedCell::key)
             .collect::<Vec<_>>();
 
-        for field in [
-            "target-resource-fingerprint",
-            "target-font-catalog-fingerprint",
-        ] {
-            let book = synthetic_valid_book(&themes, &acceptance);
-            let groups = book.groups.values().cloned().collect::<Vec<_>>();
-            let mut cells = book.cells.values().cloned().collect::<Vec<_>>();
-            let cell = cells.first_mut().expect("cell receipt");
-            match field {
-                "target-resource-fingerprint" => cell.resource_fingerprint[0] ^= 1,
-                "target-font-catalog-fingerprint" => cell.font_catalog_fingerprint[0] ^= 1,
-                _ => unreachable!("fixed identity field"),
-            }
-            cell.digest = cell.canonical_digest();
+        let book = synthetic_valid_book(&themes, &acceptance);
+        let groups = book.groups.values().cloned().collect::<Vec<_>>();
+        let mut cells = book.cells.values().cloned().collect::<Vec<_>>();
+        let cell = cells
+            .iter_mut()
+            .find(|cell| cell.key.target() == ExpectedOutputTarget::StandaloneSvg)
+            .expect("standalone SVG cell receipt");
+        cell.target_receipt_digest[0] ^= 1;
+        cell.digest = cell.canonical_digest();
 
-            assert_evidence_field(
-                C6ReceiptBook::from_receipts(expected.clone(), groups, cells)
-                    .expect_err("re-sealed target resource identity must fail closed"),
-                field,
-            );
-        }
+        assert_evidence_field(
+            C6ReceiptBook::from_receipts(expected, groups, cells)
+                .expect_err("re-sealed SVG target receipt identity must fail closed"),
+            "target-receipt-digest",
+        );
     }
 }

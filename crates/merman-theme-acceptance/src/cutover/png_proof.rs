@@ -25,8 +25,8 @@ pub(super) fn prove_terminal_png_pair(
     );
     c6_ensure!(
         "route-png-proof",
-        solid.png_artifact_digest != transparent.png_artifact_digest,
-        "solid and transparent PNG artifacts are identical"
+        solid.png_target_receipt_digest != transparent.png_target_receipt_digest,
+        "solid and transparent PNG target receipts are identical"
     );
     let solid_dimensions = solid.raster.dimensions();
     let transparent_dimensions = transparent.raster.dimensions();
@@ -73,10 +73,10 @@ pub(super) fn prove_terminal_png_pair(
             "{} transparent PNG retained {transparent_count} solid-control pixels",
             route_label(route)
         );
-        let mut value = b"merman.c6-route-png-assertion.v4\0".to_vec();
+        let mut value = b"merman.c6-route-png-assertion.v5\0".to_vec();
         append_route(&mut value, route);
-        value.extend_from_slice(&solid.png_artifact_digest);
-        value.extend_from_slice(&transparent.png_artifact_digest);
+        value.extend_from_slice(&solid.png_target_receipt_digest);
+        value.extend_from_slice(&transparent.png_target_receipt_digest);
         value.extend_from_slice(&color.rgb);
         value.extend_from_slice(&usize_to_u64(transparent_count).to_be_bytes());
         let exclusions = if route.target() == ThemeTarget::Edge {

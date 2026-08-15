@@ -272,17 +272,8 @@ struct CutoverCase {
 
 struct RenderedCutoverCase {
     routes: Vec<ThemeRouteCutoverDescriptor>,
-    source_digest: [u8; 32],
-    recipe_digest: [u8; 32],
-    operation_digest: [u8; 32],
-    admission_digest: [u8; 32],
     svg_target_receipt_digest: [u8; 32],
     png_target_receipt_digest: [u8; 32],
-    document_digest: [u8; 32],
-    resource_fingerprint: [u8; 32],
-    font_catalog_fingerprint: [u8; 32],
-    svg_artifact_digest: [u8; 32],
-    png_artifact_digest: [u8; 32],
     svg_assertions: BTreeMap<ThemeRouteCutoverDescriptor, [u8; 32]>,
     svg_view_box: [f64; 4],
     target_regions: Vec<[f64; 4]>,
@@ -398,11 +389,11 @@ impl RouteCutoverAuthorizationReceipt {
     }
 }
 
-struct C6RouteCutoverReceipt {
+struct RouteCutoverReceipt {
     digest: [u8; 32],
 }
 
-impl C6RouteCutoverReceipt {
+impl RouteCutoverReceipt {
     fn seal(
         witness: CutoverWitnessId,
         rendered: &RenderedCutoverCase,
@@ -415,33 +406,39 @@ impl C6RouteCutoverReceipt {
                 format!("missing SVG assertion for {}", witness_label(witness)),
             )
         })?;
+        Self::seal_digests(
+            witness,
+            rendered.svg_target_receipt_digest,
+            rendered.png_target_receipt_digest,
+            *svg_assertion_digest,
+            png_assertion_digest,
+        )
+    }
+
+    fn seal_digests(
+        witness: CutoverWitnessId,
+        svg_target_receipt_digest: [u8; 32],
+        png_target_receipt_digest: [u8; 32],
+        svg_assertion_digest: [u8; 32],
+        png_assertion_digest: [u8; 32],
+    ) -> C6ProofResult<Self> {
         c6_ensure!(
             "route-admission-receipt",
-            rendered.admission_digest != [0; 32],
-            "route admission digest is zero for {}",
-            witness_label(witness)
-        );
-        c6_ensure!(
-            "route-admission-receipt",
-            rendered.svg_target_receipt_digest != [0; 32]
-                && rendered.png_target_receipt_digest != [0; 32],
+            svg_target_receipt_digest != [0; 32] && png_target_receipt_digest != [0; 32],
             "target-owned route admission digest is zero for {}",
             witness_label(witness)
         );
-        let mut value = b"merman.c6-route-cutover-receipt.v4\0".to_vec();
+        c6_ensure!(
+            "route-assertion-receipt",
+            svg_assertion_digest != [0; 32] && png_assertion_digest != [0; 32],
+            "terminal route assertion digest is zero for {}",
+            witness_label(witness)
+        );
+        let mut value = b"merman.c6-route-cutover-receipt.v5\0".to_vec();
         append_witness(&mut value, witness);
-        value.extend_from_slice(&rendered.source_digest);
-        value.extend_from_slice(&rendered.recipe_digest);
-        value.extend_from_slice(&rendered.operation_digest);
-        value.extend_from_slice(&rendered.admission_digest);
-        value.extend_from_slice(&rendered.svg_target_receipt_digest);
-        value.extend_from_slice(&rendered.png_target_receipt_digest);
-        value.extend_from_slice(&rendered.document_digest);
-        value.extend_from_slice(&rendered.resource_fingerprint);
-        value.extend_from_slice(&rendered.font_catalog_fingerprint);
-        value.extend_from_slice(&rendered.svg_artifact_digest);
-        value.extend_from_slice(&rendered.png_artifact_digest);
-        value.extend_from_slice(svg_assertion_digest);
+        value.extend_from_slice(&svg_target_receipt_digest);
+        value.extend_from_slice(&png_target_receipt_digest);
+        value.extend_from_slice(&svg_assertion_digest);
         value.extend_from_slice(&png_assertion_digest);
         Ok(Self {
             digest: sha256(value),
@@ -538,7 +535,7 @@ pub(crate) fn run_route_cutover_witnesses()
             })?;
             let receipt = prove_route(
                 &witness_label(witness_id),
-                C6RouteCutoverReceipt::seal(witness_id, rendered_case, png_assertion),
+                RouteCutoverReceipt::seal(witness_id, rendered_case, png_assertion),
             )?;
             if receipts.insert(witness_id, receipt).is_some() {
                 return Err(RouteCutoverRuntimeError::DuplicateReceipt {
@@ -596,7 +593,7 @@ fn render_cutover_case(
         ));
     };
     let render_evidence = document.evidence();
-    let render_identity = prove_portable_family_evidence(
+    prove_portable_family_evidence(
         render_evidence,
         &theme,
         expected_route.family_id(),
@@ -627,7 +624,6 @@ fn render_cutover_case(
         family_evidence.not_applicable_count(),
         family_evidence.residual_count()
     );
-    let sealed_svg = document.sealed_svg();
     let svg = document.svg();
     let markers = match (expected_route.family_id(), expected_route.target()) {
         (DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE, ThemeTarget::Edge) => {
@@ -636,12 +632,6 @@ fn render_cutover_case(
         _ => Vec::new(),
     };
     let svg_proof = prove_svg_routes(case, &routes, svg, &markers)?;
-    let svg_resource = *sealed_svg.resource_fingerprint().as_bytes();
-    c6_ensure!(
-        "route-svg-resource",
-        svg_resource != [0; 32],
-        "finalized SVG retained a zero resource fingerprint"
-    );
 
     let raster_options = RasterOptions::default().with_scale(2.0);
     let png_output = document
@@ -653,55 +643,21 @@ fn render_cutover_case(
     prove_cutover_png_report(report, png_plan, render_evidence)?;
     let raster = decode_bounded_png_artifact(png_bytes, png_plan)?;
 
-    let png_resource = *report.resource_fingerprint().as_bytes();
-    c6_ensure!(
-        "route-resource-identity",
-        svg_resource == png_resource,
-        "SVG and PNG resource fingerprints differ"
-    );
-
     let svg_receipt = document.standalone_svg_admission();
     let png_receipt = png_output.admission();
-    c6_ensure!(
-        "route-document-identity",
-        svg_receipt.document_digest() == png_receipt.document_digest(),
-        "SVG and PNG target receipts refer to different completed documents"
-    );
-    c6_ensure!(
-        "route-resource-receipt-identity",
-        svg_receipt.resource_fingerprint().as_bytes() == &svg_resource
-            && png_receipt.resource_fingerprint().as_bytes() == &png_resource
-            && svg_receipt.font_catalog_fingerprint() == png_receipt.font_catalog_fingerprint(),
-        "SVG and PNG target receipts do not retain the same document resources"
-    );
-    c6_ensure!(
-        "route-artifact-identity",
-        svg_receipt.artifact_digest() == sha256(svg)
-            && png_receipt.artifact_digest() == sha256(png_bytes),
-        "target receipt artifact digests do not match the final bytes"
-    );
-    let svg_target_receipt_digest = cutover_target_receipt_digest(
+    let svg_target_receipt_digest = validate_cutover_target_receipt(
         CutoverTargetAdmissionContract::PaintStandaloneSvgV1,
         svg_receipt,
     )?;
-    let png_target_receipt_digest = cutover_target_receipt_digest(
+    let png_target_receipt_digest = validate_cutover_target_receipt(
         CutoverTargetAdmissionContract::PortableNativePngV1,
         png_receipt,
     )?;
 
     Ok(RenderedCutoverCase {
         routes,
-        source_digest: sha256(case.source),
-        recipe_digest: *theme.recipe_fingerprint().as_bytes(),
-        operation_digest: *render_identity.operation_digest(),
-        admission_digest: *render_identity.admission_digest(),
         svg_target_receipt_digest,
         png_target_receipt_digest,
-        document_digest: svg_receipt.document_digest(),
-        resource_fingerprint: svg_resource,
-        font_catalog_fingerprint: *svg_receipt.font_catalog_fingerprint().as_bytes(),
-        svg_artifact_digest: svg_receipt.artifact_digest(),
-        png_artifact_digest: png_receipt.artifact_digest(),
         svg_assertions: svg_proof.assertions,
         svg_view_box: svg_proof.view_box,
         target_regions: svg_proof.target_regions,
@@ -874,7 +830,7 @@ impl CutoverTargetAdmissionContract {
     }
 }
 
-fn cutover_target_receipt_digest(
+fn validate_cutover_target_receipt(
     contract: CutoverTargetAdmissionContract,
     receipt: &TargetAdmissionReceipt,
 ) -> C6ProofResult<[u8; 32]> {
@@ -898,31 +854,11 @@ fn cutover_target_receipt_digest(
     );
     c6_ensure!(
         "route-target-admission",
-        receipt.resource_fingerprint().as_bytes() != &[0; 32]
-            && receipt.font_catalog_fingerprint().as_bytes() != &[0; 32]
-            && receipt.document_digest() != [0; 32]
-            && receipt.target_evidence_digest() != [0; 32]
-            && receipt.artifact_digest() != [0; 32],
-        "{} target receipt retained a zero identity component",
+        receipt.receipt_digest() != [0; 32],
+        "{} target receipt retained a zero canonical digest",
         expected_kind.id()
     );
-
-    let mut value = b"merman.c6-route-target-admission.v2\0".to_vec();
-    append_len_prefixed(&mut value, contract.id().as_bytes());
-    append_len_prefixed(&mut value, receipt.artifact_kind().id().as_bytes());
-    append_len_prefixed(&mut value, receipt.status().id().as_bytes());
-    append_len_prefixed(&mut value, b"admission-reasons");
-    value.extend_from_slice(&usize_to_u64(receipt.reasons().len()).to_be_bytes());
-    for reason in receipt.reasons() {
-        append_len_prefixed(&mut value, reason.id().as_bytes());
-    }
-    append_len_prefixed(&mut value, receipt.font_source().id().as_bytes());
-    value.extend_from_slice(receipt.resource_fingerprint().as_bytes());
-    value.extend_from_slice(receipt.font_catalog_fingerprint().as_bytes());
-    value.extend_from_slice(&receipt.document_digest());
-    value.extend_from_slice(&receipt.target_evidence_digest());
-    value.extend_from_slice(&receipt.artifact_digest());
-    Ok(sha256(value))
+    Ok(receipt.receipt_digest())
 }
 
 fn prove_cutover_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
@@ -952,7 +888,7 @@ fn prove_cutover_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
 
 fn evaluate_route_receipts(
     inventory: Vec<ThemeRouteCutoverDescriptor>,
-    receipts: BTreeMap<CutoverWitnessId, C6RouteCutoverReceipt>,
+    receipts: BTreeMap<CutoverWitnessId, RouteCutoverReceipt>,
 ) -> Result<[u8; 32], RouteCutoverRuntimeError> {
     let expected = expected_cutover_witnesses(&inventory)
         .into_iter()
@@ -1217,8 +1153,8 @@ mod tests {
     use merman::{DiagramFamilyId, TargetAdmissionReason, TargetAdmissionStatus, TargetFontSource};
 
     use super::{
-        C6RouteCutoverReceipt, CutoverTargetAdmissionContract, CutoverWitnessId,
-        CutoverWitnessProfile, RouteCutoverAuthorizationReceipt, evaluate_route_receipts,
+        CutoverTargetAdmissionContract, CutoverWitnessId, CutoverWitnessProfile,
+        RouteCutoverAuthorizationReceipt, RouteCutoverReceipt, evaluate_route_receipts,
         expected_cutover_witnesses, legacy_replacing_typed_theme_routes,
         require_marker_pixel_counts, run_route_cutover_witnesses, transformed_path_terminals,
     };
@@ -1241,6 +1177,54 @@ mod tests {
 
         assert_ne!(baseline.digest(), changed_manifest.digest());
         assert_ne!(baseline.digest(), changed_report.digest());
+    }
+
+    #[test]
+    fn route_inventory_retains_twenty_routes_and_twenty_eight_artifact_witnesses() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
+
+        assert_eq!(inventory.len(), 20);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 28);
+    }
+
+    #[test]
+    fn route_receipt_binds_witness_target_receipts_and_terminal_assertions() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
+        let edge_route = inventory
+            .iter()
+            .copied()
+            .find(|route| {
+                route.family_id() == DiagramFamilyId::FLOWCHART
+                    && route.target() == ThemeTarget::Edge
+            })
+            .expect("Flowchart Edge route");
+        let classic = CutoverWitnessId::new(edge_route, CutoverWitnessProfile::ClassicStatic);
+        let animated = CutoverWitnessId::new(edge_route, CutoverWitnessProfile::NeoAnimated);
+        let seal = |witness, svg_receipt, png_receipt, svg_assertion, png_assertion| {
+            RouteCutoverReceipt::seal_digests(
+                witness,
+                svg_receipt,
+                png_receipt,
+                svg_assertion,
+                png_assertion,
+            )
+            .expect("seal route receipt")
+            .digest
+        };
+        let baseline = seal(classic, [1; 32], [2; 32], [3; 32], [4; 32]);
+
+        assert_eq!(baseline, seal(classic, [1; 32], [2; 32], [3; 32], [4; 32]));
+        assert_ne!(baseline, seal(animated, [1; 32], [2; 32], [3; 32], [4; 32]));
+        assert_ne!(baseline, seal(classic, [5; 32], [2; 32], [3; 32], [4; 32]));
+        assert_ne!(baseline, seal(classic, [1; 32], [5; 32], [3; 32], [4; 32]));
+        assert_ne!(baseline, seal(classic, [1; 32], [2; 32], [5; 32], [4; 32]));
+        assert_ne!(baseline, seal(classic, [1; 32], [2; 32], [3; 32], [5; 32]));
+        assert!(
+            RouteCutoverReceipt::seal_digests(classic, [0; 32], [2; 32], [3; 32], [4; 32]).is_err()
+        );
+        assert!(
+            RouteCutoverReceipt::seal_digests(classic, [1; 32], [2; 32], [0; 32], [4; 32]).is_err()
+        );
     }
 
     #[test]
@@ -1322,7 +1306,7 @@ mod tests {
         let complete_receipts = || {
             expected_cutover_witnesses(&inventory)
                 .into_iter()
-                .map(|witness| (witness, C6RouteCutoverReceipt { digest: [0x5a; 32] }))
+                .map(|witness| (witness, RouteCutoverReceipt { digest: [0x5a; 32] }))
                 .collect::<BTreeMap<_, _>>()
         };
 
