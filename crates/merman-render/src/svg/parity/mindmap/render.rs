@@ -311,10 +311,10 @@ fn mindmap_gradient_defs(diagram_id: &str, effective_config: &serde_json::Value)
 }
 
 fn push_mindmap_shadow_defs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
-) {
+) -> Result<()> {
     let flood_color = effective_config
         .get("theme")
         .and_then(|v| v.as_str())
@@ -330,6 +330,7 @@ fn push_mindmap_shadow_defs(
         diagram_id.as_str(),
         flood_color
     );
+    out.checkpoint()
 }
 
 fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
@@ -607,6 +608,15 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     out
 }
 
+fn write_mindmap_edge_label(out: &mut impl SvgOutput, edge_id: &str) -> Result<()> {
+    let _ = write!(
+        out,
+        r#"<g class="edgeLabel"><g class="label" data-id="{id}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+        id = escape_xml(edge_id),
+    );
+    out.checkpoint()
+}
+
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
@@ -636,7 +646,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     }
 
     fn mk_label(
-        out: &mut String,
+        out: &mut impl SvgOutput,
         spec: MindmapLabelSpec<'_>,
         config: &merman_core::MermaidConfig,
         math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
@@ -692,6 +702,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             out.push_str("px; text-align: center;");
         }
         out.push_str(r#""><span class="nodeLabel markdown-node-label">"#);
+        out.checkpoint()?;
+
         fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
             let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
@@ -729,15 +741,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         }
 
         out.push_str("</span></div></foreignObject></g>");
-        Ok(())
-    }
-
-    fn mk_edge_label(out: &mut String, edge_id: &str) {
-        let _ = write!(
-            out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{id}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            id = escape_xml(edge_id),
-        );
+        out.checkpoint()
     }
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
@@ -782,7 +786,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     let _g_render_svg = timing.section(&mut timings.render_svg);
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::MINDMAP, diagram_id)
             .write_open(
@@ -799,8 +803,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             )?;
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
+    drop(css);
     out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
     out.push_str("<g>");
+    out.checkpoint()?;
 
     let _ = write!(
         &mut out,
@@ -822,10 +828,12 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         r#"<marker id="{id}_mindmap-pointStart-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
         id = diagram_id_esc
     );
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="subgraphs"/>"#);
 
     out.push_str(r#"<g class="edgePaths">"#);
+    out.checkpoint()?;
     for e in &model.edges {
         let (sx, sy, tx, ty) = match (node_by_id.get(&e.start), node_by_id.get(&e.end)) {
             (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
@@ -887,16 +895,21 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             id = escape_xml(&e.id),
             pts = escape_xml(&data_points),
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="edgeLabels">"#);
+    out.checkpoint()?;
     for e in &model.edges {
-        mk_edge_label(&mut out, &e.id);
+        write_mindmap_edge_label(&mut out, &e.id)?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     out.push_str(r#"<g class="nodes">"#);
+    out.checkpoint()?;
     for n in &model.nodes {
         let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
@@ -926,6 +939,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             x = fmt(x),
             y = fmt(y),
         );
+        out.checkpoint()?;
 
         match n.shape.as_str() {
             "defaultMindmapNode" => {
@@ -1199,12 +1213,14 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         }
 
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     out.push_str("</g>");
 
     out.push_str("</g>");
-    push_mindmap_shadow_defs(&mut out, diagram_id, config.as_value());
+    push_mindmap_shadow_defs(&mut out, diagram_id, config.as_value())?;
     out.push_str("</svg>\n");
+    out.checkpoint()?;
 
     drop(_g_render_svg);
 
@@ -1225,12 +1241,87 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn mindmap_edge_label_stops_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = write_mindmap_edge_label(&mut out, "edge-0")
+            .expect_err("the rejecting sink must stop Mindmap edge-label emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Mindmap edge-label emission must stop at the first failed sink checkpoint"
+        );
+    }
 
     #[test]
     fn single_image_paragraph_is_unwrapped_from_the_final_xhtml_shape() {

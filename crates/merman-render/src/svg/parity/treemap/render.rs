@@ -3,6 +3,22 @@ use crate::treemap::{TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PAD
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
 
+fn write_treemap_leaf_group_open(
+    out: &mut impl SvgOutput,
+    group_class: &str,
+    x: f64,
+    y: f64,
+) -> Result<()> {
+    let _ = write!(
+        out,
+        r#"<g class="{class}" transform="translate({x},{y})">"#,
+        class = escape_attr(group_class),
+        x = fmt(x),
+        y = fmt(y)
+    );
+    out.checkpoint()
+}
+
 pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
     effective_config: &serde_json::Value,
@@ -364,9 +380,7 @@ pub(crate) fn render_treemap_diagram_svg(
         vb_h = layout.diagram_padding * 2.0;
     }
 
-    let css = treemap_css(diagram_id, effective_config)?;
-
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let extra_attrs: [(&str, &str); 1] = [("class", "flowchart")];
@@ -388,6 +402,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 )),
                 root_chrome,
             )?;
+    out.checkpoint()?;
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
@@ -395,6 +410,7 @@ pub(crate) fn render_treemap_diagram_svg(
             r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
             escape_xml(title)
         );
+        out.checkpoint()?;
     }
     if let (Some(descr), true) = (layout.acc_descr.as_deref(), has_acc_descr) {
         let _ = write!(
@@ -402,10 +418,14 @@ pub(crate) fn render_treemap_diagram_svg(
             r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
             escape_xml(descr.trim_end_matches('\n'))
         );
+        out.checkpoint()?;
     }
 
+    let css = treemap_css(diagram_id, effective_config)?;
     let _ = write!(&mut out, "<style>{}</style>", css);
+    drop(css);
     out.push_str("<g/>");
+    out.checkpoint()?;
 
     if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
         let _ = write!(
@@ -415,6 +435,7 @@ pub(crate) fn render_treemap_diagram_svg(
             y = fmt(layout.title_height / 2.0),
             text = escape_xml(title)
         );
+        out.checkpoint()?;
     }
 
     let _ = write!(
@@ -422,6 +443,7 @@ pub(crate) fn render_treemap_diagram_svg(
         r#"<g transform="translate(0, {ty})" class="treemapContainer">"#,
         ty = fmt(layout.title_height)
     );
+    out.checkpoint()?;
 
     let computed_length_measurer = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
@@ -443,6 +465,7 @@ pub(crate) fn render_treemap_diagram_svg(
             x = fmt(section.x0),
             y = fmt(section.y0)
         );
+        out.checkpoint()?;
 
         let header_style = if section.depth == 0 {
             "display: none;"
@@ -456,6 +479,7 @@ pub(crate) fn render_treemap_diagram_svg(
             hh = fmt(section_header_height),
             style = header_style
         );
+        out.checkpoint()?;
 
         let _ = write!(
             &mut out,
@@ -465,6 +489,7 @@ pub(crate) fn render_treemap_diagram_svg(
             w = fmt((w - 2.0 * section_label_inset_x).max(0.0)),
             h = fmt(section_header_height)
         );
+        out.checkpoint()?;
 
         let fill = color_scale.get(&section.name);
         let stroke = color_scale_peer.get(&section.name);
@@ -489,6 +514,7 @@ pub(crate) fn render_treemap_diagram_svg(
             stroke = escape_attr(&stroke),
             style = escape_attr(&section_style)
         );
+        out.checkpoint()?;
 
         let mut label_text = if section.depth == 0 {
             String::new()
@@ -512,6 +538,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 id = escape_attr(diagram_id),
                 i = i
             );
+            out.checkpoint()?;
         } else {
             // Mirror Mermaid's truncation loop in `renderer.ts` (uses `getComputedTextLength()`).
             let total_header_width = w;
@@ -583,6 +610,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 style = escape_attr(&section_label_style),
                 text = escape_xml(&label_text)
             );
+            out.checkpoint()?;
         }
 
         if layout.show_values {
@@ -619,9 +647,11 @@ pub(crate) fn render_treemap_diagram_svg(
                     text = escape_xml(&value_text)
                 );
             }
+            out.checkpoint()?;
         }
 
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     let is_complex_treemap = layout.leaves.len() > 20;
@@ -660,13 +690,7 @@ pub(crate) fn render_treemap_diagram_svg(
             color_scale_label.get(&leaf.name),
         );
 
-        let _ = write!(
-            &mut out,
-            r#"<g class="{class}" transform="translate({x},{y})">"#,
-            class = escape_attr(&group_class),
-            x = fmt(leaf.x0),
-            y = fmt(leaf.y0)
-        );
+        write_treemap_leaf_group_open(&mut out, &group_class, leaf.x0, leaf.y0)?;
 
         let _ = write!(
             &mut out,
@@ -676,6 +700,7 @@ pub(crate) fn render_treemap_diagram_svg(
             fill = escape_attr(&fill),
             style = escape_attr(&leaf_rect_style)
         );
+        out.checkpoint()?;
 
         let _ = write!(
             &mut out,
@@ -685,6 +710,7 @@ pub(crate) fn render_treemap_diagram_svg(
             w = fmt((w - 4.0).max(0.0)),
             h = fmt((h - 4.0).max(0.0))
         );
+        out.checkpoint()?;
 
         let available_w = w - 2.0 * label_padding;
         let available_h = h - 2.0 * label_padding;
@@ -784,6 +810,7 @@ pub(crate) fn render_treemap_diagram_svg(
             i = i,
             text = escape_xml(&leaf.name)
         );
+        out.checkpoint()?;
 
         if layout.show_values {
             let value_text = if leaf.value != 0.0 {
@@ -861,13 +888,15 @@ pub(crate) fn render_treemap_diagram_svg(
                     text = escape_xml(&value_text)
                 );
             }
+            out.checkpoint()?;
         }
 
         out.push_str("</g>");
+        out.checkpoint()?;
     }
 
     out.push_str("</g></svg>\n");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -875,6 +904,81 @@ mod tests {
     use super::*;
     use crate::DiagramFamilyId;
     use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn treemap_leaf_group_stops_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = write_treemap_leaf_group_open(&mut out, "treemapNode leaf0x", 12.0, 24.0)
+            .expect_err("the rejecting sink must stop Treemap leaf-group emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Treemap leaf-group emission must stop at the first failed sink checkpoint"
+        );
+    }
 
     fn leaf(name: impl Into<String>, value: f64, x0: f64, x1: f64, y1: f64) -> TreemapLeafLayout {
         TreemapLeafLayout {
