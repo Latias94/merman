@@ -17,8 +17,8 @@ use super::builtin::css_sanitize::{
     validate_resvg_css_declaration_list, validate_resvg_css_stylesheet,
 };
 use super::font_embedding::{
-    SvgFontEmbeddingPlan, SvgFontSeal, TYPED_FONT_STYLE_ATTRIBUTE, TYPED_FONT_STYLE_VERSION,
-    stylesheet_contains_font_face,
+    SvgFontEmbeddingPlan, SvgFontSeal, SvgTextContentTracker, TYPED_FONT_STYLE_ATTRIBUTE,
+    TYPED_FONT_STYLE_VERSION, stylesheet_contains_font_face,
 };
 use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
 
@@ -375,7 +375,7 @@ fn validate_resvg_compatible_svg_inner(
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
-    let mut text_elements = 0usize;
+    let mut text_content = SvgTextContentTracker::default();
 
     loop {
         let event = reader
@@ -392,6 +392,11 @@ fn validate_resvg_compatible_svg_inner(
                 reject_additional_root(is_root, root_seen, root_closed)?;
                 let validated =
                     validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
+                text_content
+                    .observe_start(&element, reader.resolver())
+                    .ok_or_else(|| {
+                        validation_error("terminal SVG text elements cannot be tracked")
+                    })?;
                 let opens_style = validated.is_style;
                 let typed_font_style = validated.is_typed_font_style;
                 if typed_font_style && depth != 1 {
@@ -399,7 +404,6 @@ fn validate_resvg_compatible_svg_inner(
                         "renderer-owned typed font stylesheet must be a direct child of the SVG root",
                     ));
                 }
-                text_elements = text_elements.saturating_add(usize::from(validated.is_text));
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -439,7 +443,6 @@ fn validate_resvg_compatible_svg_inner(
                         "renderer-owned typed font stylesheet must be a direct child of the SVG root",
                     ));
                 }
-                text_elements = text_elements.saturating_add(usize::from(validated.is_text));
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -482,6 +485,9 @@ fn validate_resvg_compatible_svg_inner(
                 reference_stack
                     .pop()
                     .ok_or_else(|| validation_error("an end tag has no matching reference node"))?;
+                text_content.observe_end().ok_or_else(|| {
+                    validation_error("an end tag has no matching text-tracker element")
+                })?;
                 depth = depth
                     .checked_sub(1)
                     .ok_or_else(|| validation_error("an end tag has no matching start tag"))?;
@@ -497,6 +503,8 @@ fn validate_resvg_compatible_svg_inner(
                     style.css.push_str(&text);
                 } else if depth == 0 && !text.trim().is_empty() {
                     return Err(validation_error("text is not allowed outside the SVG root"));
+                } else {
+                    text_content.observe_content(&text);
                 }
             }
             Event::CData(text) => {
@@ -509,6 +517,8 @@ fn validate_resvg_compatible_svg_inner(
                     return Err(validation_error(
                         "CDATA is not allowed outside the SVG root",
                     ));
+                } else {
+                    text_content.observe_content(&text);
                 }
             }
             Event::GeneralRef(reference) => {
@@ -519,6 +529,8 @@ fn validate_resvg_compatible_svg_inner(
                     return Err(validation_error(
                         "character references are not allowed outside the SVG root",
                     ));
+                } else {
+                    text_content.observe_character(value);
                 }
             }
             Event::PI(_) => {
@@ -555,6 +567,7 @@ fn validate_resvg_compatible_svg_inner(
         reference_plan.max_tree_depth(),
     )?;
     let resource_closure = resource_closure.finish().map_err(validation_error)?;
+    let text_elements = text_content.text_element_count();
     let font_seal = if let Some(plan) = font_plan {
         plan.seal(text_elements)?
     } else if text_elements == 0 {
@@ -603,7 +616,6 @@ fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> 
 struct ValidatedElement {
     is_style: bool,
     is_typed_font_style: bool,
-    is_text: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
     use_id: Option<String>,
@@ -873,7 +885,6 @@ fn validate_element(
     Ok(ValidatedElement {
         is_style,
         is_typed_font_style,
-        is_text: is_svg_element && element_name.eq_ignore_ascii_case("text"),
         is_marker,
         may_repeat_per_element: is_svg_element
             && matches!(element_name, "filter" | "mask" | "clipPath"),

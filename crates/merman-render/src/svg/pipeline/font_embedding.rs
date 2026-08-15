@@ -3,6 +3,10 @@ use std::fmt::Write as _;
 
 use base64::Engine as _;
 use cssparser::{BasicParseErrorKind, Delimiter, Parser, ParserInput, Token};
+use quick_xml::XmlVersion;
+use quick_xml::events::{BytesRef, BytesStart, Event};
+use quick_xml::name::{NamespaceResolver, ResolveResult};
+use quick_xml::reader::NsReader;
 
 use crate::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontContainer,
@@ -14,10 +18,11 @@ use crate::text::{
 };
 use crate::{Error, Result};
 
-use super::builtin::util::{SvgTagScanner, next_svg_quoted_attr, start_tag_name};
+use super::builtin::util::{SvgTagScanner, start_tag_name};
 
 pub(super) const TYPED_FONT_STYLE_ATTRIBUTE: &str = "data-merman-typed-fonts";
 pub(super) const TYPED_FONT_STYLE_VERSION: &str = "v1";
+const SVG_NAMESPACE: &[u8] = b"http://www.w3.org/2000/svg";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SvgFontSeal {
@@ -134,6 +139,159 @@ enum PreparedLabelCoverage {
 enum PreparedTextTokenScope {
     Base,
     Line(u32),
+}
+
+/// Tracks SVG `<text>` elements that contain character content.
+///
+/// Mermaid may retain empty text/tspan nodes for DOM parity. Those nodes do not select or paint a
+/// font face, so they must not participate in prepared-text coverage or the terminal font seal.
+/// Whitespace still counts because `xml:space="preserve"` can make it rendering-significant.
+#[derive(Debug, Default)]
+pub(super) struct SvgTextContentTracker {
+    mode: SvgTextTrackingMode,
+    // One bit per open XML element identifies text end events without retaining its attributes.
+    element_stack: Vec<bool>,
+    // Only currently open text elements retain prepared evidence.
+    open_text_stack: Vec<OpenSvgTextElement>,
+    text_element_count: usize,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum SvgTextTrackingMode {
+    #[default]
+    CountOnly,
+    PreparedCoverage,
+}
+
+#[derive(Debug)]
+struct OpenSvgTextElement {
+    prepared: Option<PreparedSvgTextElement>,
+    has_character_content: bool,
+}
+
+#[derive(Debug)]
+struct PreparedSvgTextElement {
+    label_token: Option<String>,
+    style: Option<String>,
+}
+
+impl SvgTextContentTracker {
+    fn for_prepared_coverage() -> Self {
+        Self {
+            mode: SvgTextTrackingMode::PreparedCoverage,
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn observe_start(
+        &mut self,
+        element: &BytesStart<'_>,
+        resolver: &NamespaceResolver,
+    ) -> Option<()> {
+        let (namespace, local_name) = resolver.resolve_element(element.name());
+        let is_svg_element = match namespace {
+            ResolveResult::Unknown(_) => return None,
+            ResolveResult::Unbound => true,
+            ResolveResult::Bound(namespace) => namespace.as_ref() == SVG_NAMESPACE,
+        };
+        let is_text = is_svg_element && local_name.as_ref().eq_ignore_ascii_case(b"text");
+        let open_text = if is_text {
+            Some(OpenSvgTextElement {
+                prepared: match self.mode {
+                    SvgTextTrackingMode::CountOnly => None,
+                    SvgTextTrackingMode::PreparedCoverage => {
+                        Some(parse_prepared_text_element(element)?)
+                    }
+                },
+                has_character_content: false,
+            })
+        } else {
+            None
+        };
+        self.element_stack.push(open_text.is_some());
+        if let Some(open_text) = open_text {
+            self.open_text_stack.push(open_text);
+        }
+        Some(())
+    }
+
+    pub(super) fn observe_end(&mut self) -> Option<()> {
+        self.close_element()?;
+        Some(())
+    }
+
+    fn observe_prepared_end(&mut self) -> Option<Option<PreparedSvgTextElement>> {
+        (self.mode == SvgTextTrackingMode::PreparedCoverage).then_some(())?;
+        self.close_element()
+    }
+
+    fn close_element(&mut self) -> Option<Option<PreparedSvgTextElement>> {
+        let closes_text = self.element_stack.pop()?;
+        if !closes_text {
+            return Some(None);
+        }
+
+        let open_text = self.open_text_stack.pop()?;
+        if !open_text.has_character_content {
+            return Some(None);
+        }
+
+        self.text_element_count = self.text_element_count.checked_add(1)?;
+        // Content belongs to the innermost text while it is open, then makes its parent
+        // font-bearing when nested text closes.
+        if let Some(parent) = self.open_text_stack.last_mut() {
+            parent.has_character_content = true;
+        }
+        Some(open_text.prepared)
+    }
+
+    pub(super) fn observe_content(&mut self, content: &str) {
+        if !content.is_empty() {
+            if let Some(text_element) = self.open_text_stack.last_mut() {
+                text_element.has_character_content = true;
+            }
+        }
+    }
+
+    pub(super) fn observe_character(&mut self, _character: char) {
+        if let Some(text_element) = self.open_text_stack.last_mut() {
+            text_element.has_character_content = true;
+        }
+    }
+
+    pub(super) fn text_element_count(&self) -> usize {
+        self.text_element_count
+    }
+
+    fn finish_prepared(self) -> Option<()> {
+        (self.mode == SvgTextTrackingMode::PreparedCoverage
+            && self.element_stack.is_empty()
+            && self.open_text_stack.is_empty())
+        .then_some(())
+    }
+}
+
+fn parse_prepared_text_element(element: &BytesStart<'_>) -> Option<PreparedSvgTextElement> {
+    let mut label_token = None;
+    let mut style = None;
+    for attribute in element.attributes() {
+        let attribute = attribute.ok()?;
+        let destination = match attribute.key.as_ref() {
+            b"id" => &mut label_token,
+            b"style" => &mut style,
+            _ => continue,
+        };
+        if destination.is_some() {
+            return None;
+        }
+        *destination = Some(
+            attribute
+                .decoded_and_normalized_value(XmlVersion::Implicit1_0, element.decoder())
+                .ok()?
+                .into_owned(),
+        );
+    }
+    Some(PreparedSvgTextElement { label_token, style })
 }
 
 impl SvgFontEmbeddingPlan {
@@ -378,92 +536,38 @@ fn scan_prepared_text_coverage(
     svg: &str,
     label_fonts: &HashMap<PreparedTextLabelId, PreparedLabelFont>,
 ) -> Option<usize> {
-    let mut scanner = SvgTagScanner::new(svg);
     let mut coverage = label_fonts
         .keys()
         .copied()
         .map(|id| (id, PreparedLabelCoverage::Unseen))
         .collect::<HashMap<_, _>>();
-    let mut text_element_count = 0usize;
+    let mut reader = NsReader::from_str(svg);
+    reader.config_mut().enable_all_checks(true);
+    let mut tracker = SvgTextContentTracker::for_prepared_coverage();
 
-    while let Some(tag) = scanner.next() {
-        let Some(element_name) = start_tag_name(tag.raw()) else {
-            continue;
-        };
-        if !element_name
-            .rsplit_once(':')
-            .map_or(element_name, |(_, local)| local)
-            .eq_ignore_ascii_case("text")
-        {
-            continue;
-        }
-        text_element_count = text_element_count.checked_add(1)?;
-
-        let mut cursor = 0usize;
-        let mut label_token = None;
-        let mut style = None;
-        while let Some(attribute) = next_svg_quoted_attr(tag.raw(), cursor) {
-            cursor = attribute.full_end;
-            let name = &tag.raw()[attribute.name_start..attribute.name_end];
-            let value = &tag.raw()[attribute.value_start..attribute.value_end];
-            match name {
-                "id" => {
-                    if label_token.is_some() {
-                        return None;
-                    }
-                    label_token = Some(value);
-                }
-                "style" => {
-                    if style.is_some() {
-                        return None;
-                    }
-                    style = Some(
-                        merman_core::entities::decode_html_entities_to_unicode(value).into_owned(),
-                    );
-                }
-                _ => {}
-            }
-        }
-
-        let label_token = label_token?;
-        let label_id = PreparedTextLabelId::from_svg_id(label_token)?;
-        let expected = label_fonts.get(&label_id)?;
-        let emitted = emitted_font_descriptor(style.as_deref()?)?;
-        if !emitted
-            .family_name
-            .eq_ignore_ascii_case(&expected.family_name)
-            || emitted.style != expected.style
-            || emitted.weight != expected.weight
-            || emitted.width != expected.width
-        {
-            return None;
-        }
-        let scope = prepared_text_token_scope(label_token, label_id)?;
-        let label_coverage = coverage.get_mut(&label_id)?;
-        match scope {
-            PreparedTextTokenScope::Base => match label_coverage {
-                PreparedLabelCoverage::Unseen => *label_coverage = PreparedLabelCoverage::Base,
-                PreparedLabelCoverage::Base | PreparedLabelCoverage::Lines(_) => return None,
-            },
-            PreparedTextTokenScope::Line(line) => {
-                let line_count = u32::try_from(expected.line_count).ok()?;
-                if line >= line_count {
-                    return None;
-                }
-                match label_coverage {
-                    PreparedLabelCoverage::Unseen => {
-                        *label_coverage = PreparedLabelCoverage::Lines(BTreeSet::from([line]));
-                    }
-                    PreparedLabelCoverage::Base => return None,
-                    PreparedLabelCoverage::Lines(lines) => {
-                        if !lines.insert(line) {
-                            return None;
-                        }
-                    }
+    let text_element_count = loop {
+        match reader.read_event().ok()? {
+            Event::Start(element) => tracker.observe_start(&element, reader.resolver())?,
+            Event::Empty(_) => {}
+            Event::End(_) => {
+                if let Some(text_element) = tracker.observe_prepared_end()? {
+                    validate_prepared_text_element(text_element, label_fonts, &mut coverage)?;
                 }
             }
+            Event::Text(text) => tracker.observe_content(&text.xml10_content().ok()?),
+            Event::CData(text) => tracker.observe_content(&text.xml10_content().ok()?),
+            Event::GeneralRef(reference) => {
+                tracker.observe_character(resolve_xml_reference(&reference)?)
+            }
+            Event::PI(_) | Event::DocType(_) => return None,
+            Event::Decl(_) | Event::Comment(_) => {}
+            Event::Eof => {
+                let text_element_count = tracker.text_element_count();
+                tracker.finish_prepared()?;
+                break text_element_count;
+            }
         }
-    }
+    };
 
     if text_element_count == 0 || coverage.len() != label_fonts.len() {
         return None;
@@ -476,6 +580,66 @@ fn scan_prepared_text_coverage(
         }
     }
     Some(text_element_count)
+}
+
+fn validate_prepared_text_element(
+    text_element: PreparedSvgTextElement,
+    label_fonts: &HashMap<PreparedTextLabelId, PreparedLabelFont>,
+    coverage: &mut HashMap<PreparedTextLabelId, PreparedLabelCoverage>,
+) -> Option<()> {
+    let label_token = text_element.label_token.as_deref()?;
+    let label_id = PreparedTextLabelId::from_svg_id(label_token)?;
+    let expected = label_fonts.get(&label_id)?;
+    let emitted = emitted_font_descriptor(text_element.style.as_deref()?)?;
+    if !emitted
+        .family_name
+        .eq_ignore_ascii_case(&expected.family_name)
+        || emitted.style != expected.style
+        || emitted.weight != expected.weight
+        || emitted.width != expected.width
+    {
+        return None;
+    }
+    let scope = prepared_text_token_scope(label_token, label_id)?;
+    let label_coverage = coverage.get_mut(&label_id)?;
+    match scope {
+        PreparedTextTokenScope::Base => match label_coverage {
+            PreparedLabelCoverage::Unseen => *label_coverage = PreparedLabelCoverage::Base,
+            PreparedLabelCoverage::Base | PreparedLabelCoverage::Lines(_) => return None,
+        },
+        PreparedTextTokenScope::Line(line) => {
+            let line_count = u32::try_from(expected.line_count).ok()?;
+            if line >= line_count {
+                return None;
+            }
+            match label_coverage {
+                PreparedLabelCoverage::Unseen => {
+                    *label_coverage = PreparedLabelCoverage::Lines(BTreeSet::from([line]));
+                }
+                PreparedLabelCoverage::Base => return None,
+                PreparedLabelCoverage::Lines(lines) => {
+                    if !lines.insert(line) {
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+    Some(())
+}
+
+fn resolve_xml_reference(reference: &BytesRef<'_>) -> Option<char> {
+    if let Some(value) = reference.resolve_char_ref().ok()? {
+        return crate::xml::is_xml_1_0_char(value).then_some(value);
+    }
+    match reference.decode().ok()?.as_ref() {
+        "amp" => Some('&'),
+        "apos" => Some('\''),
+        "gt" => Some('>'),
+        "lt" => Some('<'),
+        "quot" => Some('"'),
+        _ => None,
+    }
 }
 
 fn emitted_font_descriptor(style: &str) -> Option<EmittedFontDescriptor> {
@@ -864,6 +1028,23 @@ mod tests {
 
         assert_eq!(scan_prepared_text_coverage(&svg, &label_fonts), Some(2));
 
+        let with_empty_parity_nodes = svg.replace("</svg>", "<text/><text><tspan/></text></svg>");
+        assert_eq!(
+            scan_prepared_text_coverage(&with_empty_parity_nodes, &label_fonts),
+            Some(2),
+            "empty Mermaid parity text must not require prepared-font coverage"
+        );
+
+        let with_preserved_whitespace = svg.replace(
+            "</svg>",
+            "<text xml:space=\"preserve\"><tspan> </tspan></text></svg>",
+        );
+        assert_eq!(
+            scan_prepared_text_coverage(&with_preserved_whitespace, &label_fonts),
+            None,
+            "whitespace content must remain fail-closed because it can be preserved"
+        );
+
         let with_unprepared_text = svg.replace("</svg>", "<text>unprepared</text></svg>");
         assert_eq!(
             scan_prepared_text_coverage(&with_unprepared_text, &label_fonts),
@@ -914,6 +1095,51 @@ mod tests {
             scan_prepared_text_coverage(&base_svg, &label_fonts),
             Some(1),
             "one base text element may own every prepared line as tspans"
+        );
+    }
+
+    #[test]
+    fn prepared_text_tracking_propagates_nested_and_deep_content() {
+        let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
+        let family_name = catalog.faces()[0].family_name().to_string();
+        let outer_label = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 70);
+        let inner_label = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 71);
+        let label_fonts = HashMap::from([
+            (outer_label, prepared_label_font(&catalog, 1)),
+            (inner_label, prepared_label_font(&catalog, 1)),
+        ]);
+        let nested_svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:400;font-style:normal"><g><text id="{}" style="font-family:&quot;{}&quot;;font-weight:400;font-style:normal"><tspan>&#xA0;</tspan></text></g></text></svg>"#,
+            outer_label.as_svg_id(),
+            family_name,
+            inner_label.as_svg_id(),
+            family_name,
+        );
+        assert_eq!(
+            scan_prepared_text_coverage(&nested_svg, &label_fonts),
+            Some(2),
+            "content in a nested text element must also make its active parent font-bearing"
+        );
+
+        let deep_label = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 72);
+        let deep_fonts = HashMap::from([(deep_label, prepared_label_font(&catalog, 1))]);
+        let mut deep_svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text id="{}" style="font-family:&quot;{}&quot;;font-weight:400;font-style:normal">"#,
+            deep_label.as_svg_id(),
+            family_name,
+        );
+        for _ in 0..1_024 {
+            deep_svg.push_str("<g>");
+        }
+        deep_svg.push_str("Alpha");
+        for _ in 0..1_024 {
+            deep_svg.push_str("</g>");
+        }
+        deep_svg.push_str("</text></svg>");
+        assert_eq!(
+            scan_prepared_text_coverage(&deep_svg, &deep_fonts),
+            Some(1),
+            "deep non-text descendants must retain the active text owner"
         );
     }
 
@@ -999,7 +1225,7 @@ mod tests {
         let plan =
             SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
                 .expect("full embedded face should produce a plan");
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text><text/><text><tspan/></text></svg>"#;
         let embedded = plan
             .inject(svg)
             .expect("typed style should attach to SVG root");
@@ -1015,9 +1241,34 @@ mod tests {
                 &embedded, limits, &plan,
             )
             .expect("the exact renderer-owned plan should validate");
+        assert_eq!(terminal.text_elements, 1);
         assert!(terminal.font_seal.is_complete());
+        assert_eq!(terminal.font_seal.text_element_count(), 1);
         assert_eq!(terminal.font_seal.embedded_face_count(), 1);
         assert_eq!(terminal.resource_closure.inline_data_resource_count(), 1);
+
+        for extra_text in [
+            "<text>unprepared</text>",
+            "<text xml:space=\"preserve\"> </text>",
+            "<text>&#160;</text>",
+        ] {
+            let unprepared = embedded.replace("</svg>", &format!("{extra_text}</svg>"));
+            let unprepared_error =
+                super::super::final_validation::validate_resvg_compatible_svg_with_font_plan(
+                    &unprepared,
+                    limits,
+                    &plan,
+                )
+                .expect_err(
+                    "character-bearing unprepared text must keep the font seal fail-closed",
+                );
+            assert!(
+                unprepared_error
+                    .to_string()
+                    .contains("terminal SVG contains 2 text elements"),
+                "{unprepared_error}"
+            );
+        }
 
         let nested =
             embedded
