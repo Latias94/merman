@@ -458,13 +458,6 @@ fn validate_source_path(
     if source.trim().is_empty() {
         return Err(invalid(path, location, "source must not be empty"));
     }
-    if source.contains('\\') {
-        return Err(invalid(
-            path,
-            location,
-            "source must use portable '/' path separators",
-        ));
-    }
     let source_path = Path::new(source);
     if source_path.is_absolute()
         || source_path
@@ -475,6 +468,13 @@ fn validate_source_path(
             path,
             location,
             "source must be relative to the configuration root",
+        ));
+    }
+    if source.contains('\\') {
+        return Err(invalid(
+            path,
+            location,
+            "source must use portable '/' path separators",
         ));
     }
     if source_path
