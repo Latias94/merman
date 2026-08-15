@@ -31,5 +31,5 @@ pub use pipeline::{
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
     SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg, rebase_svg_ids,
-    validate_rustdoc_admission_svg, validate_rustdoc_static_svg,
+    validate_static_inline_svg, validate_static_inline_svg_admission,
 };

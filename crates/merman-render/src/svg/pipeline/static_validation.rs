@@ -86,11 +86,13 @@ fn validate(
 
     for node in document.descendants().filter(roxmltree::Node::is_element) {
         let element = node.tag_name().name();
-        if let Some(namespace) = node.tag_name().namespace()
+        let namespace = node.tag_name().namespace();
+        let safe_xhtml = foreign_objects == ForeignObjectPolicy::AllowSafeXhtml
+            && namespace == Some(XHTML_NAMESPACE)
+            && is_inside_svg_foreign_object(node);
+        if !safe_xhtml
+            && let Some(namespace) = namespace
             && namespace != SVG_NAMESPACE
-            && !(foreign_objects == ForeignObjectPolicy::AllowSafeXhtml
-                && namespace == XHTML_NAMESPACE
-                && is_inside_svg_foreign_object(node))
         {
             return Err(format!(
                 "rendered SVG contains non-SVG element <{element}> in namespace {namespace:?}"
@@ -108,6 +110,17 @@ fn validate(
         {
             return Err(format!(
                 "rendered SVG contains forbidden <{element}> content"
+            ));
+        }
+        if safe_xhtml {
+            if !is_allowed_static_xhtml_element(element) {
+                return Err(format!(
+                    "rendered SVG contains forbidden XHTML element <{element}>"
+                ));
+            }
+        } else if !is_allowed_static_svg_element(element) {
+            return Err(format!(
+                "rendered SVG contains unsupported SVG element <{element}>"
             ));
         }
 
@@ -273,6 +286,130 @@ fn is_inside_svg_foreign_object(node: roxmltree::Node<'_, '_>) -> bool {
 fn is_event_attribute(name: &str) -> bool {
     name.get(..2)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("on"))
+}
+
+fn is_allowed_static_svg_element(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "a" | "circle"
+            | "clippath"
+            | "defs"
+            | "desc"
+            | "ellipse"
+            | "feblend"
+            | "fecolormatrix"
+            | "fecomponenttransfer"
+            | "fecomposite"
+            | "feconvolvematrix"
+            | "fediffuselighting"
+            | "fedisplacementmap"
+            | "fedistantlight"
+            | "fedropshadow"
+            | "feflood"
+            | "fefunca"
+            | "fefuncb"
+            | "fefuncg"
+            | "fefuncr"
+            | "fegaussianblur"
+            | "feimage"
+            | "femerge"
+            | "femergenode"
+            | "femorphology"
+            | "feoffset"
+            | "fepointlight"
+            | "fespecularlighting"
+            | "fespotlight"
+            | "fetile"
+            | "feturbulence"
+            | "filter"
+            | "foreignobject"
+            | "g"
+            | "image"
+            | "line"
+            | "lineargradient"
+            | "marker"
+            | "mask"
+            | "metadata"
+            | "path"
+            | "pattern"
+            | "polygon"
+            | "polyline"
+            | "radialgradient"
+            | "rect"
+            | "stop"
+            | "style"
+            | "svg"
+            | "switch"
+            | "symbol"
+            | "text"
+            | "textpath"
+            | "title"
+            | "tspan"
+            | "use"
+            | "view"
+    )
+}
+
+fn is_allowed_static_xhtml_element(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "abbr"
+            | "b"
+            | "bdi"
+            | "bdo"
+            | "blockquote"
+            | "br"
+            | "center"
+            | "cite"
+            | "code"
+            | "dd"
+            | "del"
+            | "div"
+            | "dl"
+            | "dt"
+            | "em"
+            | "font"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "hr"
+            | "i"
+            | "ins"
+            | "kbd"
+            | "li"
+            | "mark"
+            | "menu"
+            | "ol"
+            | "p"
+            | "pre"
+            | "q"
+            | "rp"
+            | "rt"
+            | "ruby"
+            | "s"
+            | "samp"
+            | "small"
+            | "span"
+            | "strike"
+            | "strong"
+            | "sub"
+            | "sup"
+            | "table"
+            | "tbody"
+            | "td"
+            | "tfoot"
+            | "th"
+            | "thead"
+            | "tr"
+            | "tt"
+            | "u"
+            | "ul"
+            | "var"
+            | "wbr"
+    )
 }
 
 fn is_forbidden_xhtml_element(name: &str) -> bool {
@@ -1056,6 +1193,46 @@ mod tests {
         .expect_err("interactive foreignObject content");
 
         assert!(error.to_string().contains("forbidden <input>"), "{error}");
+    }
+
+    #[test]
+    fn rejects_html_foreign_content_breakout_elements_in_svg_namespace() {
+        let validators: [fn(&str, RenderResourcePolicy) -> Result<()>; 2] =
+            [validate_rustdoc_admission_svg, validate_rustdoc_static_svg];
+        for element in ["meta", "div", "img", "input", "button", "p", "span"] {
+            let svg = format!(r#"<svg xmlns="{SVG_NAMESPACE}"><{element}/></svg>"#);
+            for validator in validators {
+                let error = validator(&svg, RenderResourcePolicy::trusted_native())
+                    .expect_err("HTML parser breakout element");
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("unsupported SVG element <{element}>")),
+                    "{svg}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn admission_allows_only_pinned_xhtml_below_foreign_object() {
+        validate_rustdoc_admission_svg(
+            r#"<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><span>label</span></div></foreignObject></svg>"#,
+            RenderResourcePolicy::trusted_native(),
+        )
+        .unwrap();
+
+        let error = validate_rustdoc_admission_svg(
+            r#"<svg><foreignObject><marquee xmlns="http://www.w3.org/1999/xhtml">label</marquee></foreignObject></svg>"#,
+            RenderResourcePolicy::trusted_native(),
+        )
+        .expect_err("unapproved XHTML element");
+        assert!(
+            error
+                .to_string()
+                .contains("forbidden XHTML element <marquee>"),
+            "{error}"
+        );
     }
 
     #[test]

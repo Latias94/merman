@@ -280,6 +280,53 @@ impl TransactionPlan {
         })
     }
 
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn validate_pinned_backup_bytes(
+        &self,
+        max: Option<u64>,
+    ) -> Result<(), TransactionError> {
+        let mut total = 0u64;
+        for entry in &self.entries {
+            match entry.expected_generation.as_ref() {
+                Some(TargetGeneration::Existing {
+                    content: Some(content),
+                    ..
+                }) => {
+                    total = total.checked_add(content.length).ok_or_else(|| {
+                        TransactionError::invalid_state(
+                            Path::new(TRANSACTION_DIR_NAME),
+                            "transaction backup byte count overflowed",
+                        )
+                    })?;
+                }
+                Some(TargetGeneration::Existing { content: None, .. }) => {
+                    return Err(TransactionError::invalid_state(
+                        Path::new(TRANSACTION_DIR_NAME),
+                        "content-pinned transaction backup is missing an approved byte count",
+                    ));
+                }
+                Some(TargetGeneration::Missing) => {}
+                None => {
+                    return Err(TransactionError::invalid_state(
+                        Path::new(TRANSACTION_DIR_NAME),
+                        "transaction backup validation requires a preflight target generation",
+                    ));
+                }
+            }
+        }
+        if let Some(max) = max
+            && total > max
+        {
+            return Err(TransactionError::invalid_state(
+                Path::new(TRANSACTION_DIR_NAME),
+                format!(
+                    "transaction backups require {total} bytes, exceeding the {max}-byte limit"
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn entries(&self) -> &[TransactionEntryPlan] {
         &self.entries
@@ -835,6 +882,8 @@ impl ReadyTransaction {
 struct RootContext {
     root: PathBuf,
     root_identity: same_file::Handle,
+    #[cfg(unix)]
+    root_directory: File,
     lock_path: PathBuf,
     lock_identity: same_file::Handle,
     _lock_file: Arc<File>,
@@ -875,6 +924,19 @@ impl RootContext {
                 "canonical transaction root is not a directory",
             ));
         }
+        #[cfg(unix)]
+        let root_directory = File::open(&root).map_err(|source| {
+            TransactionError::operational("open transaction root", &root, source)
+        })?;
+        #[cfg(unix)]
+        let root_identity =
+            same_file::Handle::from_file(root_directory.try_clone().map_err(|source| {
+                TransactionError::operational("clone transaction root handle", &root, source)
+            })?)
+            .map_err(|source| {
+                TransactionError::operational("inspect transaction root identity", &root, source)
+            })?;
+        #[cfg(not(unix))]
         let root_identity = same_file::Handle::from_path(&root).map_err(|source| {
             TransactionError::operational("inspect transaction root identity", &root, source)
         })?;
@@ -918,6 +980,8 @@ impl RootContext {
         let context = Self {
             root,
             root_identity,
+            #[cfg(unix)]
+            root_directory,
             lock_path,
             lock_identity,
             _lock_file: Arc::new(lock_file),
@@ -1010,6 +1074,221 @@ impl RootContext {
             })?;
         }
         Ok(())
+    }
+
+    #[cfg(unix)]
+    fn open_relative_parent(
+        &self,
+        path: &Path,
+    ) -> Result<(File, std::ffi::OsString), TransactionError> {
+        use rustix::fs::{Mode, OFlags, openat};
+
+        let relative = path.strip_prefix(&self.root).map_err(|_| {
+            TransactionError::invalid_state(
+                &self.root,
+                format!("transaction path escapes the pinned root: {path:?}"),
+            )
+        })?;
+        let mut components = relative
+            .components()
+            .map(|component| match component {
+                std::path::Component::Normal(value) => Ok(value.to_os_string()),
+                _ => Err(TransactionError::invalid_state(
+                    &self.root,
+                    format!("transaction path has a forbidden component: {path:?}"),
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let name = components.pop().ok_or_else(|| {
+            TransactionError::invalid_state(
+                &self.root,
+                format!("transaction path has no file name: {path:?}"),
+            )
+        })?;
+        let mut parent = self.root_directory.try_clone().map_err(|source| {
+            TransactionError::operational("clone pinned transaction root", &self.root, source)
+        })?;
+        for component in components {
+            let child = openat(
+                &parent,
+                &component,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|source| {
+                TransactionError::operational(
+                    "open transaction path below pinned root",
+                    path,
+                    std::io::Error::from_raw_os_error(source.raw_os_error()),
+                )
+            })?;
+            parent = child.into();
+        }
+        Ok((parent, name))
+    }
+
+    #[cfg(unix)]
+    fn rename_within_root(
+        &self,
+        source: &Path,
+        target: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        let (source_parent, source_name) = self.open_relative_parent(source)?;
+        let (target_parent, target_name) = self.open_relative_parent(target)?;
+        rustix::fs::renameat(&source_parent, &source_name, &target_parent, &target_name).map_err(
+            |source| {
+                TransactionError::operational(
+                    operation,
+                    target,
+                    std::io::Error::from_raw_os_error(source.raw_os_error()),
+                )
+            },
+        )?;
+        target_parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync publication target directory", target, source)
+        })?;
+        source_parent.sync_all().map_err(|source_error| {
+            TransactionError::operational("sync transaction source directory", source, source_error)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn rename_within_root(
+        &self,
+        source: &Path,
+        target: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        std::fs::rename(source, target)
+            .map_err(|source| TransactionError::operational(operation, target, source))?;
+        if let Some(parent) = target.parent() {
+            sync_directory(parent)?;
+        }
+        sync_directory(&self.root)
+    }
+
+    #[cfg(unix)]
+    fn remove_within_root(
+        &self,
+        path: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        let (parent, name) = self.open_relative_parent(path)?;
+        rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::empty()).map_err(|source| {
+            TransactionError::operational(
+                operation,
+                path,
+                std::io::Error::from_raw_os_error(source.raw_os_error()),
+            )
+        })?;
+        parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync publication target directory", path, source)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn remove_within_root(
+        &self,
+        path: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        std::fs::remove_file(path)
+            .map_err(|source| TransactionError::operational(operation, path, source))?;
+        if let Some(parent) = path.parent() {
+            sync_directory(parent)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn remove_owned_regular_within_root_if_present(
+        &self,
+        evidence: &Path,
+        path: &Path,
+    ) -> Result<(), TransactionError> {
+        use rustix::fs::{Mode, OFlags, openat};
+
+        let (parent, name) = self.open_relative_parent(path)?;
+        let opened = match openat(
+            &parent,
+            &name,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        ) {
+            Ok(opened) => opened,
+            Err(source) if source == rustix::io::Errno::NOENT => return Ok(()),
+            Err(source) if source == rustix::io::Errno::LOOP => {
+                return Err(TransactionError::invalid_state(
+                    evidence,
+                    format!("cleanup path is a symlink: {path:?}"),
+                ));
+            }
+            Err(source) => {
+                return Err(TransactionError::operational(
+                    "open transaction cleanup file below pinned root",
+                    path,
+                    std::io::Error::from_raw_os_error(source.raw_os_error()),
+                ));
+            }
+        };
+        let file: File = opened.into();
+        let metadata = file.metadata().map_err(|source| {
+            TransactionError::operational("inspect transaction cleanup file", path, source)
+        })?;
+        if !metadata.file_type().is_file() {
+            return Err(TransactionError::invalid_state(
+                evidence,
+                format!("cleanup path is a non-regular file: {path:?}"),
+            ));
+        }
+        verify_private_file_link_count(path, &metadata)?;
+        rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::empty()).map_err(|source| {
+            TransactionError::operational(
+                "remove transaction cleanup file",
+                path,
+                std::io::Error::from_raw_os_error(source.raw_os_error()),
+            )
+        })?;
+        parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync transaction cleanup directory", path, source)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn remove_owned_regular_within_root_if_present(
+        &self,
+        evidence: &Path,
+        path: &Path,
+    ) -> Result<(), TransactionError> {
+        remove_owned_regular_if_present(evidence, path)?;
+        if let Some(parent) = path.parent() {
+            sync_directory(parent)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_within_root(&self, path: &Path) -> Result<(), TransactionError> {
+        let (parent, name) = self.open_relative_parent(path)?;
+        rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::REMOVEDIR).map_err(|source| {
+            TransactionError::operational(
+                "remove empty transaction directory",
+                path,
+                std::io::Error::from_raw_os_error(source.raw_os_error()),
+            )
+        })?;
+        parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync transaction root", &self.root, source)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn remove_directory_within_root(&self, path: &Path) -> Result<(), TransactionError> {
+        std::fs::remove_dir(path).map_err(|source| {
+            TransactionError::operational("remove empty transaction directory", path, source)
+        })?;
+        sync_directory(&self.root)
     }
 
     fn checkpoint(&self, checkpoint: Checkpoint) -> Result<(), TransactionError> {
@@ -1630,18 +1909,13 @@ impl WorkingTransaction {
         }
         for (ordinal, path) in paths.into_iter().enumerate() {
             self.checkpoint(Checkpoint::CleanupFileBefore { ordinal })?;
-            remove_owned_regular_if_present(&self.transaction_dir, &path)?;
-            sync_directory(&self.transaction_dir)?;
+            self.context
+                .remove_owned_regular_within_root_if_present(&self.transaction_dir, &path)?;
             self.checkpoint(Checkpoint::CleanupFileAfter { ordinal })?;
         }
-        std::fs::remove_dir(&self.transaction_dir).map_err(|source| {
-            TransactionError::operational(
-                "remove empty transaction directory",
-                &self.transaction_dir,
-                source,
-            )
-        })?;
-        sync_directory(&self.context.root)?;
+        self.context
+            .remove_directory_within_root(&self.transaction_dir)?;
+        self.context.verify_root_and_lock()?;
         self.checkpoint(Checkpoint::CleanupAfter)?;
         Ok(())
     }
@@ -2496,8 +2770,9 @@ fn deterministic_replace_from(
             )
         })?;
     let put = working.put_path(index);
-    remove_owned_regular_if_present(&working.transaction_dir, &put)?;
-    sync_directory(&working.transaction_dir)?;
+    working
+        .context
+        .remove_owned_regular_within_root_if_present(&working.transaction_dir, &put)?;
     let mut destination = create_put_file(&put)?;
     std::io::copy(&mut source_file, &mut destination)
         .map_err(|source_error| TransactionError::operational(operation, &put, source_error))?;
@@ -2536,12 +2811,8 @@ fn deterministic_replace_from(
         let _ = working.inspect_target(target)?;
     }
     verify_open_put_identity(&put, &destination, working.state.entries[index].prior_mode)?;
-    std::fs::rename(&put, target)
-        .map_err(|source_error| TransactionError::operational(operation, target, source_error))?;
-    if let Some(parent) = target.parent() {
-        sync_directory(parent)?;
-    }
-    sync_directory(&working.transaction_dir)
+    working.checkpoint(Checkpoint::ReplaceBoundary { index })?;
+    working.context.rename_within_root(&put, target, operation)
 }
 
 fn remove_regular_if_present(
@@ -2563,12 +2834,8 @@ fn remove_regular_if_present(
     match working.inspect_target(path)? {
         TargetPresence::Missing => Ok(()),
         TargetPresence::Regular => {
-            std::fs::remove_file(path)
-                .map_err(|source| TransactionError::operational(operation, path, source))?;
-            if let Some(parent) = path.parent() {
-                sync_directory(parent)?;
-            }
-            Ok(())
+            working.checkpoint(Checkpoint::DeleteBoundary { index })?;
+            working.context.remove_within_root(path, operation)
         }
     }
 }
@@ -2949,7 +3216,9 @@ enum Checkpoint {
     PersistAfter { slot: StateSlot },
     CommitBefore { index: usize },
     ReplaceBefore { index: usize },
+    ReplaceBoundary { index: usize },
     DeleteBefore { index: usize },
+    DeleteBoundary { index: usize },
     CommitAfter { index: usize },
     RollbackBefore { index: usize },
     RollbackAfter { index: usize },

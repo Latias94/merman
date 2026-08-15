@@ -10,7 +10,7 @@ pub(super) fn prepare_static_svg(
     resources: &ResolvedResourcePolicy,
 ) -> Result<String, CliError> {
     let limits = resources.render_policy();
-    merman_render::svg::validate_rustdoc_admission_svg(svg, limits)
+    merman_render::svg::validate_static_inline_svg_admission(svg, limits)
         .map_err(|error| content_error(source_path, location, error))?;
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .with_resource_policy(limits)
@@ -30,7 +30,7 @@ pub(super) fn validate_static_svg(
     location: MarkdownFenceLocation,
     limits: merman_render::RenderResourcePolicy,
 ) -> Result<(), CliError> {
-    merman_render::svg::validate_rustdoc_static_svg(svg, limits)
+    merman_render::svg::validate_static_inline_svg(svg, limits)
         .map_err(|error| content_error(source_path, location, error))
 }
 

@@ -185,6 +185,30 @@ fn transaction_plan_sorts_artifacts_and_keeps_document_last() {
     assert_eq!(plan.target_indices.get(&targets.document), Some(&3));
 }
 
+#[cfg(feature = "rustdoc")]
+#[test]
+fn transaction_plan_rejects_aggregate_pinned_backups_over_budget() {
+    let temp = tempfile::tempdir().unwrap();
+    let targets = Targets::under(temp.path());
+    std::fs::write(temp.path().join("a.svg"), [0u8; 6]).unwrap();
+    std::fs::write(temp.path().join("z.svg"), [0u8; 6]).unwrap();
+    let plan = TransactionPlan::new([
+        TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_a)
+            .expect_generation(content_pinned_generation(&temp.path().join("a.svg"))),
+        TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_z)
+            .expect_generation(content_pinned_generation(&temp.path().join("z.svg"))),
+        TransactionEntryPlan::write(TransactionRole::Manifest, targets.manifest)
+            .expect_generation(TargetGeneration::Missing),
+    ])
+    .unwrap();
+
+    let error = plan
+        .validate_pinned_backup_bytes(Some(10))
+        .expect_err("aggregate backups must respect the transaction budget");
+    assert!(error.to_string().contains("12 bytes"), "{error}");
+    assert!(error.to_string().contains("10-byte limit"), "{error}");
+}
+
 #[test]
 fn transaction_plan_indexes_every_target_across_representative_cardinalities() {
     let temp = tempfile::tempdir().unwrap();
@@ -764,6 +788,120 @@ fn unlink_then_replace_at_delete_boundary_does_not_delete_the_replacement() {
         same_file::Handle::from_path(&artifact_path).unwrap(),
         replacement_identity
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn root_swap_at_replace_syscall_cannot_redirect_publication_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("output");
+    let displaced = temp.path().join("displaced-output");
+    let outside = temp.path().join("outside");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    let manifest_path = root.join(".merman-manifest.json");
+    let outside_manifest = outside.join(".merman-manifest.json");
+    std::fs::write(&manifest_path, b"old manifest").unwrap();
+    std::fs::write(&outside_manifest, b"outside sentinel").unwrap();
+    let hook_root = root.clone();
+    let hook_displaced = displaced.clone();
+    let hook_outside = outside.clone();
+    let swapped = Arc::new(AtomicBool::new(false));
+    let hook_swapped = Arc::clone(&swapped);
+    let hook = CheckpointHook::new(move |checkpoint| {
+        if checkpoint == (Checkpoint::ReplaceBoundary { index: 0 })
+            && !hook_swapped.swap(true, AtomicOrdering::SeqCst)
+        {
+            std::fs::rename(&hook_root, &hook_displaced)?;
+            symlink(&hook_outside, &hook_root)?;
+        }
+        Ok(())
+    });
+    let manifest = relative(&root, ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(&root, hook)
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"new manifest").unwrap();
+
+    let error = staging.ready().unwrap().commit().unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            TransactionError::PartialPublication { .. } | TransactionError::Recovery { .. }
+        ),
+        "{error}"
+    );
+    assert_eq!(read(&outside_manifest), b"outside sentinel");
+    assert_eq!(
+        read(displaced.join(".merman-manifest.json")),
+        b"new manifest"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn root_swap_at_unlink_syscall_cannot_delete_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("output");
+    let displaced = temp.path().join("displaced-output");
+    let outside = temp.path().join("outside");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    let stale_path = root.join("stale.svg");
+    let outside_stale = outside.join("stale.svg");
+    std::fs::write(&stale_path, b"old artifact").unwrap();
+    std::fs::write(&outside_stale, b"outside sentinel").unwrap();
+    let hook_root = root.clone();
+    let hook_displaced = displaced.clone();
+    let hook_outside = outside.clone();
+    let swapped = Arc::new(AtomicBool::new(false));
+    let hook_swapped = Arc::clone(&swapped);
+    let hook = CheckpointHook::new(move |checkpoint| {
+        if checkpoint == (Checkpoint::DeleteBoundary { index: 0 })
+            && !hook_swapped.swap(true, AtomicOrdering::SeqCst)
+        {
+            std::fs::rename(&hook_root, &hook_displaced)?;
+            symlink(&hook_outside, &hook_root)?;
+        }
+        Ok(())
+    });
+    let stale = relative(&root, "stale.svg");
+    let manifest = relative(&root, ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(&root, hook)
+        .unwrap()
+        .begin(
+            TransactionPlan::new([
+                TransactionEntryPlan::delete_artifact(stale),
+                TransactionEntryPlan::write(TransactionRole::Manifest, manifest.clone()),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"new manifest").unwrap();
+
+    let error = staging.ready().unwrap().commit().unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            TransactionError::PartialPublication { .. } | TransactionError::Recovery { .. }
+        ),
+        "{error}"
+    );
+    assert_eq!(read(&outside_stale), b"outside sentinel");
+    assert!(!displaced.join("stale.svg").exists());
 }
 
 #[cfg(unix)]
@@ -1505,6 +1643,59 @@ fn committed_cleanup_is_idempotent_across_every_file_boundary() {
             assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
         }
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn root_swap_during_cleanup_cannot_remove_outside_transaction_files() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("output");
+    let displaced = temp.path().join("displaced-output");
+    let outside = temp.path().join("outside");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    std::fs::write(root.join(".merman-manifest.json"), b"old").unwrap();
+    let outside_transaction = make_private_transaction_dir(&outside);
+    let outside_stage = outside_transaction.join(stage_name(0));
+    write_private_bytes(&outside_stage, b"outside sentinel");
+    let hook_root = root.clone();
+    let hook_displaced = displaced.clone();
+    let hook_outside = outside.clone();
+    let swapped = Arc::new(AtomicBool::new(false));
+    let hook_swapped = Arc::clone(&swapped);
+    let hook = CheckpointHook::new(move |checkpoint| {
+        if checkpoint == (Checkpoint::CleanupFileBefore { ordinal: 0 })
+            && !hook_swapped.swap(true, AtomicOrdering::SeqCst)
+        {
+            std::fs::rename(&hook_root, &hook_displaced)?;
+            symlink(&hook_outside, &hook_root)?;
+        }
+        Ok(())
+    });
+    let manifest = relative(&root, ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(&root, hook)
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"new").unwrap();
+
+    let error = staging.ready().unwrap().commit().unwrap_err();
+
+    assert!(
+        matches!(error, TransactionError::Recovery { .. }),
+        "{error}"
+    );
+    assert_eq!(read(&outside_stage), b"outside sentinel");
+    assert_eq!(read(displaced.join(".merman-manifest.json")), b"new");
+    assert!(!displaced.join(TRANSACTION_DIR_NAME).exists());
 }
 
 #[test]

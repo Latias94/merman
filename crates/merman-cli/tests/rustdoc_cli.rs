@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::SystemTime;
 
 const VALID_SOURCE: &str = "flowchart LR\nA --> B\n";
 
@@ -55,6 +57,92 @@ fn assert_config_error(root: &Path, config: &str, needles: &[&str]) {
             "stderr should contain {needle:?}:\n{stderr}"
         );
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TreeSnapshotEntry {
+    kind: TreeSnapshotKind,
+    modified: SystemTime,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TreeSnapshotKind {
+    Directory,
+    File(Vec<u8>),
+    Symlink(PathBuf),
+}
+
+fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, TreeSnapshotEntry> {
+    fn snapshot_entry(root: &Path, path: &Path) -> TreeSnapshotEntry {
+        let metadata = fs::symlink_metadata(path).expect("inspect snapshot entry");
+        let modified = metadata
+            .modified()
+            .expect("snapshot entry modification time");
+        let kind = if metadata.file_type().is_dir() {
+            TreeSnapshotKind::Directory
+        } else if metadata.file_type().is_file() {
+            TreeSnapshotKind::File(fs::read(path).expect("read snapshot file"))
+        } else if metadata.file_type().is_symlink() {
+            TreeSnapshotKind::Symlink(fs::read_link(path).expect("read snapshot symlink"))
+        } else {
+            panic!(
+                "unsupported snapshot entry below {}: {path:?}",
+                root.display()
+            );
+        };
+        TreeSnapshotEntry { kind, modified }
+    }
+
+    fn visit(root: &Path, current: &Path, snapshot: &mut BTreeMap<PathBuf, TreeSnapshotEntry>) {
+        let mut entries = fs::read_dir(current)
+            .expect("read snapshot directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read snapshot entries");
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(root)
+                .expect("snapshot path below root")
+                .to_path_buf();
+            let snapshot_entry = snapshot_entry(root, &path);
+            let is_directory = matches!(snapshot_entry.kind, TreeSnapshotKind::Directory);
+            snapshot.insert(relative, snapshot_entry);
+            if is_directory {
+                visit(root, &path, snapshot);
+            }
+        }
+    }
+
+    let mut snapshot = BTreeMap::new();
+    snapshot.insert(PathBuf::from("."), snapshot_entry(root, root));
+    visit(root, root, &mut snapshot);
+    snapshot
+}
+
+fn build_single_fragment_fixture() -> tempfile::TempDir {
+    let root = tempfile::tempdir().expect("tempdir");
+    write_source(root.path(), "diagram.mmd");
+    write_config(root.path(), &valid_config("diagram.mmd"));
+    let build = run(root.path(), &["rustdoc", "build", "--quiet"]);
+    assert_eq!(exit_code(&build), 0, "stderr: {:?}", build.stderr);
+    root
+}
+
+fn assert_stale_check_is_read_only(root: &Path, scenario: &str) {
+    let before = snapshot_tree(root);
+    let output = run(root, &["rustdoc", "check", "--quiet"]);
+    assert_eq!(
+        exit_code(&output),
+        1,
+        "{scenario} must be stale; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        snapshot_tree(root),
+        before,
+        "{scenario} check changed filesystem bytes, types, or mtimes"
+    );
 }
 
 #[test]
@@ -144,6 +232,64 @@ fn check_reports_missing_receipt_without_creating_managed_outputs() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("receipt is missing"), "{stderr}");
     assert!(stderr.contains("docs/generated/merman-rustdoc"), "{stderr}");
+}
+
+#[test]
+fn stale_check_scenarios_preserve_tree_bytes_types_and_mtimes() {
+    let missing_receipt = build_single_fragment_fixture();
+    fs::remove_file(
+        missing_receipt
+            .path()
+            .join("docs/generated/merman-rustdoc/receipt.json"),
+    )
+    .expect("remove receipt");
+    assert_stale_check_is_read_only(missing_receipt.path(), "missing receipt");
+
+    let missing_output = build_single_fragment_fixture();
+    fs::remove_file(
+        missing_output
+            .path()
+            .join("docs/generated/merman-rustdoc/architecture.md"),
+    )
+    .expect("remove generated output");
+    assert_stale_check_is_read_only(missing_output.path(), "missing output");
+
+    let tampered_output = build_single_fragment_fixture();
+    fs::write(
+        tampered_output
+            .path()
+            .join("docs/generated/merman-rustdoc/architecture.md"),
+        b"tampered generated output",
+    )
+    .expect("tamper generated output");
+    assert_stale_check_is_read_only(tampered_output.path(), "tampered output");
+
+    let stale_source = build_single_fragment_fixture();
+    fs::write(
+        stale_source.path().join("diagram.mmd"),
+        "flowchart LR\nChanged --> Source\n",
+    )
+    .expect("change Rustdoc source");
+    assert_stale_check_is_read_only(stale_source.path(), "stale source");
+
+    let extra_managed = tempfile::tempdir().expect("tempdir");
+    write_source(extra_managed.path(), "one.mmd");
+    write_source(extra_managed.path(), "two.mmd");
+    write_config(
+        extra_managed.path(),
+        concat!(
+            "schema = 1\n",
+            "[[fragments]]\nid = \"one\"\nsource = \"one.mmd\"\n",
+            "[[fragments]]\nid = \"two\"\nsource = \"two.mmd\"\n",
+        ),
+    );
+    let build = run(extra_managed.path(), &["rustdoc", "build", "--quiet"]);
+    assert_eq!(exit_code(&build), 0, "stderr: {:?}", build.stderr);
+    write_config(
+        extra_managed.path(),
+        "schema = 1\n[[fragments]]\nid = \"one\"\nsource = \"one.mmd\"\n",
+    );
+    assert_stale_check_is_read_only(extra_managed.path(), "extra previously-managed output");
 }
 
 #[test]

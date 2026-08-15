@@ -473,14 +473,21 @@ pub(crate) fn read_previous(
     let Some(bytes) = read_receipt_optional(path, resources)? else {
         return Ok(None);
     };
-    let receipt = RustdocReceipt::decode(&bytes, path)?;
+    decode_previous(path, &bytes).map(Some)
+}
+
+pub(super) fn decode_previous(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<PreviousRustdocReceipt, CliError> {
+    let receipt = RustdocReceipt::decode(bytes, path)?;
     if receipt.encode()? != bytes {
         return Err(CliError::rustdoc_receipt(
             path,
             "receipt is not canonically encoded",
         ));
     }
-    Ok(Some(PreviousRustdocReceipt { receipt }))
+    Ok(PreviousRustdocReceipt { receipt })
 }
 
 fn read_receipt(path: &Path, resources: &ResolvedResourcePolicy) -> Result<Vec<u8>, CliError> {
@@ -581,7 +588,7 @@ fn read_receipt_optional(
     Ok(Some(bytes))
 }
 
-fn receipt_limit(resources: &ResolvedResourcePolicy) -> usize {
+pub(super) fn receipt_limit(resources: &ResolvedResourcePolicy) -> usize {
     resources
         .files()
         .config_bytes

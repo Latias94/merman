@@ -62,19 +62,19 @@ pub fn rebase_svg_ids(
         .process_to_string(svg, session)
 }
 
-/// Validates sanitized SVG for Merman's Rustdoc known-host embedding policy.
+/// Validates sanitized SVG for Merman's known-host static-inline embedding policy.
 ///
 /// This policy permits ordinary navigation links and same-document fragment references. It is not
 /// a general DOM-mount admission contract: the host must not inject or inherit a `<base>` URL that
 /// changes how fragment-only references resolve.
 #[doc(hidden)]
-pub fn validate_rustdoc_static_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+pub fn validate_static_inline_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
     static_validation::validate_rustdoc_static_svg(svg, limits)
 }
 
-/// Validates renderer output before Rustdoc fallback and compatibility transformations.
+/// Validates renderer output before static-inline fallback and compatibility transformations.
 #[doc(hidden)]
-pub fn validate_rustdoc_admission_svg(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
+pub fn validate_static_inline_svg_admission(svg: &str, limits: RenderResourcePolicy) -> Result<()> {
     static_validation::validate_rustdoc_admission_svg(svg, limits)
 }
 

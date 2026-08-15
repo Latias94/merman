@@ -1,5 +1,7 @@
 use super::config::Config;
-use super::receipt::{ExpectedRustdocBundle, PreviousRustdocReceipt, read_previous};
+use super::receipt::{
+    ExpectedRustdocBundle, PreviousRustdocReceipt, decode_previous, read_previous, receipt_limit,
+};
 use crate::diagnostics::DiagnosticSink;
 use crate::error::{CliError, safe_path};
 use crate::output::{AcquiredTransaction, PublicationGuards};
@@ -26,6 +28,7 @@ struct ApprovedReceipt {
     target: RelativeTarget,
     generation: TargetGeneration,
     changed: bool,
+    previous: Option<PreviousRustdocReceipt>,
 }
 
 struct ApprovedStale {
@@ -37,6 +40,7 @@ struct ManagedTargetObservation {
     generation: TargetGeneration,
     matches_expected: bool,
     sha256: Option<[u8; 32]>,
+    captured_bytes: Option<Vec<u8>>,
 }
 
 pub(crate) fn build(
@@ -71,19 +75,25 @@ pub(crate) fn build(
     }
     super::document::verify_input_snapshots(config, expected.generated(), resources)?;
 
+    let mut backup_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
     let approved_fragments =
-        approve_fragments(&expected, publications, acquired.root(), resources)?;
-    let approved_receipt = approve_receipt(&expected, publications, acquired.root(), resources)?;
-    let previous = read_previous(expected.receipt_path(), resources)?;
-    if let Some(previous) = previous.as_ref() {
+        approve_fragments(&expected, publications, acquired.root(), &mut backup_bytes)?;
+    let approved_receipt = approve_receipt(
+        &expected,
+        resources,
+        publications,
+        acquired.root(),
+        &mut backup_bytes,
+    )?;
+    if let Some(previous) = approved_receipt.previous.as_ref() {
         previous.ensure_owner(config, expected.receipt_path())?;
     }
     let approved_stale = approve_stale(
         &expected,
-        previous.as_ref(),
+        approved_receipt.previous.as_ref(),
         &acquired,
         publications,
-        resources,
+        &mut backup_bytes,
     )?;
     let changed_fragments = approved_fragments
         .iter()
@@ -106,6 +116,7 @@ pub(crate) fn build(
             .expect_generation(approved_receipt.generation.clone()),
     );
     let plan = TransactionPlan::for_generation(owner, entries)?;
+    plan.validate_pinned_backup_bytes(resources.value(CliResourceLimitId::MaxStagedBytes))?;
     let mut staging = context.publication.begin_transaction(acquired, plan)?;
     let mut staged_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
     let stage_result = (|| {
@@ -151,7 +162,7 @@ fn approve_fragments(
     expected: &ExpectedRustdocBundle,
     publications: &PublicationGuards,
     root: &Path,
-    resources: &ResolvedResourcePolicy,
+    backup_bytes: &mut crate::resources::CheckedBytes,
 ) -> Result<Vec<ApprovedFragment>, CliError> {
     let mut approved = Vec::new();
     for (index, fragment) in expected.generated().fragments().iter().enumerate() {
@@ -163,8 +174,13 @@ fn approve_fragments(
                 "approved fragment path changed after preflight",
             ));
         }
-        let observation =
-            observe_managed_target(&path, Some(fragment.bytes()), generation, resources)?;
+        let observation = observe_managed_target(
+            &path,
+            Some(fragment.bytes()),
+            generation,
+            backup_bytes,
+            None,
+        )?;
         approved.push(ApprovedFragment {
             index,
             target: RelativeTarget::from_absolute(root, &path)?,
@@ -177,9 +193,10 @@ fn approve_fragments(
 
 fn approve_receipt(
     expected: &ExpectedRustdocBundle,
+    resources: &ResolvedResourcePolicy,
     publications: &PublicationGuards,
     root: &Path,
-    resources: &ResolvedResourcePolicy,
+    backup_bytes: &mut crate::resources::CheckedBytes,
 ) -> Result<ApprovedReceipt, CliError> {
     let target = publications.approved_transaction_target(expected.receipt_path())?;
     let (path, generation) = target.into_parts();
@@ -189,12 +206,23 @@ fn approve_receipt(
             "approved receipt path changed after preflight",
         ));
     }
-    let observation =
-        observe_managed_target(&path, Some(expected.receipt_bytes()), generation, resources)?;
+    let observation = observe_managed_target(
+        &path,
+        Some(expected.receipt_bytes()),
+        generation,
+        backup_bytes,
+        Some(receipt_limit(resources)),
+    )?;
+    let previous = observation
+        .captured_bytes
+        .as_deref()
+        .map(|bytes| decode_previous(&path, bytes))
+        .transpose()?;
     Ok(ApprovedReceipt {
         target: RelativeTarget::from_absolute(root, &path)?,
         generation: observation.generation,
         changed: !observation.matches_expected,
+        previous,
     })
 }
 
@@ -203,7 +231,7 @@ fn approve_stale(
     previous: Option<&PreviousRustdocReceipt>,
     acquired: &AcquiredTransaction,
     publications: &PublicationGuards,
-    resources: &ResolvedResourcePolicy,
+    backup_bytes: &mut crate::resources::CheckedBytes,
 ) -> Result<Vec<ApprovedStale>, CliError> {
     let current = expected
         .generated()
@@ -237,7 +265,7 @@ fn approve_stale(
                 "stale receipt target changed during approval",
             ));
         }
-        let observation = observe_managed_target(&path, None, generation, resources)?;
+        let observation = observe_managed_target(&path, None, generation, backup_bytes, None)?;
         let Some(actual_sha256) = observation.sha256 else {
             continue;
         };
@@ -259,7 +287,8 @@ fn observe_managed_target(
     path: &Path,
     expected: Option<&[u8]>,
     generation: TargetGeneration,
-    resources: &ResolvedResourcePolicy,
+    backup_bytes: &mut crate::resources::CheckedBytes,
+    capture_limit: Option<usize>,
 ) -> Result<ManagedTargetObservation, CliError> {
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
@@ -269,6 +298,7 @@ fn observe_managed_target(
                     generation,
                     matches_expected: false,
                     sha256: None,
+                    captured_bytes: None,
                 });
             }
             return Err(publication_error(
@@ -289,6 +319,12 @@ fn observe_managed_target(
             "managed target is a symlink or non-regular file",
         ));
     }
+    backup_bytes.try_add(metadata.len()).map_err(|error| {
+        publication_error(
+            path,
+            format!("managed target backup budget exceeded: {error}"),
+        )
+    })?;
     let file = File::open(path).map_err(|error| {
         publication_error(path, format!("failed to open managed target: {error}"))
     })?;
@@ -322,17 +358,6 @@ fn observe_managed_target(
             "managed target identity changed after preflight",
         ));
     }
-    if let Some(limit) = resources.value(CliResourceLimitId::MaxStagedBytes)
-        && metadata.len() > limit
-    {
-        return Err(publication_error(
-            path,
-            format!(
-                "managed target has {} bytes, exceeding the {limit}-byte observation limit",
-                metadata.len()
-            ),
-        ));
-    }
     let mut file = file;
     let mut hasher = Sha256::new();
     let mut offset = 0usize;
@@ -340,6 +365,21 @@ fn observe_managed_target(
         metadata.len() == u64::try_from(expected.len()).unwrap_or(u64::MAX)
     });
     let observed_len = metadata.len();
+    let mut captured_bytes = match capture_limit {
+        Some(limit) => {
+            if observed_len > limit as u64 {
+                return Err(publication_error(
+                    path,
+                    format!("managed receipt exceeds the {limit}-byte limit"),
+                ));
+            }
+            let capacity = usize::try_from(observed_len).map_err(|_| {
+                publication_error(path, "managed receipt length does not fit this platform")
+            })?;
+            Some(Vec::with_capacity(capacity))
+        }
+        None => None,
+    };
     let mut remaining = observed_len;
     let mut buffer = [0u8; 64 * 1024];
     while remaining > 0 {
@@ -355,6 +395,9 @@ fn observe_managed_target(
             ));
         }
         hasher.update(&buffer[..read]);
+        if let Some(captured_bytes) = captured_bytes.as_mut() {
+            captured_bytes.extend_from_slice(&buffer[..read]);
+        }
         if matches_expected {
             let end = offset.saturating_add(read);
             matches_expected = expected.is_some_and(|expected| {
@@ -408,6 +451,7 @@ fn observe_managed_target(
         generation: generation.pin_content(observed_len, sha256),
         matches_expected,
         sha256: Some(sha256),
+        captured_bytes,
     })
 }
 
@@ -434,4 +478,86 @@ fn report(
         expected.generated().fragments().len(),
         expected.generated().diagrams()
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn observed_generation(path: &Path) -> TargetGeneration {
+        let identity = same_file::Handle::from_path(path).expect("target identity");
+        TargetGeneration::from_preflight_identity(Some(Arc::new(identity)))
+    }
+
+    #[test]
+    fn managed_target_backup_budget_is_aggregate_across_sparse_outputs() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let first = root.path().join("first.md");
+        let second = root.path().join("second.md");
+        File::create(&first)
+            .and_then(|file| file.set_len(6))
+            .expect("first sparse target");
+        File::create(&second)
+            .and_then(|file| file.set_len(6))
+            .expect("second sparse target");
+
+        let mut resources = ResolvedResourcePolicy::for_profile(
+            merman::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        resources
+            .apply_override("max_staged_bytes", 10)
+            .expect("test override");
+        let mut backup_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
+
+        observe_managed_target(
+            &first,
+            None,
+            observed_generation(&first),
+            &mut backup_bytes,
+            None,
+        )
+        .expect("first target fits aggregate budget");
+        let error = match observe_managed_target(
+            &second,
+            None,
+            observed_generation(&second),
+            &mut backup_bytes,
+            None,
+        ) {
+            Ok(_) => panic!("second target must exceed aggregate budget"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("max_staged_bytes"), "{error}");
+        assert!(!root.path().join(".merman.transaction").exists());
+    }
+
+    #[test]
+    fn captured_receipt_bytes_share_the_content_pin_read() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let receipt = root.path().join("receipt.json");
+        std::fs::write(&receipt, b"approved receipt bytes").expect("write receipt");
+        let generation = observed_generation(&receipt);
+        let mut resources = ResolvedResourcePolicy::for_profile(
+            merman::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        resources
+            .apply_override("max_staged_bytes", 1024)
+            .expect("test override");
+        let mut backup_bytes = resources.checked_bytes(ByteLedgerKind::StagedOutput);
+
+        let observation =
+            observe_managed_target(&receipt, None, generation, &mut backup_bytes, Some(1024))
+                .expect("observe receipt");
+        std::fs::write(&receipt, b"temporary alternate bytes").expect("write alternate receipt");
+        std::fs::write(&receipt, b"approved receipt bytes").expect("restore approved receipt");
+
+        assert_eq!(
+            observation.captured_bytes.as_deref(),
+            Some(b"approved receipt bytes".as_slice())
+        );
+        let expected_sha256: [u8; 32] = Sha256::digest(b"approved receipt bytes").into();
+        assert_eq!(observation.sha256, Some(expected_sha256));
+    }
 }
