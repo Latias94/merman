@@ -771,12 +771,13 @@ fn parse_moving_fixture_dispositions(
 ) -> (BTreeMap<&str, &str>, Vec<MovingFixtureDisposition>) {
     let mut metadata = BTreeMap::new();
     let mut dispositions = Vec::new();
+    let mut rows_started = false;
 
     for (line_index, line) in authority.lines().enumerate() {
         if line.is_empty() {
             continue;
         }
-        if let Some(record) = line.strip_prefix("# ") {
+        if !rows_started && let Some(record) = line.strip_prefix("# ") {
             let (key, value) = record.split_once('\t').unwrap_or_else(|| {
                 panic!(
                     "invalid moving-reference metadata at line {}",
@@ -789,13 +790,19 @@ fn parse_moving_fixture_dispositions(
             );
             continue;
         }
-        if line_index == metadata.len() {
+        if !rows_started {
             assert_eq!(
                 line, "section\tclassification\tadmission\tsemantic_feature\tpath",
                 "moving-reference authority header drifted"
             );
+            rows_started = true;
             continue;
         }
+        assert!(
+            !line.starts_with("# "),
+            "moving-reference metadata must precede the header at line {}",
+            line_index + 1
+        );
         let fields = line.split('\t').collect::<Vec<_>>();
         let [section, classification, admission, semantic_feature, path] = fields.as_slice() else {
             panic!(
@@ -804,7 +811,16 @@ fn parse_moving_fixture_dispositions(
             );
         };
         assert!(
-            path.ends_with(".txt"),
+            !section.is_empty(),
+            "moving fixture section must not be empty"
+        );
+        assert!(
+            path.ends_with(".txt")
+                && !path.starts_with('/')
+                && !path.contains('\\')
+                && path.split('/').all(|component| !component.is_empty()
+                    && component != "."
+                    && component != ".."),
             "invalid moving fixture path `{path}`"
         );
         dispositions.push(MovingFixtureDisposition {
@@ -815,6 +831,8 @@ fn parse_moving_fixture_dispositions(
             semantic_feature: (*semantic_feature).to_owned(),
         });
     }
+
+    assert!(rows_started, "moving-reference authority header is missing");
 
     (metadata, dispositions)
 }
