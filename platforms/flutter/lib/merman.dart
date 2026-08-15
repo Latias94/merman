@@ -41,6 +41,7 @@ export 'src/merman_ffi.dart'
         MermanEngineServices,
         MermanErrorKind,
         MermanException,
+        MermanExactResourceErrorDetails,
         MermanIconPack,
         MermanIconPackSet,
         MermanIconRegistryErrorDetails,

@@ -61,6 +61,39 @@ The libraries bundled on pub.dev provide SVG, semantic and layout JSON, both nat
 
 A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the generated ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
 
+## Deadlines And Cancellation
+
+Create a reusable `MermanOperationControl` from the same `Merman` or `MermanEngine` instance and
+attach it to `execute`. Resource and cancellation failures remain structured errors and never
+return a partial document.
+
+```dart
+final engine = MermanEngine();
+final control = engine.createOperationControl(
+  timeout: const Duration(milliseconds: 250),
+);
+try {
+  final result = engine.execute(
+    MermanOperation.svg,
+    source,
+    control: control,
+  );
+  print(result.utf8Text);
+} on MermanCancelledException catch (error) {
+  print(error.cancellationDetails?.reason);
+} finally {
+  control.release();
+  engine.close();
+}
+```
+
+Execution is synchronous and the control is isolate-local. A `Timer` or message scheduled on the
+same isolate cannot call `cancel()` while `execute` is blocking that isolate. The Dart facade
+directly supports relative deadlines, cancellation before execution, and cancellation requested
+from a synchronous host callback. Message-driven mid-render cancellation needs a host-owned native
+or worker bridge that can call the native control concurrently; use a process boundary when
+forceful termination is also required.
+
 ## Inspect Native Metadata
 
 The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and presentation catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Presentation IDs remain open strings so compatible producers can add presets, profiles, and aspects without requiring a Dart enum update.
@@ -177,6 +210,8 @@ Set the usual reusable pipeline in `MermanEngine(optionsJson: ...)`. Override it
 - Delete `MermanReusableEngine`, `Merman.reusableEngine(...)`, `dispose()`, and constructor-level `textMeasurer:` arguments. Use `MermanEngineServices` and `close()`.
 - Replace map access such as `result.metadata['runtime_policy']` with typed fields such as `result.metadata.runtimePolicy`; use `rawJson` for additive fields.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning matters; byte-returning methods remain available.
+- Use `createOperationControl(timeout: ...)` and pass the control to `execute` for cooperative
+  deadlines. Do not rely on a same-isolate `Timer` to interrupt a synchronous call.
 - Treat runtime operation, resource-limit, option-group, and service IDs as discovered open vocabularies. Unknown runtime operations remain discoverable but require an updated generated SDK before numeric invocation.
 
 ## Supported Platforms

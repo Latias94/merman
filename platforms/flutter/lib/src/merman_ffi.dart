@@ -47,6 +47,13 @@ class MermanOperationResult {
 /// Cancellation is cooperative: an in-flight operation stops at its next
 /// checkpoint. [release] retires only the token; an operation that already
 /// cloned the control remains safe until that call returns.
+///
+/// The control is isolate-local, and Merman execution is synchronous. A timer
+/// or message on the same isolate cannot call [cancel] until the operation has
+/// returned. Use [Merman.createOperationControl] or
+/// [MermanEngine.createOperationControl] with a timeout for deadline-driven
+/// cancellation. Message-driven mid-call cancellation requires a host-owned
+/// native or worker bridge that can invoke the native control concurrently.
 final class MermanOperationControl {
   MermanOperationControl._(this._native, this._token);
 
@@ -121,6 +128,35 @@ class MermanResourceErrorDetails {
   final String profile;
 }
 
+/// Lossless resource metadata for the complete unsigned 64-bit native range.
+class MermanExactResourceErrorDetails {
+  const MermanExactResourceErrorDetails({
+    required this.cause,
+    required this.limitId,
+    required this.phase,
+    required this.actual,
+    required this.max,
+    required this.profile,
+  });
+
+  final String cause;
+  final MermanResourceLimitId limitId;
+  final String phase;
+  final String actual;
+  final String max;
+  final String profile;
+}
+
+class _ParsedResourceErrorDetails {
+  const _ParsedResourceErrorDetails({
+    required this.exact,
+    required this.compatible,
+  });
+
+  final MermanExactResourceErrorDetails exact;
+  final MermanResourceErrorDetails? compatible;
+}
+
 /// Stable details attached to an icon-registry construction failure.
 class MermanIconRegistryErrorDetails {
   const MermanIconRegistryErrorDetails({
@@ -153,6 +189,7 @@ class MermanException implements Exception {
     required this.message,
     this.kind = MermanErrorKind.generic,
     this.capabilityId,
+    this.exactResourceDetails,
     this.resourceDetails,
     this.iconRegistryDetails,
     this.cancellationDetails,
@@ -163,6 +200,7 @@ class MermanException implements Exception {
   final String message;
   final MermanErrorKind kind;
   final String? capabilityId;
+  final MermanExactResourceErrorDetails? exactResourceDetails;
   final MermanResourceErrorDetails? resourceDetails;
   final MermanIconRegistryErrorDetails? iconRegistryDetails;
   final MermanCancellationErrorDetails? cancellationDetails;
@@ -187,6 +225,7 @@ class MermanException implements Exception {
       _ => MermanErrorKind.generic,
     };
     String? capabilityId;
+    MermanExactResourceErrorDetails? exactResourceDetails;
     MermanResourceErrorDetails? resourceDetails;
     MermanIconRegistryErrorDetails? iconRegistryDetails;
     MermanCancellationErrorDetails? cancellationDetails;
@@ -211,32 +250,10 @@ class MermanException implements Exception {
         if (details is Map) {
           final resource = details['resource'];
           if (resource is Map) {
-            final cause = resource['cause'];
-            final limitId = resource['limit_id'];
-            final phase = resource['phase'];
-            final actual = resource['actual'];
-            final max = resource['max'];
-            final profile = resource['profile'];
-            if (cause is String &&
-                cause.isNotEmpty &&
-                limitId is String &&
-                limitId.isNotEmpty &&
-                phase is String &&
-                phase.isNotEmpty &&
-                actual is int &&
-                actual >= 0 &&
-                max is int &&
-                max >= 0 &&
-                profile is String &&
-                profile.isNotEmpty) {
-              resourceDetails = MermanResourceErrorDetails(
-                cause: cause,
-                limitId: MermanResourceLimitId.fromId(limitId),
-                phase: phase,
-                actual: actual,
-                max: max,
-                profile: profile,
-              );
+            final parsed = _parseResourceErrorDetails(resource);
+            if (parsed != null) {
+              exactResourceDetails = parsed.exact;
+              resourceDetails = parsed.compatible;
             }
           }
           final iconRegistry = details['icon_registry'];
@@ -337,6 +354,7 @@ class MermanException implements Exception {
       message: message,
       kind: kind,
       capabilityId: capabilityId,
+      exactResourceDetails: exactResourceDetails,
       resourceDetails: resourceDetails,
       iconRegistryDetails: iconRegistryDetails,
       cancellationDetails: cancellationDetails,
@@ -346,6 +364,83 @@ class MermanException implements Exception {
   @override
   String toString() => 'MermanException($codeName, $code): $message';
 }
+
+_ParsedResourceErrorDetails? _parseResourceErrorDetails(
+  Map<Object?, Object?> resource,
+) {
+  final cause = resource['cause'];
+  final limitId = resource['limit_id'];
+  final phase = resource['phase'];
+  final actual = _canonicalUnsigned64(resource['actual']);
+  final max = _canonicalUnsigned64(resource['max']);
+  final profile = resource['profile'];
+  if (cause is! String ||
+      cause.isEmpty ||
+      limitId is! String ||
+      limitId.isEmpty ||
+      phase is! String ||
+      phase.isEmpty ||
+      actual == null ||
+      max == null ||
+      profile is! String ||
+      profile.isEmpty) {
+    return null;
+  }
+  final typedLimit = MermanResourceLimitId.fromId(limitId);
+  final exact = MermanExactResourceErrorDetails(
+    cause: cause,
+    limitId: typedLimit,
+    phase: phase,
+    actual: actual,
+    max: max,
+    profile: profile,
+  );
+  final compatibleActual = _signed64ResourceCount(actual);
+  final compatibleMax = _signed64ResourceCount(max);
+  return _ParsedResourceErrorDetails(
+    exact: exact,
+    compatible: compatibleActual == null || compatibleMax == null
+        ? null
+        : MermanResourceErrorDetails(
+            cause: cause,
+            limitId: typedLimit,
+            phase: phase,
+            actual: compatibleActual,
+            max: compatibleMax,
+            profile: profile,
+          ),
+  );
+}
+
+String? _canonicalUnsigned64(Object? value) {
+  final decimal = switch (value) {
+    int value when value >= 0 => value.toString(),
+    String value => value,
+    _ => null,
+  };
+  if (decimal == null ||
+      decimal.isEmpty ||
+      (decimal.length > 1 && decimal.startsWith('0')) ||
+      decimal.codeUnits.any((unit) => unit < 0x30 || unit > 0x39)) {
+    return null;
+  }
+  final parsed = BigInt.tryParse(decimal);
+  if (parsed == null || parsed > _maxUnsigned64) {
+    return null;
+  }
+  return parsed.toString();
+}
+
+int? _signed64ResourceCount(String decimal) {
+  final parsed = BigInt.parse(decimal);
+  if (parsed > _maxSigned64) {
+    return null;
+  }
+  return int.parse(decimal);
+}
+
+final BigInt _maxSigned64 = BigInt.parse('9223372036854775807');
+final BigInt _maxUnsigned64 = BigInt.parse('18446744073709551615');
 
 /// The same engine was re-entered or closed while its callback was active.
 class MermanReentrantCallException extends MermanException {
@@ -457,8 +552,10 @@ class MermanAsciiCapability {
   const MermanAsciiCapability({
     required this.diagramType,
     required this.displayName,
+    required this.semanticCoverage,
+    required this.primaryProjection,
+    required this.structuredTextFallback,
     required this.supportLevel,
-    required this.summaryFallback,
     required this.supportedSemantics,
     required this.limits,
     required this.evidence,
@@ -466,8 +563,10 @@ class MermanAsciiCapability {
 
   final String diagramType;
   final String displayName;
+  final String? semanticCoverage;
+  final String primaryProjection;
+  final bool structuredTextFallback;
   final String supportLevel;
-  final bool summaryFallback;
   final List<String> supportedSemantics;
   final List<String> limits;
   final List<MermanAsciiCapabilityEvidence> evidence;
@@ -479,15 +578,27 @@ class MermanAsciiCapability {
         'ASCII capability.evidence must be an array',
       );
     }
+    final rawSemanticCoverage = json['semantic_coverage'];
+    if (rawSemanticCoverage != null && rawSemanticCoverage is! String) {
+      throw MermanException.contract(
+        'ASCII capability.semantic_coverage must be a string or null',
+      );
+    }
     return MermanAsciiCapability(
       diagramType: _requiredString(json, 'diagram_type', 'ASCII capability'),
       displayName: _requiredString(json, 'display_name', 'ASCII capability'),
-      supportLevel: _requiredString(json, 'support_level', 'ASCII capability'),
-      summaryFallback: _requiredBool(
+      semanticCoverage: rawSemanticCoverage as String?,
+      primaryProjection: _requiredString(
         json,
-        'summary_fallback',
+        'primary_projection',
         'ASCII capability',
       ),
+      structuredTextFallback: _requiredBool(
+        json,
+        'structured_text_fallback',
+        'ASCII capability',
+      ),
+      supportLevel: _requiredString(json, 'support_level', 'ASCII capability'),
       supportedSemantics: List.unmodifiable(
         _requiredStringList(
           json,

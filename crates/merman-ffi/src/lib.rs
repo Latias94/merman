@@ -367,7 +367,10 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
     if let Some(failure_details) = failure.details.as_deref() {
         let mut details = serde_json::Map::new();
         if let Some(resource) = failure_details.resource {
-            details.insert("resource".to_string(), serde_json::json!(resource));
+            details.insert(
+                "resource".to_string(),
+                serde_json::json!(resource.js_safe_json()),
+            );
         }
         if let Some(diagnostic) = failure_details.diagnostic.as_ref() {
             details.insert("diagnostic".to_string(), serde_json::json!(diagnostic));
@@ -2737,6 +2740,11 @@ mod tests {
             payload["details"]["resource"]["cause"],
             "arithmetic_overflow"
         );
+        assert_eq!(
+            payload["details"]["resource"]["actual"],
+            u64::MAX.to_string()
+        );
+        assert_eq!(payload["details"]["resource"]["max"], 800_000);
     }
 
     #[test]

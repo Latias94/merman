@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `MermanOperationControl` for reusable cooperative deadlines and cancellation, including
+  structured `MermanCancelledException` details. Controls are isolate-local; same-isolate timers
+  cannot interrupt a synchronous execution call.
+- Added `MermanExactResourceErrorDetails` so unsigned 64-bit resource counts remain available as
+  canonical decimal strings. The existing signed-`int` projection remains available when both
+  counts fit its compatibility range.
+
 ### Breaking changes
 
 - The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.

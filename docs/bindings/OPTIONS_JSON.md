@@ -768,15 +768,15 @@ Invalid options produce binding errors:
 | Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
 | Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
-Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node and Web/WASM project `actual` and `max` into a lossless JavaScript representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. JavaScript consumers must accept both forms and must not coerce the string form through a `number`; the shared non-JavaScript payload and native ABI error JSON retain their existing unsigned-integer representation. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node, Web/WASM, Android JNI, and native ABI error JSON project `actual` and `max` into a lossless representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. Consumers must accept both forms and must not coerce the string form through a floating-point number; typed non-JSON binding payloads retain their unsigned-integer fields. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
 
 Platform wrappers surface those errors through their native exception type:
 
 - C ABI: non-zero `MermanNativeStatus`, mirrored in `MermanNativeResult.status`, with the structured
   JSON error payload in `MermanNativeResult.metadata_or_error_json`.
-- Android: `MermanException.resourceDetails`.
+- Android: `MermanException.exactResourceDetails`, plus `resourceDetails` when both counts fit `Long`.
 - Apple: the optional `resource` field on `MermanError.binding`.
-- Flutter/Dart: `MermanException.resourceDetails`.
+- Flutter/Dart: `MermanException.exactResourceDetails`, plus `resourceDetails` when both counts fit a signed 64-bit `int`.
 - Python UniFFI: the optional `resource` field on `MermanError.Binding`.
 
 ## Typed Wrapper Follow-On

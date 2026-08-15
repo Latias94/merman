@@ -1627,6 +1627,44 @@ void decodesMachineReadableNativeErrors() {
         resource.resourceDetails?.profile == 'constrained',
     'resource metadata should survive the Dart boundary',
   );
+  _expect(
+    resource.exactResourceDetails?.actual == '5' &&
+        resource.exactResourceDetails?.max == '4',
+    'resource metadata should expose an exact decimal projection',
+  );
+
+  final wideResource = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'ok': false,
+          'status': native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+          'status_name': 'resource-limit-exceeded',
+          'kind': 'generic',
+          'capability_id': null,
+          'details': {
+            'resource': {
+              'cause': 'arithmetic_overflow',
+              'limit_id': 'max_ascii_layout_work_units',
+              'phase': 'ascii_layout_work',
+              'actual': '18446744073709551615',
+              'max': '9223372036854775808',
+              'profile': 'interactive',
+            },
+          },
+          'message': 'ASCII layout work accounting overflowed',
+        }),
+      ),
+    ),
+  );
+  _expect(
+    wideResource.exactResourceDetails?.actual == '18446744073709551615' &&
+        wideResource.exactResourceDetails?.max == '9223372036854775808' &&
+        wideResource.resourceDetails == null,
+    'wide resource counts should survive exactly without a signed compatibility view',
+  );
 
   final iconRegistry = MermanException.fromNative(
     native.MERMAN_NATIVE_STATUS_RENDER_ERROR,
