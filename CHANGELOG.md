@@ -27,10 +27,12 @@ The next workspace release remains in development. This section records only com
 ### Added
 
 - Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
+- Added `merman-cli rustdoc build/check` as a checked static-fragment workflow. Crates can commit deterministic light/dark SVG Markdown, consume it through Rust's native `include_str!`, verify freshness in CI, and build hosted documentation without adding a Merman renderer or proc macro to the consuming Cargo graph.
 
 ### Changed
 
 - Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, replaces Flutter's duplicated platform packaging with one Native Assets matrix, and adds an explicit compressed-package budget before pub.dev publication.
+- Documented `merman-cli rustdoc` and `merman-rustdoc` as independent peer integrations. The existing macro, native `complete-svg` renderer profile, and one-step attribute behavior remain available; they do not invoke or fall back to checked CLI generation.
 - Flutter pub.dev releases use package-specific `flutter-v<version>` tags so an unpublished package version can be built from a reviewed commit without moving an existing workspace tag.
 - Web and Node npm publishing now preflight existing registry integrity and tags, publish missing exact versions directly under the requested final tag, and place the default Web package or Node loader last; retries skip members that already match the verified manifest.
 

@@ -128,6 +128,7 @@ enum CssViolation {
     BadToken,
     Degrees,
     EmptyDeclaration,
+    ExternalImageFunction,
     MarkerReference,
     NestingLimit,
     RootSelector,
@@ -145,6 +146,9 @@ impl fmt::Display for CssViolation {
                 f.write_str("CSS angle units are not accepted by the resvg-safe contract")
             }
             Self::EmptyDeclaration => f.write_str("empty CSS declaration"),
+            Self::ExternalImageFunction => {
+                f.write_str("CSS image-set functions can reference external resources")
+            }
             Self::MarkerReference => {
                 f.write_str("CSS marker references are not part of the resvg-safe contract")
             }
@@ -432,6 +436,9 @@ fn rewrite_component_values<'i, 't>(
                 output.push_str(input.slice(token_start..token_end));
             }
             Token::Function(name) => {
+                if matches_external_image_function(&name) {
+                    return Err(input.new_custom_error(CssViolation::ExternalImageFunction));
+                }
                 let nested_depth = depth.descend(input)?;
                 output.push_str(input.slice(token_start..token_end));
                 let nested = input.parse_nested_block(|nested| {
@@ -467,6 +474,10 @@ fn rewrite_component_values<'i, 't>(
             _ => output.push_str(input.slice(token_start..token_end)),
         }
     }
+}
+
+pub(in crate::svg::pipeline) fn matches_external_image_function(name: &str) -> bool {
+    name.eq_ignore_ascii_case("image-set") || name.eq_ignore_ascii_case("-webkit-image-set")
 }
 
 fn ensure_source_closed_block<'i, 't>(
@@ -687,6 +698,15 @@ mod tests {
             out,
             r##".bad{stroke:red}.fragment{fill:url(#paint)}.image{background:url(data:image/png;base64,AAAA)}"##
         );
+    }
+
+    #[test]
+    fn css_sanitize_drops_escaped_external_image_functions() {
+        let css = r#".bad{background-image:im\61ge-set(\"https://example.test/x.png\" 1x);stroke:red}.also-bad{content:-webkit-image-set(\"https://example.test/y.png\" 1x);fill:blue}"#;
+        let out = sanitize_css(css);
+
+        assert_eq!(out, ".bad{stroke:red}.also-bad{fill:blue}");
+        assert!(validate_resvg_css_stylesheet(css).is_err());
     }
 
     #[test]

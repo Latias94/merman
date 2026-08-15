@@ -2,14 +2,15 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, optional layout engines, math, icons, completions, and native runtime adapters.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, committed Rustdoc fragment generation, optional layout engines, math, icons, completions, and native runtime adapters.
 
-The command line has three explicit workflows:
+The command line has four explicit workflows:
 
 | Workflow | Command | Use it when |
 | --- | --- | --- |
 | One native render | `merman-cli render` | You want concise Rust-native defaults and strict option validation |
 | Native Markdown batch | `merman-cli batch` | You want a recoverable, tool-owned multi-file generation |
+| Static Rustdoc fragments | `merman-cli rustdoc` | You want Mermaid in crate or item docs without adding a renderer to the crate's Cargo graph |
 | Pinned compatibility | `merman-cli mmdc` | You are migrating an `mmdc@11.16.0` command or need its naming and scanner rules |
 
 ## Install
@@ -106,6 +107,8 @@ Use `--output -` to request stdout explicitly or `--output PATH` to choose a fil
 | Mermaid to vector PDF | `merman-cli render diagram.mmd --format pdf` |
 | Terminal output | `merman-cli render diagram.mmd --format unicode --output -` |
 | Markdown fences to a managed generation | `merman-cli batch README.md` |
+| Build committed Rustdoc fragments | `merman-cli rustdoc build` |
+| Verify committed Rustdoc fragments | `merman-cli rustdoc check --quiet` |
 | Human-readable diagnostics | `merman-cli lint diagram.mmd` |
 | Machine-readable diagnostics | `merman-cli lint diagram.mmd --format json` |
 | Check whether fixes are needed | `merman-cli fix diagram.mmd --check` |
@@ -163,6 +166,140 @@ The `parallel-markdown` Cargo feature adds Rayon-backed bounded scheduling and t
 
 Strict `mmdc` Markdown uses the pinned upstream fence scanner and output naming. To keep recovery honest, its rewritten document and artifacts must remain below one transaction root on one filesystem; split-root layouts are rejected before output creation or network access. Changing `-e` or `--artefacts` publishes the new namespace but leaves files from the previous namespace untouched.
 
+## Rustdoc Fragments
+
+`merman-cli rustdoc` is the CLI-first integration for crates that want static Mermaid diagrams in
+Rustdoc without placing Merman, layout engines, math rendering, or a procedural macro in the
+consuming crate's normal or build dependency graph. The CLI is an authoring and CI tool: it renders
+the complete bundle ahead of `cargo doc`, and the crate consumes only committed Markdown through
+Rust's built-in `include_str!`.
+
+Place `merman-rustdoc.toml` at the crate root so its fixed managed output root is
+`docs/generated/merman-rustdoc/`:
+
+```toml
+schema = 1
+
+[[fragments]]
+id = "crate-overview"
+source = "docs/rustdoc-src/crate-overview.md"
+
+[[fragments]]
+id = "render-module"
+source = "docs/rustdoc-src/render-module.md"
+source_display = "details"
+```
+
+`source` is relative to the directory containing the configuration. Markdown sources may contain
+backtick or tilde Mermaid fences and standalone `include_mmd!("diagrams/architecture.mmd")` lines;
+include paths are also relative to the configuration root. Raw `.mmd` and `.mermaid` files are
+accepted as one-diagram fragments. `source_display` is optional and is either `hide` (the default)
+or `details`, which adds the Mermaid source below each rendered diagram in a collapsed block.
+Fragment IDs are portable ASCII identifiers and become `<id>.md` filenames. The output directory
+cannot be redirected by configuration.
+Rename an ID through a temporary, distinctly spelled ID in two builds when only its ASCII case
+changes; direct case-only renames are rejected so the same history behaves on every filesystem.
+The fixed managed root has one owner: a receipt created by one configuration filename cannot be
+replaced or cleaned by a different configuration in the same package directory. Move or remove
+the old managed root explicitly before adopting it with a different configuration.
+
+Build or verify the bundle:
+
+```sh
+merman-cli rustdoc build
+merman-cli rustdoc check --quiet
+
+# A workspace member can keep its own configuration and managed root.
+merman-cli rustdoc build --config crates/my-crate/merman-rustdoc.toml
+merman-cli rustdoc check --config crates/my-crate/merman-rustdoc.toml --quiet
+```
+
+`build` renders and validates the complete expected bundle before publishing it transactionally.
+It writes `receipt.json` last, removes only stale files owned by the previous valid receipt, leaves
+unknown neighboring files alone, and preserves unchanged files on a no-op rebuild. It never
+overwrites the configuration, Markdown sources, or included Mermaid files. `check` performs the
+same bounded generation in memory, compares the exact receipt-owned file set, receipt, and fragment
+bytes, and never writes. A stale or missing generation exits `1`, invalid invocation or
+configuration exits `2`, and an invalid receipt, unfinished publication, or other operational
+failure exits `3`.
+
+Consume generated fragments at crate or item scope without a documentation dependency:
+
+```rust
+#![doc = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/generated/merman-rustdoc/crate-overview.md"
+))]
+
+#[doc = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/generated/merman-rustdoc/render-module.md"
+))]
+pub mod render {}
+```
+
+Include each generated fragment at most once on one rendered Rustdoc page. Its SVG DOM IDs are
+deterministic within the fragment, so including the same fragment twice would duplicate those IDs.
+
+Commit the configuration, authoring sources, generated fragments, and `receipt.json` together.
+Review an intentional regeneration before staging it:
+
+```sh
+merman-cli rustdoc build
+git diff -- merman-rustdoc.toml docs/rustdoc-src docs/generated/merman-rustdoc
+```
+
+To abandon the whole local documentation change, restore the configuration, source paths, and
+managed output paths with Git. To keep the source change but discard only generated edits, restore
+the managed directory and run `rustdoc build` again; `rustdoc check` will deliberately report stale
+output until the generated bundle matches the retained sources.
+
+```sh
+# Substitute the source paths used by your configuration.
+git restore -- merman-rustdoc.toml docs/rustdoc-src docs/generated/merman-rustdoc
+```
+
+Run freshness verification before Rustdoc in CI:
+
+```sh
+merman-cli rustdoc check --quiet
+cargo doc --no-deps
+```
+
+Pin the same CLI release or reviewed source revision in authoring and CI. The receipt binds the
+generator version, Mermaid baseline, capability descriptor, configuration, sources, and output
+hashes, so an intentional tool upgrade requires one reviewed `rustdoc build` regeneration.
+
+docs.rs does not run `merman-cli`; it documents the uploaded Cargo package. Ensure the generated
+fragments are committed and included in the package, especially when `Cargo.toml` has an explicit
+`include` whitelist. Inspect the package boundary before publishing:
+
+```sh
+cargo package --list --allow-dirty
+```
+
+The generated-fragment path and the independent
+[`merman-rustdoc`](https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc#readme)
+attribute macro are peer products. Neither invokes, discovers, or falls back to the other:
+
+| Concern | `merman-cli rustdoc` | `merman-rustdoc` attribute macro |
+| --- | --- | --- |
+| Cargo dependency cost | No Merman renderer dependency in the consuming crate | Compiles the selected procedural-macro and renderer closure |
+| Authoring loop | Explicit `build`; CI uses read-only `check` | One-step rendering while `cargo doc` runs |
+| Rustdoc scope | Crate and item docs through `include_str!` | Item docs and recursive inline item trees; not crate-level `//!` or `#[doc = include_str!(...)]` content |
+| Generated ownership | Markdown fragments and receipt are committed and reviewable | Source comments stay unchanged; SVG exists only in generated Rustdoc output |
+| docs.rs | Uses packaged static files with no documentation feature | Requires the optional macro dependency and docs.rs feature to be enabled |
+| Failure timing | Authoring build or CI freshness gate, before `cargo doc` | During macro expansion in `cargo doc` |
+| Rollback | Restore source/config/output as one Git change, or rebuild the retained source | Revert the annotated Rust source or feature selection |
+
+Choose the CLI path for published libraries, workspaces, reproducible packaging, crate-level docs,
+or any project sensitive to Cargo dependency closure. Choose the macro when one-step `cargo doc`
+ergonomics outweigh the compile cost and item-level attribute placement is the desired ownership
+model. A migration is additive and reversible: move the annotated prose to an external Markdown
+source, declare a fragment, run `rustdoc build`, replace the attribute with `#[doc =
+include_str!(...)]`, add the CI check, and remove the optional macro dependency only after no
+annotated items remain.
+
 ## Analysis And Fixes
 
 The `analysis` capability enables parser-backed diagnostics, deterministic fix selection, and rule metadata:
@@ -199,6 +336,7 @@ The default feature set is the complete local product. Cargo features are additi
 | `--no-default-features --features svg` | Basic deterministic SVG |
 | `--no-default-features --features ascii` | ASCII/Unicode without SVG |
 | `--no-default-features --features markdown` | Sequential native Markdown batch and SVG |
+| `--no-default-features --features rustdoc` | Static Rustdoc fragment build/check with deterministic SVG, both layout engines, and math |
 | `--no-default-features --features icons` | SVG plus bounded local Iconify packs |
 | `--no-default-features --features png` | SVG plus PNG only |
 | `--no-default-features --features pdf` | SVG plus vector PDF only |
@@ -212,7 +350,7 @@ cargo install merman-cli --version 0.8.0-alpha.5 --locked \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 3`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 3 records the native `-f` spelling, text-first `lint`, and narrowed `detect` surface; automation that depends on CLI behavior should version-check this field independently from the JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 4`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 4 records the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and the feature-gated top-level `rustdoc` workflow; automation that depends on CLI behavior should version-check this field independently from the JSON schema.
 
 ## Rendering And Runtime Policy
 

@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:6fc240249551b141cf50f475a7ed89d3787c0b5f9636007f54c6ef555870a9c4" as const;
 
 export const TARGETS = [
   {
@@ -151,6 +151,20 @@ export const CAPABILITIES = [
       "native"
     ],
     "implications": []
+  },
+  {
+    "id": "rustdoc",
+    "kind": "tool",
+    "description": "Compile checked static Mermaid fragment generation for Rustdoc.",
+    "targets": [
+      "native"
+    ],
+    "implications": [
+      "layout-cytoscape",
+      "layout-elk",
+      "markdown",
+      "math"
+    ]
   },
   {
     "id": "shell-completions",
@@ -460,6 +474,7 @@ export const CAPABILITY_IDS = [
   "parallel-markdown",
   "pdf",
   "png",
+  "rustdoc",
   "shell-completions",
   "svg",
   "system-clock",

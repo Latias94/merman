@@ -23,6 +23,7 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand -V 'Print version'
             cand --version 'Print version'
             cand lint-rules 'List lint rule metadata'
+            cand rustdoc 'Build or check committed static Mermaid fragments for Rustdoc'
             cand capabilities 'Print the compiled capabilities from the canonical capability descriptor'
             cand detect 'Detect the Mermaid diagram type'
             cand parse 'Parse Mermaid source and print the semantic JSON model'
@@ -38,6 +39,30 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand --format 'Output format for rule metadata'
             cand --pretty 'Pretty-print JSON output'
             cand --configurable 'Only list rules that public lint configuration can reference'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+        }
+        &'merman-cli;rustdoc'= {
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+            cand build 'Build the complete managed Rustdoc fragment bundle'
+            cand check 'Check the managed Rustdoc fragment bundle without writing'
+        }
+        &'merman-cli;rustdoc;build'= {
+            cand --config 'Rustdoc fragment configuration file'
+            cand --quiet 'Suppress non-error progress output'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand -V 'Print version'
+            cand --version 'Print version'
+        }
+        &'merman-cli;rustdoc;check'= {
+            cand --config 'Rustdoc fragment configuration file'
+            cand --quiet 'Suppress non-error progress output'
             cand -h 'Print help'
             cand --help 'Print help'
             cand -V 'Print version'

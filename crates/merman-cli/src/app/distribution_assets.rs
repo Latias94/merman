@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 const UPDATE_ENV: &str = "MERMAN_UPDATE_CLI_ASSETS";
 const ASSET_ROOTS: &[&str] = &["assets/completions", "assets/man"];
-const CLI_MANPAGE_DATE: &str = "2026-07-29";
+const CLI_MANPAGE_DATE: &str = "2026-08-15";
 const CLI_MANPAGE_MANUAL: &str = "Merman CLI Manual";
 const CLI_MANPAGE_SOURCE: &str = concat!("Merman ", env!("CARGO_PKG_VERSION"));
 

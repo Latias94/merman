@@ -215,6 +215,17 @@
       }
     },
     {
+      "id": "rustdoc",
+      "kind": "tool",
+      "description": "Compile checked static Mermaid fragment generation for Rustdoc.",
+      "targets": ["native"],
+      "implications": ["layout-cytoscape", "layout-elk", "markdown", "math"],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Rustdoc fragment generation is absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
       "id": "shell-completions",
       "kind": "tool",
       "description": "Compile CLI shell completion generation.",

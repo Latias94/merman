@@ -27,6 +27,7 @@ use std::process::ExitCode;
     feature = "parallel-markdown",
     feature = "pdf",
     feature = "png",
+    feature = "rustdoc",
     feature = "shell-completions",
     feature = "svg",
     feature = "system-clock",
@@ -539,8 +540,9 @@ fn looks_like_removed_root_input(argument: &str) -> bool {
 }
 
 fn root_help(command: &clap::Command) -> String {
-    const GROUPS: [(&str, &[&str]); 4] = [
+    const GROUPS: [(&str, &[&str]); 5] = [
         ("Native rendering:", &["render", "batch"]),
+        ("Documentation:", &["rustdoc"]),
         ("Analysis:", &["lint", "fix"]),
         ("Compatibility:", &["mmdc"]),
         (

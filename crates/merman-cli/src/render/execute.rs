@@ -72,13 +72,35 @@ pub(crate) fn execute_graphical(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
+    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr)
+}
+
+#[cfg(feature = "rustdoc")]
+pub(crate) fn execute_rustdoc_svg_raw(
+    prepared: &PreparedGraphicalRender,
+    source: &str,
+    control: &merman::OperationControl,
+    stderr: &SharedWriter,
+) -> Result<Vec<u8>, CliError> {
+    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr)
+        .map(ExecutedArtifact::into_bytes)
+}
+
+#[cfg(feature = "svg")]
+fn execute_graphical_with_pipeline(
+    prepared: &PreparedGraphicalRender,
+    pipeline: &merman::svg::SvgPipeline,
+    source: &str,
+    control: &merman::OperationControl,
+    stderr: &SharedWriter,
+) -> Result<ExecutedArtifact, CliError> {
     #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     let _ = stderr;
     let permit = prepared.admission.acquire_controlled(control)?;
     match &prepared.source {
         PreparedGraphicalSource::Mermaid(renderer) => {
             let mut svg = renderer.svg.clone();
-            svg.pipeline = Some(prepared.pipeline.clone());
+            svg.pipeline = Some(pipeline.clone());
             let target = prepared.output.target(svg);
             let output =
                 renderer
@@ -162,8 +184,7 @@ pub(crate) fn execute_graphical(
             let session = environment
                 .begin_session_with_control(control.clone())
                 .map_err(|error| CliError::Render(merman::RenderError::RuntimePolicy(error)))?;
-            let svg = prepared
-                .pipeline
+            let svg = pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(|error| CliError::Render(merman::RenderError::Svg(error)))?;
             execute_encoded_svg(prepared, svg, permit, control, stderr)
@@ -293,6 +314,11 @@ pub(crate) struct ExecutedArtifact {
 }
 
 impl ExecutedArtifact {
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
     #[cfg(feature = "ascii")]
     fn text(bytes: Vec<u8>, permit: super::admission::BackendPermit) -> Self {
         Self {

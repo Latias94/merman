@@ -9,6 +9,8 @@ use format::{
     JournalEntry, JournalPhase, JournalState, MAX_STATE_BYTES, PriorState, read_at_most,
     validate_entries,
 };
+#[cfg(feature = "rustdoc")]
+use sha2::{Digest as _, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions, TryLockError};
 use std::hash::{Hash, Hasher};
@@ -99,23 +101,60 @@ impl TransactionError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TargetGeneration {
     Missing,
-    Existing(Arc<same_file::Handle>),
+    Existing {
+        identity: Arc<same_file::Handle>,
+        content: Option<TargetContentGeneration>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TargetContentGeneration {
+    length: u64,
+    sha256: [u8; 32],
 }
 
 impl TargetGeneration {
     pub(crate) fn from_preflight_identity(identity: Option<Arc<same_file::Handle>>) -> Self {
-        identity.map_or(Self::Missing, Self::Existing)
+        identity.map_or(Self::Missing, |identity| Self::Existing {
+            identity,
+            content: None,
+        })
     }
 
     fn from_observed_identity(identity: Option<same_file::Handle>) -> Self {
-        identity.map_or(Self::Missing, |identity| Self::Existing(Arc::new(identity)))
+        identity.map_or(Self::Missing, |identity| Self::Existing {
+            identity: Arc::new(identity),
+            content: None,
+        })
     }
 
-    fn matches_identity(&self, current: Option<&same_file::Handle>) -> bool {
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn pin_content(mut self, length: u64, sha256: [u8; 32]) -> Self {
+        if let Self::Existing { content, .. } = &mut self {
+            *content = Some(TargetContentGeneration { length, sha256 });
+        }
+        self
+    }
+
+    pub(crate) fn matches_identity(&self, current: Option<&same_file::Handle>) -> bool {
         match (self, current) {
             (Self::Missing, None) => true,
-            (Self::Existing(expected), Some(current)) => expected.as_ref() == current,
-            (Self::Missing, Some(_)) | (Self::Existing(_), None) => false,
+            (Self::Existing { identity, .. }, Some(current)) => identity.as_ref() == current,
+            (Self::Missing, Some(_)) | (Self::Existing { .. }, None) => false,
+        }
+    }
+
+    fn identity(&self) -> Option<&same_file::Handle> {
+        match self {
+            Self::Missing => None,
+            Self::Existing { identity, .. } => Some(identity.as_ref()),
+        }
+    }
+
+    fn content(&self) -> Option<TargetContentGeneration> {
+        match self {
+            Self::Missing => None,
+            Self::Existing { content, .. } => *content,
         }
     }
 }
@@ -241,6 +280,53 @@ impl TransactionPlan {
         })
     }
 
+    #[cfg(feature = "rustdoc")]
+    pub(crate) fn validate_pinned_backup_bytes(
+        &self,
+        max: Option<u64>,
+    ) -> Result<(), TransactionError> {
+        let mut total = 0u64;
+        for entry in &self.entries {
+            match entry.expected_generation.as_ref() {
+                Some(TargetGeneration::Existing {
+                    content: Some(content),
+                    ..
+                }) => {
+                    total = total.checked_add(content.length).ok_or_else(|| {
+                        TransactionError::invalid_state(
+                            Path::new(TRANSACTION_DIR_NAME),
+                            "transaction backup byte count overflowed",
+                        )
+                    })?;
+                }
+                Some(TargetGeneration::Existing { content: None, .. }) => {
+                    return Err(TransactionError::invalid_state(
+                        Path::new(TRANSACTION_DIR_NAME),
+                        "content-pinned transaction backup is missing an approved byte count",
+                    ));
+                }
+                Some(TargetGeneration::Missing) => {}
+                None => {
+                    return Err(TransactionError::invalid_state(
+                        Path::new(TRANSACTION_DIR_NAME),
+                        "transaction backup validation requires a preflight target generation",
+                    ));
+                }
+            }
+        }
+        if let Some(max) = max
+            && total > max
+        {
+            return Err(TransactionError::invalid_state(
+                Path::new(TRANSACTION_DIR_NAME),
+                format!(
+                    "transaction backups require {total} bytes, exceeding the {max}-byte limit"
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn entries(&self) -> &[TransactionEntryPlan] {
         &self.entries
@@ -313,21 +399,6 @@ impl LockedRecoveredRoot {
                 ));
             }
         }
-        create_private_directory(&transaction_dir)?;
-        sync_directory(&self.context.root)?;
-        let transaction_identity = Arc::new(
-            same_file::Handle::from_path(&transaction_dir).map_err(|source| {
-                TransactionError::operational(
-                    "inspect transaction directory identity",
-                    &transaction_dir,
-                    source,
-                )
-            })?,
-        );
-        let transaction_metadata =
-            verify_private_directory(&transaction_dir, &transaction_identity)?;
-        self.context
-            .verify_transaction_filesystem(&transaction_dir, &transaction_metadata)?;
         let TransactionPlan {
             owner,
             entries: planned_entries,
@@ -359,6 +430,23 @@ impl LockedRecoveredRoot {
             next_index: 0,
             entries,
         };
+        validate_journal_capacity(&state, &transaction_dir)?;
+
+        create_private_directory(&transaction_dir)?;
+        sync_directory(&self.context.root)?;
+        let transaction_identity = Arc::new(
+            same_file::Handle::from_path(&transaction_dir).map_err(|source| {
+                TransactionError::operational(
+                    "inspect transaction directory identity",
+                    &transaction_dir,
+                    source,
+                )
+            })?,
+        );
+        let transaction_metadata =
+            verify_private_directory(&transaction_dir, &transaction_identity)?;
+        self.context
+            .verify_transaction_filesystem(&transaction_dir, &transaction_metadata)?;
         let mut working = WorkingTransaction {
             context: self.context,
             transaction_dir,
@@ -378,6 +466,39 @@ impl LockedRecoveredRoot {
             #[cfg(test)]
             target_lookup_count: 0,
         })
+    }
+}
+
+fn validate_journal_capacity(
+    state: &JournalState,
+    evidence: &Path,
+) -> Result<(), TransactionError> {
+    let mut maximum = state.clone();
+    maximum.sequence = u64::MAX;
+    maximum.phase = JournalPhase::RollingBack;
+    maximum.next_index = maximum.entries.len();
+    for entry in &mut maximum.entries {
+        maximize_prior_encoding(entry);
+    }
+    if maximum.encode(evidence)?.len() as u64 > MAX_STATE_BYTES {
+        return Err(TransactionError::invalid_state(
+            evidence,
+            "transaction journal exceeds the hard state-size limit",
+        ));
+    }
+    Ok(())
+}
+
+fn maximize_prior_encoding(entry: &mut JournalEntry) {
+    #[cfg(unix)]
+    {
+        entry.prior = PriorState::Present;
+        entry.prior_mode = Some(0o777);
+    }
+    #[cfg(not(unix))]
+    {
+        entry.prior = PriorState::Missing;
+        entry.prior_mode = None;
     }
 }
 
@@ -492,12 +613,13 @@ impl StagingTransaction {
                     self.working
                         .verify_internal_missing(&self.working.backup_path(index))?;
                 }
-                TargetGeneration::Existing(_) => {
+                TargetGeneration::Existing { .. } => {
                     let backup = self.working.backup_path(index);
                     let prior_mode = copy_regular_to_private(
                         &self.working,
                         &target,
                         &backup,
+                        Some(&retained_generation),
                         "back up publication target",
                     )?;
                     prior.push((PriorState::Present, prior_mode));
@@ -601,7 +723,14 @@ pub(crate) struct ReadyTransaction {
 }
 
 impl ReadyTransaction {
-    pub(crate) fn commit(mut self) -> Result<(), TransactionError> {
+    pub(crate) fn commit(self) -> Result<(), TransactionError> {
+        self.commit_with_precommit_validation(&mut || Ok(()))
+    }
+
+    pub(crate) fn commit_with_precommit_validation(
+        mut self,
+        validate: &mut dyn FnMut() -> std::result::Result<(), String>,
+    ) -> Result<(), TransactionError> {
         self.verify_unpublished_generations(0)?;
         let generations = self.working.classify_all()?;
         if generations.iter().any(|generation| !generation.is_old()) {
@@ -611,7 +740,7 @@ impl ReadyTransaction {
             ));
         }
 
-        let publication_result = self.publish_all();
+        let publication_result = self.publish_all(validate);
         if let Err(commit_error) = publication_result {
             return self.rollback_after_commit_failure(commit_error);
         }
@@ -650,12 +779,23 @@ impl ReadyTransaction {
         Ok(())
     }
 
-    fn publish_all(&mut self) -> Result<(), TransactionError> {
+    fn publish_all(
+        &mut self,
+        validate: &mut dyn FnMut() -> std::result::Result<(), String>,
+    ) -> Result<(), TransactionError> {
         for index in self.working.state.next_index..self.working.state.entries.len() {
             self.working.verify_publication_frontier(index)?;
             self.working
                 .checkpoint(Checkpoint::CommitBefore { index })?;
             self.verify_unpublished_generations(index)?;
+            if index + 1 == self.working.state.entries.len() {
+                validate().map_err(|reason| {
+                    TransactionError::invalid_state(
+                        &self.working.transaction_dir,
+                        format!("commit-point precondition failed: {reason}"),
+                    )
+                })?;
+            }
             let prior_generation = self.prior_generations[index].clone();
             self.working.publish_entry(index, &prior_generation)?;
             self.working.checkpoint(Checkpoint::CommitAfter { index })?;
@@ -742,6 +882,8 @@ impl ReadyTransaction {
 struct RootContext {
     root: PathBuf,
     root_identity: same_file::Handle,
+    #[cfg(unix)]
+    root_directory: File,
     lock_path: PathBuf,
     lock_identity: same_file::Handle,
     _lock_file: Arc<File>,
@@ -782,6 +924,19 @@ impl RootContext {
                 "canonical transaction root is not a directory",
             ));
         }
+        #[cfg(unix)]
+        let root_directory = File::open(&root).map_err(|source| {
+            TransactionError::operational("open transaction root", &root, source)
+        })?;
+        #[cfg(unix)]
+        let root_identity =
+            same_file::Handle::from_file(root_directory.try_clone().map_err(|source| {
+                TransactionError::operational("clone transaction root handle", &root, source)
+            })?)
+            .map_err(|source| {
+                TransactionError::operational("inspect transaction root identity", &root, source)
+            })?;
+        #[cfg(not(unix))]
         let root_identity = same_file::Handle::from_path(&root).map_err(|source| {
             TransactionError::operational("inspect transaction root identity", &root, source)
         })?;
@@ -825,6 +980,8 @@ impl RootContext {
         let context = Self {
             root,
             root_identity,
+            #[cfg(unix)]
+            root_directory,
             lock_path,
             lock_identity,
             _lock_file: Arc::new(lock_file),
@@ -919,6 +1076,221 @@ impl RootContext {
         Ok(())
     }
 
+    #[cfg(unix)]
+    fn open_relative_parent(
+        &self,
+        path: &Path,
+    ) -> Result<(File, std::ffi::OsString), TransactionError> {
+        use rustix::fs::{Mode, OFlags, openat};
+
+        let relative = path.strip_prefix(&self.root).map_err(|_| {
+            TransactionError::invalid_state(
+                &self.root,
+                format!("transaction path escapes the pinned root: {path:?}"),
+            )
+        })?;
+        let mut components = relative
+            .components()
+            .map(|component| match component {
+                std::path::Component::Normal(value) => Ok(value.to_os_string()),
+                _ => Err(TransactionError::invalid_state(
+                    &self.root,
+                    format!("transaction path has a forbidden component: {path:?}"),
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let name = components.pop().ok_or_else(|| {
+            TransactionError::invalid_state(
+                &self.root,
+                format!("transaction path has no file name: {path:?}"),
+            )
+        })?;
+        let mut parent = self.root_directory.try_clone().map_err(|source| {
+            TransactionError::operational("clone pinned transaction root", &self.root, source)
+        })?;
+        for component in components {
+            let child = openat(
+                &parent,
+                &component,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|source| {
+                TransactionError::operational(
+                    "open transaction path below pinned root",
+                    path,
+                    std::io::Error::from_raw_os_error(source.raw_os_error()),
+                )
+            })?;
+            parent = child.into();
+        }
+        Ok((parent, name))
+    }
+
+    #[cfg(unix)]
+    fn rename_within_root(
+        &self,
+        source: &Path,
+        target: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        let (source_parent, source_name) = self.open_relative_parent(source)?;
+        let (target_parent, target_name) = self.open_relative_parent(target)?;
+        rustix::fs::renameat(&source_parent, &source_name, &target_parent, &target_name).map_err(
+            |source| {
+                TransactionError::operational(
+                    operation,
+                    target,
+                    std::io::Error::from_raw_os_error(source.raw_os_error()),
+                )
+            },
+        )?;
+        target_parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync publication target directory", target, source)
+        })?;
+        source_parent.sync_all().map_err(|source_error| {
+            TransactionError::operational("sync transaction source directory", source, source_error)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn rename_within_root(
+        &self,
+        source: &Path,
+        target: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        std::fs::rename(source, target)
+            .map_err(|source| TransactionError::operational(operation, target, source))?;
+        if let Some(parent) = target.parent() {
+            sync_directory(parent)?;
+        }
+        sync_directory(&self.root)
+    }
+
+    #[cfg(unix)]
+    fn remove_within_root(
+        &self,
+        path: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        let (parent, name) = self.open_relative_parent(path)?;
+        rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::empty()).map_err(|source| {
+            TransactionError::operational(
+                operation,
+                path,
+                std::io::Error::from_raw_os_error(source.raw_os_error()),
+            )
+        })?;
+        parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync publication target directory", path, source)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn remove_within_root(
+        &self,
+        path: &Path,
+        operation: &'static str,
+    ) -> Result<(), TransactionError> {
+        std::fs::remove_file(path)
+            .map_err(|source| TransactionError::operational(operation, path, source))?;
+        if let Some(parent) = path.parent() {
+            sync_directory(parent)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn remove_owned_regular_within_root_if_present(
+        &self,
+        evidence: &Path,
+        path: &Path,
+    ) -> Result<(), TransactionError> {
+        use rustix::fs::{Mode, OFlags, openat};
+
+        let (parent, name) = self.open_relative_parent(path)?;
+        let opened = match openat(
+            &parent,
+            &name,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        ) {
+            Ok(opened) => opened,
+            Err(source) if source == rustix::io::Errno::NOENT => return Ok(()),
+            Err(source) if source == rustix::io::Errno::LOOP => {
+                return Err(TransactionError::invalid_state(
+                    evidence,
+                    format!("cleanup path is a symlink: {path:?}"),
+                ));
+            }
+            Err(source) => {
+                return Err(TransactionError::operational(
+                    "open transaction cleanup file below pinned root",
+                    path,
+                    std::io::Error::from_raw_os_error(source.raw_os_error()),
+                ));
+            }
+        };
+        let file: File = opened.into();
+        let metadata = file.metadata().map_err(|source| {
+            TransactionError::operational("inspect transaction cleanup file", path, source)
+        })?;
+        if !metadata.file_type().is_file() {
+            return Err(TransactionError::invalid_state(
+                evidence,
+                format!("cleanup path is a non-regular file: {path:?}"),
+            ));
+        }
+        verify_private_file_link_count(path, &metadata)?;
+        rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::empty()).map_err(|source| {
+            TransactionError::operational(
+                "remove transaction cleanup file",
+                path,
+                std::io::Error::from_raw_os_error(source.raw_os_error()),
+            )
+        })?;
+        parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync transaction cleanup directory", path, source)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn remove_owned_regular_within_root_if_present(
+        &self,
+        evidence: &Path,
+        path: &Path,
+    ) -> Result<(), TransactionError> {
+        remove_owned_regular_if_present(evidence, path)?;
+        if let Some(parent) = path.parent() {
+            sync_directory(parent)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_within_root(&self, path: &Path) -> Result<(), TransactionError> {
+        let (parent, name) = self.open_relative_parent(path)?;
+        rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::REMOVEDIR).map_err(|source| {
+            TransactionError::operational(
+                "remove empty transaction directory",
+                path,
+                std::io::Error::from_raw_os_error(source.raw_os_error()),
+            )
+        })?;
+        parent.sync_all().map_err(|source| {
+            TransactionError::operational("sync transaction root", &self.root, source)
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn remove_directory_within_root(&self, path: &Path) -> Result<(), TransactionError> {
+        std::fs::remove_dir(path).map_err(|source| {
+            TransactionError::operational("remove empty transaction directory", path, source)
+        })?;
+        sync_directory(&self.root)
+    }
+
     fn checkpoint(&self, checkpoint: Checkpoint) -> Result<(), TransactionError> {
         self.checkpoint.run(checkpoint).map_err(|source| {
             TransactionError::operational("run transaction checkpoint", &self.root, source)
@@ -954,13 +1326,21 @@ impl WorkingTransaction {
         reason: &'static str,
     ) -> Result<(), TransactionError> {
         let current = self.inspect_target_identity(target)?;
-        if expected.matches_identity(current.as_ref()) {
-            return Ok(());
+        if !expected.matches_identity(current.as_ref()) {
+            return Err(TransactionError::invalid_state(
+                &self.transaction_dir,
+                format!("{reason}: {target:?}"),
+            ));
         }
-        Err(TransactionError::invalid_state(
-            &self.transaction_dir,
-            format!("{reason}: {target:?}"),
-        ))
+        if let Some(expected_content) = expected.content()
+            && !target_matches_content(target, expected.identity(), expected_content, self)?
+        {
+            return Err(TransactionError::invalid_state(
+                &self.transaction_dir,
+                format!("{reason}: approved content changed at {target:?}"),
+            ));
+        }
+        Ok(())
     }
 
     fn inspect_target_identity(
@@ -1299,6 +1679,9 @@ impl WorkingTransaction {
         prior_generation: &TargetGeneration,
     ) -> Result<(), TransactionError> {
         let target = self.target_path(index)?;
+        if self.classify_entry(index)? == GenerationMatch::Both {
+            return Ok(());
+        }
         match self.state.entries[index].operation {
             TransactionOperation::Write => {
                 deterministic_replace_from(
@@ -1526,18 +1909,13 @@ impl WorkingTransaction {
         }
         for (ordinal, path) in paths.into_iter().enumerate() {
             self.checkpoint(Checkpoint::CleanupFileBefore { ordinal })?;
-            remove_owned_regular_if_present(&self.transaction_dir, &path)?;
-            sync_directory(&self.transaction_dir)?;
+            self.context
+                .remove_owned_regular_within_root_if_present(&self.transaction_dir, &path)?;
             self.checkpoint(Checkpoint::CleanupFileAfter { ordinal })?;
         }
-        std::fs::remove_dir(&self.transaction_dir).map_err(|source| {
-            TransactionError::operational(
-                "remove empty transaction directory",
-                &self.transaction_dir,
-                source,
-            )
-        })?;
-        sync_directory(&self.context.root)?;
+        self.context
+            .remove_directory_within_root(&self.transaction_dir)?;
+        self.context.verify_root_and_lock()?;
         self.checkpoint(Checkpoint::CleanupAfter)?;
         Ok(())
     }
@@ -2218,6 +2596,7 @@ fn copy_regular_to_private(
     working: &WorkingTransaction,
     source: &Path,
     destination: &Path,
+    expected: Option<&TargetGeneration>,
     operation: &'static str,
 ) -> Result<Option<u32>, TransactionError> {
     let mut source_file = open_verified_regular(source, &working.transaction_dir)?;
@@ -2235,9 +2614,20 @@ fn copy_regular_to_private(
             TransactionError::operational("inspect backup source identity", source, source_error)
         })?;
     let mut destination_file = create_private_file(destination)?;
-    std::io::copy(&mut source_file, &mut destination_file).map_err(|source_error| {
-        TransactionError::operational(operation, destination, source_error)
-    })?;
+    if let Some(content) = expected.and_then(TargetGeneration::content) {
+        copy_content_pinned(
+            &mut source_file,
+            &mut destination_file,
+            content,
+            &working.transaction_dir,
+            source,
+            destination,
+        )?;
+    } else {
+        std::io::copy(&mut source_file, &mut destination_file).map_err(|source_error| {
+            TransactionError::operational(operation, destination, source_error)
+        })?;
+    }
     destination_file.sync_all().map_err(|source_error| {
         TransactionError::operational("sync transaction backup", destination, source_error)
     })?;
@@ -2257,16 +2647,103 @@ fn copy_regular_to_private(
             )
         })?,
     )?;
-    if current_source != source_identity
-        || current_mode != prior_mode
-        || !files_equal(source, destination, &working.transaction_dir)?
-    {
+    let content_matches = if expected.and_then(TargetGeneration::content).is_some() {
+        true
+    } else {
+        files_equal(source, destination, &working.transaction_dir)?
+    };
+    if current_source != source_identity || current_mode != prior_mode || !content_matches {
         return Err(TransactionError::invalid_state(
             &working.transaction_dir,
             format!("publication target changed while it was backed up: {source:?}"),
         ));
     }
     Ok(prior_mode)
+}
+
+#[cfg(feature = "rustdoc")]
+fn copy_content_pinned(
+    source: &mut File,
+    destination: &mut File,
+    expected: TargetContentGeneration,
+    evidence: &Path,
+    source_path: &Path,
+    destination_path: &Path,
+) -> Result<(), TransactionError> {
+    let mut remaining = expected.length;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    while remaining > 0 {
+        let requested = usize::try_from(remaining.min(buffer.len() as u64))
+            .expect("the bounded transaction buffer length fits usize");
+        let read = source
+            .read(&mut buffer[..requested])
+            .map_err(|source_error| {
+                TransactionError::operational(
+                    "read content-pinned backup source",
+                    source_path,
+                    source_error,
+                )
+            })?;
+        if read == 0 {
+            return Err(TransactionError::invalid_state(
+                evidence,
+                format!(
+                    "publication target became shorter than its approved generation: {source_path:?}"
+                ),
+            ));
+        }
+        destination
+            .write_all(&buffer[..read])
+            .map_err(|source_error| {
+                TransactionError::operational(
+                    "write content-pinned transaction backup",
+                    destination_path,
+                    source_error,
+                )
+            })?;
+        hasher.update(&buffer[..read]);
+        remaining -= read as u64;
+    }
+    let mut extra = [0u8; 1];
+    if source.read(&mut extra).map_err(|source_error| {
+        TransactionError::operational(
+            "probe content-pinned backup source length",
+            source_path,
+            source_error,
+        )
+    })? != 0
+    {
+        return Err(TransactionError::invalid_state(
+            evidence,
+            format!(
+                "publication target became longer than its approved generation: {source_path:?}"
+            ),
+        ));
+    }
+    let actual: [u8; 32] = hasher.finalize().into();
+    if actual != expected.sha256 {
+        return Err(TransactionError::invalid_state(
+            evidence,
+            format!("publication target content changed before backup: {source_path:?}"),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "rustdoc"))]
+fn copy_content_pinned(
+    _source: &mut File,
+    _destination: &mut File,
+    _expected: TargetContentGeneration,
+    evidence: &Path,
+    _source_path: &Path,
+    _destination_path: &Path,
+) -> Result<(), TransactionError> {
+    Err(TransactionError::invalid_state(
+        evidence,
+        "content-pinned target generation requires the rustdoc feature",
+    ))
 }
 
 fn deterministic_replace_from(
@@ -2293,8 +2770,9 @@ fn deterministic_replace_from(
             )
         })?;
     let put = working.put_path(index);
-    remove_owned_regular_if_present(&working.transaction_dir, &put)?;
-    sync_directory(&working.transaction_dir)?;
+    working
+        .context
+        .remove_owned_regular_within_root_if_present(&working.transaction_dir, &put)?;
     let mut destination = create_put_file(&put)?;
     std::io::copy(&mut source_file, &mut destination)
         .map_err(|source_error| TransactionError::operational(operation, &put, source_error))?;
@@ -2333,12 +2811,8 @@ fn deterministic_replace_from(
         let _ = working.inspect_target(target)?;
     }
     verify_open_put_identity(&put, &destination, working.state.entries[index].prior_mode)?;
-    std::fs::rename(&put, target)
-        .map_err(|source_error| TransactionError::operational(operation, target, source_error))?;
-    if let Some(parent) = target.parent() {
-        sync_directory(parent)?;
-    }
-    sync_directory(&working.transaction_dir)
+    working.checkpoint(Checkpoint::ReplaceBoundary { index })?;
+    working.context.rename_within_root(&put, target, operation)
 }
 
 fn remove_regular_if_present(
@@ -2360,12 +2834,8 @@ fn remove_regular_if_present(
     match working.inspect_target(path)? {
         TargetPresence::Missing => Ok(()),
         TargetPresence::Regular => {
-            std::fs::remove_file(path)
-                .map_err(|source| TransactionError::operational(operation, path, source))?;
-            if let Some(parent) = path.parent() {
-                sync_directory(parent)?;
-            }
-            Ok(())
+            working.checkpoint(Checkpoint::DeleteBoundary { index })?;
+            working.context.remove_within_root(path, operation)
         }
     }
 }
@@ -2473,6 +2943,98 @@ fn files_equal(left: &Path, right: &Path, evidence: &Path) -> Result<bool, Trans
     let mut left = open_verified_regular(left_path, evidence)?;
     let mut right = open_verified_regular(right_path, evidence)?;
     opened_files_equal(&mut left, &mut right, evidence)
+}
+
+#[cfg(feature = "rustdoc")]
+fn target_matches_content(
+    target: &Path,
+    expected_identity: Option<&same_file::Handle>,
+    expected: TargetContentGeneration,
+    working: &WorkingTransaction,
+) -> Result<bool, TransactionError> {
+    let expected_identity = expected_identity.ok_or_else(|| {
+        TransactionError::invalid_state(
+            &working.transaction_dir,
+            "a missing target generation cannot carry an approved content digest",
+        )
+    })?;
+    let mut file = File::open(target).map_err(|source| {
+        TransactionError::operational("open approved publication target", target, source)
+    })?;
+    let opened_identity = same_file::Handle::from_file(file.try_clone().map_err(|source| {
+        TransactionError::operational("clone approved publication target", target, source)
+    })?)
+    .map_err(|source| {
+        TransactionError::operational(
+            "inspect approved publication target identity",
+            target,
+            source,
+        )
+    })?;
+    if &opened_identity != expected_identity {
+        return Ok(false);
+    }
+    let opened_metadata = file.metadata().map_err(|source| {
+        TransactionError::operational("inspect approved publication target", target, source)
+    })?;
+    if !opened_metadata.is_file() || opened_metadata.len() != expected.length {
+        return Ok(false);
+    }
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut remaining = expected.length;
+    while remaining > 0 {
+        let requested = usize::try_from(remaining.min(buffer.len() as u64))
+            .expect("the bounded transaction buffer length fits usize");
+        let read = file.read(&mut buffer[..requested]).map_err(|source| {
+            TransactionError::operational("hash approved publication target", target, source)
+        })?;
+        if read == 0 {
+            return Ok(false);
+        }
+        hasher.update(&buffer[..read]);
+        remaining -= read as u64;
+    }
+    let mut extra = [0u8; 1];
+    if file.read(&mut extra).map_err(|source| {
+        TransactionError::operational("probe approved publication target length", target, source)
+    })? != 0
+    {
+        return Ok(false);
+    }
+
+    let final_metadata = std::fs::symlink_metadata(target).map_err(|source| {
+        TransactionError::operational("reinspect approved publication target", target, source)
+    })?;
+    if !final_metadata.file_type().is_file() || final_metadata.len() != expected.length {
+        return Ok(false);
+    }
+    let final_identity = same_file::Handle::from_path(target).map_err(|source| {
+        TransactionError::operational(
+            "reinspect approved publication target identity",
+            target,
+            source,
+        )
+    })?;
+    if &final_identity != expected_identity {
+        return Ok(false);
+    }
+    let actual: [u8; 32] = hasher.finalize().into();
+    Ok(actual == expected.sha256)
+}
+
+#[cfg(not(feature = "rustdoc"))]
+fn target_matches_content(
+    _target: &Path,
+    _expected_identity: Option<&same_file::Handle>,
+    _expected: TargetContentGeneration,
+    working: &WorkingTransaction,
+) -> Result<bool, TransactionError> {
+    Err(TransactionError::invalid_state(
+        &working.transaction_dir,
+        "content-pinned target generation requires the rustdoc feature",
+    ))
 }
 
 fn opened_files_equal(
@@ -2654,7 +3216,9 @@ enum Checkpoint {
     PersistAfter { slot: StateSlot },
     CommitBefore { index: usize },
     ReplaceBefore { index: usize },
+    ReplaceBoundary { index: usize },
     DeleteBefore { index: usize },
+    DeleteBoundary { index: usize },
     CommitAfter { index: usize },
     RollbackBefore { index: usize },
     RollbackAfter { index: usize },

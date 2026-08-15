@@ -32,6 +32,8 @@ target/
 /fuzz/coverage/
 /fuzz/target/
 **/.kotlin/
+**/.merman.lock
+**/.merman.transaction/
 
 # Local npm tarballs used for upstream layout source inspection (do not commit)
 /cose-base-*.tgz
