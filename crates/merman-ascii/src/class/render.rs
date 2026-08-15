@@ -787,7 +787,7 @@ fn render_class_component_lines<'text>(
         charset: settings.charset,
         width_profile: settings.options.terminal_width_profile,
     };
-    let lines = match execution {
+    match execution {
         Some(execution) => relation_graph::render_relation_component_lines_with_execution(
             boxes,
             layouts,
@@ -796,7 +796,7 @@ fn render_class_component_lines<'text>(
             &adapter,
             deferred_text,
             execution,
-        )?,
+        ),
         None => relation_graph::render_relation_component_lines(
             boxes,
             layouts,
@@ -804,9 +804,8 @@ fn render_class_component_lines<'text>(
             resources,
             &adapter,
             deferred_text,
-        )?,
-    };
-    Ok(lines.unwrap_or_default())
+        ),
+    }
 }
 
 fn render_class_document_lines(
@@ -2857,8 +2856,7 @@ mod tests {
             &adapter,
             &mut deferred,
         )
-        .expect("class summary should plan")
-        .expect("class summary should produce lines");
+        .expect("class summary should plan");
         let before = (
             resources.layout_work_used(),
             resources.document_cells_used(),

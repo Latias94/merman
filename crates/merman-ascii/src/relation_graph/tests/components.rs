@@ -81,8 +81,7 @@ fn disconnected_component_rendering_borrows_non_clone_relations() {
         &adapter,
         &mut deferred,
     )
-    .expect("disconnected components should render")
-    .expect("non-empty components should produce lines");
+    .expect("disconnected components should render");
     let rendered = render_lines_with_deferred_options(&lines, &options, &mut resources, &deferred)
         .expect("component lines should encode");
 
@@ -389,4 +388,60 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
         geometry_scan.get(),
         "the exact-minus-one boundary should fail at the later materialized pair admission"
     );
+}
+
+#[test]
+fn strict_k2_2_route_batch_observes_control_from_the_resource_ledger() {
+    let boxes = strict_k2_2_boxes();
+    let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
+    let options = AsciiRenderOptions::ascii();
+    let policy = AsciiResourcePolicy::default();
+    let adapter = TestRelationAdapter {
+        summary_reason: Cell::new(None),
+        overlap: TestRelationOverlap::None,
+    };
+    let mut resources = test_resources(policy);
+    let box_refs = boxes.iter().collect::<Vec<_>>();
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let scene = match plan_layered_relation_scene(
+        &box_refs,
+        edges,
+        4,
+        options.terminal_width_profile,
+        &mut resources,
+    )
+    .expect("strict K2,2 scene should plan")
+    {
+        LayeredRelationScenePlan::Routed(scene) => scene,
+        LayeredRelationScenePlan::Summary(reason) => {
+            panic!("strict K2,2 should not summarize before route planning: {reason:?}")
+        }
+    };
+    let relation_refs = relations.iter().collect::<Vec<_>>();
+    let control = OperationControl::new();
+    let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
+    let work_before = controlled.layout_work_used();
+    let document_before = controlled.document_cells_used();
+
+    let error = plan_layered_route_batch_with_probes(
+        &scene,
+        &relation_refs,
+        &controlled,
+        &adapter,
+        || control.cancel(),
+        || {},
+    )
+    .expect_err("route validation should observe cancellation from the shared ledger");
+
+    assert!(matches!(
+        error,
+        LayeredRouteBatchError::Resource(AsciiError::Cancelled(cancelled))
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == CancelReason::Requested
+    ));
+    assert_eq!(controlled.layout_work_used(), work_before);
+    assert_eq!(controlled.document_cells_used(), document_before);
 }

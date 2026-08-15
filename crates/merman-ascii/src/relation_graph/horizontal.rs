@@ -280,7 +280,7 @@ where
     A: RelationComponentAdapter<'text, R>,
 {
     render_horizontal_relation_components_impl(
-        boxes, relations, direction, options, resources, adapter, deferred, None,
+        boxes, relations, direction, options, resources, adapter, deferred,
     )
 }
 
@@ -307,7 +307,6 @@ where
         &mut resources,
         adapter,
         deferred,
-        Some(execution),
     )
 }
 
@@ -320,12 +319,11 @@ fn render_horizontal_relation_components_impl<'text, R, A>(
     resources: &mut ResourceContext,
     adapter: &A,
     deferred: &mut DeferredTextRegistry<'text>,
-    execution: Option<AsciiExecution<'_>>,
 ) -> Result<Vec<RelationGraphLine>>
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    checkpoint_layout(execution)?;
+    resources.checkpoint()?;
     if boxes.is_empty() {
         return Ok(Vec::new());
     }
@@ -345,7 +343,7 @@ where
             .materialize(options, resources);
     }
 
-    let edges = build_layered_edges(relations, adapter, resources, execution)?;
+    let edges = build_layered_edges(relations, adapter, resources)?;
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?;
     let mut regions = Vec::new();
@@ -365,7 +363,7 @@ where
     };
 
     for component in &components {
-        checkpoint_layout(execution)?;
+        resources.checkpoint()?;
         if component.edge_indices().is_empty() {
             standalone.extend(component.boxes().iter().copied());
             continue;
@@ -391,15 +389,8 @@ where
         ));
     }
 
-    checkpoint_layout(execution)?;
+    resources.checkpoint()?;
     RelationRenderPlan::try_new(regions, resources)?.materialize(options, resources)
-}
-
-fn checkpoint_layout(execution: Option<AsciiExecution<'_>>) -> Result<()> {
-    if let Some(execution) = execution {
-        execution.checkpoint(OperationPhase::Layout)?;
-    }
-    Ok(())
 }
 
 pub(crate) fn render_horizontal_box_strip_lines(

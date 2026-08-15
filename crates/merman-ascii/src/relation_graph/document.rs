@@ -5,13 +5,13 @@ use super::horizontal::{
 use super::layered::{
     LayeredRelationRoutePlan, LayeredRelationScene, LayeredRelationSummaryReason,
 };
+use super::stack::{stacked_box_ref_extent, stacked_box_ref_lines};
 use super::summary::{
     RelationGraphSummaryRow, relation_summary_extent, relation_summary_lines_for_rows,
 };
 use super::{
     RelationGraphBox, RelationGraphLine, RelationParallelPlan, RelationSelfLoopPlan,
     RelationSelfLoopRows, RelationStackPlan, grid_overflow, layout_allocation_failed,
-    stacked_box_ref_extent, stacked_box_ref_lines,
 };
 use crate::Result;
 use crate::color::AsciiColorRole;
@@ -129,6 +129,36 @@ impl RelationDocumentPlan {
             return Err(grid_overflow(resources));
         }
         Ok(())
+    }
+}
+
+/// Admit a base relation block and an optional lossless summary as one logical
+/// document before either block allocates its terminal rows.
+pub(crate) fn render_relation_document_with_summary(
+    base_extent: LogicalExtent,
+    rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    build_base: impl FnOnce(&mut ResourceContext) -> Result<Vec<RelationGraphLine>>,
+) -> Result<Vec<RelationGraphLine>> {
+    let summary_extent = if rows.is_empty() {
+        None
+    } else {
+        Some(relation_summary_extent(rows, reason, options, resources)?)
+    };
+    let plan = RelationDocumentPlan::new(
+        base_extent,
+        summary_extent,
+        display_width_with_profile("relations:", options.terminal_width_profile),
+        resources,
+    )?;
+    if rows.is_empty() {
+        plan.materialize(resources, build_base)
+    } else {
+        plan.materialize_with_section(options, resources, build_base, |resources| {
+            relation_summary_lines_for_rows(rows, reason, options, resources)
+        })
     }
 }
 

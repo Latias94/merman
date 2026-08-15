@@ -1,10 +1,210 @@
+#[cfg(test)]
+use super::render_lines_with_options;
 use super::{
-    RelationGraphBox, RelationGraphLine, assemble_vertical_stack_lines, grid_overflow,
-    layout_allocation_failed, vertical_center, vertical_stack_extent,
+    RelationGraphBox, RelationGraphLine, grid_overflow, layout_allocation_failed,
+    render_lines_with_deferred_options, render_lines_with_deferred_options_with_execution,
 };
 use crate::Result;
+use crate::operation::AsciiExecution;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{LogicalExtent, ResourceContext};
+use crate::safe_text::DeferredTextRegistry;
 use crate::text::StyledLine;
+
+#[cfg(test)]
+pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
+    boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
+}
+
+pub(crate) fn render_stacked_boxes_with_deferred_options(
+    boxes: &[RelationGraphBox],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+) -> Result<String> {
+    let lines = stacked_box_lines(boxes, options.terminal_width_profile, resources)?;
+    render_lines_with_deferred_options(&lines, options, resources, deferred)
+}
+
+pub(crate) fn render_stacked_boxes_with_deferred_options_with_execution(
+    boxes: &[RelationGraphBox],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    deferred: &DeferredTextRegistry<'_>,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let mut layout_resources =
+        execution.resource_context(resources, merman_core::OperationPhase::Layout);
+    let lines = stacked_box_lines_ordered_impl(
+        boxes,
+        options.terminal_width_profile,
+        false,
+        &mut layout_resources,
+    )?;
+    render_lines_with_deferred_options_with_execution(
+        &lines, options, resources, deferred, execution,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn render_stacked_boxes_with_section(
+    boxes: &[RelationGraphBox],
+    section_title: RelationGraphLine,
+    section_lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    let additional_lines = resources.checked_grid_add(
+        usize::from(!boxes.is_empty() && !section_lines.is_empty()),
+        resources.checked_grid_add(usize::from(!section_lines.is_empty()), section_lines.len())?,
+    )?;
+    let base_height = stacked_boxes_height(boxes, resources)?;
+    let height = resources.checked_grid_add(base_height, additional_lines)?;
+    let width = boxes
+        .iter()
+        .map(RelationGraphBox::width)
+        .chain(std::iter::once(section_title.width()))
+        .chain(section_lines.iter().map(RelationGraphLine::width))
+        .max()
+        .unwrap_or(0);
+    let extent = resources.grid_extent(width, height)?;
+    resources.charge_layout_work(extent.cells())?;
+
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(height)
+        .map_err(|_| layout_allocation_failed())?;
+    for (index, relation_box) in boxes.iter().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::try_plain(
+                "",
+                options.terminal_width_profile,
+                resources,
+            )?);
+        }
+        lines.extend(relation_box.lines.iter().map(RelationGraphLine::shared));
+    }
+
+    if !section_lines.is_empty() {
+        if !lines.is_empty() {
+            lines.push(RelationGraphLine::try_plain(
+                "",
+                options.terminal_width_profile,
+                resources,
+            )?);
+        }
+        lines.push(section_title);
+        lines.extend(section_lines.iter().map(RelationGraphLine::shared));
+    }
+
+    if lines.is_empty() {
+        return Ok(String::new());
+    }
+
+    render_lines_with_options(&lines, options, resources)
+}
+
+pub(crate) fn stacked_box_lines(
+    boxes: &[RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    stacked_box_lines_ordered(boxes, width_profile, false, resources)
+}
+
+pub(crate) fn stacked_box_lines_ordered(
+    boxes: &[RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    reverse: bool,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    stacked_box_lines_ordered_impl(boxes, width_profile, reverse, resources)
+}
+
+fn stacked_box_lines_ordered_impl(
+    boxes: &[RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    reverse: bool,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let extent = stacked_box_extent(boxes, resources)?;
+    resources.charge_layout_work(extent.cells())?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(extent.height())
+        .map_err(|_| layout_allocation_failed())?;
+    let ordered = (0..boxes.len()).map(|index| {
+        let ordered_index = if reverse {
+            boxes.len() - index - 1
+        } else {
+            index
+        };
+        &boxes[ordered_index]
+    });
+    for (index, relation_box) in ordered.enumerate() {
+        resources.checkpoint()?;
+        if index > 0 {
+            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
+        }
+        lines.extend(relation_box.lines.iter().map(RelationGraphLine::shared));
+    }
+    Ok(lines)
+}
+
+pub(crate) fn stacked_box_extent(
+    boxes: &[RelationGraphBox],
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = stacked_boxes_height(boxes, resources)?;
+    let width = boxes.iter().map(RelationGraphBox::width).max().unwrap_or(0);
+    resources.grid_extent(width, height)
+}
+
+pub(super) fn stacked_box_ref_lines(
+    boxes: &[&RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let extent = stacked_box_ref_extent(boxes, resources)?;
+    resources.charge_layout_work(extent.cells())?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(extent.height())
+        .map_err(|_| layout_allocation_failed())?;
+    for (index, relation_box) in boxes.iter().enumerate() {
+        resources.checkpoint()?;
+        if index > 0 {
+            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
+        }
+        lines.extend(relation_box.lines.iter().map(RelationGraphLine::shared));
+    }
+    Ok(lines)
+}
+
+pub(super) fn stacked_box_ref_extent(
+    boxes: &[&RelationGraphBox],
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = boxes
+        .iter()
+        .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
+            resources.checked_grid_add(height, relation_box.height())
+        })?;
+    let width = boxes
+        .iter()
+        .map(|relation_box| relation_box.width())
+        .max()
+        .unwrap_or(0);
+    resources.grid_extent(width, height)
+}
+
+fn stacked_boxes_height(boxes: &[RelationGraphBox], resources: &ResourceContext) -> Result<usize> {
+    boxes
+        .iter()
+        .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
+            resources.checked_grid_add(height, relation_box.height())
+        })
+}
 
 #[derive(Debug)]
 pub(crate) struct RelationStackPlan<'a> {
@@ -311,4 +511,109 @@ fn parallel_relation_extent(
     let top_width = resources.checked_grid_add(top_left, top.width())?;
     let bottom_width = resources.checked_grid_add(bottom_left, bottom.width())?;
     resources.grid_extent(relation_width.max(top_width).max(bottom_width), height)
+}
+
+pub(crate) fn vertical_center(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    extra_half_widths: &[usize],
+) -> usize {
+    extra_half_widths
+        .iter()
+        .copied()
+        .fold((top.width / 2).max(bottom.width / 2), usize::max)
+}
+
+fn vertical_stack_extent(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    center: usize,
+    relation_extent: LogicalExtent,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = resources.checked_grid_add(
+        resources.checked_grid_add(top.height(), relation_extent.height())?,
+        bottom.height(),
+    )?;
+    let top_left = center
+        .checked_sub(top.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let bottom_left = center
+        .checked_sub(bottom.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let top_width = resources.checked_grid_add(top_left, top.width())?;
+    let bottom_width = resources.checked_grid_add(bottom_left, bottom.width())?;
+    resources.grid_extent(
+        relation_extent.width().max(top_width).max(bottom_width),
+        height,
+    )
+}
+
+fn assemble_vertical_stack_lines(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    center: usize,
+    relation_lines: Vec<RelationGraphLine>,
+    extent: LogicalExtent,
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(extent.height())
+        .map_err(|_| layout_allocation_failed())?;
+    lines.extend(try_align_box_lines(top, center, resources)?);
+    lines.extend(relation_lines);
+    lines.extend(try_align_box_lines(bottom, center, resources)?);
+    debug_assert_eq!(lines.len(), extent.height());
+    debug_assert_eq!(
+        lines
+            .iter()
+            .map(RelationGraphLine::width)
+            .max()
+            .unwrap_or(0),
+        extent.width()
+    );
+    Ok(lines)
+}
+
+fn try_align_box_lines(
+    relation_box: &RelationGraphBox,
+    center: usize,
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let left_padding = center
+        .checked_sub(relation_box.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(relation_box.height())
+        .map_err(|_| layout_allocation_failed())?;
+    for line in relation_box.lines() {
+        lines.push(try_padded_line(line, left_padding, 0, resources)?);
+    }
+    Ok(lines)
+}
+
+fn try_padded_line(
+    line: &RelationGraphLine,
+    left: usize,
+    right: usize,
+    resources: &ResourceContext,
+) -> Result<RelationGraphLine> {
+    let mut padded = StyledLine::try_blank_with_resources(left, line.width_profile(), resources)?;
+    padded.try_push_line(&line.line)?;
+    padded.try_push_spaces(right)?;
+    Ok(RelationGraphLine::from_styled(padded))
+}
+
+#[cfg(test)]
+fn render_box(relation_box: &RelationGraphBox) -> String {
+    let mut rendered = relation_box
+        .lines
+        .iter()
+        .map(RelationGraphLine::text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    rendered.push('\n');
+    rendered
 }

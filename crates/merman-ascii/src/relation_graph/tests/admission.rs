@@ -1,4 +1,5 @@
 use super::*;
+use crate::resource::LogicalExtent;
 
 fn aggregate_test_regions<'a>(
     wide_top: &'a RelationGraphBox,

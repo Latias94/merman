@@ -1692,8 +1692,7 @@ mod tests {
             &adapter,
             &mut deferred,
         )
-        .expect("ER summary should plan")
-        .expect("ER summary should produce lines");
+        .expect("ER summary should plan");
         let before = (
             resources.layout_work_used(),
             resources.document_cells_used(),

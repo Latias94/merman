@@ -1,6 +1,5 @@
 use super::super::{
-    LayeredRelationPaintPlan, RelationComponentAdapter, RelationGraphBox, checkpoint,
-    layout_allocation_failed,
+    LayeredRelationPaintPlan, RelationComponentAdapter, RelationGraphBox, layout_allocation_failed,
 };
 use super::route::{
     LayeredRelationRouteGeometry, LayeredRelationRoutePlan, LayeredRelationRouteStyle,
@@ -10,7 +9,6 @@ use super::scene::{
     LayeredRelationScene, LayeredRelationScenePlan, LayeredRelationSummaryReason,
     plan_layered_relation_scene,
 };
-use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 use crate::{AsciiError, Result};
@@ -40,7 +38,6 @@ pub(in crate::relation_graph) fn plan_layered_relation_component_ref_result<'box
     horizontal_gap: usize,
     resources: &mut ResourceContext,
     adapter: &A,
-    execution: Option<AsciiExecution<'_>>,
 ) -> Result<std::result::Result<LayeredRelationPaintPlan<'boxes>, LayeredRelationSummaryReason>>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -48,7 +45,7 @@ where
     let mut has_self_relation = false;
     let mut has_non_self_relation = false;
     for relation in relations {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         if adapter.is_self_relation(*relation) {
             has_self_relation = true;
         } else {
@@ -64,7 +61,7 @@ where
         .try_reserve_exact(relations.len())
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         edges.push(adapter.build_edges(*relation));
     }
     let scene = match plan_layered_relation_scene(
@@ -83,7 +80,7 @@ where
     };
 
     let (route_plans, extent) =
-        match plan_layered_route_batch_impl(&scene, relations, resources, adapter, execution) {
+        match plan_layered_route_batch_impl(&scene, relations, resources, adapter) {
             Ok(plan) => plan,
             Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
             Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
@@ -117,7 +114,6 @@ where
         horizontal_gap,
         resources,
         adapter,
-        None,
     )
 }
 
@@ -131,7 +127,7 @@ pub(in crate::relation_graph) fn plan_layered_route_batch<'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    plan_layered_route_batch_impl(scene, relations, resources, adapter, None)
+    plan_layered_route_batch_impl(scene, relations, resources, adapter)
 }
 
 fn plan_layered_route_batch_impl<'text, R, A>(
@@ -139,20 +135,11 @@ fn plan_layered_route_batch_impl<'text, R, A>(
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
-    execution: Option<AsciiExecution<'_>>,
 ) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    plan_layered_route_batch_with_probes_and_execution(
-        scene,
-        relations,
-        resources,
-        adapter,
-        execution,
-        || {},
-        || {},
-    )
+    plan_layered_route_batch_with_probes_impl(scene, relations, resources, adapter, || {}, || {})
 }
 
 #[cfg(test)]
@@ -167,23 +154,21 @@ pub(in crate::relation_graph) fn plan_layered_route_batch_with_probes<'text, R, 
 where
     A: RelationComponentAdapter<'text, R>,
 {
-    plan_layered_route_batch_with_probes_and_execution(
+    plan_layered_route_batch_with_probes_impl(
         scene,
         relations,
         resources,
         adapter,
-        None,
         before_geometry_collision_scan,
         before_materialized_collision_scan,
     )
 }
 
-fn plan_layered_route_batch_with_probes_and_execution<'text, R, A>(
+fn plan_layered_route_batch_with_probes_impl<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
-    execution: Option<AsciiExecution<'_>>,
     before_geometry_collision_scan: impl FnOnce(),
     before_materialized_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
@@ -202,7 +187,6 @@ where
                 relations,
                 resources,
                 adapter,
-                execution,
                 before_geometry_collision_scan,
                 before_materialized_collision_scan,
             )
@@ -225,7 +209,6 @@ fn plan_layered_route_batch_in_transaction<'text, R, A>(
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
-    execution: Option<AsciiExecution<'_>>,
     before_geometry_collision_scan: impl FnOnce(),
     before_materialized_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
@@ -238,7 +221,7 @@ where
         .try_reserve_exact(scene.draw_order().len())
         .map_err(|_| layout_allocation_failed())?;
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         let Some(relation) = relations.get(edge_index).copied() else {
             return Err(LayeredRouteBatchError::Semantic(
                 LayeredRelationSummaryReason::RouteCollision,
@@ -270,7 +253,6 @@ where
         scene,
         &planned,
         resources,
-        execution,
         before_geometry_collision_scan,
     )?;
 
@@ -279,7 +261,7 @@ where
         .try_reserve_exact(planned.len())
         .map_err(|_| layout_allocation_failed())?;
     for route in planned {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         let Some(relation) = relations.get(route.edge_index).copied() else {
             return Err(LayeredRouteBatchError::Semantic(
                 LayeredRelationSummaryReason::RouteCollision,
@@ -297,7 +279,6 @@ where
         scene,
         &route_plans,
         resources,
-        execution,
         before_materialized_collision_scan,
     )?;
     let extent = resources.grid_extent(scene.width(), scene.height())?;
@@ -350,7 +331,6 @@ fn validate_layered_route_geometries_with_probe(
     scene: &LayeredRelationScene<'_>,
     routes: &[PlannedLayeredRoute],
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
     before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
     resources.charge_layout_work(routes.len().max(1))?;
@@ -380,9 +360,9 @@ fn validate_layered_route_geometries_with_probe(
     }
     if scene.is_planar_k2_2() {
         for (index, route) in routes.iter().enumerate() {
-            checkpoint(execution, merman_core::OperationPhase::Layout)?;
+            resources.checkpoint()?;
             for other in &routes[index + 1..] {
-                checkpoint(execution, merman_core::OperationPhase::Layout)?;
+                resources.checkpoint()?;
                 if route.geometry.overlaps(&other.geometry) {
                     return Err(LayeredRouteBatchError::Semantic(
                         LayeredRelationSummaryReason::RouteCollision,
@@ -392,7 +372,7 @@ fn validate_layered_route_geometries_with_probe(
         }
     }
     for route in routes {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         if scene.route_geometry_overlaps_box(&route.geometry) {
             return Err(LayeredRouteBatchError::Semantic(
                 LayeredRelationSummaryReason::RouteCollision,
@@ -406,7 +386,6 @@ fn validate_layered_route_batch_with_probe(
     scene: &LayeredRelationScene<'_>,
     route_plans: &[LayeredRelationRoutePlan],
     resources: &ResourceContext,
-    execution: Option<AsciiExecution<'_>>,
     before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
     resources.charge_layout_work(route_plans.len().max(1))?;
@@ -445,9 +424,9 @@ fn validate_layered_route_batch_with_probe(
         ));
     }
     for (index, route_plan) in route_plans.iter().enumerate() {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         for other in &route_plans[index + 1..] {
-            checkpoint(execution, merman_core::OperationPhase::Layout)?;
+            resources.checkpoint()?;
             if route_plan.overlays_overlap(other) {
                 return Err(LayeredRouteBatchError::Semantic(
                     LayeredRelationSummaryReason::OverlayCollision,
@@ -457,9 +436,9 @@ fn validate_layered_route_batch_with_probe(
     }
     if scene.is_planar_k2_2() {
         for (index, route_plan) in route_plans.iter().enumerate() {
-            checkpoint(execution, merman_core::OperationPhase::Layout)?;
+            resources.checkpoint()?;
             for other in &route_plans[index + 1..] {
-                checkpoint(execution, merman_core::OperationPhase::Layout)?;
+                resources.checkpoint()?;
                 if route_plan.route_overlaps(other) {
                     return Err(LayeredRouteBatchError::Semantic(
                         LayeredRelationSummaryReason::RouteCollision,
@@ -476,7 +455,7 @@ fn validate_layered_route_batch_with_probe(
         }
     }
     for route_plan in route_plans {
-        checkpoint(execution, merman_core::OperationPhase::Layout)?;
+        resources.checkpoint()?;
         if scene.route_overlaps_box(route_plan) {
             return Err(LayeredRouteBatchError::Semantic(
                 LayeredRelationSummaryReason::RouteCollision,
