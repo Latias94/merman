@@ -24,6 +24,7 @@ pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     radius_sources: Vec<SourceFacetDeclaration>,
     pub(super) stroke_dasharray: Option<String>,
     stroke_dasharray_source: Option<SourceFacetDeclaration>,
+    inline_stroke_dasharray_status: crate::flowchart::FlowchartSourceFacetStatus,
     font_stack_source: Option<SourceFacetDeclaration>,
     font_size_source: Option<SourceFacetDeclaration>,
     shape_sources: Vec<PendingSourceDeclaration>,
@@ -384,7 +385,6 @@ impl FlowchartCompiledStyles {
         self.stroke_width_source = None;
         self.radius_sources = Vec::new();
         self.stroke_dasharray = None;
-        self.stroke_dasharray_source = None;
         self.generated_shape_sources = Vec::new();
 
         if hand_drawn {
@@ -411,6 +411,7 @@ impl FlowchartCompiledStyles {
         self.radius_sources = Vec::new();
         self.stroke_dasharray = None;
         self.stroke_dasharray_source = None;
+        self.inline_stroke_dasharray_status = crate::flowchart::FlowchartSourceFacetStatus::Absent;
         self.inline_shape_sources = Vec::new();
         self.generated_shape_sources = Vec::new();
         self
@@ -498,6 +499,16 @@ impl FlowchartCompiledStyles {
             .as_ref()
             .map(SourceFacetDeclaration::status)
             .unwrap_or(crate::flowchart::FlowchartSourceFacetStatus::Absent)
+    }
+
+    pub(super) fn emitted_edge_source_stroke_dasharray_status(
+        &self,
+        hand_drawn: bool,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        if !hand_drawn {
+            return self.source_stroke_dasharray_status();
+        }
+        self.inline_stroke_dasharray_status
     }
 
     pub(super) fn source_radius_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
@@ -1704,6 +1715,12 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         idx: FxHashMap<String, usize>,
     }
     impl SemanticMap {
+        fn get(&self, property: &str) -> Option<&OrderedDeclaration> {
+            self.idx
+                .get(property)
+                .and_then(|index| self.order.get(*index))
+        }
+
         fn set(
             &mut self,
             prepared: Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
@@ -1875,6 +1892,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     let mut radius_sources = Vec::new();
     let mut stroke_dasharray: Option<String> = None;
     let mut stroke_dasharray_source = None;
+    let mut inline_stroke_dasharray_status = crate::flowchart::FlowchartSourceFacetStatus::Absent;
     let mut font_stack_source = None;
     let mut font_size_source = None;
     let mut shape_sources = Vec::new();
@@ -2018,16 +2036,18 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         }
     }
 
-    if let Some(declaration) = inline_semantic
-        .order
-        .iter()
-        .find(|declaration| declaration.prepared.property() == "stroke")
-    {
+    if let Some(declaration) = inline_semantic.get("stroke") {
         inline_stroke_source = Some(SourceFacetDeclaration {
             prepared: Arc::clone(&declaration.prepared),
             provenance: declaration.provenance.clone(),
             admitted: admitted_flowchart_source_paint(declaration.prepared.value()),
         });
+    }
+    if let Some(declaration) = inline_semantic.get("stroke-dasharray") {
+        inline_stroke_dasharray_status = crate::flowchart::FlowchartSourceFacetStatus::from_parts(
+            true,
+            valid_stroke_dasharray(declaration.prepared.value()),
+        );
     }
     inline_shape_sources.extend(inline_declarations.iter().filter_map(|declaration| {
         (!crate::flowchart::flowchart_is_source_spelled_label_style_key(
@@ -2055,6 +2075,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         radius_sources,
         stroke_dasharray,
         stroke_dasharray_source,
+        inline_stroke_dasharray_status,
         font_stack_source,
         font_size_source,
         shape_sources,
@@ -2166,6 +2187,7 @@ mod tests {
             radius_sources: Vec::new(),
             stroke_dasharray: None,
             stroke_dasharray_source: None,
+            inline_stroke_dasharray_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             font_stack_source: None,
             font_size_source: None,
             shape_sources: Vec::new(),
@@ -2240,7 +2262,11 @@ mod tests {
         assert!(ordinary.stroke_width_source.is_none());
         assert!(ordinary.radius_sources.is_empty());
         assert!(ordinary.stroke_dasharray.is_none());
-        assert!(ordinary.stroke_dasharray_source.is_none());
+        assert!(ordinary.stroke_dasharray_source.is_some());
+        assert_eq!(
+            ordinary.inline_stroke_dasharray_status,
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
         assert!(ordinary.generated_shape_sources.is_empty());
         assert!(!ordinary.shape_sources.is_empty());
         assert!(!ordinary.edge_class_declarations.is_empty());
@@ -2256,6 +2282,11 @@ mod tests {
         assert!(!hand_drawn.shape_sources.is_empty());
         assert!(!hand_drawn.inline_shape_sources.is_empty());
         assert!(hand_drawn.inline_stroke_source.is_some());
+        assert!(hand_drawn.stroke_dasharray_source.is_some());
+        assert_eq!(
+            hand_drawn.inline_stroke_dasharray_status,
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
 
         let swimlane_label = compiled.into_swimlane_edge_label_artifact();
         assert!(swimlane_label.edge_class_declarations.is_empty());
@@ -2265,6 +2296,37 @@ mod tests {
         assert!(swimlane_label.inline_shape_sources.is_empty());
         assert!(!swimlane_label.shape_sources.is_empty());
         assert!(!swimlane_label.label_sources.is_empty());
+    }
+
+    #[test]
+    fn hand_drawn_edge_dasharray_precedence_uses_only_inline_sources() {
+        let class_defs = IndexMap::from([(
+            "edge-source".to_string(),
+            vec!["stroke-dasharray:8 3".to_string()],
+        )]);
+        let class_only =
+            flowchart_compile_styles(&class_defs, &["edge-source".to_string()], &[], &[])
+                .into_edge_artifact(true);
+        assert_eq!(
+            class_only.emitted_edge_source_stroke_dasharray_status(true),
+            crate::flowchart::FlowchartSourceFacetStatus::Absent
+        );
+        assert_eq!(
+            class_only.emitted_edge_source_stroke_dasharray_status(false),
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
+
+        let inline = flowchart_compile_styles(
+            &class_defs,
+            &["edge-source".to_string()],
+            &["stroke-dasharray:6 2".to_string()],
+            &[],
+        )
+        .into_edge_artifact(true);
+        assert_eq!(
+            inline.emitted_edge_source_stroke_dasharray_status(true),
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
     }
 
     #[test]

@@ -31,6 +31,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.edge_stroke_config_override,
     );
     let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
+    let stroke_dasharray_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+        emitted_styles.emitted_edge_source_stroke_dasharray_status(hand_drawn),
+        false,
+    );
+    let edge_writer_supports_typed_dasharray = !hand_drawn;
+    let typed_stroke_dasharray = ctx.edge_theme.stroke_dasharray_value(
+        stroke_dasharray_precedence,
+        edge_writer_supports_typed_dasharray,
+    );
 
     let cached_geom = edge_cache
         .get(&key)
@@ -68,6 +77,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                     crate::flowchart::FlowchartEdgeThemeEmission {
                         stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                             stroke_precedence,
+                            false,
+                        ),
+                        stroke_dasharray: crate::flowchart::FlowchartThemeFacetEmission::new(
+                            stroke_dasharray_precedence,
                             false,
                         ),
                     },
@@ -127,6 +140,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         hand_drawn,
         emitted_styles,
         typed_stroke,
+        typed_stroke_dasharray,
         class_attr: &scratch.edge_class_attr,
         marker_attrs: &scratch.edge_marker_attrs,
         default_edge_style: &ctx.default_edge_style,
@@ -143,6 +157,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                     stroke_precedence,
                     typed_stroke.is_some(),
+                ),
+                stroke_dasharray: crate::flowchart::FlowchartThemeFacetEmission::new(
+                    stroke_dasharray_precedence,
+                    typed_stroke_dasharray.is_some(),
                 ),
             },
             &source_residuals,
@@ -167,6 +185,7 @@ struct FlowchartEdgeSvgEmission<'a> {
     hand_drawn: bool,
     emitted_styles: &'a FlowchartCompiledStyles,
     typed_stroke: Option<&'a str>,
+    typed_stroke_dasharray: Option<&'a str>,
     class_attr: &'a str,
     marker_attrs: &'a str,
     default_edge_style: &'a [String],
@@ -255,6 +274,12 @@ impl FlowchartEdgeSvgEmission<'_> {
         if let Some(stroke) = self.typed_stroke {
             out.write_str(";stroke:")?;
             write!(out, "{}", escape_xml_display(stroke))?;
+            out.write_str(" !important")?;
+        }
+        if let Some(stroke_dasharray) = self.typed_stroke_dasharray {
+            out.write_str(";stroke-dasharray:")?;
+            // Typed dasharrays are canonical finite-number sequences separated by ASCII spaces.
+            out.write_str(stroke_dasharray)?;
             out.write_str(" !important")?;
         }
         if self.hand_drawn {
@@ -573,12 +598,13 @@ mod tests {
             hand_drawn: false,
             emitted_styles: &emitted_styles,
             typed_stroke: Some("#0f172a"),
+            typed_stroke_dasharray: Some("7 3"),
             class_attr: "edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link",
             marker_attrs: r#" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)""#,
             default_edge_style: &default_edge_style,
             neo_edge_mask: Some(neo_edge_mask),
         };
-        let expected_edge = r##"<path d="M0,0L16,0" id="diagram&lt;&amp;-edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
+        let expected_edge = r##"<path d="M0,0L16,0" id="diagram&lt;&amp;-edge" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 0; stroke-dashoffset: 0;stroke:#2563eb;opacity:0.5;stroke:#ef4444;;;opacity:0.5;stroke:#ef4444;stroke:#0f172a !important;stroke-dasharray:7 3 !important" data-edge="true" data-et="edge" data-id="edge" data-points="W3sieCI6MH1d" data-look="neo" marker-start="url(#diagram-flowchart-v2-circleStart)" marker-end="url(#diagram-flowchart-v2-pointEnd)" />"##;
         let initial = "prefix";
         let probe_meter = crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),

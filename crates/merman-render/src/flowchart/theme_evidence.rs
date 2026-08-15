@@ -255,6 +255,7 @@ pub(crate) struct FlowchartNodeThemeEmission {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartEdgeThemeEmission {
     pub(crate) stroke: FlowchartThemeFacetEmission,
+    pub(crate) stroke_dasharray: FlowchartThemeFacetEmission,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -292,6 +293,7 @@ struct FlowchartLabelThemeStyle {
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartEdgeThemeStyle {
     stroke: Option<FlowchartPaintOutcome>,
+    stroke_dasharray: Option<FlowchartDasharrayOutcome>,
     matched_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
@@ -326,6 +328,13 @@ impl FlowchartEdgeThemeStyle {
                         FamilyThemeRuleFacet::stroke,
                     );
                 }
+                ResolvedStyleProperty::StrokeDasharray => {
+                    resolved.stroke_dasharray = resolve_stroke_dasharray(
+                        theme,
+                        rule_index,
+                        style.stroke_dasharray_resolution(),
+                    );
+                }
                 ResolvedStyleProperty::Fill => {
                     if let Some(facet) =
                         FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
@@ -348,7 +357,6 @@ impl FlowchartEdgeThemeStyle {
                     FamilyThemeRuleFacet::Effect,
                 ),
                 ResolvedStyleProperty::StrokeWidth
-                | ResolvedStyleProperty::StrokeDasharray
                 | ResolvedStyleProperty::StrokeLinecap
                 | ResolvedStyleProperty::StrokeLinejoin
                 | ResolvedStyleProperty::Opacity
@@ -377,6 +385,20 @@ impl FlowchartEdgeThemeStyle {
     ) -> Option<&str> {
         (!precedence.overrides_theme() && path_emitted)
             .then(|| self.stroke.as_ref().and_then(FlowchartPaintOutcome::value))
+            .flatten()
+    }
+
+    pub(crate) fn stroke_dasharray_value(
+        &self,
+        precedence: FlowchartFacetPrecedence,
+        writer_supports_dasharray: bool,
+    ) -> Option<&str> {
+        (!precedence.overrides_theme() && writer_supports_dasharray)
+            .then(|| {
+                self.stroke_dasharray
+                    .as_ref()
+                    .and_then(FlowchartDasharrayOutcome::value)
+            })
             .flatten()
     }
 
@@ -1224,6 +1246,12 @@ impl FlowchartThemeEvidenceRecorder {
             emission.stroke.precedence,
             emission.stroke.verified,
         );
+        record_dasharray_outcome(
+            &mut state.edge,
+            style.stroke_dasharray.as_ref(),
+            emission.stroke_dasharray.precedence,
+            emission.stroke_dasharray.verified,
+        );
         state
             .edge
             .incomplete_rules
@@ -1654,7 +1682,7 @@ mod tests {
     use crate::diagram_theme::{
         DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette, OrdinalSelector,
         TextStylePatch, ThemeColorValue, ThemeGeometryPatch, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch,
+        ThemeStrokePatch, ThemeStylePatch,
     };
 
     fn no_override() -> FlowchartFacetPrecedence {
@@ -1715,12 +1743,42 @@ mod tests {
             .resolve(DiagramFamilyId::FLOWCHART)
     }
 
+    fn resolved_edge_dasharray_theme() -> ResolvedDiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke_dasharray([4.0, 2.0])
+                                .expect("valid Flowchart Edge dasharray"),
+                        )
+                        .for_family(DiagramFamilyId::FLOWCHART),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart Edge dasharray theme")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
     fn edge_emission(
         precedence: FlowchartFacetPrecedence,
         verified: bool,
     ) -> FlowchartEdgeThemeEmission {
         FlowchartEdgeThemeEmission {
             stroke: FlowchartThemeFacetEmission::new(precedence, verified),
+            stroke_dasharray: FlowchartThemeFacetEmission::absent(),
+        }
+    }
+
+    fn edge_dasharray_emission(
+        precedence: FlowchartFacetPrecedence,
+        verified: bool,
+    ) -> FlowchartEdgeThemeEmission {
+        FlowchartEdgeThemeEmission {
+            stroke: FlowchartThemeFacetEmission::absent(),
+            stroke_dasharray: FlowchartThemeFacetEmission::new(precedence, verified),
         }
     }
 
@@ -2784,6 +2842,130 @@ mod tests {
             BTreeSet::from([ThemeCapability::SolidPaint])
         );
         assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn verified_edge_dasharray_is_applied_with_dash_styling_capability() {
+        let theme = resolved_edge_dasharray_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge dasharray");
+        let precedence = no_override();
+
+        assert_eq!(style.stroke_dasharray_value(precedence, true), Some("4 2"));
+
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_edge_emission(&style, edge_dasharray_emission(precedence, true), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert_eq!(
+            evidence.applied(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::DashStyling])
+        );
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn source_edge_dasharray_makes_typed_rule_not_applicable() {
+        let theme = resolved_edge_dasharray_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge dasharray");
+        let precedence = FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false);
+
+        assert_eq!(style.stroke_dasharray_value(precedence, true), None);
+
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        recorder.record_edge_emission(&style, edge_dasharray_emission(precedence, false), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.residuals().is_empty());
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+    }
+
+    #[test]
+    fn one_unverified_edge_path_keeps_dasharray_rule_fail_closed() {
+        let theme = resolved_edge_dasharray_theme();
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve Flowchart Edge dasharray");
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+
+        recorder.record_edge_emission(&style, edge_dasharray_emission(no_override(), false), &[]);
+        recorder.record_edge_emission(&style, edge_dasharray_emission(no_override(), true), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
+    }
+
+    #[test]
+    fn cleared_edge_dasharray_is_an_explicit_geometry_residual() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch {
+                                stroke: ThemeStrokePatch {
+                                    dasharray: Specified::Clear,
+                                    ..ThemeStrokePatch::default()
+                                },
+                                ..ThemeStylePatch::default()
+                            },
+                        )
+                        .for_family(DiagramFamilyId::FLOWCHART),
+                    ),
+                ),
+            )
+            .expect("compile cleared Flowchart Edge dasharray theme")
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let style = FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter)
+            .expect("resolve cleared Flowchart Edge dasharray");
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+
+        assert_eq!(style.stroke_dasharray_value(no_override(), true), None);
+        recorder.record_edge_emission(&style, edge_dasharray_emission(no_override(), false), &[]);
+        let (evidence, source_residuals) = recorder.finish(Some(&theme));
+
+        assert!(source_residuals.is_empty());
+        assert!(evidence.applied().is_empty());
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
     }
 
     #[test]

@@ -616,6 +616,20 @@ fn classify_rule_facet(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::Edge
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && facet == FamilyThemeRuleFacet::StrokeDasharray
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Edge
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
@@ -1023,20 +1037,6 @@ mod tests {
             FamilyThemeDisposition::Unsupported
         );
 
-        let edge_geometry_rule = ThemeRule::new(
-            ThemeTarget::Edge,
-            ThemeStylePatch::default()
-                .with_stroke_width(2.5)
-                .expect("valid edge width")
-                .with_stroke_dasharray([4.0, 2.0])
-                .expect("valid edge dasharray"),
-        );
-        assert!(
-            compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &edge_geometry_rule)
-                .iter()
-                .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
-        );
-
         let ordinal_geometry_rule = ThemeRule::new(
             ThemeTarget::Node,
             ThemeStylePatch::default()
@@ -1087,6 +1087,68 @@ mod tests {
                 compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &rule)[0].disposition(),
                 FamilyThemeDisposition::Unsupported
             );
+        }
+    }
+
+    #[test]
+    fn flowchart_and_swimlane_own_only_static_default_edge_dasharray() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let mut edge_geometry_rule = ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default()
+                        .with_stroke_width(2.5)
+                        .expect("valid edge width")
+                        .with_stroke_dasharray([4.0, 2.0])
+                        .expect("valid edge dasharray"),
+                );
+                if let Some(variant) = variant {
+                    edge_geometry_rule = edge_geometry_rule.with_variant(variant);
+                }
+                let routes = compile_rule_routes(family, 0, &edge_geometry_rule);
+                assert_eq!(routes.len(), 2);
+                assert!(routes.iter().any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            facet: FamilyThemeRuleFacet::StrokeWidth,
+                            ..
+                        }
+                    ) && route.disposition() == FamilyThemeDisposition::Unsupported
+                }));
+                assert!(routes.iter().any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            facet: FamilyThemeRuleFacet::StrokeDasharray,
+                            ..
+                        }
+                    ) && route.disposition() == FamilyThemeDisposition::TypedAdapter
+                }));
+            }
+
+            for edge_geometry_rule in [
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default()
+                        .with_stroke_dasharray([4.0, 2.0])
+                        .expect("valid active edge dasharray"),
+                )
+                .with_variant(ThemeVariant::Active),
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default()
+                        .with_stroke_dasharray([4.0, 2.0])
+                        .expect("valid ordinal edge dasharray"),
+                )
+                .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+            ] {
+                assert!(
+                    compile_rule_routes(family, 0, &edge_geometry_rule)
+                        .iter()
+                        .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+                );
+            }
         }
     }
 

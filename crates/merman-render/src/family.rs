@@ -3078,6 +3078,27 @@ mod tests {
             .expect("compile Flowchart Node stroke-dasharray theme")
     }
 
+    fn flowchart_edge_stroke_dasharray_theme(
+        family: DiagramFamilyId,
+        stroke_dasharray: impl IntoIterator<Item = f32>,
+    ) -> DiagramTheme {
+        DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke_dasharray(stroke_dasharray)
+                                .expect("valid Flowchart Edge stroke dasharray"),
+                        )
+                        .for_family(family),
+                    ),
+                ),
+            )
+            .expect("compile Flowchart Edge stroke-dasharray theme")
+    }
+
     fn flowchart_node_radius_theme(family: DiagramFamilyId, radius: f32) -> DiagramTheme {
         DiagramThemeCompiler::new()
             .compile(
@@ -4630,6 +4651,7 @@ mod tests {
                 rendered.style_report().verification(),
                 FamilyStyleVerification::Verified
             );
+            assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
             assert_eq!(
                 rendered.style_report().theme_applied_mechanisms(),
                 &[FamilyThemeMechanismKey::Rule {
@@ -7872,6 +7894,244 @@ style Empty font-weight:banana
             }]
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn require_portable_accepts_flowchart_and_swimlane_edge_dasharray_after_svg_emission() {
+        for (family, source) in [
+            (DiagramFamilyId::FLOWCHART, "flowchart LR\nA --> B\n"),
+            (
+                DiagramFamilyId::SWIMLANE,
+                "---\nconfig:\n  layout: swimlane\n---\nflowchart LR\nA --> B\n",
+            ),
+        ] {
+            let theme = flowchart_edge_stroke_dasharray_theme(family, [4.0, 2.0]);
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict edge dasharray session"),
+            )
+            .expect("prepare typed Edge stroke dasharray")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("terminal edge writer should prove typed stroke dasharray");
+
+            assert_eq!(rendered.family_id(), family);
+            assert!(
+                flowchart_edge_path_style(rendered.svg())
+                    .contains("stroke-dasharray:4 2 !important")
+            );
+            assert_eq!(
+                rendered.style_report().verification(),
+                FamilyStyleVerification::Verified
+            );
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Edge,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn flowchart_edge_source_dasharray_owns_typed_precedence() {
+        let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA --> B\nlinkStyle 0 stroke-dasharray:8 3\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict edge dasharray precedence session"),
+        )
+        .expect("prepare source-owned Edge stroke dasharray")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("source-owned Edge stroke dasharray should satisfy strict portability");
+
+        let style = flowchart_edge_path_style(rendered.svg());
+        assert!(style.contains("stroke-dasharray:8 3"));
+        assert!(!style.contains("stroke-dasharray:4 2 !important"));
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn flowchart_neo_edge_dasharray_is_the_terminal_style_winner() {
+        let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "%%{init: {\"look\": \"neo\"}}%%\nflowchart LR\nA --> B\nB animated@==> C\nanimated@{ animate: true }\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Neo Flowchart source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Neo edge dasharray session"),
+        )
+        .expect("prepare Neo Edge stroke dasharray")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("Neo terminal writer should prove typed stroke dasharray");
+
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Neo Flowchart SVG");
+        let edge_style = |edge_id: &str| {
+            document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("data-edge") == Some("true")
+                        && node.attribute("data-id") == Some(edge_id)
+                })
+                .and_then(|node| node.attribute("style"))
+                .unwrap_or_else(|| panic!("Neo edge style for {edge_id}"))
+        };
+        let static_style = edge_style("L_A_B_0");
+        let mask = static_style
+            .find("stroke-dasharray: 0 ")
+            .expect("Neo marker-clearance mask");
+        let typed = static_style
+            .rfind("stroke-dasharray:4 2 !important")
+            .expect("typed terminal dasharray");
+        assert!(
+            typed > mask,
+            "typed dasharray must follow the Neo mask: {static_style}"
+        );
+        let animated_style = edge_style("animated");
+        assert!(!animated_style.contains("stroke-dasharray: 0 "));
+        assert!(animated_style.contains("stroke-dasharray:4 2 !important"));
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn flowchart_hand_drawn_edge_dasharray_fails_closed() {
+        let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
+        let source =
+            "%%{init: {\"look\": \"handDrawn\", \"handDrawnSeed\": 7}}%%\nflowchart LR\nA --> B\n";
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("hand-drawn Flowchart source should produce a render model")
+        };
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort hand-drawn dasharray session"),
+        )
+        .expect("prepare hand-drawn Edge stroke dasharray")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort hand-drawn output should retain residual evidence");
+
+        assert!(
+            !flowchart_edge_path_style(rendered.svg()).contains("stroke-dasharray:4 2 !important")
+        );
+        assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+        assert_eq!(
+            rendered.style_report().theme_residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
+
+        let artifact = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict hand-drawn dasharray session"),
+        )
+        .expect("writer support is decided during SVG emission");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("hand-drawn Edge dasharray must fail closed"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::FLOWCHART, 1))
+        );
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn elk_flowchart_reuses_the_typed_edge_dasharray_writer() {
+        let theme = flowchart_edge_stroke_dasharray_theme(DiagramFamilyId::FLOWCHART, [4.0, 2.0]);
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: elk\n---\nflowchart LR\nA --> B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("ELK Flowchart source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict ELK dasharray session"),
+        )
+        .expect("prepare ELK Edge stroke dasharray")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("ELK must reuse the terminal Edge dasharray writer");
+
+        assert!(
+            flowchart_edge_path_style(rendered.svg()).contains("stroke-dasharray:4 2 !important")
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Edge,
+            }]
+        );
     }
 
     #[test]
