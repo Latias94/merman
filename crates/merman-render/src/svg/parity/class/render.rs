@@ -72,12 +72,7 @@ fn render_class_diagram_svg_model_inner(
     let mut content_bounds: Option<Bounds> = None;
 
     let render_guard = timing.section(&mut timings.render_svg);
-    let estimated_svg_bytes = 2048usize
-        + model.classes.len().saturating_mul(512)
-        + model.relations.len().saturating_mul(384)
-        + model.notes.len().saturating_mul(256)
-        + model.namespaces.len().saturating_mul(128);
-    let mut out = String::with_capacity(estimated_svg_bytes);
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_context =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::CLASS, diagram_id);
     let document = begin_class_svg_document(
@@ -89,7 +84,9 @@ fn render_class_diagram_svg_model_inner(
     )?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let css = class_css(
+    out.push_str("<style>");
+    write_class_css(
+        &mut out,
         diagram_id,
         effective_config,
         settings
@@ -98,20 +95,21 @@ fn render_class_diagram_svg_model_inner(
             .as_deref()
             .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif"),
         settings.font_size_css.as_str(),
-    );
-    out.push_str("<style>");
-    out.push_str(&css);
+    )?;
     out.push_str("</style>");
+    out.checkpoint()?;
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
+    out.checkpoint()?;
     // Mermaid 11.16 inserts both the ordinary and margin-aware marker variants for every look.
-    class_markers(&mut out, diagram_id, aria_roledescription, true);
+    class_markers(&mut out, diagram_id, aria_roledescription, true)?;
     if layout.uses_elk_adapter_dom {
         out.push_str("</g>");
-        push_class_shadow_defs(&mut out, diagram_id, effective_config);
-        push_class_gradient(&mut out, diagram_id, effective_config);
+        push_class_shadow_defs(&mut out, diagram_id, effective_config)?;
+        push_class_gradient(&mut out, diagram_id, effective_config)?;
     }
+    out.checkpoint()?;
 
     let ClassRenderLookups {
         class_nodes_by_id,
@@ -195,6 +193,7 @@ fn render_class_diagram_svg_model_inner(
         )?;
     } else {
         out.push_str(r#"<g class="root">"#);
+        out.checkpoint()?;
         render_class_render_tree(
             ClassNodesRenderState {
                 out: &mut out,
@@ -208,6 +207,7 @@ fn render_class_diagram_svg_model_inner(
         )?;
         out.push_str("</g>"); // root
         out.push_str("</g>"); // wrapper
+        out.checkpoint()?;
     }
     if let Some(s) = nodes_start {
         detail.nodes += s.elapsed();
@@ -216,8 +216,8 @@ fn render_class_diagram_svg_model_inner(
     // The Dagre renderer completes its graph wrapper before the shared resources are appended.
     // The registered ELK renderer receives those resources before it inserts its top-level groups.
     if !layout.uses_elk_adapter_dom {
-        push_class_shadow_defs(&mut out, diagram_id, effective_config);
-        push_class_gradient(&mut out, diagram_id, effective_config);
+        push_class_shadow_defs(&mut out, diagram_id, effective_config)?;
+        push_class_gradient(&mut out, diagram_id, effective_config)?;
     }
 
     drop(render_guard);
@@ -254,6 +254,7 @@ fn render_class_diagram_svg_model_inner(
             fmt(title.y),
             escape_xml_display(title.text)
         );
+        out.checkpoint()?;
     }
 
     drop(viewbox_guard);
@@ -270,6 +271,7 @@ fn render_class_diagram_svg_model_inner(
     let root_document = root_context.finish_document(&mut out, document.root, final_root_spec)?;
 
     out.push_str("</svg>");
+    let out = out.finish()?;
     drop(finalize_guard);
 
     if let Some(s) = total_timer {

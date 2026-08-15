@@ -1,10 +1,9 @@
 use crate::model::{Bounds, LayoutCluster};
 use crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 use super::super::timing::RenderTiming;
-use super::super::{escape_attr_display, escape_xml_display, fmt};
+use super::super::{SvgOutput, escape_attr_display, escape_xml_display, fmt};
 use super::bounds::include_xywh;
 use super::label::class_math_html_label;
 
@@ -22,43 +21,49 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
 }
 
 pub(super) fn render_class_namespace_cluster_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> std::time::Duration {
+) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
+    out.checkpoint()?;
     for c in clusters {
         render_class_namespace_cluster(out, content_bounds, c, ctx);
+        out.checkpoint()?;
     }
     out.push_str("</g>");
-    clusters_start
+    out.checkpoint()?;
+    Ok(clusters_start
         .map(|start| start.elapsed())
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 pub(super) fn render_class_elk_subgraphs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> std::time::Duration {
+) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="subgraphs">"#);
+    out.checkpoint()?;
     for cluster in clusters {
         out.push_str(r#"<g class="subgraph">"#);
         render_class_namespace_cluster(out, content_bounds, cluster, ctx);
         out.push_str("</g>");
+        out.checkpoint()?;
     }
     out.push_str("</g>");
-    clusters_start
+    out.checkpoint()?;
+    Ok(clusters_start
         .map(|start| start.elapsed())
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 fn render_class_namespace_cluster(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
@@ -119,7 +124,7 @@ pub(super) fn class_namespace_root_offset(c: &LayoutCluster) -> (f64, f64) {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_class_namespace_clusters_in_root(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     content_bounds: &mut Option<Bounds>,
     clusters_by_id: &HashMap<&str, &LayoutCluster>,
     cluster_ids: &[&str],
@@ -127,8 +132,9 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
-) {
+) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
+    out.checkpoint()?;
     for ns_id in cluster_ids {
         let c = clusters_by_id
             .get(ns_id)
@@ -182,6 +188,8 @@ pub(super) fn render_class_namespace_clusters_in_root(
             MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
             title_html
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()
 }

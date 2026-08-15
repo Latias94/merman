@@ -34,14 +34,14 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
 }
 
 pub(super) fn class_markers(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     diagram_marker_class: &str,
     include_margin_markers: bool,
-) {
+) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
-    struct MarkerContext<'a> {
-        out: &'a mut String,
+    struct MarkerContext<'a, O: SvgOutput> {
+        out: &'a mut O,
         diagram_id: &'a str,
         diagram_marker_class: &'a str,
     }
@@ -69,9 +69,10 @@ pub(super) fn class_markers(
         shape: MarkerShape<'a>,
     }
 
-    fn marker(ctx: &mut MarkerContext<'_>, spec: MarkerSpec<'_>) {
+    fn marker<O: SvgOutput>(ctx: &mut MarkerContext<'_, O>, spec: MarkerSpec<'_>) -> Result<()> {
         if spec.wrap_defs {
             ctx.out.push_str("<defs>");
+            ctx.out.checkpoint()?;
         }
         match spec.shape {
             MarkerShape::Path(d) | MarkerShape::PathWithViewBox(d, _) => {
@@ -172,6 +173,7 @@ pub(super) fn class_markers(
         if spec.wrap_defs {
             ctx.out.push_str("</defs>");
         }
+        ctx.out.checkpoint()
     }
 
     let mut ctx = MarkerContext {
@@ -194,7 +196,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
         },
-    );
+    )?;
     marker(
         &mut ctx,
         MarkerSpec {
@@ -209,7 +211,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
         },
-    );
+    )?;
     if include_margin_markers {
         marker(
             &mut ctx,
@@ -225,7 +227,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
             },
-        );
+        )?;
         marker(
             &mut ctx,
             MarkerSpec {
@@ -240,7 +242,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
             },
-        );
+        )?;
     }
 
     let (extension_start_marker_w, extension_start_marker_h, extension_start_marker_units) =
@@ -263,7 +265,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 1,7 L18,13 V 1 Z"),
         },
-    );
+    )?;
     marker(
         &mut ctx,
         MarkerSpec {
@@ -278,7 +280,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 1,1 V 13 L18,7 Z"),
         },
-    );
+    )?;
     if include_margin_markers {
         marker(
             &mut ctx,
@@ -294,7 +296,7 @@ pub(super) fn class_markers(
                 wrap_defs: false,
                 shape: MarkerShape::Polygon("10,7 18,13 18,1"),
             },
-        );
+        )?;
         marker(
             &mut ctx,
             MarkerSpec {
@@ -309,7 +311,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::Polygon("10,1 10,13 18,7"),
             },
-        );
+        )?;
     }
 
     marker(
@@ -326,7 +328,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
         },
-    );
+    )?;
     marker(
         &mut ctx,
         MarkerSpec {
@@ -341,7 +343,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
         },
-    );
+    )?;
     if include_margin_markers {
         marker(
             &mut ctx,
@@ -357,7 +359,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::PathWithViewBox("M 18,7 L9,13 L1,7 L9,1 Z", "0 0 15 15"),
             },
-        );
+        )?;
         marker(
             &mut ctx,
             MarkerSpec {
@@ -372,7 +374,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
             },
-        );
+        )?;
     }
 
     marker(
@@ -389,7 +391,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
         },
-    );
+    )?;
     marker(
         &mut ctx,
         MarkerSpec {
@@ -404,7 +406,7 @@ pub(super) fn class_markers(
             wrap_defs: true,
             shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
         },
-    );
+    )?;
     if include_margin_markers {
         marker(
             &mut ctx,
@@ -420,7 +422,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
             },
-        );
+        )?;
         marker(
             &mut ctx,
             MarkerSpec {
@@ -435,7 +437,7 @@ pub(super) fn class_markers(
                 wrap_defs: true,
                 shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
             },
-        );
+        )?;
     }
 
     marker(
@@ -455,7 +457,7 @@ pub(super) fn class_markers(
                 stroke_width: None,
             },
         },
-    );
+    )?;
     marker(
         &mut ctx,
         MarkerSpec {
@@ -473,7 +475,7 @@ pub(super) fn class_markers(
                 stroke_width: None,
             },
         },
-    );
+    )?;
     if include_margin_markers {
         marker(
             &mut ctx,
@@ -492,7 +494,7 @@ pub(super) fn class_markers(
                     stroke_width: Some("2"),
                 },
             },
-        );
+        )?;
         marker(
             &mut ctx,
             MarkerSpec {
@@ -510,15 +512,17 @@ pub(super) fn class_markers(
                     stroke_width: Some("2"),
                 },
             },
-        );
+        )?;
     }
+
+    Ok(())
 }
 
 pub(super) fn push_class_shadow_defs(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config_value: &serde_json::Value,
-) {
+) -> Result<()> {
     let flood_color = effective_config_value
         .get("theme")
         .and_then(|v| v.as_str())
@@ -534,15 +538,96 @@ pub(super) fn push_class_shadow_defs(
         diagram_id.as_str(),
         flood_color
     );
+    out.checkpoint()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn class_markers_stop_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = class_markers(&mut out, "class-sink-failure", "classDiagram", true)
+            .expect_err("the rejecting sink must stop Class marker rendering");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Class marker rendering must stop at the first failed sink checkpoint"
+        );
+    }
 }
 
 pub(super) fn push_class_gradient(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config_value: &serde_json::Value,
-) {
+) -> Result<()> {
     if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return;
+        return Ok(());
     }
 
     let gradient_start =
@@ -573,4 +658,5 @@ pub(super) fn push_class_gradient(
         gradient_start.as_str(),
         gradient_stop.as_str()
     );
+    out.checkpoint()
 }

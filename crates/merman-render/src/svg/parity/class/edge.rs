@@ -15,15 +15,16 @@ use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle,
 use base64::Engine as _;
 use std::fmt::Write as _;
 
-use super::super::{escape_attr_display, escape_xml_into, fmt, json_stringify_points_into};
+use super::super::{
+    SvgOutput, escape_attr_display, escape_xml_into, fmt, json_stringify_points_into,
+};
 use rustc_hash::FxHashMap;
 
 const CLASS_HAND_DRAWN_EDGE_STROKE: &str = "#000";
 const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
 
-pub(super) struct ClassEdgeGroupsRenderState<'a> {
-    pub edge_paths: &'a mut String,
-    pub edge_labels: &'a mut String,
+pub(super) struct ClassEdgeGroupsRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
     pub detail: &'a mut ClassRenderDetails,
 }
@@ -164,13 +165,15 @@ pub(super) fn class_line_with_marker_offset_points_into(
     }
 }
 
-pub(super) fn render_class_edge_groups(
-    state: ClassEdgeGroupsRenderState<'_>,
+pub(super) fn render_class_edge_groups<O: SvgOutput>(
+    state: ClassEdgeGroupsRenderState<'_, O>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) {
-    let out = &mut *state.edge_paths;
-    let content_bounds = &mut *state.content_bounds;
-    let detail = &mut *state.detail;
+) -> crate::Result<()> {
+    let ClassEdgeGroupsRenderState {
+        out,
+        content_bounds,
+        detail,
+    } = state;
 
     let mut edge_points_json_buf = String::new();
     let mut edge_points_json_ryu = ryu_js::Buffer::new();
@@ -186,6 +189,7 @@ pub(super) fn render_class_edge_groups(
     let mut edge_label_centers: FxHashMap<&str, LayoutPoint> =
         FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
     let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
+    out.checkpoint()?;
     for e in ordered_edges.iter().copied() {
         if e.points.len() < 2 {
             continue;
@@ -336,15 +340,17 @@ pub(super) fn render_class_edge_groups(
             class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn")
         );
         out.push_str("/>");
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
     if let Some(s) = edge_paths_start {
         detail.edge_paths += s.elapsed();
     }
 
     let edge_labels_start = ctx.timing.start();
-    let out = &mut *state.edge_labels;
     out.push_str(r#"<g class="edgeLabels">"#);
+    out.checkpoint()?;
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
     for e in ordered_edges.iter().copied() {
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
@@ -386,6 +392,7 @@ pub(super) fn render_class_edge_groups(
             label_center.as_ref().map(|center| center.y).unwrap_or(0.0),
             ctx,
         );
+        out.checkpoint()?;
     }
     for e in ordered_edges.iter().copied() {
         let Some(rel) = ctx.relations_by_id.get(e.id.as_str()).copied() else {
@@ -415,6 +422,7 @@ pub(super) fn render_class_edge_groups(
                         true,
                         ctx,
                     );
+                    out.checkpoint()?;
                 }
             }
         }
@@ -461,14 +469,17 @@ pub(super) fn render_class_edge_groups(
                         false,
                         ctx,
                     );
+                    out.checkpoint()?;
                 }
             }
         }
     }
     out.push_str("</g>");
+    out.checkpoint()?;
     if let Some(s) = edge_labels_start {
         detail.edge_labels += s.elapsed();
     }
+    Ok(())
 }
 
 pub(super) fn class_edge_label_center(
@@ -491,7 +502,7 @@ pub(super) fn class_edge_label_center(
 }
 
 fn render_class_edge_label_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     dom_id: &str,
     label_text: &str,
     label: Option<&LayoutLabel>,
@@ -599,7 +610,7 @@ pub(super) fn class_terminal_box_size(text: &str) -> (f64, f64) {
 }
 
 fn render_class_edge_terminal_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     x: f64,
     y: f64,
     text: &str,
@@ -678,7 +689,7 @@ fn render_class_edge_terminal_group(
 }
 
 fn render_class_terminal_label(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     text: &str,
     mermaid_config: Option<&merman_core::MermaidConfig>,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,

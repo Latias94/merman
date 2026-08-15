@@ -1,13 +1,11 @@
-use crate::entities::decode_entities_minimal_cow;
-use crate::model::{Bounds, LayoutNode};
-use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
-use std::fmt::Write as _;
-
-use super::super::{escape_attr_display, escape_xml_into, fmt};
+use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
 use super::label::class_math_html_label;
 use super::node::ClassNodeRenderPosition;
+use crate::entities::decode_entities_minimal_cow;
+use crate::model::{Bounds, LayoutNode};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
     pub diagram_id: &'a str,
@@ -19,13 +17,13 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
-pub(super) struct ClassInterfaceRenderState<'a> {
-    pub out: &'a mut String,
+pub(super) struct ClassInterfaceRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
 }
 
-pub(super) fn render_class_interface_node(
-    state: ClassInterfaceRenderState<'_>,
+pub(super) fn render_class_interface_node<O: SvgOutput>(
+    state: ClassInterfaceRenderState<'_, O>,
     iface: &ClassSvgInterface,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,

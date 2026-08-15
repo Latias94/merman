@@ -1,3 +1,4 @@
+use super::super::SvgOutput;
 use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
 use super::context::ClassRenderDetails;
@@ -32,28 +33,21 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) edge_paths_class: &'static str,
 }
 
-pub(super) struct ClassSplitEdgeGroups {
-    pub(super) edge_paths: String,
-    pub(super) edge_labels: String,
-}
-
-pub(super) fn render_class_split_edge_groups(
+pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
+    out: &mut O,
     state: ClassSplitEdgeGroupsRenderState<'_>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
-) -> ClassSplitEdgeGroups {
+) -> crate::Result<()> {
     let ClassSplitEdgeGroupsRenderState {
         content_bounds,
         detail,
     } = state;
 
-    let mut edge_paths = String::new();
-    let mut edge_labels = String::new();
     render_class_edge_groups(
         ClassEdgeGroupsRenderState {
-            edge_paths: &mut edge_paths,
-            edge_labels: &mut edge_labels,
+            out,
             content_bounds,
             detail,
         },
@@ -77,9 +71,5 @@ pub(super) fn render_class_split_edge_groups(
             timing: ctx.timing,
             edge_paths_class: ctx.edge_paths_class,
         },
-    );
-    ClassSplitEdgeGroups {
-        edge_paths,
-        edge_labels,
-    }
+    )
 }

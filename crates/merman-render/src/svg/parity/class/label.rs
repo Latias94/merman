@@ -33,7 +33,7 @@ pub(super) struct ClassHtmlLabelSpec<'a> {
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
-pub(super) fn render_class_html_label(out: &mut String, spec: &ClassHtmlLabelSpec<'_>) {
+pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtmlLabelSpec<'_>) {
     out.push_str(r#"<span class=""#);
     escape_xml_into(out, spec.span_class);
     if let Some(extra) = spec
@@ -76,16 +76,20 @@ pub(super) fn render_class_html_label(out: &mut String, spec: &ClassHtmlLabelSpe
     out.push_str("</span>");
 }
 
-pub(super) fn write_class_svg_text_markdown(out: &mut String, markdown: &str, include_style: bool) {
+pub(super) fn write_class_svg_text_markdown(
+    out: &mut impl SvgOutput,
+    markdown: &str,
+    include_style: bool,
+) {
     crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
 }
 
-pub(super) fn write_class_svg_edge_text(out: &mut String, text: &str, include_style: bool) {
+pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
     crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
 pub(super) fn write_class_svg_edge_text_markdown(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     markdown: &str,
     include_style: bool,
 ) {

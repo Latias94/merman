@@ -10,7 +10,7 @@ mod context;
 use context::{ClassRenderDetails, ClassRenderLookups, emit_class_render_timing};
 
 mod css;
-use css::class_css;
+use css::write_class_css;
 
 mod defs;
 use defs::{class_markers, push_class_gradient, push_class_shadow_defs};

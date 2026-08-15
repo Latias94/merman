@@ -7,7 +7,7 @@ pub(super) struct ClassSvgDocument {
 }
 
 pub(super) fn begin_class_svg_document(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     model: &ClassSvgModel,
     diagram_id: &str,
     aria_roledescription: &str,
@@ -41,6 +41,7 @@ pub(super) fn begin_class_svg_document(
             escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
+        out.checkpoint()?;
     }
     if has_acc_descr {
         let _ = write!(
@@ -50,6 +51,7 @@ pub(super) fn begin_class_svg_document(
             escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
+        out.checkpoint()?;
     }
 
     Ok(ClassSvgDocument { root: document })

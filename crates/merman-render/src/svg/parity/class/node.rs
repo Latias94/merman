@@ -2,11 +2,10 @@ use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNod
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
-use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::super::timing::RenderTiming;
-use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
+use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
 use super::label::{
     ClassHtmlLabelSpec, class_html_div_style, class_html_label_metrics, class_html_title_metrics,
@@ -36,8 +35,8 @@ pub(super) struct ClassNodeBoxGeometry {
     pub rough_seed: roughr::core::RoughRandomness,
 }
 
-pub(super) struct ClassNodeRenderState<'a> {
-    pub out: &'a mut String,
+pub(super) struct ClassNodeRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
 }
 
@@ -148,7 +147,7 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
 }
 
 pub(super) fn render_class_node_shell_open(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
     diagram_id: &str,
@@ -231,8 +230,8 @@ pub(super) fn render_class_node_shell_open(
     link.is_some()
 }
 
-pub(super) fn render_class_node_basic_container(
-    state: ClassNodeRenderState<'_>,
+pub(super) fn render_class_node_basic_container<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
     node: &ClassSvgNode,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
@@ -335,8 +334,8 @@ pub(super) fn render_class_node_basic_container(
     }
 }
 
-pub(super) fn render_class_node_dividers(
-    state: ClassNodeRenderState<'_>,
+pub(super) fn render_class_node_dividers<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
     left: f64,
     right: f64,
@@ -397,8 +396,8 @@ pub(super) fn render_class_node_dividers(
     stats
 }
 
-pub(super) fn render_class_html_node_body(
-    state: ClassNodeRenderState<'_>,
+pub(super) fn render_class_html_node_body<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
     node: &ClassSvgNode,
     geometry: ClassNodeBoxGeometry,
@@ -701,8 +700,8 @@ pub(super) fn render_class_html_node_body(
     }
 }
 
-pub(super) fn render_class_svg_node_body(
-    state: ClassNodeRenderState<'_>,
+pub(super) fn render_class_svg_node_body<O: SvgOutput>(
+    state: ClassNodeRenderState<'_, O>,
     position: ClassNodeRenderPosition,
     node: &ClassSvgNode,
     geometry: ClassNodeBoxGeometry,
@@ -1113,7 +1112,7 @@ pub(super) fn measure_class_html_node_rows<'a>(
 }
 
 pub(super) fn render_class_html_node_label_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     spec: &ClassHtmlNodeLabelGroupSpec<'_>,
 ) {
     let _ = write!(
@@ -1142,7 +1141,7 @@ pub(super) fn render_class_html_node_label_group(
 }
 
 fn render_class_html_node_rows_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     group_class: &str,
     group_x: f64,
     group_y: f64,
@@ -1191,7 +1190,7 @@ fn render_class_html_node_rows_group(
 }
 
 pub(super) fn render_class_svg_node_runs_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     group_class: &str,
     group_x: f64,
     group_y: f64,
@@ -1231,7 +1230,7 @@ pub(super) fn render_class_svg_node_runs_group(
 }
 
 pub(super) fn render_class_svg_title_group(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     group_x: f64,
     group_y: f64,
     title_lines: &[String],

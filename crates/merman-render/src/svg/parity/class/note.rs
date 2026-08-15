@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::super::timing::RenderTiming;
-use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
+use super::super::{SvgOutput, escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
 use super::label::{class_math_html_label, class_note_html_div_style};
@@ -31,8 +31,8 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub timing: RenderTiming,
 }
 
-pub(super) struct ClassNoteRenderState<'a> {
-    pub out: &'a mut String,
+pub(super) struct ClassNoteRenderState<'a, O: SvgOutput> {
+    pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
     pub sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
     pub borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
@@ -45,8 +45,8 @@ pub(super) struct ClassNoteRenderStats {
     pub path_bounds_calls: usize,
 }
 
-pub(super) fn render_class_note_node(
-    state: ClassNoteRenderState<'_>,
+pub(super) fn render_class_note_node<O: SvgOutput>(
+    state: ClassNoteRenderState<'_, O>,
     note: &ClassSvgNote,
     layout_node: &LayoutNode,
     position: ClassNodeRenderPosition,
@@ -272,7 +272,7 @@ fn class_note_sanitize_config<'a>(
         .get_or_insert_with(|| merman_core::MermaidConfig::from_value(effective_config.clone()))
 }
 
-fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, style: &str) {
+fn write_class_svg_text_markdown_with_style(out: &mut impl SvgOutput, markdown: &str, style: &str) {
     let markdown = markdown
         .strip_prefix('`')
         .and_then(|s| s.strip_suffix('`'))

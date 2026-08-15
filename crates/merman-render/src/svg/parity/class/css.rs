@@ -1,7 +1,7 @@
 use super::super::*;
 
 fn write_class_marker_css(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     id: &str,
     marker_id_suffix: &str,
     marker_class: &str,
@@ -15,7 +15,7 @@ fn write_class_marker_css(
     );
 }
 
-fn write_class_icon_css(out: &mut String, id: &str) {
+fn write_class_icon_css(out: &mut impl SvgOutput, id: &str) {
     let _ = write!(
         out,
         r#"#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
@@ -23,19 +23,19 @@ fn write_class_icon_css(out: &mut String, id: &str) {
     );
 }
 
-pub(super) fn class_css(
+pub(super) fn write_class_css(
+    out: &mut impl SvgOutput,
     diagram_id: &str,
     effective_config: &serde_json::Value,
     render_font_family: &str,
     _render_font_size_css: &str,
-) -> String {
+) -> Result<()> {
     let id = escape_xml(diagram_id);
     // Mermaid compiles this stylesheet from resolved theme variables; render metrics have a
     // separate legacy precedence and must not replace the CSS font-size spelling.
     let parts =
         super::super::css::info_css_parts_with_raw_theme_font_size(diagram_id, effective_config);
     let theme = MermaidThemeAdapter::new(effective_config).class_diagram();
-    let mut out = parts.css_prefix;
     let fallback_font_family = normalize_css_font_family(render_font_family);
     let font_family = if parts.font_family.is_empty() {
         fallback_font_family.as_str()
@@ -59,8 +59,11 @@ pub(super) fn class_css(
         "rgba(232,232,232, 0.8)",
     );
 
+    out.push_str(&parts.css_prefix);
+    out.checkpoint()?;
+
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} g.classGroup text{{fill:{};stroke:none;font-family:{};font-size:10px;}}#{} g.classGroup text .title{{font-weight:bolder;}}#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} .nodeLabel,#{} .edgeLabel{{color:{};}}#{} .noteLabel .nodeLabel,#{} .noteLabel .edgeLabel{{color:{};}}#{} .edgeLabel .label rect{{fill:{};}}#{} .label text{{fill:{};}}#{} .labelBkg{{background:{};}}#{} .edgeLabel .label span{{background:{};}}#{} .classTitle{{font-weight:bolder;}}"#,
         id.as_str(),
         class_group_text,
@@ -94,8 +97,9 @@ pub(super) fn class_css(
         main_bkg,
         id.as_str()
     );
+    out.checkpoint()?;
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:{};}}#{} .divider{{stroke:{};stroke-width:1;}}#{} g.clickable{{cursor:pointer;}}#{} g.classGroup rect{{fill:{};stroke:{};}}#{} g.classGroup line{{stroke:{};stroke-width:1;}}#{} .classLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}#{} .classLabel .label{{fill:{};font-size:10px;}}#{} .relation{{stroke:{};stroke-width:{};fill:none;}}#{} .dashed-line{{stroke-dasharray:3;}}#{} .dotted-line{{stroke-dasharray:1 2;}}"#,
         id.as_str(),
         id.as_str(),
@@ -123,6 +127,7 @@ pub(super) fn class_css(
         id.as_str(),
         id.as_str()
     );
+    out.checkpoint()?;
 
     for (marker_id_suffix, marker_class, fill) in [
         ("compositionStart", "composition", line_color),
@@ -136,18 +141,12 @@ pub(super) fn class_css(
         ("lollipopStart", "lollipop", main_bkg),
         ("lollipopEnd", "lollipop", main_bkg),
     ] {
-        write_class_marker_css(
-            &mut out,
-            &id,
-            marker_id_suffix,
-            marker_class,
-            fill,
-            line_color,
-        );
+        write_class_marker_css(out, &id, marker_id_suffix, marker_class, fill, line_color);
+        out.checkpoint()?;
     }
 
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .edgeTerminals{{font-size:11px;line-height:initial;}}#{} .classTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} .edgeLabel[data-look="neo"]{{background-color:{};text-align:center;}}#{} .edgeLabel[data-look="neo"] p{{background-color:{};}}#{} .edgeLabel[data-look="neo"] rect{{opacity:0.5;background-color:{};fill:{};}}"#,
         id.as_str(),
         id.as_str(),
@@ -160,8 +159,9 @@ pub(super) fn class_css(
         edge_label_background,
         edge_label_background
     );
+    out.checkpoint()?;
 
-    write_class_icon_css(&mut out, &id);
+    write_class_icon_css(out, &id);
     out.push_str(&parts.root_rule);
-    out
+    out.checkpoint()
 }

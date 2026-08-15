@@ -33,8 +33,8 @@ struct ClassNodeRootOffsets {
     in_namespace_root: bool,
 }
 
-pub(super) struct ClassNodesRenderState<'a> {
-    pub(super) out: &'a mut String,
+pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
+    pub(super) out: &'a mut O,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
     pub(super) sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
@@ -57,8 +57,8 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) timing: RenderTiming,
 }
 
-pub(super) fn render_class_render_tree(
-    state: ClassNodesRenderState<'_>,
+pub(super) fn render_class_render_tree<O: SvgOutput>(
+    state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
 ) -> Result<()> {
@@ -139,6 +139,7 @@ pub(super) fn render_class_render_tree(
                         fmt(origin.0 - parent_origin.0),
                         fmt(origin.1 - parent_origin.1)
                     );
+                    out.checkpoint()?;
                     render_class_namespace_clusters_in_root(
                         out,
                         content_bounds,
@@ -162,7 +163,7 @@ pub(super) fn render_class_render_tree(
                         namespace_id,
                         origin.0,
                         origin.1,
-                    );
+                    )?;
                 } else {
                     let clusters = root
                         .cluster_ids
@@ -190,7 +191,7 @@ pub(super) fn render_class_render_tree(
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                         },
-                    );
+                    )?;
                 }
 
                 let edges = root
@@ -204,7 +205,8 @@ pub(super) fn render_class_render_tree(
                             .clone()
                     })
                     .collect::<Vec<_>>();
-                let split = render_class_split_edges_for_namespace(
+                render_class_split_edges_for_namespace(
+                    out,
                     content_bounds,
                     detail,
                     edge_ctx,
@@ -212,9 +214,7 @@ pub(super) fn render_class_render_tree(
                     origin.0,
                     origin.1,
                     in_namespace_root,
-                );
-                out.push_str(&split.edge_paths);
-                out.push_str(&split.edge_labels);
+                )?;
                 out.push_str(r#"<g class="nodes">"#);
 
                 stack.push(RenderFrame::Close { in_namespace_root });
@@ -260,12 +260,13 @@ pub(super) fn render_class_render_tree(
                 }
             }
         }
+        out.checkpoint()?;
     }
     Ok(())
 }
 
-pub(super) fn render_class_elk_adapter_dom(
-    state: ClassNodesRenderState<'_>,
+pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
+    state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
 ) -> Result<()> {
@@ -328,9 +329,10 @@ pub(super) fn render_class_elk_adapter_dom(
             math_renderer: ctx.math_renderer,
             timing: ctx.timing,
         },
-    );
+    )?;
 
     out.push_str(r#"<g class="nodes">"#);
+    out.checkpoint()?;
     for item in &root.items {
         let ClassRenderItem::Node(id) = item else {
             unreachable!("Class ELK render root was validated as flat")
@@ -352,8 +354,10 @@ pub(super) fn render_class_elk_adapter_dom(
                 in_namespace_root: false,
             },
         );
+        out.checkpoint()?;
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     let edges = root
         .edge_ids
@@ -366,7 +370,8 @@ pub(super) fn render_class_elk_adapter_dom(
                 .clone()
         })
         .collect::<Vec<_>>();
-    let split = render_class_split_edges_for_namespace(
+    render_class_split_edges_for_namespace(
+        out,
         content_bounds,
         detail,
         edge_ctx,
@@ -374,9 +379,7 @@ pub(super) fn render_class_elk_adapter_dom(
         0.0,
         0.0,
         false,
-    );
-    out.push_str(&split.edge_paths);
-    out.push_str(&split.edge_labels);
+    )?;
     Ok(())
 }
 
@@ -565,7 +568,8 @@ fn validate_class_render_tree(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_class_split_edges_for_namespace(
+fn render_class_split_edges_for_namespace<O: SvgOutput>(
+    out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
@@ -573,7 +577,7 @@ fn render_class_split_edges_for_namespace(
     root_dx: f64,
     root_dy: f64,
     in_namespace_root: bool,
-) -> super::groups::ClassSplitEdgeGroups {
+) -> Result<()> {
     let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
         relations_by_id: edge_ctx.relations_by_id,
@@ -604,6 +608,7 @@ fn render_class_split_edges_for_namespace(
         edge_paths_class: edge_ctx.edge_paths_class,
     };
     render_class_split_edge_groups(
+        out,
         ClassSplitEdgeGroupsRenderState {
             content_bounds,
             detail,
@@ -614,8 +619,8 @@ fn render_class_split_edges_for_namespace(
     )
 }
 
-fn render_class_node_id(
-    state: ClassNodesRenderState<'_>,
+fn render_class_node_id<O: SvgOutput>(
+    state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
     id: &str,
