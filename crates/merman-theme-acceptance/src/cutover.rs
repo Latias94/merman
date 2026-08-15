@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cutover_manifest::authorize_cutover_routes;
-use crate::observation::{C6RuntimeError, append_len_prefixed, sha256};
+use crate::observation::{RouteCutoverRuntimeError, append_len_prefixed, sha256};
 use crate::runner::{
     C6ProofError, C6ProofResult, C6RasterImage, FamilyEvidenceRequirements, class_contains,
     decode_bounded_png_artifact, portable_svg_request, prove_portable_family_evidence, style_value,
@@ -310,8 +310,29 @@ struct SvgCutoverProof {
     target_underlay_colors: Vec<Vec<[u8; 3]>>,
 }
 
+/// Coarse evidence that the exact manifest-declared bridge routes passed their cutover gate.
+///
+/// The sealed route receipts and aggregate route-report digest remain private to this crate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RouteCutoverAuthorizationReport {
+    manifest_digest: [u8; 32],
+    authorization_digest: [u8; 32],
+}
+
+impl RouteCutoverAuthorizationReport {
+    /// Returns the digest of the exact route-cutover manifest authorized by this run.
+    pub const fn manifest_digest(&self) -> &[u8; 32] {
+        &self.manifest_digest
+    }
+
+    /// Returns the sealed authorization digest for this run.
+    pub const fn authorization_digest(&self) -> &[u8; 32] {
+        &self.authorization_digest
+    }
+}
+
 #[derive(Debug)]
-pub(crate) struct RouteCutoverAuthorizationReceipt {
+struct RouteCutoverAuthorizationReceipt {
     manifest_digest: [u8; 32],
     route_report_digest: [u8; 32],
     digest: [u8; 32],
@@ -356,13 +377,15 @@ impl RouteCutoverAuthorizationReceipt {
         &self.digest
     }
 
-    pub(crate) fn validated_digest(&self) -> Option<[u8; 32]> {
-        (self.manifest_digest != [0; 32]
-            && self.route_report_digest != [0; 32]
-            && self.digest != [0; 32]
-            && self.digest
-                == Self::canonical_digest(self.manifest_digest, self.route_report_digest))
-        .then_some(self.digest)
+    fn into_report(self) -> RouteCutoverAuthorizationReport {
+        debug_assert_eq!(
+            self.digest,
+            Self::canonical_digest(self.manifest_digest, self.route_report_digest)
+        );
+        RouteCutoverAuthorizationReport {
+            manifest_digest: self.manifest_digest,
+            authorization_digest: self.digest,
+        }
     }
 
     #[cfg(test)]
@@ -420,7 +443,7 @@ impl C6RouteCutoverReceipt {
 }
 
 pub(crate) fn run_route_cutover_witnesses()
--> Result<RouteCutoverAuthorizationReceipt, C6RuntimeError> {
+-> Result<RouteCutoverAuthorizationReport, RouteCutoverRuntimeError> {
     let inventory = legacy_replacing_typed_theme_routes().map_err(|error| {
         C6ProofError::new("route-inventory", error.to_string()).into_route_runtime("inventory")
     })?;
@@ -449,7 +472,7 @@ pub(crate) fn run_route_cutover_witnesses()
         let witness = case_label(case);
         let completed = prove_route(&witness, render_cutover_case(case, vec![route]))?;
         if rendered.insert(witness_id, completed).is_some() {
-            return Err(C6RuntimeError::DuplicateRouteCutoverReceipt { route: witness });
+            return Err(RouteCutoverRuntimeError::DuplicateReceipt { route: witness });
         }
     }
 
@@ -468,7 +491,7 @@ pub(crate) fn run_route_cutover_witnesses()
                 cutover_witness_shape(*witness) == shape
                     && witness.route().value() == ThemeRouteCutoverValue::Solid
             })
-            .ok_or_else(|| C6RuntimeError::RouteCutoverCoverageMismatch {
+            .ok_or_else(|| RouteCutoverRuntimeError::CoverageMismatch {
                 missing: vec![format!("{pair_label}/solid")],
                 unexpected: Vec::new(),
             })?;
@@ -479,18 +502,18 @@ pub(crate) fn run_route_cutover_witnesses()
                 cutover_witness_shape(*witness) == shape
                     && witness.route().value() == ThemeRouteCutoverValue::Transparent
             })
-            .ok_or_else(|| C6RuntimeError::RouteCutoverCoverageMismatch {
+            .ok_or_else(|| RouteCutoverRuntimeError::CoverageMismatch {
                 missing: vec![format!("{pair_label}/transparent")],
                 unexpected: Vec::new(),
             })?;
         let solid = rendered.get(&solid_witness).ok_or_else(|| {
-            C6RuntimeError::RouteCutoverCoverageMismatch {
+            RouteCutoverRuntimeError::CoverageMismatch {
                 missing: vec![witness_label(solid_witness)],
                 unexpected: Vec::new(),
             }
         })?;
         let transparent = rendered.get(&transparent_witness).ok_or_else(|| {
-            C6RuntimeError::RouteCutoverCoverageMismatch {
+            RouteCutoverRuntimeError::CoverageMismatch {
                 missing: vec![witness_label(transparent_witness)],
                 unexpected: Vec::new(),
             }
@@ -501,7 +524,7 @@ pub(crate) fn run_route_cutover_witnesses()
         {
             let route = witness_id.route();
             let png_assertion = png_assertions.get(&route).copied().ok_or_else(|| {
-                C6RuntimeError::RouteCutoverCoverageMismatch {
+                RouteCutoverRuntimeError::CoverageMismatch {
                     missing: vec![witness_label(witness_id)],
                     unexpected: Vec::new(),
                 }
@@ -511,7 +534,7 @@ pub(crate) fn run_route_cutover_witnesses()
                 C6RouteCutoverReceipt::seal(witness_id, rendered_case, png_assertion),
             )?;
             if receipts.insert(witness_id, receipt).is_some() {
-                return Err(C6RuntimeError::DuplicateRouteCutoverReceipt {
+                return Err(RouteCutoverRuntimeError::DuplicateReceipt {
                     route: witness_label(witness_id),
                 });
             }
@@ -523,6 +546,7 @@ pub(crate) fn run_route_cutover_witnesses()
         "authorization",
         RouteCutoverAuthorizationReceipt::seal(manifest_digest, route_report_digest),
     )
+    .map(RouteCutoverAuthorizationReceipt::into_report)
 }
 
 fn render_cutover_case(
@@ -882,13 +906,13 @@ fn prove_cutover_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
 fn evaluate_route_receipts(
     inventory: Vec<ThemeRouteCutoverDescriptor>,
     receipts: BTreeMap<CutoverWitnessId, C6RouteCutoverReceipt>,
-) -> Result<[u8; 32], C6RuntimeError> {
+) -> Result<[u8; 32], RouteCutoverRuntimeError> {
     let expected = expected_cutover_witnesses(&inventory)
         .into_iter()
         .collect::<BTreeSet<_>>();
     let actual = receipts.keys().copied().collect::<BTreeSet<_>>();
     if expected != actual {
-        return Err(C6RuntimeError::RouteCutoverCoverageMismatch {
+        return Err(RouteCutoverRuntimeError::CoverageMismatch {
             missing: expected
                 .difference(&actual)
                 .copied()
@@ -1134,7 +1158,7 @@ pub(crate) fn usize_to_u64(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
-fn prove_route<T>(witness: &str, result: C6ProofResult<T>) -> Result<T, C6RuntimeError> {
+fn prove_route<T>(witness: &str, result: C6ProofResult<T>) -> Result<T, RouteCutoverRuntimeError> {
     result.map_err(|error| error.into_route_runtime(witness))
 }
 
@@ -1158,7 +1182,8 @@ mod tests {
 
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
         assert!(!inventory.is_empty());
-        assert!(authorization.validated_digest().is_some());
+        assert_ne!(authorization.manifest_digest(), &[0; 32]);
+        assert_ne!(authorization.authorization_digest(), &[0; 32]);
     }
 
     #[test]

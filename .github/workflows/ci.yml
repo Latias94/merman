@@ -474,11 +474,14 @@ jobs:
           cargo test -p merman-render --doc
           cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
-      - name: Test enforced C6 runtime tranche
+      - name: Test C6 cells and route-cutover authorization
         if: matrix.parity
         run: |
           cargo nextest run --locked -p merman-theme-acceptance \
             --no-default-features --features png,jpeg,pdf --test c6_runtime \
+            --cargo-quiet
+          cargo nextest run --locked -p merman-theme-acceptance \
+            --no-default-features --features png,jpeg,pdf --test route_cutover_runtime \
             --cargo-quiet
 
       - name: Test exact Rustdoc artifact recipe

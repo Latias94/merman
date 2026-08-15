@@ -960,18 +960,22 @@ pub enum C6RuntimeError {
     },
     #[error("C6 render group `{group}` was not referenced by any cell receipt")]
     UnreferencedRenderGroup { group: String },
-    #[error("C6 route cutover witness `{witness}` failed proof stage `{stage}`: {detail}")]
-    RouteCutoverProofFailed {
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RouteCutoverRuntimeError {
+    #[error("route cutover witness `{witness}` failed proof stage `{stage}`: {detail}")]
+    ProofFailed {
         witness: String,
         stage: &'static str,
         detail: String,
     },
-    #[error("the C6 route cutover runtime produced duplicate receipt `{route}`")]
-    DuplicateRouteCutoverReceipt { route: String },
+    #[error("the route cutover runtime produced duplicate receipt `{route}`")]
+    DuplicateReceipt { route: String },
     #[error(
-        "C6 route cutover coverage differed from the typed legacy-replacing inventory; missing={missing:?}, unexpected={unexpected:?}"
+        "route cutover coverage differed from the typed legacy-replacing inventory; missing={missing:?}, unexpected={unexpected:?}"
     )]
-    RouteCutoverCoverageMismatch {
+    CoverageMismatch {
         missing: Vec<String>,
         unexpected: Vec<String>,
     },

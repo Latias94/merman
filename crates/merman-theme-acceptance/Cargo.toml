@@ -37,3 +37,7 @@ tempfile = "3.27.0"
 [[test]]
 name = "c6_runtime"
 required-features = ["png", "jpeg", "pdf"]
+
+[[test]]
+name = "route_cutover_runtime"
+required-features = ["png", "jpeg", "pdf"]

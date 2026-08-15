@@ -29,7 +29,7 @@ use merman_theme_fixtures::{
 use crate::observation::{
     C6CellReceipt, C6ExecutionReport, C6ObservedMechanismDisposition, C6ReceiptBook,
     C6RenderGroupKey, C6RenderGroupReceipt, C6RenderLane, C6RuntimeError, C6TargetProof,
-    seal_cell_from_evidence,
+    RouteCutoverRuntimeError, seal_cell_from_evidence,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -70,8 +70,8 @@ impl C6ProofError {
         }
     }
 
-    pub(crate) fn into_route_runtime(self, witness: impl Into<String>) -> C6RuntimeError {
-        C6RuntimeError::RouteCutoverProofFailed {
+    pub(crate) fn into_route_runtime(self, witness: impl Into<String>) -> RouteCutoverRuntimeError {
+        RouteCutoverRuntimeError::ProofFailed {
             witness: witness.into(),
             stage: self.stage,
             detail: self.detail,
@@ -295,8 +295,15 @@ fn themes_root() -> PathBuf {
         .join("themes")
 }
 
+/// Runs only the enforced C6 catalog cells and returns their execution summary.
 pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
     run_enforced_c6_runtime_from_root(themes_root())
+}
+
+/// Runs the exact route-cutover authorization gate independently of the C6 cell gate.
+pub fn run_route_cutover_authorization()
+-> Result<crate::cutover::RouteCutoverAuthorizationReport, RouteCutoverRuntimeError> {
+    crate::cutover::run_route_cutover_witnesses()
 }
 
 fn run_enforced_c6_runtime_from_root(
@@ -304,7 +311,6 @@ fn run_enforced_c6_runtime_from_root(
 ) -> Result<C6ExecutionReport, C6RuntimeError> {
     let theme_catalog = ThemeFixtureCatalog::load(root)?;
     let acceptance = C6AcceptanceCatalog::load(&theme_catalog)?;
-    crate::cutover::run_route_cutover_witnesses()?;
     run_catalog(&theme_catalog, &acceptance)
 }
 
