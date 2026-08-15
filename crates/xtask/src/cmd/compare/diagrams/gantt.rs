@@ -67,7 +67,8 @@ pub(super) fn compare_gantt_request(
     fact: DiagramVerificationFact,
     request: CompareRequest,
 ) -> CompareRunResult {
-    let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
+    let dom_plan = super::super::DomComparisonPlan::from_request(&request, fact.default_dom_mode)
+        .map_err(CompareRunFailure::without_evidence)?;
     let dom_decimals = request.dom_decimals.unwrap_or(3);
 
     // Mermaid Gantt uses JavaScript local-time semantics. Upstream SVG baselines are therefore
@@ -97,23 +98,23 @@ pub(super) fn compare_gantt_request(
             out_path: request.out_path.clone(),
             filter: request.filter.as_deref(),
             check_dom: request.check_dom,
-            dom_mode,
+            dom_plan: dom_plan.clone(),
             dom_decimals,
         }),
         &mut observed_operations,
         |_, report, _paths, options| {
             let _ = writeln!(
                 report,
-                "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Baseline renderer: `{:?}` (page viewport: `{}`px; resolved container: `{}`px)\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n",
+                "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Baseline renderer: `{:?}` (page viewport: `{}`px; resolved container: `{}`px)\n- Command: `{}`\n- Modes: `{}`\n- Decimals: `{}`\n",
                 fact.report_title,
                 baseline_container.renderer,
                 baseline_container.page_viewport_width.0,
                 baseline_container.resolved_container_width().0,
                 fact.command,
-                options.dom_mode,
+                options.dom_plan.label(),
                 options.dom_decimals,
             );
-            write_verification_policy_metadata(report, &request, fact, options.dom_mode, false);
+            write_verification_policy_metadata(report, &request, fact, &options.dom_plan, false);
             report.push('\n');
         },
         |_, stem, _| {

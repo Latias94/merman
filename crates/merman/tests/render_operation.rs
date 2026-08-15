@@ -31,6 +31,29 @@ impl merman::svg::HostTextMeasurer for CancellingTextMeasurer {
     }
 }
 
+#[cfg(feature = "svg")]
+#[derive(Debug)]
+struct EvidenceMathRenderer;
+
+#[cfg(feature = "svg")]
+impl merman::svg::MathRenderer for EvidenceMathRenderer {
+    fn render_html_label(&self, _text: &str, _config: &merman::MermaidConfig) -> Option<String> {
+        Some("<span>rendered math</span>".to_string())
+    }
+
+    fn measure_sequence_html_label(
+        &self,
+        _text: &str,
+        _config: &merman::MermaidConfig,
+    ) -> Option<merman::svg::TextMetrics> {
+        Some(merman::svg::TextMetrics {
+            width: 80.0,
+            height: 24.0,
+            line_count: 1,
+        })
+    }
+}
+
 #[test]
 fn semantic_request_uses_the_canonical_operation_runner() {
     let output = Renderer::new()
@@ -165,6 +188,32 @@ fn typed_svg_targets_share_the_prepared_operation() {
         panic!("expected typed SVG capability plan");
     };
     assert!(plan.is_ready());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn svg_evidence_carries_preparation_owned_capability_requirements() {
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic()
+            .without_math_renderer()
+            .with_math_renderer(Arc::new(EvidenceMathRenderer)),
+        ..Default::default()
+    };
+    let output = Renderer::new()
+        .render(RenderRequest::svg(
+            "sequenceDiagram\nA->>B: $$x$$",
+            OperationControl::new(),
+            request,
+        ))
+        .expect("math SVG render should succeed");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected typed SVG output");
+    };
+
+    assert_eq!(
+        output.evidence().required_capabilities(),
+        &[merman::svg::RenderCapability::Math]
+    );
 }
 
 #[cfg(feature = "svg")]

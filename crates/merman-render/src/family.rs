@@ -548,6 +548,7 @@ pub struct FamilyRenderArtifact {
     metadata: ParseMetadata,
     compatibility_projection: OnceLock<std::result::Result<serde_json::Value, String>>,
     family: BuiltinFamilyArtifact,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 }
 
@@ -671,6 +672,7 @@ pub struct RenderedFamilySvg {
     svg: String,
     family_kind: RenderFamilyKind,
     metadata: ParseMetadata,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 }
 
@@ -685,6 +687,11 @@ impl RenderedFamilySvg {
 
     pub fn family_kind(&self) -> RenderFamilyKind {
         self.family_kind
+    }
+
+    /// Returns the optional capabilities admitted during this artifact's preparation.
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required_capabilities
     }
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
@@ -845,6 +852,7 @@ impl FamilyRenderArtifact {
             metadata,
             compatibility_projection: _,
             family: _,
+            required_capabilities,
             session,
         } = self;
 
@@ -852,6 +860,7 @@ impl FamilyRenderArtifact {
             svg,
             family_kind,
             metadata,
+            required_capabilities,
             session,
         })
     }
@@ -1114,6 +1123,7 @@ fn prepare_class_family(
 fn prepare_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
+    required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
@@ -1128,6 +1138,7 @@ fn prepare_class_render(
         metadata: meta,
         compatibility_projection: OnceLock::new(),
         family,
+        required_capabilities,
         session,
     })
 }
@@ -1186,11 +1197,13 @@ fn prepare_with_render_policy_impl(
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     session.checkpoint(OperationPhase::Layout)?;
-    plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
+    let capability_plan = plan_render_with_policy(&parsed, &session, render_policy)?;
+    capability_plan.ensure_available()?;
+    let required_capabilities = capability_plan.required_capabilities().to_vec();
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
-        let artifact = prepare_class_render(parsed, options, session)?;
+        let artifact = prepare_class_render(parsed, options, required_capabilities, session)?;
         artifact.session.checkpoint(OperationPhase::Layout)?;
         return Ok(artifact);
     }
@@ -1199,6 +1212,7 @@ fn prepare_with_render_policy_impl(
         options,
         session,
         render_policy,
+        required_capabilities,
         flowchart_svg_label_preparation,
     )?;
     artifact.session.checkpoint(OperationPhase::Layout)?;
@@ -1211,6 +1225,7 @@ fn prepare_non_class_render(
     options: &LayoutOptions,
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
+    required_capabilities: Vec<RenderCapability>,
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
@@ -1584,6 +1599,7 @@ fn prepare_non_class_render(
         metadata: meta,
         compatibility_projection: OnceLock::new(),
         family,
+        required_capabilities,
         session,
     })
 }
@@ -2670,10 +2686,11 @@ mindmap
         assert!(plan.missing_capabilities().is_empty());
         assert!(plan.is_ready());
 
-        let rendered = prepare(parsed, &LayoutOptions::default(), session)
-            .unwrap()
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
+        assert_eq!(rendered.required_capabilities(), &[RenderCapability::Math]);
         assert!(rendered.svg().contains("rendered-mindmap-math"));
         assert!(!rendered.svg().contains("$$x^2$$"));
     }

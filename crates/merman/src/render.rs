@@ -19,7 +19,8 @@ use merman_ascii::{AsciiError, AsciiRenderOptions, AsciiResourcePolicy};
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
 use merman_render::{
-    LayoutOptions, RenderCapabilityPolicy, ResourceLimitExceeded as SvgResourceLimitExceeded,
+    LayoutOptions, RenderCapability, RenderCapabilityPolicy,
+    ResourceLimitExceeded as SvgResourceLimitExceeded,
     environment::{RenderEnvironment as BackendRenderEnvironment, TextMeasurementPolicy},
     math::MathRenderer,
     presentation::PresentationRenderPolicy,
@@ -136,26 +137,37 @@ impl OperationExecutionPath {
 /// Immutable evidence captured by a completed SVG operation.
 ///
 /// The evidence is created only by the renderer after SVG emission/postprocessing succeeds. It
-/// is intentionally a narrow projection: callers can inspect measurement provenance and runtime
-/// identity without gaining access to SVG session services or family layout internals.
+/// is intentionally a narrow projection: callers can inspect preparation-owned capability
+/// requirements, measurement provenance, and runtime identity without gaining access to SVG
+/// session services or family layout internals.
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderEvidence {
     execution_path: OperationExecutionPath,
+    required_capabilities: Vec<RenderCapability>,
     session: Box<merman_render::environment::RenderSessionReport>,
 }
 
 #[cfg(feature = "svg")]
 impl RenderEvidence {
-    fn from_session(session: merman_render::environment::RenderSession) -> Self {
+    fn from_session(
+        session: merman_render::environment::RenderSession,
+        required_capabilities: Vec<RenderCapability>,
+    ) -> Self {
         Self {
             execution_path: OperationExecutionPath::Renderer,
+            required_capabilities,
             session: Box::new(session.report()),
         }
     }
 
     pub const fn execution_path(&self) -> OperationExecutionPath {
         self.execution_path
+    }
+
+    /// Returns the optional renderer capabilities selected by this operation's actual preparation.
+    pub fn required_capabilities(&self) -> &[RenderCapability] {
+        &self.required_capabilities
     }
 
     pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {
@@ -201,10 +213,14 @@ pub struct SvgOutput {
 
 #[cfg(feature = "svg")]
 impl SvgOutput {
-    fn new(svg: String, session: merman_render::environment::RenderSession) -> Self {
+    fn new(
+        svg: String,
+        session: merman_render::environment::RenderSession,
+        required_capabilities: Vec<RenderCapability>,
+    ) -> Self {
         Self {
             svg,
-            evidence: RenderEvidence::from_session(session),
+            evidence: RenderEvidence::from_session(session, required_capabilities),
         }
     }
 
@@ -788,8 +804,9 @@ fn render_svg_target(
         Some(pipeline) => rendered.apply_pipeline(pipeline).map_err(map_svg_error)?,
         None => rendered,
     };
+    let required_capabilities = rendered.required_capabilities().to_vec();
     let (svg, _, _, session) = rendered.into_parts();
-    Ok(Some(SvgOutput::new(svg, session)))
+    Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
 }
 
 #[cfg(feature = "svg")]

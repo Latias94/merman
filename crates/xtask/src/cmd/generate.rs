@@ -1832,7 +1832,7 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut install: bool = false;
     let mut check_dom: bool = false;
     let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "strict".to_string();
+    let mut dom_mode = svgdom::DomMode::Strict;
 
     let mut i = 0;
     while i < args.len() {
@@ -1855,8 +1855,9 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 i += 1;
                 dom_mode = args
                     .get(i)
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "strict".to_string());
+                    .ok_or(XtaskError::Usage)?
+                    .parse::<svgdom::DomMode>()
+                    .map_err(|_| XtaskError::Usage)?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -2053,7 +2054,6 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
 
         let filter = filter.as_deref();
-        let parsed_dom_mode = svgdom::DomMode::parse(&dom_mode);
         let mut failures: Vec<String> = Vec::new();
         for target in selected_diagrams {
             if let Err(err) = check_one(UpstreamSvgCheck {
@@ -2062,7 +2062,7 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 diagram: target,
                 filter,
                 check_dom,
-                dom_mode: parsed_dom_mode,
+                dom_mode,
                 dom_decimals,
             }) {
                 failures.push(format!("{target}: {err}"));

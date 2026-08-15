@@ -159,7 +159,9 @@ fn print_help(topic: Option<&str>) {
     println!("Tips:");
     println!("  - `cargo run -p xtask -- verify`");
     println!("  - `cargo run -p xtask -- verify --strict`");
-    println!("  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`");
+    println!(
+        "  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3`"
+    );
     println!(
         "  - `cargo run -p xtask -- compare-all-svgs --report-root --report-root-all --dom-mode parity-root`"
     );

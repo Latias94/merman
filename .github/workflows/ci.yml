@@ -530,17 +530,9 @@ jobs:
           cargo check -p merman-uniffi --no-default-features
           cargo check -p merman-uniffi --no-default-features --features ascii
 
-      - name: SVG DOM structure
+      - name: SVG DOM comparison suite
         if: matrix.parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3
-
-      - name: SVG DOM parity
-        if: matrix.parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
-
-      - name: SVG DOM parity (parity-root)
-        if: matrix.parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
 
       - name: Install root viewport oracle dependencies
         if: matrix.parity

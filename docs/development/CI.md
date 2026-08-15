@@ -46,13 +46,22 @@ ELK stack-safety contracts. Only pull-request and merge-queue runs emit the requ
 status name; push, schedule, and manual lifecycles use event-specific gate names so their results
 cannot satisfy the pull-request check by identity collision.
 
-The Linux parity lane also mounts the real `target/compare/<diagram>/*.svg` files emitted by the
-blocking `parity-root` comparison in Chromium and checks that painted content stays inside each root
-viewport. It reuses that job's Node environment and generated SVGs, installs only the locked
+The Linux parity lane performs one Mermaid source parse and one local SVG render per fixture. Within
+the multi-policy DOM comparator, each upstream/local SVG is normalized and XML-parsed once,
+descendant signatures are cached by the normalization profile that actually affects them, and the
+blocking `structure`, `parity`, and `parity-root` policies are evaluated. `parity` and `parity-root`
+share the same descendant signature; the root contract is evaluated separately from the same parsed
+document. Specialist diagnostics may independently inspect XML, but they do not repeat the Mermaid
+parse or local SVG render. Failures retain their mode attribution, and the `parity-root` evaluation
+still emits the root-delta report at the existing
+`target/compare/<diagram>_report_parity_root.md` path. The lane
+then mounts the real `target/compare/<diagram>/*.svg` files from that comparison in Chromium and
+checks that painted content stays inside each root viewport. It reuses that job's Node environment
+and generated SVGs, installs only the locked
 `playground/tests` dependencies and Chromium, and preserves the outer SVG's own width, height, and
 max-width while mounting it in a fixed-width host. A local paint failure triggers the same paint
 audit for its upstream SVG. This browser gate runs only after the same job's blocking DOM parity
-comparison. It compares root-relative structural overflow pixels and accepts inherited evidence
+suite. It compares root-relative structural overflow pixels and accepts inherited evidence
 only when the local footprint is no larger and every local pixel is present in the upstream
 footprint or its immediate raster neighbor. That one-physical-pixel neighborhood handles binary
 alpha coverage moving between adjacent pixels during anti-aliasing; it is not a CSS-space or
