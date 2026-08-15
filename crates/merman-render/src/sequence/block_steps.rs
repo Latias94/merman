@@ -16,7 +16,9 @@ use crate::Result;
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
+use merman_core::diagrams::sequence::{
+    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy)]
@@ -60,7 +62,7 @@ pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> Result<Sequ
     let mut directive_steps = HashMap::new();
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(message_index)?;
-        if !is_block_label_directive(msg.message_type) {
+        if !is_block_label_directive(msg) {
             continue;
         }
         let frame_width = widths_by_id.get(&msg.id).copied();
@@ -90,20 +92,26 @@ pub(super) fn calculate_sequence_block_widths(
     Ok(widths_by_id)
 }
 
-pub(super) fn is_block_start(message_type: i32) -> bool {
-    matches!(message_type, 10 | 12 | 15 | 19 | 27 | 30 | 32)
+pub(super) fn is_block_start(message: &SequenceMessage) -> bool {
+    is_block_role(message, SequenceControlRole::Start)
 }
 
-pub(super) fn is_block_section(message_type: i32) -> bool {
-    matches!(message_type, 13 | 20 | 28)
+pub(super) fn is_block_section(message: &SequenceMessage) -> bool {
+    is_block_role(message, SequenceControlRole::Separator)
 }
 
-pub(super) fn is_block_end(message_type: i32) -> bool {
-    matches!(message_type, 11 | 14 | 16 | 21 | 29 | 31)
+pub(super) fn is_block_end(message: &SequenceMessage) -> bool {
+    is_block_role(message, SequenceControlRole::End)
 }
 
-fn is_block_label_directive(message_type: i32) -> bool {
-    is_block_start(message_type) || is_block_section(message_type)
+fn is_block_label_directive(message: &SequenceMessage) -> bool {
+    is_block_start(message) || is_block_section(message)
+}
+
+fn is_block_role(message: &SequenceMessage, role: SequenceControlRole) -> bool {
+    message.control_semantics().is_some_and(|semantics| {
+        semantics.kind != SequenceControlKind::Rect && semantics.role == role
+    })
 }
 
 fn block_label_step(
@@ -357,11 +365,11 @@ fn calculate_sequence_block_bounds(
 
     for (message_index, msg) in messages.iter().enumerate() {
         checkpoints.checkpoint_loop(message_index)?;
-        if is_block_start(msg.message_type) {
+        if is_block_start(msg) {
             stack.push(OpenBlock::new(msg.id.clone()));
             continue;
         }
-        if is_block_section(msg.message_type) {
+        if is_block_section(msg) {
             if !msg.message_text().is_empty()
                 && let Some(current) = stack.last_mut()
             {
@@ -369,7 +377,7 @@ fn calculate_sequence_block_bounds(
             }
             continue;
         }
-        if is_block_end(msg.message_type) {
+        if is_block_end(msg) {
             if let Some(current) = stack.pop() {
                 if let Some(parent) = stack.last_mut() {
                     parent.include(current.summary);

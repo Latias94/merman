@@ -3,7 +3,9 @@ use super::block_geometry::SequenceBlockGeometry;
 use super::model::SequenceSvgModel;
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
-use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::diagrams::sequence::{
+    SequenceControlKind, SequenceControlRole, SequenceMessage, SequenceMessageKind,
+};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -162,19 +164,24 @@ fn collect_sequence_blocks_with<'a>(
     for (message_index, message) in model.messages.iter().enumerate() {
         checkpoints.checkpoint_loop(message_index)?;
         let raw_label = message.message_text();
-        match message.message_type {
-            2 => {
+        let control = message
+            .control_semantics()
+            .map(|semantics| (semantics.kind, semantics.role));
+        match (message.semantic_kind(), control) {
+            (SequenceMessageKind::Note, _) => {
                 if !stack.is_empty() {
                     include_message_geometry(&mut stack, message_geometry(message));
                 }
             }
-            10 => stack.push(BlockStackEntry::Loop {
-                label_id: message.id.as_str(),
-                raw_label,
-                geometry: SequenceBlockGeometry::empty(),
-                layout: block_layouts_by_id.get(&message.id),
-            }),
-            11 => {
+            (_, Some((SequenceControlKind::Loop, SequenceControlRole::Start))) => {
+                stack.push(BlockStackEntry::Loop {
+                    label_id: message.id.as_str(),
+                    raw_label,
+                    geometry: SequenceBlockGeometry::empty(),
+                    layout: block_layouts_by_id.get(&message.id),
+                })
+            }
+            (_, Some((SequenceControlKind::Loop, SequenceControlRole::End))) => {
                 if let Some(entry) = pop_and_propagate(&mut stack)
                     && let BlockStackEntry::Loop {
                         label_id,
@@ -197,13 +204,15 @@ fn collect_sequence_blocks_with<'a>(
                     );
                 }
             }
-            15 => stack.push(BlockStackEntry::Opt {
-                label_id: message.id.as_str(),
-                raw_label,
-                geometry: SequenceBlockGeometry::empty(),
-                layout: block_layouts_by_id.get(&message.id),
-            }),
-            16 => {
+            (_, Some((SequenceControlKind::Opt, SequenceControlRole::Start))) => {
+                stack.push(BlockStackEntry::Opt {
+                    label_id: message.id.as_str(),
+                    raw_label,
+                    geometry: SequenceBlockGeometry::empty(),
+                    layout: block_layouts_by_id.get(&message.id),
+                });
+            }
+            (_, Some((SequenceControlKind::Opt, SequenceControlRole::End))) => {
                 if let Some(entry) = pop_and_propagate(&mut stack)
                     && let BlockStackEntry::Opt {
                         label_id,
@@ -226,13 +235,15 @@ fn collect_sequence_blocks_with<'a>(
                     );
                 }
             }
-            30 => stack.push(BlockStackEntry::Break {
-                label_id: message.id.as_str(),
-                raw_label,
-                geometry: SequenceBlockGeometry::empty(),
-                layout: block_layouts_by_id.get(&message.id),
-            }),
-            31 => {
+            (_, Some((SequenceControlKind::Break, SequenceControlRole::Start))) => {
+                stack.push(BlockStackEntry::Break {
+                    label_id: message.id.as_str(),
+                    raw_label,
+                    geometry: SequenceBlockGeometry::empty(),
+                    layout: block_layouts_by_id.get(&message.id),
+                });
+            }
+            (_, Some((SequenceControlKind::Break, SequenceControlRole::End))) => {
                 if let Some(entry) = pop_and_propagate(&mut stack)
                     && let BlockStackEntry::Break {
                         label_id,
@@ -255,16 +266,18 @@ fn collect_sequence_blocks_with<'a>(
                     );
                 }
             }
-            12 => stack.push(BlockStackEntry::Alt {
-                sections: vec![AltSection {
-                    label_id: message.id.as_str(),
-                    raw_label,
-                    geometry: SequenceBlockGeometry::empty(),
-                    separator_y: None,
-                }],
-                layout: block_layouts_by_id.get(&message.id),
-            }),
-            13 => {
+            (_, Some((SequenceControlKind::Alt, SequenceControlRole::Start))) => {
+                stack.push(BlockStackEntry::Alt {
+                    sections: vec![AltSection {
+                        label_id: message.id.as_str(),
+                        raw_label,
+                        geometry: SequenceBlockGeometry::empty(),
+                        separator_y: None,
+                    }],
+                    layout: block_layouts_by_id.get(&message.id),
+                });
+            }
+            (_, Some((SequenceControlKind::Alt, SequenceControlRole::Separator))) => {
                 if let Some(BlockStackEntry::Alt { sections, layout }) = stack.last_mut() {
                     let separator_y = layout
                         .as_deref()
@@ -278,7 +291,7 @@ fn collect_sequence_blocks_with<'a>(
                     });
                 }
             }
-            14 => {
+            (_, Some((SequenceControlKind::Alt, SequenceControlRole::End))) => {
                 if let Some(entry) = pop_and_propagate(&mut stack)
                     && let BlockStackEntry::Alt { sections, layout } = entry
                 {
@@ -294,7 +307,13 @@ fn collect_sequence_blocks_with<'a>(
                     );
                 }
             }
-            19 | 32 => stack.push(BlockStackEntry::Par {
+            (
+                _,
+                Some((
+                    SequenceControlKind::Par | SequenceControlKind::ParOver,
+                    SequenceControlRole::Start,
+                )),
+            ) => stack.push(BlockStackEntry::Par {
                 sections: vec![AltSection {
                     label_id: message.id.as_str(),
                     raw_label,
@@ -303,7 +322,7 @@ fn collect_sequence_blocks_with<'a>(
                 }],
                 layout: block_layouts_by_id.get(&message.id),
             }),
-            20 => {
+            (_, Some((SequenceControlKind::Par, SequenceControlRole::Separator))) => {
                 if let Some(BlockStackEntry::Par { sections, layout }) = stack.last_mut() {
                     let separator_y = layout
                         .as_deref()
@@ -317,7 +336,7 @@ fn collect_sequence_blocks_with<'a>(
                     });
                 }
             }
-            21 => {
+            (_, Some((SequenceControlKind::Par, SequenceControlRole::End))) => {
                 if let Some(entry) = pop_and_propagate(&mut stack)
                     && let BlockStackEntry::Par { sections, layout } = entry
                 {
@@ -333,16 +352,18 @@ fn collect_sequence_blocks_with<'a>(
                     );
                 }
             }
-            27 => stack.push(BlockStackEntry::Critical {
-                sections: vec![AltSection {
-                    label_id: message.id.as_str(),
-                    raw_label,
-                    geometry: SequenceBlockGeometry::empty(),
-                    separator_y: None,
-                }],
-                layout: block_layouts_by_id.get(&message.id),
-            }),
-            28 => {
+            (_, Some((SequenceControlKind::Critical, SequenceControlRole::Start))) => {
+                stack.push(BlockStackEntry::Critical {
+                    sections: vec![AltSection {
+                        label_id: message.id.as_str(),
+                        raw_label,
+                        geometry: SequenceBlockGeometry::empty(),
+                        separator_y: None,
+                    }],
+                    layout: block_layouts_by_id.get(&message.id),
+                })
+            }
+            (_, Some((SequenceControlKind::Critical, SequenceControlRole::Separator))) => {
                 if let Some(BlockStackEntry::Critical { sections, layout }) = stack.last_mut() {
                     let separator_y = layout
                         .as_deref()
@@ -356,7 +377,7 @@ fn collect_sequence_blocks_with<'a>(
                     });
                 }
             }
-            29 => {
+            (_, Some((SequenceControlKind::Critical, SequenceControlRole::End))) => {
                 if let Some(entry) = pop_and_propagate(&mut stack)
                     && let BlockStackEntry::Critical { sections, layout } = entry
                 {

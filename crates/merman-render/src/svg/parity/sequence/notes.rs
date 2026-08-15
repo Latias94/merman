@@ -5,7 +5,7 @@ use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_objec
 use crate::sequence::{
     SequenceMathHeightMode, sequence_note_final_wrapped_lines, sequence_text_line_step_px,
 };
-use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceNoteRenderContext<'a> {
@@ -24,7 +24,7 @@ pub(super) fn render_sequence_note(
     msg: &SequenceMessage,
     ctx: &SequenceNoteRenderContext<'_>,
 ) -> Result<()> {
-    if msg.message_type != 2 {
+    if msg.semantic_kind() != SequenceMessageKind::Note {
         return Ok(());
     }
     ctx.checkpoints.checkpoint()?;

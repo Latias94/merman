@@ -3,6 +3,7 @@ use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
 use crate::sequence::sequence_text_dimensions_height_px;
+use merman_core::diagrams::sequence::{SequenceControlKind, SequenceControlRole};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -146,7 +147,10 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
         let mut rects: Vec<RectBlock<'_>> = Vec::with_capacity(model.messages.len());
         for (message_index, msg) in model.messages.iter().enumerate() {
             checkpoints.checkpoint_loop(message_index)?;
-            if msg.message_type != 22 {
+            if !msg.control_semantics().is_some_and(|semantics| {
+                semantics.kind == SequenceControlKind::Rect
+                    && semantics.role == SequenceControlRole::Start
+            }) {
                 continue;
             }
             let explicit_fill = msg.message_text();

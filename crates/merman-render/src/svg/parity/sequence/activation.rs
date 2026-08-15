@@ -2,6 +2,7 @@ use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::model::SequenceSvgModel;
 use crate::sequence::sequence_activation_start_x;
+use merman_core::diagrams::sequence::SequenceMessageKind;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -54,9 +55,8 @@ pub(super) fn build_sequence_activation_plan<'a>(
             last_line_y = Some(y);
         }
 
-        match msg.message_type {
-            // ACTIVE_START
-            17 => {
+        match msg.semantic_kind() {
+            SequenceMessageKind::ActivationStart => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     continue;
                 };
@@ -86,8 +86,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
                     group_index,
                 });
             }
-            // ACTIVE_END
-            18 => {
+            SequenceMessageKind::ActivationEnd => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     continue;
                 };

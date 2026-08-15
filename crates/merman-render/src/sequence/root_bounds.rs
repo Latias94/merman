@@ -7,7 +7,7 @@ use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
-use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessageKind};
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
@@ -196,7 +196,7 @@ fn include_self_message_bounds(
             continue;
         }
         // Notes can use `from==to` for `rightOf`/`leftOf`; ignore them here.
-        if msg.message_type == 2 {
+        if msg.semantic_kind() == SequenceMessageKind::Note {
             continue;
         }
         let Some(&i) = ctx.actor_index.get(from) else {

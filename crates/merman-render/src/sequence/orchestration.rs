@@ -18,7 +18,10 @@ use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
+use merman_core::diagrams::sequence::{
+    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceMessageKind,
+};
 use std::collections::HashMap;
 
 pub(super) struct SequenceLayoutGraphContext<'a> {
@@ -207,31 +210,29 @@ fn handle_sequence_directive<'a>(
         return true;
     }
 
-    match msg.message_type {
-        message_type if is_block_start(message_type) => {
-            let start_y = state.cursor_y + ctx.box_margin;
-            state.open_sequence_block(&msg.id, start_y);
-            state.cursor_y += directive_steps
-                .get(msg.id.as_str())
-                .copied()
-                .unwrap_or_default();
-            true
-        }
-        message_type if is_block_end(message_type) => {
-            state.close_sequence_block(ctx.box_margin);
-            true
-        }
-        message_type if is_block_section(message_type) => {
-            let section_y = state.cursor_y + ctx.box_margin + ctx.box_text_margin;
-            state.add_sequence_section(&msg.id, section_y);
-            state.cursor_y += directive_steps
-                .get(msg.id.as_str())
-                .copied()
-                .unwrap_or_default();
-            true
-        }
-        _ => false,
+    if is_block_start(msg) {
+        let start_y = state.cursor_y + ctx.box_margin;
+        state.open_sequence_block(&msg.id, start_y);
+        state.cursor_y += directive_steps
+            .get(msg.id.as_str())
+            .copied()
+            .unwrap_or_default();
+        return true;
     }
+    if is_block_end(msg) {
+        state.close_sequence_block(ctx.box_margin);
+        return true;
+    }
+    if is_block_section(msg) {
+        let section_y = state.cursor_y + ctx.box_margin + ctx.box_text_margin;
+        state.add_sequence_section(&msg.id, section_y);
+        state.cursor_y += directive_steps
+            .get(msg.id.as_str())
+            .copied()
+            .unwrap_or_default();
+        return true;
+    }
+    false
 }
 
 fn handle_sequence_rect(
@@ -242,8 +243,11 @@ fn handle_sequence_rect(
     actor_centers_x: &[f64],
     nodes: &mut Vec<LayoutNode>,
 ) -> bool {
-    match msg.message_type {
-        22 => {
+    match msg.control_semantics() {
+        Some(semantics)
+            if semantics.kind == SequenceControlKind::Rect
+                && semantics.role == SequenceControlRole::Start =>
+        {
             state.rect_stack.push(SequenceRectOpen::new(
                 msg.id.clone(),
                 state.cursor_y + box_margin,
@@ -252,7 +256,10 @@ fn handle_sequence_rect(
             state.open_content_block();
             true
         }
-        23 => {
+        Some(semantics)
+            if semantics.kind == SequenceControlKind::Rect
+                && semantics.role == SequenceControlRole::End =>
+        {
             state.close_content_block(box_margin);
             if let Some(open) = state.rect_stack.pop() {
                 let closed = open.close(actor_centers_x);
@@ -278,7 +285,7 @@ fn handle_sequence_note(
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
 ) -> bool {
-    if msg.message_type != 2 {
+    if msg.semantic_kind() != SequenceMessageKind::Note {
         return false;
     }
 

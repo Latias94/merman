@@ -2,7 +2,10 @@ use super::SequenceLayoutCheckpoints;
 use super::constants::{SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX};
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutNode};
-use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
+use merman_core::diagrams::sequence::{
+    SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceMessageKind,
+};
 use merman_core::geom::Box2;
 use std::collections::HashMap;
 
@@ -108,13 +111,29 @@ pub(super) fn sequence_rect_stack_x_bounds(
 
     for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(message_index)?;
-        match msg.message_type {
-            10 | 12 | 15 | 19 | 27 | 30 | 32 => stack.push(StackFrame::control()),
-            11 | 14 | 16 | 21 | 29 | 31 => {
+        match msg.control_semantics() {
+            Some(semantics)
+                if semantics.kind != SequenceControlKind::Rect
+                    && semantics.role == SequenceControlRole::Start =>
+            {
+                stack.push(StackFrame::control());
+            }
+            Some(semantics)
+                if semantics.kind != SequenceControlKind::Rect
+                    && semantics.role == SequenceControlRole::End =>
+            {
                 close_stack_frame(&mut stack, ctx.box_margin, false, &mut rect_bounds);
             }
-            22 => stack.push(StackFrame::rect(msg.id.clone())),
-            23 => {
+            Some(semantics)
+                if semantics.kind == SequenceControlKind::Rect
+                    && semantics.role == SequenceControlRole::Start =>
+            {
+                stack.push(StackFrame::rect(msg.id.clone()));
+            }
+            Some(semantics)
+                if semantics.kind == SequenceControlKind::Rect
+                    && semantics.role == SequenceControlRole::End =>
+            {
                 close_stack_frame(&mut stack, ctx.box_margin, true, &mut rect_bounds);
             }
             _ => {
@@ -229,7 +248,7 @@ fn message_x_range(
     nodes_by_id: &HashMap<&str, &LayoutNode>,
     actor_width_min: f64,
 ) -> Option<(f64, f64)> {
-    if msg.message_type == 2 {
+    if msg.semantic_kind() == SequenceMessageKind::Note {
         let note_id = format!("note-{}", msg.id);
         let n = nodes_by_id.get(note_id.as_str()).copied()?;
         return Some((n.x - n.width / 2.0, n.x + n.width / 2.0));
