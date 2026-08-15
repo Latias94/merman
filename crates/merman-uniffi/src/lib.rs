@@ -1546,7 +1546,7 @@ uniffi::setup_scaffolding!();
 mod tests {
     use super::*;
     #[cfg(feature = "ascii")]
-    use merman_ascii_test_contracts::ascii_resource_boundaries;
+    use merman_ascii_test_contracts::ascii_resource_boundary_contract;
     #[cfg(feature = "analysis")]
     use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
     use serde_json::Value;
@@ -2752,11 +2752,11 @@ mod tests {
     #[test]
     fn uniffi_ascii_operation_preserves_a_typed_exact_resource_boundary() {
         let id = MermanResourceOverrideId::MaxAsciiOutputBytes;
-        let case = ascii_resource_boundaries()
-            .into_iter()
-            .find(|case| case.id == id.id())
-            .expect("shared ASCII output boundary");
-        let expected = case.expected.uniffi_interactive;
+        let case = ascii_resource_boundary_contract()
+            .transport_representatives
+            .uniffi_interactive;
+        assert_eq!(case.id, id.id());
+        let expected = case.exact;
         let engine = engine();
 
         let output = engine
@@ -3259,7 +3259,7 @@ mod tests {
             .map(MermanResourceOverrideId::id);
             transport_ids.sort_unstable();
 
-            let shared_cases = ascii_resource_boundaries();
+            let shared_cases = ascii_resource_boundary_contract().binding_core_interactive;
             let mut shared_ids = shared_cases
                 .iter()
                 .map(|case| case.id.as_str())

@@ -393,7 +393,7 @@ fn binding_diagnostic_details(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_ascii_test_contracts::ascii_resource_boundaries;
+    use merman_ascii_test_contracts::ascii_resource_boundary_contract;
 
     fn render_ascii_with_limit(
         limit_id: &str,
@@ -852,13 +852,8 @@ mod tests {
 
     #[test]
     fn every_ascii_resource_limit_round_trips_exact_public_boundaries() {
-        for case in ascii_resource_boundaries() {
-            assert_binding_ascii_exact_boundary(
-                &case.id,
-                &case.phase,
-                case.expected.binding_interactive,
-                &case.source,
-            );
+        for case in ascii_resource_boundary_contract().binding_core_interactive {
+            assert_binding_ascii_exact_boundary(&case.id, &case.phase, case.exact, &case.source);
         }
     }
 

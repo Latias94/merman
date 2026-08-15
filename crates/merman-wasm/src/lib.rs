@@ -648,7 +648,7 @@ fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str
 mod tests {
     use super::*;
     #[cfg(feature = "ascii")]
-    use merman_ascii_test_contracts::ascii_resource_boundaries;
+    use merman_ascii_test_contracts::ascii_resource_boundary_contract;
     #[cfg(any(feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
 
@@ -1340,7 +1340,7 @@ mod tests {
         assert_eq!(resources.general_binding_default_profile, "interactive");
         assert_eq!(resources.profiles.len(), 4);
         #[cfg(feature = "ascii")]
-        for case in ascii_resource_boundaries() {
+        for case in ascii_resource_boundary_contract().binding_core_interactive {
             let limit = resources
                 .limits
                 .iter()
@@ -1418,11 +1418,10 @@ mod tests {
     #[cfg(feature = "ascii")]
     #[test]
     fn wasm_ascii_operation_preserves_a_typed_exact_resource_boundary() {
-        let case = ascii_resource_boundaries()
-            .into_iter()
-            .find(|case| case.id == "max_ascii_output_bytes")
-            .expect("shared ASCII output boundary");
-        let expected = case.expected.wasm_interactive;
+        let case = ascii_resource_boundary_contract()
+            .transport_representatives
+            .wasm_interactive;
+        let expected = case.exact;
 
         let exact_options = wasm_ascii_options(&case.id, expected);
         let output = execute_wasm_operation(

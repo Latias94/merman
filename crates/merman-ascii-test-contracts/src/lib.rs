@@ -3,34 +3,65 @@
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AsciiResourceBoundary {
     pub id: String,
     pub phase: String,
     pub source: String,
-    pub expected: AsciiResourceBoundaryProfiles,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct AsciiResourceBoundaryProfiles {
-    pub binding_interactive: u64,
-    pub wasm_interactive: u64,
-    pub uniffi_interactive: u64,
-    pub cli_trusted_native: u64,
+    pub exact: u64,
 }
 
 #[derive(Debug, Deserialize)]
-struct AsciiResourceBoundaryContract {
-    schema_version: u32,
-    cases: Vec<AsciiResourceBoundary>,
+#[serde(deny_unknown_fields)]
+pub struct AsciiTransportRepresentativeBoundaries {
+    pub cli_trusted_native: AsciiResourceBoundary,
+    pub uniffi_interactive: AsciiResourceBoundary,
+    pub wasm_interactive: AsciiResourceBoundary,
 }
 
-pub fn ascii_resource_boundaries() -> Vec<AsciiResourceBoundary> {
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AsciiResourceBoundaryContract {
+    schema_version: u32,
+    purpose: String,
+    update_policy: String,
+    pub binding_core_interactive: Vec<AsciiResourceBoundary>,
+    pub transport_representatives: AsciiTransportRepresentativeBoundaries,
+}
+
+fn validate_boundary(
+    boundary: &AsciiResourceBoundary,
+    expected_id: &str,
+    expected_phase: &str,
+    owner: &str,
+) {
+    assert_eq!(boundary.id, expected_id, "{owner} has the wrong limit id");
+    assert_eq!(
+        boundary.phase, expected_phase,
+        "{owner} has the wrong phase"
+    );
+    assert!(boundary.exact > 0, "{owner} boundary must be positive");
+    assert!(
+        !boundary.source.is_empty(),
+        "{owner} boundary must provide source"
+    );
+}
+
+pub fn ascii_resource_boundary_contract() -> AsciiResourceBoundaryContract {
     let contract: AsciiResourceBoundaryContract =
         serde_json::from_str(include_str!("ascii_resource_boundaries.json"))
             .expect("ASCII resource boundary contract must be valid JSON");
     assert_eq!(
-        contract.schema_version, 2,
+        contract.schema_version, 3,
         "unsupported ASCII resource boundary contract schema"
+    );
+    assert!(
+        !contract.purpose.is_empty(),
+        "ASCII resource boundary contract must state its purpose"
+    );
+    assert!(
+        !contract.update_policy.is_empty(),
+        "ASCII resource boundary contract must state its update policy"
     );
 
     let expected_id_phases = [
@@ -42,27 +73,52 @@ pub fn ascii_resource_boundaries() -> Vec<AsciiResourceBoundary> {
         ("max_ascii_nesting_depth", "ascii_nesting"),
     ];
     assert_eq!(
-        contract.cases.len(),
+        contract.binding_core_interactive.len(),
         expected_id_phases.len(),
-        "ASCII resource boundary contract must cover every public limit exactly once"
+        "Binding Core ASCII resource boundaries must cover every public limit exactly once"
     );
     for (expected_id, expected_phase) in expected_id_phases {
         let matches: Vec<_> = contract
-            .cases
+            .binding_core_interactive
             .iter()
             .filter(|case| case.id == expected_id)
             .collect();
         assert_eq!(
             matches.len(),
             1,
-            "ASCII resource boundary {expected_id} must appear exactly once"
+            "Binding Core ASCII resource boundary {expected_id} must appear exactly once"
         );
-        assert_eq!(
-            matches[0].phase, expected_phase,
-            "ASCII resource boundary {expected_id} has the wrong phase"
+        validate_boundary(
+            matches[0],
+            expected_id,
+            expected_phase,
+            "Binding Core ASCII resource boundary",
         );
     }
-    contract.cases
+
+    for (transport, representative) in [
+        (
+            "CLI trusted-native",
+            &contract.transport_representatives.cli_trusted_native,
+        ),
+        (
+            "UniFFI interactive",
+            &contract.transport_representatives.uniffi_interactive,
+        ),
+        (
+            "WASM interactive",
+            &contract.transport_representatives.wasm_interactive,
+        ),
+    ] {
+        validate_boundary(
+            representative,
+            "max_ascii_output_bytes",
+            "ascii_output",
+            transport,
+        );
+    }
+
+    contract
 }
 
 #[cfg(test)]
@@ -70,7 +126,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resource_boundaries_cover_each_public_limit_once() {
-        assert_eq!(ascii_resource_boundaries().len(), 6);
+    fn contract_separates_canonical_and_transport_boundaries() {
+        let contract = ascii_resource_boundary_contract();
+        assert_eq!(contract.binding_core_interactive.len(), 6);
+        for boundary in [
+            contract.transport_representatives.cli_trusted_native,
+            contract.transport_representatives.uniffi_interactive,
+            contract.transport_representatives.wasm_interactive,
+        ] {
+            assert_eq!(boundary.id, "max_ascii_output_bytes");
+            assert_eq!(boundary.phase, "ascii_output");
+        }
     }
 }

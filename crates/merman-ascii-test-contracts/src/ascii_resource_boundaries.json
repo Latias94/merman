@@ -1,79 +1,63 @@
 {
-  "schema_version": 2,
-  "purpose": "Pinned exact and N-1 accounting boundaries for public ASCII transports.",
-  "update_policy": "Do not derive these values at test runtime. Change a value only with an intentional accounting or canonical-output change and review the exact/N-1 delta.",
-  "configurations": {
-    "binding_interactive": "Binding core with its default Unicode ASCII options and the interactive resource profile.",
-    "wasm_interactive": "WASM operation forwarding the binding-core default Unicode ASCII options and interactive profile.",
-    "uniffi_interactive": "UniFFI operation forwarding the binding-core default Unicode ASCII options and interactive profile.",
-    "cli_trusted_native": "CLI --format ascii with the trusted-native resource profile."
-  },
-  "cases": [
+  "schema_version": 3,
+  "purpose": "Pinned exact and N-1 accounting boundaries for Binding Core plus one representative boundary per public ASCII transport.",
+  "update_policy": "Do not derive these values at test runtime. Change a value only with an intentional accounting or canonical-output change and review the exact/N-1 delta. Transport representatives remain one max_ascii_output_bytes case each; do not expand them into a limit-by-transport matrix.",
+  "binding_core_interactive": [
     {
       "id": "max_ascii_grid_cells",
       "phase": "ascii_layout",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "expected": {
-        "binding_interactive": 135,
-        "wasm_interactive": 135,
-        "uniffi_interactive": 135,
-        "cli_trusted_native": 135
-      }
+      "exact": 135
     },
     {
       "id": "max_ascii_layout_work_units",
       "phase": "ascii_layout_work",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "expected": {
-        "binding_interactive": 2905,
-        "wasm_interactive": 2905,
-        "uniffi_interactive": 2905,
-        "cli_trusted_native": 2868
-      }
+      "exact": 2905
     },
     {
       "id": "max_ascii_document_cells",
       "phase": "ascii_document",
       "source": "gitGraph\n  commit id: \"A\"",
-      "expected": {
-        "binding_interactive": 161,
-        "wasm_interactive": 161,
-        "uniffi_interactive": 161,
-        "cli_trusted_native": 161
-      }
+      "exact": 161
     },
     {
       "id": "max_ascii_output_bytes",
       "phase": "ascii_output",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "expected": {
-        "binding_interactive": 256,
-        "wasm_interactive": 256,
-        "uniffi_interactive": 256,
-        "cli_trusted_native": 150
-      }
+      "exact": 256
     },
     {
       "id": "max_ascii_grapheme_bytes",
       "phase": "ascii_grapheme",
       "source": "flowchart TD\nA[👨‍👩‍👧‍👦]",
-      "expected": {
-        "binding_interactive": 25,
-        "wasm_interactive": 25,
-        "uniffi_interactive": 25,
-        "cli_trusted_native": 25
-      }
+      "exact": 25
     },
     {
       "id": "max_ascii_nesting_depth",
       "phase": "ascii_nesting",
       "source": "mindmap\n  Root\n    Child",
-      "expected": {
-        "binding_interactive": 2,
-        "wasm_interactive": 2,
-        "uniffi_interactive": 2,
-        "cli_trusted_native": 2
-      }
+      "exact": 2
     }
-  ]
+  ],
+  "transport_representatives": {
+    "cli_trusted_native": {
+      "id": "max_ascii_output_bytes",
+      "phase": "ascii_output",
+      "source": "flowchart TD\nA[Hello] --> B[World]",
+      "exact": 150
+    },
+    "uniffi_interactive": {
+      "id": "max_ascii_output_bytes",
+      "phase": "ascii_output",
+      "source": "flowchart TD\nA[Hello] --> B[World]",
+      "exact": 256
+    },
+    "wasm_interactive": {
+      "id": "max_ascii_output_bytes",
+      "phase": "ascii_output",
+      "source": "flowchart TD\nA[Hello] --> B[World]",
+      "exact": 256
+    }
+  }
 }

@@ -8,7 +8,7 @@ use std::io::Write;
 use std::os::fd::FromRawFd;
 use std::process::{Command, Output, Stdio};
 
-use merman_ascii_test_contracts::ascii_resource_boundaries;
+use merman_ascii_test_contracts::ascii_resource_boundary_contract;
 
 fn run_with_stdin(args: &[&str], input: &str) -> Output {
     let exe = assert_cmd::cargo_bin!("merman-cli");
@@ -384,11 +384,10 @@ fn cli_applies_the_selected_resource_profile_to_text_output() {
 
 #[test]
 fn cli_reports_a_representative_ascii_resource_boundary_with_stable_typed_context() {
-    let case = ascii_resource_boundaries()
-        .into_iter()
-        .find(|case| case.id == "max_ascii_output_bytes")
-        .expect("shared ASCII output boundary");
-    let exact = case.expected.cli_trusted_native;
+    let case = ascii_resource_boundary_contract()
+        .transport_representatives
+        .cli_trusted_native;
+    let exact = case.exact;
 
     let exact_output = run_ascii_with_resource_limit(&case.id, exact, &case.source);
     assert!(
