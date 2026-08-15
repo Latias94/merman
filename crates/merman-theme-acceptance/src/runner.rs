@@ -15,7 +15,7 @@ use merman::{
     RenderOutput, RenderRequest, RenderedDocument, Renderer, SvgEnvironment, SvgRequest,
     TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource, ThemeEvidenceStatus,
 };
-use merman_export::{PdfOptions, RasterOptions};
+use merman_export::{PdfOptions, RasterOptions, RasterPlan};
 use merman_theme_fixtures::{
     C6AcceptanceCatalog, C6EnforcedCell, C6ProofFamily, C6ProofTheme, ExpectedOutputTarget,
     ReferenceBorderInput, ReferenceCanvasLayer, ReferenceDiagramFamily, ReferenceFontBinding,
@@ -613,145 +613,85 @@ fn execute_render_group(
     (group.adapter.execute)(theme_catalog, acceptance, group.work)
 }
 
-fn execute_brutalist_state_group(
-    theme_catalog: &ThemeFixtureCatalog,
-    acceptance: &C6AcceptanceCatalog,
-    group: C6RenderGroupWork,
-) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
+fn load_render_group_fixture<'a>(
+    theme_catalog: &'a ThemeFixtureCatalog,
+    key: &C6RenderGroupKey,
+) -> Result<(&'a ReferenceThemeInput, String), C6RuntimeError> {
     let fixture = theme_catalog
-        .fixture(group.key.source_fixture_id())
-        .ok_or_else(|| render_group_error(&group.key, "source-fixture"))?;
+        .fixture(key.source_fixture_id())
+        .ok_or_else(|| render_group_error(key, "source-fixture"))?;
     let input = fixture
         .theme_input()
-        .ok_or_else(|| render_group_error(&group.key, "theme-input"))?;
+        .ok_or_else(|| render_group_error(key, "theme-input"))?;
     let source = theme_catalog.source_text(fixture.id()).map_err(|error| {
         C6RuntimeError::RenderGroupProofFailed {
-            group: group.key.label(),
+            group: key.label(),
             stage: "source-fixture-read",
             detail: error.to_string(),
         }
     })?;
-    let rendered = prove_render_group(
-        &group.key,
-        prove_brutalist_state_rendered_document(theme_catalog, input, &source),
-    )?;
-    let png_dependents = group
-        .cells
-        .iter()
-        .map(|cell| cell.key().target())
-        .filter(|target| *target == ExpectedOutputTarget::Png)
-        .collect::<Vec<_>>();
-    let png_support = (!png_dependents.is_empty())
-        .then(|| {
-            observe_brutalist_state_png(
-                &group.key,
-                &png_dependents,
-                &rendered.contract,
-                &rendered.document,
-                &rendered.identity,
-            )
-        })
-        .transpose()?;
-
-    prove_shared_document_identity(
-        &group.key,
-        rendered.document.standalone_svg_admission(),
-        png_support.as_ref().map(|support| &support.0),
-    )?;
-    let group_receipt = C6RenderGroupReceipt::seal(
-        group.key.clone(),
-        theme_catalog,
-        &rendered.identity,
-        rendered.document.standalone_svg_admission(),
-    )?;
-    let svg_observation = C6TargetObservation::from_target_receipt(
-        rendered.identity.clone(),
-        rendered.document.standalone_svg_admission(),
-        C6TargetProof::brutalist_state_standalone_svg(rendered.mechanisms.clone()),
-    );
-
-    let mut cells = Vec::with_capacity(group.cells.len());
-    for enforced in &group.cells {
-        let observation = match enforced.key().target() {
-            ExpectedOutputTarget::StandaloneSvg => svg_observation.clone(),
-            ExpectedOutputTarget::Png => png_support
-                .as_ref()
-                .ok_or_else(|| render_group_error(&group.key, "png-support-plan"))?
-                .0
-                .clone(),
-            ExpectedOutputTarget::BrowserSvg
-            | ExpectedOutputTarget::Jpeg
-            | ExpectedOutputTarget::Pdf => {
-                return Err(C6RuntimeError::UnsupportedEnforcedCell {
-                    key: enforced.key(),
-                });
-            }
-        };
-        cells.push(observation.seal(acceptance, enforced, &group_receipt)?);
-    }
-
-    Ok(C6CompletedRenderGroup {
-        receipt: group_receipt,
-        cells,
-    })
+    Ok((input, source))
 }
 
-fn execute_brutalist_sequence_group(
+fn complete_c6_svg_png_render_group(
     theme_catalog: &ThemeFixtureCatalog,
     acceptance: &C6AcceptanceCatalog,
     group: C6RenderGroupWork,
+    document: &RenderedDocument,
+    identity: &crate::observation::C6RenderIdentity,
+    standalone_svg_proof: C6TargetProof,
+    prove_png_artifact: impl FnOnce(&str, &[u8], RasterPlan) -> C6ProofResult<C6TargetProof>,
 ) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
-    let fixture = theme_catalog
-        .fixture(group.key.source_fixture_id())
-        .ok_or_else(|| render_group_error(&group.key, "source-fixture"))?;
-    let input = fixture
-        .theme_input()
-        .ok_or_else(|| render_group_error(&group.key, "theme-input"))?;
-    let source = theme_catalog.source_text(fixture.id()).map_err(|error| {
-        C6RuntimeError::RenderGroupProofFailed {
-            group: group.key.label(),
-            stage: "source-fixture-read",
-            detail: error.to_string(),
-        }
-    })?;
-    let rendered = prove_render_group(
-        &group.key,
-        prove_brutalist_sequence_rendered_document(theme_catalog, input, &source),
-    )?;
     let png_dependents = group
         .cells
         .iter()
         .map(|cell| cell.key().target())
         .filter(|target| *target == ExpectedOutputTarget::Png)
         .collect::<Vec<_>>();
-    let png_observation = (!png_dependents.is_empty())
-        .then(|| {
-            observe_brutalist_sequence_png(
-                &group.key,
-                &png_dependents,
-                &rendered.contract,
-                &rendered.svg_proof,
-                &rendered.document,
-                &rendered.identity,
-            )
-        })
-        .transpose()?;
+    let png_observation = if png_dependents.is_empty() {
+        None
+    } else {
+        let output = prove_target(
+            &group.key,
+            ExpectedOutputTarget::Png,
+            &png_dependents,
+            document
+                .export_png(
+                    &RasterOptions::default().with_scale(2.0),
+                    OperationControl::new(),
+                )
+                .map_err(|error| C6ProofError::new("png-render", error.to_string())),
+        )?;
+        let target_proof = prove_target(
+            &group.key,
+            ExpectedOutputTarget::Png,
+            &png_dependents,
+            prove_png_artifact(document.svg(), output.bytes(), output.plan()),
+        )?;
+        Some(C6TargetObservation::from_target_receipt(
+            identity.clone(),
+            output.admission(),
+            target_proof,
+        ))
+    };
 
     prove_shared_document_identity(
         &group.key,
-        rendered.document.standalone_svg_admission(),
-        png_observation.as_ref(),
+        document.standalone_svg_admission(),
+        png_observation
+            .as_ref()
+            .map(|observation| &observation.target_receipt),
     )?;
     let group_receipt = C6RenderGroupReceipt::seal(
         group.key.clone(),
         theme_catalog,
-        &rendered.identity,
-        rendered.document.standalone_svg_admission(),
+        identity,
+        document.standalone_svg_admission(),
     )?;
     let svg_observation = C6TargetObservation::from_target_receipt(
-        rendered.identity.clone(),
-        rendered.document.standalone_svg_admission(),
-        C6TargetProof::brutalist_sequence_standalone_svg(rendered.svg_proof.mechanisms()),
+        identity.clone(),
+        document.standalone_svg_admission(),
+        standalone_svg_proof,
     );
 
     let mut cells = Vec::with_capacity(group.cells.len());
@@ -777,6 +717,55 @@ fn execute_brutalist_sequence_group(
         receipt: group_receipt,
         cells,
     })
+}
+
+fn execute_brutalist_state_group(
+    theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
+    group: C6RenderGroupWork,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
+    let (input, source) = load_render_group_fixture(theme_catalog, &group.key)?;
+    let rendered = prove_render_group(
+        &group.key,
+        prove_brutalist_state_rendered_document(theme_catalog, input, &source),
+    )?;
+    complete_c6_svg_png_render_group(
+        theme_catalog,
+        acceptance,
+        group,
+        &rendered.document,
+        &rendered.identity,
+        C6TargetProof::brutalist_state_standalone_svg(rendered.mechanisms.clone()),
+        |svg, bytes, plan| {
+            Ok(prove_brutalist_state_png(&rendered.contract, svg, bytes, plan)?.target_proof())
+        },
+    )
+}
+
+fn execute_brutalist_sequence_group(
+    theme_catalog: &ThemeFixtureCatalog,
+    acceptance: &C6AcceptanceCatalog,
+    group: C6RenderGroupWork,
+) -> Result<C6CompletedRenderGroup, C6RuntimeError> {
+    let (input, source) = load_render_group_fixture(theme_catalog, &group.key)?;
+    let rendered = prove_render_group(
+        &group.key,
+        prove_brutalist_sequence_rendered_document(theme_catalog, input, &source),
+    )?;
+    complete_c6_svg_png_render_group(
+        theme_catalog,
+        acceptance,
+        group,
+        &rendered.document,
+        &rendered.identity,
+        C6TargetProof::brutalist_sequence_standalone_svg(rendered.svg_proof.mechanisms()),
+        |_, bytes, plan| {
+            prove_brutalist_sequence_png(&rendered.contract, &rendered.svg_proof, bytes, plan)?;
+            Ok(C6TargetProof::brutalist_sequence_png(
+                rendered.svg_proof.mechanisms(),
+            ))
+        },
+    )
 }
 
 struct BrutalistStateRenderedDocument<'a> {
@@ -898,12 +887,11 @@ impl C6TargetObservation {
 fn prove_shared_document_identity(
     key: &C6RenderGroupKey,
     standalone: &TargetAdmissionReceipt,
-    png: Option<&C6TargetObservation>,
+    png: Option<&TargetAdmissionReceipt>,
 ) -> Result<(), C6RuntimeError> {
     let standalone_resource = *standalone.resource_fingerprint().as_bytes();
     let standalone_fonts = *standalone.font_catalog_fingerprint().as_bytes();
-    let mismatched = [png].into_iter().flatten().any(|observation| {
-        let receipt = &observation.target_receipt;
+    let mismatched = [png].into_iter().flatten().any(|receipt| {
         receipt.document_digest() != standalone.document_digest()
             || *receipt.resource_fingerprint().as_bytes() != standalone_resource
             || *receipt.font_catalog_fingerprint().as_bytes() != standalone_fonts
@@ -1254,71 +1242,6 @@ fn prove_brutalist_state_pdf_projection(
     Ok(ProvenNativeProjection {
         target_receipt: output.admission().clone(),
     })
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn observe_brutalist_state_png(
-    key: &C6RenderGroupKey,
-    required_by: &[ExpectedOutputTarget],
-    contract: &BrutalistStateFixtureContract<'_>,
-    document: &RenderedDocument,
-    identity: &crate::observation::C6RenderIdentity,
-) -> Result<(C6TargetObservation, PngArtifactProof), C6RuntimeError> {
-    let projection = prove_target(
-        key,
-        ExpectedOutputTarget::Png,
-        required_by,
-        prove_brutalist_state_png_projection(contract, document),
-    )?;
-    let target_proof = projection.artifact_proof.target_proof();
-    Ok((
-        C6TargetObservation::from_target_receipt(
-            identity.clone(),
-            &projection.target_receipt,
-            target_proof,
-        ),
-        projection.artifact_proof,
-    ))
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_brutalist_sequence_png_projection(
-    contract: &BrutalistSequenceFixtureContract<'_>,
-    svg_proof: &BrutalistSequenceSvgProof,
-    document: &RenderedDocument,
-) -> C6ProofResult<ProvenNativeProjection> {
-    let output = document
-        .export_png(
-            &RasterOptions::default().with_scale(2.0),
-            OperationControl::new(),
-        )
-        .map_err(|error| C6ProofError::new("sequence-png-render", error.to_string()))?;
-    prove_brutalist_sequence_png(contract, svg_proof, output.bytes(), output.plan())?;
-    Ok(ProvenNativeProjection {
-        target_receipt: output.admission().clone(),
-    })
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn observe_brutalist_sequence_png(
-    key: &C6RenderGroupKey,
-    required_by: &[ExpectedOutputTarget],
-    contract: &BrutalistSequenceFixtureContract<'_>,
-    svg_proof: &BrutalistSequenceSvgProof,
-    document: &RenderedDocument,
-    identity: &crate::observation::C6RenderIdentity,
-) -> Result<C6TargetObservation, C6RuntimeError> {
-    let projection = prove_target(
-        key,
-        ExpectedOutputTarget::Png,
-        required_by,
-        prove_brutalist_sequence_png_projection(contract, svg_proof, document),
-    )?;
-    Ok(C6TargetObservation::from_target_receipt(
-        identity.clone(),
-        &projection.target_receipt,
-        C6TargetProof::brutalist_sequence_png(svg_proof.mechanisms()),
-    ))
 }
 
 fn brutalist_state_renderer() -> Renderer {
