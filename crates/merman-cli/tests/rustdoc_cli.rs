@@ -231,7 +231,13 @@ fn check_reports_missing_receipt_without_creating_managed_outputs() {
     assert_eq!(exit_code(&output), 1, "stderr: {:?}", output.stderr);
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("receipt is missing"), "{stderr}");
-    assert!(stderr.contains("docs/generated/merman-rustdoc"), "{stderr}");
+    let expected_receipt = fs::canonicalize(&config_root)
+        .expect("canonicalize config root")
+        .join("docs/generated/merman-rustdoc/receipt.json");
+    assert!(
+        stderr.contains(&format!("{expected_receipt:?}")),
+        "{stderr}"
+    );
 }
 
 #[test]
