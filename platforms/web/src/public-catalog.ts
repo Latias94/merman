@@ -105,6 +105,8 @@ export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_PANIC",
   "MERMAN_INTERNAL_ERROR",
   "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+  "MERMAN_BUSY",
+  "MERMAN_CANCELLED",
 ] as const;
 
 export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
@@ -112,7 +114,9 @@ export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
 export type BindingErrorKind =
   | "generic"
   | "unknown-operation"
-  | "missing-capability";
+  | "missing-capability"
+  | "busy"
+  | "reentrant-call";
 
 /**
  * A lossless unsigned resource count. Safe integers use `number`; wider `u64` values use a
@@ -142,6 +146,11 @@ export interface BindingDiagnosticErrorDetails {
   diagram_type: string | null;
 }
 
+export interface BindingCancellationErrorDetails {
+  reason: string;
+  phase: string;
+}
+
 export interface BindingErrorPayload {
   version: number;
   ok: false;
@@ -153,6 +162,7 @@ export interface BindingErrorPayload {
     resource?: BindingResourceErrorDetails;
     diagnostic?: BindingDiagnosticErrorDetails;
     icon_registry?: Record<string, unknown>;
+    cancellation?: BindingCancellationErrorDetails;
   };
   message: string;
 }
@@ -340,6 +350,7 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
   const resource = details?.resource;
   const diagnostic = details?.diagnostic;
   const iconRegistry = details?.icon_registry;
+  const cancellation = details?.cancellation;
   const validResource =
     resource === undefined ||
     (!!resource &&
@@ -375,14 +386,22 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
         typeof diagnosticRecord.field === "string") &&
       (diagnosticRecord.diagram_type === null ||
         typeof diagnosticRecord.diagram_type === "string"));
+  const validCancellation =
+    cancellation === undefined ||
+    (!!cancellation &&
+      typeof cancellation === "object" &&
+      typeof (cancellation as Record<string, unknown>).reason === "string" &&
+      typeof (cancellation as Record<string, unknown>).phase === "string");
   const hasValidDetails =
     payload.details === undefined ||
     (!!details &&
       (resource !== undefined ||
         diagnostic !== undefined ||
-        iconRegistry !== undefined) &&
+        iconRegistry !== undefined ||
+        cancellation !== undefined) &&
       validResource &&
       validDiagnostic &&
+      validCancellation &&
       (iconRegistry === undefined ||
         (!!iconRegistry && typeof iconRegistry === "object")));
   return (

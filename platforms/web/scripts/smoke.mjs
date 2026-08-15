@@ -1400,6 +1400,44 @@ function assertEditorLanguageSurface(enabled) {
     );
   }
 
+  const cancellationError = {
+    version: 1,
+    ok: false,
+    code: 12,
+    code_name: "MERMAN_CANCELLED",
+    kind: "generic",
+    capability_id: null,
+    details: {
+      cancellation: {
+        reason: "deadline_exceeded",
+        phase: "admission",
+      },
+    },
+    message: "operation cancelled during admission: deadline exceeded",
+  };
+  assert.ok(
+    api.isBindingStatusCodeName("MERMAN_BUSY") &&
+      api.isBindingStatusCodeName("MERMAN_CANCELLED"),
+    "expected operation status names to satisfy the public binding contract"
+  );
+  assert.ok(
+    api.isBindingErrorPayload(cancellationError),
+    "expected cancellation-only details to satisfy the binding error contract"
+  );
+  assert.equal(
+    api.isBindingErrorPayload({
+      ...cancellationError,
+      details: {
+        cancellation: {
+          ...cancellationError.details.cancellation,
+          phase: undefined,
+        },
+      },
+    }),
+    false,
+    "cancellation details without a phase must not satisfy the binding error contract"
+  );
+
   assert.deepEqual(
     api.editorDiagramDetection(
       "flowchart TD\nA[unterminated\n",
