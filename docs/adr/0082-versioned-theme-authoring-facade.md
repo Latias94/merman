@@ -424,12 +424,13 @@ materialize_preset(preset_ref) -> MaterializedPreset
 describe_theme_support(query) -> ThemeCapabilityDescriptor
 ```
 
-`describe_theme_support` returns a C5/C6-backed static upper bound such as `Unconditional`,
-`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. `Unconditional` means the complete
-public value domain under the stated label mode, output target, and resource ceiling, not that one
-fixture passed. `NotApplicable` means the semantic target or facet does not exist for the queried
-family. Missing, unknown, or newer additive rows normalize to `Unverified`, never to
-`Unsupported`.
+`describe_theme_support` returns a C5-owned static upper bound such as `Unconditional`,
+`Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. `Unconditional` requires an
+exhaustive value-domain argument and shared runtime admission predicate owned by the family or
+target module; the representative C6a ledger validates end-to-end integration and detects drift but
+cannot upgrade a descriptor merely because one fixture passed. `NotApplicable` means the semantic
+target or facet does not exist for the queried family. Missing, unknown, or newer additive rows
+normalize to `Unverified`, never to `Unsupported`.
 
 The stable discovery seam is a versioned query and result envelope, not an exported copy of the
 private mechanism matrix. Its stable fields identify family, output target, semantic target, facet,
@@ -467,10 +468,13 @@ admission results.
 - Full asset-bearing complete specs remain subject to encoded-byte and effective runtime resource
   limits after materialization and during compilation/session admission.
 
-The Rust executable table and alpha materializer land after the current correctness and C6a engine
-gates, then drive the C7a pre-freeze authoring witnesses. Public binding operations and authoring UI
-roll out only after the C7a candidate is backed by C5, C6a, the expansion row-coverage manifest, and
-the pre-freeze family consumers. This ADR alone does not make C7a eligible.
+The Rust executable table and alpha materializer land after the current correctness gates and the
+representative native C6a checkpoint, then drive the C7a pre-freeze authoring witnesses. Those
+witnesses reuse production `RenderedDocument` receipts and shared observers; they prove authoring,
+materialization, and state isolation without establishing another rendering proof system. Public
+binding operations and authoring UI roll out only after the C7a candidate is backed by C5, C6a, the
+expansion row-coverage manifest, and the pre-freeze family consumers. This ADR alone does not make
+C7a eligible.
 
 ## Consequences
 

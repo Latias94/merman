@@ -19,7 +19,7 @@ execution: code
 | Objective | Converge Merman's visual customization layer inside the broader headless Mermaid engine. Merman continues to own parsing, analysis, layout, rendering, and editor-facing semantics with Mermaid parity as a quality target; the theme workstream adds typed custom themes, private family adapters, capability discovery, and target-specific portability evidence. Keep default Mermaid parity unchanged, retain a bounded opt-in built-in preset catalog, and prevent theme convenience features from becoming a second rendering architecture or an automated design product. |
 | Product contract | The August 6 R/A/F/AE identifiers remain the traceability source. This addendum is authoritative for the current-release scope, ownership, evidence gates, product boundary, preset admission, milestone sequencing, and public-surface timing; any conflicting current-release statement in the August 6 plan is superseded by the decisions below. Long-term capabilities remain future requirements until their named gate is closed. |
 | Authority | Mermaid `11.16.1@7ecca0cd` remains the semantic baseline. The compiled theme recipe describes visual intent; the render environment owns runtime ceilings; family and document evaluators prove what was actually applied. |
-| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Complete the proposed authoring-facade design now, finish core convergence and the native C6a engine gate, then verify and implement the authoring candidate before C7a rollout and freeze. Stable cross-target preset claims wait for C6b. |
+| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Complete the proposed authoring-facade design now, finish core convergence and the representative native C6a checkpoint, then verify and implement the authoring candidate before C7a rollout and freeze. Unqualified cross-target claims require a later scoped release-qualification plan rather than completion of a standing 45-cell certification program. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, let theme/config inputs widen renderer-owned policy, create preset-specific renderer branches, or add brand scanning, editorial rewriting, page-shell composition, bespoke routing, icon art direction, or motion playback to the core engine. |
 
 ## Why The Order Changes
@@ -34,7 +34,8 @@ proof chain underneath it. Six conditions now require an architecture convergenc
   are decoded; cross-host verification remains a named gate;
 - native export now seals the exact tokenized artifact with request, projection, line, run, and
   face/source identity, while the exporter verifies final emitted line text and face/source facts;
-  exact terminal source/visible range proof for multi-face output remains a C6b gate;
+  exact terminal source/visible range proof for multi-face output remains a deferred cross-target
+  qualification requirement;
 - the initial prepared-text backend contract could not produce a result externally, while internal
   results were not bound to a request digest, source ranges, run evidence, or runtime fallback. The
   current WIP has a provisional raw DTO and basic admission seam; this addendum retains it without
@@ -69,8 +70,8 @@ release when a statement below differs.
 | Built-in presets | A preset is a convenient, versioned materialization of the same typed recipe accepted from Rust, JSON, and bindings. The catalog is open to additional generally useful themes; Brutalist, Spotless, Cyberpunk, Modern Slate, or any later theme name is illustrative rather than a fixed roadmap or product-brand hierarchy. A preset must not select layout, Mermaid look, output pipeline, trusted postprocessors, or family-private behavior implicitly. | Alpha candidates may remain discovery-only while coverage is incomplete. Stable status is decided per preset from C6-backed family/target cells, allowed residuals, resource burden, and licensing rather than from theme name or catalog size. |
 | Preset cost boundary | Built-in presets should normally compile from static Merman-owned recipe data and reuse existing code and resources. They must not require a CSS/JavaScript interpreter, network access, brand crawler, application runtime, or substantial preset-only dependency/asset closure. Bundled fonts or other material assets require an explicit redistribution, size, resource-policy, and portability decision. | A heavier theme pack can live in an optional downstream package or host application instead of enlarging the core artifact. |
 | Published binding epochs | `0.8.0-alpha.5` published the leaked family and renderer taxonomy under UniFFI API 3 and Web/WASM transport API 3. The subtractive family-catalog correction therefore supersedes the August 2 FFI-plan KTD9 only for those two epochs: UniFFI advances to API 4 and Web/WASM advances to transport API 4. Native C ABI 3, runtime-catalog schema 1, Android transport API 1, Typst plugin ABI 2, and the Node transport remain unchanged. The incompatible post-alpha.5 Options grammar advances independently to schema 3 under KTD16. The next prerelease must carry the corrected projections; an already published alpha.5 artifact is never republished in place. | A later epoch requires another demonstrably incompatible transport change; additive catalog rows and fields continue to evolve inside the current schema rules. |
-| C5 versus C6 | C5 owns compilation, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns route-cutover authorization from finalized native artifacts as well as the broader C6a cell gate; C6b extends cell proof to Browser SVG, JPEG, and PDF. | A bridge route is removed only when an exact route-cutover receipt binds its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. That receipt authorizes only that route; it is not a C6 cell, does not increase 18/45 progress, and cannot emit `C6aEligibilityReceipt`. Broader target claims wait for C6b. |
-| Public surface timing | C7a-candidate may be declared only after C6a plus real pre-freeze family-writer/compiler round trips. C7a-rollout migrates bindings, Typst, examples, and native Merman CLI against that alpha candidate. C7a-contract freezes only after rollout verification. Fine-grained mechanism/evidence types and alpha preset IDs remain private or explicitly unstable. | Stable preset catalog and broader target/family claims require C6b. |
+| C5 versus C6 | C5 owns compilation, value-domain declarations, facet-level routing, direct family consumption, and family-local tests. The private C6 harness owns temporary route-cutover authorization and the representative C6a integration ledger. JPEG, PDF, and a future Browser SVG adapter use scoped smoke or release-qualification checks rather than an always-active equal-depth matrix. | A bridge route is removed only when an exact route-cutover receipt binds its family, target, selector, facet, value class, complete legacy projection set, and finalized Standalone SVG plus PNG evidence. That receipt authorizes only that route; it is not a C6 cell and cannot emit `C6aEligibilityReceipt`. After the bridge route is deleted through an explicit migration, the active row and dedicated proof are deleted in the same change while a compact tombstone preserves history. |
+| Public surface timing | C7a-candidate may be declared only after C6a plus real pre-freeze family-writer/compiler round trips. C7a-rollout migrates bindings, Typst, examples, and native Merman CLI against that alpha candidate. C7a-contract freezes only after rollout verification. Fine-grained mechanism/evidence types and alpha preset IDs remain private or explicitly unstable. | A preset may gain only scoped claims for declared, proven family/target cells. Unqualified all-family or all-target claims require a later release-qualification plan. |
 | Official CLI | New theme selection belongs only to the Merman native render/batch surface. The official `mmdc` compatibility surface remains unchanged except for removal of provisional alpha fields. A document, Options JSON, or project config cannot self-authorize a trusted lane. | Any mmdc expansion requires a separate compatibility decision. |
 
 ### Identifier Disposition
@@ -82,12 +83,12 @@ owner.
 | August 6 identifiers | Current-release disposition | Owning gate |
 | --- | --- | --- |
 | R3, R3a; A7; AE19 | Retained with an alpha contraction: `ThemeTokens` remains the design-system adapter but its candidate stable vocabulary is limited to cross-family roles. Family-specific actor, note, activation, cluster, and similar values materialize through deterministic token-to-rule defaults or the full `ThemeRuleSet`/`DiagramThemeSpec`. Reuse and light/dark state-isolation requirements remain unchanged. | C7a pre-freeze authoring and cold-start witnesses, then C7a-contract. |
-| R8; AE21, AE24 | Retained for source traceability, contributor attribution, complete typed mechanism classification, and representative reference comparison. Superseded as a fixed named-product obligation: neither `pr28-modern-slate` nor the six named showcase themes is required to ship as a preset or complete C7b. Individual recipes may remain test witnesses or enter the open preset catalog through KTD14's maturity gate. | C6a/C7b evidence; C7a/C6b only for preset maturity claims. |
+| R8; AE21, AE24 | Retained for source traceability, contributor attribution, complete typed mechanism classification, and representative reference comparison. Superseded as a fixed named-product obligation: neither `pr28-modern-slate` nor the six named showcase themes is required to ship as a preset or complete C7b. Individual recipes may remain test witnesses or enter the open preset catalog through KTD14's maturity gate. | C6a/C7b evidence; C7a and scoped target qualification only for preset maturity claims. |
 | R13, R43, R45; F2; AE15; KTD4, KTD8, KTD11; U3 external-host clauses | Native prepared text and external `HostDependent` safety are retained. External `Portable` promotion, fully attested host claims, stable external DTOs, and browser/FFI projection are deferred and do not participate in the current release. | C4a owns native proof, C4b owns crate-private external safety, C7c owns any future assurance contract. |
 | R24, R35, R48; F5; AE7, AE18 | Retained with a stricter authority boundary: raw CSS and arbitrary SVG remain explicit trusted compatibility inputs, never self-authorize through document/config data, and cannot bypass the independent terminal safety decision. | C2 terminal safety and C7a-rollout public-surface checks. |
 | R25, R47; F3, F7; AE17; KTD5; U4 | Retained and strengthened with the fixed terminal order: postprocess, active-content/CSS safety, resource closure, residual merge, then target admission. | C2. |
 | R33-R37; F4, F8; AE18-AE20; KTD1, KTD9, KTD10; U8-U10 | Retained but reordered: define a candidate native contract, migrate first-party consumers against it, then freeze only after rollout verification. KTD15 narrowly supersedes KTD9 for the already-published UniFFI and Web/WASM family-capability epochs; KTD16 separately advances the incompatible post-alpha.5 Options grammar to schema 3. The official `mmdc` surface does not gain new theme flags. | C7a. |
-| R38-R41; AE3-AE6, AE19, AE20, AE22, AE23; KTD2, KTD6, KTD7, KTD12; U1, U6, U7, U11 | Retained. Positive public claims require family-writer and target-artifact evidence, not model expressiveness or fixture declarations alone. The full reference corpus remains a mechanism-classification source; publishing every reference theme as a preset or named showcase is not required. | C5, C6a, C6b, and C7b as specified below. |
+| R38-R41; AE3-AE6, AE19, AE20, AE22, AE23; KTD2, KTD6, KTD7, KTD12; U1, U6, U7, U11 | Retained. Positive public claims require family-writer and target-artifact evidence, not model expressiveness or fixture declarations alone. The full reference corpus remains a mechanism-classification source; publishing every reference theme as a preset or named showcase is not required. | C5, C6a, deferred scoped C6b qualification, and C7b as specified below. |
 | R42, R49; AE11, AE13, AE18; KTD3, KTD13; U2 | Retained with effective runtime policy owned by `RenderEnvironment`/`RenderSession`; compiler policy is only an earlier resource/admission restriction and provenance. | C1-C3. |
 
 ### Theme Language Boundary
@@ -229,14 +230,14 @@ Public maturity is explicit rather than inferred from where a symbol appears:
 | C7a candidate | Schema and selected presets are alpha discovery values; alpha preset IDs and completions are not stable enum or compatibility promises. |
 | C7a rollout | First-party consumers exercise the exact alpha candidate and return a versioned, bounded execution-evidence summary. |
 | C7a contract | Only the proven native recipe/compiler/token envelope and coarse report contract become stable. |
-| C6b release | Individual presets may become stable only for their declared, runner-proven cells; an unqualified cross-target catalog claim requires the complete C6b gate. |
+| Scoped target qualification | Individual presets may become stable only for their declared, runner-proven cells. An unqualified cross-target catalog claim requires a future release-qualification plan with explicit target scope. |
 
-The fixed C6 matrices qualify the engine's shared mechanisms; they do not transfer a proof-theme
+The fixed C6a ledger qualifies representative integration of the engine's shared mechanisms; it does not transfer a proof-theme
 recipe fingerprint to an unrelated preset. A preset that seeks stable status therefore has a separate
 `PresetQualificationSpec` and opaque `PresetQualificationReceipt`. That receipt runs the preset's own
 recipe against its declared family/target cells and binds its recipe, document/resource, admission,
-artifact, residual, font-source, and mechanism evidence. Preset qualification reuses C6 runners and
-receipt types but does not add cells to the fixed 18/45 engine matrices.
+artifact, residual, font-source, and mechanism evidence. Preset qualification reuses production
+target receipts and shared observers but does not add cells to the fixed 18-cell C6a ledger.
 
 A preset descriptor also binds an immutable recipe revision and recipe/resource fingerprint. Any
 recipe or bundled-resource change creates a new revision, invalidates the prior qualification for
@@ -248,9 +249,10 @@ stable ID never silently points at an unqualified recipe.
 
 C6 and preset qualification have six deliberately separate layers:
 
-1. **`C6AcceptanceSpec`** is the final contract inventory. It contains the complete 45-cell
-   theme/family/target expectation, including facet/value expectations, residual IDs, font source,
-   admission, and artifact assertions.
+1. **`C6AcceptanceSpec`** is the representative native contract inventory. Its non-shrinking
+   18-cell ledger contains three mechanism-diverse themes by Flowchart, State, and Sequence by
+   Standalone SVG and PNG. It proves representative end-to-end native integration; it does not
+   certify the complete value domain, every family mechanism, or every preset.
 2. **`C6EnforcedTranche`** is the subset currently executable in CI. It is a progress measure, not
    a release claim and cannot by itself unlock C7a. The initial tranche may grow in bounded steps as
    family and target runners land.
@@ -263,11 +265,16 @@ C6 and preset qualification have six deliberately separate layers:
    or changing a runtime route therefore fails until the manifest records an explicit migration;
    the expected set cannot shrink merely because production code stopped reporting a route.
    Direct-only typed routes remain outside this manifest because they replace no legacy projection.
-   A successful route receipt authorizes only that route's ownership cutover; it never counts toward
-   the 18-cell C6a matrix, the 45-cell C6b matrix, preset qualification, or C7a eligibility.
-4. **Target proof receipts** are opaque inputs produced from sealed document and writer evidence,
-   target admission, and final artifact bytes. The native receipt is Rust-owned. Browser SVG uses a
-   dedicated non-public WASM operation and a versioned JSON receipt owned by `platforms/web`.
+   After the matching bridge route is deleted, the active manifest row and dedicated proof are
+   deleted in the same change; a compact versioned tombstone preserves migration history. A
+   successful route receipt authorizes only that route's ownership cutover; it never counts toward
+   the 18-cell C6a ledger, preset qualification, or C7a eligibility.
+4. **Target proof receipts** are opaque inputs produced and sealed once by the production document
+   and target adapters. Standalone SVG receives deep normalized-DOM, final-attribute, resource,
+   layout-invariant, and admission assertions. PNG reuses the same sealed document and adds bounded
+   ROI or differential assertions only where rasterization adds information. The acceptance harness
+   must not reconstruct CSS cascade, geometry, font selection, PDF drawing, or rasterization facts
+   already owned by production receipts.
 5. **`C6ObservedReport`** is constructed and evaluated only inside a non-published
    `merman-theme-acceptance` harness crate that depends on `merman`, `merman-export`, and
    `merman-theme-fixtures`. This avoids a dependency cycle while preventing ordinary callers from
@@ -279,7 +286,7 @@ C6 and preset qualification have six deliberately separate layers:
    fingerprint and exact declared cells. Core C6 eligibility proves engine capabilities; preset
    qualification proves that a particular catalog recipe may make those bounded claims.
 
-The current code is still an early matrix draft, not the final 45-cell contract described above:
+The current code is still an early representative-ledger draft:
 the committed schema does not yet retain every selector/facet/value witness, and the four-cell
 runner does not yet provide the 18-cell `C6aEligibilityReceipt`. The observation boundary itself
 is now private to the non-published harness: fixture crates retain only catalog/specification
@@ -287,24 +294,24 @@ types, target adapters seal artifact digests and mechanism proofs, and unsupport
 return an explicit runner error instead of being silently skipped. The harness additionally proves
 the current legacy-replacing typed-route inventory against finalized Standalone SVG and PNG output,
 but those route receipts remain non-cell authorization evidence and do not change the matrix counts.
-The checkpoint remains incomplete until the full C6a/C6b constraints are implemented.
+The checkpoint remains incomplete until the exact C6a ledger and its dedicated eligibility receipt
+are implemented. Historical JPEG/PDF observations do not increase C6a progress.
 
-`C6a` is the native engine contract-eligibility gate: the three proof themes must pass Flowchart,
+`C6a` is the representative native engine contract-eligibility checkpoint: the three proof themes must pass Flowchart,
 State, and Sequence on Standalone SVG plus PNG as the named representative native targets. The
 harness emits a dedicated `C6aEligibilityReceipt` only for the exact 18 positive cells and the
 versioned acceptance-manifest identity; a successful arbitrary tranche report is never equivalent.
 Authoring, cold-start, and pre-freeze family-consumer witnesses belong to C7a and cannot increase the
-C6 cell count. `C6b` is the cross-target release gate:
-all 45 cells, including Browser SVG, must be enforced and observed by their target-owned runners
-before stable cross-target preset/catalog claims are made. The 45 cells are exactly three proof
-themes by three matrix families (Flowchart, State, Sequence) by five targets. Swimlane remains a
-focused Flowchart-classification witness outside that Cartesian matrix. Residual cells remain useful
-evidence, but residual-only progress never satisfies a positive C6 gate.
+C6 cell count. Across the 18-cell ledger, every required critical mechanism must be covered by at
+least one named cell; an individual cell asserts only the mechanisms relevant to its fixture and
+target. C6a cannot upgrade a complete public value domain to `Unconditional`: C5 family/target
+modules own exhaustive domain arguments and runtime admission predicates.
 
-Each Browser SVG matrix cell aggregates a `BrowserEngineReceiptSet` rather than introducing an
-engine dimension into the 45-cell matrix. The set contains exactly one versioned receipt for every
-supported Chromium, Firefox, and WebKit lane. A missing, duplicate, unsupported, or failed lane
-rejects that Browser SVG cell; the aggregate digest binds the sorted engine/version/receipt tuples.
+`C6b` is deferred cross-target qualification rather than an active equal-depth certification gate.
+The historical 45-cell Cartesian inventory remains planning context only. JPEG and PDF use
+representative target smoke checks; Browser SVG begins only after a real browser adapter exists.
+Any future unqualified all-target claim requires a separate release-qualification plan that defines
+its engines, receipts, tolerances, and maintenance owner.
 
 ### External Text and Safety Closure
 
@@ -381,7 +388,8 @@ Public presets declare per-target admission expectations and allowed residual ID
   document, resource, admission, and assertion digests. Production route deletion cannot
   implicitly shrink this manifest; removal requires an explicit manifest migration or tombstone.
   This receipt permits only the matching bridge route to remain suppressed or be deleted. It does
-  not create an enforced catalog cell, increase C6a/C6b progress, qualify a preset, produce
+  not create an enforced catalog cell, increase C6a progress, qualify a preset or cross-target
+  claim, produce
   `C6aEligibilityReceipt`, or unblock C7a. Direct-only typed mechanisms that never had a bridge
   projection remain governed by family-local writer evidence and do not enter this inventory.
 
@@ -591,7 +599,7 @@ Downstream products may build all of these capabilities around Merman's typed in
 coarse reports, and optional future semantic annotations. They do not require the core renderer to
 own those product decisions.
 
-## Implementation Checkpoint - 2026-08-13
+## Implementation Checkpoint - 2026-08-15
 
 | Gate | Status | Current evidence and remaining boundary |
 | --- | --- | --- |
@@ -602,9 +610,9 @@ own those product decisions.
 | C4a | Native core and single-face terminal binding landed; broader gate remains open | Native rustybuzz shaping, cluster fallback, projection, bounded wrapping, consumed-label sidecars, and sealed label tokens are retained. The exact tokenized artifact is bound to request/projection/line/run identity, while PNG/JPEG/PDF exporters verify final emitted line text and face/source observations. External results remain `HostDependent`; exact multi-face source/visible range proof remains in C6b. |
 | C4b | Conditional follow-up; assurance excluded | Session-private fallback candidates and basic response admission may remain, but no current product consumer requires the unfinished generation, budget, or circuit-breaker framework. Keep stable injection disabled. Implement those controls only before enabling a concrete crate-private external consumer. External output remains `HostDependent`; any later assurance or promotion requires C7c. |
 | C5 | In progress; program stages 1-2 and catalog authority converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; Flowchart and Swimlane consume narrow typed Node/NodeLabel/Edge tranches while retaining bridge routes for uncovered mechanisms; Sequence directly consumes selected Actor and Note paint routes with post-emission evidence, while signal, activation, loop, message, typography, and other label routes remain on the bridge. The core family catalog is now the sole family-ID/alias/detection authority. Every current typed route that replaces a manifest-declared legacy projection set is covered by a private exact-route Standalone SVG plus PNG cutover receipt; those receipts authorize ownership only and do not close C6a. Final surviving compatibility provenance, additional direct consumers, and parse/session theme binding remain convergence gates. |
-| C6a | Partial infrastructure; native eligibility gate not closed | The acceptance specification and current four-cell State tranche run through a private, catalog-driven adapter registry with render-group identities, per-cell target receipts, artifact/proof digests, exact enforced-cell coverage, and explicit feature gating. Fixture admission binds the enforced cell to its reference theme and exact typed mechanism inventory. The registry currently has one real Brutalist/State render group; a separate 20-route non-cell cutover manifest proves the current Flowchart/Swimlane Node/Edge and Sequence Actor/Note bridge replacements without increasing matrix progress. No exact 18-cell eligibility receipt exists: Flowchart/State/Sequence by Standalone SVG/PNG, the remaining selector/facet/value witnesses, source-style/spacing, and repeating-gradient/effect shapes remain open. |
-| C6b | Not started as a release gate | Browser SVG, JPEG/PDF completion, multi-face export, and the full 45-cell target-owned evidence matrix remain open. |
-| C7a | Not eligible; intentionally blocked | Design-system, cold-start complete-spec, pre-freeze family-consumer, expansion-row, and authoring witnesses are C7a inputs, not C6 cells. Do not declare the alpha contract candidate before C1-C3, C4a, C5, and C6a close plus those witnesses. Do not freeze the contract until the mandatory author-task rollout verification passes. Stable cross-target preset claims wait for C6b. |
+| C6a | `2/18` representative native coverage cells complete | The private ledger currently proves Brutalist/State on Standalone SVG and PNG from one `RenderedDocument` and target-owned receipts. A separate 20-route non-cell cutover manifest proves current Flowchart/Swimlane Node/Edge and Sequence Actor/Note bridge replacements without increasing C6a progress. No exact 18-cell eligibility receipt exists: the remaining Flowchart/State/Sequence SVG/PNG cells, representative mechanism coverage, source-style/spacing, and repeating-gradient/effect shapes remain open. |
+| C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |
+| C7a | Not eligible; intentionally blocked | Design-system, cold-start complete-spec, pre-freeze family-consumer, expansion-row, and authoring witnesses are C7a inputs, not C6 cells. Do not declare the alpha contract candidate before C1-C3, C4a, C5, and the representative C6a checkpoint close plus those witnesses. Do not freeze the contract until the mandatory author-task rollout verification passes. Unqualified cross-target claims require a separate release-qualification plan. |
 | C7b/C7c | Deferred independently | Remaining family/preset/showcase breadth proceeds under C7b without waiting for external assurance. External-host assurance fields remain a separately triggered C7c plan. |
 
 The public alpha migration scaffold already spans Rust, Options JSON, Web/UniFFI, Typst, Playground,
@@ -851,24 +859,35 @@ and public theme scope from the independent renderer taxonomy before adding face
   pattern primitives cannot express the Spotless reference. Add the smallest bounded effect
   consumer and paint-bounds/resource closure needed by Cyberpunk. Broader Canvas/Effects stay C7b.
 - **Evidence ownership:** Add non-published `merman-theme-acceptance`. It exclusively constructs
-  observed cells from opaque native receipts and evaluates the fixture inventory. Replace public
-  conclusion constructors with crate-private receipt inputs. Each predicate binds source/input,
-  recipe, target/family/selector/facet/value, document/resource, admission, and artifact digests.
+  observed cells from opaque native receipts and evaluates the fixture inventory. Production seals
+  document, target evidence, resources, fonts, admission, and final artifact identity once; the
+  harness consumes those receipts rather than recoding or re-hashing the same facts. Shared SVG and
+  raster observers may add semantic assertion IDs, but they must not become target-specific miniature
+  renderers.
   The same harness constructs a separate exact-route cutover receipt for each typed route that
   replaces a manifest-declared legacy projection set. That receipt uses finalized Standalone SVG
   plus PNG artifacts
   and authorizes only ownership cutover; it never creates a catalog cell or contributes to
   `C6aEligibilityReceipt`.
-  The runner dispatches from the enforced catalog rather than a hard-coded State list. The C6 Rust
-  test declares explicit PNG/JPEG/PDF required features, and CI invokes the named C6 command instead
-  of relying on workspace feature unification.
+  The runner dispatches from the enforced catalog rather than a hard-coded State list. CI invokes
+  the named C6 command instead of relying on workspace feature unification.
+- **Harness simplification order:** First give the production `TargetAdmissionReceipt` one
+  revision-scoped canonical receipt digest. Then reduce C6 observations to catalog identity, the
+  opaque production receipt, mechanism dispositions, residual IDs, and one acceptance-owned
+  semantic assertion ID. Remove export-report admission rechecks, acceptance-owned operation and
+  admission encodings, and repeated artifact hashing. Finally reduce PDF to bounded page/font/basic-
+  drawing smoke, JPEG to bounded decode plus PNG similarity smoke, and PNG to shared representative
+  checks. Decoder bomb, malformed artifact, false-Portable, transparent-stroke, marker, and resource
+  boundary regressions move to or remain with the module that owns the behavior.
 - **Test scenarios:** Enforce the exact 18 cells for Brutalist, Spotless, and Cyberpunk by Flowchart,
-  State, and Sequence by Standalone SVG and PNG. Every slice covers custom fonts, semantic paint,
-  layout-changing typography and spacing, source-style evaluation, SVG resources, and terminal
-  document evidence. Add focused Swimlane classification; light/dark readability; font clipping;
-  long mixed-script labels; repeating/tiled versus ordinary gradients; blend values; one bounded
-  effect graph; `RequirePortable` and `BestEffort`; and default parity snapshots. HTML/Markdown are
-  separate bounded label-mode witnesses or explicit residuals, not a Cartesian multiplier.
+  State, and Sequence by Standalone SVG and PNG. Across the ledger, every required critical
+  mechanism is covered by at least one named cell; an individual cell asserts only the mechanisms
+  relevant to its fixture and target. Standalone SVG receives the deep normalized-DOM and layout-
+  invariant proof. PNG adds bounded ROI or differential checks only where rasterization adds new
+  information. Add focused Swimlane classification; light/dark readability; font clipping; long
+  mixed-script labels; repeating/tiled versus ordinary gradients; blend values; one bounded effect
+  graph; `RequirePortable` and `BestEffort`; and default parity snapshots. HTML/Markdown are separate
+  bounded label-mode witnesses or explicit residuals, not a Cartesian multiplier.
 - **Non-blocking mechanism witnesses:** Ghibli, Hand Drawn, Memphis, and later reference recipes may
   exercise distinct mechanisms without counting as matrix cells or participating in
   `C6aEligibilityReceipt`. They remain C7b inputs unless explicitly promoted into the canonical
@@ -879,30 +898,21 @@ and public theme scope from the independent renderer taxonomy before adding face
   authorizations and later C7a authoring witnesses remain separate inputs and cannot increase the
   18-cell count.
 
-### C6b. Complete The Cross-Target Release Matrix
+### C6b. Deferred Cross-Target Qualification
 
-- **Covers:** Browser SVG, JPEG/PDF, multi-face export, and stable cross-target claims from the same
-  R/AE set. C6b does not block C7a's native contract candidate.
-- **Approach:** Extend the same acceptance inventory to all 45 cells: three proof themes by
-  Flowchart/State/Sequence by Standalone SVG, Browser SVG, PNG, JPEG, and PDF. Complete the maintained
-  `usvg` hook that binds terminal per-run face and exact cluster/source ranges so mixed-script
-  multi-face `FullFont` output can become `Portable`; until then public claims remain single-face.
-  Before implementing that gate, record the workspace-pinned `usvg` fork/revision, the exact
-  per-glyph/cluster byte-range and face API it exposes, `[patch.crates-io]` integration, license
-  compatibility, and the owner responsible for upstreaming or rebasing the patch. An unowned local
-  hook is not an acceptable release dependency.
-- **Browser evidence:** A dedicated non-public WASM operation returns the sealed SVG/report envelope.
-  The Web runner mounts it in a scriptless sandboxed opaque-origin iframe with restrictive CSP, no
-  top navigation, and no external network access. Its versioned JSON receipt binds source/input,
-  recipe, document/resource, mount-policy, target, final artifact, and post-mount DOM digests. It
-  records browser engine/version. A mechanism is `Applied` only with an engine-specific computed-
-  style or tolerance-bounded pixel proof. Each Browser SVG cell produces the exact
-  `BrowserEngineReceiptSet` defined above; an unqualified claim requires its Chromium, Firefox, and
-  WebKit receipts to pass and aggregate without missing or duplicate lanes.
-- **Done when:** The final 45-cell specification has no deferred cell, every observation was produced
-  by its target-owned runner and private harness, multi-face export has exact terminal range proof,
-  and the stable preset/catalog claims state their supported engines and cells. Residual results stay
-  recorded but cannot close the positive gate.
+- **Covers:** A future concrete release requirement for Browser SVG, JPEG/PDF, multi-face export, or
+  an unqualified cross-target claim. C6b does not block C7a's native contract candidate.
+- **Current decision:** Pause the historical 45-cell equal-depth certification program. JPEG and PDF
+  retain representative bounded smoke checks, not family/theme-specific render interpreters.
+  Browser SVG begins only after a real browser adapter and supported-engine policy exist. The old
+  Cartesian inventory remains planning context and has no active completion percentage.
+- **Activation gate:** Before restarting this work, write a scoped release-qualification plan that
+  names the exact public claim, targets, engines, production receipt seam, tolerances, dependency
+  forks, and maintenance owner. Reuse `RenderedDocument` and target-owned receipts; do not create a
+  second CSS, geometry, PDF, or raster implementation in the acceptance harness.
+- **Done when:** The activated plan's explicitly declared claims and cells pass their target-owned
+  runners. A preset may otherwise qualify only for its narrower declared cells, and the catalog must
+  not imply all-family or all-target support.
 
 ### C7a. Freeze And Roll Out The Native Theme Product Surface
 
@@ -953,9 +963,11 @@ and public theme scope from the independent renderer taxonomy before adding face
   recipe, licensing, resource-cost, maturity, and evidence rules as every other candidate.
 - **Capability-discovery candidate:** Compose one versioned query/result envelope from the core
   family catalog and a renderer-owned, versioned support-claim manifest derived from the private C5
-  mechanism matrix. The non-published C6 harness verifies every positive claim and binds the claim
-  manifest digest; production discovery never depends on the acceptance crate. Missing or
-  unverified combinations return `Unverified`. The stable query identifies family, output
+  mechanism matrix. C5 family/target modules own complete value-domain arguments and runtime
+  admission predicates. The non-published C6a harness validates representative end-to-end
+  integration and detects manifest drift; it cannot upgrade a descriptor to `Unconditional` merely
+  because one fixture passed. Production discovery never depends on the acceptance crate. Missing
+  or unverified combinations return `Unverified`. The stable query identifies family, output
   target, semantic target, and facet, and returns a coarse state plus bounded reason IDs:
   `Unconditional`, `Conditional`, `NotApplicable`, `Unsupported`, or `Unverified`. The complete
   selector subclasses, value classes, label modes, resource predicates, and host-policy predicates
@@ -972,9 +984,10 @@ and public theme scope from the independent renderer taxonomy before adding face
   stable IDs. Before C7a-contract, each receives an explicit retain/remove decision and an alpha
   descriptor with immutable recipe revision/fingerprint, schema version, and currently proven cells.
   All first-party bindings expose the same inventory and maturity. A preset ID does not become a
-  stable compatibility promise until the stable catalog gate after C6b, even when it remains usable
-  during alpha; any later recipe/resource change invalidates that revision's qualification as defined
-  above.
+  stable compatibility promise until its explicitly declared family/target claims are qualified,
+  even when it remains usable during alpha. No descriptor may imply all-family or all-target support
+  without a later scoped release-qualification plan; any recipe/resource change invalidates that
+  revision's qualification as defined above.
 - **Authoring and preset materialization contract:** A dependency-neutral theme-contract module
   below both `merman-render` and `merman-bindings-core` owns the persisted `ThemeDefinitionV1`,
   `ThemeTokensV1`, `ThemeRuleSetWireV1`, `MaterializedThemeWireV1`,
@@ -1089,8 +1102,9 @@ and public theme scope from the independent renderer taxonomy before adding face
 9. `feat(theme): declare the alpha native theme candidate`
 10. `feat(theme): roll out the candidate native theme surface`
 11. `feat(theme)!: freeze the verified native theme contract`
-12. `test(theme): close the cross-target C6b release matrix` may proceed independently once its target
-   runners exist; it is required before stable cross-target preset/catalog claims, not before C7a.
+12. Define a scoped cross-target qualification plan only when Browser SVG or an unqualified stable
+    cross-target claim becomes an actual release requirement. Representative JPEG/PDF smoke checks
+    may evolve independently, but they do not create an active 45-cell denominator.
 13. Resume remaining family breadth, selected preset candidates, reference comparisons, and
     final-review commits only after
     the corresponding C7b gates pass. External-host assurance proceeds only under a separate C7c
