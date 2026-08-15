@@ -24,6 +24,9 @@ pub(super) fn push_value_disclosure_lines(
         let line = band_domain_disclosure_line(model, plan, options, resources)?;
         out.push(line, resources)?;
     }
+    if !disclosure.values {
+        return Ok(());
+    }
     for series in &plan.series {
         resources.charge_layout_work(1)?;
         let Some(line) = value_disclosure_line(model, series, plan, chars, options, resources)?

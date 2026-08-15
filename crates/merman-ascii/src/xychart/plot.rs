@@ -1,4 +1,5 @@
 use crate::color::AsciiColorRole;
+use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, LogicalExtent, ResourceContext,
@@ -6,6 +7,7 @@ use crate::resource::{
 use crate::safe_text::terminal_text_requires_normalization;
 use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
 use crate::{AsciiCharset, AsciiError, AsciiRenderOptions, Result};
+use merman_core::OperationPhase;
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
 };
@@ -28,6 +30,32 @@ const LINE_TEE_UP_MASK: u8 = LINE_EAST | LINE_WEST | LINE_NORTH;
 const LINE_TEE_RIGHT_MASK: u8 = LINE_NORTH | LINE_SOUTH | LINE_EAST;
 const LINE_TEE_LEFT_MASK: u8 = LINE_NORTH | LINE_SOUTH | LINE_WEST;
 const LINE_CROSS_MASK: u8 = LINE_NORTH | LINE_EAST | LINE_SOUTH | LINE_WEST;
+
+/// Monotonic cooperative checkpoint state shared by all XYChart paint loops.
+///
+/// Resource charges still perform their own cancellation checks. This cursor covers the loops
+/// that mutate already-admitted terminal cells, where a single up-front charge would otherwise
+/// leave a large cancellation window.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct XyChartCheckpointCursor<'a> {
+    execution: AsciiExecution<'a>,
+    iteration: usize,
+}
+
+impl<'a> XyChartCheckpointCursor<'a> {
+    pub(super) const fn new(execution: AsciiExecution<'a>) -> Self {
+        Self {
+            execution,
+            iteration: 0,
+        }
+    }
+
+    pub(super) fn tick(&mut self, phase: OperationPhase) -> Result<()> {
+        let iteration = self.iteration;
+        self.iteration = self.iteration.wrapping_add(1);
+        self.execution.checkpoint_loop(phase, iteration)
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 struct LineTopologyCell(u8);
@@ -123,6 +151,7 @@ impl XyChartPlotArea {
         self,
         labels: &[T],
         resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<String> {
         let width = self.vertical_plot_width(labels.len(), resources)?;
         let mut rendered = String::new();
@@ -132,6 +161,7 @@ impl XyChartPlotArea {
                 phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
             })?;
         for (index, label) in labels.iter().enumerate() {
+            checkpoints.tick(OperationPhase::Emit)?;
             resources.charge_layout_work(self.category_band_width)?;
             if index > 0 {
                 rendered.push_str(BAND_GAP_LABEL);
@@ -150,8 +180,9 @@ impl XyChartPlotArea {
         self,
         categories: &[T],
         resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<String> {
-        self.band_labels(categories, resources)
+        self.band_labels(categories, resources, checkpoints)
     }
 }
 
@@ -558,6 +589,7 @@ impl TerminalChartPlan {
         &self,
         plot_area: XyChartPlotArea,
         horizontal: bool,
+        show_axis_labels: bool,
         resources: &mut ResourceContext,
     ) -> Result<TerminalDisclosurePlan> {
         resources.charge_layout_work(1)?;
@@ -597,10 +629,29 @@ impl TerminalChartPlan {
             }
         }
 
+        // Band labels are projected into renderer-owned fields: fixed-width centering for a
+        // vertical chart and gutter-aligned padding for a horizontal chart. A changed projection
+        // can be authored directly by another model, and distinct categories can project to the
+        // same field. Keep the complete framed domain whenever that channel is not injective.
+        let band_domain_disclosure = if show_axis_labels {
+            match &self.x_axis {
+                AxisPlan::Band { categories } => band_label_projection_loses_identity(
+                    categories,
+                    axis_labels,
+                    plot_area,
+                    horizontal,
+                    resources,
+                )?,
+                AxisPlan::Linear { .. } => false,
+            }
+        } else {
+            false
+        };
+
         if values_are_ambiguous {
             return Ok(TerminalDisclosurePlan {
                 values: true,
-                band_domain: false,
+                band_domain: band_domain_disclosure,
             });
         }
 
@@ -609,19 +660,19 @@ impl TerminalChartPlan {
             if series.data.is_empty() && !series.has_orphan_point_labels {
                 return Ok(TerminalDisclosurePlan {
                     values: true,
-                    band_domain: false,
+                    band_domain: band_domain_disclosure,
                 });
             }
             if series.title.is_some() {
                 return Ok(TerminalDisclosurePlan {
                     values: true,
-                    band_domain: false,
+                    band_domain: band_domain_disclosure,
                 });
             }
             if series.has_orphan_point_labels {
                 return Ok(TerminalDisclosurePlan {
                     values: true,
-                    band_domain: false,
+                    band_domain: band_domain_disclosure,
                 });
             }
             for (index, datum) in series.data.iter().enumerate() {
@@ -636,7 +687,7 @@ impl TerminalChartPlan {
                 {
                     return Ok(TerminalDisclosurePlan {
                         values: true,
-                        band_domain: false,
+                        band_domain: band_domain_disclosure,
                     });
                 }
 
@@ -654,7 +705,7 @@ impl TerminalChartPlan {
                     {
                         return Ok(TerminalDisclosurePlan {
                             values: true,
-                            band_domain: false,
+                            band_domain: band_domain_disclosure,
                         });
                     }
                     if projected_point.is_some()
@@ -663,7 +714,7 @@ impl TerminalChartPlan {
                     {
                         return Ok(TerminalDisclosurePlan {
                             values: true,
-                            band_domain: false,
+                            band_domain: band_domain_disclosure,
                         });
                     }
                     if !horizontal
@@ -673,13 +724,16 @@ impl TerminalChartPlan {
                     {
                         return Ok(TerminalDisclosurePlan {
                             values: true,
-                            band_domain: false,
+                            band_domain: band_domain_disclosure,
                         });
                     }
                 }
             }
         }
-        Ok(TerminalDisclosurePlan::default())
+        Ok(TerminalDisclosurePlan {
+            values: false,
+            band_domain: band_domain_disclosure,
+        })
     }
 
     fn projected_point(
@@ -742,6 +796,38 @@ impl TerminalChartPlan {
         let previous_end = resources.checked_grid_add(previous_start, previous_width)?;
         Ok(start < previous_end && previous_start < end)
     }
+}
+
+fn band_label_projection_loses_identity(
+    authored_labels: &[String],
+    displayed_labels: &[String],
+    plot_area: XyChartPlotArea,
+    horizontal: bool,
+    resources: &mut ResourceContext,
+) -> Result<bool> {
+    let mut horizontal_gutter = 0;
+    if horizontal {
+        for label in displayed_labels {
+            resources.charge_layout_work(1)?;
+            horizontal_gutter =
+                horizontal_gutter.max(display_width_with_profile(label, plot_area.width_profile));
+        }
+    }
+    for (index, (authored, displayed)) in authored_labels.iter().zip(displayed_labels).enumerate() {
+        resources.charge_layout_work(1)?;
+        let displayed_width = display_width_with_profile(displayed, plot_area.width_profile);
+        let padding = if horizontal {
+            checked_grid_sub(resources, horizontal_gutter, displayed_width)?
+        } else {
+            checked_grid_sub(resources, plot_area.category_band_width, displayed_width)?
+        };
+        let loses_trailing_spaces =
+            displayed.ends_with(' ') && (horizontal || index + 1 == displayed_labels.len());
+        if padding != 0 || displayed != authored || loses_trailing_spaces {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn build_axis_plan(
@@ -1039,6 +1125,17 @@ pub(super) struct VerticalPlot {
     pub(super) width: usize,
 }
 
+#[derive(Debug)]
+pub(super) struct VerticalPlotAdmissionPlan {
+    row_widths: Vec<usize>,
+}
+
+impl VerticalPlotAdmissionPlan {
+    pub(super) fn row_widths(&self) -> &[usize] {
+        &self.row_widths
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct HorizontalPlotRow {
     pub(super) line: StyledLine,
@@ -1049,6 +1146,409 @@ pub(super) struct HorizontalPlotRow {
 }
 
 #[derive(Debug)]
+pub(super) struct HorizontalPlotAdmissionPlan {
+    row_widths: Vec<usize>,
+    compact_bar_values: Option<CompactBarSlotValues>,
+}
+
+impl HorizontalPlotAdmissionPlan {
+    pub(super) fn row_widths(&self) -> &[usize] {
+        &self.row_widths
+    }
+
+    pub(super) fn compact_bar_value(&self, slot: usize) -> Option<f64> {
+        self.compact_bar_values
+            .as_ref()
+            .and_then(|values| values.value(slot))
+    }
+
+    pub(super) fn into_compact_bar_values(self) -> Option<CompactBarSlotValues> {
+        self.compact_bar_values
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct CompactBarSlotValues(Vec<Option<Option<f64>>>);
+
+impl CompactBarSlotValues {
+    fn try_new(
+        slot_count: usize,
+        resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
+    ) -> Result<Self> {
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(slot_count)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Layout.as_str(),
+            })?;
+        for _ in 0..slot_count {
+            checkpoints.tick(OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            values.push(None);
+        }
+        Ok(Self(values))
+    }
+
+    fn record_first(
+        &mut self,
+        slot: usize,
+        value: Option<f64>,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let planned = self
+            .0
+            .get_mut(slot)
+            .ok_or_else(|| resources.grid_overflow())?;
+        if planned.is_none() {
+            *planned = Some(value);
+        }
+        Ok(())
+    }
+
+    pub(super) fn value(&self, slot: usize) -> Option<f64> {
+        self.0.get(slot).copied().flatten().flatten()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OrthogonalSegment {
+    Horizontal {
+        row: usize,
+        from_col: usize,
+        to_col: usize,
+    },
+    Vertical {
+        col: usize,
+        from_row: usize,
+        to_row: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OrthogonalConnection {
+    segments: [Option<OrthogonalSegment>; 3],
+}
+
+impl OrthogonalConnection {
+    fn new(from: (usize, usize), to: (usize, usize), resources: &ResourceContext) -> Result<Self> {
+        let (from_row, from_col) = from;
+        let (to_row, to_col) = to;
+        let segments = if from_col == to_col {
+            [
+                Some(OrthogonalSegment::Vertical {
+                    col: from_col,
+                    from_row,
+                    to_row,
+                }),
+                None,
+                None,
+            ]
+        } else if from_row == to_row {
+            [
+                Some(OrthogonalSegment::Horizontal {
+                    row: from_row,
+                    from_col,
+                    to_col,
+                }),
+                None,
+                None,
+            ]
+        } else {
+            let mid_col = resources.checked_grid_add(from_col, to_col)? / 2;
+            [
+                Some(OrthogonalSegment::Horizontal {
+                    row: from_row,
+                    from_col,
+                    to_col: mid_col,
+                }),
+                Some(OrthogonalSegment::Vertical {
+                    col: mid_col,
+                    from_row,
+                    to_row,
+                }),
+                Some(OrthogonalSegment::Horizontal {
+                    row: to_row,
+                    from_col: mid_col,
+                    to_col,
+                }),
+            ]
+        };
+        Ok(Self { segments })
+    }
+
+    fn segments(self) -> impl Iterator<Item = OrthogonalSegment> {
+        self.segments.into_iter().flatten()
+    }
+}
+
+pub(super) fn plan_horizontal_plot_admission(
+    plan: &TerminalChartPlan,
+    plot_area: XyChartPlotArea,
+    row_count: usize,
+    resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
+) -> Result<HorizontalPlotAdmissionPlan> {
+    let mut widths = Vec::new();
+    widths
+        .try_reserve_exact(row_count)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::Layout.as_str(),
+        })?;
+    for _ in 0..row_count {
+        checkpoints.tick(OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        widths.push(0);
+    }
+
+    let mut compact_bar_values = if plan.bar_series_count == 1 && plan.line_series_count == 0 {
+        Some(CompactBarSlotValues::try_new(
+            plan.slot_count,
+            resources,
+            checkpoints,
+        )?)
+    } else {
+        None
+    };
+
+    let rows_per_slot = plan.horizontal_rows_per_slot();
+    for series in &plan.series {
+        resources.charge_layout_work(1)?;
+        if series.plot_type != XyChartPlotType::Bar {
+            continue;
+        }
+        let lane = series.bar_lane.unwrap_or(0);
+        for datum in &series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            let slot = plan.sample_slot(datum);
+            if let Some(values) = compact_bar_values.as_mut() {
+                values.record_first(slot, datum.value, resources)?;
+            }
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                continue;
+            };
+            let row_start = resources.checked_grid_mul(slot, rows_per_slot)?;
+            let row = if plan.bar_series_count > 1 {
+                resources.checked_grid_add(row_start, lane)?
+            } else {
+                row_start
+            };
+            let width = horizontal_bar_width(value, plan.y_range, plot_area);
+            include_horizontal_row_width(&mut widths, row, width, resources)?;
+        }
+    }
+
+    for series in &plan.series {
+        resources.charge_layout_work(1)?;
+        if series.plot_type != XyChartPlotType::Line {
+            continue;
+        }
+        let mut previous = None;
+        for datum in &series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                previous = None;
+                continue;
+            };
+            let row = plan.horizontal_anchor_row(plan.sample_slot(datum), resources)?;
+            let col = checked_grid_sub(
+                resources,
+                line_level(value, plan.y_range, plot_area.horizontal_width),
+                1,
+            )?;
+            let point = (row, col);
+            if let Some(previous) = previous {
+                include_horizontal_connection_widths(
+                    &mut widths,
+                    previous,
+                    point,
+                    resources,
+                    checkpoints,
+                )?;
+            }
+            include_horizontal_row_width(
+                &mut widths,
+                row,
+                resources.checked_grid_add(col, 1)?,
+                resources,
+            )?;
+            previous = Some(point);
+        }
+    }
+
+    Ok(HorizontalPlotAdmissionPlan {
+        row_widths: widths,
+        compact_bar_values,
+    })
+}
+
+pub(super) fn plan_vertical_plot_admission(
+    plan: &TerminalChartPlan,
+    plot_area: XyChartPlotArea,
+    plot_extent: LogicalExtent,
+    resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
+) -> Result<VerticalPlotAdmissionPlan> {
+    let mut widths = Vec::new();
+    widths
+        .try_reserve_exact(plot_extent.height())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::Layout.as_str(),
+        })?;
+    for _ in 0..plot_extent.height() {
+        checkpoints.tick(OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        widths.push(0);
+    }
+
+    for series in &plan.series {
+        resources.charge_layout_work(1)?;
+        if series.plot_type != XyChartPlotType::Bar {
+            continue;
+        }
+        for datum in &series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                continue;
+            };
+            let height = bar_height(value, plan.y_range, plot_area.vertical_height);
+            if height == 0 {
+                continue;
+            }
+            let (band_start, band_width) = vertical_bar_span(
+                plan,
+                series,
+                datum,
+                plot_extent.width(),
+                plot_area,
+                resources,
+            )?;
+            let retained_width = resources.checked_grid_add(band_start, band_width)?;
+            for level in 1..=height {
+                checkpoints.tick(OperationPhase::Layout)?;
+                resources.charge_layout_work(1)?;
+                let row = checked_grid_sub(resources, plot_area.vertical_height, level)?;
+                include_horizontal_row_width(&mut widths, row, retained_width, resources)?;
+            }
+        }
+    }
+
+    for series in &plan.series {
+        resources.charge_layout_work(1)?;
+        if series.plot_type != XyChartPlotType::Line {
+            continue;
+        }
+        let mut previous = None;
+        for datum in &series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                previous = None;
+                continue;
+            };
+            let level = line_level(value, plan.y_range, plot_area.vertical_height);
+            let row = checked_grid_sub(resources, plot_area.vertical_height, level)?;
+            let col =
+                plan.sample_vertical_column(datum, plot_extent.width(), plot_area, resources)?;
+            let point = (row, col);
+            if let Some(previous) = previous {
+                include_horizontal_connection_widths(
+                    &mut widths,
+                    previous,
+                    point,
+                    resources,
+                    checkpoints,
+                )?;
+            }
+            include_horizontal_row_width(
+                &mut widths,
+                row,
+                resources.checked_grid_add(col, 1)?,
+                resources,
+            )?;
+            previous = Some(point);
+        }
+    }
+
+    Ok(VerticalPlotAdmissionPlan { row_widths: widths })
+}
+
+fn include_horizontal_connection_widths(
+    widths: &mut [usize],
+    from: (usize, usize),
+    to: (usize, usize),
+    resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
+) -> Result<()> {
+    for segment in OrthogonalConnection::new(from, to, resources)?.segments() {
+        match segment {
+            OrthogonalSegment::Horizontal {
+                row,
+                from_col,
+                to_col,
+            } => {
+                checkpoints.tick(OperationPhase::Layout)?;
+                resources.charge_layout_work(1)?;
+                include_horizontal_row_width(
+                    widths,
+                    row,
+                    resources.checked_grid_add(from_col.max(to_col), 1)?,
+                    resources,
+                )?;
+            }
+            OrthogonalSegment::Vertical {
+                col,
+                from_row,
+                to_row,
+            } => include_vertical_connection_widths(
+                widths,
+                col,
+                from_row,
+                to_row,
+                resources,
+                checkpoints,
+            )?,
+        }
+    }
+    Ok(())
+}
+
+fn include_vertical_connection_widths(
+    widths: &mut [usize],
+    col: usize,
+    from_row: usize,
+    to_row: usize,
+    resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
+) -> Result<()> {
+    let start = from_row.min(to_row);
+    let end = from_row.max(to_row);
+    let width = resources.checked_grid_add(col, 1)?;
+    for row in start..=end {
+        checkpoints.tick(OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        include_horizontal_row_width(widths, row, width, resources)?;
+    }
+    Ok(())
+}
+
+fn include_horizontal_row_width(
+    widths: &mut [usize],
+    row: usize,
+    width: usize,
+    resources: &ResourceContext,
+) -> Result<()> {
+    let planned = widths
+        .get_mut(row)
+        .ok_or_else(|| resources.grid_overflow())?;
+    *planned = (*planned).max(width);
+    Ok(())
+}
+
+#[derive(Debug)]
 struct LineTopology {
     width: usize,
     height: usize,
@@ -1056,7 +1556,12 @@ struct LineTopology {
 }
 
 impl LineTopology {
-    fn new(width: usize, height: usize, resources: &mut ResourceContext) -> Result<Self> {
+    fn new(
+        width: usize,
+        height: usize,
+        resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
+    ) -> Result<Self> {
         let extent = resources.grid_extent(width, height)?;
         let concurrent_cells = resources.checked_grid_mul(extent.cells(), 2)?;
         resources.check(AsciiResourceLimitId::MaxGridCells, concurrent_cells)?;
@@ -1067,7 +1572,10 @@ impl LineTopology {
             .map_err(|_| AsciiError::AllocationFailed {
                 phase: AsciiResourceLimitPhase::Layout.as_str(),
             })?;
-        cells.resize(extent.cells(), LineTopologyCell::default());
+        for _ in 0..extent.cells() {
+            checkpoints.tick(OperationPhase::Layout)?;
+            cells.push(LineTopologyCell::default());
+        }
         Ok(Self {
             width,
             height,
@@ -1080,20 +1588,23 @@ impl LineTopology {
         from: (usize, usize),
         to: (usize, usize),
         resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
-        let (from_row, from_col) = from;
-        let (to_row, to_col) = to;
-        if from_col == to_col {
-            return self.connect_vertical(from_col, from_row, to_row, resources);
+        for segment in OrthogonalConnection::new(from, to, resources)?.segments() {
+            match segment {
+                OrthogonalSegment::Horizontal {
+                    row,
+                    from_col,
+                    to_col,
+                } => self.connect_horizontal(row, from_col, to_col, resources, checkpoints)?,
+                OrthogonalSegment::Vertical {
+                    col,
+                    from_row,
+                    to_row,
+                } => self.connect_vertical(col, from_row, to_row, resources, checkpoints)?,
+            }
         }
-        if from_row == to_row {
-            return self.connect_horizontal(from_row, from_col, to_col, resources);
-        }
-
-        let mid_col = resources.checked_grid_add(from_col, to_col)? / 2;
-        self.connect_horizontal(from_row, from_col, mid_col, resources)?;
-        self.connect_vertical(mid_col, from_row, to_row, resources)?;
-        self.connect_horizontal(to_row, mid_col, to_col, resources)
+        Ok(())
     }
 
     fn mark_point(&mut self, row: usize, col: usize, resources: &ResourceContext) -> Result<()> {
@@ -1107,9 +1618,11 @@ impl LineTopology {
         chars: ChartChars,
         role: AsciiColorRole,
         resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
         resources.charge_layout_work(self.cells.len())?;
         for (index, cell) in self.cells.iter().copied().enumerate() {
+            checkpoints.tick(OperationPhase::Layout)?;
             if cell.is_empty() {
                 continue;
             }
@@ -1126,12 +1639,14 @@ impl LineTopology {
         from_col: usize,
         to_col: usize,
         resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
         let start = from_col.min(to_col);
         let end = from_col.max(to_col);
         let steps = checked_grid_sub(resources, end, start)?;
         resources.charge_layout_work(steps)?;
         for col in start..end {
+            checkpoints.tick(OperationPhase::Layout)?;
             self.cell_mut(row, col, resources)?.add(LINE_EAST);
             self.cell_mut(row, col + 1, resources)?.add(LINE_WEST);
         }
@@ -1144,12 +1659,14 @@ impl LineTopology {
         from_row: usize,
         to_row: usize,
         resources: &mut ResourceContext,
+        checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
         let start = from_row.min(to_row);
         let end = from_row.max(to_row);
         let steps = checked_grid_sub(resources, end, start)?;
         resources.charge_layout_work(steps)?;
         for row in start..end {
+            checkpoints.tick(OperationPhase::Layout)?;
             self.cell_mut(row, col, resources)?.add(LINE_SOUTH);
             self.cell_mut(row + 1, col, resources)?.add(LINE_NORTH);
         }
@@ -1179,6 +1696,7 @@ pub(super) fn build_vertical_plot(
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<VerticalPlot> {
     debug_assert_eq!(plot_extent.height(), plot_area.vertical_height);
     let width = plot_extent.width();
@@ -1188,20 +1706,39 @@ pub(super) fn build_vertical_plot(
             phase: AsciiResourceLimitPhase::Layout.as_str(),
         })?;
     for _ in 0..plot_extent.height() {
+        checkpoints.tick(OperationPhase::Layout)?;
         rows.push(try_plot_row(width, plot_area, resources)?);
     }
 
     for series in &plan.series {
         resources.charge_layout_work(1)?;
         if series.plot_type == XyChartPlotType::Bar {
-            draw_vertical_bar_plot(&mut rows, series, plan, chars, plot_area, width, resources)?;
+            draw_vertical_bar_plot(
+                &mut rows,
+                series,
+                plan,
+                chars,
+                plot_area,
+                width,
+                resources,
+                checkpoints,
+            )?;
         }
     }
 
     for series in &plan.series {
         resources.charge_layout_work(1)?;
         if series.plot_type == XyChartPlotType::Line {
-            draw_vertical_line_plot(&mut rows, series, plan, chars, plot_area, width, resources)?;
+            draw_vertical_line_plot(
+                &mut rows,
+                series,
+                plan,
+                chars,
+                plot_area,
+                width,
+                resources,
+                checkpoints,
+            )?;
         }
     }
 
@@ -1213,7 +1750,9 @@ pub(super) fn build_horizontal_plot_rows(
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
+    compact_bar_values: Option<&CompactBarSlotValues>,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<Vec<HorizontalPlotRow>> {
     debug_assert_eq!(plot_extent.width(), plot_area.horizontal_width);
     debug_assert_eq!(plot_extent.height(), plan.horizontal_row_count(resources)?);
@@ -1224,6 +1763,7 @@ pub(super) fn build_horizontal_plot_rows(
             phase: AsciiResourceLimitPhase::Layout.as_str(),
         })?;
     for _ in 0..plot_extent.height() {
+        checkpoints.tick(OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         lines.push(try_plot_row(
             plot_area.horizontal_width,
@@ -1240,6 +1780,7 @@ pub(super) fn build_horizontal_plot_rows(
         }
         let lane = series.bar_lane.unwrap_or(0);
         for datum in &series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             let Some(value) = datum.value.filter(|value| value.is_finite()) else {
                 continue;
@@ -1260,6 +1801,7 @@ pub(super) fn build_horizontal_plot_rows(
                     chars,
                     plot_area,
                     resources,
+                    checkpoints,
                 )?;
             }
         }
@@ -1271,10 +1813,15 @@ pub(super) fn build_horizontal_plot_rows(
             continue;
         }
         let role = AsciiColorRole::ChartSeries(series.series_index);
-        let mut topology =
-            LineTopology::new(plot_area.horizontal_width, plot_extent.height(), resources)?;
+        let mut topology = LineTopology::new(
+            plot_area.horizontal_width,
+            plot_extent.height(),
+            resources,
+            checkpoints,
+        )?;
         let mut previous = None;
         for datum in &series.data {
+            checkpoints.tick(OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             let Some(value) = datum.value.filter(|value| value.is_finite()) else {
                 previous = None;
@@ -1289,22 +1836,15 @@ pub(super) fn build_horizontal_plot_rows(
             )?;
             let point = (row, col);
             if let Some(previous) = previous {
-                topology.connect(previous, point, resources)?;
+                topology.connect(previous, point, resources, checkpoints)?;
             }
             resources.charge_layout_work(1)?;
             topology.mark_point(row, col, resources)?;
             previous = Some(point);
         }
-        topology.paint(&mut lines, chars, role, resources)?;
+        topology.paint(&mut lines, chars, role, resources, checkpoints)?;
     }
 
-    let compact_bar = (plan.bar_series_count == 1 && plan.line_series_count == 0)
-        .then(|| {
-            plan.series
-                .iter()
-                .find(|series| series.plot_type == XyChartPlotType::Bar)
-        })
-        .flatten();
     let mut rows = Vec::new();
     rows.try_reserve_exact(lines.len())
         .map_err(|_| AsciiError::AllocationFailed {
@@ -1313,13 +1853,7 @@ pub(super) fn build_horizontal_plot_rows(
     for (row_index, line) in lines.into_iter().enumerate() {
         let category_index = row_index / rows_per_slot;
         let show_category_label = row_index % rows_per_slot == 0;
-        let bar_value = compact_bar.and_then(|series| {
-            series
-                .data
-                .iter()
-                .find(|datum| plan.sample_slot(datum) == category_index)
-                .and_then(|datum| datum.value)
-        });
+        let bar_value = compact_bar_values.and_then(|values| values.value(category_index));
         let bar_label = bar_value.map(format_data_number);
         rows.push(HorizontalPlotRow {
             line,
@@ -1337,6 +1871,7 @@ pub(super) fn apply_vertical_bar_data_labels(
     plan: &TerminalChartPlan,
     plot_area: XyChartPlotArea,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     let Some(bar_series) = plan
         .series
@@ -1347,6 +1882,7 @@ pub(super) fn apply_vertical_bar_data_labels(
     };
 
     for datum in &bar_series.data {
+        checkpoints.tick(OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         let Some(value) = datum.value.filter(|value| value.is_finite()) else {
             continue;
@@ -1374,6 +1910,7 @@ pub(super) fn apply_vertical_bar_data_labels(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_vertical_bar_plot(
     rows: &mut [StyledLine],
     series: &SeriesPlan,
@@ -1382,9 +1919,11 @@ fn draw_vertical_bar_plot(
     plot_area: XyChartPlotArea,
     plot_width: usize,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     let role = AsciiColorRole::ChartSeries(series.series_index);
     for datum in &series.data {
+        checkpoints.tick(OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         let Some(value) = datum.value.filter(|value| value.is_finite()) else {
             continue;
@@ -1397,16 +1936,26 @@ fn draw_vertical_bar_plot(
         let (band_start, band_width) =
             vertical_bar_span(plan, series, datum, plot_width, plot_area, resources)?;
         for level in 1..=height {
+            checkpoints.tick(OperationPhase::Layout)?;
             resources.charge_layout_work(band_width)?;
             let row_idx = checked_grid_sub(resources, plot_area.vertical_height, level)?;
             if let Some(row) = rows.get_mut(row_idx) {
-                fill_band(row, band_start, band_width, chars.bar, role, resources)?;
+                fill_band(
+                    row,
+                    band_start,
+                    band_width,
+                    chars.bar,
+                    role,
+                    resources,
+                    checkpoints,
+                )?;
             }
         }
     }
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_vertical_line_plot(
     rows: &mut [StyledLine],
     series: &SeriesPlan,
@@ -1415,11 +1964,13 @@ fn draw_vertical_line_plot(
     plot_area: XyChartPlotArea,
     plot_width: usize,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     let role = AsciiColorRole::ChartSeries(series.series_index);
-    let mut topology = LineTopology::new(plot_width, rows.len(), resources)?;
+    let mut topology = LineTopology::new(plot_width, rows.len(), resources, checkpoints)?;
     let mut previous = None;
     for datum in &series.data {
+        checkpoints.tick(OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
         let Some(value) = datum.value.filter(|value| value.is_finite()) else {
             previous = None;
@@ -1430,13 +1981,13 @@ fn draw_vertical_line_plot(
         let col = plan.sample_vertical_column(datum, plot_width, plot_area, resources)?;
         let point = (row, col);
         if let Some(previous) = previous {
-            topology.connect(previous, point, resources)?;
+            topology.connect(previous, point, resources, checkpoints)?;
         }
         resources.charge_layout_work(1)?;
         topology.mark_point(row, col, resources)?;
         previous = Some(point);
     }
-    topology.paint(rows, chars, role, resources)
+    topology.paint(rows, chars, role, resources, checkpoints)
 }
 
 fn vertical_bar_span(
@@ -1491,6 +2042,7 @@ fn vertical_bar_span(
     Ok((resources.checked_grid_add(start, offset)?, 1))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_horizontal_bar_value(
     row: &mut StyledLine,
     value: f64,
@@ -1499,11 +2051,13 @@ fn draw_horizontal_bar_value(
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     let role = AsciiColorRole::ChartSeries(series_index);
     let width = bar_height(value, y_range, plot_area.horizontal_width);
     resources.charge_layout_work(width)?;
     for col in 0..width {
+        checkpoints.tick(OperationPhase::Layout)?;
         row.try_set_role(col, chars.bar, role)?;
     }
     Ok(())
@@ -1552,8 +2106,10 @@ fn fill_band(
     value: char,
     role: AsciiColorRole,
     resources: &ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     for offset in 0..band_width {
+        checkpoints.tick(OperationPhase::Layout)?;
         let col = resources.checked_grid_add(band_start, offset)?;
         row.try_set_role(col, value, role)?;
     }
@@ -1647,6 +2203,7 @@ pub(super) fn format_tick_number(value: f64, step: f64) -> String {
 mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
+    use merman_core::{CancelReason, OperationControl};
 
     fn default_resources() -> AsciiResourcePolicy {
         AsciiResourcePolicy::default()
@@ -1769,6 +2326,70 @@ mod tests {
     }
 
     #[test]
+    fn topology_initialization_observes_cancellation_inside_the_cell_loop() {
+        let policy = default_resources();
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::new(&control, &policy));
+
+        let error = LineTopology::new(65, 1, &mut resources, &mut checkpoints)
+            .expect_err("the second cadence checkpoint must stop topology initialization");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn topology_connect_observes_cancellation_inside_a_long_segment() {
+        let policy = default_resources();
+        let mut resources = ResourceContext::new(policy);
+        let mut setup = XyChartCheckpointCursor::new(AsciiExecution::standalone(&policy));
+        let mut topology = LineTopology::new(66, 1, &mut resources, &mut setup)
+            .expect("the topology fixture should allocate");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::new(&control, &policy));
+
+        let error = topology
+            .connect((0, 0), (0, 65), &mut resources, &mut checkpoints)
+            .expect_err("the second cadence checkpoint must stop segment routing");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn band_label_projection_observes_cancellation_inside_a_long_domain() {
+        let policy = default_resources();
+        let mut resources = ResourceContext::new(policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::new(&control, &policy));
+        let labels = vec!["A"; 65];
+        let plot_area = XyChartPlotArea::from_options(&AsciiRenderOptions::ascii());
+
+        let error = plot_area
+            .band_labels(&labels, &mut resources, &mut checkpoints)
+            .expect_err("the second cadence checkpoint must stop Band label projection");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
     fn cjk_profile_uses_single_cell_ascii_plot_structure() {
         let options =
             AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
@@ -1776,6 +2397,7 @@ mod tests {
         let plot_area = XyChartPlotArea::from_options(&options);
         let policy = default_resources();
         let mut resources = ResourceContext::new(policy);
+        let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::standalone(&policy));
         let mut row = StyledLine::try_blank_with_policy(
             plot_area.horizontal_width,
             TerminalWidthProfile::Cjk,
@@ -1794,6 +2416,7 @@ mod tests {
             chars,
             plot_area,
             &mut resources,
+            &mut checkpoints,
         )
         .expect("horizontal bar paint should fit the configured work budget");
 

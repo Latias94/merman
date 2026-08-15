@@ -267,6 +267,7 @@ line [8, 2]
         strip_html_spans(&rendered),
         concat!(
             "# Bar 1  * Line 1\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "values: * series=1 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
@@ -337,6 +338,7 @@ line [1, 5, 9]
     assert_eq!(
         rendered,
         concat!(
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\", bytes=1=\"C\"]\n",
             "10 +       +-*\n",
             " 8 +       |\n",
             " 6 +   +-*-+\n",
@@ -365,6 +367,7 @@ line [8, 2]
         rendered,
         concat!(
             "# Bar 1  * Line 1\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "values: * series=1 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
@@ -536,6 +539,7 @@ line "Forecast" [8, 2]
         rendered,
         concat!(
             "# Revenue  * Forecast\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "values: # series=0 type=bar title(bytes=7)=\"Revenue\" samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "values: * series=1 type=line title(bytes=8)=\"Forecast\" samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
@@ -568,6 +572,7 @@ bar [4, 8]
     assert_eq!(
         rendered,
         concat!(
+            "xDomain: band categories=[bytes=3=\"Jan\", bytes=3=\"Feb\"]\n",
             "8 +     ####\n",
             "6 +     ####\n",
             "4 +#### ####\n",
@@ -614,6 +619,7 @@ bar [4, 8]
     assert_eq!(
         rendered,
         concat!(
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "10 +\n",
             " 8 +     8\n",
             " 6 +    ###\n",
@@ -639,10 +645,15 @@ bar [4, 8]
     .expect("vertical xychart with outside data labels should render");
 
     let mut lines = rendered.lines();
+    assert_eq!(
+        lines.next(),
+        Some("xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]")
+    );
     assert_eq!(lines.next(), Some("     4   8"));
     assert_eq!(
         rendered,
         concat!(
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "     4   8\n",
             "10 +\n",
             " 8 +    ###\n",
@@ -716,6 +727,7 @@ bar [2, 5]
     assert_eq!(
         rendered,
         concat!(
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "5 ┤    ███\n",
             "4 ┤    ███\n",
             "3 ┤    ███\n",
@@ -745,7 +757,7 @@ bar [2, 5]
         .expect("axis line should render");
     let category_line = rendered
         .lines()
-        .find(|line| line.contains('中'))
+        .find(|line| !line.starts_with("xDomain:") && line.contains('中'))
         .expect("CJK category should render");
 
     assert!(
@@ -2086,18 +2098,16 @@ fn xychart_reversed_value_range_preserves_authored_axis_direction() {
     let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
         .expect("reversed XYChart range should render");
     let lines = rendered.lines().collect::<Vec<_>>();
+    let top_endpoint = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("0 +"));
+    let baseline_endpoint = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("10 +"));
 
     assert!(
-        lines
-            .first()
-            .is_some_and(|line| line.trim_start().starts_with("0 +")),
+        matches!((top_endpoint, baseline_endpoint), (Some(top), Some(bottom)) if top < bottom),
         "the authored `0` endpoint should remain at the top of a reversed axis:\n{rendered}"
-    );
-    assert!(
-        lines
-            .iter()
-            .any(|line| line.trim_start().starts_with("10 +")),
-        "the authored `10` endpoint should remain on the baseline:\n{rendered}"
     );
 }
 
@@ -2273,6 +2283,79 @@ fn xychart_overwide_band_category_discloses_the_complete_axis_domain() {
         "{alternate}"
     );
     assert_ne!(alphabetic, alternate);
+}
+
+#[test]
+fn xychart_centered_band_projection_discloses_colliding_categories() {
+    for (orientation, second) in [("vertical", " A "), ("horizontal", "  A")] {
+        let mut model = typed_xychart_model(
+            orientation,
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string(), second.to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![5.0, 8.0],
+                data: vec![
+                    ("A".to_string(), Some(5.0)),
+                    (second.to_string(), Some(8.0)),
+                ],
+                point_labels: Vec::new(),
+            }],
+        );
+        model.display.x_axis.show_label = true;
+        let options = AsciiRenderOptions::ascii().with_xychart_category_band_width(3);
+
+        let rendered = render_typed_xychart(&model, &options)
+            .expect("projected Band labels should render through exact disclosure");
+        let expected = format!(
+            r#"xDomain: band categories=[bytes=1="A", bytes={}="{second}"]"#,
+            second.len()
+        );
+
+        assert!(
+            rendered.contains(&expected),
+            "{orientation} categories whose final projection loses identity must remain explicit:\n{rendered}"
+        );
+        assert!(
+            !rendered.lines().any(|line| line.starts_with("values: ")),
+            "domain-only disclosure should not add a redundant values row:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn xychart_trailing_band_projection_discloses_trimmed_category() {
+    for orientation in ["vertical", "horizontal"] {
+        let mut model = typed_xychart_model(
+            orientation,
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A  ".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![5.0],
+                data: vec![("A  ".to_string(), Some(5.0))],
+                point_labels: Vec::new(),
+            }],
+        );
+        model.display.x_axis.show_label = true;
+
+        let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("trailing Band category should render through framed disclosure");
+        assert!(
+            rendered.contains(r#"xDomain: band categories=[bytes=3="A  "]"#),
+            "a category erased by the final row trim must retain its source identity:\n{rendered}"
+        );
+    }
 }
 
 #[test]

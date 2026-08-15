@@ -2,12 +2,14 @@ mod disclosure;
 mod empty;
 
 use super::plot::{
-    ChartChars, SeriesPlan, TerminalChartPlan, ValueRange, XyChartPlotArea,
+    ChartChars, HorizontalPlotAdmissionPlan, SeriesPlan, TerminalChartPlan, ValueRange,
+    VerticalPlotAdmissionPlan, XyChartCheckpointCursor, XyChartPlotArea,
     apply_vertical_bar_data_labels, build_horizontal_plot_rows, build_vertical_plot,
     checked_grid_sub, format_data_number, format_tick_number, horizontal_bar_width,
+    plan_horizontal_plot_admission, plan_vertical_plot_admission,
 };
 use crate::canvas::finish_styled_lines_with_resources;
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
@@ -35,30 +37,57 @@ struct ChartDocument {
     width: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PlotDocumentMetrics {
+    width: usize,
+    materialized_width: usize,
+    document_cells: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HorizontalPlotMetricsContext<'a> {
+    plan: &'a TerminalChartPlan,
+    plot_prefix_width: usize,
+    plot_area: XyChartPlotArea,
+    show_axis_labels: bool,
+    gutter: usize,
+    axis_mark: Option<char>,
+    preserve_color: bool,
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct ChartDocumentPlan {
     width: usize,
+    materialized_width: usize,
     height: usize,
+    document_cells: usize,
 }
 
 impl ChartDocumentPlan {
     fn include_line(&mut self, width: usize, resources: &ResourceContext) -> Result<()> {
         self.width = self.width.max(width);
+        self.materialized_width = self.materialized_width.max(width);
         self.height = resources.checked_grid_add(self.height, 1)?;
+        self.document_cells = checked_document_cells_add(self.document_cells, width, resources)?;
         Ok(())
     }
 
-    fn include_repeated_line(
+    fn include_materialized_block(
         &mut self,
         width: usize,
-        count: usize,
+        materialized_width: usize,
+        height: usize,
+        document_cells: usize,
         resources: &ResourceContext,
     ) -> Result<()> {
-        if count == 0 {
+        if height == 0 {
             return Ok(());
         }
         self.width = self.width.max(width);
-        self.height = resources.checked_grid_add(self.height, count)?;
+        self.materialized_width = self.materialized_width.max(materialized_width);
+        self.height = resources.checked_grid_add(self.height, height)?;
+        self.document_cells =
+            checked_document_cells_add(self.document_cells, document_cells, resources)?;
         Ok(())
     }
 
@@ -68,14 +97,35 @@ impl ChartDocumentPlan {
         before_materialize: impl FnOnce(),
         materialize: impl FnOnce(&mut ResourceContext) -> Result<ChartDocument>,
     ) -> Result<ChartDocument> {
-        resources.grid_extent(self.width, self.height)?;
-        before_materialize();
-        let document = materialize(resources)?;
-        if document.width != self.width || document.lines.len() != self.height {
-            return Err(invalid_chart_document_extent_plan());
-        }
-        Ok(document)
+        let plan = self;
+        resources.transaction(|resources| {
+            resources.grid_extent(plan.width, plan.height)?;
+            let materialized_extent =
+                resources.grid_extent(plan.materialized_width, plan.height)?;
+            resources.charge_usage(0, plan.document_cells)?;
+            before_materialize();
+            // Materialization builds complete StyledLine values and therefore performs its own
+            // document-cell charges. Keep those charges in a disposable document scope: the
+            // plan's exact aggregate was admitted above and is committed only once.
+            let mut materialize_resources =
+                resources.scoped_after_document_admission(materialized_extent.cells())?;
+            let document = materialize(&mut materialize_resources)?;
+            if document.width != plan.materialized_width || document.lines.len() != plan.height {
+                return Err(invalid_chart_document_extent_plan());
+            }
+            Ok(document)
+        })
     }
+}
+
+fn checked_document_cells_add(
+    current: usize,
+    delta: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    current
+        .checked_add(delta)
+        .ok_or_else(|| resources.overflow(crate::resource::AsciiResourceLimitId::MaxDocumentCells))
 }
 
 impl ChartDocument {
@@ -209,22 +259,26 @@ fn render_xychart_diagram_controlled(
     };
 
     if horizontal {
+        let mut checkpoints = XyChartCheckpointCursor::new(execution);
         return render_horizontal(
             model,
             &plan,
             context,
             &mut resources,
             execution,
+            &mut checkpoints,
             before_document_materialize,
         );
     }
 
+    let mut checkpoints = XyChartCheckpointCursor::new(execution);
     render_vertical(
         model,
         &plan,
         context,
         &mut resources,
         execution,
+        &mut checkpoints,
         before_document_materialize,
     )
 }
@@ -257,6 +311,7 @@ fn render_vertical(
     context: ChartRenderContext<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
     before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     let ChartRenderContext {
@@ -270,8 +325,14 @@ fn render_vertical(
     let categories = &plan.category_labels;
     let mut document_resources = resources.scoped();
     let resources = &mut document_resources;
-    let disclosure = plan.disclosure_plan(plot_area, false, resources)?;
-    let requires_disclosure = disclosure.values;
+    let mut disclosure = plan.disclosure_plan(
+        plot_area,
+        false,
+        axis_labels_visible(model.display.x_axis),
+        resources,
+    )?;
+    disclosure.values |= model.display.show_data_label && !uses_compact_bar_data_labels(model);
+    let requires_disclosure = disclosure.values || disclosure.band_domain;
     let show_y_labels = axis_labels_visible(model.display.y_axis);
     let (tick_labels, min_label, gutter) = if show_y_labels {
         let tick_labels = vertical_tick_labels(y_range, plot_area, resources)?;
@@ -299,15 +360,20 @@ fn render_vertical(
     };
     let reserve_axis_slot = show_y_labels || y_axis_mark.is_some() || baseline_mark.is_some();
     let plot_prefix_width = plot_prefix_width(show_y_labels, reserve_axis_slot, gutter, resources)?;
+    let vertical_plan =
+        plan_vertical_plot_admission(plan, plot_area, plot_extent, resources, checkpoints)?;
     let document_plan = measure_vertical_document(
         model,
         plan,
         chars,
+        &vertical_plan,
         plot_extent,
         plot_prefix_width,
+        &tick_labels,
+        gutter,
         show_y_labels,
+        y_axis_mark,
         baseline_mark,
-        requires_disclosure,
         disclosure,
         options,
         resources,
@@ -320,15 +386,21 @@ fn render_vertical(
         &mut emit_resources,
         before_document_materialize,
         |resources| {
-            let mut plot_resources = resources.scoped();
-            let mut plot =
-                build_vertical_plot(plan, chars, plot_area, plot_extent, &mut plot_resources)?;
+            let mut plot_resources = resources
+                .with_operation_phase(merman_core::OperationPhase::Layout)
+                .scoped();
+            let mut plot = build_vertical_plot(
+                plan,
+                chars,
+                plot_area,
+                plot_extent,
+                &mut plot_resources,
+                checkpoints,
+            )?;
             let mut out = ChartDocument::default();
             push_title_lines(&mut out, model, options, resources)?;
             push_legend_line(&mut out, plan, chars, options, resources)?;
-            if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
-                || requires_disclosure
-            {
+            if requires_disclosure {
                 push_value_disclosure_lines(
                     &mut out, model, plan, chars, disclosure, options, resources,
                 )?;
@@ -342,6 +414,7 @@ fn render_vertical(
                         plot_prefix_width,
                         plot_area,
                         resources,
+                        checkpoints,
                     )? {
                         out.push(line, resources)?;
                     }
@@ -351,11 +424,13 @@ fn render_vertical(
                         plan,
                         plot_area,
                         &mut plot_resources,
+                        checkpoints,
                     )?;
                 }
             }
 
             for (idx, row) in plot.rows.into_iter().enumerate() {
+                checkpoints.tick(merman_core::OperationPhase::Emit)?;
                 let label = &tick_labels[idx];
                 let mut line = new_chart_line(options, resources);
                 push_axis_prefix(
@@ -367,8 +442,9 @@ fn render_vertical(
                     reserve_axis_slot,
                     resources,
                 )?;
-                resources.charge_layout_work(row.len())?;
-                line.try_push_line(&row)?;
+                plot_resources.charge_layout_work(row.len())?;
+                let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+                line.try_push_line_with_checkpoint(&row, &plot_resources, &mut checkpoint)?;
                 out.push(line, resources)?;
             }
 
@@ -402,6 +478,7 @@ fn render_vertical(
                         plot_area,
                         chars.horizontal_tick,
                         resources,
+                        checkpoints,
                     )?;
                 }
                 out.push(axis_line, resources)?;
@@ -409,7 +486,7 @@ fn render_vertical(
 
             if axis_labels_visible(model.display.x_axis) {
                 charge_category_text(categories, resources)?;
-                let labels = plot_area.category_axis_labels(categories, resources)?;
+                let labels = plot_area.category_axis_labels(categories, resources, checkpoints)?;
                 let mut category_line = new_chart_line(options, resources);
                 resources.charge_layout_work(plot_prefix_width)?;
                 category_line.try_push_spaces(plot_prefix_width)?;
@@ -438,6 +515,7 @@ fn render_horizontal(
     context: ChartRenderContext<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
     before_document_materialize: impl FnOnce(),
 ) -> Result<String> {
     let ChartRenderContext {
@@ -451,9 +529,10 @@ fn render_horizontal(
     let categories = &plan.horizontal_axis_labels;
     let mut document_resources = resources.scoped();
     let resources = &mut document_resources;
-    let disclosure = plan.disclosure_plan(plot_area, true, resources)?;
-    let requires_disclosure = disclosure.values;
     let show_x_labels = axis_labels_visible(model.display.x_axis);
+    let mut disclosure = plan.disclosure_plan(plot_area, true, show_x_labels, resources)?;
+    disclosure.values |= model.display.show_data_label && !uses_compact_bar_data_labels(model);
+    let requires_disclosure = disclosure.values || disclosure.band_domain;
     let gutter = if show_x_labels {
         label_gutter(
             categories.iter().map(String::as_str),
@@ -471,19 +550,32 @@ fn render_horizontal(
     };
     let reserve_axis_slot = show_x_labels || x_axis_mark.is_some() || baseline_mark.is_some();
     let plot_prefix_width = plot_prefix_width(show_x_labels, reserve_axis_slot, gutter, resources)?;
+    let horizontal_plan = plan_horizontal_plot_admission(
+        plan,
+        plot_area,
+        plot_extent.height(),
+        resources,
+        checkpoints,
+    )?;
+    let metrics_context = HorizontalPlotMetricsContext {
+        plan,
+        plot_prefix_width,
+        plot_area,
+        show_axis_labels: show_x_labels,
+        gutter,
+        axis_mark: x_axis_mark,
+        preserve_color: options.color_mode != AsciiColorMode::Plain,
+    };
     let document_plan = measure_horizontal_document(
         model,
-        plan,
-        chars,
-        plot_area,
-        plot_extent,
-        plot_prefix_width,
+        context,
+        metrics_context,
+        &horizontal_plan,
         baseline_mark,
-        requires_disclosure,
         disclosure,
-        options,
         resources,
     )?;
+    let compact_bar_values = horizontal_plan.into_compact_bar_values();
     execution.admit_grid(document_plan.width.saturating_mul(document_plan.height))?;
     execution.checkpoint(merman_core::OperationPhase::Emit)?;
     let mut emit_resources =
@@ -492,26 +584,29 @@ fn render_horizontal(
         &mut emit_resources,
         before_document_materialize,
         |resources| {
-            let mut plot_resources = resources.scoped();
+            let mut plot_resources = resources
+                .with_operation_phase(merman_core::OperationPhase::Layout)
+                .scoped();
             let plot_rows = build_horizontal_plot_rows(
                 plan,
                 chars,
                 plot_area,
                 plot_extent,
+                compact_bar_values.as_ref(),
                 &mut plot_resources,
+                checkpoints,
             )?;
             let mut out = ChartDocument::default();
             push_title_lines(&mut out, model, options, resources)?;
             push_legend_line(&mut out, plan, chars, options, resources)?;
-            if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
-                || requires_disclosure
-            {
+            if requires_disclosure {
                 push_value_disclosure_lines(
                     &mut out, model, plan, chars, disclosure, options, resources,
                 )?;
             }
 
             for plot_row in &plot_rows {
+                checkpoints.tick(merman_core::OperationPhase::Emit)?;
                 resources.charge_layout_work(1)?;
                 let category = plot_row
                     .show_category_label
@@ -529,8 +624,13 @@ fn render_horizontal(
                     reserve_axis_slot,
                     resources,
                 )?;
-                resources.charge_layout_work(plot_row.line.len())?;
-                line.try_push_line(&plot_row.line)?;
+                plot_resources.charge_layout_work(plot_row.line.len())?;
+                let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+                line.try_push_line_with_checkpoint(
+                    &plot_row.line,
+                    &plot_resources,
+                    &mut checkpoint,
+                )?;
                 if model.display.show_data_label
                     && uses_compact_bar_data_labels(model)
                     && let (Some(value), Some(label)) =
@@ -585,6 +685,7 @@ fn render_horizontal(
                         plot_area,
                         chars.horizontal_tick,
                         resources,
+                        checkpoints,
                     )?;
                 }
                 out.push(axis_line, resources)?;
@@ -595,8 +696,13 @@ fn render_horizontal(
                 let mut tick_line = new_chart_line(options, resources);
                 resources.charge_layout_work(plot_prefix_width)?;
                 tick_line.try_push_spaces(plot_prefix_width)?;
-                resources.charge_layout_work(tick_labels.len())?;
-                tick_line.try_push_line(&tick_labels)?;
+                plot_resources.charge_layout_work(tick_labels.len())?;
+                let mut checkpoint = || checkpoints.tick(merman_core::OperationPhase::Emit);
+                tick_line.try_push_line_with_checkpoint(
+                    &tick_labels,
+                    &plot_resources,
+                    &mut checkpoint,
+                )?;
                 out.push(tick_line, resources)?;
             }
 
@@ -617,20 +723,21 @@ fn measure_vertical_document(
     model: &XyChartDiagramRenderModel,
     plan: &TerminalChartPlan,
     chars: ChartChars,
+    vertical_plan: &VerticalPlotAdmissionPlan,
     plot_extent: LogicalExtent,
     plot_prefix_width: usize,
+    tick_labels: &[String],
+    gutter: usize,
     show_y_labels: bool,
+    y_axis_mark: Option<char>,
     baseline_mark: Option<char>,
-    requires_disclosure: bool,
     disclosure: super::plot::TerminalDisclosurePlan,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<ChartDocumentPlan> {
     let mut document = ChartDocumentPlan::default();
     measure_chart_header(&mut document, model, plan, chars, options, resources)?;
-    if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
-        || requires_disclosure
-    {
+    if disclosure.values || disclosure.band_domain {
         measure_value_disclosure_lines(
             &mut document,
             model,
@@ -649,7 +756,25 @@ fn measure_vertical_document(
     {
         document.include_line(plot_row_width, resources)?;
     }
-    document.include_repeated_line(plot_row_width, plot_extent.height(), resources)?;
+    let plot_metrics = vertical_plot_document_metrics(
+        vertical_plan,
+        tick_labels,
+        plot_prefix_width,
+        gutter,
+        show_y_labels,
+        y_axis_mark,
+        options.color_mode != AsciiColorMode::Plain,
+        options.terminal_width_profile,
+        plot_extent,
+        resources,
+    )?;
+    document.include_materialized_block(
+        plot_metrics.width,
+        plot_metrics.materialized_width,
+        plot_extent.height(),
+        plot_metrics.document_cells,
+        resources,
+    )?;
 
     if show_y_labels || baseline_mark.is_some() {
         let baseline_width =
@@ -672,25 +797,30 @@ fn measure_vertical_document(
     Ok(document)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn measure_horizontal_document(
     model: &XyChartDiagramRenderModel,
-    plan: &TerminalChartPlan,
-    chars: ChartChars,
-    plot_area: XyChartPlotArea,
-    plot_extent: LogicalExtent,
-    plot_prefix_width: usize,
+    chart: ChartRenderContext<'_>,
+    metrics: HorizontalPlotMetricsContext<'_>,
+    horizontal_plan: &HorizontalPlotAdmissionPlan,
     baseline_mark: Option<char>,
-    requires_disclosure: bool,
     disclosure: super::plot::TerminalDisclosurePlan,
-    options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<ChartDocumentPlan> {
+    let ChartRenderContext {
+        chars,
+        plot_area,
+        plot_extent,
+        options,
+        ..
+    } = chart;
+    let HorizontalPlotMetricsContext {
+        plan,
+        plot_prefix_width,
+        ..
+    } = metrics;
     let mut document = ChartDocumentPlan::default();
     measure_chart_header(&mut document, model, plan, chars, options, resources)?;
-    if (model.display.show_data_label && !uses_compact_bar_data_labels(model))
-        || requires_disclosure
-    {
+    if disclosure.values || disclosure.band_domain {
         measure_value_disclosure_lines(
             &mut document,
             model,
@@ -702,9 +832,15 @@ fn measure_horizontal_document(
         )?;
     }
 
-    let plot_row_width =
-        horizontal_plot_row_width(model, plan, plot_prefix_width, plot_area, resources)?;
-    document.include_repeated_line(plot_row_width, plot_extent.height(), resources)?;
+    let plot_metrics =
+        horizontal_plot_document_metrics(model, metrics, horizontal_plan, resources)?;
+    document.include_materialized_block(
+        plot_metrics.width,
+        plot_metrics.materialized_width,
+        plot_extent.height(),
+        plot_metrics.document_cells,
+        resources,
+    )?;
 
     if axis_labels_visible(model.display.y_axis) || baseline_mark.is_some() {
         let baseline_width =
@@ -820,6 +956,9 @@ fn measure_value_disclosure_lines(
     {
         document.include_line(width, resources)?;
     }
+    if !disclosure.values {
+        return Ok(());
+    }
     for series in &plan.series {
         resources.charge_layout_work(1)?;
         if let Some(width) =
@@ -831,51 +970,216 @@ fn measure_value_disclosure_lines(
     Ok(())
 }
 
-fn horizontal_plot_row_width(
-    model: &XyChartDiagramRenderModel,
-    plan: &TerminalChartPlan,
+#[allow(clippy::too_many_arguments)]
+fn vertical_plot_document_metrics(
+    vertical_plan: &VerticalPlotAdmissionPlan,
+    tick_labels: &[String],
     plot_prefix_width: usize,
-    plot_area: XyChartPlotArea,
+    gutter: usize,
+    show_axis_labels: bool,
+    axis_mark: Option<char>,
+    preserve_color: bool,
+    width_profile: TerminalWidthProfile,
+    plot_extent: LogicalExtent,
     resources: &mut ResourceContext,
-) -> Result<usize> {
-    let base_width = resources.checked_grid_add(plot_prefix_width, plot_area.horizontal_width)?;
-    if !model.display.show_data_label || !uses_compact_bar_data_labels(model) {
-        return Ok(base_width);
+) -> Result<PlotDocumentMetrics> {
+    let row_widths = vertical_plan.row_widths();
+    if row_widths.len() != plot_extent.height() || tick_labels.len() != plot_extent.height() {
+        return Err(invalid_chart_document_extent_plan());
     }
-    let Some(series) = plan
-        .series
-        .iter()
-        .find(|series| series.plot_type == XyChartPlotType::Bar)
-    else {
-        return Ok(base_width);
+
+    let materialized_width = resources.checked_grid_add(plot_prefix_width, plot_extent.width())?;
+    let mut width = 0usize;
+    let mut document_cells = 0usize;
+    for (label, plot_width) in tick_labels.iter().zip(row_widths.iter().copied()) {
+        resources.charge_layout_work(1)?;
+        let row_width = if plot_width > 0 {
+            resources.checked_grid_add(plot_prefix_width, plot_width)?
+        } else {
+            axis_prefix_retained_width(
+                label,
+                gutter,
+                plot_prefix_width,
+                show_axis_labels,
+                axis_mark,
+                preserve_color,
+                width_profile,
+                resources,
+            )?
+        };
+        width = width.max(row_width);
+        document_cells = checked_document_cells_add(document_cells, row_width, resources)?;
+    }
+    Ok(PlotDocumentMetrics {
+        width,
+        materialized_width,
+        document_cells,
+    })
+}
+
+fn horizontal_plot_document_metrics(
+    model: &XyChartDiagramRenderModel,
+    context: HorizontalPlotMetricsContext<'_>,
+    horizontal_plan: &HorizontalPlotAdmissionPlan,
+    resources: &mut ResourceContext,
+) -> Result<PlotDocumentMetrics> {
+    let HorizontalPlotMetricsContext {
+        plan,
+        plot_prefix_width,
+        plot_area,
+        ..
+    } = context;
+    let plot_row_widths = horizontal_plan.row_widths();
+    if plot_row_widths.len() != plan.horizontal_row_count(resources)? {
+        return Err(invalid_chart_document_extent_plan());
+    }
+
+    let mut width = 0usize;
+    let mut document_cells = 0usize;
+    for (row, plot_width) in plot_row_widths.iter().copied().enumerate() {
+        resources.charge_layout_work(1)?;
+        let row_width = horizontal_plot_row_document_width(context, row, plot_width, resources)?;
+        width = width.max(row_width);
+        document_cells = checked_document_cells_add(document_cells, row_width, resources)?;
+    }
+    let mut materialized_width = if plot_row_widths.is_empty() {
+        0
+    } else {
+        resources.checked_grid_add(plot_prefix_width, plot_area.horizontal_width)?
     };
 
-    let mut width = base_width;
+    if !model.display.show_data_label || !uses_compact_bar_data_labels(model) {
+        return Ok(PlotDocumentMetrics {
+            width,
+            materialized_width,
+            document_cells,
+        });
+    }
+    if plan.bar_series_count == 0 {
+        return Ok(PlotDocumentMetrics {
+            width,
+            materialized_width,
+            document_cells,
+        });
+    }
+
+    let materialized_plot_width =
+        resources.checked_grid_add(plot_prefix_width, plot_area.horizontal_width)?;
+    let rows_per_slot = plan.horizontal_rows_per_slot();
     for slot in 0..plan.slot_count {
-        let mut value = None;
-        for datum in &series.data {
-            resources.charge_layout_work(1)?;
-            if plan.sample_slot(datum) == slot {
-                value = datum.value;
-                break;
-            }
-        }
-        let Some(value) = value else {
+        resources.charge_layout_work(1)?;
+        let Some(value) = horizontal_plan.compact_bar_value(slot) else {
             continue;
         };
         let label = format_data_number(value);
         let label_width = display_width_with_profile(&label, plot_area.width_profile);
+        let bar_width = horizontal_bar_width(value, plan.y_range, plot_area);
         let fits_inside = !model.display.show_data_label_outside_bar
-            && horizontal_bar_width(value, plan.y_range, plot_area) > 0
+            && bar_width > 0
             && label_width > 0
-            && label_width <= horizontal_bar_width(value, plan.y_range, plot_area);
+            && label_width <= bar_width;
         if !fits_inside && !label.is_empty() {
-            let outside = resources
-                .checked_grid_add(base_width, resources.checked_grid_add(1, label_width)?)?;
+            let row = resources.checked_grid_mul(slot, rows_per_slot)?;
+            let plot_width = plot_row_widths
+                .get(row)
+                .copied()
+                .ok_or_else(|| resources.grid_overflow())?;
+            let planned = horizontal_plot_row_document_width(context, row, plot_width, resources)?;
+            let outside = resources.checked_grid_add(
+                materialized_plot_width,
+                resources.checked_grid_add(1, label_width)?,
+            )?;
             width = width.max(outside);
+            materialized_width = materialized_width.max(outside);
+            document_cells = checked_document_cells_add(
+                document_cells,
+                checked_grid_sub(resources, outside, planned)?,
+                resources,
+            )?;
         }
     }
-    Ok(width)
+    Ok(PlotDocumentMetrics {
+        width,
+        materialized_width,
+        document_cells,
+    })
+}
+
+fn horizontal_plot_row_document_width(
+    context: HorizontalPlotMetricsContext<'_>,
+    row: usize,
+    plot_width: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    if plot_width > 0 {
+        return resources.checked_grid_add(context.plot_prefix_width, plot_width);
+    }
+    horizontal_prefix_retained_width(context, row, resources)
+}
+
+fn horizontal_prefix_retained_width(
+    context: HorizontalPlotMetricsContext<'_>,
+    row: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    let show_label =
+        context.show_axis_labels && row.is_multiple_of(context.plan.horizontal_rows_per_slot());
+    let label = if show_label {
+        let category_index = row / context.plan.horizontal_rows_per_slot();
+        context
+            .plan
+            .horizontal_axis_labels
+            .get(category_index)
+            .map(String::as_str)
+            .unwrap_or_default()
+    } else {
+        ""
+    };
+    axis_prefix_retained_width(
+        label,
+        context.gutter,
+        context.plot_prefix_width,
+        show_label,
+        context.axis_mark,
+        context.preserve_color,
+        context.plot_area.width_profile,
+        resources,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn axis_prefix_retained_width(
+    label: &str,
+    gutter: usize,
+    plot_prefix_width: usize,
+    show_axis_labels: bool,
+    axis_mark: Option<char>,
+    preserve_color: bool,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    if axis_mark.is_some() {
+        return Ok(plot_prefix_width);
+    }
+    if !show_axis_labels {
+        return Ok(0);
+    }
+
+    let Some((label_width, retained_width)) =
+        normalized_visible_line_metrics(label, width_profile, resources)?
+    else {
+        return Ok(0);
+    };
+    let retained_width = if preserve_color {
+        label_width
+    } else {
+        retained_width
+    };
+    if retained_width == 0 {
+        return Ok(0);
+    }
+    let padding = checked_grid_sub(resources, gutter, label_width)?;
+    resources.checked_grid_add(padding, retained_width)
 }
 
 fn normalized_optional_text_width(
@@ -898,6 +1202,36 @@ fn normalized_optional_text_width(
         return Ok(None);
     };
     Ok(Some(plan.metrics().max_width))
+}
+
+fn normalized_visible_line_metrics(
+    value: &str,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Option<(usize, usize)>> {
+    let Some(plan) = try_plan_normalized_label_lines_with_policy(
+        value,
+        width_profile,
+        false,
+        None,
+        LabelBreakPolicy::VisibleLine,
+        resources,
+    )?
+    else {
+        return Ok(None);
+    };
+    let width = plan.metrics().max_width;
+    let mut retained_width = 0usize;
+    plan.try_visit_row_metrics_with_checkpoint(
+        value,
+        resources,
+        || resources.check_usage(0, 0),
+        |row| {
+            retained_width = retained_width.max(row.retained_width);
+            Ok(())
+        },
+    )?;
+    Ok(Some((width, retained_width)))
 }
 
 fn push_title_lines(
@@ -1106,8 +1440,10 @@ fn overlay_vertical_category_ticks(
     plot_area: XyChartPlotArea,
     tick: char,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     for index in 0..category_count {
+        checkpoints.tick(merman_core::OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         let position = plot_area.vertical_band_center(index, resources)?;
         let target = resources.checked_grid_add(plot_start, position)?;
@@ -1122,6 +1458,7 @@ fn overlay_horizontal_value_ticks(
     plot_area: XyChartPlotArea,
     tick: char,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
     let last = plot_area
         .horizontal_width
@@ -1131,6 +1468,7 @@ fn overlay_horizontal_value_ticks(
             message: "must be at least 2",
         })?;
     for position in [0, last] {
+        checkpoints.tick(merman_core::OperationPhase::Emit)?;
         resources.charge_layout_work(1)?;
         let target = resources.checked_grid_add(plot_start, position)?;
         line.try_set_role(target, tick, AsciiColorRole::ChartAxis)?;
@@ -1144,6 +1482,7 @@ fn vertical_data_label_line(
     plot_prefix_width: usize,
     plot_area: XyChartPlotArea,
     resources: &mut ResourceContext,
+    checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<Option<ChartLine>> {
     let Some(labels) = compact_bar_value_labels(model, plan, resources)? else {
         return Ok(None);
@@ -1152,7 +1491,7 @@ fn vertical_data_label_line(
         return Ok(None);
     }
 
-    let band_labels = plot_area.band_labels(&labels, resources)?;
+    let band_labels = plot_area.band_labels(&labels, resources, checkpoints)?;
     let mut line = ChartLine::with_resources(plot_area.width_profile, resources);
     resources.charge_layout_work(plot_prefix_width)?;
     line.try_push_spaces(plot_prefix_width)?;
@@ -1408,8 +1747,10 @@ fn label_gutter<'a>(
 ) -> Result<usize> {
     let mut gutter = 0;
     for label in labels {
-        charge_text_layout(resources, label)?;
-        gutter = gutter.max(display_width_with_profile(label, width_profile));
+        if let Some((width, _)) = normalized_visible_line_metrics(label, width_profile, resources)?
+        {
+            gutter = gutter.max(width);
+        }
     }
     Ok(gutter)
 }
@@ -1430,15 +1771,19 @@ mod tests {
         horizontal_tick_label_line_for_labels, render_xychart_diagram_with_materializer,
         render_xychart_diagram_with_resources,
     };
+    use crate::operation::AsciiExecution;
     use crate::resource::ResourceContext;
+    use crate::text::{StyledLine, display_width_with_profile};
+    use crate::xychart::plot::XyChartCheckpointCursor;
     use crate::{
-        AsciiColorMode, AsciiError, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy,
-        Result, TerminalWidthProfile,
+        AsciiColorMode, AsciiColorRole, AsciiError, AsciiRenderOptions, AsciiResourceLimitId,
+        AsciiResourcePolicy, Result, TerminalWidthProfile,
     };
     use merman_core::diagrams::xychart::{
         XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
         XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
     };
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
     use std::cell::Cell;
 
     fn render_xychart_diagram(
@@ -1731,18 +2076,16 @@ mod tests {
     #[test]
     fn xychart_complete_document_extent_is_admitted_before_row_materialization() {
         let model = disclosure_budget_model();
-        let probe = Cell::new(false);
         let options = compact_options(AsciiColorMode::Plain);
-        let trial = resources_with_limit(AsciiResourceLimitId::MaxGridCells, 100);
-        let error =
-            render_xychart_diagram_with_materializer(&model, &options, trial, || probe.set(true))
-                .expect_err("the disclosure-dominated document should exceed the trial limit");
-        assert!(!probe.get(), "trial overflow materialized chart rows");
-        let AsciiError::ResourceLimitExceeded(details) = error else {
-            panic!("expected a resource-limit error, got {error:?}");
-        };
-        assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
-        let exact_cells = details.actual;
+        let rendered = render_xychart_diagram(&model, &options)
+            .expect("the disclosure-dominated fixture should render without a tight limit");
+        let line_count = rendered.lines().count();
+        let max_width = rendered
+            .lines()
+            .map(|line| display_width_with_profile(line, options.terminal_width_profile))
+            .max()
+            .unwrap_or(0);
+        let exact_cells = max_width * line_count;
         assert!(exact_cells > 100);
 
         let exact_probe = Cell::new(false);
@@ -1770,6 +2113,91 @@ mod tests {
     }
 
     #[test]
+    fn xychart_emit_surface_copy_observes_mid_row_cancellation() {
+        let policy = AsciiResourcePolicy::default();
+        let setup_resources = ResourceContext::new(policy);
+        let mut source =
+            StyledLine::with_resources(TerminalWidthProfile::Unicode, &setup_resources);
+        source
+            .try_push_role_repeat('#', 65, AsciiColorRole::ChartSeries(0))
+            .expect("the source plot row should fit the default policy");
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let execution = AsciiExecution::new(&control, &policy);
+        let base_resources = ResourceContext::new(policy);
+        let emit_resources = execution.resource_context(&base_resources, OperationPhase::Emit);
+        let mut target = StyledLine::with_resources(TerminalWidthProfile::Unicode, &emit_resources);
+        let mut checkpoints = XyChartCheckpointCursor::new(execution);
+
+        let error = target
+            .try_push_line_with_checkpoint(&source, &emit_resources, || {
+                checkpoints.tick(OperationPhase::Emit)
+            })
+            .expect_err("the second cadence checkpoint should stop plot-row emission");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Emit
+                    && cancelled.reason == CancelReason::Requested
+        ));
+    }
+
+    #[test]
+    fn xychart_document_cells_are_admitted_before_materialization() {
+        let model = compact_vertical_model(Some("12345678"));
+        let options = compact_options(AsciiColorMode::Plain);
+        let probe = Cell::new(false);
+        let rejected = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, 40);
+        let error = render_xychart_diagram_with_materializer(&model, &options, rejected, || {
+            probe.set(true)
+        })
+        .expect_err("N-1 document cells must fail before row materialization");
+        assert!(!probe.get(), "document admission materialized chart rows");
+        assert_resource_error(error, AsciiResourceLimitId::MaxDocumentCells, 41, 40);
+
+        let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, 41);
+        render_xychart_diagram_with_materializer(&model, &options, exact, || probe.set(true))
+            .expect("the exact planned document-cell budget should render");
+        assert!(
+            probe.get(),
+            "exact document admission did not materialize rows"
+        );
+    }
+
+    #[test]
+    fn chart_document_materialization_error_rolls_back_shared_ledgers() {
+        let policy = AsciiResourcePolicy::default();
+        let mut resources = ResourceContext::new(policy);
+        resources
+            .charge_layout_work(7)
+            .expect("the fixture work debit should fit");
+        let mut plan = super::ChartDocumentPlan::default();
+        plan.include_line(3, &resources)
+            .expect("the fixture document plan should fit");
+
+        let error = plan
+            .materialize(
+                &mut resources,
+                || {},
+                |resources| {
+                    resources.charge_layout_work(5)?;
+                    resources.charge_document_cells(3)?;
+                    Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "xychart",
+                        feature: "test materialization failure",
+                    })
+                },
+            )
+            .expect_err("the injected materialization failure should escape");
+
+        assert!(matches!(error, AsciiError::UnsupportedFeature { .. }));
+        assert_eq!(resources.layout_work_used(), 7);
+        assert_eq!(resources.document_cells_used(), 0);
+    }
+
+    #[test]
     fn xychart_horizontal_plot_budget_is_checked_before_row_allocation() {
         let model = compact_horizontal_model();
         let options = compact_options(AsciiColorMode::Plain);
@@ -1781,6 +2209,52 @@ mod tests {
         let error = render_xychart_diagram_with_resources(&model, &options, rejected)
             .expect_err("the horizontal plot extent should be rejected before row allocation");
         assert_resource_error(error, AsciiResourceLimitId::MaxGridCells, 20, 19);
+    }
+
+    #[test]
+    fn xychart_horizontal_document_budget_counts_each_planned_row_exactly() {
+        let mut model = compact_horizontal_model();
+        model.display.show_data_label = true;
+        model.display.show_data_label_outside_bar = true;
+        model.plots[0].values.clear();
+        model.plots[0].data = vec![("A".to_string(), Some(123_456.0)), ("B".to_string(), None)];
+        let options = compact_options(AsciiColorMode::Plain);
+        let reference = render_xychart_diagram(&model, &options)
+            .expect("the unrestricted fixture should render for independent measurement");
+        let exact_cells = reference
+            .lines()
+            .map(|line| super::display_width_with_profile(line, options.terminal_width_profile))
+            .sum::<usize>();
+        assert_eq!(exact_cells, 220);
+
+        let exact_probe = Cell::new(false);
+        let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
+        let rendered = render_xychart_diagram_with_materializer(&model, &options, exact, || {
+            exact_probe.set(true)
+        })
+        .expect("the exact sum of the short and extended rows should render");
+        assert!(rendered.contains("123456"));
+        assert!(
+            exact_probe.get(),
+            "exact horizontal document admission did not materialize rows"
+        );
+
+        let below_probe = Cell::new(false);
+        let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
+        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
+            below_probe.set(true)
+        })
+        .expect_err("N-1 horizontal document cells must fail before materialization");
+        assert!(
+            !below_probe.get(),
+            "N-1 horizontal document admission materialized rows"
+        );
+        assert_resource_error(
+            error,
+            AsciiResourceLimitId::MaxDocumentCells,
+            exact_cells,
+            exact_cells - 1,
+        );
     }
 
     #[test]
@@ -1803,6 +2277,81 @@ mod tests {
                 .expect_err("the owned title plus two plot rows should exceed 40 document cells");
             assert_resource_error(error, AsciiResourceLimitId::MaxDocumentCells, 41, 40);
         }
+    }
+
+    #[test]
+    fn xychart_vertical_document_budget_uses_retained_plot_widths() {
+        let mut model = compact_vertical_model(None);
+        model.x_axis = XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        };
+        model.plots[0].values = vec![1.0, 0.0];
+        let options = AsciiRenderOptions::ascii()
+            .with_xychart_vertical_plot_height(2)
+            .with_xychart_category_band_width(3);
+        let reference = render_xychart_diagram(&model, &options)
+            .expect("the unrestricted sparse vertical plot should render");
+        let exact_cells = reference
+            .lines()
+            .map(|line| display_width_with_profile(line, options.terminal_width_profile))
+            .sum::<usize>();
+        assert_eq!(reference, "###\n###\n");
+        assert_eq!(exact_cells, 6);
+
+        let exact_probe = Cell::new(false);
+        let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
+        render_xychart_diagram_with_materializer(&model, &options, exact, || exact_probe.set(true))
+            .expect("the exact retained vertical document should render");
+        assert!(exact_probe.get());
+
+        let below_probe = Cell::new(false);
+        let below = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells - 1);
+        let error = render_xychart_diagram_with_materializer(&model, &options, below, || {
+            below_probe.set(true)
+        })
+        .expect_err("N-1 retained vertical cells must fail before materialization");
+        assert!(!below_probe.get());
+        assert_resource_error(
+            error,
+            AsciiResourceLimitId::MaxDocumentCells,
+            exact_cells,
+            exact_cells - 1,
+        );
+    }
+
+    #[test]
+    fn horizontal_prefix_metrics_preserve_styled_trailing_spaces() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+
+        assert_eq!(
+            super::axis_prefix_retained_width(
+                "A ",
+                2,
+                4,
+                true,
+                None,
+                false,
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )
+            .expect("plain prefix metrics should fit"),
+            1
+        );
+        assert_eq!(
+            super::axis_prefix_retained_width(
+                "A ",
+                2,
+                4,
+                true,
+                None,
+                true,
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )
+            .expect("styled prefix metrics should fit"),
+            2
+        );
     }
 
     #[test]
@@ -1838,14 +2387,29 @@ mod tests {
     fn xychart_layout_work_budget_covers_series_values_categories_paint_and_encoding() {
         let model = compact_vertical_model(None);
         let options = compact_options(AsciiColorMode::Plain);
-        let accepted = resources_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 22);
+        // This is a fixed semantic boundary for the compact fixture. It covers the declared
+        // cardinality, series/sample planning, retained-width admission, paint, and encoding
+        // work; it is intentionally not derived from a renderer-reported usage value.
+        const REQUIRED_LAYOUT_WORK: usize = 31;
+        let accepted = resources_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            REQUIRED_LAYOUT_WORK,
+        );
         render_xychart_diagram_with_resources(&model, &options, accepted)
             .expect("the exact XYChart layout-work limit should succeed");
 
-        let rejected = resources_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 21);
+        let rejected = resources_with_limit(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            REQUIRED_LAYOUT_WORK - 1,
+        );
         let error = render_xychart_diagram_with_resources(&model, &options, rejected)
             .expect_err("the final encoder count/write passes should cross the work boundary");
-        assert_resource_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 22, 21);
+        assert_resource_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            REQUIRED_LAYOUT_WORK,
+            REQUIRED_LAYOUT_WORK - 1,
+        );
     }
 
     #[test]
