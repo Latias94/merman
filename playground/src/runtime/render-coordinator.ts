@@ -8,7 +8,6 @@ import {
 
 import type {
   MermanDomainFacade,
-  MermanLayoutEnvironment,
   MermanRenderFailureStage,
 } from "./merman-core.ts";
 import {
@@ -24,10 +23,8 @@ import type {
   MermaidRealmRenderResult,
   MermaidRealmRenderSuccess,
 } from "./mermaid-realm-controller.ts";
-import type {
-  CompareFailureStage,
-  RealmViewport,
-} from "./realm/channel-protocol.ts";
+import type { CompareFailureStage } from "./realm/channel-protocol.ts";
+import type { CapturedRenderViewport } from "./render-viewport.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import { isAsciiSupported } from "../lib/ascii-support.ts";
 import {
@@ -37,6 +34,7 @@ import {
 
 export interface RenderCoordinatorInput {
   readonly facade: MermanDomainFacade | null;
+  readonly renderViewport: Readonly<CapturedRenderViewport>;
   readonly workspace: Readonly<WorkspaceSnapshot>;
 }
 
@@ -206,9 +204,7 @@ export interface RenderFeatures {
 }
 
 export interface RenderCoordinatorOptions {
-  readonly captureLayoutEnvironment?: () => MermanLayoutEnvironment;
   readonly compare: MermaidRealmController;
-  readonly compareViewport: RealmViewport;
   readonly debounceMs?: number;
   readonly now?: () => number;
 }
@@ -223,18 +219,10 @@ const EMPTY_STATE: RenderCoordinatorState = Object.freeze({
   status: "empty",
 });
 export function createRenderCoordinator({
-  captureLayoutEnvironment,
   compare,
-  compareViewport,
   debounceMs = 300,
   now = () => performance.now(),
 }: RenderCoordinatorOptions): RenderCoordinator {
-  const captureEnvironment =
-    captureLayoutEnvironment ??
-    (() => ({
-      containerWidth: compareViewport.width,
-      containerHeight: compareViewport.height,
-    }));
   const store = createStore<RenderCoordinatorState>(() => EMPTY_STATE);
   let disposed = false;
   let suspended = false;
@@ -272,7 +260,7 @@ export function createRenderCoordinator({
 
   const scheduleCurrent = (force: boolean, immediate = false) => {
     if (disposed || !currentInput) return;
-    const { facade, workspace } = currentInput;
+    const { facade, renderViewport, workspace } = currentInput;
     if (!facade || !workspace.code.trim()) {
       cancelActiveCompare();
       requestSequence += 1;
@@ -285,12 +273,14 @@ export function createRenderCoordinator({
     const operation = freezeRenderOperation({
       compareEnabled,
       diagnosticsEnabled,
-      layoutEnvironment: captureEnvironment(),
+      layoutEnvironment: renderViewport.layoutEnvironment,
+      renderViewportMode: renderViewport.mode,
+      renderViewportStatus: renderViewport.status,
       versions: {
         merman: facade.packageVersion,
         mermaid: MERMAID_JS_VERSION,
       },
-      viewport: compareEnabled ? compareViewport : null,
+      viewport: compareEnabled ? renderViewport.viewport : null,
       workspace,
     });
     if (

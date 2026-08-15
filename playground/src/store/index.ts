@@ -9,6 +9,11 @@ import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
+import type { RealmViewport } from "../runtime/realm/channel-protocol.ts";
+import {
+  resolveRenderViewport,
+  type RenderViewportMode,
+} from "../runtime/render-viewport.ts";
 
 export type Theme = ThemeName;
 export type UITheme = "light" | "dark" | "system";
@@ -37,6 +42,10 @@ export interface AppState {
   setPresentationThemePresetId: (presetId: string | null) => void;
   presentationProfileId: string | null;
   setPresentationProfileId: (profileId: string | null) => void;
+  renderViewportMode: RenderViewportMode;
+  setRenderViewportMode: (mode: RenderViewportMode) => void;
+  hostRenderViewport: Readonly<RealmViewport> | null;
+  setHostRenderViewport: (viewport: RealmViewport) => void;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -66,6 +75,7 @@ export function selectWorkspaceSnapshot(
     diagramTheme: state.diagramTheme,
     presentationThemePresetId: state.presentationThemePresetId,
     presentationProfileId: state.presentationProfileId,
+    renderViewportMode: state.renderViewportMode,
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
@@ -140,6 +150,22 @@ export const useAppStore = create<AppState>((set) => ({
   presentationProfileId: DEFAULT_WORKSPACE_SNAPSHOT.presentationProfileId,
   setPresentationProfileId: (presentationProfileId) =>
     set({ presentationProfileId }),
+  renderViewportMode: DEFAULT_WORKSPACE_SNAPSHOT.renderViewportMode,
+  setRenderViewportMode: (renderViewportMode) => set({ renderViewportMode }),
+  hostRenderViewport: null,
+  setHostRenderViewport: (candidate) =>
+    set((state) => {
+      const resolved = resolveRenderViewport("host", candidate);
+      if (resolved.status !== "host") return state;
+      const previous = state.hostRenderViewport;
+      if (
+        previous?.width === resolved.viewport.width &&
+        previous.height === resolved.viewport.height
+      ) {
+        return state;
+      }
+      return { hostRenderViewport: resolved.viewport };
+    }),
   svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
   textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,

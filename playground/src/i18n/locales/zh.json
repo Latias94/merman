@@ -297,7 +297,13 @@
     "zoomOut": "缩小",
     "reset": "重置视图",
     "resetZoom": "重置缩放",
-    "fitToView": "适应视图"
+    "fitToView": "适应视图",
+    "viewportMode": "渲染视口",
+    "viewportCanonical": "标准",
+    "viewportHost": "宿主",
+    "viewportSize": "{{width}} × {{height}}",
+    "viewportMeasuring": "正在测量预览区域；暂用 {{width}} × {{height}}",
+    "viewportMeasuringShort": "测量中…"
   },
   "status": {
     "diagramType": "类型",

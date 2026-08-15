@@ -281,7 +281,7 @@ stateDiagram-v2
 
 **Approach:**
 
-1. Introduce normalized viewport mode and resolved viewport values at the render-operation boundary.
+1. Introduce normalized viewport mode and resolved viewport values at the render-operation boundary. Round ResizeObserver width/height to integer CSS pixels, then reuse `validateRealmViewport` and its `4096` side / `16,777,216` pixel budget before either engine receives the value.
 2. Keep one canonical viewport constant while making Benchmark select it independently from interactive mode.
 3. Make operation equality and publication snapshots include mode and dimensions.
 4. Reject invalid Host dimensions before execution and retain the previous valid request rather than publishing a zero-sized operation.
@@ -294,7 +294,7 @@ stateDiagram-v2
 
 1. Canonical requests remain `800x600` and compare equal across repeated pane resizes.
 2. Host requests with a positive finite size change operation identity and reach both Merman layout environment and Mermaid reference viewport.
-3. Width or height values of zero, negative, `NaN`, or infinity never create an executable operation.
+3. Width or height values that round below one, are negative, `NaN`, infinite, or exceed the realm layout budget never create a Host-sized operation and leave the Host measuring fallback/last valid request intact.
 4. Two Compare engine requests from one operation contain identical viewport dimensions.
 5. Benchmark corpus requests remain canonical while the interactive store is in Host mode.
 
@@ -498,6 +498,8 @@ stateDiagram-v2
 - Modify `playground/src/components/ExportDialog.tsx`.
 - Modify `playground/src/runtime/render-artifact.ts`.
 - Modify `playground/src/runtime/render-artifact.test.ts`.
+- Delete `playground/src/lib/png-export-plan.ts`.
+- Delete `playground/src/lib/png-export-plan.test.ts`.
 - Modify `playground/tests/mobile.interactions.spec.ts`.
 - Modify `playground/tests/render.presentation.spec.ts`.
 - Modify `playground/tests/cross-browser.smoke.spec.ts`.

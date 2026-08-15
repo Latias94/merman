@@ -159,6 +159,7 @@ export function Preview({ className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
+  const previewHostRef = useHostViewportMeasurement();
 
   useEffect(() => {
     setRenderFeatures({
@@ -335,82 +336,6 @@ export function Preview({ className }: PreviewProps) {
     />
   );
 
-  if (loading) {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="min-h-0 flex-1"
-        >
-          <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
-            {runtimeLoadStage
-              ? `${t("preview.loading")} (${runtimeLoadStage})`
-              : t("preview.loading")}
-          </CenteredMessage>
-        </div>
-      </div>
-    );
-  }
-
-  if (runtimeFailure) {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="min-h-0 flex-1"
-        >
-          <RuntimeFailureView failure={runtimeFailure} t={t} />
-        </div>
-      </div>
-    );
-  }
-
-  if (!code.trim()) {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="flex min-h-0 flex-1 items-center justify-center"
-        >
-          <div className="text-center text-muted-foreground">
-            <p className="text-sm">{t("preview.empty")}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && previewMode === "svg") {
-    return (
-      <div className={cn("flex flex-col h-full", className)}>
-        {renderTabBar()}
-        <div
-          id="preview-mode-panel"
-          role="tabpanel"
-          aria-labelledby={`preview-${previewMode}-tab`}
-          className="min-h-0 flex-1"
-        >
-          <RenderError
-            engine={t("preview.mermanEngine")}
-            stage={errorStage}
-            message={error}
-            detail={errorDetail}
-            t={t}
-          />
-        </div>
-      </div>
-    );
-  }
-
   const mermanArtifact: CompareArtifact = {
     key: "merman",
     publicationId: visibleBatch?.snapshot.publicationId ?? null,
@@ -441,11 +366,17 @@ export function Preview({ className }: PreviewProps) {
     unavailableLabel: mermaidSvgUnavailableLabel,
     stale: compareStale,
   };
+  const showToolbarActions =
+    !loading &&
+    !runtimeFailure &&
+    Boolean(code.trim()) &&
+    !(error && previewMode === "svg");
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
       {renderTabBar(
-        <>
+        showToolbarActions ? (
+          <>
           {previewMode === "svg" && (
             <>
               {svgDisplayMode === "visual" && (
@@ -543,99 +474,162 @@ export function Preview({ className }: PreviewProps) {
               <RefreshCw className="size-4" />
             </IconButton>
           )}
-        </>,
+          </>
+        ) : undefined,
       )}
 
       <div
+        ref={previewHostRef}
         id="preview-mode-panel"
         role="tabpanel"
         aria-labelledby={`preview-${previewMode}-tab`}
         className="relative min-h-0 flex-1 overflow-hidden"
       >
-        {previewMode === "svg" &&
-          (svgDisplayMode === "source" ? (
-            <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
-          ) : (
-            <SvgViewport
-              artifact={svgArtifact}
-              presentationKey={currentPublicationId}
-              controller={svgViewport}
-              renderMountError={(mountError) => (
-                <RenderError
-                  engine={t("preview.mermanEngine")}
-                  stage="svg-mount"
-                  message={mountError.message}
-                  detail={mountError.stack}
-                  t={t}
+        {loading ? (
+          <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
+            {runtimeLoadStage
+              ? `${t("preview.loading")} (${runtimeLoadStage})`
+              : t("preview.loading")}
+          </CenteredMessage>
+        ) : runtimeFailure ? (
+          <RuntimeFailureView failure={runtimeFailure} t={t} />
+        ) : !code.trim() ? (
+          <CenteredMessage>{t("preview.empty")}</CenteredMessage>
+        ) : error && previewMode === "svg" ? (
+          <RenderError
+            engine={t("preview.mermanEngine")}
+            stage={errorStage}
+            message={error}
+            detail={errorDetail}
+            t={t}
+          />
+        ) : (
+          <>
+            {previewMode === "svg" &&
+              (svgDisplayMode === "source" ? (
+                <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
+              ) : (
+                <SvgViewport
+                  artifact={svgArtifact}
+                  presentationKey={currentPublicationId}
+                  controller={svgViewport}
+                  renderMountError={(mountError) => (
+                    <RenderError
+                      engine={t("preview.mermanEngine")}
+                      stage="svg-mount"
+                      message={mountError.message}
+                      detail={mountError.stack}
+                      t={t}
+                    />
+                  )}
+                  onPresentationReady={(at) => {
+                    if (currentBatch) {
+                      markRenderCoordinatorPresented(
+                        currentBatch.snapshot.publicationId,
+                        "merman",
+                        at,
+                      );
+                    }
+                  }}
                 />
-              )}
-              onPresentationReady={(at) => {
-                if (currentBatch) {
-                  markRenderCoordinatorPresented(
-                    currentBatch.snapshot.publicationId,
-                    "merman",
-                    at,
-                  );
-                }
-              }}
-            />
-          ))}
+              ))}
 
-        {previewMode === "compare" && (
-          <CompareView
-            merman={{
-              artifact: mermanArtifact,
-            }}
-            mermaid={{
-              artifact: mermaidArtifact,
-            }}
-            actions={{
-              copiedSvgTarget,
-              exportingPngEngines,
-              onCopySvg: handleCopySvg,
-              onExportPng: handleExportPng,
-              onExportSvg: handleExportSvg,
-              onRetry: handleRefreshCompare,
-              onPresentationReady: (engine, at) => {
-                if (visibleBatch) {
-                  markRenderCoordinatorPresented(
-                    visibleBatch.snapshot.publicationId,
-                    engine,
-                    at,
-                  );
-                }
-              },
-            }}
-            isDarkMode={isDarkMode}
-            t={t}
-          />
-        )}
+            {previewMode === "compare" && (
+              <CompareView
+                merman={{
+                  artifact: mermanArtifact,
+                }}
+                mermaid={{
+                  artifact: mermaidArtifact,
+                }}
+                actions={{
+                  copiedSvgTarget,
+                  exportingPngEngines,
+                  onCopySvg: handleCopySvg,
+                  onExportPng: handleExportPng,
+                  onExportSvg: handleExportSvg,
+                  onRetry: handleRefreshCompare,
+                  onPresentationReady: (engine, at) => {
+                    if (visibleBatch) {
+                      markRenderCoordinatorPresented(
+                        visibleBatch.snapshot.publicationId,
+                        engine,
+                        at,
+                      );
+                    }
+                  },
+                }}
+                isDarkMode={isDarkMode}
+                t={t}
+              />
+            )}
 
-        {previewMode === "diagnostics" && (
-          <DiagnosticsView
-            activeTab={diagnosticTab}
-            diagnostics={diagnostics}
-            loading={diagnosticsLoading}
-            isDarkMode={isDarkMode}
-            onActiveTabChange={setDiagnosticTab}
-            t={t}
-          />
-        )}
+            {previewMode === "diagnostics" && (
+              <DiagnosticsView
+                activeTab={diagnosticTab}
+                diagnostics={diagnostics}
+                loading={diagnosticsLoading}
+                isDarkMode={isDarkMode}
+                onActiveTabChange={setDiagnosticTab}
+                t={t}
+              />
+            )}
 
-        {previewMode === "ascii" && (
-          <AsciiArtifactView
-            result={asciiResult}
-            rendering={renderingCurrent}
-            capability={asciiCapability}
-            supportLabel={asciiSupportLabel}
-            supportLimit={asciiSupportLimit}
-            isDarkMode={isDarkMode}
-            t={t}
-          />
+            {previewMode === "ascii" && (
+              <AsciiArtifactView
+                result={asciiResult}
+                rendering={renderingCurrent}
+                capability={asciiCapability}
+                supportLabel={asciiSupportLabel}
+                supportLimit={asciiSupportLimit}
+                isDarkMode={isDarkMode}
+                t={t}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
   );
+}
+
+function useHostViewportMeasurement() {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const setHostRenderViewport = useAppStore(
+    (state) => state.setHostRenderViewport,
+  );
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    let publishTimeout: ReturnType<typeof setTimeout> | null = null;
+    const schedule = ({ width, height }: { width: number; height: number }) => {
+      if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+      if (width <= 0 || height <= 0) return;
+      if (publishTimeout) clearTimeout(publishTimeout);
+      publishTimeout = setTimeout(
+        () => setHostRenderViewport({ width, height }),
+        120,
+      );
+    };
+
+    schedule(host.getBoundingClientRect());
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(([entry]) => {
+            if (entry) schedule(entry.contentRect);
+          });
+    observer?.observe(host);
+
+    return () => {
+      observer?.disconnect();
+      if (publishTimeout) clearTimeout(publishTimeout);
+    };
+  }, [setHostRenderViewport]);
+
+  return hostRef;
 }
 
 interface TabBarProps {
@@ -1143,7 +1137,7 @@ function CenteredMessage({
   icon,
   children,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (

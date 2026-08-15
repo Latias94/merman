@@ -297,7 +297,13 @@
     "zoomOut": "Zoom out",
     "reset": "Reset view",
     "resetZoom": "Reset zoom",
-    "fitToView": "Fit to view"
+    "fitToView": "Fit to view",
+    "viewportMode": "Render viewport",
+    "viewportCanonical": "Canonical",
+    "viewportHost": "Host",
+    "viewportSize": "{{width}} × {{height}}",
+    "viewportMeasuring": "Measuring Preview; using {{width}} × {{height}}",
+    "viewportMeasuringShort": "Measuring…"
   },
   "status": {
     "diagramType": "Type",

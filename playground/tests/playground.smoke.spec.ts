@@ -10,7 +10,7 @@ import {
   replaceMermaidConfig,
   waitForPreviewSvg,
 } from "./helpers/playground";
-import { PLAYGROUND_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
+import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
 test("loads the production WASM and renders a safe SVG", async ({ page }, testInfo) => {
   const errors = monitorBrowserErrors(page);
@@ -229,7 +229,7 @@ async function compareRealmUsesCanonicalViewport(
       realm.clientWidth === viewport.width &&
       realm.clientHeight === viewport.height
     );
-  }, PLAYGROUND_RENDER_VIEWPORT);
+  }, CANONICAL_RENDER_VIEWPORT);
 }
 
 async function mermaidCompareViewBoxWidth(

@@ -51,7 +51,7 @@ import {
   selectMermanFacade,
   useMermanRuntime,
 } from "@/src/runtime/use-merman-runtime";
-import { PLAYGROUND_RENDER_VIEWPORT } from "@/src/runtime/render-viewport";
+import { CANONICAL_RENDER_VIEWPORT } from "@/src/runtime/render-viewport";
 import {
   projectError,
   type ErrorProjection,
@@ -226,7 +226,7 @@ export function BenchDialog({
           theme: diagramTheme,
           diagramFont,
           externalRequirements: mermaidExternalRequirementsFor(detection),
-          viewport: PLAYGROUND_RENDER_VIEWPORT,
+          viewport: CANONICAL_RENDER_VIEWPORT,
         },
         detection,
         versions: {

@@ -7,14 +7,23 @@ import {
   selectMermanFacade,
   useMermanRuntime,
 } from "./use-merman-runtime.ts";
+import { captureRenderViewport } from "./render-viewport.ts";
 
 export function RenderCoordinatorBridge() {
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const hostRenderViewport = useAppStore((state) => state.hostRenderViewport);
   const facade = useMermanRuntime(selectMermanFacade);
 
   useEffect(() => {
-    setRenderCoordinatorInput({ facade, workspace });
-  }, [facade, workspace]);
+    setRenderCoordinatorInput({
+      facade,
+      renderViewport: captureRenderViewport(
+        workspace.renderViewportMode,
+        hostRenderViewport
+      ),
+      workspace,
+    });
+  }, [facade, hostRenderViewport, workspace]);
 
   return null;
 }
