@@ -13,9 +13,11 @@ use crate::relation_graph::{
 };
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{
-    ComposedTextPlan, DeferredTextLine, DeferredTextRegistry, charge_text_layout,
+    ComposedTextPlan, DeferredTextLine, DeferredTextPart, DeferredTextRegistry, charge_text_layout,
     terminal_char_display_width,
 };
+#[cfg(test)]
+use crate::text::StyledLine;
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
@@ -124,24 +126,24 @@ impl ErDirection {
     }
 }
 
-struct ErRelationComponentAdapter<'adapter, 'model> {
+struct ErRelationComponentAdapter {
     charset: ErCharset,
-    entity_identities: &'adapter HashMap<&'model str, &'model str>,
     width_profile: TerminalWidthProfile,
     direction: ErDirection,
 }
 
-struct ErRenderContext<'render, 'model> {
+struct ErRenderContext<'render> {
     options: &'render AsciiRenderOptions,
     charset: ErCharset,
     direction: ErDirection,
-    entity_identities: &'render HashMap<&'model str, &'model str>,
 }
 
 struct ErRelationLayout<'a> {
     relationship: &'a ErRelationshipRenderModel,
     top_id: &'a str,
     bottom_id: &'a str,
+    top_identity: &'a str,
+    bottom_identity: &'a str,
     top_cardinality: &'a str,
     bottom_cardinality: &'a str,
     label: Option<RelationGraphLabel>,
@@ -153,6 +155,7 @@ impl ErRelationLayout<'_> {
             return;
         }
         std::mem::swap(&mut self.top_id, &mut self.bottom_id);
+        std::mem::swap(&mut self.top_identity, &mut self.bottom_identity);
         std::mem::swap(&mut self.top_cardinality, &mut self.bottom_cardinality);
     }
 }
@@ -247,16 +250,16 @@ fn render_er_diagram_impl(
         );
     }
 
-    let entity_identities = er_entity_identities(model, &resources)?;
+    let authored_entity_identities = er_authored_entity_identities(model, &resources)?;
     let context = ErRenderContext {
         options,
         charset,
         direction,
-        entity_identities: &entity_identities,
     };
     let rendered = render_er_components(
         &boxes,
         &model.relationships,
+        &authored_entity_identities,
         &context,
         &mut resources,
         &mut deferred_text,
@@ -285,7 +288,7 @@ fn validate_unique_er_entity_ids(
     Ok(())
 }
 
-fn er_entity_identities<'model>(
+fn er_authored_entity_identities<'model>(
     model: &'model ErDiagramRenderModel,
     resources: &ResourceContext,
 ) -> Result<HashMap<&'model str, &'model str>> {
@@ -294,21 +297,33 @@ fn er_entity_identities<'model>(
     identities
         .try_reserve(model.entities.len())
         .map_err(|_| layout_allocation_failed())?;
-    identities.extend(model.entities.values().map(|entity| {
-        let identity = if entity.label.is_empty() {
-            entity.id.as_str()
-        } else {
-            entity.label.as_str()
-        };
-        (entity.id.as_str(), identity)
-    }));
+    identities.extend(
+        model
+            .entities
+            .iter()
+            .map(|(authored_identity, entity)| (entity.id.as_str(), authored_identity.as_str())),
+    );
     Ok(identities)
+}
+
+fn authored_er_entity_identity<'model>(
+    rendered_id: &str,
+    identities: &HashMap<&'model str, &'model str>,
+) -> Result<&'model str> {
+    identities
+        .get(rendered_id)
+        .copied()
+        .ok_or(AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "relationships with missing endpoint entities",
+        })
 }
 
 fn render_er_components<'model>(
     boxes: &[RenderedEntityBox],
     relationships: &'model [ErRelationshipRenderModel],
-    context: &ErRenderContext<'_, 'model>,
+    authored_entity_identities: &HashMap<&'model str, &'model str>,
+    context: &ErRenderContext<'_>,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'model>,
     execution: AsciiExecution<'_>,
@@ -323,6 +338,14 @@ fn render_er_components<'model>(
             relationship,
             top_id: relationship.entity_a.as_str(),
             bottom_id: relationship.entity_b.as_str(),
+            top_identity: authored_er_entity_identity(
+                &relationship.entity_a,
+                authored_entity_identities,
+            )?,
+            bottom_identity: authored_er_entity_identity(
+                &relationship.entity_b,
+                authored_entity_identities,
+            )?,
             top_cardinality: relationship.rel_spec.card_b.as_str(),
             bottom_cardinality: relationship.rel_spec.card_a.as_str(),
             label: RelationGraphLabel::try_new(
@@ -337,7 +360,6 @@ fn render_er_components<'model>(
     }
     let adapter = ErRelationComponentAdapter {
         charset: context.charset,
-        entity_identities: context.entity_identities,
         width_profile: context.options.terminal_width_profile,
         direction: context.direction,
     };
@@ -439,8 +461,7 @@ fn entity_sections<'a>(
         .try_reserve_exact(entity.attributes.len())
         .map_err(|_| layout_allocation_failed())?;
     for attribute in &entity.attributes {
-        let plan = ErAttributeTextPlan::try_new(attribute, resources)?;
-        let line = deferred_text.try_register(plan.into_text(), width_profile, resources)?;
+        let line = register_er_attribute_line(attribute, width_profile, deferred_text, resources)?;
         if line.width() > 0 {
             attributes.push(line);
         }
@@ -463,74 +484,124 @@ fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
 #[cfg(test)]
 fn attribute_text_with_probe(
     attribute: &ErAttributeRenderModel,
-    resources: &ResourceContext,
+    resources: &mut ResourceContext,
     before_materialize: impl FnOnce(),
 ) -> Result<String> {
     resources.transaction(move |resources| {
-        let plan = ErAttributeTextPlan::try_new(attribute, resources)?;
-        plan.materialize(resources, before_materialize)
+        let options = AsciiRenderOptions::ascii();
+        let mut deferred = DeferredTextRegistry::new();
+        let line = register_er_attribute_line(
+            attribute,
+            options.terminal_width_profile,
+            &mut deferred,
+            resources,
+        )?;
+        let mut styled = StyledLine::with_resources(options.terminal_width_profile, resources);
+        styled.try_push_deferred_text(&line, AsciiColorRole::Text)?;
+        let lines = [RelationGraphLine::from_styled(styled)];
+        let mut emit_resources = resources.clone();
+        relation_graph::render_lines_with_deferred_probe(
+            &lines,
+            &options,
+            &mut emit_resources,
+            &deferred,
+            before_materialize,
+        )
     })
 }
 
-#[derive(Debug)]
-struct ErAttributeTextPlan<'a> {
-    text: ComposedTextPlan<'a>,
+fn register_er_attribute_line<'a>(
+    attribute: &'a ErAttributeRenderModel,
+    width_profile: TerminalWidthProfile,
+    deferred: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<DeferredTextLine> {
+    resources.transaction(|resources| {
+        let ty = register_er_framed_field(
+            "type(bytes=",
+            &attribute.ty,
+            width_profile,
+            deferred,
+            resources,
+        )?;
+        let name = register_er_framed_field(
+            " name(bytes=",
+            &attribute.name,
+            width_profile,
+            deferred,
+            resources,
+        )?;
+        let keys = register_er_framed_keys(&attribute.keys, width_profile, deferred, resources)?;
+        let comment = register_er_framed_field(
+            " comment(bytes=",
+            &attribute.comment,
+            width_profile,
+            deferred,
+            resources,
+        )?;
+        DeferredTextLine::try_concat(&[&ty, &name, &keys, &comment], resources)
+    })
 }
 
-impl<'a> ErAttributeTextPlan<'a> {
-    fn try_new(attribute: &'a ErAttributeRenderModel, resources: &ResourceContext) -> Result<Self> {
-        let text = ComposedTextPlan::try_new(resources, attribute.keys.len().max(1), |push| {
-            let mut has_text = false;
-            if !attribute.ty.is_empty() {
-                push(&attribute.ty)?;
-                has_text = true;
-            }
-            if !attribute.name.is_empty() {
-                if has_text {
-                    push(" ")?;
-                }
-                push(&attribute.name)?;
-                has_text = true;
-            }
-            if !attribute.keys.is_empty() {
-                if has_text {
-                    push(" ")?;
-                }
-                push("[keys: ")?;
-                for (index, key) in attribute.keys.iter().enumerate() {
-                    if index > 0 {
-                        push(",")?;
-                    }
-                    push(key)?;
-                }
-                push("]")?;
-                has_text = true;
-            }
-            if !attribute.comment.is_empty() {
-                if has_text {
-                    push(" ")?;
-                }
-                push("[comment: ")?;
-                push(&attribute.comment)?;
-                push("]")?;
-            }
-            Ok(())
-        })?;
-        Ok(Self { text })
-    }
+fn register_er_framed_field<'a>(
+    prefix: &'static str,
+    value: &'a str,
+    width_profile: TerminalWidthProfile,
+    deferred: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<DeferredTextLine> {
+    resources.transaction(|resources| {
+        let value_line = deferred.try_register(
+            ComposedTextPlan::try_new(resources, 1, |push| push(value))?,
+            width_profile,
+            resources,
+        )?;
+        deferred.try_register_parts(width_profile, resources, 4, |push| {
+            push(DeferredTextPart::Static(prefix))?;
+            push(DeferredTextPart::Decimal(value.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedLine(&value_line))
+        })
+    })
+}
 
-    #[cfg(test)]
-    fn materialize(
-        self,
-        resources: &ResourceContext,
-        before_materialize: impl FnOnce(),
-    ) -> Result<String> {
-        self.text.materialize(resources, before_materialize)
-    }
+fn register_er_framed_keys<'a>(
+    keys: &'a [String],
+    width_profile: TerminalWidthProfile,
+    deferred: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<DeferredTextLine> {
+    resources.transaction(|resources| {
+        let scratch_work = keys.len().max(1);
+        resources.check_usage(scratch_work, 0)?;
 
-    fn into_text(self) -> ComposedTextPlan<'a> {
-        self.text
-    }
+        let mut key_lines = Vec::new();
+        key_lines
+            .try_reserve_exact(keys.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for key in keys {
+            key_lines.push(deferred.try_register(
+                ComposedTextPlan::try_new(resources, 1, |push| push(key))?,
+                width_profile,
+                resources,
+            )?);
+        }
+
+        let line =
+            deferred.try_register_parts(width_profile, resources, keys.len().max(1), |push| {
+                push(DeferredTextPart::Static(" keys=["))?;
+                for (index, (key, key_line)) in keys.iter().zip(&key_lines).enumerate() {
+                    let prefix = if index == 0 { "bytes=" } else { ", bytes=" };
+                    push(DeferredTextPart::Static(prefix))?;
+                    push(DeferredTextPart::Decimal(key.len()))?;
+                    push(DeferredTextPart::Static(" "))?;
+                    push(DeferredTextPart::QuotedLine(key_line))?;
+                }
+                push(DeferredTextPart::Static("]"))
+            })?;
+        resources.charge_layout_work(scratch_work)?;
+        Ok(line)
+    })
 }
 
 fn render_er_document_lines(
@@ -549,11 +620,11 @@ fn render_er_document_lines(
     )
 }
 
-fn render_horizontal_er_component_lines<'adapter, 'model>(
+fn render_horizontal_er_component_lines<'model>(
     boxes: &[RenderedEntityBox],
     layouts: &[ErRelationLayout<'model>],
-    context: &ErRenderContext<'_, 'model>,
-    adapter: &ErRelationComponentAdapter<'adapter, 'model>,
+    context: &ErRenderContext<'_>,
+    adapter: &ErRelationComponentAdapter,
     resources: &mut ResourceContext,
     deferred_text: &mut DeferredTextRegistry<'model>,
     execution: AsciiExecution<'_>,
@@ -714,7 +785,6 @@ fn plan_parallel_vertical_relationships<'plan, 'model>(
     layouts: Vec<&'plan ErRelationLayout<'model>>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
-    entity_identities: &HashMap<&'model str, &'model str>,
     resources: &mut ResourceContext,
     deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationRegionPlan<'plan>> {
@@ -761,7 +831,6 @@ fn plan_parallel_vertical_relationships<'plan, 'model>(
             rows.push(er_relationship_summary_row(
                 layout,
                 charset,
-                entity_identities,
                 width_profile,
                 resources,
                 deferred,
@@ -882,7 +951,6 @@ fn parallel_er_lane_rows(
 fn er_relationship_summary_row<'model>(
     layout: &ErRelationLayout<'model>,
     charset: ErCharset,
-    entity_identities: &HashMap<&'model str, &'model str>,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
     deferred: &mut DeferredTextRegistry<'model>,
@@ -896,12 +964,8 @@ fn er_relationship_summary_row<'model>(
     let right_cardinality =
         horizontal_cardinality_marker(layout.bottom_cardinality, RelationPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
-    let source_identity = relationship_identity(entity_identities, layout.top_id);
-    let source = deferred.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(source_identity))?,
-        width_profile,
-        resources,
-    )?;
+    let source =
+        register_er_summary_endpoint(layout.top_identity, width_profile, deferred, resources)?;
     let connector = deferred.try_register(
         ComposedTextPlan::try_new(resources, 3, |push| {
             push(left_cardinality)?;
@@ -911,12 +975,8 @@ fn er_relationship_summary_row<'model>(
         width_profile,
         resources,
     )?;
-    let target_identity = relationship_identity(entity_identities, layout.bottom_id);
-    let target = deferred.try_register(
-        ComposedTextPlan::try_new(resources, 1, |push| push(target_identity))?,
-        width_profile,
-        resources,
-    )?;
+    let target =
+        register_er_summary_endpoint(layout.bottom_identity, width_profile, deferred, resources)?;
     let label = layout
         .label
         .as_ref()
@@ -930,7 +990,6 @@ fn er_relationship_summary_row<'model>(
 fn er_relationship_summary_row_for_reason<'model>(
     layout: &ErRelationLayout<'model>,
     charset: ErCharset,
-    entity_identities: &HashMap<&'model str, &'model str>,
     reason: relation_graph::LayeredRelationSummaryReason,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
@@ -940,23 +999,30 @@ fn er_relationship_summary_row_for_reason<'model>(
         relation_graph::LayeredRelationSummaryReason::Crossing
         | relation_graph::LayeredRelationSummaryReason::RouteCollision
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
-            er_relationship_summary_row(
-                layout,
-                charset,
-                entity_identities,
-                width_profile,
-                resources,
-                deferred,
-            )
+            er_relationship_summary_row(layout, charset, width_profile, resources, deferred)
         }
     }
 }
 
-fn relationship_identity<'model>(
-    entity_identities: &HashMap<&'model str, &'model str>,
-    id: &'model str,
-) -> &'model str {
-    entity_identities.get(id).copied().unwrap_or(id)
+fn register_er_summary_endpoint<'a>(
+    id: &'a str,
+    width_profile: TerminalWidthProfile,
+    deferred: &mut DeferredTextRegistry<'a>,
+    resources: &ResourceContext,
+) -> Result<DeferredTextLine> {
+    resources.transaction(|resources| {
+        let id_line = deferred.try_register(
+            ComposedTextPlan::try_new(resources, 1, |push| push(id))?,
+            width_profile,
+            resources,
+        )?;
+        deferred.try_register_parts(width_profile, resources, 4, |push| {
+            push(DeferredTextPart::Static("id(bytes="))?;
+            push(DeferredTextPart::Decimal(id.len()))?;
+            push(DeferredTextPart::Static(")="))?;
+            push(DeferredTextPart::QuotedLine(&id_line))
+        })
+    })
 }
 
 fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
@@ -989,8 +1055,8 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-impl<'adapter, 'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'model>>
-    for ErRelationComponentAdapter<'adapter, 'model>
+impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'model>>
+    for ErRelationComponentAdapter
 {
     fn build_edges(&self, layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
         er_layered_edge(layout)
@@ -1157,7 +1223,6 @@ impl<'adapter, 'model> relation_graph::RelationComponentAdapter<'model, ErRelati
             layouts,
             options,
             self.charset,
-            self.entity_identities,
             resources,
             deferred,
         )
@@ -1173,7 +1238,6 @@ impl<'adapter, 'model> relation_graph::RelationComponentAdapter<'model, ErRelati
         er_relationship_summary_row_for_reason(
             layout,
             self.charset,
-            self.entity_identities,
             reason,
             self.width_profile,
             resources,
@@ -1583,6 +1647,8 @@ mod tests {
                     .expect("ER summary box should plan"),
             );
         }
+        let authored_entity_identities = er_authored_entity_identities(model, &resources)
+            .expect("ER summary identities should plan");
         let mut layouts = Vec::new();
         layouts
             .try_reserve_exact(model.relationships.len())
@@ -1592,6 +1658,16 @@ mod tests {
                 relationship,
                 top_id: relationship.entity_a.as_str(),
                 bottom_id: relationship.entity_b.as_str(),
+                top_identity: authored_er_entity_identity(
+                    &relationship.entity_a,
+                    &authored_entity_identities,
+                )
+                .expect("ER summary source identity should exist"),
+                bottom_identity: authored_er_entity_identity(
+                    &relationship.entity_b,
+                    &authored_entity_identities,
+                )
+                .expect("ER summary target identity should exist"),
                 top_cardinality: relationship.rel_spec.card_b.as_str(),
                 bottom_cardinality: relationship.rel_spec.card_a.as_str(),
                 label: RelationGraphLabel::try_new(
@@ -1603,11 +1679,8 @@ mod tests {
                 .expect("ER summary label should plan"),
             });
         }
-        let entity_identities =
-            er_entity_identities(model, &resources).expect("ER summary identities should plan");
         let adapter = ErRelationComponentAdapter {
             charset,
-            entity_identities: &entity_identities,
             width_profile: options.terminal_width_profile,
             direction,
         };
@@ -1666,12 +1739,24 @@ mod tests {
                 .expect("horizontal ER entity should plan"),
             );
         }
+        let authored_entity_identities = er_authored_entity_identities(&model, &resources)
+            .expect("horizontal ER identities should plan");
         let mut layouts = Vec::new();
         for relationship in &model.relationships {
             layouts.push(ErRelationLayout {
                 relationship,
                 top_id: relationship.entity_a.as_str(),
                 bottom_id: relationship.entity_b.as_str(),
+                top_identity: authored_er_entity_identity(
+                    &relationship.entity_a,
+                    &authored_entity_identities,
+                )
+                .expect("horizontal ER source identity should exist"),
+                bottom_identity: authored_er_entity_identity(
+                    &relationship.entity_b,
+                    &authored_entity_identities,
+                )
+                .expect("horizontal ER target identity should exist"),
                 top_cardinality: relationship.rel_spec.card_b.as_str(),
                 bottom_cardinality: relationship.rel_spec.card_a.as_str(),
                 label: RelationGraphLabel::try_new(
@@ -1683,11 +1768,8 @@ mod tests {
                 .expect("horizontal ER label should plan"),
             });
         }
-        let entity_identities =
-            er_entity_identities(&model, &resources).expect("horizontal ER identities should plan");
         let adapter = ErRelationComponentAdapter {
             charset,
-            entity_identities: &entity_identities,
             width_profile: options.terminal_width_profile,
             direction,
         };
@@ -1695,7 +1777,6 @@ mod tests {
             options: &options,
             charset,
             direction,
-            entity_identities: &entity_identities,
         };
 
         let remaining = WORK_LIMIT
@@ -1759,9 +1840,14 @@ mod tests {
             if mode == AsciiColorMode::Html {
                 assert!(expected.contains("Source&lt;&amp;中"), "mode={mode:?}");
                 assert!(expected.contains("self&lt;&amp;中"), "mode={mode:?}");
+                assert!(
+                    expected.contains("id(bytes=1)=&quot;A&quot;"),
+                    "mode={mode:?}"
+                );
             } else {
                 assert!(expected.contains("Source<&中"), "mode={mode:?}");
                 assert!(expected.contains("self<&中"), "mode={mode:?}");
+                assert!(expected.contains(r#"id(bytes=1)="A""#), "mode={mode:?}");
             }
 
             let exact_policy = base_policy
@@ -1868,50 +1954,61 @@ mod tests {
     #[test]
     fn er_attribute_composition_admits_exact_work_before_materializing() {
         let attribute = composite_attribute();
-        let expected = "string owner_id [keys: PK,FK] [comment: record owner]";
+        let expected = concat!(
+            "type(bytes=6)=\"string\" name(bytes=8)=\"owner_id\" ",
+            "keys=[bytes=2 \"PK\", bytes=2 \"FK\"] ",
+            "comment(bytes=12)=\"record owner\"\n",
+        );
         let prior_work = 2;
         let prior_document = 3;
+        let expected_document = expected.len() - 1;
 
-        let measured = ResourceContext::new(unbounded_policy());
+        let mut measured = ResourceContext::new(unbounded_policy());
         measured
             .charge_usage(prior_work, prior_document)
             .expect("the test checkpoint should fit");
         let measured_probe = Cell::new(false);
         let rendered =
-            attribute_text_with_probe(&attribute, &measured, || measured_probe.set(true))
+            attribute_text_with_probe(&attribute, &mut measured, || measured_probe.set(true))
                 .expect("unbounded ER attribute composition should render");
         let exact_work = measured.layout_work_used();
         assert_eq!(rendered, expected);
         assert!(measured_probe.get());
         assert!(exact_work > prior_work);
-        assert_eq!(measured.document_cells_used(), prior_document);
+        assert_eq!(
+            measured.document_cells_used(),
+            prior_document + expected_document
+        );
 
         let exact_policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact ER attribute work limit should be valid");
-        let exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_resources = ResourceContext::new(exact_policy);
         exact_resources
             .charge_usage(prior_work, prior_document)
             .expect("the exact checkpoint should fit");
         let exact_probe = Cell::new(false);
         let exact_rendered =
-            attribute_text_with_probe(&attribute, &exact_resources, || exact_probe.set(true))
+            attribute_text_with_probe(&attribute, &mut exact_resources, || exact_probe.set(true))
                 .expect("exact ER attribute work should permit materialization");
         assert_eq!(exact_rendered, expected);
         assert!(exact_probe.get());
         assert_eq!(exact_resources.layout_work_used(), exact_work);
-        assert_eq!(exact_resources.document_cells_used(), prior_document);
+        assert_eq!(
+            exact_resources.document_cells_used(),
+            prior_document + expected_document
+        );
 
         let below_policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one ER attribute work limit should be valid");
-        let below_resources = ResourceContext::new(below_policy);
+        let mut below_resources = ResourceContext::new(below_policy);
         below_resources
             .charge_usage(prior_work, prior_document)
             .expect("the below-limit checkpoint should fit");
         let below_probe = Cell::new(false);
         let error =
-            attribute_text_with_probe(&attribute, &below_resources, || below_probe.set(true))
+            attribute_text_with_probe(&attribute, &mut below_resources, || below_probe.set(true))
                 .expect_err("max-minus-one ER attribute work must reject before materialization");
         assert!(!below_probe.get());
         assert!(matches!(
@@ -1928,36 +2025,44 @@ mod tests {
     #[test]
     fn er_attribute_composition_admits_exact_output_before_materializing() {
         let attribute = composite_attribute();
-        let expected = "string owner_id [keys: PK,FK] [comment: record owner]";
+        let expected = concat!(
+            "type(bytes=6)=\"string\" name(bytes=8)=\"owner_id\" ",
+            "keys=[bytes=2 \"PK\", bytes=2 \"FK\"] ",
+            "comment(bytes=12)=\"record owner\"\n",
+        );
         let prior_work = 2;
         let prior_document = 3;
+        let expected_document = expected.len() - 1;
 
         let exact_policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
             .expect("exact ER attribute output limit should be valid");
-        let exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_resources = ResourceContext::new(exact_policy);
         exact_resources
             .charge_usage(prior_work, prior_document)
             .expect("the exact checkpoint should fit");
         let exact_probe = Cell::new(false);
         let rendered =
-            attribute_text_with_probe(&attribute, &exact_resources, || exact_probe.set(true))
+            attribute_text_with_probe(&attribute, &mut exact_resources, || exact_probe.set(true))
                 .expect("exact ER attribute output should permit materialization");
         assert_eq!(rendered, expected);
         assert!(exact_probe.get());
         assert!(exact_resources.layout_work_used() > prior_work);
-        assert_eq!(exact_resources.document_cells_used(), prior_document);
+        assert_eq!(
+            exact_resources.document_cells_used(),
+            prior_document + expected_document
+        );
 
         let below_policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
             .expect("max-minus-one ER attribute output limit should be valid");
-        let below_resources = ResourceContext::new(below_policy);
+        let mut below_resources = ResourceContext::new(below_policy);
         below_resources
             .charge_usage(prior_work, prior_document)
             .expect("the below-limit checkpoint should fit");
         let below_probe = Cell::new(false);
         let error =
-            attribute_text_with_probe(&attribute, &below_resources, || below_probe.set(true))
+            attribute_text_with_probe(&attribute, &mut below_resources, || below_probe.set(true))
                 .expect_err("max-minus-one ER attribute output must reject before materialization");
         assert!(!below_probe.get());
         assert!(matches!(
@@ -1972,33 +2077,50 @@ mod tests {
     }
 
     #[test]
-    fn er_attribute_rejects_cross_field_grapheme_before_materializing() {
+    fn er_attribute_frames_a_leading_combining_grapheme_at_exact_limit() {
         let attribute = ErAttributeRenderModel {
             ty: "string".to_string(),
             name: "\u{301}".to_string(),
             keys: Vec::new(),
             comment: String::new(),
         };
-        let policy = unbounded_policy()
+        let exact_policy = unbounded_policy()
             .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 2)
             .expect("grapheme resource limit should be valid");
-        let resources = ResourceContext::new(policy);
-        resources
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        exact_resources
+            .charge_usage(3, 5)
+            .expect("test checkpoint should fit");
+        let exact_probe = Cell::new(false);
+        let rendered =
+            attribute_text_with_probe(&attribute, &mut exact_resources, || exact_probe.set(true))
+                .expect("the exact raw grapheme limit should permit framed output");
+        assert!(exact_probe.get());
+        assert!(rendered.contains(r#"name(bytes=2)="\\u{301}""#));
+
+        let below_policy = unbounded_policy()
+            .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
+            .expect("grapheme resource limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        below_resources
             .charge_usage(3, 5)
             .expect("test checkpoint should fit");
         let materialized = Cell::new(false);
-        let error = attribute_text_with_probe(&attribute, &resources, || materialized.set(true))
-            .expect_err("separator space plus combining mark exceeds two bytes");
+        let error =
+            attribute_text_with_probe(&attribute, &mut below_resources, || materialized.set(true))
+                .expect_err(
+                    "one byte below the authored grapheme must reject before materialization",
+                );
         assert!(!materialized.get());
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
-                    && details.actual == 3
-                    && details.max == 2
+                    && details.actual == 2
+                    && details.max == 1
         ));
-        assert_eq!(resources.layout_work_used(), 3);
-        assert_eq!(resources.document_cells_used(), 5);
+        assert_eq!(below_resources.layout_work_used(), 3);
+        assert_eq!(below_resources.document_cells_used(), 5);
     }
 
     #[test]

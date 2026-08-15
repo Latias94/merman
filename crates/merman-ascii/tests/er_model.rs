@@ -5,7 +5,10 @@ use merman_ascii::{
     AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, TerminalWidthProfile,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::er::ErDiagramRenderModel;
+use merman_core::diagrams::er::{
+    ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelSpecRenderModel,
+    ErRelationshipRenderModel,
+};
 use merman_core::{Engine, OperationControl, ParseOptions};
 use std::path::Path;
 use support::{render_controlled_model, render_model, render_model_with_resources};
@@ -128,6 +131,32 @@ fn line_and_column_containing(rendered: &str, needle: &str) -> (usize, usize) {
         .enumerate()
         .find_map(|(line, text)| text.find(needle).map(|column| (line, column)))
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn framed_er_attribute(ty: &str, name: &str, keys: &[&str], comment: &str) -> String {
+    let keys = keys
+        .iter()
+        .map(|key| format!(r#"bytes={} "{key}""#, key.len()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        r#"type(bytes={})="{ty}" name(bytes={})="{name}" keys=[{keys}] comment(bytes={})="{comment}""#,
+        ty.len(),
+        name.len(),
+        comment.len(),
+    )
+}
+
+fn framed_er_summary_endpoint(id: &str) -> String {
+    format!(r#"id(bytes={})="{id}""#, id.len())
+}
+
+fn framed_er_summary_relation(source: &str, connector: &str, target: &str, label: &str) -> String {
+    format!(
+        "{} {connector} {} : {label}",
+        framed_er_summary_endpoint(source),
+        framed_er_summary_endpoint(target),
+    )
 }
 
 fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
@@ -402,15 +431,18 @@ fn er_parser_attributes_render_in_entity_section() {
     )
     .expect("ER should render");
 
+    let id = framed_er_attribute("string", "id", &["PK"], "");
+    let name = framed_er_attribute("string", "name", &[], "");
+    let content_width = ["CUSTOMER".len(), id.len(), name.len()]
+        .into_iter()
+        .max()
+        .expect("the entity fixture should have content");
+    let border = format!("+{}+", "-".repeat(content_width + 2));
     assert_eq!(
         rendered,
-        concat!(
-            "+----------------------+\n",
-            "| CUSTOMER             |\n",
-            "+----------------------+\n",
-            "| string id [keys: PK] |\n",
-            "| string name          |\n",
-            "+----------------------+\n",
+        format!(
+            "{border}\n| {:<content_width$} |\n{border}\n| {id:<content_width$} |\n| {name:<content_width$} |\n{border}\n",
+            "CUSTOMER",
         )
     );
 }
@@ -424,12 +456,12 @@ fn er_parser_attribute_keys_and_comments_render_in_entity_section() {
     .expect("ER should render");
 
     for expected in [
-        "int id [keys: PK]",
-        "int customer_id [keys: FK] [comment: owner id]",
-        "string email [keys: UK]",
+        framed_er_attribute("int", "id", &["PK"], ""),
+        framed_er_attribute("int", "customer_id", &["FK"], "owner id"),
+        framed_er_attribute("string", "email", &["UK"], ""),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "ER attribute details should keep {expected:?} visible:\n{rendered}"
         );
     }
@@ -448,9 +480,122 @@ fn er_attribute_keys_and_comments_have_distinct_terminal_roles() {
     )
     .expect("ER comment attribute should render");
 
-    assert!(key.contains("string email [keys: UK]"), "{key}");
-    assert!(comment.contains("string email [comment: UK]"), "{comment}");
+    assert!(
+        key.contains(&framed_er_attribute("string", "email", &["UK"], "")),
+        "{key}"
+    );
+    assert!(
+        comment.contains(&framed_er_attribute("string", "email", &[], "UK")),
+        "{comment}"
+    );
     assert_ne!(key, comment, "key and comment semantics must not collide");
+}
+
+#[test]
+fn er_direct_attribute_fields_cannot_forge_renderer_owned_delimiters() {
+    let render = |attribute: ErAttributeRenderModel| {
+        let mut model = parse_er_model("erDiagram\nA");
+        model
+            .entities
+            .get_mut("A")
+            .expect("entity A should exist")
+            .attributes = vec![attribute];
+        render_er_model(&model, &AsciiRenderOptions::ascii())
+            .expect("direct ER attribute should render")
+    };
+
+    let authored_key_syntax = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner [keys: PK]".to_string(),
+        keys: Vec::new(),
+        comment: String::new(),
+    });
+    let typed_key = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner".to_string(),
+        keys: vec!["PK".to_string()],
+        comment: String::new(),
+    });
+    assert_ne!(authored_key_syntax, typed_key);
+    assert!(
+        authored_key_syntax.contains(&framed_er_attribute("string", "owner [keys: PK]", &[], "")),
+        "{authored_key_syntax}"
+    );
+    assert!(
+        typed_key.contains(&framed_er_attribute("string", "owner", &["PK"], "")),
+        "{typed_key}"
+    );
+
+    let authored_type_separator = render(ErAttributeRenderModel {
+        ty: "string owner".to_string(),
+        name: "id".to_string(),
+        keys: Vec::new(),
+        comment: String::new(),
+    });
+    let typed_name_separator = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner id".to_string(),
+        keys: Vec::new(),
+        comment: String::new(),
+    });
+    assert_ne!(authored_type_separator, typed_name_separator);
+    assert!(
+        authored_type_separator.contains(&framed_er_attribute("string owner", "id", &[], "")),
+        "{authored_type_separator}"
+    );
+    assert!(
+        typed_name_separator.contains(&framed_er_attribute("string", "owner id", &[], "")),
+        "{typed_name_separator}"
+    );
+
+    let authored_comment_syntax = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner [comment: note]".to_string(),
+        keys: Vec::new(),
+        comment: String::new(),
+    });
+    let typed_comment = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner".to_string(),
+        keys: Vec::new(),
+        comment: "note".to_string(),
+    });
+    assert_ne!(authored_comment_syntax, typed_comment);
+    assert!(
+        authored_comment_syntax.contains(&framed_er_attribute(
+            "string",
+            "owner [comment: note]",
+            &[],
+            ""
+        )),
+        "{authored_comment_syntax}"
+    );
+    assert!(
+        typed_comment.contains(&framed_er_attribute("string", "owner", &[], "note")),
+        "{typed_comment}"
+    );
+
+    let authored_key_separator = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner".to_string(),
+        keys: vec!["PK,FK".to_string()],
+        comment: String::new(),
+    });
+    let two_typed_keys = render(ErAttributeRenderModel {
+        ty: "string".to_string(),
+        name: "owner".to_string(),
+        keys: vec!["PK".to_string(), "FK".to_string()],
+        comment: String::new(),
+    });
+    assert_ne!(authored_key_separator, two_typed_keys);
+    assert!(
+        authored_key_separator.contains(r#"keys=[bytes=5 "PK,FK"]"#),
+        "{authored_key_separator}"
+    );
+    assert!(
+        two_typed_keys.contains(r#"keys=[bytes=2 "PK", bytes=2 "FK"]"#),
+        "{two_typed_keys}"
+    );
 }
 
 #[test]
@@ -460,19 +605,19 @@ fn er_local_semantic_fixture_covers_attributes_with_relationship() {
         .expect("ER attribute and relationship fixture should render");
 
     for expected in [
-        "CUSTOMER",
-        "ORDER",
-        "string name [keys: PK]",
-        "string email [keys: UK]",
-        "int age",
-        "int id [keys: PK]",
-        "string status",
-        "places",
-        "||",
-        "o{",
+        "CUSTOMER".to_string(),
+        "ORDER".to_string(),
+        framed_er_attribute("string", "name", &["PK"], ""),
+        framed_er_attribute("string", "email", &["UK"], ""),
+        framed_er_attribute("int", "age", &[], ""),
+        framed_er_attribute("int", "id", &["PK"], ""),
+        framed_er_attribute("string", "status", &[], ""),
+        "places".to_string(),
+        "||".to_string(),
+        "o{".to_string(),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "ER attribute fixture should keep {expected:?} visible:\n{rendered}"
         );
     }
@@ -797,12 +942,12 @@ fn er_parser_horizontal_unrelated_edge_crossings_use_lossless_summary() {
 
     assert!(rendered.contains("relations:"), "{rendered}");
     for expected in [
-        "A ||--|| C : first",
-        "B }o..|| D : second",
-        "A ||--|| B : bridge",
+        framed_er_summary_relation("A", "||--||", "C", "first"),
+        framed_er_summary_relation("B", "}o..||", "D", "second"),
+        framed_er_summary_relation("A", "||--||", "B", "bridge"),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "summary must preserve {expected:?} after owner crossing fallback:\n{rendered}"
         );
     }
@@ -822,9 +967,12 @@ fn er_parser_horizontal_shared_source_crossings_use_lossless_summary() {
     .expect("shared-source horizontal crossings should remain recoverable");
 
     assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in ["A ||--|| B : short", "A ||--|| C : long"] {
+    for expected in [
+        framed_er_summary_relation("A", "||--||", "B", "short"),
+        framed_er_summary_relation("A", "||--||", "C", "long"),
+    ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "summary must preserve {expected:?} after shared-source crossing fallback:\n{rendered}"
         );
     }
@@ -922,9 +1070,13 @@ fn er_parser_horizontal_mixed_self_and_normal_relations_use_lossless_summary() {
 
     assert_eq!(rendered.matches("| A |").count(), 1, "{rendered}");
     assert_eq!(rendered.matches("| B |").count(), 1, "{rendered}");
-    for expected in ["relations:", "A ||--o{ A : self", "A }o--|| B : next"] {
+    for expected in [
+        "relations:".to_string(),
+        framed_er_summary_relation("A", "||--o{", "A", "self"),
+        framed_er_summary_relation("A", "}o--||", "B", "next"),
+    ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "missing {expected:?}:\n{rendered}"
         );
     }
@@ -1170,15 +1322,11 @@ fn er_parser_parallel_relationship_layout_uses_lossless_summary_when_ports_do_no
     )
     .expect("parallel ER relationships should preserve every relationship");
 
+    let owns = framed_er_summary_relation("A", "||--||", "B", "owns");
+    let contains = framed_er_summary_relation("A", "||..o{", "B", "contains");
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "relations:\n",
-            "A ||--|| B : owns\n",
-            "A ||..o{ B : contains\n",
-        )
+        format!("+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\nrelations:\n{owns}\n{contains}\n")
     );
 }
 
@@ -1190,15 +1338,11 @@ fn er_parser_bidirectional_relationship_layout_preserves_both_directions_in_summ
     )
     .expect("bidirectional ER relationships should remain recoverable");
 
+    let ab = framed_er_summary_relation("A", "||--||", "B", "ab");
+    let ba = framed_er_summary_relation("B", "||--||", "A", "ba");
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "relations:\n",
-            "A ||--|| B : ab\n",
-            "B ||--|| A : ba\n",
-        )
+        format!("+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\nrelations:\n{ab}\n{ba}\n")
     );
 }
 
@@ -1210,22 +1354,19 @@ fn er_parser_mixed_parallel_relationship_layout_preserves_all_facts_in_summary()
     )
     .expect("mixed parallel ER relationships should preserve every relationship");
 
+    let a = framed_er_summary_relation("A", "||--||", "B", "a");
+    let b = framed_er_summary_relation("A", "||..o{", "B", "b");
+    let c = framed_er_summary_relation("A", "||--||", "C", "c");
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "+---+\n| C |\n+---+\n\n",
-            "relations:\n",
-            "A ||--|| B : a\n",
-            "A ||..o{ B : b\n",
-            "A ||--|| C : c\n",
+        format!(
+            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{a}\n{b}\n{c}\n"
         )
     );
 }
 
 #[test]
-fn er_summary_uses_entity_ids_when_display_aliases_collide() {
+fn er_summary_uses_authored_entity_identities_when_display_aliases_collide() {
     let rendered = render_er(
         concat!(
             "erDiagram\n",
@@ -1242,19 +1383,111 @@ fn er_summary_uses_entity_ids_when_display_aliases_collide() {
 
     assert!(rendered.contains("relations:\n"), "{rendered}");
     for relationship in [
-        "A ||--|| B : first",
-        "A ||..o{ B : second",
-        "A ||--|| C : third",
+        framed_er_summary_relation("A", "||--||", "B", "first"),
+        framed_er_summary_relation("A", "||..o{", "B", "second"),
+        framed_er_summary_relation("A", "||--||", "C", "third"),
     ] {
         assert!(
-            rendered.contains(relationship),
-            "summary must preserve endpoint ids for {relationship:?}:\n{rendered}"
+            rendered.contains(&relationship),
+            "summary must preserve authored endpoint identities for {relationship:?}:\n{rendered}"
         );
     }
     assert!(
         !rendered.lines().any(|line| line.starts_with("X ||")),
         "display aliases must not replace endpoint identities in summaries:\n{rendered}"
     );
+    for generated_id in ["entity-A-0", "entity-B-1", "entity-C-2"] {
+        assert!(
+            !rendered.contains(generated_id),
+            "generated entity ids must not leak into summaries:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
+    let control_identity = "\u{1b}".to_string();
+    let authored_escape_identity = r"\u{1B}".to_string();
+    let control_rendered_id = "entity-control-0".to_string();
+    let escape_rendered_id = "entity-escape-1".to_string();
+    let bridge_rendered_id = "entity-bridge-2".to_string();
+    let mut model = ErDiagramRenderModel::default();
+    model.entities.insert(
+        control_identity.clone(),
+        ErEntityRenderModel {
+            id: control_rendered_id.clone(),
+            label: "Same".to_string(),
+            ..ErEntityRenderModel::default()
+        },
+    );
+    model.entities.insert(
+        authored_escape_identity.clone(),
+        ErEntityRenderModel {
+            id: escape_rendered_id.clone(),
+            label: "Same".to_string(),
+            ..ErEntityRenderModel::default()
+        },
+    );
+    model.entities.insert(
+        "bridge".to_string(),
+        ErEntityRenderModel {
+            id: bridge_rendered_id.clone(),
+            label: "Bridge".to_string(),
+            ..ErEntityRenderModel::default()
+        },
+    );
+    model.relationships = vec![
+        ErRelationshipRenderModel {
+            entity_a: control_rendered_id.clone(),
+            role_a: "first".to_string(),
+            entity_b: bridge_rendered_id.clone(),
+            rel_spec: ErRelSpecRenderModel {
+                card_a: "ONLY_ONE".to_string(),
+                card_b: "ONLY_ONE".to_string(),
+                rel_type: "IDENTIFYING".to_string(),
+            },
+        },
+        ErRelationshipRenderModel {
+            entity_a: bridge_rendered_id.clone(),
+            role_a: "second".to_string(),
+            entity_b: escape_rendered_id.clone(),
+            rel_spec: ErRelSpecRenderModel {
+                card_a: "ONLY_ONE".to_string(),
+                card_b: "ONLY_ONE".to_string(),
+                rel_type: "IDENTIFYING".to_string(),
+            },
+        },
+        ErRelationshipRenderModel {
+            entity_a: control_rendered_id.clone(),
+            role_a: "spanning".to_string(),
+            entity_b: escape_rendered_id.clone(),
+            rel_spec: ErRelSpecRenderModel {
+                card_a: "ONLY_ONE".to_string(),
+                card_b: "ONLY_ONE".to_string(),
+                rel_type: "IDENTIFYING".to_string(),
+            },
+        },
+    ];
+
+    let rendered = render_er_model(&model, &AsciiRenderOptions::ascii())
+        .expect("direct ER identities should remain recoverable");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert_eq!(rendered.matches("| Same |").count(), 2, "{rendered}");
+    assert!(
+        rendered.contains(r#"id(bytes=1)="\\u{1B}""#),
+        "the normalized control id must retain its authored byte identity:\n{rendered}"
+    );
+    assert!(
+        rendered.contains(r#"id(bytes=6)="\\u{1B}""#),
+        "the authored escape must remain distinct from the raw control id:\n{rendered}"
+    );
+    for rendered_id in [control_rendered_id, escape_rendered_id, bridge_rendered_id] {
+        assert!(
+            !rendered.contains(&rendered_id),
+            "renderer-owned entity ids must not leak into summaries:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -1265,16 +1498,13 @@ fn er_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port() 
     )
     .expect("spanning-level ER relationships should remain recoverable");
 
+    let a = framed_er_summary_relation("A", "||--||", "B", "a");
+    let b = framed_er_summary_relation("B", "||--||", "C", "b");
+    let c = framed_er_summary_relation("A", "||--||", "C", "c");
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "+---+\n| C |\n+---+\n\n",
-            "relations:\n",
-            "A ||--|| B : a\n",
-            "B ||--|| C : b\n",
-            "A ||--|| C : c\n",
+        format!(
+            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{a}\n{b}\n{c}\n"
         )
     );
 }
@@ -1312,11 +1542,10 @@ PRODUCT {
     .expect("spanning ER relationship should render around intermediate entities");
 
     assert!(rendered.contains("ordered in"));
-    assert!(rendered.contains("date created_at"));
-    assert!(rendered.contains("string status"));
-    assert!(!rendered.contains("int id P│"));
-    assert!(!rendered.contains("date cre│ted_at"));
-    assert!(!rendered.contains("string s│atus"));
+    assert!(rendered.contains(&framed_er_attribute("date", "created_at", &[], "")));
+    assert!(rendered.contains(&framed_er_attribute("string", "status", &[], "")));
+    assert!(!rendered.contains("created_│at"));
+    assert!(!rendered.contains("sta│us"));
 }
 
 #[test]
@@ -1327,16 +1556,13 @@ fn er_parser_cyclic_relationship_layout_summarizes_disconnected_back_edge() {
     )
     .expect("cyclic ER relationships should render");
 
+    let ab = framed_er_summary_relation("A", "||--||", "B", "owns");
+    let bc = framed_er_summary_relation("B", "||--||", "C", "owns");
+    let ca = framed_er_summary_relation("C", "||--||", "A", "owns");
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n| A |\n+---+\n\n",
-            "+---+\n| B |\n+---+\n\n",
-            "+---+\n| C |\n+---+\n\n",
-            "relations:\n",
-            "A ||--|| B : owns\n",
-            "B ||--|| C : owns\n",
-            "C ||--|| A : owns\n",
+        format!(
+            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{ab}\n{bc}\n{ca}\n"
         )
     );
 }
@@ -1370,28 +1596,16 @@ fn er_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
     )
     .expect("dense ER relationships should render through relation summary fallback");
 
+    let ab = framed_er_summary_relation("A", "||--||", "B", "ab");
+    let ba = framed_er_summary_relation("B", "||--||", "A", "ba");
+    let ac = framed_er_summary_relation("A", "||--||", "C", "ac");
+    let ca = framed_er_summary_relation("C", "||--||", "A", "ca");
+    let bc = framed_er_summary_relation("B", "||--||", "C", "bc");
+    let cb = framed_er_summary_relation("C", "||--||", "B", "cb");
     assert_eq!(
         rendered,
-        concat!(
-            "+---+\n",
-            "| A |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| B |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| C |\n",
-            "+---+\n",
-            "\n",
-            "relations:\n",
-            "A ||--|| B : ab\n",
-            "B ||--|| A : ba\n",
-            "A ||--|| C : ac\n",
-            "C ||--|| A : ca\n",
-            "B ||--|| C : bc\n",
-            "C ||--|| B : cb\n",
+        format!(
+            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{ab}\n{ba}\n{ac}\n{ca}\n{bc}\n{cb}\n"
         )
     );
 }
@@ -1496,38 +1710,32 @@ fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text(
     )
     .expect("dense ER diagram should render");
 
+    let ab = framed_er_summary_relation("A", "||--||", "B", "ab");
+    let ba = framed_er_summary_relation("B", "||--||", "A", "ba");
+    let ac = framed_er_summary_relation("A", "||--||", "C", "ac");
+    let ca = framed_er_summary_relation("C", "||--||", "A", "ca");
+    let bc = framed_er_summary_relation("B", "||--||", "C", "bc");
+    let cb = framed_er_summary_relation("C", "||--||", "B", "cb");
+    let html_ab = ab.replace('"', "&quot;");
+    let html_ba = ba.replace('"', "&quot;");
+    let html_ac = ac.replace('"', "&quot;");
+    let html_ca = ca.replace('"', "&quot;");
+    let html_bc = bc.replace('"', "&quot;");
+    let html_cb = cb.replace('"', "&quot;");
     assert_eq!(
         strip_html_spans(&rendered),
-        concat!(
-            "+---+\n",
-            "| A |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| B |\n",
-            "+---+\n",
-            "\n",
-            "+---+\n",
-            "| C |\n",
-            "+---+\n",
-            "\n",
-            "relations:\n",
-            "A ||--|| B : ab\n",
-            "B ||--|| A : ba\n",
-            "A ||--|| C : ac\n",
-            "C ||--|| A : ca\n",
-            "B ||--|| C : bc\n",
-            "C ||--|| B : cb\n",
+        format!(
+            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{html_ab}\n{html_ba}\n{html_ac}\n{html_ca}\n{html_bc}\n{html_cb}\n"
         )
     );
     for expected_fragment in [
-        "<span style=\"color:#101010\">+---+</span>",
-        "<span style=\"color:#202020\">A</span>",
-        "<span style=\"color:#303030\">relations:</span>",
-        "<span style=\"color:#505050\">A ||--|| B : ab</span>",
+        "<span style=\"color:#101010\">+---+</span>".to_string(),
+        "<span style=\"color:#202020\">A</span>".to_string(),
+        "<span style=\"color:#303030\">relations:</span>".to_string(),
+        format!("<span style=\"color:#505050\">{html_ab}</span>"),
     ] {
         assert!(
-            rendered.contains(expected_fragment),
+            rendered.contains(&expected_fragment),
             "missing {expected_fragment:?} in {rendered:?}"
         );
     }
@@ -1562,23 +1770,27 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
         .expect("dense multiline local semantic ER fixture should render");
 
     for expected in [
-        "CUSTOMER",
-        "ORDER",
-        "INVOICE",
-        "PAYMENT",
-        "relations:",
-        "CUSTOMER ||--o{ ORDER",
-        "places",
-        "orders",
-        "belongs",
-        "to",
-        "reconciles",
-        "payment",
-        "captures",
-        "funds",
+        "CUSTOMER".to_string(),
+        "ORDER".to_string(),
+        "INVOICE".to_string(),
+        "PAYMENT".to_string(),
+        "relations:".to_string(),
+        format!(
+            "{} ||--o{{ {}",
+            framed_er_summary_endpoint("CUSTOMER"),
+            framed_er_summary_endpoint("ORDER")
+        ),
+        "places".to_string(),
+        "orders".to_string(),
+        "belongs".to_string(),
+        "to".to_string(),
+        "reconciles".to_string(),
+        "payment".to_string(),
+        "captures".to_string(),
+        "funds".to_string(),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "dense multiline semantic ER fixture should keep {expected:?} visible:\n{rendered}"
         );
     }
@@ -1614,25 +1826,33 @@ fn er_parser_complex_styled_example_limits_summary_to_unroutable_component() {
     .expect("complex styled ER example should render");
 
     for expected in [
-        "Book",
-        "string *title [keys: PK] [comment: Title]",
-        "string[] author-ref[name](1) [keys: FK] [comment: Author ref]",
-        "PAGE",
-        "int number [keys: PK]",
-        "CAR",
-        "DRIVER",
-        "PERSON",
-        "NODE",
-        "relations:",
-        "CAR ||--o{ DRIVER",
-        "CAR }o--|| PERSON",
-        "insured for",
-        "owned by",
-        "leads to",
-        "has",
+        "Book".to_string(),
+        framed_er_attribute("string", "*title", &["PK"], "Title"),
+        framed_er_attribute("string[]", "author-ref[name](1)", &["FK"], "Author ref"),
+        "PAGE".to_string(),
+        framed_er_attribute("int", "number", &["PK"], ""),
+        "CAR".to_string(),
+        "DRIVER".to_string(),
+        "PERSON".to_string(),
+        "NODE".to_string(),
+        "relations:".to_string(),
+        format!(
+            "{} ||--o{{ {}",
+            framed_er_summary_endpoint("CAR"),
+            framed_er_summary_endpoint("DRIVER")
+        ),
+        format!(
+            "{} }}o--|| {}",
+            framed_er_summary_endpoint("CAR"),
+            framed_er_summary_endpoint("PERSON")
+        ),
+        "insured for".to_string(),
+        "owned by".to_string(),
+        "leads to".to_string(),
+        "has".to_string(),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "complex styled ER example should keep {expected:?} visible:\n{rendered}"
         );
     }
@@ -1651,19 +1871,19 @@ fn er_local_semantic_fixture_covers_routed_schema_with_attributes() {
         .expect("routed schema ER fixture should render");
 
     for expected in [
-        "CUSTOMER",
-        "ORDER",
-        "LINE_ITEM",
-        "PRODUCT",
-        "string id [keys: PK]",
-        "string email [keys: UK]",
-        "int quantity",
-        "places",
-        "contains",
-        "supplies",
+        "CUSTOMER".to_string(),
+        "ORDER".to_string(),
+        "LINE_ITEM".to_string(),
+        "PRODUCT".to_string(),
+        framed_er_attribute("string", "id", &["PK"], ""),
+        framed_er_attribute("string", "email", &["UK"], ""),
+        framed_er_attribute("int", "quantity", &[], ""),
+        "places".to_string(),
+        "contains".to_string(),
+        "supplies".to_string(),
     ] {
         assert!(
-            rendered.contains(expected),
+            rendered.contains(&expected),
             "routed schema fixture should keep {expected:?} visible:\n{rendered}"
         );
     }
