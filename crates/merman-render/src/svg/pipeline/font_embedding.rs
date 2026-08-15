@@ -12,6 +12,7 @@ use crate::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontContainer,
     FontEmbeddingRequirement, FontSource, FontStyle,
 };
+use crate::resources::{RenderResourcePolicy, ResourceLimitPhase};
 use crate::text::{
     PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
     parse_css_font_stack,
@@ -89,7 +90,7 @@ pub(super) struct SvgFontEmbeddingPlan {
     prepared_label_count: usize,
     prepared_text_element_count: usize,
     faces: Box<[EmbeddedFontFace]>,
-    css: String,
+    materialized_css: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -429,7 +430,6 @@ impl SvgFontEmbeddingPlan {
             .collect::<BTreeMap<_, _>>();
 
         let mut faces = Vec::new();
-        let mut css = String::new();
         let mut descriptor_identities = BTreeSet::new();
         for used in used_faces {
             let asset = assets_by_fingerprint
@@ -458,7 +458,6 @@ impl SvgFontEmbeddingPlan {
             if !descriptor_identities.insert(font_face_descriptor_identity(&embedded_face)) {
                 return None;
             }
-            append_font_face_rule(&mut css, &embedded_face);
             faces.push(embedded_face);
         }
         if faces.is_empty() {
@@ -470,11 +469,15 @@ impl SvgFontEmbeddingPlan {
             prepared_label_count,
             prepared_text_element_count,
             faces: faces.into_boxed_slice(),
-            css,
+            materialized_css: None,
         })
     }
 
-    pub(super) fn inject(&self, svg: &str) -> Result<String> {
+    pub(super) fn inject(
+        &mut self,
+        svg: &str,
+        resource_policy: RenderResourcePolicy,
+    ) -> Result<String> {
         let mut scanner = SvgTagScanner::new(svg);
         while let Some(tag) = scanner.next() {
             if start_tag_name(tag.raw()) != Some("svg") {
@@ -486,21 +489,75 @@ impl SvgFontEmbeddingPlan {
                 ));
             }
             let insertion = scanner.cursor();
-            let mut out =
-                String::with_capacity(svg.len().saturating_add(self.css.len()).saturating_add(96));
+            let css_bytes = self.projected_css_bytes()?;
+            let projected_svg_bytes = projected_svg_with_typed_style_bytes(svg.len(), css_bytes)?;
+            resource_policy
+                .check_svg_byte_count(projected_svg_bytes, ResourceLimitPhase::SvgPostprocess)?;
+            let css = self.materialize_css(css_bytes)?;
+            let mut out = String::new();
+            out.try_reserve_exact(projected_svg_bytes).map_err(|_| {
+                font_embedding_error(format!(
+                    "typed font SVG could not reserve {projected_svg_bytes} projected bytes"
+                ))
+            })?;
             out.push_str(&svg[..insertion]);
             write!(
                 out,
                 "<style {TYPED_FONT_STYLE_ATTRIBUTE}=\"{TYPED_FONT_STYLE_VERSION}\">{}</style>",
-                self.css
+                css
             )
             .expect("writing to String cannot fail");
             out.push_str(&svg[insertion..]);
+            if out.len() != projected_svg_bytes {
+                return Err(font_embedding_error(format!(
+                    "typed font SVG projection expected {projected_svg_bytes} bytes but emitted {}",
+                    out.len()
+                )));
+            }
             return Ok(out);
         }
         Err(font_embedding_error(
             "typed fonts require a terminal SVG root element",
         ))
+    }
+
+    fn projected_css_bytes(&self) -> Result<usize> {
+        self.faces.iter().try_fold(0usize, |total, face| {
+            checked_font_embedding_add(total, projected_font_face_rule_bytes(face)?, "stylesheet")
+        })
+    }
+
+    #[cfg(test)]
+    fn projected_injected_svg_bytes(&self, svg: &str) -> Result<usize> {
+        projected_svg_with_typed_style_bytes(svg.len(), self.projected_css_bytes()?)
+    }
+
+    fn materialize_css(&mut self, projected_bytes: usize) -> Result<&str> {
+        if self.materialized_css.is_none() {
+            let mut css = String::new();
+            css.try_reserve_exact(projected_bytes).map_err(|_| {
+                font_embedding_error(format!(
+                    "typed font stylesheet could not reserve {projected_bytes} projected bytes"
+                ))
+            })?;
+            for face in &self.faces {
+                append_font_face_rule(&mut css, face);
+            }
+            if css.len() != projected_bytes {
+                return Err(font_embedding_error(format!(
+                    "typed font stylesheet projection expected {projected_bytes} bytes but emitted {}",
+                    css.len()
+                )));
+            }
+            self.materialized_css = Some(css);
+        }
+        self.materialized_css.as_deref().ok_or_else(|| {
+            font_embedding_error("typed font stylesheet was not materialized after admission")
+        })
+    }
+
+    fn materialized_css(&self) -> Option<&str> {
+        self.materialized_css.as_deref()
     }
 
     pub(super) fn validate_typed_style(&self, css: &str) -> Result<()> {
@@ -509,7 +566,6 @@ impl SvgFontEmbeddingPlan {
                 "typed font plan contains competing CSS face descriptors",
             ));
         }
-        let mut expected = String::new();
         let mut seen = BTreeSet::new();
         for face in &self.faces {
             if !seen.insert((face.asset_fingerprint, face.face_index)) {
@@ -517,9 +573,13 @@ impl SvgFontEmbeddingPlan {
                     "typed font plan contains a duplicate canonical face",
                 ));
             }
-            append_font_face_rule(&mut expected, face);
         }
-        if css != expected || expected != self.css {
+        let Some(expected) = self.materialized_css() else {
+            return Err(font_embedding_error(
+                "typed font stylesheet was not materialized by the renderer",
+            ));
+        };
+        if css != expected {
             return Err(font_embedding_error(
                 "typed font stylesheet does not match the renderer-owned embedding plan",
             ));
@@ -530,6 +590,106 @@ impl SvgFontEmbeddingPlan {
     pub(super) fn seal(&self, text_element_count: usize) -> Result<SvgFontSeal> {
         SvgFontSeal::embedded(self, text_element_count)
     }
+}
+
+const FONT_FACE_FAMILY_PREFIX: &str = "@font-face{font-family:\"";
+const FONT_FACE_SOURCE_PREFIX: &str = "\";src:url(\"data:";
+const FONT_FACE_BASE64_PREFIX: &str = ";base64,";
+const FONT_FACE_FORMAT_PREFIX: &str = "\") format(\"";
+const FONT_FACE_STYLE_PREFIX: &str = "\");font-style:";
+const FONT_FACE_WEIGHT_PREFIX: &str = ";font-weight:";
+const FONT_FACE_STRETCH_PREFIX: &str = ";font-stretch:";
+const FONT_FACE_SUFFIX: &str = "}";
+
+fn projected_svg_with_typed_style_bytes(svg_bytes: usize, css_bytes: usize) -> Result<usize> {
+    let style_bytes = [
+        "<style ".len(),
+        TYPED_FONT_STYLE_ATTRIBUTE.len(),
+        "=\"".len(),
+        TYPED_FONT_STYLE_VERSION.len(),
+        "\">".len(),
+        css_bytes,
+        "</style>".len(),
+    ]
+    .into_iter()
+    .try_fold(0usize, |total, bytes| {
+        checked_font_embedding_add(total, bytes, "typed style element")
+    })?;
+    checked_font_embedding_add(svg_bytes, style_bytes, "injected SVG")
+}
+
+fn projected_font_face_rule_bytes(face: &EmbeddedFontFace) -> Result<usize> {
+    let (mime, format) = font_container_css_descriptor(face.container);
+    let encoded_bytes = base64::encoded_len(face.canonical_bytes.len(), true)
+        .ok_or_else(|| font_embedding_error("base64 font length overflowed usize"))?;
+    [
+        FONT_FACE_FAMILY_PREFIX.len(),
+        projected_css_string_content_bytes(&face.family_name)?,
+        FONT_FACE_SOURCE_PREFIX.len(),
+        mime.len(),
+        FONT_FACE_BASE64_PREFIX.len(),
+        encoded_bytes,
+        FONT_FACE_FORMAT_PREFIX.len(),
+        format.len(),
+        FONT_FACE_STYLE_PREFIX.len(),
+        face.style.id().len(),
+        FONT_FACE_WEIGHT_PREFIX.len(),
+        decimal_u16_bytes(face.weight),
+        FONT_FACE_STRETCH_PREFIX.len(),
+        font_width_keyword(face.width).len(),
+        FONT_FACE_SUFFIX.len(),
+    ]
+    .into_iter()
+    .try_fold(0usize, |total, bytes| {
+        checked_font_embedding_add(total, bytes, "font-face rule")
+    })
+}
+
+fn projected_css_string_content_bytes(value: &str) -> Result<usize> {
+    value.chars().try_fold(0usize, |total, character| {
+        let bytes = match character {
+            '\\' | '"' => 2,
+            '<' | '>' | '&' | '\u{0}'..='\u{1f}' | '\u{7f}' => {
+                2 + lowercase_hex_digits(character as u32)
+            }
+            _ => character.len_utf8(),
+        };
+        checked_font_embedding_add(total, bytes, "escaped font family")
+    })
+}
+
+fn lowercase_hex_digits(value: u32) -> usize {
+    if value < 0x10 {
+        1
+    } else if value < 0x100 {
+        2
+    } else if value < 0x1_000 {
+        3
+    } else if value < 0x1_0000 {
+        4
+    } else if value < 0x10_0000 {
+        5
+    } else {
+        6
+    }
+}
+
+fn decimal_u16_bytes(value: u16) -> usize {
+    match value {
+        0..=9 => 1,
+        10..=99 => 2,
+        100..=999 => 3,
+        1_000..=9_999 => 4,
+        _ => 5,
+    }
+}
+
+fn checked_font_embedding_add(total: usize, bytes: usize, context: &str) -> Result<usize> {
+    total.checked_add(bytes).ok_or_else(|| {
+        font_embedding_error(format!(
+            "typed font {context} byte projection overflowed usize"
+        ))
+    })
 }
 
 fn scan_prepared_text_coverage(
@@ -833,25 +993,32 @@ fn css_contains_font_face<'i, 't>(
 }
 
 fn append_font_face_rule(css: &mut String, face: &EmbeddedFontFace) {
-    let (mime, format) = match face.container {
+    let (mime, format) = font_container_css_descriptor(face.container);
+    css.push_str(FONT_FACE_FAMILY_PREFIX);
+    append_css_string_content(css, &face.family_name);
+    css.push_str(FONT_FACE_SOURCE_PREFIX);
+    css.push_str(mime);
+    css.push_str(FONT_FACE_BASE64_PREFIX);
+    base64::engine::general_purpose::STANDARD.encode_string(face.canonical_bytes.as_ref(), css);
+    css.push_str(FONT_FACE_FORMAT_PREFIX);
+    css.push_str(format);
+    css.push_str(FONT_FACE_STYLE_PREFIX);
+    css.push_str(face.style.id());
+    css.push_str(FONT_FACE_WEIGHT_PREFIX);
+    write!(css, "{}", face.weight).expect("writing to String cannot fail");
+    css.push_str(FONT_FACE_STRETCH_PREFIX);
+    css.push_str(font_width_keyword(face.width));
+    css.push_str(FONT_FACE_SUFFIX);
+}
+
+fn font_container_css_descriptor(container: FontContainer) -> (&'static str, &'static str) {
+    match container {
         FontContainer::TrueType => ("font/ttf", "truetype"),
         FontContainer::OpenType => ("font/otf", "opentype"),
         FontContainer::Collection | FontContainer::Woff2 => {
             unreachable!("unsupported canonical containers are rejected before CSS emission")
         }
-    };
-    let encoded = base64::engine::general_purpose::STANDARD.encode(face.canonical_bytes.as_ref());
-
-    css.push_str("@font-face{font-family:\"");
-    append_css_string_content(css, &face.family_name);
-    write!(
-        css,
-        "\";src:url(\"data:{mime};base64,{encoded}\") format(\"{format}\");font-style:{};font-weight:{};font-stretch:{}}}",
-        face.style.id(),
-        face.weight,
-        font_width_keyword(face.width),
-    )
-    .expect("writing to String cannot fail");
+    }
 }
 
 fn font_faces_have_unique_descriptor_identities(faces: &[EmbeddedFontFace]) -> bool {
@@ -905,7 +1072,7 @@ fn font_embedding_error(message: impl Into<String>) -> Error {
 mod tests {
     use super::*;
     use crate::diagram_theme::{FontAssetSpec, FontCatalogSpec, ThemeResourcePolicy};
-    use crate::resources::RenderResourcePolicy;
+    use crate::resources::ResourceLimitId;
     use crate::text::PreparedTextLabelFamily;
 
     const EXCALIFONT_WOFF2: &[u8] = include_bytes!(concat!(
@@ -948,14 +1115,20 @@ mod tests {
     #[test]
     fn full_font_plan_uses_canonical_sfnt_bytes_and_emits_a_complete_seal() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
-        let plan =
+        let mut plan =
             SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
                 .expect("full embedded face should produce a plan");
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
+        plan.inject(svg, RenderResourcePolicy::unbounded_for_trusted_input())
+            .expect("full embedded face should materialize after admission");
+        let css = plan
+            .materialized_css()
+            .expect("successful injection should retain the exact stylesheet");
 
-        assert!(plan.css.contains("@font-face{"));
-        assert!(plan.css.contains("data:font/ttf;base64,"));
-        assert!(plan.css.contains("format(\"truetype\")"));
-        assert!(!plan.css.contains("data:font/woff2"));
+        assert!(css.contains("@font-face{"));
+        assert!(css.contains("data:font/ttf;base64,"));
+        assert!(css.contains("format(\"truetype\")"));
+        assert!(!css.contains("data:font/woff2"));
         let seal = plan
             .seal(1)
             .expect("one planned label seals one text element");
@@ -963,6 +1136,65 @@ mod tests {
         assert_eq!(seal.text_element_count(), 1);
         assert_eq!(seal.embedded_face_count(), 1);
         assert_eq!(seal.catalog_fingerprint(), Some(catalog.fingerprint()));
+    }
+
+    #[test]
+    fn full_font_injection_admits_exact_projected_bytes_before_materializing_css() {
+        let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
+        let mut admitted =
+            SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
+                .expect("full embedded face should produce a plan");
+        let projected = admitted
+            .projected_injected_svg_bytes(svg)
+            .expect("fixture projection should fit usize");
+        assert!(admitted.materialized_css().is_none());
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected)
+            .expect("exact SVG limit should be valid");
+        let embedded = admitted
+            .inject(svg, exact_policy)
+            .expect("the exact projected byte limit should pass");
+        assert_eq!(embedded.len(), projected);
+        assert!(admitted.materialized_css().is_some());
+
+        let mut rejected =
+            SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
+                .expect("full embedded face should produce a second plan");
+        let rejecting_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, projected - 1)
+            .expect("B-1 SVG limit should be valid");
+        let error = rejected
+            .inject(svg, rejecting_policy)
+            .expect_err("one byte below the projected output must fail closed");
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected a structured SVG resource error");
+        };
+        assert_eq!(error.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(error.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(error.actual, projected);
+        assert_eq!(error.max, projected - 1);
+        assert!(
+            rejected.materialized_css().is_none(),
+            "budget rejection must happen before base64 CSS materialization"
+        );
+    }
+
+    #[test]
+    fn font_face_rule_projection_matches_escaped_css_and_base64_bytes() {
+        let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
+        let plan =
+            SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
+                .expect("full embedded face should produce a plan");
+        let mut face = plan.faces[0].clone();
+        face.family_name = "A\\\"<&\u{0007}界".to_string();
+        let projected = projected_font_face_rule_bytes(&face)
+            .expect("fixture font-face projection should fit usize");
+        let mut css = String::new();
+        append_font_face_rule(&mut css, &face);
+
+        assert_eq!(css.len(), projected);
     }
 
     #[test]
@@ -983,13 +1215,21 @@ mod tests {
     #[test]
     fn typed_style_validation_is_exact_and_detects_payload_tampering() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
-        let plan =
+        let mut plan =
             SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
                 .expect("full embedded face should produce a plan");
+        plan.inject(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("typed CSS should materialize after admission");
+        let css = plan
+            .materialized_css()
+            .expect("successful injection should retain the exact stylesheet");
 
-        plan.validate_typed_style(&plan.css)
+        plan.validate_typed_style(css)
             .expect("renderer-owned CSS should match its plan");
-        let tampered = plan.css.replacen("base64,", "base64,A", 1);
+        let tampered = css.replacen("base64,", "base64,A", 1);
         assert!(plan.validate_typed_style(&tampered).is_err());
 
         let mut competing_face = plan.faces[0].clone();
@@ -1002,12 +1242,10 @@ mod tests {
             prepared_label_count: plan.prepared_label_count,
             prepared_text_element_count: plan.prepared_text_element_count,
             faces: vec![plan.faces[0].clone(), competing_face].into_boxed_slice(),
-            css: competing_css,
+            materialized_css: Some(competing_css.clone()),
         };
         assert!(
-            competing_plan
-                .validate_typed_style(&competing_plan.css)
-                .is_err(),
+            competing_plan.validate_typed_style(&competing_css).is_err(),
             "distinct faces with the same CSS descriptor identity must compete fail-closed"
         );
     }
@@ -1222,12 +1460,12 @@ mod tests {
     #[test]
     fn only_terminal_validation_bound_to_the_exact_plan_can_issue_a_font_seal() {
         let catalog = embedded_catalog(FontEmbeddingRequirement::FullFont);
-        let plan =
+        let mut plan =
             SvgFontEmbeddingPlan::from_used_faces(&catalog, 1, 1, [first_used_face(&catalog)])
                 .expect("full embedded face should produce a plan");
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text><text/><text><tspan/></text></svg>"#;
         let embedded = plan
-            .inject(svg)
+            .inject(svg, RenderResourcePolicy::unbounded_for_trusted_input())
             .expect("typed style should attach to SVG root");
         let limits = RenderResourcePolicy::unbounded_for_trusted_input();
 

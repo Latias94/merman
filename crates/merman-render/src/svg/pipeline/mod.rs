@@ -218,13 +218,12 @@ impl ResvgCompatibleSvg {
         } else {
             PreparedTextEvidenceLease::default()
         };
-        if let Some(plan) = font_embedding::SvgFontEmbeddingPlan::for_prepared_text(
+        if let Some(mut plan) = font_embedding::SvgFontEmbeddingPlan::for_prepared_text(
             &self.font_catalog,
             self.prepared_text_evidence.entries(),
             &self.svg,
         ) {
-            let embedded = plan.inject(&self.svg)?;
-            resource_policy.check_svg_bytes(&embedded, ResourceLimitPhase::SvgPostprocess)?;
+            let embedded = plan.inject(&self.svg, resource_policy)?;
             let terminal = final_validation::validate_resvg_compatible_svg_with_font_plan(
                 &embedded,
                 resource_policy,
