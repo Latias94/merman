@@ -17,7 +17,7 @@ use crate::text::normalize_optional_text;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 const STATE_DIAGRAM_TYPE: &str = "state";
 const STATE_NODE_PROJECTION_WORK_UNITS: usize = 10;
@@ -539,18 +539,15 @@ fn node_depth(
     execution: Option<AsciiExecution<'_>>,
 ) -> Result<usize> {
     let mut depth = 0usize;
-    let mut seen = HashSet::new();
-    seen.try_reserve(node_count)
-        .map_err(|_| projection_allocation_failed())?;
     let mut parent = node.parent_id.as_deref();
     resources.check_nesting_depth(1)?;
 
-    while let Some(parent_id) = parent {
+    for _ in 0..node_count {
+        let Some(parent_id) = parent else {
+            return Ok(depth);
+        };
         checkpoint_projection_before_charge(execution)?;
         resources.charge_layout_work(1)?;
-        if !seen.insert(parent_id) {
-            break;
-        }
         depth = depth.checked_add(1).ok_or_else(|| {
             resources
                 .policy()
@@ -565,7 +562,11 @@ fn node_depth(
         parent = parent_by_id.get(parent_id).copied().flatten();
     }
 
-    Ok(depth)
+    if parent.is_some() {
+        Err(unsupported("cyclic state parent ids"))
+    } else {
+        Ok(depth)
+    }
 }
 
 fn state_direction_projection(
@@ -627,18 +628,14 @@ fn nearest_explicit_ancestor_direction(
     execution: Option<AsciiExecution<'_>>,
 ) -> Result<Option<GraphDirection>> {
     let mut parent_id = node.parent_id.as_deref();
-    let mut visited = HashSet::new();
-    visited
-        .try_reserve(node_count)
-        .map_err(|_| projection_allocation_failed())?;
-    while let Some(parent) = parent_id {
+    for _ in 0..node_count {
+        let Some(parent) = parent_id else {
+            return Ok(None);
+        };
         checkpoint_projection_before_charge(execution)?;
         resources.charge_layout_work(1)?;
-        if !visited.insert(parent) {
-            break;
-        }
         let Some(parent_node) = node_by_id.get(parent).copied() else {
-            break;
+            return Ok(None);
         };
         if parent_node.explicit_dir == Some(true) {
             return parent_node
@@ -649,7 +646,12 @@ fn nearest_explicit_ancestor_direction(
         }
         parent_id = parent_node.parent_id.as_deref();
     }
-    Ok(None)
+
+    if parent_id.is_some() {
+        Err(unsupported("cyclic state parent ids"))
+    } else {
+        Ok(None)
+    }
 }
 
 fn checkpoint_projection_before_charge(execution: Option<AsciiExecution<'_>>) -> Result<()> {
@@ -901,23 +903,16 @@ mod tests {
     }
 
     #[test]
-    fn state_parent_chain_charges_each_ancestor_traversal() {
-        let mut root = state_node("root");
-        root.is_group = true;
-        let mut middle = state_node("middle");
-        middle.is_group = true;
-        middle.parent_id = Some(root.id.clone());
-        let mut inner = state_node("inner");
-        inner.is_group = true;
-        inner.parent_id = Some(middle.id.clone());
-        let mut leaf = state_node("leaf");
-        leaf.parent_id = Some(inner.id.clone());
+    fn large_flat_state_model_keeps_ancestor_work_zero() {
+        const NODE_COUNT: usize = 4_096;
+
         let model = StateDiagramRenderModel {
             direction: "TB".to_string(),
-            nodes: vec![root, middle, inner, leaf],
+            nodes: (0..NODE_COUNT)
+                .map(|index| state_node(&format!("state-{index}")))
+                .collect(),
             ..StateDiagramRenderModel::default()
         };
-        let expected_ancestor_steps = 6;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
 
         let node_by_id = model
@@ -927,25 +922,118 @@ mod tests {
             .collect::<HashMap<_, _>>();
         let validation_resources = ResourceContext::new(unbounded);
         validate_state_parent_ownership(&model, &node_by_id, &validation_resources, None)
-            .expect("valid state parent chain should pass ownership validation");
+            .expect("large flat state model should pass ownership validation");
+        assert_eq!(validation_resources.layout_work_used(), 0);
+
+        let group_members = group_members_by_id(&model, None)
+            .expect("large flat state model should project group members");
+        let sorting_resources = ResourceContext::new(unbounded);
+        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, None)
+            .expect("large flat state model should sort groups");
+        assert!(groups.is_empty());
+        assert_eq!(sorting_resources.layout_work_used(), 0);
+
+        let direction_resources = ResourceContext::new(unbounded);
+        let projection =
+            state_direction_projection(&model, GraphDirection::TopDown, &direction_resources, None)
+                .expect("large flat state model should project directions");
+        assert_eq!(projection.node_by_id.len(), NODE_COUNT);
+        assert!(projection.group_by_id.is_empty());
+        assert_eq!(direction_resources.layout_work_used(), 0);
+        assert_eq!(
+            state_projection_work(&model, &direction_resources, None)
+                .expect("large flat state projection work should fit"),
+            NODE_COUNT * STATE_NODE_PROJECTION_WORK_UNITS
+        );
+    }
+
+    #[test]
+    fn flat_state_ancestor_queries_do_not_reserve_the_model_width() {
+        let node = state_node("flat");
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(unbounded);
+
+        let parent_by_id = HashMap::new();
+        assert_eq!(
+            node_depth(&node, &parent_by_id, usize::MAX, &resources, None,)
+                .expect("a flat state should not allocate from the model-width bound"),
+            0
+        );
+
+        let node_by_id = HashMap::from([(node.id.as_str(), &node)]);
+        assert_eq!(
+            nearest_explicit_ancestor_direction(&node, &node_by_id, usize::MAX, &resources, None,)
+                .expect("a flat state direction lookup should not allocate from the model width"),
+            None
+        );
+        assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn deep_state_parent_chain_preserves_work_sorting_and_direction() {
+        const NODE_COUNT: usize = 64;
+
+        let mut nodes = Vec::new();
+        for index in 0..NODE_COUNT {
+            let mut node = state_node(&format!("state-{index}"));
+            node.is_group = index + 1 < NODE_COUNT;
+            if index == 0 {
+                node.explicit_dir = Some(true);
+                node.dir = Some("LR".to_string());
+            } else {
+                node.parent_id = Some(format!("state-{}", index - 1));
+            }
+            nodes.push(node);
+        }
+        let model = StateDiagramRenderModel {
+            direction: "TB".to_string(),
+            nodes,
+            ..StateDiagramRenderModel::default()
+        };
+        let expected_ancestor_steps = NODE_COUNT * (NODE_COUNT - 1) / 2;
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        let node_by_id = model
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
+        let validation_resources = ResourceContext::new(unbounded);
+        validate_state_parent_ownership(&model, &node_by_id, &validation_resources, None)
+            .expect("deep valid state parent chain should pass ownership validation");
         assert_eq!(
             validation_resources.layout_work_used(),
             expected_ancestor_steps
         );
 
         let group_members = group_members_by_id(&model, None)
-            .expect("valid state parent chain should project group members");
+            .expect("deep valid state parent chain should project group members");
         let sorting_resources = ResourceContext::new(unbounded);
-        sorted_group_nodes(&model, &group_members, &sorting_resources, None)
-            .expect("valid state parent chain should sort groups");
+        let groups = sorted_group_nodes(&model, &group_members, &sorting_resources, None)
+            .expect("deep valid state parent chain should sort groups");
+        assert_eq!(groups.len(), NODE_COUNT - 1);
+        assert_eq!(
+            groups.first().map(|node| node.id.as_str()),
+            Some("state-62")
+        );
+        assert_eq!(groups.last().map(|node| node.id.as_str()), Some("state-0"));
         assert_eq!(
             sorting_resources.layout_work_used(),
             expected_ancestor_steps
         );
 
         let direction_resources = ResourceContext::new(unbounded);
-        state_direction_projection(&model, GraphDirection::TopDown, &direction_resources, None)
-            .expect("valid state parent chain should project directions");
+        let projection =
+            state_direction_projection(&model, GraphDirection::TopDown, &direction_resources, None)
+                .expect("deep valid state parent chain should project directions");
+        assert_eq!(
+            projection.node_by_id.get("state-63"),
+            Some(&GraphDirection::LeftRight)
+        );
+        assert_eq!(
+            projection.group_by_id.get("state-62"),
+            Some(&GraphDirection::LeftRight)
+        );
         assert_eq!(
             direction_resources.layout_work_used(),
             expected_ancestor_steps
