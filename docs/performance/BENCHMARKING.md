@@ -55,7 +55,8 @@ inputs come only from the tracked corpus; the public `Interactive` and `TrustedN
 boundaries remain covered by exact resource tests rather than benchmark admission:
 
 ```bash
-cargo bench --locked -p merman --no-default-features --features ascii --bench ascii_pipeline
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman \
+  --no-default-features --features ascii --bench ascii_pipeline
 ```
 
 Its schema-v2 metadata is `tools/bench/ascii_corpus.json`. The `closeout` and `large-closeout`
@@ -66,11 +67,33 @@ timing begins, and an exact invocation must repeat the same identity after timin
 compiled list and those receipts with:
 
 ```bash
-python3 tools/bench/verify_pipeline_bench_list.py \
+CARGO_BUILD_JOBS=1 python3 tools/bench/verify_pipeline_bench_list.py \
   --bench ascii_pipeline \
   --corpus tools/bench/ascii_corpus.json \
   --features ascii
 ```
+
+The dedicated Performance workflow exposes the same bounded recipe without adding timing to
+ordinary unlabeled pull requests. Add the `perf-ascii` label for a quick diagnostic PR run, or
+dispatch a decision-grade comparison explicitly:
+
+```bash
+gh workflow run performance.yml \
+  --ref main \
+  -f run=ascii \
+  -f base_ref=main \
+  -f head_ref=my-ascii-branch \
+  -f preset=long \
+  -f ascii_suite=comparable \
+  -f evidence_mode=confirmation \
+  -f relative_threshold_percent=10 \
+  -f absolute_threshold_ns=50000
+```
+
+The workflow accepts `comparable` and `closeout`; use `closeout` for the five medium U25 families.
+The larger `large-closeout` suite is intentionally excluded from unattended timing and must be run
+locally for the tracked closeout scorecard. Path-matched pull requests still compile and verify the
+complete ASCII benchmark list even when no timing label is present.
 
 For a decision-grade adjacent-revision comparison, first ensure both checkouts contain the same
 benchmark-only harness: `ascii_pipeline.rs`, its `Cargo.toml` bench entry, the selected corpus,
@@ -183,8 +206,9 @@ against its adjacent clean pre-change commit using the same two-sided recipe con
 
 `compare_self.py` performs build work before any timed pair:
 
-1. It invokes locked Cargo bench compilation independently for each recipe with `--no-run` and
-   Cargo JSON diagnostics.
+1. It invokes locked Cargo bench compilation independently for each recipe with `--no-run`, Cargo
+   JSON diagnostics, and a forced `CARGO_BUILD_JOBS=1` environment recorded under each runner's
+   `build_environment` receipt.
 2. It accepts exactly one matching Criterion executable for the requested package and bench.
 3. It records and verifies the executable digest and discovers exact benchmark names directly from
    that executable.
@@ -194,9 +218,10 @@ Cargo is therefore outside the timed AB/BA schedule. A missing lockfile, ambiguo
 changed digest, absent benchmark, or failed direct invocation is an evidence-contract failure, not
 a slow sample.
 
-Base and head should normally use distinct target directories. When disk constraints require
-`--freeze-shared-target`, the runner clears only the shared target's `bench` profile before building
-each side, then copies that side's executable under `target/perf-frozen`. This reset is required:
+Base and head should normally use distinct target directories; those prebuilds are still serialized
+with one Cargo build job each. When disk constraints require `--freeze-shared-target`, the runner
+clears only the shared target's `bench` profile before building each side, then copies that side's
+executable under `target/perf-frozen`. This reset is required:
 Cargo's cache is not a content-addressed boundary between different path-workspace checkouts, so a
 plain second `--target-dir` build can otherwise reuse the first checkout's executable. The debug
 profile and immutable frozen copies are not removed. Do not run another Cargo process against that

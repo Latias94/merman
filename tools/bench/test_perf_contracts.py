@@ -3011,6 +3011,91 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "Cargo.lock"):
                 compare_self.cargo_prebuild_command(locked_without_file)
 
+    def test_distinct_target_prebuild_forces_and_records_one_cargo_job(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            checkout = root / "checkout"
+            checkout.mkdir()
+            (checkout / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
+            recipe = self._recipe(
+                label="base",
+                checkout=checkout,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=root / "target",
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            git = {
+                "revision": "a" * 40,
+                "tree": "b" * 40,
+                "dirty": False,
+                "dirty_disposition": "clean",
+                "dirty_entries": [],
+                "dirty_entries_truncated": False,
+            }
+            described_file = {
+                "path": "/tmp/input",
+                "bytes": 1,
+                "sha256": "c" * 64,
+            }
+            failed_prebuild = mock.Mock(
+                returncode=1,
+                stdout="",
+                stderr="expected test failure",
+            )
+
+            with (
+                mock.patch.object(compare_self, "_git_provenance", return_value=git),
+                mock.patch.object(
+                    compare_self,
+                    "_find_package_manifest",
+                    return_value=checkout / "Cargo.toml",
+                ),
+                mock.patch.object(
+                    compare_self,
+                    "_describe_required_file",
+                    return_value=described_file,
+                ),
+                mock.patch.object(
+                    compare_self,
+                    "_describe_corpus",
+                    return_value={"path": "/tmp/corpus", "sha256": "d" * 64},
+                ),
+                mock.patch.object(
+                    compare_self,
+                    "_describe_bench_target",
+                    return_value=(
+                        {"name": "pipeline", "entry": {}, "sha256": "e" * 64},
+                        checkout / "benches" / "pipeline.rs",
+                    ),
+                ),
+                mock.patch.object(compare_self, "_toolchain_version", return_value="rustc"),
+                mock.patch.object(compare_self, "_cargo_version", return_value="cargo"),
+                mock.patch.object(
+                    compare_self,
+                    "_run_process",
+                    return_value=failed_prebuild,
+                ) as run_process,
+            ):
+                runner, provenance, errors = compare_self._prepare_runner(
+                    recipe,
+                    allow_dirty=False,
+                    timeout_seconds=1,
+                )
+
+            self.assertIsNone(runner)
+            self.assertTrue(errors)
+            self.assertNotIn("shared_target_profile_reset", provenance)
+            self.assertEqual(provenance["build_environment"]["CARGO_BUILD_JOBS"], "1")
+            self.assertEqual(run_process.call_count, 1)
+            self.assertEqual(
+                run_process.call_args_list[0].kwargs["env"]["CARGO_BUILD_JOBS"],
+                "1",
+            )
+
     def test_shared_target_clean_resets_only_the_selected_bench_profile(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -4947,20 +5032,54 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         self.assertIn('if [[ "$RENDER_EXIT" -ne 0 ]]', workflow)
         self.assertIn('case "$COMPARISON_EXIT" in', workflow)
 
-    def test_perf_label_runs_compiled_contracts_without_repeating_python_contracts(
+    def test_unlabeled_pr_keeps_ascii_compiled_contract_without_timing(
         self,
     ) -> None:
         workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn(
-            "if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')",
-            workflow,
-        )
+        contracts = workflow.split("  contracts:\n", 1)[1].split(
+            "\n  measurement-plan:\n", 1
+        )[0]
+        contracts_header = contracts.split("\n    steps:\n", 1)[0]
+        ascii_contract = contracts.split(
+            "      - name: Verify compiled ASCII benchmark list\n", 1
+        )[1].split("\n      - name:", 1)[0]
+        measurement_header = workflow.split("  measurement-plan:\n", 1)[1].split(
+            "\n    runs-on:", 1
+        )[0]
+
+        self.assertNotIn("\n    if:", contracts_header)
         self.assertEqual(workflow.count("if: github.event_name != 'pull_request'\n"), 2)
         self.assertIn("Verify compiled pipeline benchmark list", workflow)
+        self.assertIn("Verify compiled ASCII benchmark list", contracts)
+        self.assertNotIn("\n        if:", ascii_contract)
         self.assertIn("Build native memory probe contract", workflow)
+        self.assertIn("'perf-ascii'", measurement_header)
+        self.assertIn('[[ "$HAS_ASCII_LABEL" == "true" ]] && lanes+=(ascii)', workflow)
+
+    def test_ascii_regression_lane_uses_the_narrow_recipe(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
+            encoding="utf-8"
+        )
+        ascii_suite = workflow.split("      ascii_suite:\n", 1)[1].split(
+            "\n      base_ref:\n", 1
+        )[0]
+
+        self.assertIn("ascii_suite:", workflow)
+        self.assertIn("          - comparable", ascii_suite)
+        self.assertIn("          - closeout", ascii_suite)
+        self.assertNotIn("large-closeout", ascii_suite)
+        self.assertIn("ascii) lanes=(ascii) ;;", workflow)
+        self.assertIn("full) lanes=(regression ascii frontmatter) ;;", workflow)
+        self.assertIn('"bench":"ascii_pipeline"', workflow)
+        self.assertIn('"corpus":"tools/bench/ascii_corpus.json"', workflow)
+        self.assertIn('"features":"ascii"', workflow)
+        self.assertIn('"default_features":"false"', workflow)
+        self.assertIn('"group":"ascii_end_to_end"', workflow)
+        self.assertIn("--no-base-default-features --no-head-default-features", workflow)
+        self.assertIn('artifact":"perf-ascii"', workflow)
 
     def test_manual_regression_uses_the_requested_corpus_suite(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(
@@ -4968,7 +5087,11 @@ class PerformanceWorkflowContractsTest(unittest.TestCase):
         )
 
         self.assertIn(
-            "SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || matrix.suite }}",
+            "github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite",
+            workflow,
+        )
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' && matrix.id == 'ascii' && inputs.ascii_suite",
             workflow,
         )
 

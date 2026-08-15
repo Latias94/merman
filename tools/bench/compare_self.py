@@ -1242,9 +1242,8 @@ def _prepare_runner(
         env = {
             "CARGO_INCREMENTAL": "0",
             "CARGO_PROFILE_BENCH_DEBUG": "0",
+            "CARGO_BUILD_JOBS": "1",
         }
-        if freeze_plan is not None:
-            env["CARGO_BUILD_JOBS"] = "1"
         provenance["build_environment"] = {
             key: env.get(key, os.environ.get(key))
             for key in (

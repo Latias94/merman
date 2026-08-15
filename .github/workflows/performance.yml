@@ -35,6 +35,7 @@ on:
         default: regression
         options:
           - contracts
+          - ascii
           - frontmatter
           - regression
           - reference
@@ -55,6 +56,13 @@ on:
           - standard
           - cross_family
           - full
+      ascii_suite:
+        description: "ASCII corpus suite"
+        type: choice
+        default: comparable
+        options:
+          - comparable
+          - closeout
       base_ref:
         description: "Base ref for regression comparisons"
         required: false
@@ -109,7 +117,6 @@ concurrency:
 jobs:
   contracts:
     name: perf-contracts
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
     runs-on: ubuntu-24.04
     env:
       CARGO_BUILD_JOBS: "1"
@@ -185,7 +192,7 @@ jobs:
 
   measurement-plan:
     name: perf-measurement-plan
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf') || contains(github.event.pull_request.labels.*.name, 'perf-frontmatter')
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf') || contains(github.event.pull_request.labels.*.name, 'perf-ascii') || contains(github.event.pull_request.labels.*.name, 'perf-frontmatter')
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -198,6 +205,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_RUN: ${{ inputs.run }}
           HAS_REGRESSION_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf') }}
+          HAS_ASCII_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-ascii') }}
           HAS_FRONTMATTER_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
         run: |
           set -euo pipefail
@@ -205,6 +213,7 @@ jobs:
           case "$EVENT_NAME" in
             pull_request)
               [[ "$HAS_REGRESSION_LABEL" == "true" ]] && lanes+=(regression)
+              [[ "$HAS_ASCII_LABEL" == "true" ]] && lanes+=(ascii)
               [[ "$HAS_FRONTMATTER_LABEL" == "true" ]] && lanes+=(frontmatter)
               ;;
             schedule)
@@ -213,8 +222,9 @@ jobs:
             workflow_dispatch)
               case "$DISPATCH_RUN" in
                 regression) lanes=(regression) ;;
+                ascii) lanes=(ascii) ;;
                 frontmatter) lanes=(frontmatter) ;;
-                full) lanes=(regression frontmatter) ;;
+                full) lanes=(regression ascii frontmatter) ;;
                 contracts|reference) lanes=() ;;
                 *)
                   echo "unsupported performance lane: $DISPATCH_RUN" >&2
@@ -233,10 +243,13 @@ jobs:
           for lane in "${lanes[@]}"; do
             case "$lane" in
               regression)
-                descriptor='{"id":"regression","suite":"canary","group":"","artifact":"perf-regression","title":"Merman Performance Regression","marker":"<!-- merman-perf -->"}'
+                descriptor='{"id":"regression","suite":"canary","group":"","package":"merman","bench":"pipeline","corpus":"tools/bench/corpus.json","features":"svg","default_features":"true","artifact":"perf-regression","title":"Merman Performance Regression","marker":"<!-- merman-perf -->"}'
+                ;;
+              ascii)
+                descriptor='{"id":"ascii","suite":"comparable","group":"ascii_end_to_end","package":"merman","bench":"ascii_pipeline","corpus":"tools/bench/ascii_corpus.json","features":"ascii","default_features":"false","artifact":"perf-ascii","title":"Merman ASCII Performance Regression","marker":"<!-- merman-perf-ascii -->"}'
                 ;;
               frontmatter)
-                descriptor='{"id":"frontmatter","suite":"frontmatter","group":"frontmatter_preprocess","artifact":"perf-frontmatter","title":"Merman Frontmatter Performance Regression","marker":"<!-- merman-perf-frontmatter -->"}'
+                descriptor='{"id":"frontmatter","suite":"frontmatter","group":"frontmatter_preprocess","package":"merman","bench":"pipeline","corpus":"tools/bench/corpus.json","features":"svg","default_features":"true","artifact":"perf-frontmatter","title":"Merman Frontmatter Performance Regression","marker":"<!-- merman-perf-frontmatter -->"}'
                 ;;
               *)
                 echo "unsupported selected performance lane: $lane" >&2
@@ -300,8 +313,13 @@ jobs:
         working-directory: head
         env:
           PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset || 'long' }}
-          SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || matrix.suite }}
+          SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || github.event_name == 'workflow_dispatch' && matrix.id == 'ascii' && inputs.ascii_suite || matrix.suite }}
           GROUP: ${{ matrix.group }}
+          PACKAGE: ${{ matrix.package }}
+          BENCH: ${{ matrix.bench }}
+          CORPUS: ${{ matrix.corpus }}
+          FEATURES: ${{ matrix.features }}
+          DEFAULT_FEATURES: ${{ matrix.default_features }}
           EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
           RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
           ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
@@ -314,8 +332,14 @@ jobs:
             --head-dir .
             --base-target-dir target/performance/base
             --head-target-dir target/performance/head
-            --base-features svg
-            --head-features svg
+            --base-package "$PACKAGE"
+            --head-package "$PACKAGE"
+            --base-bench "$BENCH"
+            --head-bench "$BENCH"
+            --base-corpus "$CORPUS"
+            --head-corpus "$CORPUS"
+            --base-features "$FEATURES"
+            --head-features "$FEATURES"
             --base-label "$BASE_LABEL"
             --head-label "$HEAD_LABEL"
             --preset "$PRESET"
@@ -326,6 +350,14 @@ jobs:
             --out target/performance/comparison.md
             --json-out target/performance/comparison.json
           )
+          case "$DEFAULT_FEATURES" in
+            true) ;;
+            false) args+=(--no-base-default-features --no-head-default-features) ;;
+            *)
+              echo "unsupported default-feature policy: $DEFAULT_FEATURES" >&2
+              exit 1
+              ;;
+          esac
           if [[ -n "$GROUP" ]]; then
             args+=(--group "$GROUP")
           fi
