@@ -823,19 +823,20 @@ fn assert_duplicate_raw_edge_occurrences_are_isolated(svg: &str) {
         "duplicate raw ids must not alias routed geometry"
     );
 
-    let styles = paths
+    let occurrence_bindings = paths
         .iter()
-        .filter_map(|path| path.attribute("style"))
+        .map(|path| {
+            (
+                path.attribute("style").unwrap_or_default(),
+                path.attribute("marker-end").unwrap_or_default(),
+            )
+        })
         .collect::<Vec<_>>();
-    assert!(styles.iter().any(|style| style.contains("stroke:#ef4444")));
-    assert!(styles.iter().any(|style| style.contains("stroke:#2563eb")));
-
-    let marker_ends = paths
-        .iter()
-        .filter_map(|path| path.attribute("marker-end"))
-        .collect::<Vec<_>>();
-    assert!(marker_ends.iter().any(|marker| marker.contains("crossEnd")));
-    assert!(marker_ends.iter().any(|marker| marker.contains("pointEnd")));
+    assert_eq!(occurrence_bindings.len(), 2);
+    assert!(occurrence_bindings[0].0.contains("stroke:#ef4444"));
+    assert!(occurrence_bindings[0].1.contains("crossEnd"));
+    assert!(occurrence_bindings[1].0.contains("stroke:#2563eb"));
+    assert!(occurrence_bindings[1].1.contains("pointEnd"));
 
     let labels = document
         .descendants()
@@ -854,14 +855,7 @@ fn assert_duplicate_raw_edge_occurrences_are_isolated(svg: &str) {
                 .collect::<String>()
         })
         .collect::<Vec<_>>();
-    assert!(
-        labels.iter().any(|label| label == "first owner"),
-        "{labels:?}\n{svg}"
-    );
-    assert!(
-        labels.iter().any(|label| label == "second owner"),
-        "{labels:?}\n{svg}"
-    );
+    assert_eq!(labels, ["first owner", "second owner"], "{svg}");
 }
 
 #[test]

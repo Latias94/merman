@@ -192,6 +192,8 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         })
         .collect();
     let mut edge_owners = Vec::with_capacity(working.original_edges.len());
+    let transport_plan =
+        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
     let edges = working
         .original_edges
         .iter()
@@ -199,8 +201,15 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         .map(|(semantic_index, edge)| {
             let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
             let semantic_edge = &model.edges[semantic_index];
-            let expected_adapter_id = key.adapter_id();
-            if edge.id != expected_adapter_id || edge.reference_id != expected_adapter_id {
+            let expected_transport_id =
+                transport_plan
+                    .id(key)
+                    .ok_or_else(|| crate::Error::InvalidModel {
+                        message: format!(
+                            "missing Swimlane transport id for semantic edge owner {semantic_index}"
+                        ),
+                    })?;
+            if edge.id != expected_transport_id || edge.reference_id != expected_transport_id {
                 return Err(crate::Error::InvalidModel {
                     message: format!(
                         "Swimlane working edge `{}` is not bound to semantic owner {}",

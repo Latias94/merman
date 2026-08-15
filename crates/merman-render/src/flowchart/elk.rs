@@ -66,13 +66,14 @@ pub(crate) fn layout_flowchart_elk_typed(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
     let render_label_sources = FlowchartRenderLabelSources::default();
-    let graph = build_flowchart_elk_graph_with_render_labels(
+    let mut graph = build_flowchart_elk_graph_with_render_labels(
         model,
         &render_label_sources,
         effective_config,
         measurer,
         math_renderer,
     )?;
+    bind_flowchart_elk_transport_ids(model, &mut graph)?;
     let layout = elk::layout(&graph).map_err(|err| Error::InvalidModel {
         message: format!("ELK layout failed: {err}"),
     })?;
@@ -126,7 +127,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     execution: FlowchartElkLayoutExecution<'_>,
 ) -> Result<FlowchartLayout> {
     let mut work_control = ElkOperationWorkControl::new(execution.work_meter);
-    let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
+    let mut graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         render_label_sources,
         effective_config,
@@ -136,6 +137,10 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         execution.edge_style_plan,
         Some(&mut work_control),
     )?;
+    // The graph builder is a public diagnostic seam and therefore preserves Mermaid's raw edge
+    // ids. The operation-local ELK adapter binds occurrence-safe transport ids only after that
+    // seam, using the linear work tranche charged at graph preparation.
+    bind_flowchart_elk_transport_ids(model, &mut graph)?;
     let layout = match elk::layout_with_operation_seed_and_work_control(
         &graph,
         execution.operation_seed,
@@ -152,6 +157,45 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         layout,
         Some(&mut work_control),
     )
+}
+
+fn bind_flowchart_elk_transport_ids(model: &FlowchartModel, graph: &mut elk::Graph) -> Result<()> {
+    if graph.edges.len() != model.edges.len() {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "ELK graph edge count {} does not match semantic edge count {}",
+                graph.edges.len(),
+                model.edges.len()
+            ),
+        });
+    }
+
+    let transport_plan =
+        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
+    for (semantic_index, (transport, semantic)) in
+        graph.edges.iter_mut().zip(&model.edges).enumerate()
+    {
+        if transport.id != semantic.id
+            || transport.source != semantic.from
+            || transport.target != semantic.to
+        {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "ELK graph edge `{}` is not bound to semantic owner {} (`{}`)",
+                    transport.id, semantic_index, semantic.id
+                ),
+            });
+        }
+        let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
+        transport.id = transport_plan
+            .id(key)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing ELK transport id for semantic owner {semantic_index}"),
+            })?
+            .to_string();
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -863,9 +907,8 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
                 edge_style_plan,
             },
         )?;
-        let key = crate::flowchart::FlowchartEdgeKey::new(edge_index);
         edges.push(elk::Edge {
-            id: key.adapter_id(),
+            id: edge.id.clone(),
             source: edge.from.clone(),
             target: edge.to.clone(),
             label,

@@ -1,4 +1,5 @@
 use super::FlowEdge;
+use std::collections::{HashMap, HashSet};
 
 /// Operation-local identity for one semantic Flowchart edge occurrence.
 ///
@@ -17,9 +18,67 @@ impl FlowchartEdgeKey {
         self.0
     }
 
-    /// Unique adapter transport id. It never crosses the compatibility or SVG DOM boundary.
-    pub(crate) fn adapter_id(self) -> String {
+    fn adapter_id(self) -> String {
         format!("__merman_flowchart_edge_{:020}", self.0)
+    }
+}
+
+/// Collision-safe adapter identities for one prepared set of semantic edge occurrences.
+///
+/// Unique Mermaid ids stay byte-identical so source-backed adapter ordering remains unchanged.
+/// Only repeated ids enter the private occurrence namespace, and generated ids avoid every raw id
+/// already present in the same model.
+#[derive(Debug, Clone)]
+pub(crate) struct FlowchartEdgeTransportPlan {
+    ids: HashMap<FlowchartEdgeKey, String>,
+}
+
+impl FlowchartEdgeTransportPlan {
+    pub(crate) fn for_semantic_edges(edges: &[FlowEdge]) -> Self {
+        Self::for_keyed_edges(
+            edges
+                .iter()
+                .enumerate()
+                .map(|(index, edge)| (FlowchartEdgeKey::new(index), edge)),
+        )
+    }
+
+    pub(crate) fn for_keyed_edges<'a>(
+        edges: impl IntoIterator<Item = (FlowchartEdgeKey, &'a FlowEdge)>,
+    ) -> Self {
+        let entries = edges.into_iter().collect::<Vec<_>>();
+        let mut counts = HashMap::<&str, usize>::with_capacity(entries.len());
+        let mut reserved = HashSet::<&str>::with_capacity(entries.len());
+        for (_, edge) in &entries {
+            *counts.entry(edge.id.as_str()).or_default() += 1;
+            reserved.insert(edge.id.as_str());
+        }
+
+        let mut ids = HashMap::with_capacity(entries.len());
+        let mut used = HashSet::<String>::with_capacity(entries.len());
+        for (key, edge) in entries {
+            let id = if counts.get(edge.id.as_str()) == Some(&1) {
+                edge.id.clone()
+            } else {
+                let base = key.adapter_id();
+                let mut candidate = base.clone();
+                let mut suffix = 0usize;
+                while reserved.contains(candidate.as_str()) || used.contains(&candidate) {
+                    candidate = format!("{base}_{suffix:020}");
+                    suffix = suffix.saturating_add(1);
+                }
+                candidate
+            };
+            let inserted = used.insert(id.clone());
+            debug_assert!(inserted, "transport ids must be unique");
+            ids.insert(key, id);
+        }
+
+        Self { ids }
+    }
+
+    pub(crate) fn id(&self, key: FlowchartEdgeKey) -> Option<&str> {
+        self.ids.get(&key).map(String::as_str)
     }
 }
 
@@ -165,5 +224,25 @@ mod tests {
             FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::new(0), FlowchartEdgeKey::new(1)]);
 
         owners.validate(&layout, &semantic).unwrap();
+    }
+
+    #[test]
+    fn transport_plan_preserves_unique_ids_and_avoids_raw_id_collisions() {
+        let edges = vec![
+            semantic_edge("duplicate"),
+            semantic_edge("duplicate"),
+            semantic_edge("__merman_flowchart_edge_00000000000000000000"),
+            semantic_edge("unique"),
+        ];
+        let plan = FlowchartEdgeTransportPlan::for_semantic_edges(&edges);
+        let ids = (0..edges.len())
+            .map(|index| plan.id(FlowchartEdgeKey::new(index)).expect("transport id"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids[2], edges[2].id);
+        assert_eq!(ids[3], edges[3].id);
+        assert_eq!(ids.iter().copied().collect::<HashSet<_>>().len(), ids.len());
+        assert_ne!(ids[0], edges[2].id);
+        assert_ne!(ids[1], edges[2].id);
     }
 }

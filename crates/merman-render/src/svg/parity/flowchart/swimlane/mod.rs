@@ -202,16 +202,22 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         .fold(0usize, usize::saturating_add);
     work_meter.charge(clone_work_units)?;
 
+    let transport_plan = crate::flowchart::FlowchartEdgeTransportPlan::for_keyed_edges(
+        render_edges
+            .iter()
+            .map(|edge| (edge.key, edge.edge.as_ref())),
+    );
     let owned_edges: Vec<_> = render_edges
         .iter()
         .filter_map(|edge| {
             let semantic = edge.edge.as_ref();
             let cache_entry = edge_path_cache.get(&edge.key)?;
+            let adapter_id = transport_plan.id(edge.key)?.to_string();
             let (arrow_type_start, arrow_type_end) =
                 super::edge_geom::arrow_types_for_edge(semantic.edge_type.as_deref());
             Some(OwnedLineHopEdge {
                 key: edge.key,
-                adapter_id: edge.key.adapter_id(),
+                adapter_id,
                 semantic,
                 points: cache_entry.geom.data_points.clone(),
                 arrow_type_start,

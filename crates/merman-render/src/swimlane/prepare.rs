@@ -202,13 +202,12 @@ fn measure_edge_label(
     })
 }
 
-fn working_edge(edge: &FlowEdge, key: crate::flowchart::FlowchartEdgeKey) -> WorkingEdge {
-    let adapter_id = key.adapter_id();
+fn working_edge(edge: &FlowEdge, transport_id: &str) -> WorkingEdge {
     WorkingEdge {
-        id: adapter_id.clone(),
+        id: transport_id.to_string(),
         from: edge.from.clone(),
         to: edge.to.clone(),
-        reference_id: adapter_id,
+        reference_id: transport_id.to_string(),
         label_node_id: None,
         reversed_for_layout: false,
         points: Vec::new(),
@@ -440,21 +439,22 @@ pub(super) fn prepare(
 
     let mut original_edges = Vec::with_capacity(model.edges.len());
     let mut graph_edges = Vec::with_capacity(model.edges.len() * 2);
-    let mut seen_edge_ids = HashSet::with_capacity(model.edges.len());
-    let mut duplicate_edge_ids = HashSet::new();
-    for edge in &model.edges {
-        if !seen_edge_ids.insert(edge.id.as_str()) {
-            duplicate_edge_ids.insert(edge.id.as_str());
-        }
-    }
+    let transport_plan =
+        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
     for (edge_index, edge) in model.edges.iter().enumerate() {
         let key = crate::flowchart::FlowchartEdgeKey::new(edge_index);
-        let adapter_id = key.adapter_id();
-        let mut original = working_edge(edge, key);
+        let transport_id = transport_plan
+            .id(key)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: format!(
+                    "missing Swimlane transport id for semantic edge owner {edge_index}"
+                ),
+            })?;
+        let mut original = working_edge(edge, transport_id);
         let render_label = model.edge_label_for_render(edge_index, edge);
         let has_label = render_label.is_some_and(|label| !label.is_empty());
         if has_label && nodes.contains_key(&edge.from) && nodes.contains_key(&edge.to) {
-            let label_node_id = if duplicate_edge_ids.contains(edge.id.as_str()) {
+            let label_node_id = if transport_id != edge.id {
                 format!("edge-label-occurrence-{:020}", key.semantic_index())
             } else {
                 format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id)
@@ -480,19 +480,19 @@ pub(super) fn prepare(
             nodes.insert(label_node_id.clone(), label_node);
             original.label_node_id = Some(label_node_id.clone());
             graph_edges.push(WorkingEdge {
-                id: format!("{adapter_id}-to-label"),
+                id: format!("{transport_id}-to-label"),
                 from: edge.from.clone(),
                 to: label_node_id.clone(),
-                reference_id: adapter_id.clone(),
+                reference_id: transport_id.to_string(),
                 label_node_id: None,
                 reversed_for_layout: false,
                 points: Vec::new(),
             });
             graph_edges.push(WorkingEdge {
-                id: format!("{adapter_id}-from-label"),
+                id: format!("{transport_id}-from-label"),
                 from: label_node_id,
                 to: edge.to.clone(),
-                reference_id: adapter_id,
+                reference_id: transport_id.to_string(),
                 label_node_id: None,
                 reversed_for_layout: false,
                 points: Vec::new(),

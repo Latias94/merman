@@ -16,7 +16,9 @@ pub(crate) use merman_core::diagrams::flowchart::{
 };
 use std::ops::Deref;
 
-pub(crate) use edge_occurrence::{FlowchartEdgeKey, FlowchartEdgeOwners};
+pub(crate) use edge_occurrence::{
+    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartRenderModelRef<'a> {
