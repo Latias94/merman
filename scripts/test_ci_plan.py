@@ -232,6 +232,8 @@ class PlannerTests(unittest.TestCase):
             "scripts/ci_plan.py",
             "scripts/new_unclassified_owner.py",
             "scripts/audit_plan.py.backup",
+            "scripts/build-python-uniffi-wheel.py.backup",
+            "scripts/release_projection.py.generated",
             "scripts/strict_json.py.generated",
             "scripts/test_publish.py.tmp",
             "crates/new-unclassified-crate/src/lib.rs",

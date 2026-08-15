@@ -135,6 +135,14 @@ _HYGIENE_SCRIPT_PREFIXES = (
     "scripts/verify_crate_",
     "scripts/verify-third-",
 )
+_NONCANONICAL_SCRIPT_SUFFIXES = (
+    ".backup",
+    ".bak",
+    ".generated",
+    ".orig",
+    ".tmp",
+    "~",
+)
 _STATUS_PATH_COUNTS = {
     "A": 1,
     "B": 1,
@@ -422,6 +430,8 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             False,
         )
     if path.startswith("scripts/"):
+        if path.endswith(_NONCANONICAL_SCRIPT_SUFFIXES):
+            return _ALL_OWNERS, f"noncanonical repository script changed: {path}", True
         if selected := _SCRIPT_EXACT_OWNER_RULES.get(path):
             return selected, f"owner script changed: {path}", False
         for prefix, selected in _SCRIPT_PREFIX_OWNER_RULES:
