@@ -233,6 +233,7 @@ pub(in crate::relation_graph) fn measure_pairwise_validation_work(
     let mut overlay_count = 0usize;
     let mut pair_work = 0usize;
     for (segments, overlays) in counts {
+        resources.checkpoint()?;
         pair_work = resources.checked_work_add(
             pair_work,
             resources.checked_work_mul(overlays, overlay_count)?,
@@ -280,13 +281,13 @@ fn validate_layered_route_geometries(
             LayeredRelationSummaryReason::RouteCollision,
         ));
     }
-    if routes
-        .iter()
-        .any(|route| !route.geometry.fits(scene.width(), scene.height()))
-    {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::RouteCollision,
-        ));
+    for route in routes {
+        resources.checkpoint()?;
+        if !route.geometry.fits(scene.width(), scene.height()) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        }
     }
     if scene.is_planar_k2_2() {
         for (index, route) in routes.iter().enumerate() {
@@ -335,21 +336,21 @@ fn validate_layered_route_batch(
             LayeredRelationSummaryReason::RouteCollision,
         ));
     }
-    if route_plans
-        .iter()
-        .any(|route_plan| !route_plan.route_fits(scene.width(), scene.height()))
-    {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::RouteCollision,
-        ));
+    for route_plan in route_plans {
+        resources.checkpoint()?;
+        if !route_plan.route_fits(scene.width(), scene.height()) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision,
+            ));
+        }
     }
-    if route_plans
-        .iter()
-        .any(|route_plan| !route_plan.overlays_fit(scene.width(), scene.height()))
-    {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::OverlayCollision,
-        ));
+    for route_plan in route_plans {
+        resources.checkpoint()?;
+        if !route_plan.overlays_fit(scene.width(), scene.height()) {
+            return Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::OverlayCollision,
+            ));
+        }
     }
     for (index, route_plan) in route_plans.iter().enumerate() {
         resources.checkpoint()?;
