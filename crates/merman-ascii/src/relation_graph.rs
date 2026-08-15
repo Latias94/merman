@@ -49,8 +49,7 @@ use self::layered::{
     PlacedRelationGraphBox, measure_pairwise_validation_work, parallel_relation_lane_offsets,
     plan_layered_relation_boxes, plan_layered_relation_component_result,
     plan_layered_relation_route, plan_layered_relation_scene, plan_layered_route_batch,
-    plan_layered_route_batch_with_probes, spanning_lane_offset_around_intermediate_boxes,
-    write_centered_relation_label,
+    spanning_lane_offset_around_intermediate_boxes, write_centered_relation_label,
 };
 use self::layered::{
     RelationGraphComponent, plan_layered_relation_component_ref_result, relation_components,

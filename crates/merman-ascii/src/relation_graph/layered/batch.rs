@@ -80,7 +80,7 @@ where
     };
 
     let (route_plans, extent) =
-        match plan_layered_route_batch_impl(&scene, relations, resources, adapter) {
+        match plan_layered_route_batch(&scene, relations, resources, adapter) {
             Ok(plan) => plan,
             Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
             Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
@@ -117,60 +117,11 @@ where
     )
 }
 
-#[cfg(test)]
 pub(in crate::relation_graph) fn plan_layered_route_batch<'text, R, A>(
     scene: &LayeredRelationScene<'_>,
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
-) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
-where
-    A: RelationComponentAdapter<'text, R>,
-{
-    plan_layered_route_batch_impl(scene, relations, resources, adapter)
-}
-
-fn plan_layered_route_batch_impl<'text, R, A>(
-    scene: &LayeredRelationScene<'_>,
-    relations: &[&R],
-    resources: &ResourceContext,
-    adapter: &A,
-) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
-where
-    A: RelationComponentAdapter<'text, R>,
-{
-    plan_layered_route_batch_with_probes_impl(scene, relations, resources, adapter, || {}, || {})
-}
-
-#[cfg(test)]
-pub(in crate::relation_graph) fn plan_layered_route_batch_with_probes<'text, R, A>(
-    scene: &LayeredRelationScene<'_>,
-    relations: &[&R],
-    resources: &ResourceContext,
-    adapter: &A,
-    before_geometry_collision_scan: impl FnOnce(),
-    before_materialized_collision_scan: impl FnOnce(),
-) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
-where
-    A: RelationComponentAdapter<'text, R>,
-{
-    plan_layered_route_batch_with_probes_impl(
-        scene,
-        relations,
-        resources,
-        adapter,
-        before_geometry_collision_scan,
-        before_materialized_collision_scan,
-    )
-}
-
-fn plan_layered_route_batch_with_probes_impl<'text, R, A>(
-    scene: &LayeredRelationScene<'_>,
-    relations: &[&R],
-    resources: &ResourceContext,
-    adapter: &A,
-    before_geometry_collision_scan: impl FnOnce(),
-    before_materialized_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -182,14 +133,7 @@ where
         >,
     > = resources.transaction(|resources| {
         match resources.transaction_preserving_layout_work(|resources| {
-            plan_layered_route_batch_in_transaction(
-                scene,
-                relations,
-                resources,
-                adapter,
-                before_geometry_collision_scan,
-                before_materialized_collision_scan,
-            )
+            plan_layered_route_batch_in_transaction(scene, relations, resources, adapter)
         }) {
             Ok(plan) => Ok(Ok(plan)),
             Err(LayeredRouteBatchError::Semantic(reason)) => Ok(Err(reason)),
@@ -209,8 +153,6 @@ fn plan_layered_route_batch_in_transaction<'text, R, A>(
     relations: &[&R],
     resources: &ResourceContext,
     adapter: &A,
-    before_geometry_collision_scan: impl FnOnce(),
-    before_materialized_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(Vec<LayeredRelationRoutePlan>, LogicalExtent), LayeredRouteBatchError>
 where
     A: RelationComponentAdapter<'text, R>,
@@ -249,12 +191,7 @@ where
         });
     }
 
-    validate_layered_route_geometries_with_probe(
-        scene,
-        &planned,
-        resources,
-        before_geometry_collision_scan,
-    )?;
+    validate_layered_route_geometries(scene, &planned, resources)?;
 
     let mut route_plans = Vec::new();
     route_plans
@@ -275,12 +212,7 @@ where
             overlays,
         )?);
     }
-    validate_layered_route_batch_with_probe(
-        scene,
-        &route_plans,
-        resources,
-        before_materialized_collision_scan,
-    )?;
+    validate_layered_route_batch(scene, &route_plans, resources)?;
     let extent = resources.grid_extent(scene.width(), scene.height())?;
     Ok((route_plans, extent))
 }
@@ -327,11 +259,10 @@ pub(in crate::relation_graph) fn measure_pairwise_validation_work(
     })
 }
 
-fn validate_layered_route_geometries_with_probe(
+fn validate_layered_route_geometries(
     scene: &LayeredRelationScene<'_>,
     routes: &[PlannedLayeredRoute],
     resources: &ResourceContext,
-    before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
     resources.charge_layout_work(routes.len().max(1))?;
     let measured = measure_pairwise_validation_work(
@@ -344,7 +275,6 @@ fn validate_layered_route_geometries_with_probe(
     let box_work =
         resources.checked_work_mul(measured.segment_count, scene.placed_box_count().max(1))?;
     resources.charge_layout_work(resources.checked_work_add(box_work, measured.pair_work)?)?;
-    before_collision_scan();
     if scene.is_planar_k2_2() && routes.len() != 4 {
         return Err(LayeredRouteBatchError::Semantic(
             LayeredRelationSummaryReason::RouteCollision,
@@ -382,11 +312,10 @@ fn validate_layered_route_geometries_with_probe(
     Ok(())
 }
 
-fn validate_layered_route_batch_with_probe(
+fn validate_layered_route_batch(
     scene: &LayeredRelationScene<'_>,
     route_plans: &[LayeredRelationRoutePlan],
     resources: &ResourceContext,
-    before_collision_scan: impl FnOnce(),
 ) -> std::result::Result<(), LayeredRouteBatchError> {
     resources.charge_layout_work(route_plans.len().max(1))?;
     let measured = measure_pairwise_validation_work(
@@ -401,7 +330,6 @@ fn validate_layered_route_batch_with_probe(
         scene.placed_box_count().max(1),
     )?;
     resources.charge_layout_work(resources.checked_work_add(box_work, measured.pair_work)?)?;
-    before_collision_scan();
     if scene.is_planar_k2_2() && route_plans.len() != 4 {
         return Err(LayeredRouteBatchError::Semantic(
             LayeredRelationSummaryReason::RouteCollision,

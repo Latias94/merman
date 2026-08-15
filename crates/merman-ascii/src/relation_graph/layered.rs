@@ -10,7 +10,6 @@ pub(super) use self::batch::plan_layered_relation_component_ref_result;
 pub(super) use self::batch::{
     LayeredRouteBatchError, PairwiseValidationWork, measure_pairwise_validation_work,
     plan_layered_relation_component_result, plan_layered_route_batch,
-    plan_layered_route_batch_with_probes,
 };
 pub(crate) use self::boxes::{
     LayeredRelationEdge, LayeredRelationError, RelationGraphComponent, relation_components,

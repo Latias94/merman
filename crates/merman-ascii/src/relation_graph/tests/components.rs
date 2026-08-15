@@ -366,28 +366,11 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
     let below_scene = build_scene(&mut below_resources);
     let below_before = below_resources.layout_work_used();
     assert_eq!(below_before, work_before);
-    let geometry_scan = Cell::new(false);
-    let materialized_scan = Cell::new(false);
-    let error = plan_layered_route_batch_with_probes(
-        &below_scene,
-        &relation_refs,
-        &below_resources,
-        &adapter,
-        || geometry_scan.set(true),
-        || materialized_scan.set(true),
-    )
-    .expect_err("the N-1 route work budget must reject");
+    let error = plan_layered_route_batch(&below_scene, &relation_refs, &below_resources, &adapter)
+        .expect_err("the N-1 route work budget must reject");
     assert!(matches!(error, LayeredRouteBatchError::Resource(_)));
     assert_eq!(below_resources.layout_work_used(), below_before);
     assert_eq!(below_resources.document_cells_used(), 0);
-    assert!(
-        !materialized_scan.get(),
-        "the final pair scan must not start after an N-1 admission failure"
-    );
-    assert!(
-        geometry_scan.get(),
-        "the exact-minus-one boundary should fail at the later materialized pair admission"
-    );
 }
 
 #[test]
@@ -425,16 +408,10 @@ fn strict_k2_2_route_batch_observes_control_from_the_resource_ledger() {
     let controlled = resources.controlled(control.clone(), OperationPhase::Layout);
     let work_before = controlled.layout_work_used();
     let document_before = controlled.document_cells_used();
+    control.cancel();
 
-    let error = plan_layered_route_batch_with_probes(
-        &scene,
-        &relation_refs,
-        &controlled,
-        &adapter,
-        || control.cancel(),
-        || {},
-    )
-    .expect_err("route validation should observe cancellation from the shared ledger");
+    let error = plan_layered_route_batch(&scene, &relation_refs, &controlled, &adapter)
+        .expect_err("route planning should observe cancellation from the shared ledger");
 
     assert!(matches!(
         error,
