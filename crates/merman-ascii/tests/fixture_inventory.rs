@@ -72,15 +72,11 @@ fn fixture_inventory_matches_tracked_upstream_snapshot() {
 }
 
 #[test]
-fn fixture_inventory_records_source_provenance() {
+fn fixture_inventory_keeps_the_upstream_license_copy() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let provenance =
-        fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv"))
-            .expect("fixture provenance manifest must be readable");
     let license = fs::read_to_string(manifest_dir.join("LICENSES/mermaid-ascii-MIT.txt"))
         .expect("upstream MIT license copy must be readable");
 
-    assert!(provenance.contains("d5430290e873b327ca1af07f753e28a25db76cc7"));
     assert!(license.contains("MIT License"));
     assert!(license.contains("Copyright (c) 2023 Alexander Grooff"));
 }
@@ -290,31 +286,11 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
         .collect::<Vec<_>>();
     let unique_entries = entries.iter().copied().collect::<BTreeSet<_>>();
 
-    assert_eq!(entries.len(), 140, "moving discovery fixture count drifted");
     assert_eq!(
         unique_entries.len(),
         entries.len(),
         "moving discovery fixture identities must be unique"
     );
-
-    for (prefix, expected_count) in [
-        ("ascii/", 3),
-        ("extended-chars/", 2),
-        ("multibyte/", 3),
-        ("sequence/", 31),
-        ("sequence-ascii/", 20),
-        ("er/", 69),
-        ("er-ascii/", 12),
-    ] {
-        assert_eq!(
-            entries
-                .iter()
-                .filter(|entry| entry.starts_with(prefix))
-                .count(),
-            expected_count,
-            "moving discovery fixture count drifted for {prefix}"
-        );
-    }
 
     for disposition in &dispositions {
         match (

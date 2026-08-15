@@ -64,9 +64,10 @@ not substitutes for that evidence.
 | Phase 2: Class, ER, State, XYChart | Complete at Partial | Class/ER imported fixtures prove admission, while shared relation-component probes, State model tests, and XYChart typed-coordinate tests own the retained semantic boundary and explicit fallbacks. | A new family may reuse mechanisms such as relation planning or plot cells, but must keep family semantics in its own adapter. |
 | Phase 3: existing-family truth | Complete | Runtime capabilities classify six families as Diagrammatic and eight as StructuredText. The support matrix records the retained fields and limits for all 14 available outputs. | StructuredText remains useful output but contributes zero to the ASCII diagram count and cannot satisfy a new-family admission. |
 
-The moving-reference lane contains 140 uniquely identified paths with validity, admission, semantic
-feature, and evidence dispositions. The copied oracle remains immutable. The complete comparison
-policy and exact counts live in `crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md` and
+The moving-reference lane records each uniquely identified path with validity, admission, semantic
+feature, and evidence dispositions. The TSV authority owns the row set and derived counts. The
+copied oracle remains immutable. The complete comparison policy and exact copied-oracle counts live
+in `crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md` and
 `crates/merman-ascii/V1_MERMAID_ASCII_COVERAGE.md`.
 
 ## Existing StructuredText Dispositions
