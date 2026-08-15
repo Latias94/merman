@@ -6,6 +6,9 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::model::C4DiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use std::sync::Arc;
@@ -24,6 +27,24 @@ fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment)
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+fn try_render_c4_svg_with_resource_policy(
+    source: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse C4 resource-bound fixture")
+        .expect("detect C4 resource-bound fixture");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .expect("begin C4 resource-bound session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+    let rendered =
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
 }
 
 fn layout_c4_with_options(source: &str, options: &LayoutOptions) -> C4DiagramLayout {
@@ -73,6 +94,52 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
         input.push_str("}\n");
     }
     input
+}
+
+#[test]
+fn c4_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
+    let source = r#"C4Context
+Person(user, "User")
+System_Boundary(system, "Bounded system") {
+  Container(api, "API", "Rust")
+  ContainerDb(database, "Database", "PostgreSQL")
+}
+Rel(user, api, "Calls", "HTTPS")
+Rel(api, database, "Reads", "SQL")
+"#;
+    let baseline = try_render_c4_svg_with_resource_policy(
+        source,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("render the unbounded C4 baseline");
+    let exact_bytes = baseline.len();
+    assert!(exact_bytes > 1, "C4 fixture must emit a non-empty SVG");
+
+    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+        .expect("valid exact C4 SVG byte ceiling");
+    let exact = try_render_c4_svg_with_resource_policy(source, exact_policy)
+        .expect("the exact C4 family SVG byte ceiling must succeed");
+    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+
+    let below_exact = exact_bytes - 1;
+    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+        .expect("valid below-exact C4 SVG byte ceiling");
+    let error = try_render_c4_svg_with_resource_policy(source, below_policy)
+        .expect_err("one byte below the C4 family SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected C4 MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.max, below_exact);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == below_exact
+    }));
 }
 
 #[test]

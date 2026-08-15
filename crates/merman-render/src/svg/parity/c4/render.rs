@@ -114,10 +114,15 @@ fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintI
     Ok(order)
 }
 
-fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn write_c4_css(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> Result<()> {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let mut out = parts.css_prefix;
+    out.push_str(&parts.css_prefix);
+    out.checkpoint()?;
     let person_border = theme_token(
         effective_config,
         "personBorder",
@@ -125,12 +130,13 @@ fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     );
     let person_bkg = theme_token(effective_config, "personBkg", "#ECECFF");
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .person{{stroke:{};fill:{};}}"#,
         id, person_border, person_bkg
     );
+    out.checkpoint()?;
     out.push_str(&parts.root_rule);
-    out
+    out.checkpoint()
 }
 
 struct C4TspanText<'a> {
@@ -144,7 +150,7 @@ struct C4TspanText<'a> {
     attrs: &'a [(&'a str, &'a str)],
 }
 
-fn c4_write_text_by_tspan(out: &mut String, text: C4TspanText<'_>) {
+fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Result<()> {
     let C4TspanText {
         content,
         x,
@@ -182,8 +188,10 @@ fn c4_write_text_by_tspan(out: &mut String, text: C4TspanText<'_>) {
             fmt(x),
             fmt(y)
         );
+        out.checkpoint()?;
         for (k, v) in attrs {
             let _ = write!(out, r#" {k}="{v}""#);
+            out.checkpoint()?;
         }
         let _ = write!(
             out,
@@ -192,7 +200,61 @@ fn c4_write_text_by_tspan(out: &mut String, text: C4TspanText<'_>) {
             dy_s,
             escape_xml(line)
         );
+        out.checkpoint()?;
     }
+
+    Ok(())
+}
+
+fn write_c4_base_defs(out: &mut impl SvgOutput, diagram_id: &str) -> Result<()> {
+    const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
+
+    let _ = write!(
+        out,
+        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "computer"))
+    );
+    out.checkpoint()?;
+    let _ = write!(
+        out,
+        r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "database")),
+        escape_attr(PINNED_C4_DATABASE_SYMBOL_D.trim())
+    );
+    out.checkpoint()?;
+    let _ = write!(
+        out,
+        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "clock"))
+    );
+    out.checkpoint()
+}
+
+fn write_c4_relation_defs(out: &mut impl SvgOutput, diagram_id: &str) -> Result<()> {
+    let _ = write!(
+        out,
+        r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "arrowhead"))
+    );
+    out.checkpoint()?;
+    let _ = write!(
+        out,
+        r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "arrowend"))
+    );
+    out.checkpoint()?;
+    let _ = write!(
+        out,
+        r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
+        escape_attr(&scoped_svg_id(diagram_id, "crosshead"))
+    );
+    out.checkpoint()?;
+    let _ = write!(
+        out,
+        r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "filled-head"))
+    );
+    out.checkpoint()
 }
 
 pub(crate) fn render_c4_diagram_svg_typed(
@@ -248,7 +310,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         .filter(|s| !s.is_empty())
         .map(|_| format!("chart-title-{diagram_id}"));
 
-    let mut out = String::new();
+    let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         viewbox_x,
         viewbox_y,
@@ -276,6 +338,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             id = diagram_id_esc,
             text = escape_xml(title)
         );
+        out.checkpoint()?;
     }
     if let Some(descr) = model
         .acc_descr
@@ -289,30 +352,17 @@ pub(crate) fn render_c4_diagram_svg_typed(
             id = diagram_id_esc,
             text = escape_xml(descr)
         );
+        out.checkpoint()?;
     }
 
-    let css = c4_css(diagram_id, effective_config);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str("<style>");
+    out.checkpoint()?;
+    write_c4_css(&mut out, diagram_id, effective_config)?;
+    out.push_str("</style>");
+    out.checkpoint()?;
     out.push_str("<g/>");
-
-    const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
-
-    let _ = write!(
-        &mut out,
-        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "computer"))
-    );
-    let _ = write!(
-        &mut out,
-        r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "database")),
-        escape_attr(PINNED_C4_DATABASE_SYMBOL_D.trim())
-    );
-    let _ = write!(
-        &mut out,
-        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
-        escape_attr(&scoped_svg_id(diagram_id, "clock"))
-    );
+    out.checkpoint()?;
+    write_c4_base_defs(&mut out, diagram_id)?;
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
         std::collections::HashMap::new();
@@ -361,6 +411,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let shape_font = c4_cfg.shape_font(&s.type_c4_shape);
 
                 out.push_str(r#"<g class="person-man">"#);
+                out.checkpoint()?;
 
                 match s.type_c4_shape.as_str() {
                     "system_db"
@@ -401,12 +452,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             escape_attr(&border_color),
                             escape_attr(&d1)
                         );
+                        out.checkpoint()?;
                         let _ = write!(
                             &mut out,
                             r#"<path fill="none" stroke-width="0.5" stroke="{}" d="{}"/>"#,
                             escape_attr(&border_color),
                             escape_attr(&d2)
                         );
+                        out.checkpoint()?;
                     }
                     "system_queue"
                     | "external_system_queue"
@@ -447,12 +500,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             escape_attr(&border_color),
                             escape_attr(&d1)
                         );
+                        out.checkpoint()?;
                         let _ = write!(
                             &mut out,
                             r#"<path fill="none" stroke-width="0.5" stroke="{}" d="{}"/>"#,
                             escape_attr(&border_color),
                             escape_attr(&d2)
                         );
+                        out.checkpoint()?;
                     }
                     _ => {
                         let _ = write!(
@@ -465,6 +520,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             fmt(s.width),
                             fmt(s.height)
                         );
+                        out.checkpoint()?;
                     }
                 }
 
@@ -487,6 +543,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     fmt(s.y + s.type_block.y),
                     escape_xml(&format!("<<{}>>", s.type_c4_shape))
                 );
+                out.checkpoint()?;
 
                 if matches!(s.type_c4_shape.as_str(), "person" | "external_person") {
                     let href = if s.type_c4_shape == "external_person" {
@@ -501,6 +558,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         fmt(s.y + s.image.y),
                         escape_attr(href)
                     );
+                    out.checkpoint()?;
                 }
 
                 let label_family = shape_font
@@ -521,7 +579,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         font_weight: label_weight,
                         attrs: &[("fill", &font_color)],
                     },
-                );
+                )?;
 
                 let body_family = shape_font
                     .font_family
@@ -544,7 +602,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                                 font_weight: body_weight,
                                 attrs: &[("fill", &font_color), ("font-style", "italic")],
                             },
-                        );
+                        )?;
                     }
                 } else if let Some(ty) = &s.ty
                     && !ty.text.trim().is_empty()
@@ -561,7 +619,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_weight: body_weight,
                             attrs: &[("fill", &font_color), ("font-style", "italic")],
                         },
-                    );
+                    )?;
                 }
 
                 if let Some(descr) = &s.descr
@@ -586,10 +644,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_weight: descr_weight,
                             attrs: &[("fill", &font_color)],
                         },
-                    );
+                    )?;
                 }
 
                 out.push_str("</g>");
+                out.checkpoint()?;
             }
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];
@@ -603,6 +662,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
 
                 out.push_str("<g>");
+                out.checkpoint()?;
                 if is_node_type {
                     let _ = write!(
                         &mut out,
@@ -626,6 +686,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         fmt(b.height)
                     );
                 }
+                out.checkpoint()?;
 
                 let boundary_font = c4_cfg.boundary_font();
                 let boundary_family = boundary_font
@@ -646,7 +707,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         font_weight: boundary_weight,
                         attrs: &[("fill", "#444444")],
                     },
-                );
+                )?;
                 if let Some(ty) = &b.ty
                     && !ty.text.trim().is_empty()
                 {
@@ -665,7 +726,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_weight: boundary_type_weight,
                             attrs: &[("fill", "#444444")],
                         },
-                    );
+                    )?;
                 }
                 if let Some(descr) = &b.descr
                     && !descr.text.trim().is_empty()
@@ -684,42 +745,21 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_weight: descr_weight,
                             attrs: &[("fill", "#444444")],
                         },
-                    );
+                    )?;
                 }
 
                 out.push_str("</g>");
+                out.checkpoint()?;
             }
         }
     }
 
-    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
-    let arrowend_id = scoped_svg_id(diagram_id, "arrowend");
-    let crosshead_id = scoped_svg_id(diagram_id, "crosshead");
-    let filled_head_id = scoped_svg_id(diagram_id, "filled-head");
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
     let arrowend_url = scoped_svg_url(diagram_id, "arrowend");
-    let _ = write!(
-        &mut out,
-        r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
-        escape_attr(&arrowhead_id)
-    );
-    let _ = write!(
-        &mut out,
-        r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
-        escape_attr(&arrowend_id)
-    );
-    let _ = write!(
-        &mut out,
-        r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
-        escape_attr(&crosshead_id)
-    );
-    let _ = write!(
-        &mut out,
-        r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
-        escape_attr(&filled_head_id)
-    );
+    write_c4_relation_defs(&mut out, diagram_id)?;
 
     out.push_str("<g>");
+    out.checkpoint()?;
     for (idx, rel) in layout.rels.iter().enumerate() {
         let meta = rel_meta.get(&(rel.from.as_str(), rel.to.as_str())).copied();
         let text_color = meta
@@ -741,8 +781,10 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 fmt(rel.end_point.y),
                 escape_attr(&stroke_color)
             );
+            out.checkpoint()?;
             if rel.rel_type != "rel_b" {
                 let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
+                out.checkpoint()?;
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
@@ -750,8 +792,10 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     r#" marker-start="{}""#,
                     escape_attr(&arrowend_url)
                 );
+                out.checkpoint()?;
             }
             out.push_str(r#" style="fill: none;"/>"#);
+            out.checkpoint()?;
         } else {
             let cx = rel.start_point.x + (rel.end_point.x - rel.start_point.x) / 2.0
                 - (rel.end_point.x - rel.start_point.x) / 4.0;
@@ -771,8 +815,10 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 escape_attr(&stroke_color),
                 escape_attr(&d)
             );
+            out.checkpoint()?;
             if rel.rel_type != "rel_b" {
                 let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
+                out.checkpoint()?;
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
@@ -780,8 +826,10 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     r#" marker-start="{}""#,
                     escape_attr(&arrowend_url)
                 );
+                out.checkpoint()?;
             }
             out.push_str("/>");
+            out.checkpoint()?;
         }
 
         let midx = rel.start_point.x.min(rel.end_point.x)
@@ -810,7 +858,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 font_weight: message_weight,
                 attrs: &[("fill", &text_color)],
             },
-        );
+        )?;
 
         if let Some(techn) = &rel.techn
             && !techn.text.trim().is_empty()
@@ -828,10 +876,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     font_weight: message_weight,
                     attrs: &[("fill", &text_color), ("font-style", "italic")],
                 },
-            );
+            )?;
         }
     }
     out.push_str("</g>");
+    out.checkpoint()?;
 
     if let Some(title) = title {
         let title_x = (width - 2.0 * diagram_margin_x) / 2.0 - 4.0 * diagram_margin_x;
@@ -843,20 +892,110 @@ pub(crate) fn render_c4_diagram_svg_typed(
             fmt(title_y),
             escape_xml(&title)
         );
+        out.checkpoint()?;
     }
 
     out.push_str("</svg>");
-    root_document.complete(out)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::fmt;
+    use std::ops::Range;
+
+    #[derive(Default)]
+    struct RejectAfterFirstWrite {
+        write_attempts: usize,
+        rejected: bool,
+        retained: String,
+    }
+
+    impl RejectAfterFirstWrite {
+        fn record_write(&mut self, value: &str) -> fmt::Result {
+            self.write_attempts += 1;
+            if self.write_attempts == 1 {
+                self.rejected = true;
+                return Err(fmt::Error);
+            }
+            self.retained.push_str(value);
+            Ok(())
+        }
+    }
+
+    impl fmt::Write for RejectAfterFirstWrite {
+        fn write_str(&mut self, value: &str) -> fmt::Result {
+            self.record_write(value)
+        }
+    }
+
+    impl SvgOutput for RejectAfterFirstWrite {
+        fn push_str(&mut self, value: &str) {
+            let _ = self.record_write(value);
+        }
+
+        fn push(&mut self, value: char) {
+            let mut encoded = [0u8; 4];
+            let _ = self.record_write(value.encode_utf8(&mut encoded));
+        }
+
+        fn len(&self) -> usize {
+            self.retained.len()
+        }
+
+        fn as_str(&self) -> &str {
+            self.retained.as_str()
+        }
+
+        fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()> {
+            self.retained.replace_range(range, replacement);
+            Ok(())
+        }
+
+        fn checkpoint(&mut self) -> crate::Result<()> {
+            if self.rejected {
+                Err(crate::Error::InvalidModel {
+                    message: "test SVG sink rejected the first write".to_string(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn c4_text_lines_stop_after_the_first_svg_sink_failure() {
+        let mut out = RejectAfterFirstWrite::default();
+
+        let error = c4_write_text_by_tspan(
+            &mut out,
+            C4TspanText {
+                content: "first<br>second<br>third",
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                font_family: "sans-serif",
+                font_size: 16.0,
+                font_weight: "normal",
+                attrs: &[("fill", "#444444")],
+            },
+        )
+        .expect_err("the rejecting sink must stop C4 text emission");
+
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "C4 text emission must stop at the first failed sink checkpoint"
+        );
+    }
 
     #[test]
     fn c4_css_honors_mermaid_11_16_person_and_common_theme_options() {
-        let css = c4_css(
+        let mut css = String::new();
+        write_c4_css(
+            &mut css,
             "c4",
             &json!({
                 "themeVariables": {
@@ -867,7 +1006,8 @@ mod tests {
                     "strokeWidth": 2
                 }
             }),
-        );
+        )
+        .expect("write C4 CSS");
 
         assert!(css.contains("#c4{"));
         assert!(css.contains("fill:#778899;"));
