@@ -1,6 +1,6 @@
 # Diagram Theme Coverage
 
-This ledger tracks how the alpha.4 experimental `DiagramTheme` pipeline reaches supported SVG
+This ledger tracks how the alpha.5 experimental `DiagramTheme` pipeline reaches supported SVG
 families. It distinguishes direct typed consumption from the temporary Mermaid compatibility
 bridge. A bridge mapping is useful rendering coverage, but it is not evidence that the typed
 mechanism was applied by the family and must not be counted as portable output proof.
@@ -18,8 +18,8 @@ theme-to-family path and its visible residuals.
 | Diagram family | Current theme path | Evidence status | Residual / follow-up |
 | --- | --- | --- | --- |
 | State | Direct crate-private `ResolvedDiagramTheme` consumption in `state/style_plan.rs` and `state/label_artifact.rs`, including semantic targets, ordinal resolution, typography, and source-style provenance | Typed family adapter | The representative State output is one part of C6; it does not prove the complete Flowchart/State/Sequence by SVG/PNG/PDF matrix. |
-| Flowchart and Swimlane | A family-local program is prepared with the render operation; label artifacts consume typed theme data, while remaining Mermaid/CSS surfaces still receive a family-scoped compatibility overlay | Partial typed adapter plus legacy compatibility | Complete geometry, source-style, canvas/effect, and SVG/PNG/PDF evidence remains open before C6 can close. |
-| Sequence | Static default Actor fill (solid/transparent) is consumed directly by the Sequence CSS writer from the family-local typed program; signal, note, activation, loop, message, typography, and label surfaces still use the family-scoped compatibility bridge | Partial typed adapter plus legacy compatibility | The Actor slice has SVG evidence and strict portability coverage, but the remaining Sequence routes and the representative C6 matrix are still open. |
+| Flowchart and Swimlane | A family-local program is prepared with the render operation. Node and Edge paint, selected Node geometry, NodeLabel/EdgeLabel font stack and size, and Node ordinal palettes have narrow direct consumers; remaining Mermaid/CSS surfaces still receive a family-scoped compatibility overlay. | Partial typed adapter plus legacy compatibility | HTML/Markdown edge labels, base typography, remaining geometry and surfaces, canvas/effects, and the SVG/PNG/PDF cell matrix remain open before C6 can close. |
+| Sequence | Static unqualified Actor and Note fill/stroke (solid/transparent) are consumed directly by the Sequence CSS/shape writers and reconciled from terminal emission receipts. Signal, activation, loop, message, typography, label, variant, ordinal, and non-scalar paint routes remain compatibility-only or unsupported. | Partial typed adapter plus legacy compatibility | Actor/Note cutover routes have private SVG/PNG authorization witnesses and strict portability coverage; they do not count as C6 cells, and the representative Sequence matrix remains open. |
 | Class and Block | Node-family semantic targets are projected through `LegacyFamilyThemeBridge`; renderers continue to consume final Mermaid variables and CSS | Legacy compatibility | Source/property provenance and family-owned typed emission are not yet complete. |
 | Mindmap, Tree View, and GitGraph | Node/palette targets are projected through the family-local compatibility bridge, then consumed through final resolved Mermaid variables | Legacy compatibility | Palette projection is not direct ordinal-palette evidence at the SVG consumer. |
 | Gantt and Kanban | Task, status, text, line, and palette targets are projected through the task-family bridge | Legacy compatibility | Family-local fixed colors and status details still require typed classification. |
@@ -48,6 +48,13 @@ capabilities and text-layout capabilities. Later stages own different facts:
 These stages are monotonic: a later stage may preserve or weaken earlier evidence, but an
 unevaluated family or output cannot be upgraded to portable. C6 is not yet proven because the
 representative Flowchart/State/Sequence by SVG/PNG/PDF positive-output matrix is incomplete.
+
+The current private cutover manifest contains 20 route-level authorization witnesses: six
+Flowchart, six Swimlane, four Sequence Actor, and four Sequence Note routes. These witnesses prove
+only that the named bridge projections may be retired; they do not increase C6a's 18-cell or C6b's
+45-cell completion counts. The current matrix remains C6a `2/18` (Standalone SVG and PNG for
+Brutalist State) and C6b `4/45` (the same render group plus JPEG and PDF); Browser SVG remains
+deferred.
 
 ## Gates
 

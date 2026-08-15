@@ -1,6 +1,7 @@
 # Diagram Themes and SVG Output
 
-Alpha.4 exposes an **experimental** typed diagram-theme surface. A theme recipe is compiled from
+The unreleased branch after alpha.5 exposes an **experimental** typed diagram-theme surface. A
+theme recipe is compiled from
 `DiagramThemeSpec` (or one of the first-party `ThemePreset` values) into an immutable
 `DiagramTheme`, then attached to the operation `RenderRequest`. This surface is not a
 completed cross-target compatibility promise: compilation reports required capabilities, while
@@ -56,8 +57,8 @@ let RenderOutput::Svg(Some(svg)) = output else {
 `look: neo`, an ELK renderer, an SVG pipeline, or a product behavior profile. The preset's
 Mermaid compatibility values are limited to the explicit compatibility lane owned by the theme.
 
-For a design-system token record, use `ThemeTokens` as a small Rust-side adapter and convert it to
-a complete spec before compiling:
+`ThemeTokens` is the current Rust-only alpha convenience adapter. It converts to a complete spec
+before compiling:
 
 ```rust
 use merman::svg::{DiagramThemeCompiler, ThemeTokens};
@@ -77,6 +78,13 @@ let theme = DiagramThemeCompiler::new().compile(spec)?;
 #     merman::SvgRequest::default(),
 # ).with_theme(theme);
 ```
+
+Do not persist this alpha `ThemeTokens` shape or mirror it into a binding contract. It still
+contains family-specific fields and will be replaced rather than kept beside the proposed
+cross-family authoring facade in [ADR 0082](../adr/0082-versioned-theme-authoring-facade.md).
+`ThemeDefinitionV1`, `ThemeMaterializer`, materialization diagnostics, and target inspection are
+design work in that Proposed ADR; they are not implemented APIs yet. Render-time bindings remain
+deliberately limited to either a preset reference or a complete `theme.spec`.
 
 `DiagramThemeSpec` can also be assembled directly. Its typed sections are Mermaid compatibility,
 typography, semantic rules and ordinal palettes, canvas, effects, resource assets, and declared
@@ -160,6 +168,12 @@ unknown fields and unsupported enum values. `theme.spec.mermaid` accepts only th
 compatibility values (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`,
 `redux-dark`, `redux-color`, or `redux-dark-color`) plus scalar string, number, and boolean
 variables; renderer selection, `look`, layout, raw CSS, and output policy stay outside this section.
+
+Typed effect graphs describe only the effect identity and ordered primitives. They do not accept an
+authored filter region: the family adapter derives the terminal region from the actual painted
+geometry, then applies the effective session resource ceiling before emission. This keeps recipe
+identity independent of node size while preventing a stale or undersized authored box from
+clipping the output.
 
 ```json
 {

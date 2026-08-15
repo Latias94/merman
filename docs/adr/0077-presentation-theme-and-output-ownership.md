@@ -9,7 +9,7 @@
 > removed `HostTheme`, `PresentationProfile::MermanModern`, `presentation.*`, and the associated
 > profile/aspect discovery surface. The current experimental path is
 > `DiagramThemeSpec`/`ThemePreset` -> `DiagramThemeCompiler` -> `DiagramTheme` ->
-> `HeadlessRenderer::with_theme`, with official Mermaid configuration, layout, runtime policy, and
+> `RenderRequest::with_theme`, with official Mermaid configuration, layout, runtime policy, and
 > SVG output kept in their existing independent owners. Options JSON uses top-level `theme` with
 > exactly one `preset` or complete `spec`. No mixed product-profile compatibility alias remains,
 > and the C6 cross-family SVG/PNG/PDF portability matrix is not yet proven.

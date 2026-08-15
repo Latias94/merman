@@ -275,8 +275,8 @@ override.
 
 ## Diagram Theme
 
-Alpha.4's top-level `theme` field is an experimental closed selection for one complete compiled
-diagram theme. It must be `null` or an object containing exactly one of `preset` and `spec`.
+The unreleased top-level `theme` field is an experimental closed selection for one complete
+compiled diagram theme. It must be `null` or an object containing exactly one of `preset` and `spec`.
 `{}`, both members, and a null `preset`/`spec` payload are rejected. A successful compilation
 validates the bounded recipe and reports its requirements; it is not proof of the unfinished
 cross-family, cross-target portability matrix.
@@ -297,6 +297,31 @@ profile.
 | `effects` | Tagged bounded filter graphs and semantic bindings. |
 | `requirements` | Required theme and text-layout capability IDs. |
 | `assets` | Embedded font catalog, aliases, generic-family mappings, sources, and embedding requirements. |
+
+An effect graph contains only its recipe-local `id` and ordered `primitives`; a semantic binding selects
+the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
+safe region from final paint geometry and admits it against the effective session resource policy.
+Because the schema is closed, the removed `region` member is rejected rather than ignored.
+
+```json
+{
+  "effects": [
+    {
+      "kind": "graph",
+      "id": "state-shadow",
+      "primitives": [{
+        "kind": "drop-shadow",
+        "offset_x": 5,
+        "offset_y": 6,
+        "blur_radius": 0,
+        "spread": 0,
+        "color": "#111827"
+      }]
+    },
+    { "kind": "binding", "target": "state", "effect_id": "state-shadow" }
+  ]
+}
+```
 
 The binding schema rejects unknown nested fields. Mermaid compatibility variables accept only
 strings, finite numbers, or booleans. Raw `themeCSS`, `look`, renderer choice, layout, and SVG

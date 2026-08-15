@@ -11,11 +11,14 @@ generated bindings together.
 | Alpha.5 or development-snapshot API | Unreleased replacement |
 | --- | --- |
 | Options JSON schema `2` with `presentation`, `raster.background`, `pdf.background`, or general-binding raw CSS | Options JSON schema `3`; use top-level typed `theme`, `raster.matte`, and `pdf.page_paint`. Trusted Rust/native CLI hosts keep explicit postprocessing/CSS escape hatches outside the general binding contract. Regenerate SDK projections and deploy them with a runtime catalog that advertises schema `3`; schema `2` is rejected rather than partially translated. |
+| Development-snapshot public `FilterRegion`, `EffectGraph::region()`, `EffectGraph::new(id, region, primitives)`, or `theme.spec.effects[].region` | `FilterRegion` and `EffectGraph::region()` are removed. Use `EffectGraph::new(id, primitives)` and omit `region` from binding JSON. The consuming family derives each terminal filter region from final paint geometry and admits it against the effective session theme-resource policy. The closed schema rejects the removed field; there is no compatibility decoder. Filter-region magnitude rejections now report phase `effect_materialize` instead of the former compile-time `effect_compile`, because the final geometry is not known until family materialization. |
+| `RenderEnvironment::begin_session*` returning only `RuntimePolicyError`, or an in-context overload returning `RenderSession` directly | Every session constructor now returns `Result<RenderSession, RenderEnvironmentError>`. Handle runtime-policy failures, cooperative cancellation/deadline expiry, and retained theme-resource rejection; in-context callers must propagate or classify the new error instead of assuming session creation is infallible. Caller-owned cancellation is checked before retained-resource validation and again before text-layout preparation. |
 | `HeadlessRenderer`, `HeadlessAsciiRenderer`, root `render_svg*` functions, or CPU-bound render `async fn` wrappers | `Renderer` with one typed `RenderRequest` / `RenderTarget`; retain an `OperationControl` clone when the host must cancel stale synchronous work |
 | `PreparedSemantic`, public SVG `PreparedRender`, or SVG-owned `HeadlessOperation` | Format-neutral `SemanticArtifact`, consumed once by a typed SVG, ASCII, layout, or export target |
 | `ParseControl`, `ParseCancelled`, or `ParseControlResult` | `OperationControl`, `OperationCancelled`, and `OperationControlResult`; analysis may keep its domain token but it shares the same operation state |
 | Direct UniFFI binding API `3` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `4`, replace `binding_api_version` / `bindingApiVersion` with `transport_api_version` / `transportApiVersion`, rename generic requests to `MermanOperationRequestV4`, and deploy the generated projection and native library together; API 4 lint rule records require `tags` and generic requests may carry `MermanOperationControl` |
 | Web transport API `3` one-shot options | Web transport API `4`; use top-level `timeout_ms` for a cooperative monotonic deadline, ignore stale results after return, and use a Worker or process boundary when hard termination is required |
+| Web `DiagramFamilyCapability.metadata_id: DiagramType | null` | Treat `metadata_id` as the open `DiagramMetadataId` string domain. Call `tryAsKnownDiagramType()` before passing an ID to a current-package execution API; additive future IDs remain discoverable in the catalog while `supportedDiagrams()` continues to return only executable `DiagramType` values. |
 | Analysis facts schema `1` with Flowchart-only graph facts and the former semantic-role set | Analysis facts schema `2` with generic parser/editor facts and the explicit `entity`, `class_definition`, `reference`, `outline`, and `payload` roles; update exhaustive role handling, while diagnostics remain schema `1` |
 | `FenceCursorCompletionKind`, `FenceCursorContext`, or `CompletionContext` | `completion_for_snapshot` over parser-backed typed facts |
 | Adapter-owned completion trigger lists | `COMPLETION_TRIGGER_CHARACTERS` |
@@ -70,6 +73,18 @@ inside `SvgRequest` or `AsciiRequest`, while runtime policy, input admission, ca
 monotonic deadline belong to the renderer/request operation. Resource exhaustion and cancellation
 remain distinct errors and neither returns partial output.
 
+Development snapshots briefly exposed renderer-internal theme proof ledgers through types such as
+`RootThemeMechanismKey`, `RootThemeMechanismEvidence`, `RootThemeResidual`, `RootThemeReport`, and
+`FamilyRenderReport`, and exposed them through output accessors such as `family_report()`. Those
+fine-grained types and accessors are no longer public. Read the completed target's `evidence()` and
+use `RenderEvidence::theme_evidence()` for the alpha coarse `ThemeEvidenceSummary`; mechanism
+keys, selector identities, residual entries, and family-local receipts intentionally have no public
+replacement.
+
+`RenderEvidence::execution_path()` was also removed. `Renderer` is now the canonical execution
+owner, so callers should use `family_id()`, `operation_context()`, measurement provenance, and the
+coarse theme evidence rather than branching on an internal path taxonomy.
+
 ```rust
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
@@ -94,3 +109,8 @@ host_control.cancel();
 Cancellation is cooperative. Merman checks the same control through parse, semantic projection,
 layout adapters, ASCII/SVG emission, postprocessing, and export boundaries. An opaque host callback
 or third-party encoder may finish its current call before the next checkpoint.
+
+Duplicate raw Flowchart edge IDs are occurrence-safe in the default Dagre renderer. The alpha ELK
+and Swimlane adapters currently reject those inputs rather than aliasing geometry, styles, labels,
+or marker evidence across occurrences. Treat that rejection as an explicit prerelease limitation,
+not as a stable Mermaid compatibility contract.
