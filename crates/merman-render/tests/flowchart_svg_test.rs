@@ -8,7 +8,7 @@ use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, Specified,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
-    ThemeTarget,
+    ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
@@ -86,17 +86,27 @@ fn edge_label_padding_theme(padding: InsetsPx) -> DiagramTheme {
 }
 
 fn edge_stroke_width_theme(width: f32) -> DiagramTheme {
+    edge_stroke_width_theme_rule(width, false)
+}
+
+fn explicit_default_edge_stroke_width_theme(width: f32) -> DiagramTheme {
+    edge_stroke_width_theme_rule(width, true)
+}
+
+fn edge_stroke_width_theme_rule(width: f32, explicit_default: bool) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default()
+            .with_stroke_width(width)
+            .expect("valid edge stroke width"),
+    );
+    let rule = if explicit_default {
+        rule.with_variant(ThemeVariant::Default)
+    } else {
+        rule
+    };
     DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(ThemeRule::new(
-                    ThemeTarget::Edge,
-                    ThemeStylePatch::default()
-                        .with_stroke_width(width)
-                        .expect("valid edge stroke width"),
-                )),
-            ),
-        )
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
         .expect("compile edge stroke-width theme")
 }
 
@@ -1628,16 +1638,29 @@ flowchart TB
 
 #[test]
 fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths() {
-    let theme = edge_stroke_width_theme(2.5);
-    for (case, source) in [
-        ("Flowchart classic", "flowchart LR\nA --> B\n"),
+    let unqualified_theme = edge_stroke_width_theme(2.5);
+    let default_theme = explicit_default_edge_stroke_width_theme(3.25);
+    for (case, source, theme, expected_width) in [
         (
-            "Flowchart Neo",
-            "%%{init: {\"look\": \"neo\"}}%%\nflowchart LR\nA --> B\n",
+            "Flowchart classic unqualified",
+            "flowchart LR\nA --> B\n",
+            &unqualified_theme,
+            2.5,
         ),
-        ("Swimlane classic", "swimlane-beta LR\nA --> B\n"),
+        (
+            "Flowchart Neo explicit Default",
+            "%%{init: {\"look\": \"neo\"}}%%\nflowchart LR\nA --> B\n",
+            &default_theme,
+            3.25,
+        ),
+        (
+            "Swimlane classic explicit Default",
+            "swimlane-beta LR\nA --> B\n",
+            &default_theme,
+            3.25,
+        ),
     ] {
-        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+        let rendered = prepare_flowchart_family_with_theme(source, theme)
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap_or_else(|error| panic!("render {case} typed edge stroke width: {error}"));
         let document = roxmltree::Document::parse(rendered.svg())
@@ -1650,7 +1673,7 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths(
             .attribute("style")
             .unwrap_or_else(|| panic!("{case} terminal edge style"));
         assert!(
-            style.contains("stroke-width:2.5px !important"),
+            style.contains(&format!("stroke-width:{expected_width}px !important")),
             "{case}: {style}"
         );
 

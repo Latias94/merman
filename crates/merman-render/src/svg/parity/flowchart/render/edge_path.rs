@@ -250,7 +250,6 @@ impl FlowchartEdgeSvgEmission<'_> {
             work_meter.check_svg_append(usize::MAX, 1)?;
             unreachable!("overflowing Flowchart edge contribution must be rejected")
         };
-        let serialized_bytes = self.serialized_bytes(projected_contribution, work_meter)?;
         let neo_mask_work = self
             .neo_edge_mask
             .map_or(0, FlowchartNeoEdgeMaskPlan::work_units);
@@ -262,10 +261,12 @@ impl FlowchartEdgeSvgEmission<'_> {
                 )
             })?;
 
+        work_meter.preflight(edge_work)?;
+        let serialized_bytes = self.serialized_bytes(projected_contribution, work_meter)?;
+
         // This is the only whole-edge boundary. Every byte from `<path` through `/>` is counted
         // against the current document before any part of the edge reaches the output buffer.
         work_meter.check_svg_append(out.len(), serialized_bytes)?;
-        work_meter.preflight(edge_work)?;
         work_meter.charge_svg_bytes(projected_contribution)?;
         work_meter.charge(edge_work)?;
 

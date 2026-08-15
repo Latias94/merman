@@ -452,6 +452,46 @@ mod tests {
     }
 
     #[test]
+    fn edge_plan_preserves_classic_stroke_width_precedence_and_fails_closed_for_hand_drawn() {
+        let class_defs =
+            IndexMap::from([("wide".to_string(), vec!["stroke-width:8px".to_string()])]);
+        let edges = vec![edge("e1", &["wide"], &[])];
+        let classic_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let classic =
+            FlowchartEdgeStylePlan::prepare(&class_defs, &edges, &[], false, false, &classic_meter)
+                .expect("prepare classic edge styles");
+
+        assert_eq!(
+            classic
+                .edge_source_stroke_width_status_for(crate::flowchart::FlowchartEdgeKey::new(0))
+                .expect("classic edge stroke-width status"),
+            crate::flowchart::FlowchartSourceFacetStatus::Admitted
+        );
+
+        let hand_drawn_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let hand_drawn = FlowchartEdgeStylePlan::prepare(
+            &class_defs,
+            &edges,
+            &[],
+            true,
+            false,
+            &hand_drawn_meter,
+        )
+        .expect("prepare hand-drawn edge styles");
+
+        assert_eq!(
+            hand_drawn
+                .edge_source_stroke_width_status_for(crate::flowchart::FlowchartEdgeKey::new(0))
+                .expect("hand-drawn edge stroke-width status"),
+            crate::flowchart::FlowchartSourceFacetStatus::Absent
+        );
+    }
+
+    #[test]
     fn animation_resolution_uses_parsed_properties_instead_of_raw_substrings() {
         let class_defs = IndexMap::from([
             ("disabled".to_string(), vec!["animation:none".to_string()]),
