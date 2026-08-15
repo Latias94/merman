@@ -74,14 +74,20 @@ _CRATE_OWNER_RULES = (
     ("crates/roughr/", _CORE_OWNERS),
     ("crates/xtask/", _CORE_OWNERS),
 )
-_SCRIPT_OWNER_RULES = (
+_SCRIPT_EXACT_OWNER_RULES = {
+    "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/strict_json.py": frozenset({"hygiene"}),
+    "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
+    "scripts/test_publish.py": frozenset({"hygiene"}),
+}
+_SCRIPT_PREFIX_OWNER_RULES = (
     ("scripts/build-python-", {"hygiene", "python"}),
     ("scripts/python_", {"hygiene", "python"}),
     ("scripts/test_python_", {"hygiene", "python"}),
     ("scripts/build-apple-", {"hygiene", "platform"}),
     ("scripts/flutter_", {"hygiene", "platform"}),
     ("scripts/native_symbol_", {"hygiene", "platform"}),
-    ("scripts/test_build_android", {"hygiene", "platform"}),
     ("scripts/test_flutter_", {"hygiene", "platform"}),
     ("scripts/test_native_symbol_", {"hygiene", "platform"}),
     ("scripts/test_verify_platform_", {"hygiene", "platform"}),
@@ -101,8 +107,6 @@ _SCRIPT_OWNER_RULES = (
     ("scripts/test_nix_", {"cli", "hygiene"}),
     ("scripts/test_verify_cli_", {"cli", "hygiene"}),
     ("scripts/test_verify_homebrew_", {"cli", "hygiene"}),
-    ("scripts/audit_plan.py", {"hygiene", "npm", "security"}),
-    ("scripts/test_audit_plan.py", {"hygiene", "npm", "security"}),
     ("scripts/verify_rustsec_", {"hygiene", "security"}),
     ("scripts/test_verify_rustsec_", {"hygiene", "security"}),
 )
@@ -115,13 +119,11 @@ _HYGIENE_SCRIPT_PREFIXES = (
     "scripts/generate-rust-license-",
     "scripts/release-",
     "scripts/release_",
-    "scripts/strict_json.py",
     "scripts/sync-release-",
     "scripts/test_adr_",
     "scripts/test_artifact_",
     "scripts/test_crates_io_",
     "scripts/test_generate_rust_license_",
-    "scripts/test_publish.py",
     "scripts/test_release_",
     "scripts/test_sync_",
     "scripts/test_verify_artifact_",
@@ -420,7 +422,9 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             False,
         )
     if path.startswith("scripts/"):
-        for prefix, selected in _SCRIPT_OWNER_RULES:
+        if selected := _SCRIPT_EXACT_OWNER_RULES.get(path):
+            return selected, f"owner script changed: {path}", False
+        for prefix, selected in _SCRIPT_PREFIX_OWNER_RULES:
             if path.startswith(prefix):
                 return frozenset(selected), f"owner script changed: {path}", False
         if path.startswith(_HYGIENE_SCRIPT_PREFIXES):

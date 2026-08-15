@@ -143,6 +143,8 @@ class PlannerTests(unittest.TestCase):
                 "web",
             },
             "scripts/build-python-uniffi-wheel.py": {"hygiene", "python"},
+            "scripts/audit_plan.py": {"hygiene", "npm", "security"},
+            "scripts/strict_json.py": {"hygiene"},
             "scripts/release_projection.py": {"hygiene"},
         }
 
@@ -229,6 +231,9 @@ class PlannerTests(unittest.TestCase):
             "distribution/typst/merman/lib.typ",
             "scripts/ci_plan.py",
             "scripts/new_unclassified_owner.py",
+            "scripts/audit_plan.py.backup",
+            "scripts/strict_json.py.generated",
+            "scripts/test_publish.py.tmp",
             "crates/new-unclassified-crate/src/lib.rs",
             "unowned/new-surface.txt",
         ):
