@@ -41,3 +41,7 @@ required-features = ["png", "jpeg", "pdf"]
 [[test]]
 name = "route_cutover_runtime"
 required-features = ["png", "jpeg", "pdf"]
+
+[[test]]
+name = "native_export_smoke"
+required-features = ["png", "jpeg", "pdf"]

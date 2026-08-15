@@ -14,10 +14,7 @@ const MAX_PAGE_FONT_RESOURCES: usize = 256;
 const MAX_DESCENDANT_FONTS: usize = 64;
 const MAX_FONT_STREAM_BYTES: usize = 16 * 1024 * 1024;
 
-pub(crate) fn prove_brutalist_state_pdf(
-    bytes: &[u8],
-    artifact_digest: [u8; 32],
-) -> C6ProofResult<super::C6TargetProof> {
+pub(crate) fn prove_brutalist_state_pdf(bytes: &[u8]) -> C6ProofResult<()> {
     let document = load_pdf_artifact(bytes)?;
     let pages = document.get_pages();
     c6_ensure!(
@@ -56,10 +53,7 @@ pub(crate) fn prove_brutalist_state_pdf(
     prove_basic_page_operations(&content.operations)?;
     prove_embedded_font_stream(&document, page_id)?;
 
-    Ok(super::C6TargetProof::brutalist_state_pdf(
-        artifact_digest,
-        super::brutalist_state_applied_mechanisms(),
-    ))
+    Ok(())
 }
 
 fn load_pdf_artifact(bytes: &[u8]) -> C6ProofResult<Document> {

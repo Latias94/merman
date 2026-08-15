@@ -1,10 +1,11 @@
 //! Non-published theme runtime acceptance harness.
 //!
 //! The crate exposes separate coarse summaries for the C6 catalog-cell gate and the exact
-//! route-cutover authorization gate. Route authorization only permits bridge ownership cutover; it
-//! does not add C6 cells or contribute to the C6 execution report or digest. Internal observation,
-//! per-route, and sealed authorization receipts remain private so callers cannot report their own
-//! success.
+//! route-cutover authorization gate, plus a representative PNG/JPEG/PDF native export smoke that
+//! does not participate in either gate. Route authorization only permits bridge ownership cutover;
+//! it does not add C6 cells or contribute to the C6 execution report or digest. Internal
+//! observation, per-route, and sealed authorization receipts remain private so callers cannot
+//! report their own success.
 //!
 //! ```compile_fail
 //! use merman_theme_acceptance::C6CellReceipt;
@@ -41,4 +42,7 @@ pub use cutover::RouteCutoverAuthorizationReport;
 pub use observation::{C6ExecutionReport, C6RuntimeError, RouteCutoverRuntimeError};
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub use runner::{run_enforced_c6_runtime, run_route_cutover_authorization};
+pub use runner::{
+    NativeExportSmokeError, NativeExportSmokeSummary, run_enforced_c6_runtime,
+    run_representative_native_export_smoke, run_route_cutover_authorization,
+};

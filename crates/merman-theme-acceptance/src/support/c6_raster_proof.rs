@@ -68,10 +68,9 @@ pub(crate) fn decode_bounded_png_artifact(
 
 pub(crate) fn prove_brutalist_state_jpeg(
     bytes: &[u8],
-    artifact_digest: [u8; 32],
     raster_plan: RasterPlan,
     png: &PngArtifactProof,
-) -> C6ProofResult<super::C6TargetProof> {
+) -> C6ProofResult<()> {
     let raster = RasterImage::decode_jpeg(bytes, raster_plan)?;
     c6_ensure!(
         "raster-geometry",
@@ -83,10 +82,7 @@ pub(crate) fn prove_brutalist_state_jpeg(
         png.raster.height
     );
     prove_jpeg_tracks_png(&raster, &png.raster)?;
-    Ok(super::C6TargetProof::brutalist_state_jpeg(
-        artifact_digest,
-        super::brutalist_state_applied_mechanisms(),
-    ))
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
