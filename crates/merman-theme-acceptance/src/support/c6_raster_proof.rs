@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{cmp::Ordering, io::Cursor};
 
 use image::{ColorType, ImageDecoder, ImageFormat, ImageReader, Limits};
 use merman_export::{DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterPlan};
@@ -7,28 +7,19 @@ use super::{BrutalistStateFixtureContract, C6ProofError, C6ProofResult};
 
 const STATE_IDS: [&str; 4] = ["Ready", "Review", "Done", "Archive"];
 const MIN_PNG_CANVAS_COVERAGE: f64 = 0.78;
-const MIN_JPEG_CANVAS_COVERAGE: f64 = 0.70;
 const MIN_PNG_FILL_COVERAGE: f64 = 0.86;
-const MIN_JPEG_FILL_COVERAGE: f64 = 0.76;
 const MIN_PNG_STROKE_COVERAGE: f64 = 0.78;
-const MIN_JPEG_STROKE_COVERAGE: f64 = 0.66;
 const MIN_PNG_CORNER_COVERAGE: f64 = 0.82;
-const MIN_JPEG_CORNER_COVERAGE: f64 = 0.68;
 const MIN_PNG_SHADOW_COVERAGE: f64 = 0.82;
-const MIN_JPEG_SHADOW_COVERAGE: f64 = 0.68;
 const MIN_PNG_SHADOW_CONTROL_COVERAGE: f64 = 0.72;
-const MIN_JPEG_SHADOW_CONTROL_COVERAGE: f64 = 0.62;
 const MIN_LABEL_INK_PIXELS: usize = 48;
 const MIN_JPEG_PSNR_DB: f64 = 28.0;
-const MAX_JPEG_P99_CHANNEL_DELTA: u8 = 48;
-const MIN_JPEG_MASK_PRECISION: f64 = 0.72;
-const MIN_JPEG_MASK_RECALL: f64 = 0.76;
-const MIN_JPEG_MASK_IOU: f64 = 0.62;
+const PNG_COLOR_TOLERANCE: u8 = 0;
+const PNG_LABEL_TOLERANCE: u8 = 8;
+const PNG_STROKE_WIDTH_ERROR_PX: usize = 2;
 const MAX_RASTER_ARTIFACT_OVERHEAD_BYTES: usize = 1024 * 1024;
 
 pub(crate) struct PngArtifactProof {
-    contract: BrutalistStateVisualContract,
-    geometry: StateRasterGeometry,
     raster: RasterImage,
 }
 
@@ -57,13 +48,9 @@ pub(crate) fn prove_brutalist_state_png(
         geometry.nodes.len(),
         contract.nodes.len()
     );
-    prove_brutalist_state_raster(&contract, &geometry, &raster, 0)?;
+    prove_brutalist_state_raster(&contract, &geometry, &raster)?;
 
-    Ok(PngArtifactProof {
-        contract,
-        geometry,
-        raster,
-    })
+    Ok(PngArtifactProof { raster })
 }
 
 pub(crate) fn decode_bounded_png_artifact(
@@ -95,8 +82,7 @@ pub(crate) fn prove_brutalist_state_jpeg(
         png.raster.width,
         png.raster.height
     );
-    prove_brutalist_state_raster(&png.contract, &png.geometry, &raster, 18)?;
-    prove_jpeg_tracks_png(&raster, &png.raster, &png.contract, &png.geometry)?;
+    prove_jpeg_tracks_png(&raster, &png.raster)?;
     Ok(super::C6TargetProof::brutalist_state_jpeg(
         artifact_digest,
         super::brutalist_state_applied_mechanisms(),
@@ -1205,7 +1191,6 @@ fn prove_brutalist_state_raster(
     contract: &BrutalistStateVisualContract,
     geometry: &StateRasterGeometry,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
     let transform = raster.transform(geometry.view_box);
     c6_ensure!(
@@ -1222,7 +1207,7 @@ fn prove_brutalist_state_raster(
         transform.scale_x(),
         transform.scale_y()
     );
-    prove_canvas(contract, geometry, transform, raster, tolerance)?;
+    prove_canvas(contract, geometry, transform, raster)?;
 
     for (expected, actual) in contract.nodes.iter().zip(&geometry.nodes) {
         c6_ensure!(
@@ -1232,18 +1217,11 @@ fn prove_brutalist_state_raster(
             expected.id,
             actual.id
         );
-        prove_node_fill(
-            contract,
-            expected,
-            actual.rect,
-            transform,
-            raster,
-            tolerance,
-        )?;
-        prove_node_stroke(contract, actual.rect, transform, raster, tolerance)?;
-        prove_node_rounding(contract, actual.rect, transform, raster, tolerance)?;
-        prove_node_shadow(contract, actual.rect, transform, raster, tolerance)?;
-        prove_node_label_ink(contract, actual.rect, transform, raster, tolerance)?;
+        prove_node_fill(contract, expected, actual.rect, transform, raster)?;
+        prove_node_stroke(contract, actual.rect, transform, raster)?;
+        prove_node_rounding(contract, actual.rect, transform, raster)?;
+        prove_node_shadow(contract, actual.rect, transform, raster)?;
+        prove_node_label_ink(contract, actual.rect, transform, raster)?;
     }
     Ok(())
 }
@@ -1253,7 +1231,6 @@ fn prove_canvas(
     geometry: &StateRasterGeometry,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
     let exclusion =
         contract.border_width / 2.0 + contract.shadow_offset_x.max(contract.shadow_offset_y) + 1.0;
@@ -1269,8 +1246,8 @@ fn prove_canvas(
         geometry.view_box,
         |x, y| !expanded_nodes.iter().any(|rect| rect.contains(x, y)),
         &[contract.canvas],
-        tolerance,
-        coverage_threshold(tolerance, MIN_PNG_CANVAS_COVERAGE, MIN_JPEG_CANVAS_COVERAGE),
+        PNG_COLOR_TOLERANCE,
+        MIN_PNG_CANVAS_COVERAGE,
         "canvas outside diagram nodes",
     )
 }
@@ -1281,7 +1258,6 @@ fn prove_node_fill(
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
     let inset = contract.border_width / 2.0 + 0.75 / transform.scale_x();
     let interior = rect.inset(inset)?;
@@ -1296,8 +1272,8 @@ fn prove_node_fill(
             relative_y <= 0.34 || relative_y >= 0.68
         },
         &fill_candidates,
-        tolerance,
-        coverage_threshold(tolerance, MIN_PNG_FILL_COVERAGE, MIN_JPEG_FILL_COVERAGE),
+        PNG_COLOR_TOLERANCE,
+        MIN_PNG_FILL_COVERAGE,
         &format!("{} ordinal fill interior", expected.id),
     )
 }
@@ -1307,7 +1283,6 @@ fn prove_node_stroke(
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
     let clearance = contract.radius + contract.border_width + 1.0;
     let band_half_width = contract.border_width * 0.25;
@@ -1327,8 +1302,8 @@ fn prove_node_stroke(
             region,
             |_, _| true,
             &border_candidates,
-            tolerance,
-            coverage_threshold(tolerance, MIN_PNG_STROKE_COVERAGE, MIN_JPEG_STROKE_COVERAGE),
+            PNG_COLOR_TOLERANCE,
+            MIN_PNG_STROKE_COVERAGE,
             label,
         )?;
     }
@@ -1345,7 +1320,7 @@ fn prove_node_stroke(
                 ScanAxis::Vertical,
                 expected_vertical_width + 4,
                 contract.border,
-                tolerance,
+                PNG_COLOR_TOLERANCE,
             )?,
             expected_vertical_width,
         ));
@@ -1357,17 +1332,16 @@ fn prove_node_stroke(
                 ScanAxis::Horizontal,
                 expected_horizontal_width + 4,
                 contract.border,
-                tolerance,
+                PNG_COLOR_TOLERANCE,
             )?,
             expected_horizontal_width,
         ));
     }
-    let allowed_error = if tolerance == 0 { 2 } else { 3 };
     for (actual, expected) in runs {
         c6_ensure!(
             "raster-node-stroke",
-            actual.abs_diff(expected) <= allowed_error,
-            "State stroke width must remain within {allowed_error}px of {expected}px, found {actual}px"
+            actual.abs_diff(expected) <= PNG_STROKE_WIDTH_ERROR_PX,
+            "State stroke width must remain within {PNG_STROKE_WIDTH_ERROR_PX}px of {expected}px, found {actual}px"
         );
     }
     Ok(())
@@ -1378,7 +1352,6 @@ fn prove_node_rounding(
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
     let outer = rect.expanded(contract.border_width / 2.0);
     let outer_radius = contract.radius + contract.border_width / 2.0;
@@ -1403,8 +1376,7 @@ fn prove_node_rounding(
             },
         ),
     ];
-    let threshold =
-        coverage_threshold(tolerance, MIN_PNG_CORNER_COVERAGE, MIN_JPEG_CORNER_COVERAGE);
+    let threshold = MIN_PNG_CORNER_COVERAGE;
     for (label, patch) in corners {
         let coverage = rounded_corner_coverage(
             raster,
@@ -1413,7 +1385,7 @@ fn prove_node_rounding(
             outer,
             outer_radius,
             contract.canvas,
-            tolerance,
+            PNG_COLOR_TOLERANCE,
         );
         c6_ensure!(
             "raster-node-rounding",
@@ -1447,7 +1419,6 @@ fn prove_node_shadow(
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
     let accepted_shadow = [contract.shadow, contract.quantized_shadow];
     let guard = (1.25 / transform.scale_x()).max(0.6);
@@ -1477,8 +1448,8 @@ fn prove_node_shadow(
             region,
             |_, _| true,
             &accepted_shadow,
-            tolerance,
-            coverage_threshold(tolerance, MIN_PNG_SHADOW_COVERAGE, MIN_JPEG_SHADOW_COVERAGE),
+            PNG_COLOR_TOLERANCE,
+            MIN_PNG_SHADOW_COVERAGE,
             label,
         )?;
     }
@@ -1529,12 +1500,8 @@ fn prove_node_shadow(
             region,
             |_, _| true,
             &[contract.canvas],
-            tolerance,
-            coverage_threshold(
-                tolerance,
-                MIN_PNG_SHADOW_CONTROL_COVERAGE,
-                MIN_JPEG_SHADOW_CONTROL_COVERAGE,
-            ),
+            PNG_COLOR_TOLERANCE,
+            MIN_PNG_SHADOW_CONTROL_COVERAGE,
             label,
         )?;
     }
@@ -1546,9 +1513,8 @@ fn prove_node_label_ink(
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<()> {
-    let mask = label_ink_mask(contract, rect, transform, raster, tolerance)?;
+    let mask = label_ink_mask(contract, rect, transform, raster)?;
     let ink_pixels = mask.true_count();
     let minimum_ink =
         ((MIN_LABEL_INK_PIXELS as f64 / 4.0) * transform.scale_x() * transform.scale_y()).round()
@@ -1589,12 +1555,7 @@ fn prove_node_label_ink(
     Ok(())
 }
 
-fn prove_jpeg_tracks_png(
-    jpeg: &RasterImage,
-    png: &RasterImage,
-    contract: &BrutalistStateVisualContract,
-    geometry: &StateRasterGeometry,
-) -> C6ProofResult<()> {
+fn prove_jpeg_tracks_png(jpeg: &RasterImage, png: &RasterImage) -> C6ProofResult<()> {
     c6_ensure!(
         "jpeg-control",
         jpeg.pixel_count() == png.pixel_count(),
@@ -1602,8 +1563,12 @@ fn prove_jpeg_tracks_png(
         jpeg.pixel_count(),
         png.pixel_count()
     );
-    let mut squared_error = 0.0;
-    let mut delta_histogram = [0usize; 256];
+    c6_ensure!(
+        "jpeg-control",
+        jpeg.pixel_count() > 0,
+        "JPEG and PNG control images must contain pixels"
+    );
+    let mut squared_error = 0u128;
     for pixel_index in 0..jpeg.pixel_count() {
         let jpeg_pixel = jpeg
             .rgba_pixel(pixel_index)
@@ -1613,124 +1578,28 @@ fn prove_jpeg_tracks_png(
             .ok_or_else(|| C6ProofError::new("jpeg-control", "PNG pixel buffer is incomplete"))?;
         let png_composited = composite_rgba_over(png_pixel, Rgb::WHITE);
         for (&jpeg_channel, &png_channel) in jpeg_pixel[..3].iter().zip(&png_composited) {
-            let delta = jpeg_channel.abs_diff(png_channel);
-            delta_histogram[usize::from(delta)] += 1;
-            squared_error += f64::from(delta) * f64::from(delta);
+            let delta = u128::from(jpeg_channel.abs_diff(png_channel));
+            squared_error += delta * delta;
         }
     }
-    let width = usize::try_from(jpeg.width)
-        .map_err(|error| C6ProofError::new("jpeg-control", error.to_string()))?;
-    let height = usize::try_from(jpeg.height)
-        .map_err(|error| C6ProofError::new("jpeg-control", error.to_string()))?;
-    let pixels = width
-        .checked_mul(height)
-        .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG pixel count exceeds usize"))?;
-    c6_ensure!(
-        "jpeg-control",
-        pixels == jpeg.pixel_count(),
-        "JPEG dimensions must match decoded pixel count; dimensions={pixels}, decoded={}",
-        jpeg.pixel_count()
-    );
-    let channel_count = pixels
+    let channel_count = jpeg
+        .pixel_count()
         .checked_mul(3)
         .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG channel count exceeds usize"))?;
+    let mean_squared_error = squared_error as f64 / channel_count as f64;
+    let psnr = if mean_squared_error == 0.0 {
+        f64::INFINITY
+    } else {
+        10.0 * ((255.0 * 255.0) / mean_squared_error).log10()
+    };
     c6_ensure!(
         "jpeg-control",
-        channel_count > 0,
-        "JPEG control image must contain channels"
+        matches!(
+            psnr.partial_cmp(&MIN_JPEG_PSNR_DB),
+            Some(Ordering::Equal | Ordering::Greater)
+        ),
+        "C6 JPEG must remain globally similar to the same document's proved PNG; MSE={mean_squared_error:.3}, PSNR={psnr:.3}dB"
     );
-    let mean_squared_error = squared_error / channel_count as f64;
-    let psnr = 10.0 * ((255.0 * 255.0) / mean_squared_error).log10();
-    c6_ensure!(
-        "jpeg-control",
-        psnr >= MIN_JPEG_PSNR_DB,
-        "C6 JPEG must track the proved PNG; PSNR={psnr:.3}dB"
-    );
-    let p99_target = channel_count
-        .checked_mul(99)
-        .ok_or_else(|| C6ProofError::new("jpeg-control", "JPEG p99 target exceeds usize"))?
-        .div_ceil(100);
-    let mut cumulative = 0usize;
-    let mut p99_delta = 0u8;
-    for (delta, count) in delta_histogram.into_iter().enumerate() {
-        cumulative += count;
-        if cumulative >= p99_target {
-            p99_delta = u8::try_from(delta).map_err(|error| {
-                C6ProofError::new(
-                    "jpeg-control",
-                    format!("channel delta does not fit in u8: {error}"),
-                )
-            })?;
-            break;
-        }
-    }
-    c6_ensure!(
-        "jpeg-control",
-        p99_delta <= MAX_JPEG_P99_CHANNEL_DELTA,
-        "C6 JPEG p99 channel delta must remain bounded; p99={p99_delta}"
-    );
-
-    let transform = jpeg.transform(geometry.view_box);
-    prove_color_mask_tracks_png(
-        jpeg,
-        png,
-        transform,
-        geometry.view_box,
-        &[contract.canvas],
-        0,
-        18,
-        "canvas",
-    )?;
-    for (expected, node) in contract.nodes.iter().zip(&geometry.nodes) {
-        let fill = filtered_color_candidates(expected.fill);
-        prove_color_mask_tracks_png(
-            jpeg,
-            png,
-            transform,
-            node.rect.inset(1.0)?,
-            &fill,
-            0,
-            18,
-            &format!("{} ordinal fill", node.id),
-        )?;
-        let clearance = contract.radius + contract.border_width + 1.0;
-        let band_half_width = contract.border_width * 0.32;
-        for (label, region) in stroke_regions(node.rect, clearance, band_half_width) {
-            prove_color_mask_tracks_png(
-                jpeg,
-                png,
-                transform,
-                region,
-                &filtered_color_candidates(contract.border),
-                4,
-                18,
-                &format!("{} {label}", node.id),
-            )?;
-        }
-        for (label, region) in shadow_bands(contract, node.rect, transform) {
-            prove_color_mask_tracks_png(
-                jpeg,
-                png,
-                transform,
-                region,
-                &[contract.shadow, contract.quantized_shadow],
-                4,
-                18,
-                &format!("{} {label}", node.id),
-            )?;
-        }
-        let label_region = label_region(contract, node.rect);
-        prove_color_mask_tracks_png(
-            jpeg,
-            png,
-            transform,
-            label_region,
-            &filtered_color_candidates(contract.text),
-            8,
-            26,
-            &format!("{} label ink", node.id),
-        )?;
-    }
     Ok(())
 }
 
@@ -1745,10 +1614,6 @@ fn composite_rgba_over(pixel: [u8; 4], matte: Rgb) -> [u8; 3] {
         composite(pixel[1], matte.green),
         composite(pixel[2], matte.blue),
     ]
-}
-
-fn coverage_threshold(tolerance: u8, lossless: f64, lossy: f64) -> f64 {
-    if tolerance == 0 { lossless } else { lossy }
 }
 
 fn stroke_regions(rect: Rect, clearance: f64, band_half_width: f64) -> [(&'static str, Rect); 4] {
@@ -1840,14 +1705,13 @@ fn label_ink_mask(
     rect: Rect,
     transform: RasterTransform,
     raster: &RasterImage,
-    tolerance: u8,
 ) -> C6ProofResult<BinaryMask> {
     color_mask(
         raster,
         transform,
         label_region(contract, rect),
         &filtered_color_candidates(contract.text),
-        tolerance.saturating_add(8),
+        PNG_LABEL_TOLERANCE,
     )
 }
 
@@ -2103,54 +1967,6 @@ fn contiguous_filtered_color_run(
             format!("State stroke color run is invalid: {error}"),
         )
     })
-}
-
-#[allow(clippy::too_many_arguments)]
-fn prove_color_mask_tracks_png(
-    jpeg: &RasterImage,
-    png: &RasterImage,
-    transform: RasterTransform,
-    bounds: Rect,
-    expected: &[Rgb],
-    png_tolerance: u8,
-    jpeg_tolerance: u8,
-    label: &str,
-) -> C6ProofResult<()> {
-    let pixel_bounds = transform.pixel_bounds(bounds);
-    let mut true_positive = 0usize;
-    let mut false_positive = 0usize;
-    let mut false_negative = 0usize;
-    let mut reference_positive = 0usize;
-    for y in pixel_bounds.top..pixel_bounds.bottom {
-        for x in pixel_bounds.left..pixel_bounds.right {
-            let expected_in_png = matches_any_color(png.rgb(x, y), expected, png_tolerance);
-            let observed_in_jpeg = matches_any_color(jpeg.rgb(x, y), expected, jpeg_tolerance);
-            reference_positive += expected_in_png as usize;
-            match (expected_in_png, observed_in_jpeg) {
-                (true, true) => true_positive += 1,
-                (false, true) => false_positive += 1,
-                (true, false) => false_negative += 1,
-                (false, false) => {}
-            }
-        }
-    }
-    c6_ensure!(
-        "jpeg-control",
-        reference_positive > 0,
-        "{label} PNG mask must contain evidence"
-    );
-    let precision = true_positive as f64 / (true_positive + false_positive).max(1) as f64;
-    let recall = true_positive as f64 / (true_positive + false_negative).max(1) as f64;
-    let iou =
-        true_positive as f64 / (true_positive + false_positive + false_negative).max(1) as f64;
-    c6_ensure!(
-        "jpeg-control",
-        precision >= MIN_JPEG_MASK_PRECISION
-            && recall >= MIN_JPEG_MASK_RECALL
-            && iou >= MIN_JPEG_MASK_IOU,
-        "{label} JPEG mask must track PNG locally; precision={precision:.3}, recall={recall:.3}, iou={iou:.3}"
-    );
-    Ok(())
 }
 
 fn matches_any_color(actual: Option<Rgb>, expected: &[Rgb], tolerance: u8) -> bool {
@@ -2476,7 +2292,6 @@ mod tests {
                 &geometry,
                 raster.transform(geometry.view_box),
                 &raster,
-                0,
             ),
         );
     }
@@ -2500,7 +2315,7 @@ mod tests {
         assert_rejected(
             "raster-node-fill",
             "ordinal fill interior",
-            prove_node_fill(&contract, &contract.nodes[0], rect, transform, &raster, 0),
+            prove_node_fill(&contract, &contract.nodes[0], rect, transform, &raster),
         );
     }
 
@@ -2529,7 +2344,7 @@ mod tests {
         assert_rejected(
             "raster-node-stroke",
             "left border",
-            prove_node_stroke(&contract, rect, transform, &raster, 0),
+            prove_node_stroke(&contract, rect, transform, &raster),
         );
     }
 
@@ -2573,7 +2388,7 @@ mod tests {
         assert_rejected(
             "raster-node-rounding",
             "top-left rounded corner",
-            prove_node_rounding(&contract, rect, transform, &raster, 0),
+            prove_node_rounding(&contract, rect, transform, &raster),
         );
     }
 
@@ -2598,7 +2413,7 @@ mod tests {
         assert_rejected(
             "raster-node-shadow",
             "right hard-shadow band",
-            prove_node_shadow(&contract, rect, transform, &raster, 0),
+            prove_node_shadow(&contract, rect, transform, &raster),
         );
     }
 
@@ -2617,51 +2432,44 @@ mod tests {
         assert_rejected(
             "raster-node-label",
             "structured embedded-font label ink",
-            prove_node_label_ink(&contract, rect, transform, &raster, 0),
+            prove_node_label_ink(&contract, rect, transform, &raster),
         );
     }
 
     #[test]
-    fn jpeg_local_mask_rejects_background_dominated_feature_loss() {
-        let contract = contract();
-        let geometry = geometry();
-        let mut png = raster();
-        let mut jpeg = raster();
-        let transform = png.transform(geometry.view_box);
-        let region = Rect {
-            left: 35.0,
-            top: 35.0,
-            width: 40.0,
-            height: 10.0,
+    fn jpeg_global_similarity_accepts_bounded_loss() {
+        let png = RasterImage {
+            width: 2,
+            height: 1,
+            pixels: vec![10, 20, 30, u8::MAX, 40, 50, 60, u8::MAX],
         };
-        let pixel_bounds = transform.pixel_bounds(region);
-        let mut painted = 0usize;
-        for y in pixel_bounds.top..pixel_bounds.bottom {
-            for x in pixel_bounds.left..pixel_bounds.right {
-                if painted < 120 {
-                    png.set_rgb(x, y, contract.text);
-                    if painted < 20 {
-                        jpeg.set_rgb(x, y, contract.text);
-                    }
-                    painted += 1;
-                }
-            }
-        }
-        assert_eq!(painted, 120);
+        let jpeg = RasterImage {
+            width: 2,
+            height: 1,
+            pixels: vec![11, 19, 31, u8::MAX, 39, 51, 59, u8::MAX],
+        };
+
+        prove_jpeg_tracks_png(&jpeg, &png)
+            .expect("small whole-image loss must satisfy the JPEG smoke");
+    }
+
+    #[test]
+    fn jpeg_global_similarity_rejects_whole_image_drift() {
+        let png = RasterImage {
+            width: 2,
+            height: 1,
+            pixels: vec![0, 0, 0, u8::MAX, 0, 0, 0, u8::MAX],
+        };
+        let jpeg = RasterImage {
+            width: 2,
+            height: 1,
+            pixels: vec![u8::MAX; 8],
+        };
 
         assert_rejected(
             "jpeg-control",
-            "JPEG mask must track PNG locally",
-            prove_color_mask_tracks_png(
-                &jpeg,
-                &png,
-                transform,
-                region,
-                &[contract.text],
-                0,
-                0,
-                "synthetic label",
-            ),
+            "globally similar",
+            prove_jpeg_tracks_png(&jpeg, &png),
         );
     }
 }

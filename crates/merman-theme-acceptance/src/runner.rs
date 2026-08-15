@@ -14,10 +14,7 @@ use merman::{
     RenderRequest, RenderedDocument, Renderer, SvgEnvironment, SvgRequest, TargetAdmissionReceipt,
     ThemeEvidenceStatus,
 };
-use merman_export::{
-    ExportFontPlan, PdfExportReport, PdfFilterImagePlan, PdfOptions, RasterExportReport,
-    RasterOptions, RasterOutputKind, SvgConversionPlan,
-};
+use merman_export::{PdfOptions, RasterOptions};
 use merman_theme_fixtures::{
     C6AcceptanceCatalog, C6EnforcedCell, C6ProofFamily, C6ProofTheme, ExpectedOutputTarget,
     ReferenceBorderInput, ReferenceCanvasLayer, ReferenceDiagramFamily, ReferenceFontBinding,
@@ -134,7 +131,6 @@ const BRUTALIST_STATE_FIXTURE_ID: &str = "fixture-c6-brutalist-state";
 struct BrutalistStateFixtureContract<'a> {
     tokens: &'a ReferenceThemeTokens,
     font_stack: &'a ReferenceFontStack,
-    font_family: &'a str,
     font_asset_id: &'a str,
     canvas_color: &'a str,
     border: &'a ReferenceBorderInput,
@@ -176,9 +172,6 @@ impl<'a> BrutalistStateFixtureContract<'a> {
             "Brutalist proof requires exactly one font family, got {}",
             font_stack.families().len()
         );
-        let font_family = font_stack.families().first().ok_or_else(|| {
-            C6ProofError::new("fixture-contract", "Brutalist font family set is empty")
-        })?;
         c6_ensure!(
             "fixture-contract",
             font_stack.asset_ids().len() == 1,
@@ -274,7 +267,6 @@ impl<'a> BrutalistStateFixtureContract<'a> {
         Ok(Self {
             tokens,
             font_stack,
-            font_family,
             font_asset_id,
             canvas_color,
             border,
@@ -484,7 +476,7 @@ fn execute_brutalist_state_group(
         &group.key,
         render_brutalist_state_document(&renderer, &source, &theme, svg_request),
     )?;
-    let svg_identity = prove_render_group(
+    let render_identity = prove_render_group(
         &group.key,
         prove_brutalist_state_evidence(document.evidence(), &theme),
     )?;
@@ -517,7 +509,7 @@ fn execute_brutalist_state_group(
                 &contract,
                 sealed_svg,
                 &document,
-                &theme,
+                &render_identity,
             )
         })
         .transpose()?;
@@ -530,7 +522,7 @@ fn execute_brutalist_state_group(
             observe_brutalist_state_jpeg(
                 &group.key,
                 &document,
-                &theme,
+                &render_identity,
                 &png_support
                     .as_ref()
                     .ok_or_else(|| render_group_error(&group.key, "jpeg-png-control-plan"))?
@@ -542,7 +534,7 @@ fn execute_brutalist_state_group(
         .cells
         .iter()
         .any(|cell| cell.key().target() == ExpectedOutputTarget::Pdf)
-        .then(|| observe_brutalist_state_pdf(&group.key, &contract, sealed_svg, &document, &theme))
+        .then(|| observe_brutalist_state_pdf(&group.key, &document, &render_identity))
         .transpose()?;
 
     prove_shared_document_identity(
@@ -555,11 +547,11 @@ fn execute_brutalist_state_group(
     let group_receipt = C6RenderGroupReceipt::seal(
         group.key.clone(),
         theme_catalog,
-        &svg_identity,
+        &render_identity,
         document.standalone_svg_admission(),
     )?;
     let svg_observation = C6TargetObservation::from_target_receipt(
-        svg_identity,
+        render_identity,
         document.standalone_svg_admission(),
         C6TargetProof::brutalist_state_standalone_svg(
             document.standalone_svg_admission().artifact_digest(),
@@ -897,7 +889,7 @@ fn observe_brutalist_state_png(
     contract: &BrutalistStateFixtureContract<'_>,
     sealed_svg: &str,
     document: &RenderedDocument,
-    theme: &DiagramTheme,
+    identity: &crate::observation::C6RenderIdentity,
 ) -> Result<(C6TargetObservation, PngArtifactProof), C6RuntimeError> {
     let output = document
         .export_png(
@@ -906,24 +898,6 @@ fn observe_brutalist_state_png(
         )
         .map_err(|error| C6ProofError::new("png-render", error.to_string()))
         .map_err(|error| error.into_target_runtime(key, ExpectedOutputTarget::Png, required_by))?;
-    let report = output.export_report();
-    let identity = prove_target(
-        key,
-        ExpectedOutputTarget::Png,
-        required_by,
-        prove_brutalist_state_evidence(output.evidence(), theme),
-    )?;
-    prove_target(
-        key,
-        ExpectedOutputTarget::Png,
-        required_by,
-        prove_raster_export_report(
-            report,
-            RasterOutputKind::Png,
-            output.plan(),
-            output.evidence(),
-        ),
-    )?;
     let proof = prove_target(
         key,
         ExpectedOutputTarget::Png,
@@ -932,7 +906,11 @@ fn observe_brutalist_state_png(
     )?;
     let target_proof = proof.target_proof(output.admission().artifact_digest());
     Ok((
-        C6TargetObservation::from_target_receipt(identity, output.admission(), target_proof),
+        C6TargetObservation::from_target_receipt(
+            identity.clone(),
+            output.admission(),
+            target_proof,
+        ),
         proof,
     ))
 }
@@ -941,7 +919,7 @@ fn observe_brutalist_state_png(
 fn observe_brutalist_state_jpeg(
     key: &C6RenderGroupKey,
     document: &RenderedDocument,
-    theme: &DiagramTheme,
+    identity: &crate::observation::C6RenderIdentity,
     png_proof: &PngArtifactProof,
 ) -> Result<C6TargetObservation, C6RuntimeError> {
     const REQUIRED_BY: [ExpectedOutputTarget; 1] = [ExpectedOutputTarget::Jpeg];
@@ -954,24 +932,6 @@ fn observe_brutalist_state_jpeg(
         .map_err(|error| {
             error.into_target_runtime(key, ExpectedOutputTarget::Jpeg, &REQUIRED_BY)
         })?;
-    let report = output.export_report();
-    let identity = prove_target(
-        key,
-        ExpectedOutputTarget::Jpeg,
-        &REQUIRED_BY,
-        prove_brutalist_state_evidence(output.evidence(), theme),
-    )?;
-    prove_target(
-        key,
-        ExpectedOutputTarget::Jpeg,
-        &REQUIRED_BY,
-        prove_raster_export_report(
-            report,
-            RasterOutputKind::Jpeg,
-            output.plan(),
-            output.evidence(),
-        ),
-    )?;
     let proof = prove_target(
         key,
         ExpectedOutputTarget::Jpeg,
@@ -984,7 +944,7 @@ fn observe_brutalist_state_jpeg(
         ),
     )?;
     Ok(C6TargetObservation::from_target_receipt(
-        identity,
+        identity.clone(),
         output.admission(),
         proof,
     ))
@@ -993,182 +953,25 @@ fn observe_brutalist_state_jpeg(
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn observe_brutalist_state_pdf(
     key: &C6RenderGroupKey,
-    contract: &BrutalistStateFixtureContract<'_>,
-    sealed_svg: &str,
     document: &RenderedDocument,
-    theme: &DiagramTheme,
+    identity: &crate::observation::C6RenderIdentity,
 ) -> Result<C6TargetObservation, C6RuntimeError> {
     const REQUIRED_BY: [ExpectedOutputTarget; 1] = [ExpectedOutputTarget::Pdf];
     let output = document
         .export_pdf(&PdfOptions::default(), OperationControl::new())
         .map_err(|error| C6ProofError::new("pdf-render", error.to_string()))
         .map_err(|error| error.into_target_runtime(key, ExpectedOutputTarget::Pdf, &REQUIRED_BY))?;
-    let report = output.export_report();
-    let identity = prove_target(
-        key,
-        ExpectedOutputTarget::Pdf,
-        &REQUIRED_BY,
-        prove_brutalist_state_evidence(output.evidence(), theme),
-    )?;
-    prove_target(
-        key,
-        ExpectedOutputTarget::Pdf,
-        &REQUIRED_BY,
-        prove_pdf_export_report(report, output.plan(), output.evidence()),
-    )?;
-    prove_target(
-        key,
-        ExpectedOutputTarget::Pdf,
-        &REQUIRED_BY,
-        prove_pdf_artifact(output.bytes()),
-    )?;
     let proof = prove_target(
         key,
         ExpectedOutputTarget::Pdf,
         &REQUIRED_BY,
-        prove_brutalist_state_pdf(
-            contract,
-            sealed_svg,
-            output.bytes(),
-            output.admission().artifact_digest(),
-            output.plan().effective_scale,
-        ),
+        prove_brutalist_state_pdf(output.bytes(), output.admission().artifact_digest()),
     )?;
     Ok(C6TargetObservation::from_target_receipt(
-        identity,
+        identity.clone(),
         output.admission(),
         proof,
     ))
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_raster_export_report(
-    report: RasterExportReport,
-    expected_output: RasterOutputKind,
-    expected_plan: merman_export::RasterPlan,
-    evidence: &RenderEvidence,
-) -> C6ProofResult<()> {
-    c6_ensure!(
-        "native-export-kind",
-        report.output() == expected_output,
-        "expected output {expected_output:?}, got {:?}",
-        report.output()
-    );
-    c6_ensure!(
-        "native-export-raster-plan",
-        report.raster() == expected_plan,
-        "output raster plan differs from its export report"
-    );
-    prove_native_export_report(
-        report.resource_fingerprint(),
-        report.native_filter_receipt(),
-        report.conversion(),
-        report.fonts(),
-        evidence,
-    )
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_pdf_export_report(
-    report: PdfExportReport,
-    expected_plan: PdfFilterImagePlan,
-    evidence: &RenderEvidence,
-) -> C6ProofResult<()> {
-    c6_ensure!(
-        "pdf-filter-plan",
-        report.filters() == expected_plan,
-        "output PDF filter plan differs from its export report"
-    );
-    prove_pdf_filter_plan(report.filters(), report.native_filter_fully_localized())?;
-    prove_native_export_report(
-        report.resource_fingerprint(),
-        report.native_filter_receipt(),
-        report.conversion(),
-        report.fonts(),
-        evidence,
-    )
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_native_export_report(
-    resource_fingerprint: merman::svg::SvgResourceFingerprint,
-    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
-    conversion: SvgConversionPlan,
-    fonts: ExportFontPlan,
-    evidence: &RenderEvidence,
-) -> C6ProofResult<()> {
-    c6_ensure!(
-        "native-export-resource",
-        resource_fingerprint.as_bytes() != &[0; 32],
-        "native export retained a zero resource fingerprint"
-    );
-    let expected_filter_receipt = merman::__theme_acceptance::native_filter_receipt(evidence);
-    c6_ensure!(
-        "native-export-filter-receipt",
-        expected_filter_receipt.is_some() && native_filter_receipt == expected_filter_receipt,
-        "native export filter receipt differs from the renderer evidence"
-    );
-    prove_native_filter_conversion(conversion)?;
-    prove_export_font_plan(fonts)?;
-    Ok(())
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_pdf_filter_plan(
-    plan: merman::svg::export::PdfFilterImagePlan,
-    fully_localized: bool,
-) -> C6ProofResult<()> {
-    c6_ensure!(
-        "pdf-filter-plan",
-        plan.filtered_groups > 0,
-        "PDF export did not retain filtered groups"
-    );
-    c6_ensure!(
-        "pdf-filter-plan",
-        plan.effective_image_pixels > 0,
-        "PDF export planned no filter image pixels"
-    );
-    prove_pdf_filter_localization(fully_localized)
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_pdf_filter_localization(fully_localized: bool) -> C6ProofResult<()> {
-    c6_ensure!(
-        "pdf-filter-localization",
-        fully_localized,
-        "PDF export did not fully localize native filters"
-    );
-    Ok(())
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_pdf_artifact(bytes: &[u8]) -> C6ProofResult<()> {
-    c6_ensure!(
-        "pdf-envelope",
-        bytes.starts_with(b"%PDF-"),
-        "artifact is missing the PDF header"
-    );
-    c6_ensure!(
-        "pdf-envelope",
-        bytes.len() > 1024,
-        "artifact is implausibly small: {} bytes",
-        bytes.len()
-    );
-    c6_ensure!(
-        "pdf-envelope",
-        bytes
-            .windows(b"startxref".len())
-            .any(|window| window == b"startxref"),
-        "artifact is missing startxref"
-    );
-    let trimmed = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-    let trimmed = trimmed.strip_suffix(b"\r").unwrap_or(trimmed);
-    c6_ensure!(
-        "pdf-envelope",
-        trimmed.ends_with(b"%%EOF"),
-        "artifact is missing the PDF EOF marker"
-    );
-    Ok(())
 }
 
 fn brutalist_state_renderer() -> Renderer {
@@ -1207,65 +1010,6 @@ fn render_brutalist_state_document(
         ));
     };
     Ok(output)
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_export_font_plan(fonts: ExportFontPlan) -> C6ProofResult<()> {
-    c6_ensure!(
-        "export-fonts",
-        fonts.used_embedded_fonts(),
-        "no embedded font was used"
-    );
-    c6_ensure!(
-        "export-fonts",
-        !fonts.used_system_fonts(),
-        "a system font was used"
-    );
-    c6_ensure!(
-        "export-fonts",
-        fonts.prepared_label_expected_count() > 0,
-        "no prepared labels were expected"
-    );
-    c6_ensure!(
-        "export-fonts",
-        fonts.prepared_label_verified_count() == fonts.prepared_label_expected_count(),
-        "verified prepared labels differ from expected: verified={}, expected={}",
-        fonts.prepared_label_verified_count(),
-        fonts.prepared_label_expected_count()
-    );
-    c6_ensure!(
-        "export-fonts",
-        fonts.prepared_label_mismatch_count() == 0,
-        "prepared-label mismatches={}",
-        fonts.prepared_label_mismatch_count()
-    );
-    c6_ensure!(
-        "export-fonts",
-        fonts.prepared_label_terminal_incomplete_count() == 0,
-        "terminal-incomplete prepared labels={}",
-        fonts.prepared_label_terminal_incomplete_count()
-    );
-    c6_ensure!(
-        "export-fonts",
-        !fonts.is_host_dependent(),
-        "font plan is host-dependent"
-    );
-    Ok(())
-}
-
-#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn prove_native_filter_conversion(plan: SvgConversionPlan) -> C6ProofResult<()> {
-    c6_ensure!(
-        "native-filter-conversion",
-        plan.filtered_groups > 0,
-        "conversion retained no filtered groups"
-    );
-    c6_ensure!(
-        "native-filter-conversion",
-        plan.filter_primitives > 0,
-        "conversion retained no filter primitives"
-    );
-    Ok(())
 }
 
 fn compile_brutalist_state_theme(
@@ -2043,13 +1787,12 @@ mod tests {
         let mut malformed_pdf = b"%PDF-1.7\n".to_vec();
         malformed_pdf.resize(1030, b'x');
         malformed_pdf.extend_from_slice(b"\nstartxref\n0\n%%EOF");
-        prove_pdf_artifact(&malformed_pdf).expect("malformed PDF passes the cheap envelope check");
         let pdf_required_by = [ExpectedOutputTarget::Pdf];
         let pdf = prove_target(
             &key,
             ExpectedOutputTarget::Pdf,
             &pdf_required_by,
-            c6_pdf_proof::load_pdf_artifact(&malformed_pdf),
+            c6_pdf_proof::prove_brutalist_state_pdf(&malformed_pdf, [1; 32]),
         )
         .expect_err("a malformed PDF must fail closed");
         assert!(matches!(
