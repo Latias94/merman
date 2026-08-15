@@ -5,8 +5,8 @@ use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
     EffectBinding, EffectGraph, EffectInput, EffectPrimitive, Specified, TextStylePatch,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    ThemeColorValue, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeResourceLimitId,
+    ThemeResourcePolicy, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -312,6 +312,130 @@ fn render_state_svg_from_text_with_theme_in_environment(
         .expect("render themed State artifact")
         .svg()
         .to_string()
+}
+
+fn state_note_radius_theme(radius: Specified<f32>) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Note,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch { radius },
+                    ..ThemeStylePatch::default()
+                },
+            ))),
+        )
+        .expect("compile State note radius theme")
+}
+
+fn state_note_rough_paths(svg: &str) -> Vec<String> {
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
+    let note_label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "noteLabel")
+                })
+        })
+        .expect("State note label group");
+    let note_node = note_label.parent().expect("State note node group");
+    note_node
+        .children()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "outer-path")
+                })
+        })
+        .expect("State note outer path group")
+        .children()
+        .filter(|node| node.has_tag_name("path"))
+        .map(|node| {
+            node.attribute("d")
+                .expect("State note rough path")
+                .to_string()
+        })
+        .collect()
+}
+
+#[test]
+fn state_note_positive_radius_changes_rough_geometry() {
+    let source = "stateDiagram-v2\nA\nnote right of A : rounded note\n";
+    let baseline = render_state_svg_from_text(source);
+    let rounded = render_state_svg_from_text_with_theme(
+        source,
+        &state_note_radius_theme(Specified::Value(12.0)),
+    );
+
+    assert_ne!(
+        state_note_rough_paths(&rounded),
+        state_note_rough_paths(&baseline)
+    );
+}
+
+#[test]
+fn state_note_zero_radius_preserves_square_rough_path_bytes() {
+    let source = "stateDiagram-v2\nA\nnote right of A : square note\n";
+    let baseline = render_state_svg_from_text(source);
+    let explicit_zero = render_state_svg_from_text_with_theme(
+        source,
+        &state_note_radius_theme(Specified::Value(0.0)),
+    );
+
+    assert_eq!(
+        state_note_rough_paths(&explicit_zero),
+        state_note_rough_paths(&baseline)
+    );
+}
+
+#[test]
+fn state_note_radius_clamps_to_half_the_shortest_side() {
+    let source = "stateDiagram-v2\nA\nnote right of A : clamped note\n";
+    let large = render_state_svg_from_text_with_theme(
+        source,
+        &state_note_radius_theme(Specified::Value(10_000.0)),
+    );
+    let larger = render_state_svg_from_text_with_theme(
+        source,
+        &state_note_radius_theme(Specified::Value(100_000.0)),
+    );
+
+    assert_eq!(
+        state_note_rough_paths(&large),
+        state_note_rough_paths(&larger)
+    );
+}
+
+#[test]
+fn state_note_clear_radius_remains_strictly_unsupported() {
+    let theme = state_note_radius_theme(Specified::Clear);
+    let source = "stateDiagram-v2\nA\nnote right of A : unsupported clear\n";
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable State note session");
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .expect("parse strict State note source")
+        .expect("State diagram detected");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("clearing State Note radius must fail closed in portable mode"),
+        Err(error) => error,
+    };
+
+    assert!(
+        matches!(
+            error,
+            merman_render::Error::UnverifiedFamilyTheme {
+                family_id: merman_core::DiagramFamilyId::STATE,
+                residual_count: 1,
+            }
+        ),
+        "unexpected strict State Note radius error: {error:?}"
+    );
 }
 
 #[test]

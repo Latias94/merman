@@ -646,10 +646,6 @@ impl StateGeometrySupport {
         radius: true,
         padding: true,
     };
-    const PADDING: Self = Self {
-        radius: false,
-        padding: true,
-    };
 }
 
 impl StateStylePlan {
@@ -1823,7 +1819,7 @@ fn source_shape_property_reaches_primary_surface(
 
 fn state_geometry_support(node: &StateDiagramRenderNode) -> StateGeometrySupport {
     match node.shape.as_str() {
-        "note" => StateGeometrySupport::PADDING,
+        "note" => StateGeometrySupport::BOTH,
         "stateStart" | "stateEnd" | "choice" | "fork" | "join" | "noteGroup" => {
             StateGeometrySupport::NONE
         }
@@ -3883,7 +3879,7 @@ mod tests {
     }
 
     #[test]
-    fn note_padding_is_applied_but_note_radius_is_residual() {
+    fn note_padding_and_radius_are_applied() {
         let radius_patch = ThemeStylePatch {
             geometry: ThemeGeometryPatch {
                 radius: Specified::Value(12.0),
@@ -3913,12 +3909,16 @@ mod tests {
             target: ThemeTarget::Note,
         };
 
+        assert_eq!(plan.node("N").unwrap().radius_override(), Some(12.0));
         assert_eq!(plan.node("N").unwrap().padding_override(), Some(14.0));
+        assert!(evidence.applied().contains(&radius_key));
         assert!(evidence.applied().contains(&padding_key));
-        assert!(evidence.residuals().iter().any(|residual| {
-            residual.key() == &radius_key
-                && residual.reason() == FamilyThemeResidualReason::UnsupportedGeometry
-        }));
+        assert!(
+            evidence
+                .residuals()
+                .iter()
+                .all(|residual| residual.key() != &radius_key)
+        );
     }
 
     #[test]

@@ -19,6 +19,22 @@ fn rounded_rect_rough_cache_key(
     }
 }
 
+fn note_rough_cache_key(
+    w: f64,
+    h: f64,
+    radius: f64,
+    seed: roughr::core::RoughJsSeed,
+) -> StateRoughCacheKey {
+    let radius = super::roughjs::normalized_rounded_rect_radius(w, h, radius);
+    StateRoughCacheKey {
+        tag: 5,
+        a: w.to_bits(),
+        b: h.to_bits(),
+        c: radius.to_bits(),
+        seed,
+    }
+}
+
 pub(super) fn render_state_node_svg(
     out: &mut impl SvgOutput,
     ctx: &StateRenderCtx<'_>,
@@ -399,28 +415,38 @@ pub(super) fn render_state_node_svg(
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
             let rough_start = timing.start();
-            let key = StateRoughCacheKey {
-                tag: 5,
-                a: w.to_bits(),
-                b: h.to_bits(),
-                c: 0,
-                seed: ctx.hand_drawn_seed.seed(),
-            };
+            let note_radius = super::roughjs::normalized_rounded_rect_radius(
+                w,
+                h,
+                radius_override.unwrap_or(0.0),
+            );
+            let key = note_rough_cache_key(w, h, note_radius, ctx.hand_drawn_seed.seed());
             if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
             let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
-                roughjs_paths_for_rect(StateRoughRectSpec {
-                    x: -w / 2.0,
-                    y: -h / 2.0,
-                    w,
-                    h,
-                    fill: "#fff5ad",
-                    stroke: "#aaaa33",
-                    stroke_width: 1.3,
-                    randomness: &ctx.hand_drawn_seed,
-                })
+                if note_radius == 0.0 {
+                    roughjs_paths_for_rect(StateRoughRectSpec {
+                        x: -w / 2.0,
+                        y: -h / 2.0,
+                        w,
+                        h,
+                        fill: "#fff5ad",
+                        stroke: "#aaaa33",
+                        stroke_width: 1.3,
+                        randomness: &ctx.hand_drawn_seed,
+                    })
+                } else {
+                    roughjs_paths_for_svg_path(
+                        &mermaid_rounded_rect_path_data(w, h, note_radius),
+                        "#fff5ad",
+                        "#aaaa33",
+                        1.3,
+                        "0 0",
+                        &ctx.hand_drawn_seed,
+                    )
+                }
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
             if let Some(s) = rough_start {
@@ -1010,6 +1036,24 @@ pub(super) fn render_state_node_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn note_cache_key_tracks_normalized_radius_without_colliding_with_rects() {
+        let seed = roughr::core::RoughJsSeed::new(1.0);
+        let square = note_rough_cache_key(100.0, 40.0, 0.0, seed);
+        let rounded = note_rough_cache_key(100.0, 40.0, 12.0, seed);
+        let clamped = note_rough_cache_key(100.0, 40.0, 100.0, seed);
+        let max = note_rough_cache_key(100.0, 40.0, 20.0, seed);
+        let ordinary_rect = rounded_rect_rough_cache_key(100.0, 40.0, 12.0, seed);
+
+        assert_eq!(square.tag, 5);
+        assert_eq!(ordinary_rect.tag, 6);
+        assert_ne!(square, rounded);
+        assert_ne!(rounded, ordinary_rect);
+        assert_eq!(clamped, max);
+        assert_eq!(square.c, 0.0f64.to_bits());
+        assert_eq!(rounded.c, 12.0f64.to_bits());
+    }
 
     #[test]
     fn rounded_rect_cache_key_tracks_normalized_radius() {
